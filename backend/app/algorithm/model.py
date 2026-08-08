@@ -334,6 +334,8 @@ def build_model(
                 continue
             if not node_in_scope(d.eligible_node_ids, s.path_ids):
                 continue
+            if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
+                continue
             eligible.append((di, si))
             soldier_duties[si].append(di)
 

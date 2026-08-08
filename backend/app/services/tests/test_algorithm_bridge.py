@@ -336,3 +336,22 @@ def test_load_soldier_inputs_filters_by_eligible_node_ids(admin_session):
     ids = {s.id for s in result}
     assert in_scope.id in ids
     assert out_of_scope.id not in ids
+
+
+def test_resolve_solver_settings_defaults_enforce_weapon_qualification_true(admin_session):
+    settings = resolve_solver_settings(admin_session, {})
+    assert settings.enforce_weapon_qualification is True
+
+
+def test_resolve_solver_settings_reads_system_setting_default(admin_session):
+    set_setting(admin_session, "weapon_qualification.enforce_eligibility", False, actor_id=None)
+    admin_session.commit()
+    settings = resolve_solver_settings(admin_session, {})
+    assert settings.enforce_weapon_qualification is False
+
+
+def test_resolve_solver_settings_per_run_override_wins(admin_session):
+    set_setting(admin_session, "weapon_qualification.enforce_eligibility", True, actor_id=None)
+    admin_session.commit()
+    settings = resolve_solver_settings(admin_session, {"enforce_weapon_qualification": False})
+    assert settings.enforce_weapon_qualification is False

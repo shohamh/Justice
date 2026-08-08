@@ -14,9 +14,11 @@ from app.db.models import (
     ExemptionType,
     Notification,
     NotificationType,
+    RangeType,
     SoldierExemption,
 )
 from app.services.algorithm_bridge import run_algorithm_job
+from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -250,3 +252,56 @@ def test_no_soldiers_or_duties_notifies_creator(admin_session):
     ).one_or_none()
     assert notif is not None
     assert notif.type == NotificationType.algorithm_job_failed
+
+
+def test_per_run_weapon_enforcement_wins_over_disabled_global_setting(admin_session):
+    """Finding 3 (Important): bulk_ineligible_duty_blocks reads the raw system
+    setting internally and used to gate the algorithm_bridge call, so a per-run
+    enforce_weapon_qualification=True override was silently ignored whenever the
+    global weapon_qualification.enforce_eligibility setting was off. The bridge
+    must gate the call on the *resolved* SolverSettings.enforce_weapon_qualification
+    (per-run override > system setting > default) instead.
+
+    With מטווחים on, the global enforce setting off, and a per-run override
+    forcing enforcement on, the sole candidate soldier (no range qualification)
+    must be treated as ineligible for the weapon duty -- driving the job to
+    INFEASIBLE. Before the fix, the bridge would skip the eligibility filter
+    entirely (relying on bulk_ineligible_duty_blocks's own read of the disabled
+    global setting) and the job would succeed instead."""
+    node = create_node(admin_session, level="branch", name="n_alg_notif_005")
+    dm = create_soldier(admin_session, personal_number="alg_notif_005", role="duty_manager", hierarchy_node_id=node.id)
+    dt = DutyType(
+        name="t_alg_notif_005", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser,
+    )
+    loc = DutyLocation(name="l_alg_notif_005")
+    admin_session.add(dt); admin_session.add(loc); admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2027, 4, 1),
+        end_date=date(2027, 4, 2),
+        required_count=1,
+    )
+    admin_session.add(shift)
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    set_setting(admin_session, "weapon_qualification.enforce_eligibility", False, actor_id=None)
+    admin_session.commit()
+
+    job = AlgorithmJob(
+        planning_start=shift.start_date,
+        planning_end=shift.end_date,
+        shift_ids=[str(shift.id)],
+        settings_json={"enforce_weapon_qualification": True, "time_limit_seconds": 10},
+        mode="shadow",
+        created_by=dm.id,
+    )
+    admin_session.add(job)
+    admin_session.commit()
+    admin_session.refresh(job)
+
+    run_algorithm_job(job.id, dm.id)
+
+    admin_session.expire_all()
+    admin_session.refresh(job)
+    assert job.status == "failed", f"expected failed (INFEASIBLE), got status={job.status}, error={job.error_message}"

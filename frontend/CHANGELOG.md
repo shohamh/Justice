@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-06
+
+### Features
+- The swap-partner picker is now searchable.
+- Bug-report screenshots and image attachments open in a fullscreen preview.
+- Algorithm runs support subtree restriction, with real validation errors surfaced in the UI instead of generic messages.
+
+### Fixes
+- Duty history for swap-received duties now excludes draft/rejected assignments and correctly shows swapped-in duties for the receiving soldier.
+- Fixed algorithm job settings failing to persist due to non-JSON-safe UUID serialization.
+- Fixed the RTL/LTR scroll direction on the cut-off projected-effort equation.
+- The algorithm run timer now ticks every second instead of following the poll cadence.
+- Added missing field labels to the personal constraint request form.
+- Exemption file access now shows specific permission/not-found messages instead of a generic error.
+- Added a missing validation-error i18n key that was showing as a raw key in the UI.
+- Fixed a crash when looking up duty history overrides for a deleted assignment.
+- Dismissed duty days no longer show as active for the released soldier.
+- Hierarchy-restricted announcements no longer leak to the whole organization.
+
+### Chores
+- Tightened test coverage for constraint-form field labels and bug-report comment attachment content types.
+
 ## 2026-08-05
 
 ### Features

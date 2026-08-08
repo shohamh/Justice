@@ -564,7 +564,7 @@ def test_connected_components_splits_disjoint_eligibility_groups() -> None:
         DutyBlock(id=uuid4(), duty_type_id=type_b, duty_location_id=loc,
                   start_date=date(2026, 6, 2), end_date=date(2026, 6, 2), score_per_day=Decimal("1")),
     ]
-    comps = _connected_components(len(duties), len(soldiers), _eligible_pairs(soldiers, duties))
+    comps = _connected_components(len(duties), len(soldiers), _eligible_pairs(soldiers, duties, SolverSettings()))
     # Two components: {duty_a + a1,a2} and {duty_b + b1}.
     assert len(comps) == 2
     sizes = sorted((len(d), len(s)) for d, s in comps)
@@ -1213,7 +1213,7 @@ def test_eligible_pairs_subtree_match() -> None:
                       start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
                       score_per_day=Decimal("1"), eligible_node_ids=[root])
 
-    pairs = _eligible_pairs(soldiers, [duty])
+    pairs = _eligible_pairs(soldiers, [duty], SolverSettings())
     eligible_soldier_idxs = {si for _, si in pairs}
     assert eligible_soldier_idxs == {0}  # only s_in_subtree (idx 0)
 

@@ -35,3 +35,15 @@ def test_get_setting_int_returns_value(admin_session):
 
 def test_get_setting_int_falls_back_to_default(admin_session):
     assert get_setting_int(admin_session, "does.not.exist", 42) == 42
+
+
+def test_weapon_qualification_settings_absent_by_default(admin_session):
+    for key in ("weapon_qualification.enforce_eligibility", "weapon_qualification.pending_excusal_disqualifies"):
+        with pytest.raises(SettingNotFound):
+            get_setting(admin_session, key)
+
+
+def test_weapon_qualification_settings_roundtrip(admin_session):
+    set_setting(admin_session, "weapon_qualification.enforce_eligibility", False, actor_id=None)
+    admin_session.commit()
+    assert get_setting(admin_session, "weapon_qualification.enforce_eligibility") is False

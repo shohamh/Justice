@@ -172,6 +172,12 @@ class HierarchyTransferRequest(Base):
     )
 
 
+class RangeType(str, _enum.Enum):
+    laser = "laser"
+    live = "live"
+    alal = "alal"
+
+
 class DutyType(Base):
     __tablename__ = "duty_types"
 
@@ -201,6 +207,9 @@ class DutyType(Base):
         ARRAY(UUID(as_uuid=True)), nullable=True, default=None
     )
     requires_weapon: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    required_range_type: Mapped[str | None] = mapped_column(
+        Enum(RangeType, name="range_type"), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -793,12 +802,6 @@ class DutyNoShow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
-
-
-class RangeType(str, _enum.Enum):
-    laser = "laser"
-    live = "live"
-    alal = "alal"
 
 
 RANGE_TYPE_RANK: dict[str, int] = {"laser": 1, "live": 2, "alal": 3}

@@ -39,6 +39,11 @@ class SoldierInput:
     approved_constraint_dates: list[tuple[date, date]] = field(default_factory=list)
     exempted_duty_type_ids: set[uuid.UUID] = field(default_factory=set)
     exempted_duty_location_ids: set[uuid.UUID] = field(default_factory=set)
+    # Duty-block ids (not duty-type ids, since eligibility is date-dependent — see
+    # services/weapon_eligibility.py) this soldier is NOT weapon-qualified for as of
+    # that block's start_date. Populated by algorithm_bridge via bulk_ineligible_duty_blocks
+    # after both soldiers and duties are loaded; empty by default for existing callers.
+    weapon_ineligible_duty_block_ids: set[uuid.UUID] = field(default_factory=set)
     # Effort-based fairness fields (set by algorithm_bridge after loading duty blocks)
     effort_offset: int = 0      # int(effort_score × EFFORT_SCALE) — historical quarterly share
     effort_per_milli: int = 0   # int(C_over_D / unit_score_milli × EFFORT_SCALE) — per-milli contribution
@@ -65,6 +70,11 @@ class DutyBlock:
     # Hours of rest required after this duty ends before the same soldier can
     # start another. 0 = no rest requirement (default, safe for existing callers).
     rest_hours: int = 0
+    # Minimum range-qualification tier required to take this block (laser/live/alal),
+    # or None if this duty type doesn't require a weapon. Populated by algorithm_bridge
+    # from DutyType.required_range_type; consumed by services/weapon_eligibility.py and
+    # the solver's eligibility pre-filter (see solver.py _eligible_pairs / build_model).
+    required_range_type: str | None = None
 
 
 @dataclass
@@ -163,6 +173,11 @@ class SolverSettings:
     # slot, which callers may want to surface for manual approval instead
     # (see Task B4, not yet built).
     auto_relax_node_quotas: bool = False
+    # Hard constraint by default: a soldier whose id appears in a DutyBlock's soldier
+    # via SoldierInput.weapon_ineligible_duty_block_ids is never assigned to that block.
+    # False relaxes this for the whole run (see algorithm_bridge.resolve_solver_settings
+    # for the system-setting default and per-run override).
+    enforce_weapon_qualification: bool = True
 
 
 @dataclass

@@ -295,6 +295,20 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         type: "number" as const,
         defaultValue: 3,
       },
+      {
+        key: "weapon_qualification.enforce_eligibility",
+        label: "אכיפת כשירות נשק לתורנויות",
+        description: "בודק שלחיילים המשובצים לתורנויות הדורשות נשק יש הכשרת מטווח בתוקף (נוכחית או עתידית מתוזמנת) בתאריך התורנות.",
+        type: "boolean" as const,
+        defaultValue: true,
+      },
+      {
+        key: "weapon_qualification.pending_excusal_disqualifies",
+        label: "בקשת פטור ממתינה פוסלת מטווח עתידי",
+        description: "כאשר דלוק: מטווח עתידי עם בקשת פטור שטרם הוכרעה לא ייחשב כמעניק כשירות. כאשר כבוי: רק בקשת פטור מאושרת פוסלת.",
+        type: "boolean" as const,
+        defaultValue: true,
+      },
 
     ],
   },
