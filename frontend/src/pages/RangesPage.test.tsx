@@ -540,6 +540,7 @@ describe("RangesPage assignment editor integration", () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
+    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
 
     const { client } = renderWithQuery(<RangesPage />);
     const invalidate = vi.spyOn(client, "invalidateQueries");
@@ -547,7 +548,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(screen.getByTestId("view-assignments-event-refresh"));
     fireEvent.click(await screen.findByTestId("remove-assignment-assignment-refresh"));
 
-    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-refresh", "assignment-refresh"));
+    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-refresh", "assignment-refresh", "חייל שוחרר"));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ranges"] }));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ranges", "event-refresh"] });
   });
@@ -649,6 +650,7 @@ describe("RangesPage assignment editor integration", () => {
         assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null }] },
     );
     vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(window, "prompt").mockReturnValue("ניקוי כללי");
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
 
     renderWithQuery(<RangesPage />);
@@ -657,7 +659,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
 
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
-    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1"));
+    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1", "ניקוי כללי"));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("1 שיבוצים"));
   });
 

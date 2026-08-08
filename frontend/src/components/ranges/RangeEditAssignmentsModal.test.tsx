@@ -108,6 +108,7 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("shows pending state while removing an assignment", async () => {
     let resolve!: () => void;
+    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
     vi.mocked(rangesApi.removeRangeAssignment).mockReturnValue(new Promise<void>(r => { resolve = r; }));
     renderModal({ event: event([assignment("a1", "s1")]) });
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
@@ -117,10 +118,19 @@ describe("RangeEditAssignmentsModal", () => {
   });
 
   it("shows a user-facing error when removing an assignment fails", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
     vi.mocked(rangesApi.removeRangeAssignment).mockRejectedValue(new Error("remove"));
     renderModal({ event: event([assignment("a1", "s1", false, false)]) });
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
     expect(await screen.findByRole("alert")).toHaveTextContent("הסרת השיבוץ נכשלה");
+  });
+
+  it("does not remove an assignment when the reason prompt is cancelled", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue(null);
+    renderModal({ event: event([assignment("a1", "s1")]) });
+    fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+    expect(rangesApi.removeRangeAssignment).not.toHaveBeenCalled();
+    expect(screen.getByText(/אורי/)).toBeInTheDocument();
   });
 
   it("renders the ranked candidate panel with auto-select and lets a manager save a batch", async () => {
@@ -189,6 +199,7 @@ describe("RangeEditAssignmentsModal", () => {
       .mockResolvedValueOnce([
         { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
       ]);
+    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
     renderModal({ event: event([assignment("a1", "s1")]) });
 

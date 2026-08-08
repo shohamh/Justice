@@ -133,10 +133,43 @@ def test_add_and_remove_assignment(client: TestClient, admin_session: Session) -
     assert add_resp.status_code == 201, add_resp.text
     assignment_id = add_resp.json()["id"]
 
-    remove_resp = client.delete(
-        f"/api/ranges/{event_id}/assignments/{assignment_id}", headers=auth_headers(dm)
+    remove_resp = client.request(
+        "DELETE",
+        f"/api/ranges/{event_id}/assignments/{assignment_id}",
+        json={"reason": "חייל שוחרר"},
+        headers=auth_headers(dm),
     )
     assert remove_resp.status_code == 204
+
+
+def test_remove_assignment_requires_reason_in_body(client, admin_session):
+    from app.db.models import RangeType
+    from app.services.ranges import add_range_assignment, create_range_event
+
+    node = create_node(admin_session, level="branch", name="rra-api-1")
+    dm = create_soldier(admin_session, personal_number="rra-api-dm1", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="rra-api-s1", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name="שמירה עם נשק rra-api",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    _enable_mitvachim(admin_session)
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(admin_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(admin_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    resp = client.request(
+        "DELETE", f"/api/ranges/{event.id}/assignments/{assignment.id}",
+        json={"reason": "חייל שוחרר"}, headers=auth_headers(dm),
+    )
+    assert resp.status_code == 204
 
 
 def test_get_range_event_returns_roster(client: TestClient, admin_session: Session) -> None:
