@@ -34,6 +34,9 @@ vi.mock("../api/soldiers", () => ({
 vi.mock("../api/swaps", () => ({
   getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
 }));
+vi.mock("../api/shifts", () => ({
+  getWeaponIneligibleCount: vi.fn(() => Promise.resolve(0)),
+}));
 
 const mockListJobs = vi.fn();
 vi.mock("../api/algorithm", () => ({
@@ -259,6 +262,31 @@ describe("UnifiedNav — dual-role soldier (commander label, also a duty manager
     render(<UnifiedNav />);
     expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
+  });
+});
+
+describe("UnifiedNav — weapon-ineligible badge", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
+  });
+
+  test("shows a red badge with the ineligible count for a duty manager", async () => {
+    const { getWeaponIneligibleCount } = await import("../api/shifts");
+    vi.mocked(getWeaponIneligibleCount).mockResolvedValueOnce(3);
+    render(<UnifiedNav />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
+    });
+    const badges = await screen.findAllByTestId("pending-badge");
+    expect(
+      badges.some((el) => el.textContent === "3" && el.className.includes("bg-red-500"))
+    ).toBe(true);
+  });
+
+  test("does not render the weapon-ineligible tab for a soldier", () => {
+    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false } });
+    render(<UnifiedNav />);
+    expect(screen.queryByTestId("nav-weapon-ineligible")).not.toBeInTheDocument();
   });
 });
 

@@ -171,3 +171,8 @@ export async function bulkDeleteShifts(dateFrom: string, dateTo: string): Promis
 export async function bulkClearAssignments(dateFrom: string, dateTo: string): Promise<{ cleared_assignments: number }> {
   return (await api.delete<{ cleared_assignments: number }>("/shifts/bulk-clear-assignments", { params: { date_from: dateFrom, date_to: dateTo } })).data;
 }
+
+export async function getWeaponIneligibleCount(): Promise<number> {
+  const r = await api.get<{ count: number }>("/shifts/weapon-ineligible/count");
+  return r.data.count;
+}

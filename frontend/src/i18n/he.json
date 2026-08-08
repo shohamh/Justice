@@ -82,7 +82,8 @@
     "admin_changelog": "יומן שינויים",
     "admin_bug_reports": "דיווחי באגים",
     "score_adjustments": "שינוי ניקוד ידני",
-    "planning_export": "ייצוא לאקסל"
+    "planning_export": "ייצוא לאקסל",
+    "weapon_ineligible": "⚠️ חוסר כשירות"
   },
   "export": {
     "transparency_title": "ייצוא שקיפות",
