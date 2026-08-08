@@ -25,6 +25,8 @@ export interface EffectiveDuty {
   end_at: string;
   shift_id?: string | null;
   is_reserve: boolean;
+  weapon_ineligible: boolean;
+  weapon_ineligible_reason: string | null;
 }
 
 export async function listAssignments(soldierId: string, params?: { date_from?: string; date_to?: string }): Promise<Assignment[]> {
