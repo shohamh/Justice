@@ -15,10 +15,14 @@
 - Range attendance statuses show proper Hebrew translations in roster rows, and the commander/approvals nav badges were colored blue.
 - Various bug-report follow-ups and range/shift assignment-editing edge cases fixed (capacity validation, inline add-location form no longer submitting the range event, `as any` casts replaced with real types).
 - CI now runs `app/services/tests` and resolves a `response_model` issue that blocked test collection.
+- Generated temp passwords now always include at least one letter and one digit, so a freshly issued temp password can never be rejected by the app's own password policy.
 
 ### Chores
 - Added design specs & implementation plans for weapon-qualification eligibility, range attendance auto-mark & corrections, ranges in duty history, the range-location entity, and the registration rank/track fix.
 - Added Alembic migrations and backend/frontend test coverage for all of the above (weapon eligibility, attendance auto-mark worker, duty-history removals, range locations, required-range-type enforcement).
+- Reconciled the diverged Alembic migration graph (two heads from parallel range work) with a no-op merge migration, restoring in-process test migrations.
+- Aligned stale backend tests with shipped behavior (exemption submission now requires a reason, machine-readable error codes, exclusive end dates in duty-history scoring, upcoming-window shift loads) and fixed pytest 9 `pytest_plugins` collection errors — the backend suite went from 1709 collection errors to fully green.
+- Added the implementation plan for ineligible-soldier visibility.
 
 ## 2026-08-06
 
