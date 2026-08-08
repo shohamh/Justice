@@ -76,12 +76,12 @@ export default function UnifiedNav() {
         getPendingFieldUpdateCount().catch(() => 0),
         listPendingEnrollments().then((r) => r.length).catch(() => 0),
         getPendingHakpazaCount().catch(() => 0),
-        getWeaponIneligibleCount().catch(() => 0),
+        canPlan ? getWeaponIneligibleCount().catch(() => 0) : Promise.resolve(0),
       ]);
       setPendingCount(c + e + f + enroll + hk);
       setWeaponIneligibleCount(wi);
     })();
-  }, [canApprove, location.pathname]);
+  }, [canApprove, canPlan, location.pathname]);
 
   useEffect(() => {
     void (async () => {
@@ -163,7 +163,7 @@ export default function UnifiedNav() {
     ...baseTabs,
     ...(canApprove ? [commanderTab] : []),
     ...(canPlan ? [planningTab] : []),
-    ...(canApprove ? [weaponIneligibleTab] : []),
+    ...(canPlan ? [weaponIneligibleTab] : []),
   ];
 
   const commanderItems = [
