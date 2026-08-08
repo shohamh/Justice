@@ -172,6 +172,66 @@ def test_remove_assignment_requires_reason_in_body(client, admin_session):
     assert resp.status_code == 204
 
 
+def test_remove_assignment_missing_reason_rejected(client, admin_session):
+    from app.db.models import RangeType
+    from app.services.ranges import add_range_assignment, create_range_event
+
+    node = create_node(admin_session, level="branch", name="rra-api-2")
+    dm = create_soldier(admin_session, personal_number="rra-api-dm2", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="rra-api-s2", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name="שמירה עם נשק rra-api-2",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    _enable_mitvachim(admin_session)
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(admin_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(admin_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    resp = client.request(
+        "DELETE", f"/api/ranges/{event.id}/assignments/{assignment.id}",
+        json={}, headers=auth_headers(dm),
+    )
+    assert resp.status_code == 422
+
+
+def test_remove_assignment_whitespace_reason_rejected(client, admin_session):
+    from app.db.models import RangeType
+    from app.services.ranges import add_range_assignment, create_range_event
+
+    node = create_node(admin_session, level="branch", name="rra-api-3")
+    dm = create_soldier(admin_session, personal_number="rra-api-dm3", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="rra-api-s3", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name="שמירה עם נשק rra-api-3",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    _enable_mitvachim(admin_session)
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(admin_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(admin_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    resp = client.request(
+        "DELETE", f"/api/ranges/{event.id}/assignments/{assignment.id}",
+        json={"reason": "   "}, headers=auth_headers(dm),
+    )
+    assert resp.status_code == 422
+
+
 def test_get_range_event_returns_roster(client: TestClient, admin_session: Session) -> None:
     _enable_mitvachim(admin_session)
     node = create_node(admin_session, level="פלוגה", name="פלוגה ה")

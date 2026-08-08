@@ -5,7 +5,7 @@ from datetime import date as date_type
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -496,6 +496,14 @@ class MarkAttendanceBody(BaseModel):
 
 class RemoveAssignmentBody(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("reason must not be empty")
+        return v
 
 
 @router.patch(
