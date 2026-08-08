@@ -623,6 +623,18 @@ def mark_attendance(
     assignment.marked_at = datetime.now(UTC)
     assignment.note = note
 
+    from app.db.models import DutyAssignment as _DutyAssignment
+    from app.services.duty_eligibility_watch import recheck_assignments
+
+    affected_ids = session.execute(
+        select(_DutyAssignment.id).where(
+            _DutyAssignment.soldier_id == assignment.soldier_id,
+            _DutyAssignment.status == "published",
+        )
+    ).scalars().all()
+    if affected_ids:
+        recheck_assignments(session, affected_ids)
+
     write_audit(
         session, actor_id=marked_by, action="range_attendance_marked", entity_type="range_assignment",
         entity_id=assignment.id, before={"attendance_status": previous_status}, after={"attendance_status": status},

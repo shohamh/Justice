@@ -97,6 +97,19 @@ def request_reserve_excusal(
     session.add(request)
     session.delete(assignment)
     session.flush()
+
+    from app.db.models import DutyAssignment as _DutyAssignment
+    from app.services.duty_eligibility_watch import recheck_assignments
+
+    affected_ids = session.execute(
+        select(_DutyAssignment.id).where(
+            _DutyAssignment.soldier_id == assignment.soldier_id,
+            _DutyAssignment.status == "published",
+        )
+    ).scalars().all()
+    if affected_ids:
+        recheck_assignments(session, affected_ids)
+
     _range_notification(
         session, soldier_id=requested_by, type=NotificationType.range_reserve_excused,
         title="הוסרת ממטווח המילואים", reference_type="range_excusal_request",
@@ -185,6 +198,27 @@ def decide_primary_excusal(
         if promoted is not None:
             promoted.is_reserve = False
             request.promoted_assignment_id = promoted.id
+
+        # Both the excused soldier (whose future qualification window from this
+        # assignment just disappeared) and, if applicable, the promoted reserve
+        # (who just gained one) may have had their weapon eligibility affected.
+        from app.db.models import DutyAssignment as _DutyAssignment
+        from app.services.duty_eligibility_watch import recheck_assignments
+
+        affected_soldier_ids = {assignment.soldier_id}
+        if promoted is not None:
+            affected_soldier_ids.add(promoted.soldier_id)
+        for _soldier_id in affected_soldier_ids:
+            affected_ids = session.execute(
+                select(_DutyAssignment.id).where(
+                    _DutyAssignment.soldier_id == _soldier_id,
+                    _DutyAssignment.status == "published",
+                )
+            ).scalars().all()
+            if affected_ids:
+                recheck_assignments(session, affected_ids)
+
+        if promoted is not None:
             _range_notification(
                 session, soldier_id=promoted.soldier_id, type=NotificationType.range_reserve_promoted,
                 title="קודמת משיבוץ מילואים למטווח", reference_type="range_excusal_request",
