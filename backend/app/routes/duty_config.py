@@ -13,7 +13,18 @@ from sqlalchemy.orm import Session
 from app.services.eligibility import DutyTypeRequirements
 
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
-from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType, ExemptionDutyLocationMap, ExemptionDutyTypeMap, ExemptionType, ShiftTemplate, Soldier
+from app.db.models import (
+    DutyAssignment,
+    DutyLocation,
+    DutyShift,
+    DutyType,
+    ExemptionDutyLocationMap,
+    ExemptionDutyTypeMap,
+    ExemptionType,
+    RangeType,
+    ShiftTemplate,
+    Soldier,
+)
 from app.db.session import get_session
 from app.services import duty_config as svc
 
@@ -63,7 +74,7 @@ class CreateDutyTypeRequest(BaseModel):
     instructions: str | None = Field(default=None)
     is_external: bool  # required — no default
     requires_weapon: bool = False
-    required_range_type: str | None = None
+    required_range_type: RangeType | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
@@ -89,7 +100,7 @@ class UpdateDutyTypeRequest(BaseModel):
     instructions: str | None = Field(default=None)
     is_external: bool | None = None
     requires_weapon: bool | None = None
-    required_range_type: str | None = None
+    required_range_type: RangeType | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")

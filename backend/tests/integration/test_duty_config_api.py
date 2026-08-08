@@ -245,6 +245,40 @@ def test_required_range_type_roundtrips_create_update_and_list(client: TestClien
     listed_data = next(d for d in listed.json() if d["id"] == created_data["id"])
     assert listed_data["required_range_type"] is None
 
+def test_required_range_type_rejects_invalid_values_on_create_and_update(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="5200008", role="admin")
+    invalid_create = client.post(
+        "/api/duty-config/duty-types",
+        headers=auth_headers(admin),
+        json={
+            "name": "שמירה-מטווח-ב",
+            "score_per_day": "1.00",
+            "is_external": False,
+            "required_range_type": "invalid",
+        },
+    )
+    assert invalid_create.status_code == 422
+
+    created = client.post(
+        "/api/duty-config/duty-types",
+        headers=auth_headers(admin),
+        json={
+            "name": "שמירה-מטווח-ג",
+            "score_per_day": "1.00",
+            "is_external": False,
+            "required_range_type": "live",
+        },
+    )
+    assert created.status_code == 201, created.text
+    invalid_update = client.patch(
+        f"/api/duty-config/duty-types/{created.json()['id']}",
+        headers=auth_headers(admin),
+        json={"required_range_type": "invalid"},
+    )
+    assert invalid_update.status_code == 422
+
 
 def test_create_and_update_exemption_type_forbids_weapons_roundtrip(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5200006", role="admin")
