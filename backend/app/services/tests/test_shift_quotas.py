@@ -55,13 +55,13 @@ def test_set_quotas_over_required_count_raises(admin_session):
     node_a = create_node(admin_session, level="branch", name="ענף פוקוס")
     node_b = create_node(admin_session, level="branch", name="ענף אלומות")
 
-    with pytest.raises(ShiftQuotaError, match="exceeds required_count"):
+    with pytest.raises(ShiftQuotaError, match="quota_sum_exceeds_required_count"):
         set_shift_quotas(admin_session, shift_id=shift.id, quotas=[(node_a.id, 2), (node_b.id, 2)])
 
 
 def test_set_quotas_unknown_node_raises(admin_session):
     shift = _make_shift(admin_session, "3", required_count=3)
-    with pytest.raises(ShiftQuotaError, match="not found"):
+    with pytest.raises(ShiftQuotaError, match="hierarchy_node_not_found"):
         set_shift_quotas(admin_session, shift_id=shift.id, quotas=[(uuid.uuid4(), 1)])
 
 
@@ -181,7 +181,7 @@ def test_compute_potential_split_all_zero_weight_falls_back_to_even_split(admin_
 def test_compute_potential_split_no_children_raises(admin_session):
     leaf = create_node(admin_session, level="team", name="pot_leaf")
 
-    with pytest.raises(ShiftQuotaError, match="no direct children"):
+    with pytest.raises(ShiftQuotaError, match="parent_node_no_children"):
         compute_potential_split(admin_session, parent_node_id=leaf.id, required_count=5)
 
 
@@ -189,7 +189,7 @@ def test_compute_potential_split_invalid_required_count_raises(admin_session):
     parent = create_node(admin_session, level="unit", name="pot_invalid_parent")
     create_node(admin_session, level="branch", name="pot_invalid_a", parent=parent)
 
-    with pytest.raises(ShiftQuotaError, match="required_count must be"):
+    with pytest.raises(ShiftQuotaError, match="required_count_must_be_positive"):
         compute_potential_split(admin_session, parent_node_id=parent.id, required_count=0)
 
 

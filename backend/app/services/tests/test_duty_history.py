@@ -264,7 +264,7 @@ def test_assignment_score_regular(admin_session, soldier, duty_type, location):
         duty_type_id=duty_type.id,
         duty_location_id=location.id,
         start_date=date(2026, 6, 10),
-        end_date=date(2026, 6, 12),  # 3 days inclusive
+        end_date=date(2026, 6, 13),  # 3 days: [2026-06-10, 2026-06-13) exclusive
         status="published",
     )
     admin_session.add(a)
@@ -284,7 +284,7 @@ def test_assignment_score_reserve_standby_only(admin_session, soldier, duty_type
         duty_type_id=duty_type.id,
         duty_location_id=location.id,
         start_date=date(2026, 6, 10),
-        end_date=date(2026, 6, 12),
+        end_date=date(2026, 6, 13),  # 3 days inclusive (exclusive end boundary)
         status="published",
         is_reserve=True,
     )
@@ -311,7 +311,7 @@ def test_assignment_score_reserve_with_calledup(admin_session, soldier, duty_typ
         duty_type_id=duty_type.id,
         duty_location_id=location.id,
         start_date=date(2026, 6, 10),
-        end_date=date(2026, 6, 14),
+        end_date=date(2026, 6, 15),  # 5 days inclusive (exclusive end boundary)
         status="published",
         is_reserve=True,
         called_up_from=date(2026, 6, 12),

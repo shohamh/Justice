@@ -81,7 +81,16 @@ def validate_password(password: str) -> None:
 
 def generate_temp_password(length: int = 14) -> str:
     alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+    # The password policy requires at least one letter and one digit; a fully
+    # random draw over letters+digits omits digits ~15% of the time, and the
+    # resulting temp password would be rejected by validate_password. Force
+    # one of each class into a random slot.
+    chars = [secrets.choice(alphabet) for _ in range(length)]
+    if not any(c.isdigit() for c in chars):
+        chars[secrets.randbelow(length)] = secrets.choice(string.digits)
+    if not any(c.isalpha() for c in chars):
+        chars[secrets.randbelow(length)] = secrets.choice(string.ascii_letters)
+    return "".join(chars)
 
 
 def bump_token_version(soldier: Soldier) -> None:

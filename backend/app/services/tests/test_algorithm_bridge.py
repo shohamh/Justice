@@ -59,8 +59,9 @@ def test_resolve_solver_settings_falls_back_to_hardcoded_defaults(admin_session)
 
 def test_resolve_solver_settings_decomposition_default(admin_session):
     s = resolve_solver_settings(admin_session, {})
-    assert s.decomposition == "effort_rounds"
-    assert s.round_soldier_count == 50
+    assert s.decomposition == "interleaved"
+    assert s.round_soldier_count == 20
+    assert s.interleaved_batch_size == 50
 
 
 def test_resolve_solver_settings_decomposition_override(admin_session):
@@ -295,8 +296,8 @@ def test_load_duty_blocks_from_shifts_populates_node_quotas(admin_session):
         admin_session,
         duty_type_id=dt.id,
         duty_location_id=loc.id,
-        start_date=date(2026, 7, 10),
-        end_date=date(2026, 7, 11),
+        start_date=date(2026, 8, 14),
+        end_date=date(2026, 8, 15),
         required_count=3,
     )
     admin_session.flush()
