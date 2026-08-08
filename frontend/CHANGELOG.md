@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-08
+
+### Features
+- Range location is now a first-class entity: events reference a `RangeLocation` (with its own table, CRUD endpoints, and seed data) instead of free text, and the range form uses a searchable combobox with an inline add-new option.
+- Weapon-qualification eligibility: duty types can declare a required range type, the scheduling algorithm now enforces the weapon-qualification constraint (toggleable per run), and the shift-assignment modal warns about weapon-ineligible candidates with matching admin settings.
+- Automatic range attendance marking: a background worker marks attendance once a range event's schedule elapses, so attendance status stays current without manual entry.
+- Range attendance corrections now require a reason in either direction (present→absent and absent→present), notify the soldier's direct commander, and produce a proper audit trail.
+- Range assignments and removals (excusal and manual) now appear in the soldier duty-history panel with removal reasons, attribution, and a promoted-from-reserve badge; removal reasons are validated and audited server-side.
+- Homepage and commander calendars now share the unit calendar component, replacing the old dashboard duty-calendar widget.
+
+### Fixes
+- Registration now validates rank against the service track live (including a discharge-date-in-the-future check), derives `is_career` and בה"ד 1 graduate status from rank instead of manual input, and adds קא"ם as a קבע-only rank.
+- Range attendance statuses show proper Hebrew translations in roster rows, and the commander/approvals nav badges were colored blue.
+- Various bug-report follow-ups and range/shift assignment-editing edge cases fixed (capacity validation, inline add-location form no longer submitting the range event, `as any` casts replaced with real types).
+- CI now runs `app/services/tests` and resolves a `response_model` issue that blocked test collection.
+
+### Chores
+- Added design specs & implementation plans for weapon-qualification eligibility, range attendance auto-mark & corrections, ranges in duty history, the range-location entity, and the registration rank/track fix.
+- Added Alembic migrations and backend/frontend test coverage for all of the above (weapon eligibility, attendance auto-mark worker, duty-history removals, range locations, required-range-type enforcement).
+
 ## 2026-08-06
 
 ### Features
