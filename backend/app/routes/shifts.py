@@ -46,6 +46,7 @@ class ShiftOut(BaseModel):
     generated_from_template_id: uuid.UUID | None = None
     generated_from_template_name: str | None = None
     node_quotas: list["NodeQuotaOut"] = Field(default_factory=list)
+    ineligible_count: int = 0
 
 
 class WeaponIneligibleCountOut(BaseModel):
@@ -120,6 +121,7 @@ def _out(
     session: Session | None = None,
     template_name: str | None = None,
     node_quotas: list[NodeQuotaOut] | None = None,
+    ineligible_count: int = 0,
 ) -> ShiftOut:
     calculated = None
     if session is not None:
@@ -146,6 +148,7 @@ def _out(
         generated_from_template_id=s.generated_from_template_id,
         generated_from_template_name=template_name,
         node_quotas=node_quotas or [],
+        ineligible_count=ineligible_count,
     )
 
 
@@ -171,7 +174,30 @@ def list_shifts(
     if template_ids:
         rows = session.execute(select(ShiftTemplate).where(ShiftTemplate.id.in_(template_ids))).scalars().all()
         template_names = {t.id: t.name for t in rows}
-    return [_out(s, session, template_name=template_names.get(s.generated_from_template_id) if s.generated_from_template_id else None) for s in shifts]
+
+    shift_ids = [s.id for s in shifts]
+    ineligible_counts: dict[uuid.UUID, int] = {}
+    if shift_ids:
+        count_rows = session.execute(
+            select(DutyAssignment.duty_shift_id, func.count(DutyAssignment.id))
+            .where(
+                DutyAssignment.duty_shift_id.in_(shift_ids),
+                DutyAssignment.weapon_ineligible.is_(True),
+                DutyAssignment.status == "published",
+            )
+            .group_by(DutyAssignment.duty_shift_id)
+        ).all()
+        ineligible_counts = {row[0]: row[1] for row in count_rows}
+
+    return [
+        _out(
+            s,
+            session,
+            template_name=template_names.get(s.generated_from_template_id) if s.generated_from_template_id else None,
+            ineligible_count=ineligible_counts.get(s.id, 0),
+        )
+        for s in shifts
+    ]
 
 
 @router.get("/weapon-ineligible/count", response_model=WeaponIneligibleCountOut)

@@ -364,3 +364,42 @@ def test_assign_batch_rejects_primaries_beyond_required_count(client, admin_sess
     }, headers=auth_headers(dm))
     assert over_resp.status_code == 409
     assert over_resp.json()["detail"] == "primary_capacity_exceeded"
+
+
+def test_list_shifts_includes_ineligible_count(client, admin_session):
+    from datetime import date, timedelta
+
+    from app.db.models import DutyAssignment, DutyShift, RangeType
+
+    node = create_node(admin_session, level="branch", name="so-node-1")
+    dm = create_soldier(admin_session, personal_number="so-dm-1", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="so-sol-1", hierarchy_node_id=node.id)
+    dt = DutyType(
+        name="so-weapon-1", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    )
+    loc = DutyLocation(name="so-loc-1")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=5),
+        required_count=1, status="active",
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        duty_shift_id=shift.id, start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=5),
+        status="published", weapon_ineligible=True,
+    )
+    admin_session.add(assignment)
+    admin_session.commit()
+
+    r = client.get(
+        f"/api/shifts?date_from={date.today().isoformat()}&date_to={(date.today()+timedelta(days=30)).isoformat()}",
+        headers=auth_headers(dm),
+    )
+    assert r.status_code == 200
+    row = next(s for s in r.json() if s["id"] == str(shift.id))
+    assert row["ineligible_count"] == 1
