@@ -303,4 +303,34 @@ describe("ShiftDetailPanel Replace action", () => {
     // The freed reserve assignment no longer holds a stale DutyReserveLink,
     // so a newly assigned reserve can attach to a primary again.
   });
+ 
+  it("shows and executes Replace for an ineligible called-up reserve while preserving called-up presentation", async () => {
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          assignment_id: "a-called-up",
+          soldier_id: "s-called-up",
+          soldier_name: "רזרב נקרא",
+          is_reserve: true,
+          called_up_from: "2026-08-10",
+          called_up_to: "2026-08-11",
+          weapon_ineligible: true,
+          weapon_ineligible_reason: WEAPON_REASON,
+        }),
+      ])
+    );
+
+    const row = screen.getByText("רזרב נקרא").closest("div.border") as HTMLElement;
+    expect(within(row).getByTitle(WEAPON_REASON)).toHaveTextContent("⚠️");
+    expect(within(row).getByText("reserve_called_up 2026-08-10–2026-08-11")).toBeInTheDocument();
+    expect(within(row).getByText("החלף")).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByText("החלף"));
+
+    await waitFor(() => {
+      expect(shiftsApi.removeShiftAssignment).toHaveBeenCalledWith("shift-1", "a-called-up");
+      expect(shiftsApi.getShift).toHaveBeenCalledWith("shift-1");
+    });
+  });
 });
