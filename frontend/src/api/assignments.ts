@@ -9,6 +9,8 @@ export interface Assignment {
   end_date: string;
   status: string;
   notes: string | null;
+  weapon_ineligible: boolean;
+  weapon_ineligible_reason: string | null;
 }
 
 export interface EffectiveDuty {

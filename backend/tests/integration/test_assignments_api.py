@@ -265,3 +265,52 @@ def test_effective_duties_default_weapon_ineligible_false(client: TestClient, ad
     row = next(d for d in resp.json() if d["duty_type_id"] == str(dtype.id))
     assert row["weapon_ineligible"] is False
     assert row["weapon_ineligible_reason"] is None
+
+
+def test_assignment_list_includes_weapon_ineligibility_fields(
+    client: TestClient, admin_session: Session
+):
+    soldier = create_soldier(admin_session, personal_number=f"list_{_uid()}")
+    dtype = DutyType(name=f"שמירה_{_uid()}", score_per_day=1, active=True)
+    loc = DutyLocation(name=f"loc_{_uid()}", base="בסיס")
+    admin_session.add_all([dtype, loc])
+    admin_session.flush()
+    ineligible = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=dtype.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 8, 5),
+        end_date=date(2026, 8, 6),
+        start_time="08:00",
+        end_time="20:00",
+        status="published",
+        weapon_ineligible=True,
+        weapon_ineligible_reason="אין הכשרת נשק בתוקף לתאריך התורנות",
+    )
+    eligible = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=dtype.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 8, 8),
+        end_date=date(2026, 8, 9),
+        start_time="08:00",
+        end_time="20:00",
+        status="published",
+    )
+    admin_session.add_all([ineligible, eligible])
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/assignments",
+        params={"soldier_id": str(soldier.id)},
+        headers=auth_headers(soldier),
+    )
+
+    assert resp.status_code == 200
+    rows = {row["id"]: row for row in resp.json()}
+    assert rows[str(ineligible.id)]["weapon_ineligible"] is True
+    assert rows[str(ineligible.id)]["weapon_ineligible_reason"] == (
+        "אין הכשרת נשק בתוקף לתאריך התורנות"
+    )
+    assert rows[str(eligible.id)]["weapon_ineligible"] is False
+    assert rows[str(eligible.id)]["weapon_ineligible_reason"] is None
