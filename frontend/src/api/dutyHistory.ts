@@ -10,7 +10,9 @@ export interface TimelineEvent {
     | "dismissal"
     | "exemption"
     | "exemption_request"
-    | "personal_constraint";
+    | "personal_constraint"
+    | "range_assignment"
+    | "range_removed";
   date: string;
   end_date: string | null;
   title: string;
