@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import * as assignmentsApi from "../api/assignments";
+import * as shiftsApi from "../api/shifts";
+import type { DutyShift } from "../api/shifts";
 import type { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 
 const mockUseAuth = vi.fn(() => ({ user: null }));
@@ -32,17 +34,37 @@ vi.mock("../api/publicSettings", () => ({
 
 vi.mock("../api/assignments", () => ({
   listEffectiveDuties: vi.fn(() => Promise.resolve([])),
-  cancelAssignment: vi.fn(() => Promise.resolve({})),
   getShiftCandidates: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock("../api/shifts", () => ({
+  removeShiftAssignment: vi.fn(() => Promise.resolve()),
+  getShift: vi.fn(),
   assignBatch: vi.fn(() =>
     Promise.resolve({ primary_assignment_ids: [], reserve_assignment_ids: [], reserve_links_created: 0 })
   ),
 }));
 
 const WEAPON_REASON = "אין הכשרת נשק תקינה";
+
+// What GET /shifts/{id} returns after the ineligible assignment was removed —
+// a real ShiftOut whose reserve capacity the assign modal can read.
+const freshDutyShift: DutyShift = {
+  id: "shift-1",
+  duty_type_id: "dt-1",
+  duty_location_id: "loc-1",
+  start_date: "2026-09-15",
+  end_date: "2026-09-16",
+  required_count: 1,
+  notes: null,
+  assigned_count: 0,
+  reserve_assigned_count: 0,
+  fill_status: "empty",
+  status: "active",
+  reserve_count_override: 2,
+  calculated_reserve_count: 2,
+  ineligible_count: 0,
+};
 
 function makeAssignee(overrides: Partial<CalendarShiftAssignee>): CalendarShiftAssignee {
   return {
@@ -104,7 +126,8 @@ function nameRow(name: string): HTMLElement {
 
 describe("ShiftDetailPanel weapon-ineligibility markers", () => {
   beforeEach(() => {
-    vi.mocked(assignmentsApi.cancelAssignment).mockClear();
+    vi.mocked(shiftsApi.removeShiftAssignment).mockClear();
+    vi.mocked(shiftsApi.getShift).mockClear();
     vi.mocked(assignmentsApi.getShiftCandidates).mockClear();
   });
 
@@ -151,7 +174,8 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
 
 describe("ShiftDetailPanel Replace action", () => {
   beforeEach(() => {
-    vi.mocked(assignmentsApi.cancelAssignment).mockClear();
+    vi.mocked(shiftsApi.removeShiftAssignment).mockClear();
+    vi.mocked(shiftsApi.getShift).mockReset().mockResolvedValue(freshDutyShift);
     vi.mocked(assignmentsApi.getShiftCandidates).mockClear();
   });
 
@@ -211,8 +235,20 @@ describe("ShiftDetailPanel Replace action", () => {
     expect(screen.queryByText("החלף")).toBeNull();
   });
 
-  it("clicking Replace cancels the assignment, refreshes, and opens ShiftAssignModal for the shift", async () => {
+  it("clicking Replace removes the shift assignment, refreshes, and opens ShiftAssignModal with the refetched shift", async () => {
     mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
+    vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
+      {
+        soldier_id: "s1",
+        full_name: "מועמד חלופי",
+        personal_number: "111",
+        effort: 0.5,
+        blocked: false,
+        blocked_reason: null,
+        weapon_warning: false,
+        hierarchy_path_ids: [],
+      },
+    ]);
     const { onRefreshNeeded } = renderPanel(
       makeShift([
         makeAssignee({
@@ -228,11 +264,18 @@ describe("ShiftDetailPanel Replace action", () => {
     fireEvent.click(screen.getByText("החלף"));
 
     await waitFor(() =>
-      expect(assignmentsApi.cancelAssignment).toHaveBeenCalledWith("a-bad", "replacement")
+      expect(shiftsApi.removeShiftAssignment).toHaveBeenCalledWith("shift-1", "a-bad")
     );
+    // The freed slot's shift is refetched so the modal opens with live
+    // capacity (including reserve slots) rather than stale roster counts.
+    expect(shiftsApi.getShift).toHaveBeenCalledWith("shift-1");
     expect(onRefreshNeeded).toHaveBeenCalled();
-    expect(await screen.findByText("shifts.assign_modal_title")).toBeInTheDocument();
-    // The modal opens targeted at this shift's freed slot.
+    // The modal renders the refetched shift's date…
+    expect(await screen.findByText(/2026-09-15/)).toBeInTheDocument();
+    // …its candidate table, and its reserve section, which only appears
+    // when the refetched shift carries reserve capacity.
+    expect(screen.getAllByText("מועמד חלופי").length).toBeGreaterThan(0);
+    expect(screen.getByText("רזרביים")).toBeInTheDocument();
     expect(assignmentsApi.getShiftCandidates).toHaveBeenCalledWith("shift-1");
   });
 
@@ -254,7 +297,10 @@ describe("ShiftDetailPanel Replace action", () => {
     fireEvent.click(screen.getByText("החלף"));
 
     await waitFor(() =>
-      expect(assignmentsApi.cancelAssignment).toHaveBeenCalledWith("a-res", "replacement")
+      expect(shiftsApi.removeShiftAssignment).toHaveBeenCalledWith("shift-1", "a-res")
     );
+    expect(shiftsApi.getShift).toHaveBeenCalledWith("shift-1");
+    // The freed reserve assignment no longer holds a stale DutyReserveLink,
+    // so a newly assigned reserve can attach to a primary again.
   });
 });

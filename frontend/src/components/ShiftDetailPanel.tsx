@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import { SwapRequest, listSwapsForAssignment, checkCoverEligibility } from "../api/swaps";
-import { EffectiveDuty, listEffectiveDuties, cancelAssignment } from "../api/assignments";
+import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
+import { getShift, removeShiftAssignment } from "../api/shifts";
 import type { DutyShift } from "../api/shifts";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import DismissalModal from "./DismissalModal";
@@ -15,12 +16,6 @@ import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
 import { EventDetailModal, RosterSection } from "./planning";
-
-// Audit reason recorded when a roster manager replaces a weapon-ineligible
-// assignment via the Replace action. The cancel endpoint rejects blank
-// reasons; "replacement" matches the vocabulary used for roster-replacement
-// events elsewhere in the backend.
-const REPLACE_CANCEL_REASON = "replacement";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -40,28 +35,6 @@ function SoldierAvatar({ url, name }: { url: string | null | undefined; name: st
       {initials}
     </div>
   );
-}
-
-// ShiftAssignModal expects a DutyShift (the /shifts payload); the roster
-// panel only carries the CalendarShift view of the same shift. Map the
-// fields the assign modal reads onto a DutyShift-shaped object.
-function toDutyShift(shift: CalendarShift): DutyShift {
-  return {
-    id: shift.id,
-    duty_type_id: shift.duty_type_id,
-    duty_location_id: "", // CalendarShift carries only the location name
-    start_date: shift.start_date,
-    end_date: shift.end_date,
-    required_count: shift.required_count,
-    notes: null,
-    assigned_count: shift.assigned_count,
-    reserve_assigned_count: shift.reserve_count,
-    fill_status: shift.fill_status as DutyShift["fill_status"],
-    status: "active",
-    reserve_count_override: null,
-    calculated_reserve_count: null,
-    ineligible_count: shift.assignees.filter((a) => a.weapon_ineligible).length,
-  };
 }
 
 interface Props {
@@ -89,7 +62,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
   const [canOfferReplace, setCanOfferReplace] = useState(true);
   const [coverIneligibleReason, setCoverIneligibleReason] = useState<string | null>(null);
-  const [replaceTarget, setReplaceTarget] = useState<{ shiftId: string } | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<DutyShift | null>(null);
 
   useEffect(() => {
     getPublicSettings().then((settings) => {
@@ -264,8 +237,8 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                           <button
                             className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
                             onClick={async () => {
-                              await cancelAssignment(a.assignment_id, REPLACE_CANCEL_REASON);
-                              setReplaceTarget({ shiftId: shift.id });
+                              await removeShiftAssignment(shift.id, a.assignment_id);
+                              setReplaceTarget(await getShift(shift.id));
                               onRefreshNeeded();
                             }}
                           >
@@ -379,8 +352,8 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                       <button
                         className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
                         onClick={async () => {
-                          await cancelAssignment(a.assignment_id, REPLACE_CANCEL_REASON);
-                          setReplaceTarget({ shiftId: shift.id });
+                          await removeShiftAssignment(shift.id, a.assignment_id);
+                          setReplaceTarget(await getShift(shift.id));
                           onRefreshNeeded();
                         }}
                       >
@@ -460,7 +433,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
 
         {replaceTarget && (
           <ShiftAssignModal
-            shift={toDutyShift(shift)}
+            shift={replaceTarget}
             dutyTypes={Object.values(shiftDutyTypes)}
             onSaved={() => { setReplaceTarget(null); onRefreshNeeded(); }}
             onClose={() => setReplaceTarget(null)}

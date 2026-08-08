@@ -131,6 +131,10 @@ export async function removeShiftAssignment(shiftId: string, assignmentId: strin
   await api.delete(`/shifts/${shiftId}/assignments/${assignmentId}`);
 }
 
+export async function getShift(shiftId: string): Promise<DutyShift> {
+  return (await api.get<DutyShift>(`/shifts/${shiftId}`)).data;
+}
+
 export async function clearShiftAssignments(id: string): Promise<void> {
   await api.delete(`/shifts/${id}/assignments`);
 }
