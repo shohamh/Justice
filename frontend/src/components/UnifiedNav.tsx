@@ -52,7 +52,7 @@ export default function UnifiedNav() {
   const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
-
+  const canViewWeaponIneligible = canApprove;
   const [pendingCount, setPendingCount] = useState(0);
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
   const [weaponIneligibleCount, setWeaponIneligibleCount] = useState(0);
@@ -76,12 +76,12 @@ export default function UnifiedNav() {
         getPendingFieldUpdateCount().catch(() => 0),
         listPendingEnrollments().then((r) => r.length).catch(() => 0),
         getPendingHakpazaCount().catch(() => 0),
-        canPlan ? getWeaponIneligibleCount().catch(() => 0) : Promise.resolve(0),
+        canViewWeaponIneligible ? getWeaponIneligibleCount().catch(() => 0) : Promise.resolve(0),
       ]);
       setPendingCount(c + e + f + enroll + hk);
       setWeaponIneligibleCount(wi);
     })();
-  }, [canApprove, canPlan, location.pathname]);
+  }, [canApprove, canViewWeaponIneligible, location.pathname]);
 
   useEffect(() => {
     void (async () => {
@@ -153,7 +153,7 @@ export default function UnifiedNav() {
   const weaponIneligibleTab: NavTab = {
     label: t("nav.weapon_ineligible"),
     icon: <AlertTriangle size={20} />,
-    to: "/planning/shifts?filter=weapon_ineligible",
+    to: canPlan ? "/planning/shifts?filter=weapon_ineligible" : "/unit-calendar?filter=weapon_ineligible",
     badge: weaponIneligibleCount,
     badgeColor: "red",
     testId: "nav-weapon-ineligible",
@@ -163,7 +163,7 @@ export default function UnifiedNav() {
     ...baseTabs,
     ...(canApprove ? [commanderTab] : []),
     ...(canPlan ? [planningTab] : []),
-    ...(canPlan ? [weaponIneligibleTab] : []),
+    ...(canViewWeaponIneligible ? [weaponIneligibleTab] : []),
   ];
 
   const commanderItems = [

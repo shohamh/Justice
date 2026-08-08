@@ -43,9 +43,23 @@ interface UnitCalendarProps {
   // entirely (a duty or range can involve a soldier outside its own node's
   // subtree, e.g. as a reserve or a cross-unit range assignment).
   soldierId?: string;
+  // When set, show only shifts with at least one weapon-ineligible assignee.
+  weaponIneligibleOnly?: boolean;
 }
 
-export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
+export function filterCalendarShifts(
+  shifts: CalendarShift[],
+  dutyTypeIds: string[],
+  weaponIneligibleOnly: boolean,
+): CalendarShift[] {
+  return shifts.filter(
+    (shift) =>
+      dutyTypeIds.includes(shift.duty_type_id) &&
+      (!weaponIneligibleOnly || shift.assignees.some((assignee) => assignee.weapon_ineligible)),
+  );
+}
+
+export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly = false }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const manage = canPlan(user);
@@ -143,8 +157,8 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   );
 
   const filteredShifts = useMemo(
-    () => shifts.filter(s => effectiveDutyTypeFilter.includes(s.duty_type_id)),
-    [shifts, effectiveDutyTypeFilter],
+    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, weaponIneligibleOnly),
+    [shifts, effectiveDutyTypeFilter, weaponIneligibleOnly],
   );
 
   const filteredRanges = useMemo(
@@ -211,9 +225,17 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   };
 
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
-
   return (
     <div className="space-y-4">
+      {weaponIneligibleOnly && (
+        <p
+          role="status"
+          data-testid="unit-calendar-weapon-filter"
+          className="text-sm font-medium text-red-700 dark:text-red-300"
+        >
+          {t("unit_calendar.weapon_ineligible_filter")}
+        </p>
+      )}
       {(dutyTypesInView.length > 1 || rangesEnabled) && (
         <div className="flex flex-wrap gap-3 text-sm items-center">
           {dutyTypesInView.length > 1 && (

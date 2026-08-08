@@ -407,9 +407,9 @@
     "detail_table": "פירוט תורנויות לתאריך",
     "click_hint": "לחץ על יום או תורנות לפרטים",
     "duty_detail": "פרטי תורנות",
-    "filter_label": "סינון לפי סוג:",
     "duty_type_filter_label": "סוגי תורנויות",
     "range_filter_label": "סוגי מטווחים",
+    "weapon_ineligible_filter": "מוצגות רק תורנויות עם חיילים שאינם כשירים מבחינת הכשרת נשק",
     "swap_requests_count": "{{count}} בקשות החלפה",
     "swap_requests_has": "יש בקשת החלפה",
     "cover_for_free": "כסה בחינם"
