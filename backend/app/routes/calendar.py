@@ -210,17 +210,25 @@ def unit_calendar(
 
 @router.get("/shifts", response_model=CalendarShiftsResponse)
 def calendar_shifts(
-    node_id: uuid.UUID,
+    node_id: uuid.UUID | None = None,
+    soldier_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> CalendarShiftsResponse:
-    node = session.get(HierarchyNode, node_id)
-    if node is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if soldier_id is not None:
+        # Personal-calendar view is restricted to the caller's own duties.
+        if soldier_id != user.id and user.role != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    elif node_id is not None:
+        node = session.get(HierarchyNode, node_id)
+        if node is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    else:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="node_id_or_soldier_id_required")
     roots = scope_root_ids(session, user)
-    raw = get_calendar_shifts(session, node_id=node_id, date_from=date_from, date_to=date_to)
+    raw = get_calendar_shifts(session, node_id=node_id, soldier_id=soldier_id, date_from=date_from, date_to=date_to)
     swap_counts = _swap_counts_for_shifts(session, [s["id"] for s in raw])
     shifts = []
     for s in raw:

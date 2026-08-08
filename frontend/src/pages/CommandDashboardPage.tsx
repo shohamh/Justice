@@ -156,7 +156,7 @@ export default function CommandDashboardPage() {
     {
       id: "calendar",
       title: t("command_dashboard.calendar"),
-      content: nodes.length > 0 ? <UnitCalendar nodeId={nodes[0]?.id || ""} /> : null,
+      content: myNodes.length > 0 ? <UnitCalendar nodeId={myNodes[0].id} /> : null,
     },
     {
       id: "soldiers",

@@ -81,10 +81,14 @@ export interface CalendarShiftsResponse {
 }
 
 export async function getCalendarShifts(
-  nodeId: string,
-  params?: { date_from?: string; date_to?: string },
+  params: { nodeId?: string; soldierId?: string; date_from?: string; date_to?: string },
 ): Promise<CalendarShiftsResponse> {
-  return (await api.get<CalendarShiftsResponse>("/calendar/shifts", { params: { node_id: nodeId, ...params } })).data;
+  const { nodeId, soldierId, ...rest } = params;
+  return (
+    await api.get<CalendarShiftsResponse>("/calendar/shifts", {
+      params: { node_id: nodeId, soldier_id: soldierId, ...rest },
+    })
+  ).data;
 }
 
 export async function getCalendarShift(shiftId: string): Promise<CalendarShift> {

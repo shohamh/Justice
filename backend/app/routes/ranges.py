@@ -6,6 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -433,25 +434,46 @@ def get_range_event(
 @router.get("", response_model=list[RangeEventOut])
 def list_range_events(
     node_id: str | None = None,
+    soldier_id: uuid.UUID | None = None,
     date_from: date_type | None = None,
     date_to: date_type | None = None,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[RangeEventOut]:
     _require_enabled(session)
-    if node_id is None:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="node_id_required")
-    if node_id == "None":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    try:
-        node_uuid = uuid.UUID(node_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_node_id") from exc
-    node = session.get(HierarchyNode, node_uuid)
-    if node is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    can_manage = _authorize_range_read(session, user, node)
-    query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_uuid)
+    if soldier_id is not None:
+        # Personal view: only this soldier's own range events, regardless of
+        # hierarchy — a range can be created at a node outside the soldier's
+        # own subtree while they're still assigned to it.
+        if soldier_id != user.id and user.role != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        query = (
+            session.query(RangeEvent)
+            .join(RangeAssignment, RangeAssignment.range_event_id == RangeEvent.id)
+            .filter(RangeAssignment.soldier_id == soldier_id)
+        )
+        can_manage = False
+    else:
+        if node_id is None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="node_id_required")
+        if node_id == "None":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+        try:
+            node_uuid = uuid.UUID(node_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_node_id") from exc
+        node = session.get(HierarchyNode, node_uuid)
+        if node is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+        can_manage = _authorize_range_read(session, user, node)
+        subtree_node_ids = (
+            session.execute(
+                select(HierarchyNode.id).where(HierarchyNode.path_ids.any(node_uuid))  # type: ignore[arg-type]
+            )
+            .scalars()
+            .all()
+        )
+        query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id.in_(subtree_node_ids))
     if date_from is not None:
         query = query.filter(RangeEvent.date >= date_from)
     if date_to is not None:

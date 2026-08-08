@@ -40,31 +40,46 @@ def _shift_instants(shift: DutyShift) -> tuple[Any, Any]:
 
 
 def get_calendar_shifts(
-    session: Session, *, node_id: uuid.UUID, date_from: date | None, date_to: date | None
+    session: Session,
+    *,
+    node_id: uuid.UUID | None = None,
+    soldier_id: uuid.UUID | None = None,
+    date_from: date | None,
+    date_to: date | None,
 ) -> list[dict[str, Any]]:
-    node = session.get(HierarchyNode, node_id)
-    if node is None:
-        return []
+    if soldier_id is not None:
+        # Personal view: only this soldier's own assignments, regardless of
+        # which node they (or their duties) belong to.
+        soldier = session.get(Soldier, soldier_id)
+        if soldier is None:
+            return []
+        soldiers_in_subtree = {
+            soldier.id: (soldier.full_name, soldier.hierarchy_node_id, soldier.profile_picture_url)
+        }
+    else:
+        node = session.get(HierarchyNode, node_id)
+        if node is None:
+            return []
 
-    subtree_node_ids = set(
-        session.execute(select(HierarchyNode.id).where(HierarchyNode.path_ids.any(node_id)))
-        .scalars()
-        .all()
-    )
-
-    soldiers_in_subtree = {
-        s.id: (s.full_name, s.hierarchy_node_id, s.profile_picture_url)
-        for s in session.execute(
-            select(Soldier).where(
-                Soldier.hierarchy_node_id.in_(subtree_node_ids),
-                Soldier.left_at.is_(None),
-            )
+        subtree_node_ids = set(
+            session.execute(select(HierarchyNode.id).where(HierarchyNode.path_ids.any(node_id)))
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    }
-    if not soldiers_in_subtree:
-        return []
+
+        soldiers_in_subtree = {
+            s.id: (s.full_name, s.hierarchy_node_id, s.profile_picture_url)
+            for s in session.execute(
+                select(Soldier).where(
+                    Soldier.hierarchy_node_id.in_(subtree_node_ids),
+                    Soldier.left_at.is_(None),
+                )
+            )
+            .scalars()
+            .all()
+        }
+        if not soldiers_in_subtree:
+            return []
 
     soldier_id_set = set(soldiers_in_subtree.keys())
 
@@ -255,6 +270,10 @@ def get_calendar_shifts(
     result = []
     for shift in shifts:
         assignees = assignees_by_shift.get(shift.id, [])
+        # Personal view: skip shifts this soldier isn't actually assigned to
+        # (the base query above pulls every active shift in range, unfiltered).
+        if soldier_id is not None and not assignees:
+            continue
         dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id)))
         primary_count = sum(1 for a_ in assignees if not a_["is_reserve"])
         reserve_count = sum(

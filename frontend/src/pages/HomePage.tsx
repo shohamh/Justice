@@ -9,7 +9,7 @@ import {
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import AlertBanners from "../components/dashboard/AlertBanners";
-import DutyCalendarWidget from "../components/dashboard/DutyCalendarWidget";
+import UnitCalendar from "../components/UnitCalendar";
 import DutyDetailModal from "../components/dashboard/DutyDetailModal";
 import UpcomingDutiesWidget from "../components/dashboard/UpcomingDutiesWidget";
 import UpcomingRangesWidget from "../components/dashboard/UpcomingRangesWidget";
@@ -265,13 +265,9 @@ export default function HomePage() {
           settings={settings}
         />
 
-        <DutyCalendarWidget
-          duties={duties}
-          typeNames={typeNames}
-          onOpenDuty={handleOpenDuty}
-          ranges={publicSettings?.["mitvachim.enabled"] === true ? ranges : []}
-          onOpenRange={(range) => navigate(`/ranges?event=${range.id}`)}
-        />
+        {user && (
+          <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} />
+        )}
 
         <UpcomingDutiesWidget
           duties={duties}
