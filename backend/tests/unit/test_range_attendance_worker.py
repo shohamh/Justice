@@ -7,7 +7,30 @@ from contextlib import contextmanager
 import app.range_attendance_worker as worker
 
 
-def test_auto_mark_helper_calls_service_and_logs_when_marked(monkeypatch, caplog) -> None:
+@contextmanager
+def _capture_worker_log():
+    """Captures records on worker.logger via a dedicated handler, independent
+    of pytest's global caplog capture (which can miss records under heavy
+    parallel xdist load when many other loggers are active in the same
+    worker process)."""
+    records: list[logging.LogRecord] = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _Handler()
+    previous_level = worker.logger.level
+    worker.logger.addHandler(handler)
+    worker.logger.setLevel(logging.INFO)
+    try:
+        yield records
+    finally:
+        worker.logger.removeHandler(handler)
+        worker.logger.setLevel(previous_level)
+
+
+def test_auto_mark_helper_calls_service_and_logs_when_marked(monkeypatch) -> None:
     calls: list[object] = []
 
     @contextmanager
@@ -21,14 +44,14 @@ def test_auto_mark_helper_calls_service_and_logs_when_marked(monkeypatch, caplog
     monkeypatch.setattr(worker, "session_scope", fake_session_scope)
     monkeypatch.setattr(worker, "auto_mark_present_for_elapsed_events", fake_auto_mark)
 
-    with caplog.at_level(logging.INFO, logger=worker.logger.name):
+    with _capture_worker_log() as records:
         worker._auto_mark_present_for_elapsed_events()
 
     assert len(calls) == 1
-    assert any("auto-marked 3" in record.message for record in caplog.records)
+    assert any("auto-marked 3" in record.getMessage() for record in records)
 
 
-def test_auto_mark_helper_does_not_log_when_nothing_marked(monkeypatch, caplog) -> None:
+def test_auto_mark_helper_does_not_log_when_nothing_marked(monkeypatch) -> None:
     @contextmanager
     def fake_session_scope():
         yield object()
@@ -36,10 +59,10 @@ def test_auto_mark_helper_does_not_log_when_nothing_marked(monkeypatch, caplog) 
     monkeypatch.setattr(worker, "session_scope", fake_session_scope)
     monkeypatch.setattr(worker, "auto_mark_present_for_elapsed_events", lambda session: 0)
 
-    with caplog.at_level(logging.INFO, logger=worker.logger.name):
+    with _capture_worker_log() as records:
         worker._auto_mark_present_for_elapsed_events()
 
-    assert not caplog.records
+    assert not records
 
 
 def test_worker_loop_swallows_errors_from_helper(monkeypatch) -> None:
