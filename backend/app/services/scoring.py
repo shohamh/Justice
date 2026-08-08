@@ -157,6 +157,8 @@ def effective_duty_spans(
                 "end_at": combine_date_time(run_end, end_time),
                 "shift_id": a.duty_shift_id,
                 "is_reserve": a.is_reserve,
+                "weapon_ineligible": a.weapon_ineligible,
+                "weapon_ineligible_reason": a.weapon_ineligible_reason,
             }
 
         cur: object = _UNSET

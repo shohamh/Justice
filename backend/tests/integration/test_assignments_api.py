@@ -216,3 +216,52 @@ def test_effective_duties_include_duty_type_name(client: TestClient, admin_sessi
     )
     assert resp.status_code == 200
     assert resp.json()[0]["duty_type_name"] == dtype.name
+
+
+def test_effective_duties_includes_weapon_ineligible_flag(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number=f"eff_{_uid()}")
+    dtype = DutyType(name=f"שמירה_{_uid()}", score_per_day=1, active=True)
+    loc = DutyLocation(name=f"loc_{_uid()}", base="בסיס")
+    admin_session.add_all([dtype, loc])
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dtype.id, duty_location_id=loc.id,
+        start_date=date(2026, 8, 1), end_date=date(2026, 8, 2),
+        start_time="08:00", end_time="20:00", status="published",
+        weapon_ineligible=True, weapon_ineligible_reason="אין הכשרת נשק בתוקף לתאריך התורנות",
+    ))
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/assignments/effective",
+        params={"soldier_id": str(soldier.id)},
+        headers=auth_headers(soldier),
+    )
+    assert resp.status_code == 200
+    row = next(d for d in resp.json() if d["duty_type_id"] == str(dtype.id))
+    assert row["weapon_ineligible"] is True
+    assert row["weapon_ineligible_reason"] == "אין הכשרת נשק בתוקף לתאריך התורנות"
+
+
+def test_effective_duties_default_weapon_ineligible_false(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number=f"eff_{_uid()}")
+    dtype = DutyType(name=f"שמירה_{_uid()}", score_per_day=1, active=True)
+    loc = DutyLocation(name=f"loc_{_uid()}", base="בסיס")
+    admin_session.add_all([dtype, loc])
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dtype.id, duty_location_id=loc.id,
+        start_date=date(2026, 8, 3), end_date=date(2026, 8, 4),
+        start_time="08:00", end_time="20:00", status="published",
+    ))
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/assignments/effective",
+        params={"soldier_id": str(soldier.id)},
+        headers=auth_headers(soldier),
+    )
+    assert resp.status_code == 200
+    row = next(d for d in resp.json() if d["duty_type_id"] == str(dtype.id))
+    assert row["weapon_ineligible"] is False
+    assert row["weapon_ineligible_reason"] is None

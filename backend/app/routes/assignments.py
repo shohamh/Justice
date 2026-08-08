@@ -65,6 +65,8 @@ class EffectiveDutyOut(BaseModel):
     end_at: datetime
     shift_id: uuid.UUID | None = None
     is_reserve: bool = False
+    weapon_ineligible: bool = False
+    weapon_ineligible_reason: str | None = None
 
 
 def _out(a: DutyAssignment) -> AssignmentOut:
