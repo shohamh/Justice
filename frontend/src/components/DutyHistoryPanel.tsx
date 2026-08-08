@@ -258,7 +258,7 @@ function EventCard({
 
         {isExpanded && (
           <div className="mt-2 space-y-1">
-            {e.description && <p className="text-gray-600">{e.description}</p>}
+            {e.description && e.event_type !== "range_removed" && <p className="text-gray-600">{e.description}</p>}
             {(e.event_type === "exemption_request" || e.event_type === "exemption") && (() => {
               const raw = e.metadata.exempted_duty_types;
               if (!raw) return null;
