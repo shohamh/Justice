@@ -429,12 +429,11 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     queryKey: queryKeys.shifts(shiftsParams),
     queryFn: () => listShifts(shiftsParams),
   });
-  const shifts = shiftsQuery.data ?? [];
   const showWeaponIneligibleOnly = searchParams.get("filter") === "weapon_ineligible";
-  const displayedShifts = useMemo(
-    () => showWeaponIneligibleOnly ? shifts.filter(shift => shift.ineligible_count > 0) : shifts,
-    [shifts, showWeaponIneligibleOnly],
-  );
+  const displayedShifts = useMemo(() => {
+    const shifts = shiftsQuery.data ?? [];
+    return showWeaponIneligibleOnly ? shifts.filter(shift => shift.ineligible_count > 0) : shifts;
+  }, [shiftsQuery.data, showWeaponIneligibleOnly]);
 
   const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
   const dutyTypes = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
