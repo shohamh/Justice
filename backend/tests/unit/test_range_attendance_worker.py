@@ -20,7 +20,15 @@ def _capture_worker_log():
             records.append(record)
 
     handler = _Handler()
+    # The session-autouse _apply_schema fixture runs alembic migrations
+    # in-process, and alembic's env.py calls logging.config.fileConfig, which
+    # (disable_existing_loggers defaults to True) sets disabled=True on every
+    # logger that existed at migration time — including this module's. A
+    # disabled logger drops records in Logger.handle() before reaching our
+    # handler, so force it back on for the duration and restore afterwards.
     previous_level = worker.logger.level
+    previous_disabled = worker.logger.disabled
+    worker.logger.disabled = False
     worker.logger.addHandler(handler)
     worker.logger.setLevel(logging.INFO)
     try:
@@ -28,6 +36,7 @@ def _capture_worker_log():
     finally:
         worker.logger.removeHandler(handler)
         worker.logger.setLevel(previous_level)
+        worker.logger.disabled = previous_disabled
 
 
 def test_auto_mark_helper_calls_service_and_logs_when_marked(monkeypatch) -> None:

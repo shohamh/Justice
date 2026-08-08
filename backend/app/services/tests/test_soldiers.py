@@ -29,7 +29,7 @@ def test_update_soldier_profile_rejects_mandatory_end_after_discharge(admin_sess
     soldier.discharge_date = date(2026, 1, 1)
     admin_session.commit()
 
-    with pytest.raises(SoldierValidationError, match="mandatory_end_date"):
+    with pytest.raises(SoldierValidationError, match="mandatory_end_after_discharge"):
         update_soldier_profile(
             admin_session, soldier=soldier,
             fields={"mandatory_end_date": date(2026, 6, 1)}, actor_id=None,

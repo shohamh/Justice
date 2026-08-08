@@ -1,4 +1,5 @@
 # tests/conftest.py
+import logging
 import os
 import re
 import uuid
@@ -74,6 +75,14 @@ def _run_migrations(database_url: str, rootpath: Path) -> None:
     cfg = Config(str(rootpath / "alembic.ini"))
     cfg.set_main_option("script_location", str(rootpath / "alembic"))
     command.upgrade(cfg, "head")
+
+    # alembic's env.py runs in-process here and calls logging.config.fileConfig,
+    # whose disable_existing_loggers defaults to True: every logger that existed
+    # before the migration gets disabled=True, silently killing later logging in
+    # this pytest process (e.g. capture helpers and caplog assertions). Restore.
+    for _lg in logging.Logger.manager.loggerDict.values():
+        if isinstance(_lg, logging.Logger):
+            _lg.disabled = False
 
 
 def pytest_configure(config: pytest.Config) -> None:
