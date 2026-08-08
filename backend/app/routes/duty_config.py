@@ -61,6 +61,7 @@ class CreateDutyTypeRequest(BaseModel):
     instructions: str | None = Field(default=None)
     is_external: bool  # required — no default
     requires_weapon: bool = False
+    required_range_type: str | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
@@ -86,6 +87,7 @@ class UpdateDutyTypeRequest(BaseModel):
     instructions: str | None = Field(default=None)
     is_external: bool | None = None
     requires_weapon: bool | None = None
+    required_range_type: str | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
@@ -148,6 +150,7 @@ def create_duty_type(
             instructions=body.instructions,
             is_external=body.is_external,
             requires_weapon=body.requires_weapon,
+            required_range_type=body.required_range_type,
             eligible_node_ids=body.eligible_node_ids,
             actor_id=user.id,
         )
@@ -168,6 +171,7 @@ def update_duty_type(
     dt = session.get(DutyType, duty_type_id)
     if dt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    old_required_range_type = dt.required_range_type
     try:
         extra: dict = {}
         if "eligible_node_ids" in body.model_fields_set:
@@ -189,6 +193,7 @@ def update_duty_type(
             instructions=body.instructions,
             is_external=body.is_external,
             requires_weapon=body.requires_weapon,
+            required_range_type=body.required_range_type,
             **extra,
         )
         if body.active is not None:

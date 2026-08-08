@@ -37,6 +37,7 @@ def create_duty_type(
     instructions: str | None = None,
     is_external: bool = False,
     requires_weapon: bool = False,
+    required_range_type: str | None = None,
     eligible_node_ids: list[uuid.UUID] | None = None,
     requirements: dict | None = None,
     actor_id: uuid.UUID | None = None,
@@ -61,6 +62,7 @@ def create_duty_type(
         instructions=instructions,
         is_external=is_external,
         requires_weapon=requires_weapon,
+        required_range_type=required_range_type,
         eligible_node_ids=eligible_node_ids,
         **({"requirements": requirements} if requirements is not None else {}),
     )
@@ -102,6 +104,7 @@ def update_duty_type(
     instructions: str | None = None,
     is_external: bool | None = None,
     requires_weapon: bool | None = None,
+    required_range_type: str | None = None,
     eligible_node_ids: object = ...,
 ) -> DutyType:
     before = {
@@ -143,6 +146,8 @@ def update_duty_type(
         duty_type.is_external = is_external
     if requires_weapon is not None:
         duty_type.requires_weapon = requires_weapon
+    if required_range_type is not None:
+        duty_type.required_range_type = required_range_type
     if eligible_node_ids is not ...:
         duty_type.eligible_node_ids = eligible_node_ids  # type: ignore[assignment]  # None means clear
     write_audit(
