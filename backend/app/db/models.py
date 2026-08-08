@@ -377,6 +377,11 @@ class DutyAssignment(Base):
     forced_call_up_multiplier: Mapped[Decimal | None] = mapped_column(
         Numeric(6, 2), nullable=True, default=None
     )
+    weapon_ineligible: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    weapon_ineligible_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    weapon_ineligible_detected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -1219,6 +1224,7 @@ class NotificationType(str, _enum.Enum):
     range_absence_reported_to_commander = "range_absence_reported_to_commander"
     range_attendance_corrected_to_present = "range_attendance_corrected_to_present"
     bug_report_comment = "bug_report_comment"
+    weapon_ineligible_detected = "weapon_ineligible_detected"
 
 
 class Notification(Base):
