@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyAssignment, DutyDismissal, DutyLocation, DutyType
+from app.db.models import DutyAssignment, DutyDismissal, DutyLocation, DutyShift, DutyType, RangeType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -278,3 +278,42 @@ def test_calendar_shifts_shows_reason_to_commander_in_scope(client: TestClient, 
     assert len(body["shifts"]) == 1
     assignee = next(a for a in body["shifts"][0]["assignees"] if a["soldier_id"] == str(member.id))
     assert assignee["dismissals"][0]["reason"] == "בעיה רפואית"
+
+
+def test_calendar_shift_assignee_includes_weapon_ineligible_flag(client: TestClient, admin_session: Session):
+    from datetime import timedelta
+
+    node = create_node(admin_session, level="branch", name="cal-node-1")
+    dm = create_soldier(admin_session, personal_number="cal-dm-1", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="cal-sol-1", hierarchy_node_id=node.id)
+    dt = DutyType(
+        name="cal-weapon-1", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    )
+    loc = DutyLocation(name="cal-loc-1")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=5),
+        required_count=1, status="active",
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        duty_shift_id=shift.id, start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=5),
+        status="published",
+        weapon_ineligible=True, weapon_ineligible_reason="אין הכשרת נשק בתוקף לתאריך התורנות",
+    ))
+    admin_session.commit()
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={node.id}&date_from={date.today().isoformat()}&date_to={(date.today()+timedelta(days=30)).isoformat()}",
+        headers=auth_headers(dm),
+    )
+    assert r.status_code == 200
+    row = next(s for s in r.json()["shifts"] if s["id"] == str(shift.id))
+    assignee = next(a for a in row["assignees"] if a["soldier_id"] == str(soldier.id))
+    assert assignee["weapon_ineligible"] is True
+    assert assignee["weapon_ineligible_reason"] == "אין הכשרת נשק בתוקף לתאריך התורנות"

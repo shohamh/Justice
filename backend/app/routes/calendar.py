@@ -57,6 +57,8 @@ class CalendarShiftAssignee(BaseModel):
     called_up_to: date | None = None
     primary_assignment_ids: list[uuid.UUID] = []
     hierarchy_path_ids: list[str] = []
+    weapon_ineligible: bool = False
+    weapon_ineligible_reason: str | None = None
 
 
 class CalendarShiftOut(BaseModel):

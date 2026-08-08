@@ -192,6 +192,8 @@ def get_calendar_shifts(
             "hierarchy_path_ids": _leaf_path_ids(sol_node),
             "is_reserve": a.is_reserve,
             "profile_picture_url": sol_pic,
+            "weapon_ineligible": a.weapon_ineligible,
+            "weapon_ineligible_reason": a.weapon_ineligible_reason,
         }
         if a.is_reserve:
             entry["called_up_from"] = a.called_up_from
@@ -265,6 +267,8 @@ def get_calendar_shifts(
                 "called_up_from": a.called_up_from,
                 "called_up_to": a.called_up_to,
                 "primary_assignment_ids": reserve_to_primaries.get(a.id, []),
+                "weapon_ineligible": a.weapon_ineligible,
+                "weapon_ineligible_reason": a.weapon_ineligible_reason,
             })
 
     result = []
@@ -420,6 +424,8 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
             "called_up_from": None,
             "called_up_to": None,
             "primary_assignment_ids": [],
+            "weapon_ineligible": a.weapon_ineligible,
+            "weapon_ineligible_reason": a.weapon_ineligible_reason,
         }
         if a.is_reserve:
             entry["called_up_from"] = a.called_up_from
