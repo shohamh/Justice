@@ -663,3 +663,72 @@ def test_draft_metadata_includes_job_id(admin_session, soldier, duty_type, locat
     events = get_duty_history(admin_session, soldier.id, include_drafts=True)
     ev = events[0]
     assert ev.metadata["job_id"] == fake_job_id
+
+
+def test_range_assignment_appears(admin_session, soldier):
+    from datetime import date, timedelta
+    from app.db.models import RangeType
+    from app.services.ranges import add_range_assignment, create_range_event
+    from tests.helpers import create_node, create_range_location
+
+    node = create_node(admin_session, level="branch", name="dh-range-node-1")
+    admin_session.refresh(soldier)
+    soldier.hierarchy_node_id = node.id
+    admin_session.commit()
+    weapon_duty = DutyType(
+        name=f"שמירה עם נשק {_uid()}", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=3),
+        range_location_id=create_range_location(admin_session).id, required_count=1,
+    )
+    add_range_assignment(admin_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    events = get_duty_history(admin_session, soldier.id)
+
+    range_events = [e for e in events if e.event_type == "range_assignment"]
+    assert len(range_events) == 1
+    assert range_events[0].status == "pending"
+    assert range_events[0].metadata["is_reserve"] == "false"
+    assert range_events[0].metadata["was_promoted_from_reserve"] == "false"
+
+
+def test_range_assignment_promoted_from_reserve_flagged(admin_session, soldier):
+    from datetime import date, timedelta
+    from app.db.models import RangeType
+    from app.services.range_excusal import decide_primary_excusal, request_primary_excusal
+    from app.services.ranges import add_range_assignment, create_range_event
+    from tests.helpers import create_node, create_range_location, create_soldier
+
+    node = create_node(admin_session, level="branch", name="dh-range-node-2")
+    admin_session.refresh(soldier)
+    soldier.hierarchy_node_id = node.id
+    admin_session.commit()
+    manager = create_soldier(admin_session, personal_number="dh-range-mgr", role="duty_manager", hierarchy_node_id=node.id)
+    primary = create_soldier(admin_session, personal_number="dh-range-primary", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name=f"שמירה עם נשק {_uid()}", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=3),
+        range_location_id=create_range_location(admin_session).id, required_count=1, reserve_count=1,
+    )
+    primary_assignment = add_range_assignment(admin_session, event=event, soldier_id=primary.id, is_reserve=False)
+    add_range_assignment(admin_session, event=event, soldier_id=soldier.id, is_reserve=True)
+
+    request = request_primary_excusal(admin_session, assignment=primary_assignment, reason="בדיקה", requested_by=primary.id)
+    decide_primary_excusal(admin_session, request=request, approve=True, decided_by=manager.id)
+
+    events = get_duty_history(admin_session, soldier.id)
+    range_events = [e for e in events if e.event_type == "range_assignment"]
+    assert len(range_events) == 1
+    assert range_events[0].metadata["was_promoted_from_reserve"] == "true"
+    assert range_events[0].metadata["is_reserve"] == "false"

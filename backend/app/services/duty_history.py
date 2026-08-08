@@ -21,6 +21,11 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    RangeAssignment,
+    RangeEvent,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
+    RangeLocation,
     Soldier,
     SoldierExemption,
 )
@@ -433,6 +438,52 @@ def get_duty_history(
                     created_at=a.created_at.isoformat(),
                 )
             )
+
+    # --- RangeAssignment events (current roster membership) ---
+    range_location_cache: dict[uuid.UUID, str] = {}
+
+    def _range_location_name(loc_id: uuid.UUID) -> str:
+        if loc_id not in range_location_cache:
+            loc = session.get(RangeLocation, loc_id)
+            range_location_cache[loc_id] = loc.name if loc else str(loc_id)
+        return range_location_cache[loc_id]
+
+    range_assignments = list(
+        session.execute(
+            select(RangeAssignment).where(RangeAssignment.soldier_id == soldier_id)
+        ).scalars().all()
+    )
+    promoted_assignment_ids: set[uuid.UUID] = set(
+        session.execute(
+            select(RangeExcusalRequest.promoted_assignment_id).where(
+                RangeExcusalRequest.promoted_assignment_id.is_not(None)
+            )
+        ).scalars().all()
+    )
+    for ra in range_assignments:
+        event = session.get(RangeEvent, ra.range_event_id)
+        if event is None:
+            continue
+        loc_name = _range_location_name(event.range_location_id)
+        events.append(
+            TimelineEvent(
+                id=ra.id,
+                event_type="range_assignment",
+                date=event.date.isoformat(),
+                end_date=None,
+                title=f"מטווח {event.range_type} ב{loc_name}",
+                description=ra.note,
+                status=ra.attendance_status,
+                metadata={
+                    "range_type": event.range_type,
+                    "location_name": loc_name,
+                    "is_reserve": "true" if ra.is_reserve else "false",
+                    "was_promoted_from_reserve": "true" if ra.id in promoted_assignment_ids else "false",
+                    "range_event_id": str(event.id),
+                },
+                created_at=ra.created_at.isoformat(),
+            )
+        )
 
     # --- ExemptionRequest events ---
     exemption_type_cache: dict[uuid.UUID, ExemptionType] = {}
