@@ -5,10 +5,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RangesPage from "./RangesPage";
 import * as rangesApi from "../api/ranges";
 import * as rangeLocationsApi from "../api/rangeLocations";
+import * as ineligibleSoldiersApi from "../api/ineligibleSoldiers";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 vi.mock("../api/ranges");
 vi.mock("../api/rangeLocations");
+vi.mock("../api/ineligibleSoldiers");
+vi.mock("../hooks/useLevelTypes", () => ({
+  useLevelTypes: () => ({ levelTypes: [], loading: false, refresh: vi.fn() }),
+}));
 vi.mock("../api/soldiers", async () => {
   const actual = await vi.importActual<typeof import("../api/soldiers")>("../api/soldiers");
   return { ...actual, listSoldiers: vi.fn().mockResolvedValue([]) };
@@ -43,6 +48,7 @@ function renderWithQuery(ui: React.ReactElement, initialEntries = ["/ranges"]) {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mockUser = { id: "me", hierarchy_node_id: "node-1", role: "admin", is_duty_manager: true } as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,6 +59,25 @@ beforeEach(() => {
 });
 
 describe("RangesPage", () => {
+  it("does not fetch planning data in the default schedule view", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+
+    renderWithQuery(<RangesPage />);
+
+    await screen.findByText("אין מטווחים");
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).not.toHaveBeenCalled();
+  });
+
+  it("selects the qualification view from the tab query parameter and fetches its planning data", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+    vi.mocked(ineligibleSoldiersApi.getIneligibleSoldiers).mockResolvedValue({ count: 0, nodes: [], soldiers: [] });
+
+    renderWithQuery(<RangesPage />, ["/ranges?tab=ineligible"]);
+
+    expect(await screen.findByTestId("ineligible-soldiers-view")).toBeInTheDocument();
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledWith("planning");
+  });
+
   it("renders the list of range events", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {

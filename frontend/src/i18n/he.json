@@ -1322,6 +1322,46 @@
       "save_assignments": "שמירת השיבוצים נכשלה"
     }
   },
+  "range_qualification": {
+    "title": "חיילים ללא כשירות מטווח",
+    "tabs": {
+      "schedule": "לוח מטווחים",
+      "qualification": "כשירות מטווחים"
+    },
+    "columns": {
+      "soldier": "חייל",
+      "hierarchy": "מסגרת",
+      "qualification": "כשירות",
+      "upcomingDuty": "תורנות נשק קרובה",
+      "upcomingRange": "מטווח תואם",
+      "unit": "יחידה",
+      "count": "חיילים ללא הסמכה",
+      "context": "הקשר עתידי"
+    },
+    "loading": "טוען נתוני כשירות...",
+    "empty": "כל החיילים כשירים למטווח",
+    "error": "טעינת נתוני הכשירות נכשלה",
+    "qualificationExpiry": "בתוקף עד {{date}}",
+    "soldiersLoading": "טוען חיילים ללא הסמכה...",
+    "soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
+    "soldiersEmpty": "אין חיילים ללא הסמכת מטווח",
+    "soldiersCount": "{{count}} חיילים ללא הסמכת מטווח",
+    "filterUnits": "סינון יחידות...",
+    "emptyUnits": "אין יחידות להצגה",
+    "filterSoldiers": "סינון חיילים...",
+    "emptySoldiersInUnit": "אין חיילים ללא הסמכה ביחידה זו",
+    "plannedRange": "מטווח מתוכנן",
+    "tablistLabel": "תצוגת מטווחים",
+    "warning": {
+      "normal": "אין כשירות מטווח בתוקף",
+      "urgent": "תורנות נשק קרובה ללא מטווח תואם"
+    },
+    "dashboard": {
+      "title": "חיילים ללא כשירות מטווח",
+      "description": "חיילים ללא כשירות מטווח בתוקף או ללא מטווח תואם לתורנות נשק קרובה.",
+      "empty": "אין חיילים הדורשים טיפול"
+    }
+  },
   "action": {
     "processing": "מעבד פעולה...",
     "success": "הפעולה בוצעה בהצלחה",

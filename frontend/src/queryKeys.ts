@@ -89,4 +89,7 @@ export const queryKeys = {
   rangeEvent: (id: string) => ["ranges", id] as const,
   rangeExcusalRequests: (id: string) => ["ranges", id, "excusal-requests"] as const,
   rangeLocations: () => ["rangeLocations"] as const,
+  ineligibleSoldiers: (audience: "planning" | "commander") =>
+    ["ranges", "ineligibleSoldiers", audience] as const,
+  ineligibleSoldierCount: () => ["ranges", "ineligibleSoldiers", "count"] as const,
 };
