@@ -96,3 +96,14 @@ export async function getCalendarShifts(
 export async function getCalendarShift(shiftId: string): Promise<CalendarShift> {
   return (await api.get<CalendarShift>(`/calendar/shifts/${shiftId}`)).data;
 }
+
+export function getCalendarWeaponIneligibleCount(
+  params: { nodeId?: string; soldierId?: string; date_from?: string; date_to?: string },
+): Promise<{ count: number }> {
+  const { nodeId, soldierId, ...rest } = params;
+  return api
+    .get<{ count: number }>("/calendar/weapon-ineligible/count", {
+      params: { node_id: nodeId, soldier_id: soldierId, ...rest },
+    })
+    .then((response) => response.data);
+}

@@ -1,6 +1,68 @@
-import { describe, expect, test } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { describe, expect, test, vi } from "vitest";
+import * as calendarApi from "../api/calendar";
+import * as calendarDataApi from "../api/calendarData";
 import type { CalendarShift } from "../api/calendar";
-import { filterCalendarShifts } from "./UnitCalendar";
+import UnitCalendar, { filterCalendarShifts } from "./UnitCalendar";
+
+const mocks = vi.hoisted(() => ({ t: (key: string) => key }));
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: mocks.t }),
+}));
+
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ user: null }),
+}));
+
+vi.mock("../hooks/usePublicSettings", () => ({
+  usePublicSettings: () => ({ "mitvachim.enabled": false }),
+}));
+
+vi.mock("../api/calendar", () => ({
+  getCalendarShifts: vi.fn(),
+  getCalendarWeaponIneligibleCount: vi.fn(),
+}));
+
+vi.mock("../api/calendarData", () => ({
+  loadCalendarData: vi.fn(),
+}));
+
+vi.mock("@fullcalendar/react", () => ({
+  default: ({ datesSet, events }: {
+    datesSet: (arg: unknown) => void;
+    events: Array<{ id: string; title: string; classNames: string[] }>;
+  }) => (
+    <div>
+      <button
+        data-testid="set-calendar-dates"
+        onClick={() => datesSet({
+          start: new Date("2026-08-01T00:00:00Z"),
+          end: new Date("2026-08-08T00:00:00Z"),
+          view: { type: "dayGridMonth" },
+        })}
+      >
+        set dates
+      </button>
+      <button
+        data-testid="set-calendar-dates-next"
+        onClick={() => datesSet({
+          start: new Date("2026-08-08T00:00:00Z"),
+          end: new Date("2026-08-15T00:00:00Z"),
+          view: { type: "dayGridMonth" },
+        })}
+      >
+        set next dates
+      </button>
+      {events.map((event) => (
+        <button key={event.id} data-testid={`calendar-event-${event.id}`} className={event.classNames.join(" ")}>
+          {event.title}
+        </button>
+      ))}
+    </div>
+  ),
+}));
 
 function shift(id: string, dutyTypeId: string, weaponIneligible: boolean): CalendarShift {
   return {
@@ -50,5 +112,94 @@ describe("filterCalendarShifts", () => {
     const shifts = [shift("guard", "guard", false), shift("patrol", "patrol", true)];
 
     expect(filterCalendarShifts(shifts, ["guard", "patrol"], false).map((item) => item.id)).toEqual(["guard", "patrol"]);
+  });
+});
+
+function renderCalendar() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <UnitCalendar nodeId="node-1" />
+    </QueryClientProvider>,
+  );
+}
+
+function loadCalendarWith(shifts: CalendarShift[]) {
+  vi.mocked(calendarDataApi.loadCalendarData).mockResolvedValue({ calendar: { shifts }, ranges: [] });
+}
+
+describe("UnitCalendar eligibility warning", () => {
+  test("shows the loaded unique warning count and interactive hover classes", async () => {
+    loadCalendarWith([shift("warning", "guard", false)]);
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockResolvedValue({ count: 2 });
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("unit-calendar-weapon-warning")).toHaveTextContent("2");
+    const event = screen.getByTestId("calendar-event-warning");
+    expect(event).toHaveClass("cursor-pointer", "hover:brightness-110", "dark:hover:brightness-125");
+  });
+
+  test("hides the warning while its count is loading without blocking calendar events", async () => {
+    loadCalendarWith([shift("loading", "guard", false)]);
+    let resolveCount: ((value: { count: number }) => void) | undefined;
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockReturnValue(
+      new Promise((resolve) => { resolveCount = resolve; }),
+    );
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("calendar-event-loading")).toBeInTheDocument();
+    expect(screen.queryByTestId("unit-calendar-weapon-warning")).not.toBeInTheDocument();
+    resolveCount?.({ count: 3 });
+    expect(await screen.findByTestId("unit-calendar-weapon-warning")).toHaveTextContent("3");
+  });
+
+  test("hides a failed warning count without blocking calendar events", async () => {
+    loadCalendarWith([shift("error", "guard", false)]);
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockRejectedValue(new Error("count failed"));
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("calendar-event-error")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId("unit-calendar-weapon-warning")).not.toBeInTheDocument();
+    });
+  });
+
+  test("ignores a stale warning count after the visible date range changes", async () => {
+    loadCalendarWith([shift("stale", "guard", false)]);
+    let resolveFirst: ((value: { count: number }) => void) | undefined;
+    let resolveSecond: ((value: { count: number }) => void) | undefined;
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve; }));
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    fireEvent.click(screen.getByTestId("set-calendar-dates-next"));
+
+    await act(async () => {
+      resolveSecond?.({ count: 2 });
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("unit-calendar-weapon-warning")).toHaveTextContent("2");
+    await act(async () => {
+      resolveFirst?.({ count: 1 });
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("unit-calendar-weapon-warning")).toHaveTextContent("2");
+  });
+
+  test("keeps the duty-type filter visible when the calendar has no assignments", async () => {
+    loadCalendarWith([]);
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockResolvedValue({ count: 0 });
+
+    renderCalendar();
+
+    expect(screen.getByText("unit_calendar.duty_type_filter_label")).toBeInTheDocument();
   });
 });

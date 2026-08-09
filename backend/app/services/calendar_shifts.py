@@ -18,6 +18,7 @@ from app.db.models import (
     HierarchyNode,
     Soldier,
 )
+from app.services.range_eligibility_projection import count_ineligible_soldiers_for_duties
 
 
 def _duty_color_for(duty_type_id: uuid.UUID) -> str:
@@ -310,6 +311,45 @@ def get_calendar_shifts(
         )
 
     return result
+
+
+def count_calendar_weapon_ineligible_soldiers(
+    session: Session,
+    *,
+    node_id: uuid.UUID | None = None,
+    soldier_id: uuid.UUID | None = None,
+    date_from: date | None,
+    date_to: date | None,
+    visible_soldier_ids: set[uuid.UUID] | None = None,
+) -> int:
+    """Count distinct primary assignees who are ineligible in the visible calendar.
+
+    The calendar rows establish the caller-selected subtree/personal scope and
+    date range. The shared projection then evaluates each displayed duty on its
+    own scheduled date, including only confirmed main-range coverage.
+    """
+    shifts = get_calendar_shifts(
+        session,
+        node_id=node_id,
+        soldier_id=soldier_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    duty_pairs = {
+        (assignee["soldier_id"], assignee["assignment_id"])
+        for shift in shifts
+        for assignee in shift["assignees"]
+        if not assignee["is_reserve"]
+        and (visible_soldier_ids is None or assignee["soldier_id"] in visible_soldier_ids)
+    }
+    if not duty_pairs:
+        return 0
+    return count_ineligible_soldiers_for_duties(
+        session,
+        soldier_ids=[soldier_id for soldier_id, _ in duty_pairs],
+        duty_ids=[assignment_id for _, assignment_id in duty_pairs],
+        as_of=date.today(),
+    )
 
 
 def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any] | None:
