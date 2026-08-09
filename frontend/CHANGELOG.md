@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-09
+
+### Features
+- Added automatic weapon-ineligibility detection and caching for duty assignments, with rechecks triggered by relevant settings, duty-type, attendance, and excusal changes plus a daily safety-net worker.
+- Exposed weapon-ineligibility indicators and scoped counts across navigation, calendars, shift lists, duty management, and soldier duty views, with matching notifications and administrator settings.
+- Soldiers can request swaps for duties that become ineligible, and commanders can replace ineligible assignees while preserving reserve capacity and linked-reserve visibility.
+
+### Fixes
+- Corrected weapon-ineligibility cache transitions, required-range-type validation, planning-row filtering, and the audiences that can see scoped ineligibility badges.
+- Fixed reserve replacement and excusal-transition behavior so assignments and reserve slots remain consistent.
+
+### Chores
+- Added database migrations, implementation documentation, and comprehensive backend/frontend coverage for weapon-ineligibility detection, visibility, replacement, and swap flows.
+
 ## 2026-08-08
 
 ### Features
