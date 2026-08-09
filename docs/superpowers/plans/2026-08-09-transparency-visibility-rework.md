@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Design spec: [`docs/superpowers/specs/2026-08-09-transparency-visibility-rework-design.md`](../specs/2026-08-09-transparency-visibility-rework-design.md) — follow it exactly; this plan implements it task by task.
-- New system settings: `transparency.min_visible_level` (level key or sentinel `"every_soldier"`, default `"every_soldier"`), `transparency.commander_levels_above` (int ≥ 0, default `0`), `transparency.duty_manager_levels_above` (int ≥ 0, default `0`).
+- New system settings: `transparency.min_visible_level` (level key or sentinel `"every_soldier"`, **default `"מדור"`** — deliberately NOT `"every_soldier"`, so the duty-history leak this rework fixes is closed immediately on deploy without requiring admin action), `transparency.commander_levels_above` (int ≥ 0, default `0`), `transparency.duty_manager_levels_above` (int ≥ 0, default `0`).
 - `HierarchyNode.path_ids` is root-first, self-last (confirmed in `backend/app/services/hierarchy.py:81-85`) — any ancestor-walking code must index from the end of the list, not the start.
 - Rank comparison convention used throughout this codebase: **lower `HierarchyLevelType.rank` = closer to the root = more senior**. "At or above a level" means `rank <= threshold_rank`. This matches `dm_scope_covers_level` in `backend/app/services/authority.py:24-30`.
 - Existing tests must stay green throughout — do not run the full slow suite per task; run only the targeted tests for each task (`pytest -q -k <name>` or the specific file), full suite only at the end.
@@ -71,9 +71,9 @@ def upgrade() -> None:
             ),
             {"keys": list(old)},
         ).all()
-        min_level = min(ranks, key=lambda r: r.rank).key if ranks else "every_soldier"
+        min_level = min(ranks, key=lambda r: r.rank).key if ranks else "מדור"
     else:
-        min_level = "every_soldier"
+        min_level = "מדור"
 
     conn.execute(
         sa.text(
@@ -92,14 +92,14 @@ def downgrade() -> None:
     conn.execute(sa.text("DELETE FROM system_settings WHERE key = 'transparency.duty_manager_levels_above'"))
 ```
 
-Note: `value` is a `JSONB` column, so a plain string must be inserted as a JSON-quoted string (`'"every_soldier"'`), matching the `::jsonb`-cast convention used elsewhere in this repo's migrations. `commander_levels_above`/`duty_manager_levels_above` are intentionally left unseeded — `get_setting_int(session, key, default=0)` (used in Task 2) already returns `0` when the row is absent, so no explicit insert is needed for them.
+Note: `value` is a `JSONB` column, so a plain string must be inserted as a JSON-quoted string (`'"מדור"'`), matching the `::jsonb`-cast convention used elsewhere in this repo's migrations. The default is deliberately `"מדור"`, not the fully-open `"every_soldier"` sentinel — this closes the duty-history leak (item 1 of the original bug list) immediately on deploy, without requiring an admin to configure anything. `"every_soldier"` remains a valid value an admin can explicitly choose later to fully open the feature; it is just not the default. `commander_levels_above`/`duty_manager_levels_above` are intentionally left unseeded — `get_setting_int(session, key, default=0)` (used in Task 2) already returns `0` when the row is absent, so no explicit insert is needed for them.
 
 - [ ] **Step 3: Run the migration**
 
 ```bash
 alembic upgrade head
 ```
-Expected: no errors; `SELECT value FROM system_settings WHERE key = 'transparency.min_visible_level';` returns `"every_soldier"` on a fresh dev DB (no prior `visible_commander_levels` row).
+Expected: no errors; `SELECT value FROM system_settings WHERE key = 'transparency.min_visible_level';` returns `"מדור"` on a fresh dev DB (no prior `visible_commander_levels` row).
 
 - [ ] **Step 4: Write an automated migration test**
 
@@ -184,14 +184,14 @@ def test_nonempty_old_array_migrates_to_most_senior_level():
         assert old_row is None
 
 
-def test_empty_or_missing_old_value_migrates_to_every_soldier():
+def test_empty_or_missing_old_value_migrates_to_default_level():
     with _db_at_down_revision() as (engine, run_migration):
         run_migration()
         with engine.begin() as conn:
             row = conn.execute(text(
                 "SELECT value FROM system_settings WHERE key = 'transparency.min_visible_level'"
             )).scalar()
-        assert row == "every_soldier"
+        assert row == "מדור"
 ```
 
 - [ ] **Step 5: Run the migration test**
@@ -370,6 +370,22 @@ def test_junior_commander_below_threshold_blocked(app_session):
     assert can_view_soldier_scope(app_session, cmd, unrelated) is False
 
 
+def test_default_threshold_is_mador_not_every_soldier(app_session):
+    """Pins the unset-setting fallback to the specific level "מדור", not the
+    fully-open "every_soldier" sentinel -- a מדור commander must see an
+    unrelated soldier with NOTHING configured, and a more junior (ענף)
+    commander must NOT, purely from the default."""
+    _level(app_session, "מדור", 1)
+    _level(app_session, "ענף", 2)
+    senior_cmd = _soldier(app_session, "112", role="commander")
+    _node(app_session, "מדור", commander_id=senior_cmd.id)
+    junior_cmd = _soldier(app_session, "113", role="commander")
+    _node(app_session, "ענף", commander_id=junior_cmd.id)
+    unrelated = _node(app_session, "מדור", name="Unrelated")
+    assert can_view_soldier_scope(app_session, senior_cmd, unrelated) is True
+    assert can_view_soldier_scope(app_session, junior_cmd, unrelated) is False
+
+
 def test_has_any_visibility_true_for_any_commanded_node(app_session):
     _level(app_session, "אגף", 1)
     cmd = _soldier(app_session, "109", role="commander")
@@ -411,13 +427,17 @@ from app.services.settings_loader import SettingNotFound, get_setting, get_setti
 Append at the end of the file:
 ```python
 def _min_visible_level(session: Session) -> str:
+    # Default is "מדור", NOT the fully-open "every_soldier" sentinel — a
+    # missing/unset row must still block plain soldiers from seeing an
+    # unrelated soldier's data, closing that leak without admin action.
+    # "every_soldier" remains a valid value an admin can explicitly set later.
     try:
         value = get_setting(session, "transparency.min_visible_level")
         if value:
             return str(value)
     except SettingNotFound:
         pass
-    return "every_soldier"
+    return "מדור"
 
 
 def _commanded_nodes(session: Session, soldier_id: uuid.UUID) -> list[HierarchyNode]:
@@ -538,8 +558,9 @@ Add to `backend/tests/unit/test_scoring_service.py` (find existing fixtures for 
 ```python
 def test_transparency_rows_excludes_out_of_scope_soldiers_for_junior_commander(session):
     # Arrange: two sibling nodes under different parents, a commander of one,
-    # a soldier under the other, min_visible_level left at default "every_soldier"
-    # is NOT set here — set it to a level the commander doesn't meet.
+    # a soldier under the other. The default threshold is "מדור" (not
+    # every_soldier) but this test explicitly sets a stricter "אגף" threshold
+    # the commander doesn't meet, to isolate the row-filtering behavior.
     from app.services.settings_loader import set_setting
     from app.db.models import HierarchyLevelType, HierarchyNode, Soldier
 
@@ -965,7 +986,7 @@ In `frontend/src/pages/SystemSettingsPage.tsx`, replace lines 315-325 (the `"ש�
         label: t("admin_settings.transparency_min_visible_level"),
         description: t("admin_settings.transparency_min_visible_level_desc"),
         type: "select" as const,
-        defaultValue: "every_soldier",
+        defaultValue: "מדור",
       },
       {
         key: "transparency.commander_levels_above",
@@ -993,7 +1014,7 @@ Note: `SETTING_GROUPS` is currently a module-level `const` built without access 
         key: "transparency.min_visible_level",
         label: "החל ממפקדים/אחראי תורנויות באיזה דרג ניתן לראות נתוני שקיפות במערכת",
         type: "select" as const,
-        defaultValue: "every_soldier",
+        defaultValue: "מדור",
       },
       {
         key: "transparency.commander_levels_above",
