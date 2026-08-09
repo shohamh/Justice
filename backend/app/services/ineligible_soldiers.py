@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 
@@ -66,74 +67,105 @@ def _scope_clause(roots: set[uuid.UUID] | None):
     return or_(*(HierarchyNode.path_ids.any(root_id) for root_id in roots))  # type: ignore[arg-type]
 
 
-def _valid_qualifications(
-    session: Session, *, soldier_id: uuid.UUID, as_of: date,
-) -> tuple[QualificationSummary, ...]:
+def _valid_qualifications_by_soldier(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID],
+    as_of: date,
+) -> dict[uuid.UUID, tuple[QualificationSummary, ...]]:
     """Match the existing qualification boundary: valid_until covers as_of inclusively."""
-    qualifications = session.execute(
-        select(SoldierRangeQualification).where(
-            SoldierRangeQualification.soldier_id == soldier_id,
-            SoldierRangeQualification.valid_until >= as_of,
-        ).order_by(SoldierRangeQualification.range_type, SoldierRangeQualification.valid_until)
-    ).scalars().all()
-    return tuple(
-        QualificationSummary(range_type=qualification.range_type, valid_until=qualification.valid_until)
-        for qualification in qualifications
+    if not soldier_ids:
+        return {}
+    qualifications_by_soldier: defaultdict[uuid.UUID, list[QualificationSummary]] = defaultdict(
+        list
     )
+    qualifications = (
+        session.execute(
+            select(SoldierRangeQualification)
+            .where(
+                SoldierRangeQualification.soldier_id.in_(soldier_ids),
+                SoldierRangeQualification.valid_until >= as_of,
+            )
+            .order_by(SoldierRangeQualification.range_type, SoldierRangeQualification.valid_until)
+        )
+        .scalars()
+        .all()
+    )
+    for qualification in qualifications:
+        qualifications_by_soldier[qualification.soldier_id].append(
+            QualificationSummary(
+                range_type=qualification.range_type, valid_until=qualification.valid_until
+            )
+        )
+    return {
+        soldier_id: tuple(summaries) for soldier_id, summaries in qualifications_by_soldier.items()
+    }
 
 
-def _upcoming_weapon_duties(
-    session: Session, *, soldier_id: uuid.UUID, as_of: date,
-) -> tuple[UpcomingWeaponDuty, ...]:
+def _upcoming_weapon_duties_by_soldier(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID],
+    as_of: date,
+) -> dict[uuid.UUID, tuple[UpcomingWeaponDuty, ...]]:
+    if not soldier_ids:
+        return {}
+    duties_by_soldier: defaultdict[uuid.UUID, list[UpcomingWeaponDuty]] = defaultdict(list)
     rows = session.execute(
         select(DutyAssignment, DutyType)
         .join(DutyType, DutyAssignment.duty_type_id == DutyType.id)
         .where(
-            DutyAssignment.soldier_id == soldier_id,
+            DutyAssignment.soldier_id.in_(soldier_ids),
             DutyAssignment.status == "published",
             DutyAssignment.start_date >= as_of,
             DutyType.required_range_type.is_not(None),
         )
-        .order_by(DutyAssignment.start_date, DutyAssignment.id)
+        .order_by(DutyAssignment.soldier_id, DutyAssignment.start_date, DutyAssignment.id)
     ).all()
-    return tuple(
-        UpcomingWeaponDuty(
-            assignment_id=assignment.id,
-            duty_type_id=duty_type.id,
-            duty_type_name=duty_type.name,
-            start_date=assignment.start_date,
-            end_date=assignment.end_date,
-            required_range_type=duty_type.required_range_type,
+    for assignment, duty_type in rows:
+        duties_by_soldier[assignment.soldier_id].append(
+            UpcomingWeaponDuty(
+                assignment_id=assignment.id,
+                duty_type_id=duty_type.id,
+                duty_type_name=duty_type.name,
+                start_date=assignment.start_date,
+                end_date=assignment.end_date,
+                required_range_type=duty_type.required_range_type,
+            )
         )
-        for assignment, duty_type in rows
-    )
+    return {soldier_id: tuple(duties) for soldier_id, duties in duties_by_soldier.items()}
 
 
-def _upcoming_matching_ranges(
+def _upcoming_matching_ranges_by_soldier(
     session: Session,
     *,
-    soldier_id: uuid.UUID,
-    required_range_types: set[RangeType],
+    required_range_types_by_soldier: dict[uuid.UUID, set[RangeType]],
     as_of: date,
-) -> tuple[UpcomingMatchingRange, ...]:
-    if not required_range_types:
-        return ()
+) -> dict[uuid.UUID, tuple[UpcomingMatchingRange, ...]]:
+    all_required_range_types = set().union(*required_range_types_by_soldier.values())
+    if not all_required_range_types:
+        return {}
+    ranges_by_soldier: defaultdict[uuid.UUID, list[UpcomingMatchingRange]] = defaultdict(list)
     rows = session.execute(
-        select(RangeEvent)
+        select(RangeEvent, RangeAssignment.soldier_id)
         .join(RangeAssignment, RangeAssignment.range_event_id == RangeEvent.id)
         .where(
-            RangeAssignment.soldier_id == soldier_id,
+            RangeAssignment.soldier_id.in_(required_range_types_by_soldier),
             RangeAssignment.is_draft.is_(False),
             RangeEvent.status == RangeEventStatus.planned,
             RangeEvent.date >= as_of,
-            RangeEvent.range_type.in_(required_range_types),
+            RangeEvent.range_type.in_(all_required_range_types),
         )
-        .order_by(RangeEvent.date, RangeEvent.id)
-    ).scalars().all()
-    return tuple(
-        UpcomingMatchingRange(event_id=event.id, range_type=event.range_type, date=event.date)
-        for event in rows
-    )
+        .order_by(RangeAssignment.soldier_id, RangeEvent.date, RangeEvent.id)
+    ).all()
+    for event, soldier_id in rows:
+        if event.range_type in required_range_types_by_soldier[soldier_id]:
+            ranges_by_soldier[soldier_id].append(
+                UpcomingMatchingRange(
+                    event_id=event.id, range_type=event.range_type, date=event.date
+                )
+            )
+    return {soldier_id: tuple(ranges) for soldier_id, ranges in ranges_by_soldier.items()}
 
 
 def list_ineligible_soldiers(
@@ -150,31 +182,51 @@ def list_ineligible_soldiers(
     if scope_clause is not None:
         statement = statement.where(scope_clause)
 
+    scoped_soldiers = session.execute(statement).all()
+    valid_qualifications_by_soldier = _valid_qualifications_by_soldier(
+        session,
+        soldier_ids={soldier.id for soldier, _node in scoped_soldiers},
+        as_of=as_of,
+    )
+    ineligible_soldiers = [
+        (soldier, node)
+        for soldier, node in scoped_soldiers
+        if soldier.id not in valid_qualifications_by_soldier
+    ]
+    upcoming_weapon_duties_by_soldier = _upcoming_weapon_duties_by_soldier(
+        session,
+        soldier_ids={soldier.id for soldier, _node in ineligible_soldiers},
+        as_of=as_of,
+    )
+    upcoming_matching_ranges_by_soldier = _upcoming_matching_ranges_by_soldier(
+        session,
+        required_range_types_by_soldier={
+            soldier_id: {duty.required_range_type for duty in duties}
+            for soldier_id, duties in upcoming_weapon_duties_by_soldier.items()
+        },
+        as_of=as_of,
+    )
+
     records: list[IneligibleSoldierRecord] = []
-    for soldier, node in session.execute(statement).all():
-        valid_qualifications = _valid_qualifications(session, soldier_id=soldier.id, as_of=as_of)
-        if valid_qualifications:
-            continue
-        upcoming_weapon_duties = _upcoming_weapon_duties(session, soldier_id=soldier.id, as_of=as_of)
-        upcoming_matching_ranges = _upcoming_matching_ranges(
-            session,
-            soldier_id=soldier.id,
-            required_range_types={duty.required_range_type for duty in upcoming_weapon_duties},
-            as_of=as_of,
+    for soldier, node in ineligible_soldiers:
+        valid_qualifications = valid_qualifications_by_soldier.get(soldier.id, ())
+        upcoming_weapon_duties = upcoming_weapon_duties_by_soldier.get(soldier.id, ())
+        upcoming_matching_ranges = upcoming_matching_ranges_by_soldier.get(soldier.id, ())
+        records.append(
+            IneligibleSoldierRecord(
+                soldier_id=soldier.id,
+                soldier_name=soldier.full_name,
+                personal_number=soldier.personal_number,
+                hierarchy_node_id=node.id,
+                hierarchy_node_name=node.name,
+                hierarchy_path_ids=tuple(node.path_ids),
+                valid_qualifications=valid_qualifications,
+                has_upcoming_weapon_duty=bool(upcoming_weapon_duties),
+                has_upcoming_matching_range=bool(upcoming_matching_ranges),
+                upcoming_weapon_duties=upcoming_weapon_duties,
+                upcoming_matching_ranges=upcoming_matching_ranges,
+            )
         )
-        records.append(IneligibleSoldierRecord(
-            soldier_id=soldier.id,
-            soldier_name=soldier.full_name,
-            personal_number=soldier.personal_number,
-            hierarchy_node_id=node.id,
-            hierarchy_node_name=node.name,
-            hierarchy_path_ids=tuple(node.path_ids),
-            valid_qualifications=valid_qualifications,
-            has_upcoming_weapon_duty=bool(upcoming_weapon_duties),
-            has_upcoming_matching_range=bool(upcoming_matching_ranges),
-            upcoming_weapon_duties=upcoming_weapon_duties,
-            upcoming_matching_ranges=upcoming_matching_ranges,
-        ))
 
     return sorted(
         records,

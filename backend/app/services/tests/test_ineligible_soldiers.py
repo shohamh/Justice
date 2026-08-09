@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -16,7 +17,6 @@ from app.db.models import (
 )
 from app.services.ineligible_soldiers import list_ineligible_soldiers
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
-
 
 AS_OF = date(2026, 8, 15)
 
@@ -85,20 +85,30 @@ def test_lists_only_soldiers_without_a_qualification_valid_today(app_session: Se
     sibling = create_node(app_session, level="company", name="Sibling", parent=root)
     unqualified = create_soldier(app_session, personal_number="inq-001", hierarchy_node_id=child.id)
     expired = create_soldier(app_session, personal_number="inq-002", hierarchy_node_id=child.id)
-    valid_on_boundary = create_soldier(app_session, personal_number="inq-003", hierarchy_node_id=sibling.id)
-    valid_later = create_soldier(app_session, personal_number="inq-004", hierarchy_node_id=sibling.id)
+    valid_on_boundary = create_soldier(
+        app_session, personal_number="inq-003", hierarchy_node_id=sibling.id
+    )
+    valid_later = create_soldier(
+        app_session, personal_number="inq-004", hierarchy_node_id=sibling.id
+    )
     outside = create_soldier(app_session, personal_number="inq-005")
-    app_session.add_all([
-        SoldierRangeQualification(
-            soldier_id=expired.id, range_type=RangeType.laser, valid_until=AS_OF - timedelta(days=1)
-        ),
-        SoldierRangeQualification(
-            soldier_id=valid_on_boundary.id, range_type=RangeType.live, valid_until=AS_OF
-        ),
-        SoldierRangeQualification(
-            soldier_id=valid_later.id, range_type=RangeType.alal, valid_until=AS_OF + timedelta(days=1)
-        ),
-    ])
+    app_session.add_all(
+        [
+            SoldierRangeQualification(
+                soldier_id=expired.id,
+                range_type=RangeType.laser,
+                valid_until=AS_OF - timedelta(days=1),
+            ),
+            SoldierRangeQualification(
+                soldier_id=valid_on_boundary.id, range_type=RangeType.live, valid_until=AS_OF
+            ),
+            SoldierRangeQualification(
+                soldier_id=valid_later.id,
+                range_type=RangeType.alal,
+                valid_until=AS_OF + timedelta(days=1),
+            ),
+        ]
+    )
     app_session.commit()
 
     records = list_ineligible_soldiers(app_session, roots=None, as_of=AS_OF)
@@ -117,9 +127,15 @@ def test_overlapping_roots_return_each_soldier_once(app_session: Session) -> Non
     child = create_node(app_session, level="company", name="Child", parent=root)
     sibling = create_node(app_session, level="company", name="Sibling", parent=root)
     other_root = create_node(app_session, level="branch", name="Other")
-    child_soldier = create_soldier(app_session, personal_number="inq-101", hierarchy_node_id=child.id)
-    sibling_soldier = create_soldier(app_session, personal_number="inq-102", hierarchy_node_id=sibling.id)
-    outside_soldier = create_soldier(app_session, personal_number="inq-103", hierarchy_node_id=other_root.id)
+    child_soldier = create_soldier(
+        app_session, personal_number="inq-101", hierarchy_node_id=child.id
+    )
+    sibling_soldier = create_soldier(
+        app_session, personal_number="inq-102", hierarchy_node_id=sibling.id
+    )
+    outside_soldier = create_soldier(
+        app_session, personal_number="inq-103", hierarchy_node_id=other_root.id
+    )
 
     records = list_ineligible_soldiers(app_session, roots={root.id, child.id}, as_of=AS_OF)
 
@@ -135,31 +151,55 @@ def test_future_weapon_duty_without_matching_range_is_urgent(app_session: Sessio
     urgent = create_soldier(app_session, personal_number="inq-201", hierarchy_node_id=node.id)
     covered = create_soldier(app_session, personal_number="inq-202", hierarchy_node_id=node.id)
     non_weapon = create_soldier(app_session, personal_number="inq-203", hierarchy_node_id=node.id)
-    cancelled_duty = create_soldier(app_session, personal_number="inq-204", hierarchy_node_id=node.id)
+    cancelled_duty = create_soldier(
+        app_session, personal_number="inq-204", hierarchy_node_id=node.id
+    )
     draft_range = create_soldier(app_session, personal_number="inq-205", hierarchy_node_id=node.id)
     _duty(app_session, soldier_id=urgent.id, duty_type=laser_duty, start_date=AS_OF)
-    _duty(app_session, soldier_id=covered.id, duty_type=laser_duty, start_date=AS_OF + timedelta(days=1))
+    _duty(
+        app_session,
+        soldier_id=covered.id,
+        duty_type=laser_duty,
+        start_date=AS_OF + timedelta(days=1),
+    )
     _duty(app_session, soldier_id=non_weapon.id, duty_type=non_weapon_duty, start_date=AS_OF)
     _duty(
-        app_session, soldier_id=cancelled_duty.id, duty_type=laser_duty,
-        start_date=AS_OF, status="cancelled",
+        app_session,
+        soldier_id=cancelled_duty.id,
+        duty_type=laser_duty,
+        start_date=AS_OF,
+        status="cancelled",
     )
     _duty(app_session, soldier_id=draft_range.id, duty_type=laser_duty, start_date=AS_OF)
     _range_assignment(
-        app_session, soldier_id=urgent.id, node_id=node.id, range_type=RangeType.live,
+        app_session,
+        soldier_id=urgent.id,
+        node_id=node.id,
+        range_type=RangeType.live,
         event_date=AS_OF,
     )
     _range_assignment(
-        app_session, soldier_id=covered.id, node_id=node.id, range_type=RangeType.laser,
+        app_session,
+        soldier_id=covered.id,
+        node_id=node.id,
+        range_type=RangeType.laser,
         event_date=AS_OF,
     )
     _range_assignment(
-        app_session, soldier_id=covered.id, node_id=node.id, range_type=RangeType.laser,
-        event_date=AS_OF + timedelta(days=1), status=RangeEventStatus.cancelled,
+        app_session,
+        soldier_id=covered.id,
+        node_id=node.id,
+        range_type=RangeType.laser,
+        event_date=AS_OF + timedelta(days=1),
+        status=RangeEventStatus.cancelled,
     )
     _range_assignment(
-        app_session, soldier_id=draft_range.id, node_id=node.id, range_type=RangeType.laser,
-        event_date=AS_OF, is_draft=True,
+        app_session,
+        soldier_id=draft_range.id,
+        node_id=node.id,
+        range_type=RangeType.laser,
+        event_date=AS_OF,
+        is_draft=True,
     )
     app_session.commit()
 
@@ -178,3 +218,51 @@ def test_future_weapon_duty_without_matching_range_is_urgent(app_session: Sessio
     assert by_soldier[cancelled_duty.id].has_upcoming_weapon_duty is False
     assert by_soldier[draft_range.id].has_upcoming_weapon_duty is True
     assert by_soldier[draft_range.id].has_upcoming_matching_range is False
+
+
+def test_cancelled_matching_range_alone_does_not_cover_a_future_weapon_duty(
+    app_session: Session,
+) -> None:
+    node = create_node(app_session, level="branch", name="Root")
+    laser_duty = _duty_type(app_session, name="Laser duty", required_range_type=RangeType.laser)
+    soldier = create_soldier(app_session, personal_number="inq-301", hierarchy_node_id=node.id)
+    _duty(app_session, soldier_id=soldier.id, duty_type=laser_duty, start_date=AS_OF)
+    _range_assignment(
+        app_session,
+        soldier_id=soldier.id,
+        node_id=node.id,
+        range_type=RangeType.laser,
+        event_date=AS_OF,
+        status=RangeEventStatus.cancelled,
+    )
+    app_session.commit()
+
+    record = list_ineligible_soldiers(app_session, roots={node.id}, as_of=AS_OF)[0]
+
+    assert record.soldier_id == soldier.id
+    assert record.has_upcoming_weapon_duty is True
+    assert record.has_upcoming_matching_range is False
+    assert record.upcoming_matching_ranges == ()
+
+
+def test_batches_related_records_for_all_scoped_soldiers(app_session: Session) -> None:
+    root = create_node(app_session, level="branch", name="Root")
+    soldiers = [
+        create_soldier(app_session, personal_number=f"inq-batch-{index}", hierarchy_node_id=root.id)
+        for index in range(5)
+    ]
+    select_count = 0
+
+    def count_selects(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+        nonlocal select_count
+        if statement.lstrip().upper().startswith("SELECT"):
+            select_count += 1
+
+    event.listen(app_session.bind, "before_cursor_execute", count_selects)
+    try:
+        records = list_ineligible_soldiers(app_session, roots={root.id}, as_of=AS_OF)
+    finally:
+        event.remove(app_session.bind, "before_cursor_execute", count_selects)
+
+    assert {record.soldier_id for record in records} == {soldier.id for soldier in soldiers}
+    assert select_count <= 4
