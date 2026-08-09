@@ -1,9 +1,11 @@
 from datetime import date
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import TelegramLink
+from app.db.models import DutyAssignment, DutyLocation, DutyType, ExemptionType, SoldierExemption, TelegramLink
+from app.routes.soldiers import _PUBLIC_EVENT_TYPES
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -237,11 +239,43 @@ def test_duty_history_200_for_plain_soldier_commanding_target_node(
     # A soldier who commands the target's hierarchy node passes
     # can_view_soldier_scope even though their role label is plain "soldier"
     # (dual-role pattern) — mirrors /scoring/transparency's commander check.
+    # Also seeds one public-type event (assignment) and one non-public-type
+    # event (exemption, not in _PUBLIC_EVENT_TYPES = {"assignment",
+    # "cancellation"}) to prove that passing the new can_view_soldier_scope
+    # gate does NOT bypass the existing event-type redaction for a
+    # plain-soldier viewer — the two checks are independent layers.
     node = create_node(admin_session, level="team", name="dh_200_node")
     cmd = create_soldier(admin_session, personal_number="dh_200_001", role="soldier")
     node.commander_id = cmd.id
     target = create_soldier(admin_session, personal_number="dh_200_002", hierarchy_node_id=node.id)
+
+    dt = DutyType(name="שמירה-dh200", score_per_day=Decimal("2.00"))
+    loc = DutyLocation(name="מוצב-dh200")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=target.id,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 1, 2),
+        )
+    )
+
+    et = ExemptionType(name="פטור-dh200")
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(
+            soldier_id=target.id, exemption_type_id=et.id, start_date=date(2026, 1, 1)
+        )
+    )
     admin_session.commit()
 
     r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
     assert r.status_code == 200
+    event_types = {e["event_type"] for e in r.json()}
+    assert "assignment" in event_types
+    assert "exemption" not in event_types
+    assert event_types <= _PUBLIC_EVENT_TYPES
