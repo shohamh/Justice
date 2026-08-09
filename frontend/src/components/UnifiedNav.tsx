@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
-  Calendar, BarChart2, AlertTriangle,
+  Calendar, BarChart2,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
@@ -14,7 +14,6 @@ import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getIncomingSwapCount } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
-import { getWeaponIneligibleCount } from "../api/shifts";
 import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
 import { queryKeys } from "../queryKeys";
 import { listJobs } from "../api/algorithm";
@@ -46,6 +45,24 @@ function pickBadgeColor(counts: RunBadgeCounts): BadgeColor {
   return "green";
 }
 
+type BadgeInput = Pick<NavTab, "badge" | "badgeColor">;
+
+/** Yellow is the existing nav color for the brief's orange severity. */
+export function aggregateBadgeCounts(items: BadgeInput[]): Pick<NavTab, "badge" | "badgeColor"> {
+  const colorPriority: Record<BadgeColor, number> = { green: 0, blue: 1, yellow: 2, red: 3 };
+  let badgeColor: BadgeColor = "green";
+  let badge = 0;
+
+  for (const item of items) {
+    if (item.badge == null || item.badge <= 0) continue;
+    badge += item.badge;
+    const color = item.badgeColor ?? "red";
+    if (colorPriority[color] > colorPriority[badgeColor]) badgeColor = color;
+  }
+
+  return { badge, badgeColor };
+}
+
 export default function UnifiedNav() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -56,21 +73,9 @@ export default function UnifiedNav() {
   const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
-  const canViewWeaponIneligible = canApprove;
   const [pendingCount, setPendingCount] = useState(0);
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
-  const [weaponIneligibleCount, setWeaponIneligibleCount] = useState(0);
   const { seenIds, seedSeenIds } = useSeenJobs();
-  const [algorithmJobs, setAlgorithmJobs] = useState<RunBadgeJob[]>([]);
-  const algorithmCounts = useMemo(
-    () => computeRunBadgeCounts(algorithmJobs, seenIds),
-    [algorithmJobs, seenIds]
-  );
-  const algorithmBadgeCount = algorithmCounts.running + algorithmCounts.draft + algorithmCounts.done + algorithmCounts.failed;
-  const algorithmBadgeColor = pickBadgeColor(algorithmCounts);
-  const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
-  const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
-  const previousPathname = useRef(location.pathname);
   const ineligibleCountQuery = useQuery({
     queryKey: queryKeys.ineligibleSoldierCount(),
     queryFn: getIneligibleSoldierCount,
@@ -78,22 +83,34 @@ export default function UnifiedNav() {
     retry: false,
   });
   const ineligibleCount = ineligibleCountQuery.data?.count ?? 0;
+  const [algorithmJobs, setAlgorithmJobs] = useState<RunBadgeJob[]>([]);
+  const algorithmCounts = useMemo(
+    () => computeRunBadgeCounts(algorithmJobs, seenIds),
+    [algorithmJobs, seenIds]
+  );
+  const algorithmBadgeCount = algorithmCounts.running + algorithmCounts.draft + algorithmCounts.done + algorithmCounts.failed;
+  const algorithmBadgeColor = pickBadgeColor(algorithmCounts);
+  const planningBadge = aggregateBadgeCounts([
+    { badge: algorithmBadgeCount, badgeColor: algorithmBadgeColor },
+    { badge: ineligibleCountQuery.data?.count, badgeColor: "red" },
+  ]);
+  const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
+  const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
+  const previousPathname = useRef(location.pathname);
 
   useEffect(() => {
     if (!canApprove) return;
     void (async () => {
-      const [c, e, f, enroll, hk, wi] = await Promise.all([
+      const [c, e, f, enroll, hk] = await Promise.all([
         getPendingCount().catch(() => 0),
         getPendingExemptionCount().catch(() => 0),
         getPendingFieldUpdateCount().catch(() => 0),
         listPendingEnrollments().then((r) => r.length).catch(() => 0),
         getPendingHakpazaCount().catch(() => 0),
-        canViewWeaponIneligible ? getWeaponIneligibleCount().catch(() => 0) : Promise.resolve(0),
       ]);
       setPendingCount(c + e + f + enroll + hk);
-      setWeaponIneligibleCount(wi);
     })();
-  }, [canApprove, canViewWeaponIneligible, location.pathname]);
+  }, [canApprove, location.pathname]);
 
   useEffect(() => {
     void (async () => {
@@ -164,25 +181,15 @@ export default function UnifiedNav() {
     label: t("nav.planning"),
     icon: <Wrench size={20} />,
     onClick: () => setPlanningSheetOpen(true),
-    badge: algorithmBadgeCount,
-    badgeColor: algorithmBadgeColor,
+    badge: planningBadge.badge,
+    badgeColor: planningBadge.badgeColor,
     testId: "nav-planning",
-  };
-
-  const weaponIneligibleTab: NavTab = {
-    label: t("nav.weapon_ineligible"),
-    icon: <AlertTriangle size={20} />,
-    to: canPlan ? "/planning/shifts?filter=weapon_ineligible" : "/unit-calendar?filter=weapon_ineligible",
-    badge: weaponIneligibleCount,
-    badgeColor: "red",
-    testId: "nav-weapon-ineligible",
   };
 
   const tabs: NavTab[] = [
     ...baseTabs,
     ...(canApprove ? [commanderTab] : []),
     ...(canPlan ? [planningTab] : []),
-    ...(canViewWeaponIneligible ? [weaponIneligibleTab] : []),
   ];
 
   const commanderItems = [

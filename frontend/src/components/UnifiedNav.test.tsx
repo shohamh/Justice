@@ -1,6 +1,6 @@
 import { render as testingLibraryRender, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import UnifiedNav from "./UnifiedNav";
+import UnifiedNav, { aggregateBadgeCounts } from "./UnifiedNav";
 
 function render(ui: React.ReactElement) {
   return testingLibraryRender(
@@ -62,7 +62,7 @@ vi.mock("./NavSheet", () => ({
         {items?.map((item) => (
           <a key={item.testId} data-testid={item.testId} href={item.to}>
             {item.badge != null && item.badge > 0 && (
-              <span data-testid={item.testId === "nav-ranges" ? "ineligible-ranges-badge" : undefined} className={item.badgeColor === "red" ? "bg-red-500" : undefined}>
+              <span data-testid={item.testId === "nav-ranges" ? "ineligible-ranges-badge" : `${item.testId}-badge`} className={`bg-${item.badgeColor ?? "red"}-500`}>
                 {item.badge}
               </span>
             )}
@@ -287,53 +287,17 @@ describe("UnifiedNav — dual-role soldier (commander label, also a duty manager
   });
 });
 
-describe("UnifiedNav — weapon-ineligible badge", () => {
-  beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
-  });
-
-  test("shows a red badge with the ineligible count and planning filter link for a duty manager", async () => {
-    mockGetWeaponIneligibleCount.mockResolvedValueOnce(3);
-    render(<UnifiedNav />);
-    await waitFor(() => {
-      expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
-    });
-    const badges = await screen.findAllByTestId("pending-badge");
-    expect(
-      badges.some((el) => el.textContent === "3" && el.className.includes("bg-red-500"))
-    ).toBe(true);
-    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/planning/shifts?filter=weapon_ineligible")).toBe(true);
-  });
-
-  test("shows a red badge and unit-calendar filter link for an ordinary commander", async () => {
-    mockGetWeaponIneligibleCount.mockResolvedValueOnce(3);
-    mockUseAuth.mockReturnValue({ user: { role: "commander", is_commander: true, is_duty_manager: false } });
-    render(<UnifiedNav />);
-    await waitFor(() => {
-      expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
-    });
-    const badges = await screen.findAllByTestId("pending-badge");
-    expect(
-      badges.some((el) => el.textContent === "3" && el.className.includes("bg-red-500"))
-    ).toBe(true);
-    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/unit-calendar?filter=weapon_ineligible")).toBe(true);
-    expect(mockGetWeaponIneligibleCount).toHaveBeenCalled();
-  });
-
-  test("preserves the planning filter link for an admin", async () => {
-    mockUseAuth.mockReturnValue({ user: { role: "admin", is_commander: false, is_duty_manager: false } });
-    render(<UnifiedNav />);
-    await waitFor(() => {
-      expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
-    });
-    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/planning/shifts?filter=weapon_ineligible")).toBe(true);
-  });
-
-  test("does not request or render the weapon-ineligible tab for a soldier", async () => {
-    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false } });
+describe("UnifiedNav — standalone weapon-ineligible destination", () => {
+  test.each([
+    ["admin", { role: "admin" }],
+    ["commander", { role: "commander", is_commander: true, is_duty_manager: false }],
+    ["duty manager", { role: "duty_manager", is_commander: false, is_duty_manager: true }],
+    ["ordinary user", { role: "soldier", is_commander: false, is_duty_manager: false }],
+  ])("is absent for %s", (_, user) => {
+    mockUseAuth.mockReturnValue({ user });
     render(<UnifiedNav />);
     expect(screen.queryByTestId("nav-weapon-ineligible")).not.toBeInTheDocument();
-    await waitFor(() => expect(mockGetWeaponIneligibleCount).not.toHaveBeenCalled());
+    expect(mockGetWeaponIneligibleCount).not.toHaveBeenCalled();
   });
 });
 
@@ -417,5 +381,55 @@ describe("UnifiedNav — ranges (mitvachim) gating", () => {
 
     expect(screen.queryByTestId("nav-ranges")).not.toBeInTheDocument();
     expect(mockGetIneligibleSoldierCount).not.toHaveBeenCalled();
+  });
+
+  test("aggregates the ranges child count into the planning parent", async () => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+    mockGetIneligibleSoldierCount.mockResolvedValue({ count: 3 });
+    mockListJobs.mockResolvedValue({ items: [job("failed", "shadow", "solver_timeout")], total: 1 });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+
+    const parentBadge = await waitFor(() => {
+      const badge = screen.getAllByTestId("pending-badge").find((element) => element.textContent === "4");
+      expect(badge).toBeDefined();
+      return badge;
+    });
+    expect(parentBadge).toHaveClass("bg-red-500");
+  });
+
+  test("hides the parent badge when child counts are zero", async () => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+    mockGetIneligibleSoldierCount.mockResolvedValue({ count: 0 });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+
+    await waitFor(() => expect(mockGetIneligibleSoldierCount).toHaveBeenCalled());
+    expect(screen.queryByTestId("pending-badge")).not.toBeInTheDocument();
+  });
+
+  test.each([
+    ["loading", () => new Promise<{ count: number }>(() => {})],
+    ["errored", () => Promise.reject(new Error("count unavailable"))],
+  ])("hides the parent badge while the ranges count is %s", (_, countQuery) => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+    mockGetIneligibleSoldierCount.mockImplementationOnce(countQuery);
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+
+    expect(screen.queryByTestId("pending-badge")).not.toBeInTheDocument();
+  });
+});
+
+describe("UnifiedNav — badge aggregation", () => {
+  test("sums child counts and selects the worst color red > orange > blue > green", () => {
+    expect(aggregateBadgeCounts([
+      { badge: 2, badgeColor: "green" },
+      { badge: 3, badgeColor: "yellow" },
+      { badge: 4, badgeColor: "blue" },
+      { badge: 5, badgeColor: "red" },
+    ])).toEqual({ badge: 14, badgeColor: "red" });
+    expect(aggregateBadgeCounts([{ badge: 2, badgeColor: "yellow" }, { badge: 1, badgeColor: "blue" }])).toEqual({ badge: 3, badgeColor: "yellow" });
+    expect(aggregateBadgeCounts([{ badge: 0, badgeColor: "red" }, { badge: undefined, badgeColor: "green" }])).toEqual({ badge: 0, badgeColor: "green" });
   });
 });
