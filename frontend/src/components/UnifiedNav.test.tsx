@@ -34,6 +34,10 @@ vi.mock("../api/soldiers", () => ({
 vi.mock("../api/swaps", () => ({
   getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
 }));
+const mockGetWeaponIneligibleCount = vi.fn(() => Promise.resolve(0));
+vi.mock("../api/shifts", () => ({
+  getWeaponIneligibleCount: (...args: unknown[]) => mockGetWeaponIneligibleCount(...args),
+}));
 
 const mockListJobs = vi.fn();
 vi.mock("../api/algorithm", () => ({
@@ -93,6 +97,8 @@ beforeEach(() => {
     markJobSeen: vi.fn(),
     markAllSeen: vi.fn(),
   }));
+  mockGetWeaponIneligibleCount.mockReset();
+  mockGetWeaponIneligibleCount.mockResolvedValue(0);
 });
 
 describe("UnifiedNav — soldier role", () => {
@@ -259,6 +265,56 @@ describe("UnifiedNav — dual-role soldier (commander label, also a duty manager
     render(<UnifiedNav />);
     expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
+  });
+});
+
+describe("UnifiedNav — weapon-ineligible badge", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
+  });
+
+  test("shows a red badge with the ineligible count and planning filter link for a duty manager", async () => {
+    mockGetWeaponIneligibleCount.mockResolvedValueOnce(3);
+    render(<UnifiedNav />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
+    });
+    const badges = await screen.findAllByTestId("pending-badge");
+    expect(
+      badges.some((el) => el.textContent === "3" && el.className.includes("bg-red-500"))
+    ).toBe(true);
+    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/planning/shifts?filter=weapon_ineligible")).toBe(true);
+  });
+
+  test("shows a red badge and unit-calendar filter link for an ordinary commander", async () => {
+    mockGetWeaponIneligibleCount.mockResolvedValueOnce(3);
+    mockUseAuth.mockReturnValue({ user: { role: "commander", is_commander: true, is_duty_manager: false } });
+    render(<UnifiedNav />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
+    });
+    const badges = await screen.findAllByTestId("pending-badge");
+    expect(
+      badges.some((el) => el.textContent === "3" && el.className.includes("bg-red-500"))
+    ).toBe(true);
+    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/unit-calendar?filter=weapon_ineligible")).toBe(true);
+    expect(mockGetWeaponIneligibleCount).toHaveBeenCalled();
+  });
+
+  test("preserves the planning filter link for an admin", async () => {
+    mockUseAuth.mockReturnValue({ user: { role: "admin", is_commander: false, is_duty_manager: false } });
+    render(<UnifiedNav />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/planning/shifts?filter=weapon_ineligible")).toBe(true);
+  });
+
+  test("does not request or render the weapon-ineligible tab for a soldier", async () => {
+    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false } });
+    render(<UnifiedNav />);
+    expect(screen.queryByTestId("nav-weapon-ineligible")).not.toBeInTheDocument();
+    await waitFor(() => expect(mockGetWeaponIneligibleCount).not.toHaveBeenCalled());
   });
 });
 

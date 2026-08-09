@@ -26,7 +26,9 @@ export interface DutyType {
   end_time: string | null;     // "HH:MM:SS" from API
   instructions: string | null;
   is_external: boolean;
+  required_range_type: string | null;
   eligible_node_ids: string[] | null;
+
 }
 
 export interface DutyLocation {
@@ -61,6 +63,7 @@ export async function createDutyType(input: {
   end_time?: string | null;
   instructions?: string | null;
   is_external: boolean;
+  required_range_type?: string | null;
   eligible_node_ids?: string[] | null;
 }): Promise<DutyType> {
   return (await api.post<DutyType>("/duty-config/duty-types", input)).data;
@@ -80,6 +83,7 @@ export async function updateDutyType(
     end_time: string | null;
     instructions: string | null;
     is_external: boolean;
+    required_range_type: string | null;
     eligible_node_ids: string[] | null;
     requirements: DutyType["requirements"];
   }>

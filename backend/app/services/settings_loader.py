@@ -111,13 +111,34 @@ def validate_settings_update(current: dict[str, Any], updates: dict[str, Any]) -
     return merged
 
 
+_WEAPON_ENFORCE_KEY = "weapon_qualification.enforce_eligibility"
+
+
+def weapon_enforcement_changed(current: dict[str, Any], updates: dict[str, Any]) -> bool:
+    """True iff `updates` actually flips weapon_qualification.enforce_eligibility
+    relative to `current` (key present in the update AND its value differs).
+    Pure/no DB access — callers use this to decide whether to trigger a
+    weapon-ineligibility recheck. Kept here (rather than duplicated in the
+    settings route) since it's the same key `apply_settings` writes."""
+    return (
+        _WEAPON_ENFORCE_KEY in updates
+        and current.get(_WEAPON_ENFORCE_KEY) != updates[_WEAPON_ENFORCE_KEY]
+    )
+
+
 def apply_settings(
     session: Session, current: dict[str, Any], updates: dict[str, Any], *, actor_id: uuid.UUID | None
 ) -> dict[str, Any]:
     """Validates `updates` against `current` (raises SettingsValidationError on
     failure), then writes each non-hidden key via set_setting — including the
     telegram cascade's forced registration.telegram_required=False, so that
-    write actually lands even though it wasn't in the caller's `updates`."""
+    write actually lands even though it wasn't in the caller's `updates`.
+
+    Note: this function does NOT commit — the caller (system_settings route)
+    commits, so the weapon-eligibility-recheck trigger for a
+    weapon_qualification.enforce_eligibility change lives in that route
+    (after its commit), not here, to run against durable data. See
+    weapon_enforcement_changed()."""
     merged = validate_settings_update(current, updates)
 
     to_write = dict(updates)

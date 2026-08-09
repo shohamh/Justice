@@ -18,6 +18,7 @@ export interface DutyShift {
   generated_from_template_id?: string | null;
   generated_from_template_name?: string | null;
   node_quotas?: NodeQuota[];
+  ineligible_count: number;
 }
 
 export interface NodeQuota {
@@ -130,6 +131,10 @@ export async function removeShiftAssignment(shiftId: string, assignmentId: strin
   await api.delete(`/shifts/${shiftId}/assignments/${assignmentId}`);
 }
 
+export async function getShift(shiftId: string): Promise<DutyShift> {
+  return (await api.get<DutyShift>(`/shifts/${shiftId}`)).data;
+}
+
 export async function clearShiftAssignments(id: string): Promise<void> {
   await api.delete(`/shifts/${id}/assignments`);
 }
@@ -170,4 +175,9 @@ export async function bulkDeleteShifts(dateFrom: string, dateTo: string): Promis
 
 export async function bulkClearAssignments(dateFrom: string, dateTo: string): Promise<{ cleared_assignments: number }> {
   return (await api.delete<{ cleared_assignments: number }>("/shifts/bulk-clear-assignments", { params: { date_from: dateFrom, date_to: dateTo } })).data;
+}
+
+export async function getWeaponIneligibleCount(): Promise<number> {
+  const r = await api.get<{ count: number }>("/shifts/weapon-ineligible/count");
+  return r.data.count;
 }

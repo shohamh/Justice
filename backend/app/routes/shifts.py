@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from sqlalchemy import delete as sa_delete, func
 from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, HierarchyNode, NotificationType, ShiftTemplate, Soldier, SwapRequest
@@ -46,6 +46,11 @@ class ShiftOut(BaseModel):
     generated_from_template_id: uuid.UUID | None = None
     generated_from_template_name: str | None = None
     node_quotas: list["NodeQuotaOut"] = Field(default_factory=list)
+    ineligible_count: int = 0
+
+
+class WeaponIneligibleCountOut(BaseModel):
+    count: int
 
 
 class NodeQuotaIn(BaseModel):
@@ -116,6 +121,7 @@ def _out(
     session: Session | None = None,
     template_name: str | None = None,
     node_quotas: list[NodeQuotaOut] | None = None,
+    ineligible_count: int = 0,
 ) -> ShiftOut:
     calculated = None
     if session is not None:
@@ -142,6 +148,7 @@ def _out(
         generated_from_template_id=s.generated_from_template_id,
         generated_from_template_name=template_name,
         node_quotas=node_quotas or [],
+        ineligible_count=ineligible_count,
     )
 
 
@@ -167,7 +174,65 @@ def list_shifts(
     if template_ids:
         rows = session.execute(select(ShiftTemplate).where(ShiftTemplate.id.in_(template_ids))).scalars().all()
         template_names = {t.id: t.name for t in rows}
-    return [_out(s, session, template_name=template_names.get(s.generated_from_template_id) if s.generated_from_template_id else None) for s in shifts]
+
+    shift_ids = [s.id for s in shifts]
+    ineligible_counts: dict[uuid.UUID, int] = {}
+    if shift_ids:
+        count_rows = session.execute(
+            select(DutyAssignment.duty_shift_id, func.count(DutyAssignment.id))
+            .where(
+                DutyAssignment.duty_shift_id.in_(shift_ids),
+                DutyAssignment.weapon_ineligible.is_(True),
+                DutyAssignment.status == "published",
+            )
+            .group_by(DutyAssignment.duty_shift_id)
+        ).all()
+        ineligible_counts = {row[0]: row[1] for row in count_rows}
+
+    return [
+        _out(
+            s,
+            session,
+            template_name=template_names.get(s.generated_from_template_id) if s.generated_from_template_id else None,
+            ineligible_count=ineligible_counts.get(s.id, 0),
+        )
+        for s in shifts
+    ]
+
+
+@router.get("/weapon-ineligible/count", response_model=WeaponIneligibleCountOut)
+def weapon_ineligible_count(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> WeaponIneligibleCountOut:
+    if user.role == "admin":
+        cnt = session.execute(
+            select(func.count(DutyAssignment.id)).where(
+                DutyAssignment.weapon_ineligible.is_(True),
+                DutyAssignment.status == "published",
+            )
+        ).scalar_one()
+        return WeaponIneligibleCountOut(count=cnt)
+
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return WeaponIneligibleCountOut(count=0)
+
+    # Subtree expansion mirrors app.services.constraints._scope_soldier_ids:
+    # HierarchyNode.path_ids is the materialized ancestor-chain array, so an
+    # `overlap` against the governed root ids matches the roots themselves
+    # AND every descendant node, not just an exact-node id match.
+    subtree_node_ids = select(HierarchyNode.id).where(HierarchyNode.path_ids.overlap(list(roots))).subquery()
+    cnt = session.execute(
+        select(func.count(DutyAssignment.id))
+        .join(Soldier, Soldier.id == DutyAssignment.soldier_id)
+        .where(
+            DutyAssignment.weapon_ineligible.is_(True),
+            DutyAssignment.status == "published",
+            Soldier.hierarchy_node_id.in_(select(subtree_node_ids.c.id)),
+        )
+    ).scalar_one()
+    return WeaponIneligibleCountOut(count=cnt)
 
 
 class QuotaSplitEntry(BaseModel):

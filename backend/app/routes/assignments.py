@@ -29,7 +29,8 @@ class AssignmentOut(BaseModel):
     end_date: date
     status: str
     notes: str | None
-
+    weapon_ineligible: bool = False
+    weapon_ineligible_reason: str | None = None
 
 class CreateAssignmentRequest(BaseModel):
     soldier_id: uuid.UUID
@@ -65,6 +66,8 @@ class EffectiveDutyOut(BaseModel):
     end_at: datetime
     shift_id: uuid.UUID | None = None
     is_reserve: bool = False
+    weapon_ineligible: bool = False
+    weapon_ineligible_reason: str | None = None
 
 
 def _out(a: DutyAssignment) -> AssignmentOut:
@@ -77,6 +80,8 @@ def _out(a: DutyAssignment) -> AssignmentOut:
         end_date=a.end_date,
         status=a.status,
         notes=a.notes,
+        weapon_ineligible=a.weapon_ineligible,
+        weapon_ineligible_reason=a.weapon_ineligible_reason,
     )
 
 

@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
 
+from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
 from app.range_reminder_worker import run_range_reminder_worker
 from app.range_attendance_worker import run_range_attendance_worker
@@ -127,10 +128,11 @@ async def lifespan(app: FastAPI):
     swap_expiry_task = asyncio.create_task(run_swap_expiry_worker())
     range_reminder_task = asyncio.create_task(run_range_reminder_worker())
     range_attendance_task = asyncio.create_task(run_range_attendance_worker())
+    duty_eligibility_task = asyncio.create_task(run_duty_eligibility_worker())
     yield
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task):
         task.cancel()
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task):
         try:
             await task
         except asyncio.CancelledError:

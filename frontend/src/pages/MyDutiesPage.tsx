@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart,
@@ -13,11 +13,13 @@ import {
 
 import Layout from "../components/Layout";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
+import AskSwapModal from "../components/AskSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { listEffectiveDuties } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
 import { getReserveStats } from "../api/soldiers";
 import { queryKeys } from "../queryKeys";
+import { formatDutyRange } from "../utils/formatDate";
 
 function avg(rows: TransparencyRow[], key: "normalised_score" | "active_days" | "shift_count"): number {
   if (rows.length === 0) return 0;
@@ -49,6 +51,12 @@ const dayCount = (d: { start_date: string; end_date: string }) => {
 
 export default function MyDutiesPage() {
   const { user } = useAuth();
+  const [askSwapDuty, setAskSwapDuty] = useState<{
+    assignment_id: string;
+    start_date: string;
+    end_date: string;
+    duty_type_name: string;
+  } | null>(null);
 
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
@@ -78,6 +86,12 @@ export default function MyDutiesPage() {
   const pastDuties = (dutiesQuery.data ?? []).filter((d) => d.end_date <= today);
   const pastCount = pastDuties.length;
   const pastDays = pastDuties.reduce((s, d) => s + dayCount(d as { start_date: string; end_date: string }), 0);
+
+  // Duties still ahead of the soldier (end_date is exclusive, so end_date > today
+  // means the last worked day is today or later).
+  const upcomingDuties = (dutiesQuery.data ?? [])
+    .filter((d) => d.end_date > today)
+    .sort((a, b) => a.start_date.localeCompare(b.start_date));
 
   const loading = transparencyQuery.isLoading || breakdownQuery.isLoading || dutiesQuery.isLoading;
 
@@ -217,6 +231,52 @@ export default function MyDutiesPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Section 5: Upcoming duties */}
+        {upcomingDuties.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 className="font-medium text-sm">תורנויות קרובות</h3>
+            <ul className="space-y-3">
+              {upcomingDuties.map((d) => (
+                <li key={`${d.assignment_id}-${d.start_date}`} className="border-b dark:border-gray-600 last:border-0 pb-2 last:pb-0">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{d.duty_type_name}</span>
+                    <span className="text-gray-500 dark:text-gray-400">
+                      {formatDutyRange(d.start_date, d.end_date)}
+                    </span>
+                  </div>
+                  {d.weapon_ineligible && (
+                    <div className="mt-1 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                      <span>⚠️ {d.weapon_ineligible_reason ?? "אינך כשיר לתורנות זו"}</span>
+                      <button
+                        className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
+                        onClick={() =>
+                          setAskSwapDuty({
+                            assignment_id: d.assignment_id,
+                            start_date: d.start_date,
+                            end_date: d.end_date,
+                            duty_type_name: d.duty_type_name,
+                          })
+                        }
+                      >
+                        בקש החלפה
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {askSwapDuty && (
+          <AskSwapModal
+            duty={askSwapDuty}
+            dutyTypeName={askSwapDuty.duty_type_name}
+            onClose={() => setAskSwapDuty(null)}
+            onCreated={() => setAskSwapDuty(null)}
+          />
         )}
       </div>
     </Layout>

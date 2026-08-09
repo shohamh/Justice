@@ -13,7 +13,18 @@ from sqlalchemy.orm import Session
 from app.services.eligibility import DutyTypeRequirements
 
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
-from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType, ExemptionDutyLocationMap, ExemptionDutyTypeMap, ExemptionType, ShiftTemplate, Soldier
+from app.db.models import (
+    DutyAssignment,
+    DutyLocation,
+    DutyShift,
+    DutyType,
+    ExemptionDutyLocationMap,
+    ExemptionDutyTypeMap,
+    ExemptionType,
+    RangeType,
+    ShiftTemplate,
+    Soldier,
+)
 from app.db.session import get_session
 from app.services import duty_config as svc
 
@@ -45,7 +56,9 @@ class DutyTypeOut(BaseModel):
     instructions: str | None = None
     is_external: bool = False
     requires_weapon: bool = False
+    required_range_type: str | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
+
 
 
 class CreateDutyTypeRequest(BaseModel):
@@ -61,6 +74,7 @@ class CreateDutyTypeRequest(BaseModel):
     instructions: str | None = Field(default=None)
     is_external: bool  # required — no default
     requires_weapon: bool = False
+    required_range_type: RangeType | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
@@ -86,6 +100,7 @@ class UpdateDutyTypeRequest(BaseModel):
     instructions: str | None = Field(default=None)
     is_external: bool | None = None
     requires_weapon: bool | None = None
+    required_range_type: RangeType | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
@@ -113,6 +128,7 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
         instructions=d.instructions,
         is_external=d.is_external,
         requires_weapon=d.requires_weapon,
+        required_range_type=d.required_range_type,
         eligible_node_ids=d.eligible_node_ids,
     )
 
@@ -148,6 +164,7 @@ def create_duty_type(
             instructions=body.instructions,
             is_external=body.is_external,
             requires_weapon=body.requires_weapon,
+            required_range_type=body.required_range_type,
             eligible_node_ids=body.eligible_node_ids,
             actor_id=user.id,
         )
@@ -168,10 +185,14 @@ def update_duty_type(
     dt = session.get(DutyType, duty_type_id)
     if dt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    old_required_range_type = dt.required_range_type
+    required_range_type_supplied = "required_range_type" in body.model_fields_set
     try:
         extra: dict = {}
         if "eligible_node_ids" in body.model_fields_set:
             extra["eligible_node_ids"] = body.eligible_node_ids
+        if required_range_type_supplied:
+            extra["required_range_type"] = body.required_range_type
         svc.update_duty_type(
             session,
             duty_type=dt,
@@ -196,6 +217,19 @@ def update_duty_type(
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
+
+    if required_range_type_supplied and body.required_range_type != old_required_range_type:
+        from app.services.duty_eligibility_watch import recheck_assignments
+
+        affected_ids = session.execute(
+            select(DutyAssignment.id).where(
+                DutyAssignment.duty_type_id == duty_type_id,
+                DutyAssignment.status == "published",
+            )
+        ).scalars().all()
+        if affected_ids:
+            recheck_assignments(session, affected_ids)
+
     session.refresh(dt)
     return _dt_out(dt)
 

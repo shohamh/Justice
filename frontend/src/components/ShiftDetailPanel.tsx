@@ -3,12 +3,15 @@ import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import { SwapRequest, listSwapsForAssignment, checkCoverEligibility } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
+import { getShift, removeShiftAssignment } from "../api/shifts";
+import type { DutyShift } from "../api/shifts";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import DismissalModal from "./DismissalModal";
 import ReserveDismissalModal from "./ReserveDismissalModal";
 import SoldierLink from "./SoldierLink";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
+import ShiftAssignModal from "./ShiftAssignModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
@@ -59,6 +62,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
   const [canOfferReplace, setCanOfferReplace] = useState(true);
   const [coverIneligibleReason, setCoverIneligibleReason] = useState<string | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<DutyShift | null>(null);
 
   useEffect(() => {
     getPublicSettings().then((settings) => {
@@ -199,6 +203,9 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                     <div className="flex items-center gap-2">
                       <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
                       <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
+                      {a.weapon_ineligible && (
+                        <span title={a.weapon_ineligible_reason ?? undefined} className="mr-1 text-red-500 dark:text-red-400">⚠️</span>
+                      )}
                       {a.hierarchy_label && <span className="text-xs text-gray-400">({a.hierarchy_label})</span>}
                       {isCalledUp && (
                         <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
@@ -208,26 +215,40 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         </span>
                       )}
                     </div>
-                    {!isCalledUp && (
-                      <div className="flex items-center gap-1">
-                        {a.soldier_id !== user?.id && canOfferReplace && (
-                          <button
-                            className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded hover:bg-indigo-200"
-                            onClick={() => setOfferSwapTarget({ soldierId: a.soldier_id, soldierName: a.soldier_name, assignmentId: a.assignment_id })}
-                          >
-                            {t("swaps.offer_replace")}
-                          </button>
-                        )}
-                        {(user?.role === "admin" || user?.is_duty_manager) && (
-                          <button
-                            className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
-                            onClick={() => setDismissTarget(a)}
-                          >
-                            {t("dismiss_action")}
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {!isCalledUp && (
+                        <>
+                          {a.soldier_id !== user?.id && canOfferReplace && (
+                            <button
+                              className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded hover:bg-indigo-200"
+                              onClick={() => setOfferSwapTarget({ soldierId: a.soldier_id, soldierName: a.soldier_name, assignmentId: a.assignment_id })}
+                            >
+                              {t("swaps.offer_replace")}
+                            </button>
+                          )}
+                          {(user?.role === "admin" || user?.is_duty_manager) && (
+                            <button
+                              className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
+                              onClick={() => setDismissTarget(a)}
+                            >
+                              {t("dismiss_action")}
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {(user?.role === "admin" || user?.is_duty_manager) && a.weapon_ineligible && (
+                        <button
+                          className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
+                          onClick={async () => {
+                            await removeShiftAssignment(shift.id, a.assignment_id);
+                            setReplaceTarget(await getShift(shift.id));
+                            onRefreshNeeded();
+                          }}
+                        >
+                          {t("weapon_ineligible.replace")}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs">
                     {!isCalledUp && a.reserve_assignment_id && (
@@ -304,6 +325,9 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                   <div className="flex items-center gap-2">
                     <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
                     <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
+                    {a.weapon_ineligible && (
+                      <span title={a.weapon_ineligible_reason ?? undefined} className="mr-1 text-red-500 dark:text-red-400">⚠️</span>
+                    )}
                     <span className="text-xs text-purple-500">({t("reserve_label")})</span>
                     {a.hierarchy_label && (
                       <span className="text-xs text-gray-400">({a.hierarchy_label})</span>
@@ -324,6 +348,18 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         onClick={() => setReserveDismissTarget(a)}
                       >
                         {t("dismiss_action")}
+                      </button>
+                    )}
+                    {(user?.role === "admin" || user?.is_duty_manager) && a.weapon_ineligible && (
+                      <button
+                        className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
+                        onClick={async () => {
+                          await removeShiftAssignment(shift.id, a.assignment_id);
+                          setReplaceTarget(await getShift(shift.id));
+                          onRefreshNeeded();
+                        }}
+                      >
+                        {t("weapon_ineligible.replace")}
                       </button>
                     )}
                     <span
@@ -394,6 +430,15 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             targetDutyTypeId={shift.duty_type_id}
             onClose={() => setOfferSwapTarget(null)}
             onDone={() => { setOfferSwapTarget(null); onRefreshNeeded(); }}
+          />
+        )}
+
+        {replaceTarget && (
+          <ShiftAssignModal
+            shift={replaceTarget}
+            dutyTypes={Object.values(shiftDutyTypes)}
+            onSaved={() => { setReplaceTarget(null); onRefreshNeeded(); }}
+            onClose={() => setReplaceTarget(null)}
           />
         )}
     </EventDetailModal>

@@ -82,7 +82,8 @@
     "admin_changelog": "יומן שינויים",
     "admin_bug_reports": "דיווחי באגים",
     "score_adjustments": "שינוי ניקוד ידני",
-    "planning_export": "ייצוא לאקסל"
+    "planning_export": "ייצוא לאקסל",
+    "weapon_ineligible": "⚠️ חוסר כשירות"
   },
   "export": {
     "transparency_title": "ייצוא שקיפות",
@@ -406,9 +407,9 @@
     "detail_table": "פירוט תורנויות לתאריך",
     "click_hint": "לחץ על יום או תורנות לפרטים",
     "duty_detail": "פרטי תורנות",
-    "filter_label": "סינון לפי סוג:",
     "duty_type_filter_label": "סוגי תורנויות",
     "range_filter_label": "סוגי מטווחים",
+    "weapon_ineligible_filter": "מוצגות רק תורנויות עם חיילים שאינם כשירים מבחינת הכשרת נשק",
     "swap_requests_count": "{{count}} בקשות החלפה",
     "swap_requests_has": "יש בקשת החלפה",
     "cover_for_free": "כסה בחינם"
@@ -686,6 +687,9 @@
     "requires_bahad1": "נדרש בוגר בה\"ד 1",
     "requires_military_driving_license": "נדרש רשנ\"צ",
     "save": "שמור דרישות"
+  },
+  "weapon_ineligible": {
+    "replace": "החלף"
   },
   "shifts": {
     "title": "ניהול משמרות",
@@ -1152,6 +1156,7 @@
     "type_range_reserve_promoted": "קודמת משיבוץ מילואים למטווח",
     "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
     "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי",
+    "type_weapon_ineligible_detected": "נמצאו חיילים שאינם כשירים לנשק",
     "type_bug_report_comment": "תגובה חדשה לדיווח באג"
   },
   "announcements": {
