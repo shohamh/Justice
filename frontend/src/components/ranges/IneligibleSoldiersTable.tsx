@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DataTable, type ColDef } from "../DataTable";
 import SoldierLink from "../SoldierLink";
-import type { IneligibleHierarchyNode, IneligibleSoldier, IneligibleSoldiersResponse } from "../../api/ineligibleSoldiers";
+import type { DutyEligibilityFact, IneligibleHierarchyNode, IneligibleSoldier, IneligibleSoldiersResponse } from "../../api/ineligibleSoldiers";
+import { formatRangeEligibilityExplanation } from "../../utils/rangeEligibilityExplanation";
 import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
 
@@ -45,6 +46,22 @@ function soldiersForNode(data: IneligibleSoldiersResponse, nodeId: string): Inel
   return [...byId.values()];
 }
 
+const noWeaponDutyFact: DutyEligibilityFact = {
+  eligible: true,
+  required_range_type: null,
+  qualification_source: "not_required",
+  covered_by_range_date: null,
+  projected_valid_until: null,
+  reason: null,
+  duty_type_name: "",
+  start_date: "",
+};
+
+function formatDate(value: string): string {
+  const [year, month, day] = value.split("-");
+  return `${day}.${month}.${year}`;
+}
+
 export function IneligibleSoldiersTable({ data, loading, error }: Props) {
   const { t } = useTranslation();
   const { levelTypes } = useLevelTypes();
@@ -54,19 +71,23 @@ export function IneligibleSoldiersTable({ data, loading, error }: Props) {
   const qualificationText = (soldier: IneligibleSoldier): string => {
     if (soldier.valid_qualifications.length === 0) return t("range_qualification.warning.normal");
     return soldier.valid_qualifications
-      .map((qualification) => `${RANGE_TYPE_LABELS[qualification.range_type] ?? qualification.range_type} ${t("range_qualification.qualificationExpiry", { date: qualification.valid_until })}`)
+      .map((qualification) => `${RANGE_TYPE_LABELS[qualification.range_type] ?? qualification.range_type} ${t("range_qualification.qualificationExpiry", { date: formatDate(qualification.valid_until) })}`)
       .join(", ");
   };
+  const futureContextText = (soldier: IneligibleSoldier): string => {
+    if (soldier.upcoming_weapon_duties.length === 0) {
+      return formatRangeEligibilityExplanation(noWeaponDutyFact, t);
+    }
+    return soldier.upcoming_weapon_duties
+      .map((duty) => formatRangeEligibilityExplanation(duty, t))
+      .join(" · ");
+  };
   const warningContent = (soldier: IneligibleSoldier) => {
-    const urgent = soldier.has_upcoming_weapon_duty && !soldier.has_upcoming_matching_range;
-    const dutyText = soldier.upcoming_weapon_duties.map((duty) => `${duty.duty_type_name} ${duty.start_date}`).join(", ");
-    const rangeText = soldier.upcoming_matching_ranges
-      .map((range) => `${t("range_qualification.plannedRange")} ${RANGE_TYPE_LABELS[range.range_type] ?? range.range_type} ${range.date}`)
-      .join(", ");
+    const urgent = soldier.upcoming_weapon_duties.some((duty) => !duty.eligible);
     return <span data-testid={`ineligible-warning-${soldier.soldier_id}`} className={`inline-block rounded px-2 py-1 ${urgent
       ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
       : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>
-      {[t(urgent ? "range_qualification.warning.urgent" : "range_qualification.warning.normal"), dutyText, rangeText].filter(Boolean).join(" · ")}
+      {futureContextText(soldier)}
     </span>;
   };
 
@@ -82,8 +103,8 @@ export function IneligibleSoldiersTable({ data, loading, error }: Props) {
   ];
   const soldierColumns: ColDef<IneligibleSoldier>[] = [
     { id: "soldier", header: t("range_qualification.columns.soldier"), cell: (soldier) => <SoldierLink id={soldier.soldier_id} name={soldier.soldier_name} />, sortValue: (soldier) => soldier.soldier_name, filterValue: (soldier) => `${soldier.soldier_name} ${soldier.personal_number}` },
-    { id: "qualification", header: t("range_qualification.columns.qualification"), cell: qualificationText, filterValue: qualificationText },
-    { id: "context", header: t("range_qualification.columns.context"), cell: warningContent },
+    { id: "qualification", header: t("range_qualification.columns.qualification"), cell: qualificationText, sortValue: qualificationText, filterValue: qualificationText },
+    { id: "context", header: t("range_qualification.columns.context"), cell: warningContent, sortValue: futureContextText, filterValue: futureContextText },
   ];
 
   if (loading) return <div data-testid="ineligible-soldiers-view" role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-600 dark:border-gray-600 dark:text-gray-300">{t("range_qualification.soldiersLoading")}</div>;

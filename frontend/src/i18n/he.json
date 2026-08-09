@@ -1351,9 +1351,15 @@
     "filterSoldiers": "סינון חיילים...",
     "emptySoldiersInUnit": "אין חיילים ללא הסמכה ביחידה זו",
     "plannedRange": "מטווח מתוכנן",
+    "explanation": {
+      "noCurrentQualification": "אין מטווחים בתוקף",
+      "noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
+      "uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
+      "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}"
+    },
     "tablistLabel": "תצוגת מטווחים",
     "warning": {
-      "normal": "אין כשירות מטווח בתוקף",
+      "normal": "אין מטווחים בתוקף",
       "urgent": "תורנות נשק קרובה ללא מטווח תואם"
     },
     "dashboard": {

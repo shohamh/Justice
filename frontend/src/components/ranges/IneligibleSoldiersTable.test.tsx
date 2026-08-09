@@ -10,6 +10,14 @@ vi.mock("react-i18next", () => ({
       "range_qualification.warning.normal": "אין כשירות מטווח בתוקף",
       "range_qualification.warning.urgent": "תורנות נשק קרובה ללא מטווח תואם",
       "range_qualification.qualificationExpiry": `בתוקף עד ${options?.date}`,
+      "range_qualification.columns.unit": "יחידה",
+      "range_qualification.columns.soldier": "חייל",
+      "range_qualification.columns.qualification": "כשירות",
+      "range_qualification.columns.context": "הקשר עתידי",
+      "range_qualification.explanation.noCurrentQualification": "אין מטווחים בתוקף",
+      "range_qualification.explanation.noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
+      "range_qualification.explanation.uncoveredDuty": `משובץ לתורנות ${options?.dutyType} שדורשת לפחות מטווח מסוג ${options?.rangeType} בתאריך ${options?.date}`,
+      "range_qualification.explanation.plannedRangeCoverage": `מטווח מתוכנן מסוג ${options?.rangeType} בתאריך ${options?.rangeDate} מכסה את התורנות; הכשירות צפויה בתוקף עד ${options?.projectedValidUntil}`,
       "range_qualification.soldiersLoading": "טוען חיילים ללא הסמכה...",
       "range_qualification.soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
       "range_qualification.soldiersEmpty": "אין חיילים ללא הסמכת מטווח",
@@ -40,7 +48,7 @@ const planningResponse: IneligibleSoldiersResponse = {
       hierarchy_node_id: "platoon", hierarchy_node_name: "מחלקה 1", hierarchy_path_ids: ["command", "company", "platoon"],
       valid_qualifications: [{ range_type: "laser", valid_until: "2026-12-31" }],
       has_upcoming_weapon_duty: true, has_upcoming_matching_range: true,
-      upcoming_weapon_duties: [{ assignment_id: "duty-1", duty_type_id: "weapon", duty_type_name: "שמירה", start_date: "2026-09-02", end_date: "2026-09-03", required_range_type: "laser" }],
+      upcoming_weapon_duties: [{ assignment_id: "duty-1", duty_type_id: "weapon", duty_type_name: "שמירה", start_date: "2026-09-02", end_date: "2026-09-03", required_range_type: "laser", eligible: true, qualification_source: "planned_range", covered_by_range_date: "2026-08-20", projected_valid_until: "2027-02-20", reason: null }],
       upcoming_matching_ranges: [{ event_id: "range-1", range_type: "laser", date: "2026-08-20" }],
     },
     {
@@ -48,7 +56,7 @@ const planningResponse: IneligibleSoldiersResponse = {
       hierarchy_node_id: "platoon", hierarchy_node_name: "מחלקה 1", hierarchy_path_ids: ["command", "company", "platoon"],
       valid_qualifications: [{ range_type: "laser", valid_until: "2026-12-31" }],
       has_upcoming_weapon_duty: true, has_upcoming_matching_range: true,
-      upcoming_weapon_duties: [{ assignment_id: "duty-1", duty_type_id: "weapon", duty_type_name: "שמירה", start_date: "2026-09-02", end_date: "2026-09-03", required_range_type: "laser" }],
+      upcoming_weapon_duties: [{ assignment_id: "duty-1", duty_type_id: "weapon", duty_type_name: "שמירה", start_date: "2026-09-02", end_date: "2026-09-03", required_range_type: "laser", eligible: true, qualification_source: "planned_range", covered_by_range_date: "2026-08-20", projected_valid_until: "2027-02-20", reason: null }],
       upcoming_matching_ranges: [{ event_id: "range-1", range_type: "laser", date: "2026-08-20" }],
     },
     {
@@ -61,7 +69,7 @@ const planningResponse: IneligibleSoldiersResponse = {
       soldier_id: "soldier-3", soldier_name: "אורי פרץ", personal_number: "24680",
       hierarchy_node_id: "company", hierarchy_node_name: "פלוגה א", hierarchy_path_ids: ["command", "company"],
       valid_qualifications: [], has_upcoming_weapon_duty: true, has_upcoming_matching_range: false,
-      upcoming_weapon_duties: [{ assignment_id: "duty-3", duty_type_id: "weapon", duty_type_name: "סיור", start_date: "2026-08-12", end_date: "2026-08-12", required_range_type: "live" }],
+      upcoming_weapon_duties: [{ assignment_id: "duty-3", duty_type_id: "weapon", duty_type_name: "סיור", start_date: "2026-08-12", end_date: "2026-08-12", required_range_type: "live", eligible: false, qualification_source: null, covered_by_range_date: null, projected_valid_until: null, reason: "weapon_qualification" }],
       upcoming_matching_ranges: [],
     },
   ],
@@ -96,17 +104,36 @@ describe("IneligibleSoldiersTable", () => {
     expect(screen.getAllByRole("button", { name: "נועם כהן" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "מאיה לוי" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "אורי פרץ" })).toHaveLength(1);
-    expect(screen.getByText("מטווח לייזר בתוקף עד 2026-12-31")).toBeInTheDocument();
+    expect(screen.getByText("מטווח לייזר בתוקף עד 31.12.2026")).toBeInTheDocument();
   });
 
-  it("labels normal and urgent qualification warnings in Hebrew as well as by color", () => {
+  it("explains uncovered duties and planned coverage in Hebrew as well as by color", () => {
     renderTable();
     fireEvent.click(within(screen.getByTestId("ineligible-node-company")).getByRole("button"));
 
-    expect(screen.getByTestId("ineligible-warning-soldier-2")).toHaveTextContent("אין כשירות מטווח בתוקף");
+    expect(screen.getByTestId("ineligible-warning-soldier-1")).toHaveTextContent("מטווח מתוכנן מסוג מטווח לייזר בתאריך 20.08.2026 מכסה את התורנות; הכשירות צפויה בתוקף עד 20.02.2027");
+    expect(screen.getByTestId("ineligible-warning-soldier-2")).toHaveTextContent("טרם שובץ לתורנות שדורשת נשק");
     expect(screen.getByTestId("ineligible-warning-soldier-2")).toHaveClass("bg-amber-100", "dark:bg-amber-900/40");
-    expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveTextContent("תורנות נשק קרובה ללא מטווח תואם");
+    expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveTextContent("משובץ לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026");
     expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveClass("bg-red-100", "dark:bg-red-900/40");
+  });
+
+  it("sorts hierarchy and expanded soldier columns while preserving the expanded unit", () => {
+    renderTable();
+    fireEvent.click(within(screen.getByTestId("ineligible-node-company")).getByRole("button"));
+
+    fireEvent.click(screen.getByRole("columnheader", { name: "יחידה" }));
+    expect(screen.getByTestId("ineligible-soldiers-node-company")).toBeInTheDocument();
+
+    const soldierTable = screen.getByTestId("ineligible-soldiers-node-company");
+    for (const headerName of ["חייל", "כשירות", "הקשר עתידי"]) {
+      const before = within(soldierTable).getAllByRole("row").slice(1).map((row) => row.textContent);
+      const header = within(soldierTable).getByRole("columnheader", { name: headerName });
+      fireEvent.click(header);
+      const after = within(soldierTable).getAllByRole("row").slice(1).map((row) => row.textContent);
+      expect(header).toHaveTextContent("▲");
+      expect(after).not.toEqual(before);
+    }
   });
 
   it("shows loading, error, and empty states", () => {

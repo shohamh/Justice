@@ -16,13 +16,23 @@ export interface QualificationSummary {
   valid_until: string;
 }
 
-export interface UpcomingWeaponDuty {
+export interface DutyEligibilityFact {
+  eligible: boolean;
+  required_range_type: RangeType | null;
+  qualification_source: string | null;
+  covered_by_range_date: string | null;
+  projected_valid_until: string | null;
+  reason: string | null;
+  duty_type_name: string;
+  start_date: string;
+}
+
+export interface UpcomingWeaponDuty extends DutyEligibilityFact {
   assignment_id: string;
   duty_type_id: string;
   duty_type_name: string;
   start_date: string;
   end_date: string;
-  required_range_type: RangeType;
 }
 
 export interface UpcomingMatchingRange {
