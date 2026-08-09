@@ -130,11 +130,16 @@ describe("IneligibleSoldiersTable", () => {
     expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveClass("bg-red-100", "dark:bg-red-900/40");
   });
 
-  it("sorts hierarchy rows and preserves the expanded unit while sorting soldier columns", () => {
-    renderTable();
+  it("sorts the commander hierarchy from fixture order and preserves the expanded unit while sorting soldier columns", () => {
+    renderTable(planningResponse, "commander");
     fireEvent.click(within(screen.getByTestId("ineligible-node-company")).getByRole("button"));
 
     const hierarchyTable = screen.getByTestId("ineligible-soldiers-table");
+    expect(screen.getAllByTestId(/^ineligible-node-/).map((row) => row.cells[1].textContent)).toEqual([
+      "פיקודפיקוד עליון",
+      "פלוגהפלוגה א",
+      "מחלקהמחלקה 1",
+    ]);
     const hierarchyHeader = within(hierarchyTable).getByRole("columnheader", { name: "יחידה" });
     fireEvent.click(hierarchyHeader);
 

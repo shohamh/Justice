@@ -41,10 +41,6 @@ vi.mock("../api/soldiers", () => ({
 vi.mock("../api/swaps", () => ({
   getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
 }));
-const mockGetWeaponIneligibleCount = vi.fn(() => Promise.resolve(0));
-vi.mock("../api/shifts", () => ({
-  getWeaponIneligibleCount: (...args: unknown[]) => mockGetWeaponIneligibleCount(...args),
-}));
 const mockGetIneligibleSoldierCount = vi.fn();
 vi.mock("../api/ineligibleSoldiers", () => ({
   getIneligibleSoldierCount: (...args: unknown[]) => mockGetIneligibleSoldierCount(...args),
@@ -116,8 +112,6 @@ beforeEach(() => {
     markJobSeen: vi.fn(),
     markAllSeen: vi.fn(),
   }));
-  mockGetWeaponIneligibleCount.mockReset();
-  mockGetWeaponIneligibleCount.mockResolvedValue(0);
 });
 
 describe("UnifiedNav — soldier role", () => {
@@ -297,7 +291,6 @@ describe("UnifiedNav — standalone weapon-ineligible destination", () => {
     mockUseAuth.mockReturnValue({ user });
     render(<UnifiedNav />);
     expect(screen.queryByTestId("nav-weapon-ineligible")).not.toBeInTheDocument();
-    expect(mockGetWeaponIneligibleCount).not.toHaveBeenCalled();
   });
 });
 

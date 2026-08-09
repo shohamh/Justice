@@ -115,13 +115,15 @@ describe("filterCalendarShifts", () => {
   });
 });
 
-function renderCalendar() {
+function renderCalendar(initialProps: { nodeId?: string; soldierId?: string; weaponIneligibleOnly?: boolean } = { nodeId: "node-1" }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const calendar = (props: { nodeId?: string; soldierId?: string; weaponIneligibleOnly?: boolean }) => (
     <QueryClientProvider client={queryClient}>
-      <UnitCalendar nodeId="node-1" />
-    </QueryClientProvider>,
+      <UnitCalendar {...props} />
+    </QueryClientProvider>
   );
+  const result = render(calendar(initialProps));
+  return { ...result, rerenderCalendar: (props: { nodeId?: string; soldierId?: string; weaponIneligibleOnly?: boolean }) => result.rerender(calendar(props)) };
 }
 
 function loadCalendarWith(shifts: CalendarShift[]) {
@@ -192,6 +194,37 @@ describe("UnitCalendar eligibility warning", () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId("unit-calendar-weapon-warning")).toHaveTextContent("2");
+  });
+
+  test("clears a loaded warning count when the calendar scope changes", async () => {
+    loadCalendarWith([shift("scope-change", "guard", false)]);
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockResolvedValue({ count: 4 });
+
+    const { rerenderCalendar } = renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    expect(await screen.findByTestId("unit-calendar-weapon-warning")).toHaveTextContent("4");
+
+    rerenderCalendar({ nodeId: "node-2" });
+
+    expect(screen.queryByTestId("unit-calendar-weapon-warning")).not.toBeInTheDocument();
+  });
+
+  test("ignores a pending warning count after the calendar scope changes", async () => {
+    loadCalendarWith([shift("scope-race", "guard", false)]);
+    let resolveCount: ((value: { count: number }) => void) | undefined;
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockReturnValue(
+      new Promise((resolve) => { resolveCount = resolve; }),
+    );
+
+    const { rerenderCalendar } = renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    rerenderCalendar({ nodeId: "node-2" });
+
+    await act(async () => {
+      resolveCount?.({ count: 7 });
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId("unit-calendar-weapon-warning")).not.toBeInTheDocument();
   });
 
   test("keeps the duty-type filter visible when the calendar has no assignments", async () => {

@@ -134,6 +134,8 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
 
   useEffect(() => {
     dateRangeRef.current = null;
+    warningCountRequestRef.current += 1;
+    setWeaponIneligibleCount(null);
     setShifts([]);
     setRanges([]);
     setSelectedShift(null);
