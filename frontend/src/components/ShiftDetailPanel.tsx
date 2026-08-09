@@ -147,17 +147,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   function rangeEligibilityIndicator(assignee: CalendarShiftAssignee): React.ReactNode {
     if (!shift.required_range_type) return null;
     if (!assignee.range_eligibility) {
-      if (assignee.weapon_ineligible) {
-        return (
-          <span
-            aria-label={t("range_qualification.shiftDetail.warning")}
-            title={assignee.weapon_ineligible_reason ?? undefined}
-            className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300"
-          >
-            ⚠️
-          </span>
-        );
-      }
       return (
         <span className="text-xs text-gray-500 dark:text-gray-400">
           {t("range_qualification.shiftDetail.unavailable")}
