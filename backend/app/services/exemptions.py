@@ -14,6 +14,12 @@ class ExemptionError(Exception):
     """Raised on an invalid exemption operation."""
 
 
+def _format_exemption_period(start_date: date, end_date: date | None) -> str:
+    if end_date is None:
+        return "קבוע"
+    return f"{start_date.isoformat()}–{end_date.isoformat()}"
+
+
 def grant_exemption(
     session: Session,
     *,
@@ -62,7 +68,7 @@ def grant_exemption(
     create_notification(
         session, soldier_id=soldier_id,
         type=NotificationType.exemption_approved,
-        title="ניתן לך פטור",
+        title=f"ניתן לך פטור — {et.name}, {_format_exemption_period(start_date, end_date)}",
         body=reason,
         reference_type="soldier_exemption", reference_id=ex.id,
         actor_id=actor_id,
@@ -123,7 +129,7 @@ def grant_commander_exemption(
     create_notification(
         session, soldier_id=soldier_id,
         type=NotificationType.exemption_approved,
-        title="ניתן לך פטור מפקדתי",
+        title=f"ניתן לך פטור מפקדתי — {et.name}, {_format_exemption_period(start_date, end_date)}",
         body=reason,
         reference_type="soldier_exemption", reference_id=ex.id,
         actor_id=actor_id,
@@ -152,6 +158,7 @@ def revoke_exemption(
     ex = session.get(SoldierExemption, exemption_id)
     if ex is None:
         raise ExemptionError("exemption_not_found")
+    et = session.get(ExemptionType, ex.exemption_type_id)
     today = date.today()
     if ex.end_date is not None and ex.end_date < today:
         # Already expired: revoking would otherwise push end_date forward to
@@ -182,7 +189,7 @@ def revoke_exemption(
     create_notification(
         session, soldier_id=ex.soldier_id,
         type=NotificationType.exemption_revoked,
-        title="פטור בוטל",
+        title=f"פטור בוטל — {et.name if et else 'פטור'}, {_format_exemption_period(ex.start_date, ex.end_date)}",
         body=reason,
         reference_type="soldier_exemption", reference_id=ex.id,
         actor_id=actor_id,

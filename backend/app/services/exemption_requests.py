@@ -12,6 +12,12 @@ from app.services.exemptions import ExemptionError, grant_commander_exemption
 from app.services.notifications import create_notification
 
 
+def _format_exemption_period(start_date: date, end_date: date | None) -> str:
+    if end_date is None:
+        return "קבוע"
+    return f"{start_date.isoformat()}–{end_date.isoformat()}"
+
+
 class ExemptionRequestError(ValueError):
     pass
 
@@ -200,9 +206,12 @@ def approve_duty_manager_step(
     )
     session.add(exemption)
     session.flush()
+    et = session.get(ExemptionType, req.exemption_type_id)
+    type_name = et.name if et else "פטור"
+    period = _format_exemption_period(req.start_date, req.end_date)
     create_notification(session, soldier_id=req.soldier_id,
                         type=NotificationType.exemption_approved,
-                        title="בקשת הפטור אושרה",
+                        title=f"בקשת הפטור אושרה — {type_name}, {period}",
                         reference_type="exemption_request", reference_id=req.id,
                         actor_id=decided_by)
     if req.enrollment_request_id:
@@ -227,9 +236,13 @@ def reject_request(
     req.decided_by = decided_by
     req.decision_note = decision_note
     session.flush()
+    et = session.get(ExemptionType, req.exemption_type_id)
+    type_name = et.name if et else "פטור"
+    period = _format_exemption_period(req.start_date, req.end_date)
     create_notification(session, soldier_id=req.soldier_id,
                         type=NotificationType.exemption_rejected,
-                        title="בקשת הפטור נדחתה",
+                        title=f"בקשת הפטור נדחתה — {type_name}, {period}",
+                        body=decision_note,
                         reference_type="exemption_request", reference_id=req.id,
                         actor_id=decided_by)
     if req.enrollment_request_id:
