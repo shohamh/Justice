@@ -182,6 +182,98 @@ def test_calendar_weapon_ineligible_count_forbids_non_admin_outside_requested_no
     assert response.status_code == 403, response.text
 
 
+def test_shift_detail_projects_required_range_and_assignee_eligibility(
+    client: TestClient, admin_session: Session
+):
+    """The selected shift exposes duty-date facts, not stored assignment flags."""
+    admin = create_soldier(admin_session, personal_number="detail-eligibility-admin", role="admin")
+    node = create_node(admin_session, level="branch", name="detail-eligibility-node")
+    uncovered = create_soldier(
+        admin_session, personal_number="detail-eligibility-uncovered", hierarchy_node_id=node.id
+    )
+    current = create_soldier(
+        admin_session, personal_number="detail-eligibility-current", hierarchy_node_id=node.id
+    )
+    planned = create_soldier(
+        admin_session, personal_number="detail-eligibility-planned", hierarchy_node_id=node.id
+    )
+    duty_type = DutyType(
+        name="detail-eligibility-weapon",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    location = DutyLocation(name="detail-eligibility-location")
+    duty_day = date.today() + timedelta(days=12)
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=duty_day,
+        end_date=duty_day + timedelta(days=1),
+        required_count=3,
+        status="active",
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    for soldier in (uncovered, current, planned):
+        admin_session.add(
+            DutyAssignment(
+                soldier_id=soldier.id,
+                duty_type_id=duty_type.id,
+                duty_location_id=location.id,
+                duty_shift_id=shift.id,
+                start_date=duty_day,
+                end_date=duty_day + timedelta(days=1),
+                status="published",
+                weapon_ineligible=False,
+            )
+        )
+    admin_session.add(
+        SoldierRangeQualification(
+            soldier_id=current.id,
+            range_type=RangeType.laser,
+            valid_until=duty_day,
+        )
+    )
+    range_event = RangeEvent(
+        hierarchy_node_id=node.id,
+        range_type=RangeType.laser,
+        date=duty_day - timedelta(days=4),
+        range_location_id=create_range_location(admin_session).id,
+        required_count=1,
+    )
+    admin_session.add(range_event)
+    admin_session.flush()
+    admin_session.add(RangeAssignment(range_event_id=range_event.id, soldier_id=planned.id))
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(f"/api/calendar/shifts/{shift.id}", headers=auth_headers(admin))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["required_range_type"] == "laser"
+    assignees = {assignee["soldier_id"]: assignee for assignee in body["assignees"]}
+    uncovered_fact = assignees[str(uncovered.id)]["range_eligibility"]
+    assert uncovered_fact == {
+        "eligible": False,
+        "required_range_type": "laser",
+        "qualification_source": None,
+        "covered_by_range_date": None,
+        "projected_valid_until": None,
+        "reason": "weapon_qualification",
+        "duty_type_name": duty_type.name,
+        "start_date": duty_day.isoformat(),
+    }
+    assert assignees[str(current.id)]["range_eligibility"]["qualification_source"] == "current_qualification"
+    planned_fact = assignees[str(planned.id)]["range_eligibility"]
+    assert planned_fact["eligible"] is True
+    assert planned_fact["qualification_source"] == "planned_range"
+    assert planned_fact["covered_by_range_date"] == (duty_day - timedelta(days=4)).isoformat()
+
+
 def test_commander_sees_subtree_calendar(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5700001", role="admin")
     dept = create_node(admin_session, level="department", name="dep-cal")
@@ -515,6 +607,7 @@ def test_shift_detail_redacts_weapon_ineligibility_from_outside_soldier(
     assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
     assert assignee["weapon_ineligible"] is False
     assert assignee["weapon_ineligible_reason"] is None
+    assert assignee["range_eligibility"] is None
 
 
 def test_calendar_shifts_redacts_weapon_ineligibility_from_outside_soldier(

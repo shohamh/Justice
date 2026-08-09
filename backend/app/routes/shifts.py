@@ -47,6 +47,7 @@ class ShiftOut(BaseModel):
     generated_from_template_name: str | None = None
     node_quotas: list["NodeQuotaOut"] = Field(default_factory=list)
     ineligible_count: int = 0
+    required_range_type: str | None = None
 
 
 class WeaponIneligibleCountOut(BaseModel):
@@ -124,12 +125,15 @@ def _out(
     ineligible_count: int = 0,
 ) -> ShiftOut:
     calculated = None
+    required_range_type = None
     if session is not None:
         from app.services.algorithm_bridge import reserve_count_for_shift
         from app.db.models import DutyShift as DutyShiftModel
         shift_obj = session.get(DutyShiftModel, s.id)
         if shift_obj is not None:
             calculated = reserve_count_for_shift(session, shift=shift_obj)
+        duty_type = session.get(DutyType, s.duty_type_id)
+        required_range_type = duty_type.required_range_type if duty_type is not None else None
     return ShiftOut(
         id=s.id,
         duty_type_id=s.duty_type_id,
@@ -149,6 +153,7 @@ def _out(
         generated_from_template_name=template_name,
         node_quotas=node_quotas or [],
         ineligible_count=ineligible_count,
+        required_range_type=required_range_type,
     )
 
 

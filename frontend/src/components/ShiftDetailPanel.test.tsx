@@ -13,8 +13,11 @@ vi.mock("../auth/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-const mockT = (key: string, fallback?: string) =>
-  key === "weapon_ineligible.replace" ? "החלף" : (fallback ?? key);
+const mockT = (key: string, options?: string | Record<string, string>) => {
+  if (key === "weapon_ineligible.replace") return "החלף";
+  if (typeof options === "string") return options;
+  return options?.rangeType ? `${key} ${options.rangeType}` : key;
+};
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mockT }),
 }));
@@ -83,6 +86,7 @@ function makeAssignee(overrides: Partial<CalendarShiftAssignee>): CalendarShiftA
     hierarchy_path_ids: [],
     weapon_ineligible: false,
     weapon_ineligible_reason: null,
+    range_eligibility: null,
     ...overrides,
   };
 }
@@ -104,6 +108,7 @@ function makeShift(assignees: CalendarShiftAssignee[]): CalendarShift {
     assigned_count: 2,
     fill_status: "full",
     reserve_count: 1,
+    required_range_type: "laser",
     assignees,
   };
 }
@@ -169,6 +174,55 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
     );
 
     expect(within(nameRow("רזרב לא כשיר")).getByTitle(WEAPON_REASON)).toHaveTextContent("⚠️");
+  });
+  it("shows the required range and projection warning only for an uncovered assignee", () => {
+    mockUseAuth.mockReturnValue({ user: null });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          soldier_name: "חייל ללא מטווח",
+          range_eligibility: {
+            eligible: false,
+            required_range_type: "laser",
+            qualification_source: null,
+            covered_by_range_date: null,
+            projected_valid_until: null,
+            reason: "weapon_qualification",
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+        makeAssignee({
+          assignment_id: "a-covered",
+          soldier_id: "s-covered",
+          soldier_name: "חייל עם מטווח",
+          range_eligibility: {
+            eligible: true,
+            required_range_type: "laser",
+            qualification_source: "planned_range",
+            covered_by_range_date: "2026-08-08",
+            projected_valid_until: "2027-08-08",
+            reason: null,
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+      ])
+    );
+
+    expect(screen.getByText(/range_qualification\.shiftDetail\.requiredRange/)).toHaveTextContent("מטווח לייזר");
+    expect(within(nameRow("חייל ללא מטווח")).getByLabelText("range_qualification.shiftDetail.warning")).toHaveAttribute(
+      "title",
+      expect.stringContaining("range_qualification.explanation.uncoveredDuty")
+    );
+    expect(within(nameRow("חייל עם מטווח")).queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
+  });
+
+  it("shows a neutral state when a required-range eligibility fact is unavailable", () => {
+    mockUseAuth.mockReturnValue({ user: null });
+    renderPanel(makeShift([makeAssignee({ soldier_name: "חייל ללא נתון" })]));
+
+    expect(screen.getByText("range_qualification.shiftDetail.unavailable")).toBeInTheDocument();
   });
 });
 

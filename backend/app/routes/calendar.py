@@ -47,6 +47,17 @@ class CalendarShiftAssigneeDismissal(BaseModel):
     reason: str | None
 
 
+class CalendarRangeEligibilityFact(BaseModel):
+    eligible: bool
+    required_range_type: str | None
+    qualification_source: str | None
+    covered_by_range_date: date | None
+    projected_valid_until: date | None
+    reason: str | None
+    duty_type_name: str
+    start_date: date
+
+
 class CalendarShiftAssignee(BaseModel):
     assignment_id: uuid.UUID
     soldier_id: uuid.UUID
@@ -63,6 +74,7 @@ class CalendarShiftAssignee(BaseModel):
     hierarchy_path_ids: list[str] = []
     weapon_ineligible: bool = False
     weapon_ineligible_reason: str | None = None
+    range_eligibility: CalendarRangeEligibilityFact | None = None
 
 
 class CalendarShiftOut(BaseModel):
@@ -70,6 +82,7 @@ class CalendarShiftOut(BaseModel):
     duty_type_id: uuid.UUID
     duty_type_name: str
     duty_type_color: str
+    required_range_type: str | None = None
     duty_location_name: str
     start_date: date
     end_date: date
@@ -148,6 +161,7 @@ def _redact_shift_reasons(shift: CalendarShiftOut, user: Soldier, roots: set[uui
         if not can_view_private:
             assignee.weapon_ineligible = False
             assignee.weapon_ineligible_reason = None
+            assignee.range_eligibility = None
         for d in assignee.dismissals:
             d.reason = _visible_reason(
                 user, assignee.soldier_id, assignee.hierarchy_path_ids, roots, d.reason
@@ -252,7 +266,14 @@ def calendar_shifts(
     else:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="node_id_or_soldier_id_required")
     roots = scope_root_ids(session, user)
-    raw = get_calendar_shifts(session, node_id=node_id, soldier_id=soldier_id, date_from=date_from, date_to=date_to)
+    raw = get_calendar_shifts(
+        session,
+        node_id=node_id,
+        soldier_id=soldier_id,
+        date_from=date_from,
+        date_to=date_to,
+        include_eligibility_facts=True,
+    )
     swap_counts = _swap_counts_for_shifts(session, [s["id"] for s in raw])
     shifts = []
     for s in raw:

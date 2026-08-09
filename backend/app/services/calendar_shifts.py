@@ -18,7 +18,10 @@ from app.db.models import (
     HierarchyNode,
     Soldier,
 )
-from app.services.range_eligibility_projection import count_ineligible_soldiers_for_duties
+from app.services.range_eligibility_projection import (
+    count_ineligible_soldiers_for_duties,
+    project_duty_eligibility,
+)
 
 
 def _duty_color_for(duty_type_id: uuid.UUID) -> str:
@@ -40,6 +43,40 @@ def _shift_instants(shift: DutyShift) -> tuple[Any, Any]:
     return combine_date_time(shift.start_date, shift.start_time), combine_date_time(last_day, shift.end_time)
 
 
+def _attach_range_eligibility_facts(session: Session, shifts: list[dict[str, Any]]) -> None:
+    """Attach shared duty-date eligibility facts to calendar assignees in place."""
+    duty_pairs = {
+        (assignee["soldier_id"], assignee["assignment_id"])
+        for shift in shifts
+        for assignee in shift["assignees"]
+    }
+    if not duty_pairs:
+        return
+    facts = project_duty_eligibility(
+        session,
+        soldier_ids=[soldier_id for soldier_id, _assignment_id in duty_pairs],
+        duty_ids=[assignment_id for _soldier_id, assignment_id in duty_pairs],
+        as_of=date.today(),
+    )
+    for shift in shifts:
+        for assignee in shift["assignees"]:
+            fact = facts.get((assignee["soldier_id"], assignee["assignment_id"]))
+            assignee["range_eligibility"] = (
+                {
+                    "eligible": fact.eligible,
+                    "required_range_type": fact.required_range_type,
+                    "qualification_source": fact.qualification_source,
+                    "covered_by_range_date": fact.covered_by_range_date,
+                    "projected_valid_until": fact.projected_valid_until,
+                    "reason": fact.reason,
+                    "duty_type_name": shift["duty_type_name"],
+                    "start_date": shift["start_date"],
+                }
+                if fact is not None
+                else None
+            )
+
+
 def get_calendar_shifts(
     session: Session,
     *,
@@ -47,6 +84,7 @@ def get_calendar_shifts(
     soldier_id: uuid.UUID | None = None,
     date_from: date | None,
     date_to: date | None,
+    include_eligibility_facts: bool = False,
 ) -> list[dict[str, Any]]:
     if soldier_id is not None:
         # Personal view: only this soldier's own assignments, regardless of
@@ -103,10 +141,10 @@ def get_calendar_shifts(
             return []
         return [str(pid) for pid in (leaf.path_ids or [])]
 
-    dt_map: dict[uuid.UUID, tuple[str, str]] = {}
+    dt_map: dict[uuid.UUID, tuple[str, str, str | None]] = {}
     for dt in session.execute(select(DutyType)).scalars().all():
         h = hash(dt.id) % 360
-        dt_map[dt.id] = (dt.name, f"hsl({h}, 65%, 55%)")
+        dt_map[dt.id] = (dt.name, f"hsl({h}, 65%, 55%)", dt.required_range_type)
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
 
@@ -281,7 +319,9 @@ def get_calendar_shifts(
         # (the base query above pulls every active shift in range, unfiltered).
         if soldier_id is not None and not assignees:
             continue
-        dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id)))
+        dt_name, dt_color, required_range_type = dt_map.get(
+            shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id), None)
+        )
         primary_count = sum(1 for a_ in assignees if not a_["is_reserve"])
         reserve_count = sum(
             1 for a_ in assignees if a_["is_reserve"] and not a_.get("called_up_from")
@@ -293,6 +333,7 @@ def get_calendar_shifts(
                 "duty_type_id": shift.duty_type_id,
                 "duty_type_name": dt_name,
                 "duty_type_color": dt_color,
+                "required_range_type": required_range_type,
                 "duty_location_name": loc_map.get(shift.duty_location_id, ""),
                 "start_date": shift.start_date,
                 "end_date": shift.end_date,
@@ -310,6 +351,8 @@ def get_calendar_shifts(
             }
         )
 
+    if include_eligibility_facts:
+        _attach_range_eligibility_facts(session, result)
     return result
 
 
@@ -358,10 +401,10 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
     if shift is None:
         return None
 
-    dt_map: dict[uuid.UUID, tuple[str, str]] = {}
+    dt_map: dict[uuid.UUID, tuple[str, str, str | None]] = {}
     for dt in session.execute(select(DutyType)).scalars().all():
         h = hash(dt.id) % 360
-        dt_map[dt.id] = (dt.name, f"hsl({h}, 65%, 55%)")
+        dt_map[dt.id] = (dt.name, f"hsl({h}, 65%, 55%)", dt.required_range_type)
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
 
@@ -395,13 +438,16 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
         .all()
     )
 
-    dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id)))
+    dt_name, dt_color, required_range_type = dt_map.get(
+        shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id), None)
+    )
     start_at, end_at = _shift_instants(shift)
     base = {
         "id": shift.id,
         "duty_type_id": shift.duty_type_id,
         "duty_type_name": dt_name,
         "duty_type_color": dt_color,
+        "required_range_type": required_range_type,
         "duty_location_name": loc_map.get(shift.duty_location_id, ""),
         "start_date": shift.start_date,
         "end_date": shift.end_date,
@@ -492,4 +538,12 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
     reserve_count = sum(1 for e in assignees if e["is_reserve"] and not e.get("called_up_from"))
     fill = "full" if primary_count >= shift.required_count else ("partial" if primary_count > 0 else "empty")
 
-    return {**base, "assigned_count": primary_count, "fill_status": fill, "reserve_count": reserve_count, "assignees": assignees}
+    result = {
+        **base,
+        "assigned_count": primary_count,
+        "fill_status": fill,
+        "reserve_count": reserve_count,
+        "assignees": assignees,
+    }
+    _attach_range_eligibility_facts(session, [result])
+    return result

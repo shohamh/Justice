@@ -1,4 +1,6 @@
 import { api } from "./client";
+import type { DutyEligibilityFact } from "./ineligibleSoldiers";
+import type { RangeType } from "./ranges";
 
 // Old types (still used by UnitCalendar)
 export interface CalAssignment {
@@ -47,6 +49,7 @@ export interface CalendarShiftAssignee {
   hierarchy_path_ids: string[];
   weapon_ineligible: boolean;
   weapon_ineligible_reason: string | null;
+  range_eligibility: DutyEligibilityFact | null;
 }
 
 export async function dismissReserve(
@@ -63,6 +66,7 @@ export interface CalendarShift {
   duty_type_id: string;
   duty_type_name: string;
   duty_type_color: string;
+  required_range_type: RangeType | null;
   duty_location_name: string;
   start_date: string;
   end_date: string;
