@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import MyRequestsPage from "./MyRequestsPage";
@@ -167,5 +167,48 @@ describe("MyRequestsPage - constraint start date cannot be in the past", () => {
     expect(constraintsApi.submitConstraint).toHaveBeenCalledWith(
       expect.objectContaining({ start_date: "2030-12-31" }),
     );
+  });
+});
+
+describe("MyRequestsPage - permanent exemption checkbox", () => {
+  it("permanent checkbox disables the end-date field and submits end_date: null", async () => {
+    vi.mocked(dutyConfigApi.listExemptionTypes).mockResolvedValue([
+      { id: "et-1", name: "סוג פטור", description: null, active: true },
+    ]);
+    renderPage();
+    await screen.findByTestId("constraints-remaining");
+
+    // Select a type in the Combobox the way Combobox.test.tsx drives it
+    // (focus opens the dropdown; selecting fires on pointerUp). The button
+    // role disambiguates from the request-list row showing the same name.
+    fireEvent.focus(screen.getByTestId("er-type"));
+    const typeOption = screen.getByRole("button", { name: "סוג פטור" });
+    fireEvent.pointerDown(typeOption);
+    fireEvent.pointerUp(typeOption);
+
+    fireEvent.change(screen.getByTestId("er-start"), { target: { value: "01092026" } });
+
+    fireEvent.click(screen.getByTestId("er-permanent"));
+    expect(screen.getByTestId("er-end")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("er-submit"));
+
+    await waitFor(() => {
+      expect(vi.mocked(exemptionsApi.submitExemptionRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({ end_date: null, start_date: "2026-09-01" }),
+      );
+    });
+  });
+
+  it("unchecking permanent re-enables and requires the end-date field", async () => {
+    renderPage();
+    await screen.findByTestId("constraints-remaining");
+
+    const permanent = screen.getByTestId("er-permanent");
+    fireEvent.click(permanent); // check — disables the end-date field
+    expect(screen.getByTestId("er-end")).toBeDisabled();
+    fireEvent.click(permanent); // uncheck — re-enables and requires it again
+    expect(screen.getByTestId("er-end")).not.toBeDisabled();
+    expect(screen.getByTestId("er-end")).toBeRequired();
   });
 });
