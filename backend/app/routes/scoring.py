@@ -14,7 +14,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import scoring as svc
-from app.services.authority import has_any_visibility
+from app.services.authority import can_view_soldier_scope, has_any_visibility
 
 router = APIRouter(prefix="/scoring", tags=["scoring"])
 
@@ -142,7 +142,8 @@ def effort_breakdown(
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     if s.id != user.id:
-        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+        if not can_view_soldier_scope(session, user, _node_of(session, s)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     today = date.today()
     try:

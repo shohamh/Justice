@@ -197,3 +197,10 @@ def test_transparency_exemptions_array_empty_when_redacted(client: TestClient, a
     row = next(x for x in r.json()["rows"] if x["soldier_id"] == str(target.id))
     assert row["exemptions_visible"] is False
     assert row["exemptions"] == []
+
+
+def test_effort_breakdown_403_for_unrelated_plain_soldier(client: TestClient, admin_session: Session):
+    a = create_soldier(admin_session, personal_number="5600050", role="soldier")
+    b = create_soldier(admin_session, personal_number="5600051", role="soldier")
+    r = client.get(f"/api/scoring/soldiers/{b.id}/effort-breakdown", headers=auth_headers(a))
+    assert r.status_code == 403
