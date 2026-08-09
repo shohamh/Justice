@@ -25,6 +25,7 @@ from app.db.models import (
 from app.algorithm.duration import calendar_days_touched, score_days
 from app.services.eligibility import inferred_service_type
 from app.auth.authz import scope_root_ids
+from app.services.authority import can_view_soldier_scope
 
 _UNSET: object = object()
 
@@ -548,9 +549,11 @@ def transparency_rows(
 
     rows: list[dict[str, Any]] = []
     for s in soldiers:
+        node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
+        if viewer is not None and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+            continue
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
         ad = active_days_map.get(s.id, 1)
-        node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         soldier_exemptions = exemptions_by_soldier.get(s.id, [])
         in_scope = node is not None and any(root in node.path_ids for root in roots)
         if in_scope:

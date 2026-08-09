@@ -14,7 +14,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import scoring as svc
-from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.authority import has_any_visibility
 
 router = APIRouter(prefix="/scoring", tags=["scoring"])
 
@@ -103,29 +103,12 @@ def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
 
 
-def _transparency_allowed(session: Session, user: Soldier) -> bool:
-    try:
-        levels = get_setting(session, "transparency.visible_commander_levels")
-    except SettingNotFound:
-        levels = None
-    if not levels:
-        return True  # no restriction configured — everyone can view (default, matches today)
-    if user.role in ("admin", "duty_manager"):
-        return True
-    return session.execute(
-        select(HierarchyNode.id).where(
-            HierarchyNode.commander_id == user.id,
-            HierarchyNode.level.in_(levels),
-        ).limit(1)
-    ).first() is not None
-
-
 @router.get("/transparency", response_model=TransparencyOut)
 def transparency(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> TransparencyOut:
-    if not _transparency_allowed(session, user):
+    if not has_any_visibility(session, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
     result = svc.transparency_rows(session, viewer=user)
     return TransparencyOut(

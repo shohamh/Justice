@@ -214,6 +214,14 @@ def test_partial_coverage_does_not_reduce_active_days(admin_session):
 
 
 def test_normalised_and_transparency(admin_session):
+    # viewer=s is a plain soldier with no command/DM scope; under the new
+    # can_view_soldier_scope-based row filtering (default threshold "מדור")
+    # they would not even see their own row unless visibility is opened up,
+    # so explicitly widen it here — this test is about the score math, not
+    # about scope filtering.
+    from app.services.settings_loader import set_setting
+
+    set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
     s = create_soldier(admin_session, personal_number="8500004")
     s.enrolled_at = date.today() - timedelta(days=10)
     admin_session.flush()
@@ -272,8 +280,18 @@ def test_transparency_exemption_in_scope_shows_real_label(admin_session):
 
 def test_transparency_exemption_out_of_scope_is_redacted(admin_session):
     from app.db.models import ExemptionType, SoldierExemption
+    from app.services.settings_loader import set_setting
     from tests.helpers import create_node
 
+    # This test's viewer has DM scope on a *different* subtree from the target,
+    # so it relies on the min_visible_level threshold rank check to keep the row
+    # visible (redacted) instead of scope-filtered out entirely. The conftest
+    # default hierarchy_level_types use English keys ("division", "group", ...)
+    # while the "מדור" default threshold key does not exist among them, so the
+    # rank comparison can never resolve here — widen to every_soldier so the
+    # row-scope gate doesn't hide the row this test is actually about
+    # (exemption redaction / aggregate-flag visibility, not row-scope gating).
+    set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
     node = create_node(admin_session, level="division", name="div-exempt-outscope")
     other_node = create_node(admin_session, level="division", name="div-exempt-other")
     viewer_dm = create_soldier(
@@ -298,8 +316,13 @@ def test_transparency_exemption_out_of_scope_is_redacted(admin_session):
 
 def test_transparency_aggregate_flags_absent_for_plain_soldier_viewer(admin_session):
     from app.db.models import ExemptionType, SoldierExemption
+    from app.services.settings_loader import set_setting
     from tests.helpers import create_node
 
+    # Widen row visibility so the plain viewer's row-scope gate doesn't hide
+    # the target row entirely — this test targets the separate
+    # can_see_exemption_aggregates gate (roots-based), not row-scope filtering.
+    set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
     node = create_node(admin_session, level="division", name="div-exempt-plain")
     plain_viewer = create_soldier(admin_session, personal_number="8500014", role="soldier")
     s = create_soldier(admin_session, personal_number="8500015", hierarchy_node_id=node.id)
@@ -318,6 +341,33 @@ def test_transparency_aggregate_flags_absent_for_plain_soldier_viewer(admin_sess
     assert row["has_global_exemption"] is None
     assert row["has_partial_exemption"] is None
     assert row["has_temporary_exemption"] is None
+
+
+def test_transparency_rows_excludes_out_of_scope_soldiers_for_junior_commander(admin_session):
+    # Arrange: two sibling nodes under different parents, a commander of one,
+    # a soldier under the other. The default threshold is "מדור" (not
+    # every_soldier) but this test explicitly sets a stricter "אגף" threshold
+    # the commander doesn't meet, to isolate the row-filtering behavior.
+    # Custom level types use ranks outside 1-7 (already used by conftest's
+    # _LEVEL_TYPE_DEFAULTS) since HierarchyLevelType.rank is unique.
+    from app.services.settings_loader import set_setting
+    from app.db.models import HierarchyLevelType
+    from tests.helpers import create_node
+
+    admin_session.add(HierarchyLevelType(key="אגף", label="אגף", rank=100))
+    admin_session.add(HierarchyLevelType(key="ענף", label="ענף", rank=101))
+    admin_session.flush()
+    own = create_node(admin_session, level="ענף", name="Own-junior-cmd")
+    other = create_node(admin_session, level="ענף", name="Other-junior-cmd")
+    cmd = create_soldier(admin_session, personal_number="8800001")
+    outsider = create_soldier(admin_session, personal_number="8800002", hierarchy_node_id=other.id)
+    own.commander_id = cmd.id
+    set_setting(admin_session, "transparency.min_visible_level", "אגף", actor_id=None)
+    admin_session.commit()
+
+    result = transparency_rows(admin_session, viewer=cmd)
+    ids = {r["soldier_id"] for r in result["rows"]}
+    assert outsider.id not in ids
 
 
 def test_breakdown(admin_session):
