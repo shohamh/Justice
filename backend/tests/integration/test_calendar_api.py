@@ -182,6 +182,89 @@ def test_calendar_weapon_ineligible_count_forbids_non_admin_outside_requested_no
     assert response.status_code == 403, response.text
 
 
+def test_calendar_weapon_ineligible_count_excludes_past_duties_and_counts_called_up_reserves(
+    client: TestClient, admin_session: Session
+):
+    """Only future active assignees contribute to the calendar warning badge."""
+    admin = create_soldier(admin_session, personal_number="calendar-count-window-admin", role="admin")
+    node = create_node(admin_session, level="branch", name="calendar-count-window-node")
+    past_one = create_soldier(
+        admin_session, personal_number="calendar-count-window-past-one", hierarchy_node_id=node.id
+    )
+    past_two = create_soldier(
+        admin_session, personal_number="calendar-count-window-past-two", hierarchy_node_id=node.id
+    )
+    called_up = create_soldier(
+        admin_session, personal_number="calendar-count-window-called-up", hierarchy_node_id=node.id
+    )
+    duty_type = DutyType(
+        name="calendar-count-window-weapon",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    location = DutyLocation(name="calendar-count-window-location")
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+
+    past_day = date.today() - timedelta(days=2)
+    future_day = date.today() + timedelta(days=3)
+
+    def add_assignment(soldier_id, day, *, is_reserve=False, called_up_from=None, called_up_to=None):
+        shift = DutyShift(
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            start_date=day,
+            end_date=day + timedelta(days=1),
+            required_count=1,
+            status="active",
+        )
+        admin_session.add(shift)
+        admin_session.flush()
+        admin_session.add(
+            DutyAssignment(
+                soldier_id=soldier_id,
+                duty_type_id=duty_type.id,
+                duty_location_id=location.id,
+                duty_shift_id=shift.id,
+                start_date=day,
+                end_date=day + timedelta(days=1),
+                status="published",
+                is_reserve=is_reserve,
+                called_up_from=called_up_from,
+                called_up_to=called_up_to,
+            )
+        )
+
+    # The requested window intentionally includes past dates. The two past
+    # primaries must not contribute; the future called-up reserve is displayed
+    # as an active assignee and must contribute.
+    add_assignment(past_one.id, past_day)
+    add_assignment(past_two.id, past_day)
+    add_assignment(
+        called_up.id,
+        future_day,
+        is_reserve=True,
+        called_up_from=future_day,
+        called_up_to=future_day,
+    )
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(
+        "/api/calendar/weapon-ineligible/count",
+        params={
+            "node_id": str(node.id),
+            "date_from": (past_day - timedelta(days=1)).isoformat(),
+            "date_to": future_day.isoformat(),
+        },
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"count": 1}
+
+
 def test_shift_detail_projects_required_range_and_assignee_eligibility(
     client: TestClient, admin_session: Session
 ):

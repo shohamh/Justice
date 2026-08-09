@@ -365,24 +365,25 @@ def count_calendar_weapon_ineligible_soldiers(
     date_to: date | None,
     visible_soldier_ids: set[uuid.UUID] | None = None,
 ) -> int:
-    """Count distinct primary assignees who are ineligible in the visible calendar.
+    """Count distinct active assignees who are ineligible in the visible calendar.
 
     The calendar rows establish the caller-selected subtree/personal scope and
-    date range. The shared projection then evaluates each displayed duty on its
-    own scheduled date, including only confirmed main-range coverage.
+    date range. Counts start today even when the visible window includes the
+    past. The shared projection then evaluates each displayed duty on its own
+    scheduled date, including only confirmed main-range coverage.
     """
     shifts = get_calendar_shifts(
         session,
         node_id=node_id,
         soldier_id=soldier_id,
-        date_from=date_from,
+        date_from=max(date_from, date.today()) if date_from else date.today(),
         date_to=date_to,
     )
     duty_pairs = {
         (assignee["soldier_id"], assignee["assignment_id"])
         for shift in shifts
         for assignee in shift["assignees"]
-        if not assignee["is_reserve"]
+        if (not assignee["is_reserve"] or assignee["called_up_from"])
         and (visible_soldier_ids is None or assignee["soldier_id"] in visible_soldier_ids)
     }
     if not duty_pairs:
