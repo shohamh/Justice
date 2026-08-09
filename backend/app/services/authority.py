@@ -102,13 +102,17 @@ def commander_can_grant_commander_exemption(
 
 
 def _min_visible_level(session: Session) -> str:
+    # Default is "מדור", NOT the fully-open "every_soldier" sentinel — a
+    # missing/unset row must still block plain soldiers from seeing an
+    # unrelated soldier's data, closing that leak without admin action.
+    # "every_soldier" remains a valid value an admin can explicitly set later.
     try:
         value = get_setting(session, "transparency.min_visible_level")
         if value:
             return str(value)
     except SettingNotFound:
         pass
-    return ""
+    return "מדור"
 
 
 def _commanded_nodes(session: Session, soldier_id: uuid.UUID) -> list[HierarchyNode]:

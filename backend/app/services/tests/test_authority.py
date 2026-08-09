@@ -252,6 +252,22 @@ def test_junior_commander_below_threshold_blocked(app_session):
     assert can_view_soldier_scope(app_session, cmd, unrelated) is False
 
 
+def test_default_threshold_is_mador_not_every_soldier(app_session):
+    """Pins the unset-setting fallback to the specific level "מדור", not the
+    fully-open "every_soldier" sentinel -- a מדור commander must see an
+    unrelated soldier with NOTHING configured, and a more junior (ענף)
+    commander must NOT, purely from the default."""
+    _level(app_session, "מדור", 1)
+    _level(app_session, "ענף", 2)
+    senior_cmd = _soldier(app_session, "112", role="commander")
+    _node(app_session, "מדור", commander_id=senior_cmd.id)
+    junior_cmd = _soldier(app_session, "113", role="commander")
+    _node(app_session, "ענף", commander_id=junior_cmd.id)
+    unrelated = _node(app_session, "מדור", name="Unrelated")
+    assert can_view_soldier_scope(app_session, senior_cmd, unrelated) is True
+    assert can_view_soldier_scope(app_session, junior_cmd, unrelated) is False
+
+
 def test_has_any_visibility_true_for_any_commanded_node(app_session):
     _level(app_session, "אגף", 1)
     cmd = _soldier(app_session, "109", role="commander")
