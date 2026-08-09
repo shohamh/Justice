@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import DutyManagerScope, HierarchyNode, Soldier
 from app.services.hierarchy import get_level_rank
-from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 
 COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
 REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY = "מרכז"
@@ -99,3 +99,98 @@ def commander_can_grant_commander_exemption(
         if node_rank is not None and node_rank <= mador_rank:
             return True
     return False
+
+
+def _min_visible_level(session: Session) -> str:
+    try:
+        value = get_setting(session, "transparency.min_visible_level")
+        if value:
+            return str(value)
+    except SettingNotFound:
+        pass
+    return ""
+
+
+def _commanded_nodes(session: Session, soldier_id: uuid.UUID) -> list[HierarchyNode]:
+    return list(
+        session.execute(
+            select(HierarchyNode).where(HierarchyNode.commander_id == soldier_id)
+        ).scalars().all()
+    )
+
+
+def _dm_scope_nodes(session: Session, soldier_id: uuid.UUID) -> list[HierarchyNode]:
+    root_ids = session.execute(
+        select(DutyManagerScope.hierarchy_node_id).where(DutyManagerScope.duty_manager_id == soldier_id)
+    ).scalars().all()
+    if not root_ids:
+        return []
+    return list(
+        session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(root_ids))).scalars().all()
+    )
+
+
+def _ancestor_n_up(session: Session, node: HierarchyNode, n: int) -> HierarchyNode:
+    """Walk `n` steps toward the root along node.path_ids (root-first, self-last).
+    Caps at the root if `n` exceeds the number of ancestors."""
+    if n <= 0:
+        return node
+    target_idx = max(0, len(node.path_ids) - 1 - n)
+    ancestor_id = node.path_ids[target_idx]
+    if ancestor_id == node.id:
+        return node
+    ancestor = session.get(HierarchyNode, ancestor_id)
+    return ancestor if ancestor is not None else node
+
+
+def _best_commanded_rank(session: Session, soldier_id: uuid.UUID) -> int | None:
+    """Most senior (lowest) rank among every node the soldier commands or
+    duty-manages, or None if they hold neither role."""
+    nodes = [*_commanded_nodes(session, soldier_id), *_dm_scope_nodes(session, soldier_id)]
+    ranks = [get_level_rank(session, node.level) for node in nodes]
+    ranks = [r for r in ranks if r is not None]
+    return min(ranks) if ranks else None
+
+
+def can_view_soldier_scope(
+    session: Session, viewer: Soldier, target_node: HierarchyNode | None,
+) -> bool:
+    """True iff `viewer` may see transparency/duty-history data belonging to a
+    soldier assigned to `target_node`. Single source of truth for the
+    transparency page, its fairness-components/effort-breakdown cards, and the
+    other-soldier branch of GET /soldiers/{id}/duty-history."""
+    if viewer.role == "admin":
+        return True
+
+    commander_expand = get_setting_int(session, "transparency.commander_levels_above", 0)
+    for node in _commanded_nodes(session, viewer.id):
+        ancestor = _ancestor_n_up(session, node, commander_expand)
+        if target_node is not None and ancestor.id in target_node.path_ids:
+            return True
+
+    dm_expand = get_setting_int(session, "transparency.duty_manager_levels_above", 0)
+    for node in _dm_scope_nodes(session, viewer.id):
+        ancestor = _ancestor_n_up(session, node, dm_expand)
+        if target_node is not None and ancestor.id in target_node.path_ids:
+            return True
+
+    threshold = _min_visible_level(session)
+    if threshold == "every_soldier":
+        return True
+
+    threshold_rank = get_level_rank(session, threshold)
+    if threshold_rank is None:
+        return False
+    best_rank = _best_commanded_rank(session, viewer.id)
+    return best_rank is not None and best_rank <= threshold_rank
+
+
+def has_any_visibility(session: Session, viewer: Soldier) -> bool:
+    """Cheap endpoint-level gate: True iff `viewer` can see *something* under
+    the transparency rule — used to 403 early instead of computing full row
+    sets for someone who'd end up seeing nothing."""
+    if viewer.role == "admin":
+        return True
+    if _commanded_nodes(session, viewer.id) or _dm_scope_nodes(session, viewer.id):
+        return True
+    return _min_visible_level(session) == "every_soldier"
