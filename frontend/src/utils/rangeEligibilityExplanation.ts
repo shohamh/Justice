@@ -14,7 +14,9 @@ export function formatRangeEligibilityExplanation(fact: DutyEligibilityFact, t: 
     && fact.projected_valid_until
   ) {
     return t("range_qualification.explanation.plannedRangeCoverage", {
-      rangeType: RANGE_TYPE_LABELS[fact.required_range_type ?? ""] ?? fact.required_range_type,
+      rangeType: RANGE_TYPE_LABELS[fact.covering_range_type ?? fact.required_range_type ?? ""]
+        ?? fact.covering_range_type
+        ?? fact.required_range_type,
       rangeDate: formatDate(fact.covered_by_range_date),
       projectedValidUntil: formatDate(fact.projected_valid_until),
     });

@@ -22,6 +22,7 @@ function fact(overrides: Partial<DutyEligibilityFact>): DutyEligibilityFact {
     required_range_type: null,
     qualification_source: null,
     covered_by_range_date: null,
+    covering_range_type: null,
     projected_valid_until: null,
     reason: "weapon_qualification",
     duty_type_name: "שמירה",
@@ -51,5 +52,16 @@ describe("formatRangeEligibilityExplanation", () => {
       covered_by_range_date: "2026-08-20",
       projected_valid_until: "2027-02-20",
     }), t)).toBe("מטווח מתוכנן מסוג מטווח לייזר בתאריך 20.08.2026 מכסה את התורנות; הכשירות צפויה בתוקף עד 20.02.2027");
+  });
+
+  it("names the actual higher-tier planned range that covers the duty", () => {
+    expect(formatRangeEligibilityExplanation(fact({
+      eligible: true,
+      required_range_type: "laser",
+      qualification_source: "planned_range",
+      covered_by_range_date: "2026-08-20",
+      covering_range_type: "live",
+      projected_valid_until: "2027-02-20",
+    }), t)).toBe("מטווח מתוכנן מסוג מטווח חי בתאריך 20.08.2026 מכסה את התורנות; הכשירות צפויה בתוקף עד 20.02.2027");
   });
 });

@@ -49,21 +49,21 @@ def _pending_excusal_disqualifies(session: Session) -> bool:
 def _is_eligible_from_data(
     *,
     current_best_valid_until: date | None,
-    future_windows: list[tuple[date, date]],
+    future_windows: list[tuple[date, date, str]],
     as_of: date,
 ) -> bool:
     """Pure predicate shared by the single-soldier and bulk paths.
 
     current_best_valid_until: the latest valid_until among the soldier's existing
     SoldierRangeQualification rows at/above the required tier (None if none exist).
-    future_windows: [(event_date, projected_valid_until), ...] for future, non-reserve,
+    future_windows: [(event_date, projected_valid_until, range_type), ...] for future, non-reserve,
     non-disqualified RangeAssignments at/above the required tier.
     """
     if current_best_valid_until is not None and current_best_valid_until >= as_of:
         return True
     return any(
         event_date <= as_of <= projected_valid_until
-        for event_date, projected_valid_until in future_windows
+        for event_date, projected_valid_until, _range_type in future_windows
     )
 
 
@@ -125,7 +125,7 @@ def _future_windows_by_soldier_and_required_type(
     required_range_types: Sequence[str],
     disqualify_pending: bool,
     future_start: date | None = None,
-) -> dict[tuple[uuid.UUID, str], list[tuple[date, date]]]:
+) -> dict[tuple[uuid.UUID, str], list[tuple[date, date, str]]]:
     """Batch equivalent of ``_future_windows`` using its exact eligibility window.
 
     ``future_start`` is an explicit clock seam for read-only projections. It
@@ -169,7 +169,7 @@ def _future_windows_by_soldier_and_required_type(
             ).scalars()
         )
     windows_by_soldier_and_type: defaultdict[
-        uuid.UUID, defaultdict[str, list[tuple[date, date]]]
+        uuid.UUID, defaultdict[str, list[tuple[date, date, str]]]
     ] = defaultdict(lambda: defaultdict(list))
     validity_days_by_type = {
         range_type: _validity_days(session, range_type)
@@ -178,7 +178,11 @@ def _future_windows_by_soldier_and_required_type(
     for assignment_id, soldier_id, event_date, range_type in rows:
         if assignment_id not in pending_assignment_ids:
             windows_by_soldier_and_type[soldier_id][range_type].append(
-                (event_date, event_date + timedelta(days=validity_days_by_type[range_type]))
+                (
+                    event_date,
+                    event_date + timedelta(days=validity_days_by_type[range_type]),
+                    range_type,
+                )
             )
 
     return {
@@ -214,7 +218,7 @@ def _future_windows(
     soldier_id: uuid.UUID,
     required_range_type: str,
     disqualify_pending: bool,
-) -> list[tuple[date, date]]:
+) -> list[tuple[date, date, str]]:
     return _future_windows_by_soldier_and_required_type(
         session,
         soldier_ids=[soldier_id],
@@ -292,7 +296,7 @@ def bulk_ineligible_duty_blocks(
     result: dict[uuid.UUID, set[uuid.UUID]] = {}
     for soldier_id in soldier_ids:
         # Cache per (soldier, required_range_type) — most batches only touch 1-2 tiers.
-        cache: dict[str, tuple[date | None, list[tuple[date, date]]]] = {}
+        cache: dict[str, tuple[date | None, list[tuple[date, date, str]]]] = {}
         ineligible: set[uuid.UUID] = set()
         for block in relevant:
             required = block.required_range_type

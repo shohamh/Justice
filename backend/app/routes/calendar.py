@@ -52,6 +52,7 @@ class CalendarRangeEligibilityFact(BaseModel):
     required_range_type: str | None
     qualification_source: str | None
     covered_by_range_date: date | None
+    covering_range_type: str | None
     projected_valid_until: date | None
     reason: str | None
     duty_type_name: str

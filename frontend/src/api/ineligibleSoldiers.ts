@@ -21,6 +21,7 @@ export interface DutyEligibilityFact {
   required_range_type: RangeType | null;
   qualification_source: string | null;
   covered_by_range_date: string | null;
+  covering_range_type: RangeType | null;
   projected_valid_until: string | null;
   reason: string | null;
   duty_type_name: string;

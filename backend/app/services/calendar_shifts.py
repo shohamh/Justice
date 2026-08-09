@@ -67,6 +67,7 @@ def _attach_range_eligibility_facts(session: Session, shifts: list[dict[str, Any
                     "required_range_type": fact.required_range_type,
                     "qualification_source": fact.qualification_source,
                     "covered_by_range_date": fact.covered_by_range_date,
+                    "covering_range_type": fact.covering_range_type,
                     "projected_valid_until": fact.projected_valid_until,
                     "reason": fact.reason,
                     "duty_type_name": shift["duty_type_name"],

@@ -19,6 +19,7 @@ from app.db.models import (
     Soldier,
     SoldierRangeQualification,
 )
+from app.services.range_eligibility_projection import DutyEligibilityFact, project_duty_eligibility
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ class IneligibleSoldierRecord:
     has_upcoming_matching_range: bool
     upcoming_weapon_duties: tuple[UpcomingWeaponDuty, ...]
     upcoming_matching_ranges: tuple[UpcomingMatchingRange, ...]
+    duty_eligibility: dict[uuid.UUID, DutyEligibilityFact]
 
 
 def _scope_clause(roots: set[uuid.UUID] | None):
@@ -189,7 +191,7 @@ def list_ineligible_soldiers(
     roots: set[uuid.UUID] | None,
     as_of: date,
 ) -> list[IneligibleSoldierRecord]:
-    """Return scoped soldiers with no qualification whose validity covers as_of."""
+    """Return scoped soldiers lacking a current qualification or future duty eligibility."""
     statement = select(Soldier, HierarchyNode).join(
         HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id
     )
@@ -203,16 +205,30 @@ def list_ineligible_soldiers(
         soldier_ids={soldier.id for soldier, _node in scoped_soldiers},
         as_of=as_of,
     )
+    upcoming_weapon_duties_by_soldier = _upcoming_weapon_duties_by_soldier(
+        session,
+        soldier_ids={soldier.id for soldier, _node in scoped_soldiers},
+        as_of=as_of,
+    )
+    duty_eligibility = project_duty_eligibility(
+        session,
+        soldier_ids=[soldier.id for soldier, _node in scoped_soldiers],
+        duty_ids=[
+            duty.assignment_id
+            for duties in upcoming_weapon_duties_by_soldier.values()
+            for duty in duties
+        ],
+        as_of=as_of,
+    )
     ineligible_soldiers = [
         (soldier, node)
         for soldier, node in scoped_soldiers
         if soldier.id not in valid_qualifications_by_soldier
+        or any(
+            not duty_eligibility[soldier.id, duty.assignment_id].eligible
+            for duty in upcoming_weapon_duties_by_soldier.get(soldier.id, ())
+        )
     ]
-    upcoming_weapon_duties_by_soldier = _upcoming_weapon_duties_by_soldier(
-        session,
-        soldier_ids={soldier.id for soldier, _node in ineligible_soldiers},
-        as_of=as_of,
-    )
     upcoming_matching_ranges_by_soldier = _upcoming_matching_ranges_by_soldier(
         session,
         required_range_types_by_soldier={
@@ -242,6 +258,10 @@ def list_ineligible_soldiers(
                 ),
                 upcoming_weapon_duties=upcoming_weapon_duties,
                 upcoming_matching_ranges=upcoming_matching_ranges,
+                duty_eligibility={
+                    duty.assignment_id: duty_eligibility[soldier.id, duty.assignment_id]
+                    for duty in upcoming_weapon_duties
+                },
             )
         )
 

@@ -14,7 +14,6 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyManagerScope, HierarchyNode, RangeType, Soldier
 from app.db.session import get_session
 from app.services import ineligible_soldiers as svc
-from app.services.range_eligibility_projection import DutyEligibilityFact, project_duty_eligibility
 
 router = APIRouter(prefix="/ranges", tags=["ranges"])
 
@@ -44,6 +43,7 @@ class UpcomingWeaponDutyOut(BaseModel):
     eligible: bool
     qualification_source: str | None
     covered_by_range_date: date_type | None
+    covering_range_type: RangeType | None
     projected_valid_until: date_type | None
     reason: str | None
 
@@ -131,7 +131,6 @@ def _soldier_out(
     record: svc.IneligibleSoldierRecord,
     *,
     hierarchy_path_ids: list[uuid.UUID],
-    duty_eligibility: dict[tuple[uuid.UUID, uuid.UUID], DutyEligibilityFact],
 ) -> IneligibleSoldierOut:
     return IneligibleSoldierOut(
         soldier_id=record.soldier_id,
@@ -157,17 +156,12 @@ def _soldier_out(
                 start_date=duty.start_date,
                 end_date=duty.end_date,
                 required_range_type=duty.required_range_type,
-                eligible=duty_eligibility[record.soldier_id, duty.assignment_id].eligible,
-                qualification_source=duty_eligibility[
-                    record.soldier_id, duty.assignment_id
-                ].qualification_source,
-                covered_by_range_date=duty_eligibility[
-                    record.soldier_id, duty.assignment_id
-                ].covered_by_range_date,
-                projected_valid_until=duty_eligibility[
-                    record.soldier_id, duty.assignment_id
-                ].projected_valid_until,
-                reason=duty_eligibility[record.soldier_id, duty.assignment_id].reason,
+                eligible=record.duty_eligibility[duty.assignment_id].eligible,
+                qualification_source=record.duty_eligibility[duty.assignment_id].qualification_source,
+                covered_by_range_date=record.duty_eligibility[duty.assignment_id].covered_by_range_date,
+                covering_range_type=record.duty_eligibility[duty.assignment_id].covering_range_type,
+                projected_valid_until=record.duty_eligibility[duty.assignment_id].projected_valid_until,
+                reason=record.duty_eligibility[duty.assignment_id].reason,
             )
             for duty in record.upcoming_weapon_duties
         ],
@@ -184,14 +178,6 @@ def _soldier_out(
 
 def _response(session: Session, *, roots: set[uuid.UUID] | None) -> IneligibleSoldiersOut:
     records = svc.list_ineligible_soldiers(session, roots=roots, as_of=date_type.today())
-    duty_eligibility = project_duty_eligibility(
-        session,
-        soldier_ids=[record.soldier_id for record in records],
-        duty_ids=[
-            duty.assignment_id for record in records for duty in record.upcoming_weapon_duties
-        ],
-        as_of=date_type.today(),
-    )
     record_paths = {
         record.soldier_id: _visible_path(record.hierarchy_path_ids, roots) for record in records
     }
@@ -224,7 +210,6 @@ def _response(session: Session, *, roots: set[uuid.UUID] | None) -> IneligibleSo
             _soldier_out(
                 record,
                 hierarchy_path_ids=record_paths[record.soldier_id],
-                duty_eligibility=duty_eligibility,
             )
             for record in records
         ],

@@ -11,6 +11,7 @@ from app.db.models import (
     RangeAssignment,
     RangeEvent,
     RangeType,
+    SoldierRangeQualification,
 )
 from app.services.settings_loader import set_setting
 from tests.helpers import (
@@ -318,6 +319,105 @@ def test_planning_scope_with_no_soldiers_returns_an_empty_list_and_zero_count(
     assert list_response.json() == {"count": 0, "nodes": [], "soldiers": []}
     assert count_response.status_code == 200, count_response.text
     assert count_response.json() == {"count": 0}
+
+
+def test_includes_currently_qualified_soldier_when_qualification_expires_before_future_duty(
+    client, admin_session
+) -> None:
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin = create_soldier(admin_session, personal_number=f"expiry-admin-{_uid()}", role="admin")
+    node = create_node(admin_session, level="division", name=f"expiry-node-{_uid()}")
+    soldier = create_soldier(
+        admin_session,
+        personal_number=f"expiry-soldier-{_uid()}",
+        hierarchy_node_id=node.id,
+    )
+    duty_location = create_duty_location(admin_session, name=f"expiry-duty-location-{_uid()}")
+    duty_type = DutyType(
+        name=f"expiry-duty-{_uid()}",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    admin_session.add_all(
+        [
+            duty_type,
+            SoldierRangeQualification(
+                soldier_id=soldier.id,
+                range_type=RangeType.laser,
+                valid_until=date.today() + timedelta(days=1),
+            ),
+        ]
+    )
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id,
+            duty_type_id=duty_type.id,
+            duty_location_id=duty_location.id,
+            start_date=date.today() + timedelta(days=7),
+            end_date=date.today() + timedelta(days=7),
+            status="published",
+        )
+    )
+    admin_session.commit()
+
+    response = _list(client, admin, "planning")
+
+    assert response.status_code == 200, response.text
+    row = next(row for row in response.json()["soldiers"] if row["soldier_id"] == str(soldier.id))
+    assert row["valid_qualifications"] == [
+        {"range_type": "laser", "valid_until": (date.today() + timedelta(days=1)).isoformat()}
+    ]
+    assert row["upcoming_weapon_duties"][0]["eligible"] is False
+
+
+def test_projects_actual_higher_tier_of_covering_planned_range(client, admin_session) -> None:
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin = create_soldier(admin_session, personal_number=f"higher-tier-admin-{_uid()}", role="admin")
+    node = create_node(admin_session, level="division", name=f"higher-tier-node-{_uid()}")
+    soldier = create_soldier(
+        admin_session,
+        personal_number=f"higher-tier-soldier-{_uid()}",
+        hierarchy_node_id=node.id,
+    )
+    duty_location = create_duty_location(admin_session, name=f"higher-tier-duty-location-{_uid()}")
+    range_location = create_range_location(admin_session, name=f"higher-tier-range-location-{_uid()}")
+    duty_type = DutyType(
+        name=f"higher-tier-duty-{_uid()}",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    admin_session.add(duty_type)
+    admin_session.flush()
+    duty = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=duty_location.id,
+        start_date=date.today() + timedelta(days=7),
+        end_date=date.today() + timedelta(days=7),
+        status="published",
+    )
+    event = RangeEvent(
+        hierarchy_node_id=node.id,
+        range_type=RangeType.live,
+        date=date.today() + timedelta(days=3),
+        range_location_id=range_location.id,
+        required_count=1,
+    )
+    admin_session.add_all([duty, event])
+    admin_session.flush()
+    admin_session.add(RangeAssignment(range_event_id=event.id, soldier_id=soldier.id))
+    admin_session.commit()
+
+    response = _list(client, admin, "planning")
+
+    assert response.status_code == 200, response.text
+    row = next(row for row in response.json()["soldiers"] if row["soldier_id"] == str(soldier.id))
+    fact = row["upcoming_weapon_duties"][0]
+    assert fact["qualification_source"] == "planned_range"
+    assert fact["covering_range_type"] == "live"
 
 
 def test_nested_scope_roots_do_not_expose_ancestor_metadata(client, admin_session) -> None:

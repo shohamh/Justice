@@ -55,6 +55,7 @@ const noWeaponDutyFact: DutyEligibilityFact = {
   required_range_type: null,
   qualification_source: "not_required",
   covered_by_range_date: null,
+  covering_range_type: null,
   projected_valid_until: null,
   reason: null,
   duty_type_name: "",

@@ -27,6 +27,7 @@ class DutyEligibilityFact:
     required_range_type: str | None
     qualification_source: str | None
     covered_by_range_date: date | None
+    covering_range_type: str | None
     projected_valid_until: date | None
     reason: str | None
 
@@ -96,6 +97,7 @@ def project_duty_eligibility(
                 required_range_type=requirement.required_range_type,
                 qualification_source="enforcement_disabled",
                 covered_by_range_date=None,
+                covering_range_type=None,
                 projected_valid_until=None,
                 reason=None,
             )
@@ -130,6 +132,7 @@ def project_duty_eligibility(
                 required_range_type=None,
                 qualification_source="not_required",
                 covered_by_range_date=None,
+                covering_range_type=None,
                 projected_valid_until=None,
                 reason=None,
             )
@@ -148,19 +151,22 @@ def project_duty_eligibility(
         if current_valid_until is not None and current_valid_until >= requirement.scheduled_date:
             qualification_source = "current_qualification"
             covered_by_range_date = None
+            covering_range_type = None
             projected_valid_until = current_valid_until
         elif matching_window is not None:
             qualification_source = "planned_range"
-            covered_by_range_date, projected_valid_until = matching_window
+            covered_by_range_date, projected_valid_until, covering_range_type = matching_window
         else:
             qualification_source = None
             covered_by_range_date = None
+            covering_range_type = None
             projected_valid_until = None
         facts[soldier_id, duty_id] = DutyEligibilityFact(
             eligible=eligible,
             required_range_type=required_range_type,
             qualification_source=qualification_source,
             covered_by_range_date=covered_by_range_date,
+            covering_range_type=covering_range_type,
             projected_valid_until=projected_valid_until,
             reason=None if eligible else "weapon_qualification",
         )
