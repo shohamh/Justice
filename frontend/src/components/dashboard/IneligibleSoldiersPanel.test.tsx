@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { SoldierModalProvider } from "../../contexts/SoldierModalContext";
@@ -7,170 +7,119 @@ import { IneligibleSoldiersPanel } from "./IneligibleSoldiersPanel";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { date?: string }) => ({
-      "range_qualification.dashboard.title": "חיילים ללא כשירות מטווח",
-      "range_qualification.dashboard.description": "חיילים ללא כשירות מטווח בתוקף או ללא מטווח תואם לתורנות נשק קרובה.",
-      "range_qualification.dashboard.empty": "אין חיילים הדורשים טיפול",
-      "range_qualification.loading": "טוען נתוני כשירות...",
-      "range_qualification.error": "טעינת נתוני הכשירות נכשלה",
+    t: (key: string, options?: Record<string, string | number>) => ({
+      "range_qualification.columns.unit": "יחידה",
+      "range_qualification.columns.count": "חיילים",
+      "range_qualification.columns.soldier": "חייל",
+      "range_qualification.columns.qualification": "כשירות",
+      "range_qualification.columns.context": "הקשר עתידי",
       "range_qualification.warning.normal": "אין כשירות מטווח בתוקף",
-      "range_qualification.warning.urgent": "תורנות נשק קרובה ללא מטווח תואם",
       "range_qualification.qualificationExpiry": `בתוקף עד ${options?.date}`,
-      "range_qualification.columns.hierarchy": "מסגרת",
+      "range_qualification.explanation.noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
+      "range_qualification.explanation.uncoveredDuty": `מוצב לתורנות ${options?.dutyType} שדורשת לפחות מטווח מסוג ${options?.rangeType} בתאריך ${options?.date}`,
+      "range_qualification.soldiersLoading": "טוען חיילים ללא הסמכה...",
+      "range_qualification.soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
+      "range_qualification.soldiersEmpty": "אין חיילים ללא הסמכת מטווח",
+      "range_qualification.soldiersCount": `${options?.count} חיילים ללא הסמכת מטווח`,
+      "range_qualification.filterUnits": "סנן יחידות",
+      "range_qualification.emptyUnits": "אין יחידות",
+      "range_qualification.filterSoldiers": "סנן חיילים",
+      "range_qualification.emptySoldiersInUnit": "אין חיילים ביחידה",
     }[key] ?? key),
   }),
 }));
 
-vi.mock("../../api/ineligibleSoldiers", () => ({
-  getIneligibleSoldiers: vi.fn(),
+vi.mock("../../hooks/useLevelTypes", () => ({
+  useLevelTypes: () => ({ levelTypes: [{ id: "company", key: "company", label: "פלוגה", rank: 1 }] }),
 }));
+vi.mock("../../api/ineligibleSoldiers", () => ({ getIneligibleSoldiers: vi.fn() }));
 
 import { getIneligibleSoldiers } from "../../api/ineligibleSoldiers";
 
 const commanderResponse: IneligibleSoldiersResponse = {
-  count: 4,
-  nodes: [],
+  count: 2,
+  nodes: [
+    { id: "root", name: "גדוד", level: "company", parent_id: null, path_ids: ["root"] },
+    { id: "company", name: "פלוגה א", level: "company", parent_id: "root", path_ids: ["root", "company"] },
+  ],
   soldiers: [
     {
-      soldier_id: "soldier-warning",
-      soldier_name: "נועה כהן",
-      personal_number: "12345",
-      hierarchy_node_id: "node-1",
-      hierarchy_node_name: "מחלקה א",
-      hierarchy_path_ids: ["root", "node-1"],
-      valid_qualifications: [],
-      has_upcoming_weapon_duty: false,
-      has_upcoming_matching_range: false,
-      upcoming_weapon_duties: [],
-      upcoming_matching_ranges: [],
+      soldier_id: "soldier-1", soldier_name: "נועם כהן", personal_number: "12345",
+      hierarchy_node_id: "company", hierarchy_node_name: "פלוגה א", hierarchy_path_ids: ["root", "company"],
+      valid_qualifications: [], has_upcoming_weapon_duty: false, has_upcoming_matching_range: false,
+      upcoming_weapon_duties: [], upcoming_matching_ranges: [],
     },
     {
-      soldier_id: "soldier-urgent",
-      soldier_name: "אורי לוי",
-      personal_number: "67890",
-      hierarchy_node_id: "node-2",
-      hierarchy_node_name: "מחלקה ב",
-      hierarchy_path_ids: ["root", "node-2"],
-      valid_qualifications: [{ range_type: "live", valid_until: "2026-08-12" }],
-      has_upcoming_weapon_duty: true,
-      has_upcoming_matching_range: false,
+      soldier_id: "soldier-2", soldier_name: "אורי פרץ", personal_number: "67890",
+      hierarchy_node_id: "company", hierarchy_node_name: "פלוגה א", hierarchy_path_ids: ["root", "company"],
+      valid_qualifications: [], has_upcoming_weapon_duty: true, has_upcoming_matching_range: false,
       upcoming_weapon_duties: [{
-        assignment_id: "duty-1",
-        duty_type_id: "weapon",
-        duty_type_name: "שמירה",
-        start_date: "2026-08-11",
-        end_date: "2026-08-11",
-        required_range_type: "live",
+        assignment_id: "duty-1", duty_type_id: "weapon", duty_type_name: "סיור", start_date: "2026-08-12", end_date: "2026-08-12",
+        required_range_type: "live", eligible: false, qualification_source: null, covered_by_range_date: null, projected_valid_until: null, reason: "weapon_qualification",
       }],
       upcoming_matching_ranges: [],
-    },
-    {
-      soldier_id: "soldier-planned-range",
-      soldier_name: "דן מזרחי",
-      personal_number: "24680",
-      hierarchy_node_id: "node-3",
-      hierarchy_node_name: "מחלקה ג",
-      hierarchy_path_ids: ["root", "node-3"],
-      valid_qualifications: [{ range_type: "laser", valid_until: "2026-08-20" }],
-      has_upcoming_weapon_duty: true,
-      has_upcoming_matching_range: true,
-      upcoming_weapon_duties: [{
-        assignment_id: "duty-2",
-        duty_type_id: "weapon",
-        duty_type_name: "סיור",
-        start_date: "2026-08-15",
-        end_date: "2026-08-15",
-        required_range_type: "laser",
-      }],
-      upcoming_matching_ranges: [{ event_id: "range-1", range_type: "laser", date: "2026-08-14" }],
-    },
-    {
-      soldier_id: "soldier-qualified",
-      soldier_name: "רון דרור",
-      personal_number: "13579",
-      hierarchy_node_id: "node-4",
-      hierarchy_node_name: "מחלקה ד",
-      hierarchy_path_ids: ["root", "node-4"],
-      valid_qualifications: [{ range_type: "laser", valid_until: "2026-12-31" }],
-      has_upcoming_weapon_duty: false,
-      has_upcoming_matching_range: true,
-      upcoming_weapon_duties: [],
-      upcoming_matching_ranges: [{ event_id: "range-2", range_type: "laser", date: "2026-09-01" }],
     },
   ],
 };
 
 function renderPanel() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const result = render(
+  return render(
     <QueryClientProvider client={queryClient}>
-      <SoldierModalProvider>
-        <IneligibleSoldiersPanel />
-      </SoldierModalProvider>
+      <SoldierModalProvider><IneligibleSoldiersPanel /></SoldierModalProvider>
     </QueryClientProvider>,
   );
-  return { queryClient, ...result };
 }
 
 describe("IneligibleSoldiersPanel", () => {
-  it("renders only actionable soldiers with hierarchy, qualification, and warning context", async () => {
+  it("renders the shared hierarchy table for commander data instead of per-soldier cards", async () => {
     vi.mocked(getIneligibleSoldiers).mockResolvedValue(commanderResponse);
     renderPanel();
 
     await waitFor(() => expect(getIneligibleSoldiers).toHaveBeenCalledWith("commander"));
-    await screen.findByRole("button", { name: "נועה כהן" });
-    const panel = document.querySelector("#panel-ineligible-soldiers");
-    expect(panel).not.toBeNull();
-    expect(panel).toHaveAttribute("id", "panel-ineligible-soldiers");
-    expect(within(panel).getByRole("button", { name: "נועה כהן" })).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: "אורי לוי" })).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: "דן מזרחי" })).toBeInTheDocument();
-    expect(within(panel).queryByRole("button", { name: "רון דרור" })).not.toBeInTheDocument();
-
-    expect(within(panel).getByText("מחלקה א")).toBeInTheDocument();
-    expect(within(panel).getByText("מחלקה ב")).toBeInTheDocument();
-    expect(within(panel).getByText("מחלקה ג")).toBeInTheDocument();
-    expect(within(panel).getByText("מטווח חי בתוקף עד 2026-08-12")).toBeInTheDocument();
-    expect(within(panel).getByText("מטווח לייזר בתוקף עד 2026-08-20")).toBeInTheDocument();
-    expect(within(panel).getByText("שמירה 2026-08-11")).toBeInTheDocument();
-    expect(within(panel).getByText(/סיור 2026-08-15/)).toBeInTheDocument();
-    expect(within(panel).getByText(/מטווח לייזר 2026-08-14/)).toBeInTheDocument();
+    const table = await screen.findByTestId("ineligible-soldiers-table");
+    expect(within(table).getByText("גדוד")).toBeInTheDocument();
+    expect(within(table).getByText("פלוגה א")).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("distinguishes normal and urgent warnings without showing actions", async () => {
+  it("expands hierarchy rows into SoldierLink rows with shared explanations and sorting", async () => {
     vi.mocked(getIneligibleSoldiers).mockResolvedValue(commanderResponse);
     renderPanel();
 
-    expect(await screen.findByTestId("ineligible-warning-soldier-warning")).toHaveTextContent("אין כשירות מטווח בתוקף");
-    expect(screen.getByTestId("ineligible-warning-soldier-warning")).toHaveClass("bg-amber-100");
-    expect(screen.getByTestId("ineligible-warning-soldier-urgent")).toHaveTextContent("תורנות נשק קרובה ללא מטווח תואם");
-    expect(screen.getByTestId("ineligible-warning-soldier-urgent")).toHaveClass("bg-red-100", "font-semibold");
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /שבץ|ערוך|אשר/i })).not.toBeInTheDocument();
+    const companyRow = await screen.findByTestId("ineligible-node-company");
+    await act(async () => {
+      fireEvent.click(within(companyRow).getByRole("button", { name: "הרחב" }));
+    });
+
+    const soldierTable = screen.getByTestId("ineligible-soldiers-node-company");
+    expect(within(soldierTable).getByRole("button", { name: "נועם כהן" })).toBeInTheDocument();
+    expect(within(soldierTable).getByRole("button", { name: "אורי פרץ" })).toBeInTheDocument();
+    expect(within(soldierTable).getByText("מוצב לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026")).toBeInTheDocument();
+
+    const hierarchyTable = screen.getByTestId("ineligible-soldiers-table");
+    await act(async () => {
+      fireEvent.click(within(hierarchyTable).getByRole("columnheader", { name: "יחידה" }));
+    });
+    expect(screen.getAllByTestId(/^ineligible-node-/).map((row) => row.textContent)).toEqual([
+      expect.stringContaining("גדוד"),
+      expect.stringContaining("פלוגה א"),
+    ]);
+    expect(screen.queryByRole("button", { name: /שבץ|הסמך|עדכן/ })).not.toBeInTheDocument();
   });
 
-  it("shows loading, empty, and error states", async () => {
+  it("keeps clear loading, error, and empty states", async () => {
     let resolveQuery!: (value: IneligibleSoldiersResponse) => void;
-    vi.mocked(getIneligibleSoldiers).mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveQuery = resolve;
-      }),
-    );
-    const { queryClient, rerender } = renderPanel();
-    expect(screen.getByRole("status")).toHaveTextContent("טוען נתוני כשירות...");
+    vi.mocked(getIneligibleSoldiers).mockReturnValueOnce(new Promise((resolve) => { resolveQuery = resolve; }));
+    const { unmount } = renderPanel();
+    expect(screen.getByRole("status")).toHaveTextContent("טוען חיילים ללא הסמכה...");
 
     resolveQuery({ count: 0, nodes: [], soldiers: [] });
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("אין חיילים הדורשים טיפול"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("אין חיילים ללא הסמכת מטווח"));
 
     vi.mocked(getIneligibleSoldiers).mockRejectedValueOnce(new Error("boom"));
-    queryClient.clear();
-    rerender(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <SoldierModalProvider>
-          <IneligibleSoldiersPanel />
-        </SoldierModalProvider>
-      </QueryClientProvider>,
-    );
-    expect(await screen.findByRole("alert")).toHaveTextContent("טעינת נתוני הכשירות נכשלה");
+    unmount();
+    renderPanel();
+    expect(await screen.findByRole("alert")).toHaveTextContent("טעינת החיילים ללא הסמכה נכשלה");
   });
 });
