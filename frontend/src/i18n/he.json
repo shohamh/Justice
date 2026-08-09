@@ -1317,6 +1317,33 @@
       "save_assignments": "שמירת השיבוצים נכשלה"
     }
   },
+  "range_qualification": {
+    "title": "חיילים ללא כשירות מטווח",
+    "tabs": {
+      "schedule": "לוח מטווחים",
+      "qualification": "כשירות מטווחים"
+    },
+    "columns": {
+      "soldier": "חייל",
+      "hierarchy": "מסגרת",
+      "qualification": "כשירות",
+      "upcomingDuty": "תורנות נשק קרובה",
+      "upcomingRange": "מטווח תואם"
+    },
+    "loading": "טוען נתוני כשירות...",
+    "empty": "כל החיילים כשירים למטווח",
+    "error": "טעינת נתוני הכשירות נכשלה",
+    "qualificationExpiry": "בתוקף עד {{date}}",
+    "warning": {
+      "normal": "אין כשירות מטווח בתוקף",
+      "urgent": "תורנות נשק קרובה ללא מטווח תואם"
+    },
+    "dashboard": {
+      "title": "חיילים ללא כשירות מטווח",
+      "description": "חיילים ללא כשירות מטווח בתוקף או ללא מטווח תואם לתורנות נשק קרובה.",
+      "empty": "אין חיילים הדורשים טיפול"
+    }
+  },
   "action": {
     "processing": "מעבד פעולה...",
     "success": "הפעולה בוצעה בהצלחה",
