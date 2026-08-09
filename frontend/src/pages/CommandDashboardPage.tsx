@@ -10,6 +10,7 @@ import AlertsPanel from "../components/AlertsPanel";
 import { InternalFairness, ExternalFairness } from "../components/FairnessChart";
 import DutyPotentialPanel from "../components/DutyPotentialPanel";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
+import IneligibleSoldiersPanel from "../components/dashboard/IneligibleSoldiersPanel";
 import EntriesExitsPanel from "../components/EntriesExitsPanel";
 import UnitCalendar from "../components/UnitCalendar";
 import HierarchyTree from "../components/HierarchyTree";
@@ -130,6 +131,11 @@ export default function CommandDashboardPage() {
   const handleCardClick = (panel: string) => setActivePanel(panel);
 
   const panels: { id: string; title: string; content: React.ReactNode }[] = [
+    {
+      id: "ineligible-soldiers",
+      title: t("range_qualification.dashboard.title"),
+      content: <IneligibleSoldiersPanel />,
+    },
     {
       id: "alerts",
       title: t("command_dashboard.alerts"),
