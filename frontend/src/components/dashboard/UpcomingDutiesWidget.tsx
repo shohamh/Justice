@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { EffectiveDuty } from "../../api/assignments";
 import { formatDutyRange } from "../../utils/formatDate";
 
@@ -8,17 +10,18 @@ interface Props {
   onOpenDuty: (duty: EffectiveDuty) => void;
 }
 
-function statusLabel(d: EffectiveDuty): { text: string; calledUp: boolean } {
+function statusLabel(t: TFunction, d: EffectiveDuty): { text: string; calledUp: boolean } {
   if (d.is_reserve && d.called_up_from) {
-    const range = d.called_up_from === d.called_up_to
-      ? d.called_up_from
-      : `${d.called_up_from}–${d.called_up_to}`;
-    return { text: `הוקפץ ${range}`, calledUp: true };
+    const text = d.called_up_from === d.called_up_to
+      ? `${t("reserve_called_up")} ${d.called_up_from}`
+      : t("called_up_from_to", { from: d.called_up_from, to: d.called_up_to });
+    return { text, calledUp: true };
   }
-  return { text: d.is_reserve ? "רזרבה" : "ראשי", calledUp: false };
+  return { text: d.is_reserve ? t("reserve_standby") : t("home.duty_primary"), calledUp: false };
 }
 
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty }: Props) {
+  const { t } = useTranslation();
   const today = new Date().toISOString().split("T")[0];
   const upcoming = duties
     .filter((d) => d.end_date > today)
@@ -32,7 +35,7 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
       ) : (
         <div className="space-y-2">
           {upcoming.map((d) => {
-            const status = statusLabel(d);
+            const status = statusLabel(t, d);
             return (
               <div
                 key={d.assignment_id}

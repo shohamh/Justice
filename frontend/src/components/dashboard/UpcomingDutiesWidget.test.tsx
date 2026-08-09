@@ -3,6 +3,21 @@ import { describe, it, expect, vi } from "vitest";
 import UpcomingDutiesWidget from "./UpcomingDutiesWidget";
 import type { EffectiveDuty } from "../../api/assignments";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, string>) =>
+      Object.entries(options ?? {}).reduce(
+        (value, [name, replacement]) => value.replace(`{{${name}}}`, replacement),
+        {
+          "home.duty_primary": "ראשי",
+          "reserve_standby": "רזרבה",
+          "reserve_called_up": "הוקפץ",
+          "called_up_from_to": "הוקפץ {{from}}–{{to}}",
+        }[key] ?? key,
+      ),
+  }),
+}));
+
 function makeDuty(overrides: Partial<EffectiveDuty> = {}): EffectiveDuty {
   return {
     assignment_id: "a1", soldier_id: "s1", duty_type_id: "dt1", duty_type_name: "שמירה",
