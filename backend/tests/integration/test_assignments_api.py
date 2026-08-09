@@ -314,3 +314,29 @@ def test_assignment_list_includes_weapon_ineligibility_fields(
     )
     assert rows[str(eligible.id)]["weapon_ineligible"] is False
     assert rows[str(eligible.id)]["weapon_ineligible_reason"] is None
+
+
+def test_effective_duties_includes_called_up_window(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number=f"called_{_uid()}")
+    dtype = DutyType(name=f"שמירה_{_uid()}", score_per_day=1, active=True)
+    loc = DutyLocation(name=f"loc_{_uid()}", base="בסיס")
+    admin_session.add_all([dtype, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dtype.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 3),
+        start_time="08:00", end_time="20:00", status="published",
+        is_reserve=True, called_up_from=date(2026, 9, 1), called_up_to=date(2026, 9, 2),
+    )
+    admin_session.add(assignment)
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/assignments/effective",
+        params={"soldier_id": str(soldier.id)},
+        headers=auth_headers(soldier),
+    )
+    assert resp.status_code == 200
+    row = next(r for r in resp.json() if r["assignment_id"] == str(assignment.id))
+    assert row["called_up_from"] == "2026-09-01"
+    assert row["called_up_to"] == "2026-09-02"

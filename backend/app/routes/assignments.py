@@ -66,6 +66,8 @@ class EffectiveDutyOut(BaseModel):
     end_at: datetime
     shift_id: uuid.UUID | None = None
     is_reserve: bool = False
+    called_up_from: date | None = None
+    called_up_to: date | None = None
     weapon_ineligible: bool = False
     weapon_ineligible_reason: str | None = None
 
