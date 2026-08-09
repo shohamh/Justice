@@ -282,3 +282,70 @@ def test_planning_scope_with_no_soldiers_returns_an_empty_list_and_zero_count(
     assert list_response.json() == {"count": 0, "nodes": [], "soldiers": []}
     assert count_response.status_code == 200, count_response.text
     assert count_response.json() == {"count": 0}
+
+
+def test_nested_scope_roots_do_not_expose_ancestor_metadata(client, admin_session) -> None:
+    ancestor = create_node(admin_session, level="division", name=f"ancestor-{_uid()}")
+    commander = create_soldier(
+        admin_session, personal_number=f"nested-commander-{_uid()}", role="commander"
+    )
+    commander_root = create_node(
+        admin_session,
+        level="unit",
+        name=f"commander-root-{_uid()}",
+        parent=ancestor,
+        commander_id=commander.id,
+    )
+    commander_child = create_node(
+        admin_session,
+        level="team",
+        name=f"commander-child-{_uid()}",
+        parent=commander_root,
+    )
+    commander_soldier = create_soldier(
+        admin_session,
+        personal_number=f"commander-scoped-{_uid()}",
+        hierarchy_node_id=commander_child.id,
+    )
+    duty_manager = create_soldier(
+        admin_session,
+        personal_number=f"nested-planner-{_uid()}",
+        role="duty_manager",
+    )
+    planning_root = create_node(
+        admin_session,
+        level="unit",
+        name=f"planning-root-{_uid()}",
+        parent=ancestor,
+    )
+    planning_child = create_node(
+        admin_session,
+        level="team",
+        name=f"planning-child-{_uid()}",
+        parent=planning_root,
+    )
+    planning_soldier = create_soldier(
+        admin_session,
+        personal_number=f"planning-scoped-{_uid()}",
+        hierarchy_node_id=planning_child.id,
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=planning_root.id)
+    )
+    admin_session.commit()
+
+    responses = [
+        (_list(client, commander, "commander"), commander_root, commander_child, commander_soldier),
+        (_list(client, duty_manager, "planning"), planning_root, planning_child, planning_soldier),
+    ]
+
+    for response, root, child, soldier in responses:
+        assert response.status_code == 200, response.text
+        assert str(ancestor.id) not in response.text
+        body = response.json()
+        assert {node["id"] for node in body["nodes"]} == {str(root.id), str(child.id)}
+        root_node = next(node for node in body["nodes"] if node["id"] == str(root.id))
+        assert root_node["parent_id"] is None
+        assert root_node["path_ids"] == [str(root.id)]
+        soldier_row = next(row for row in body["soldiers"] if row["soldier_id"] == str(soldier.id))
+        assert soldier_row["hierarchy_path_ids"] == [str(root.id), str(child.id)]

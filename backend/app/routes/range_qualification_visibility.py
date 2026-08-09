@@ -98,24 +98,37 @@ def _resolve_roots(session: Session, *, user: Soldier, audience: Audience) -> se
     )
 
 
-def _node_out(node: HierarchyNode) -> HierarchyNodeOut:
+def _visible_path(
+    path_ids: tuple[uuid.UUID, ...] | list[uuid.UUID], roots: set[uuid.UUID] | None
+) -> list[uuid.UUID]:
+    if roots is None:
+        return list(path_ids)
+    deepest_root_index = max(index for index, node_id in enumerate(path_ids) if node_id in roots)
+    return list(path_ids[deepest_root_index:])
+
+
+def _node_out(
+    node: HierarchyNode, *, path_ids: list[uuid.UUID], visible_node_ids: set[uuid.UUID]
+) -> HierarchyNodeOut:
     return HierarchyNodeOut(
         id=node.id,
         name=node.name,
         level=node.level,
-        parent_id=node.parent_id,
-        path_ids=list(node.path_ids),
+        parent_id=node.parent_id if node.parent_id in visible_node_ids else None,
+        path_ids=path_ids,
     )
 
 
-def _soldier_out(record: svc.IneligibleSoldierRecord) -> IneligibleSoldierOut:
+def _soldier_out(
+    record: svc.IneligibleSoldierRecord, *, hierarchy_path_ids: list[uuid.UUID]
+) -> IneligibleSoldierOut:
     return IneligibleSoldierOut(
         soldier_id=record.soldier_id,
         soldier_name=record.soldier_name,
         personal_number=record.personal_number,
         hierarchy_node_id=record.hierarchy_node_id,
         hierarchy_node_name=record.hierarchy_node_name,
-        hierarchy_path_ids=list(record.hierarchy_path_ids),
+        hierarchy_path_ids=hierarchy_path_ids,
         valid_qualifications=[
             QualificationSummaryOut(
                 range_type=qualification.range_type,
@@ -149,7 +162,10 @@ def _soldier_out(record: svc.IneligibleSoldierRecord) -> IneligibleSoldierOut:
 
 def _response(session: Session, *, roots: set[uuid.UUID] | None) -> IneligibleSoldiersOut:
     records = svc.list_ineligible_soldiers(session, roots=roots, as_of=date_type.today())
-    node_ids = {node_id for record in records for node_id in record.hierarchy_path_ids}
+    record_paths = {
+        record.soldier_id: _visible_path(record.hierarchy_path_ids, roots) for record in records
+    }
+    node_ids = {node_id for path_ids in record_paths.values() for node_id in path_ids}
     nodes_by_id = {
         node.id: node
         for node in session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(node_ids)))
@@ -166,8 +182,18 @@ def _response(session: Session, *, roots: set[uuid.UUID] | None) -> IneligibleSo
     )
     return IneligibleSoldiersOut(
         count=len(records),
-        nodes=[_node_out(node) for node in nodes],
-        soldiers=[_soldier_out(record) for record in records],
+        nodes=[
+            _node_out(
+                node,
+                path_ids=_visible_path(node.path_ids, roots),
+                visible_node_ids=node_ids,
+            )
+            for node in nodes
+        ],
+        soldiers=[
+            _soldier_out(record, hierarchy_path_ids=record_paths[record.soldier_id])
+            for record in records
+        ],
     )
 
 
@@ -177,7 +203,8 @@ def get_ineligible_soldier_count(
     user: Soldier = Depends(require_password_changed),
 ) -> IneligibleSoldierCountOut:
     roots = _resolve_roots(session, user=user, audience="planning")
-    return IneligibleSoldierCountOut(count=_response(session, roots=roots).count)
+    records = svc.list_ineligible_soldiers(session, roots=roots, as_of=date_type.today())
+    return IneligibleSoldierCountOut(count=len(records))
 
 
 @router.get("/ineligible-soldiers", response_model=IneligibleSoldiersOut)
