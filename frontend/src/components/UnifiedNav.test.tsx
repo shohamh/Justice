@@ -1,5 +1,12 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render as testingLibraryRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import UnifiedNav from "./UnifiedNav";
+
+function render(ui: React.ReactElement) {
+  return testingLibraryRender(
+    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
+  );
+}
 
 vi.mock("react-router-dom", () => ({
   useLocation: () => ({ pathname: "/" }),
@@ -34,6 +41,10 @@ vi.mock("../api/soldiers", () => ({
 vi.mock("../api/swaps", () => ({
   getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
 }));
+const mockGetIneligibleSoldierCount = vi.fn();
+vi.mock("../api/ineligibleSoldiers", () => ({
+  getIneligibleSoldierCount: (...args: unknown[]) => mockGetIneligibleSoldierCount(...args),
+}));
 
 const mockListJobs = vi.fn();
 vi.mock("../api/algorithm", () => ({
@@ -41,11 +52,17 @@ vi.mock("../api/algorithm", () => ({
 }));
 
 vi.mock("./NavSheet", () => ({
-  default: ({ open, testId, items }: { open: boolean; testId?: string; items?: { testId?: string }[] }) =>
+  default: ({ open, testId, items }: { open: boolean; testId?: string; items?: { testId?: string; to?: string; badge?: number; badgeColor?: string }[] }) =>
     open ? (
       <div data-testid={testId ?? "nav-sheet-open"}>
         {items?.map((item) => (
-          <div key={item.testId} data-testid={item.testId} />
+          <a key={item.testId} data-testid={item.testId} href={item.to}>
+            {item.badge != null && item.badge > 0 && (
+              <span data-testid={item.testId === "nav-ranges" ? "ineligible-ranges-badge" : undefined} className={item.badgeColor === "red" ? "bg-red-500" : undefined}>
+                {item.badge}
+              </span>
+            )}
+          </a>
         ))}
       </div>
     ) : null,
@@ -81,6 +98,8 @@ function job(status: string, mode: string, error_message: string | null = null, 
 }
 
 beforeEach(() => {
+  mockGetIneligibleSoldierCount.mockReset();
+  mockGetIneligibleSoldierCount.mockResolvedValue({ count: 0 });
   mockListJobs.mockReset();
   mockListJobs.mockResolvedValue({ items: [], total: 0 });
   mockUsePublicSettings.mockReset();
@@ -292,6 +311,8 @@ describe("UnifiedNav — ranges (mitvachim) gating", () => {
     render(<UnifiedNav />);
     fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
     expect(screen.getByTestId("nav-ranges")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-ranges")).toHaveAttribute("href", "/ranges");
+    expect(screen.queryByTestId("nav-weapon-ineligible")).not.toBeInTheDocument();
   });
 
   test("hides ranges item in planning sheet when mitvachim.enabled is false", () => {
@@ -299,5 +320,46 @@ describe("UnifiedNav — ranges (mitvachim) gating", () => {
     render(<UnifiedNav />);
     fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
     expect(screen.queryByTestId("nav-ranges")).not.toBeInTheDocument();
+  });
+
+  test("shows a red ineligible count badge on ranges for a duty manager", async () => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+    mockGetIneligibleSoldierCount.mockResolvedValue({ count: 3 });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+
+    const badge = await screen.findByTestId("ineligible-ranges-badge");
+    expect(badge).toHaveTextContent("3");
+    expect(badge).toHaveClass("bg-red-500");
+  });
+
+  test("shows the ineligible count badge for an admin", async () => {
+    mockUseAuth.mockReturnValue({ user: { role: "admin" } });
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+    mockGetIneligibleSoldierCount.mockResolvedValue({ count: 2 });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+
+    expect(await screen.findByTestId("ineligible-ranges-badge")).toHaveTextContent("2");
+  });
+
+  test("hides the ineligible count badge when the count is zero", async () => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+    mockGetIneligibleSoldierCount.mockResolvedValue({ count: 0 });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+
+    await waitFor(() => expect(mockGetIneligibleSoldierCount).toHaveBeenCalled());
+    expect(screen.queryByTestId("ineligible-ranges-badge")).not.toBeInTheDocument();
+  });
+
+  test("does not fetch or show the badge when mitvachim is disabled", async () => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": false });
+    mockGetIneligibleSoldierCount.mockResolvedValue({ count: 4 });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+
+    expect(screen.queryByTestId("nav-ranges")).not.toBeInTheDocument();
+    expect(mockGetIneligibleSoldierCount).not.toHaveBeenCalled();
   });
 });

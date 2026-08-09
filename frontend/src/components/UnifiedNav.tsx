@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
@@ -13,6 +14,8 @@ import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getIncomingSwapCount } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
+import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
+import { queryKeys } from "../queryKeys";
 import { listJobs } from "../api/algorithm";
 import { computeRunBadgeCounts, RunBadgeCounts, RunBadgeJob } from "../utils/algorithmRunBadges";
 import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
@@ -47,6 +50,7 @@ export default function UnifiedNav() {
   const { user } = useAuth();
   const location = useLocation();
   const settings = usePublicSettings();
+  const queryClient = useQueryClient();
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
   const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
@@ -64,6 +68,14 @@ export default function UnifiedNav() {
   const algorithmBadgeColor = pickBadgeColor(algorithmCounts);
   const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
+  const previousPathname = useRef(location.pathname);
+  const ineligibleCountQuery = useQuery({
+    queryKey: queryKeys.ineligibleSoldierCount(),
+    queryFn: getIneligibleSoldierCount,
+    enabled: canPlan && mitvachimEnabled,
+    retry: false,
+  });
+  const ineligibleCount = ineligibleCountQuery.data?.count ?? 0;
 
   useEffect(() => {
     if (!canApprove) return;
@@ -104,6 +116,13 @@ export default function UnifiedNav() {
     const interval = setInterval(() => void fetchAlgorithmBadge(), 30_000);
     return () => clearInterval(interval);
   }, [canPlan, location.pathname, seedSeenIds]);
+
+  useEffect(() => {
+    if (!canPlan || !mitvachimEnabled) return;
+    if (previousPathname.current === location.pathname) return;
+    previousPathname.current = location.pathname;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ineligibleSoldierCount() });
+  }, [canPlan, location.pathname, mitvachimEnabled, queryClient]);
 
   useEffect(() => {
     const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;
@@ -170,7 +189,7 @@ export default function UnifiedNav() {
     { label: t("nav.planning_export"), to: "/planning/export", testId: "nav-export" },
     { label: "פוטנציאל", to: "/planning/potential", testId: "nav-potential" },
     ...(mitvachimEnabled
-      ? [{ label: "מטווחים", to: "/ranges", testId: "nav-ranges" }]
+      ? [{ label: "מטווחים", to: "/ranges", badge: ineligibleCount, badgeColor: "red" as BadgeColor, testId: "nav-ranges" }]
       : []),
   ];
 
