@@ -216,3 +216,32 @@ def test_phone_and_email_hidden_when_public_settings_disabled(client: TestClient
     body = r.json()
     assert body["phone"] is None
     assert body["email"] is None
+
+
+def test_duty_history_403_for_unrelated_plain_soldier_by_default(client: TestClient, admin_session: Session):
+    # Default transparency.min_visible_level is "מדור" (not "every_soldier"), so a
+    # plain soldier with no command/DM scope over the target's node has no
+    # visibility into that soldier's duty history by default. Previously this
+    # endpoint had no permission check at all for the other-soldier branch.
+    viewer = create_soldier(admin_session, personal_number="dh_403_001", role="soldier")
+    target = create_soldier(admin_session, personal_number="dh_403_002", role="soldier")
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(viewer))
+    assert r.status_code == 403
+
+
+def test_duty_history_200_for_plain_soldier_commanding_target_node(
+    client: TestClient, admin_session: Session
+):
+    # A soldier who commands the target's hierarchy node passes
+    # can_view_soldier_scope even though their role label is plain "soldier"
+    # (dual-role pattern) — mirrors /scoring/transparency's commander check.
+    node = create_node(admin_session, level="team", name="dh_200_node")
+    cmd = create_soldier(admin_session, personal_number="dh_200_001", role="soldier")
+    node.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="dh_200_002", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
+    assert r.status_code == 200
