@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { EffectiveDuty } from "../../api/assignments";
 import { CalendarShift, CalendarShiftAssignee, getCalendarShift } from "../../api/calendar";
 import { DutyType, listDutyTypes } from "../../api/dutyConfig";
@@ -7,16 +8,18 @@ import { useAuth } from "../../auth/AuthContext";
 import { useSoldierModal } from "../../contexts/SoldierModalContext";
 import ShiftDetailPanel from "../ShiftDetailPanel";
 import { useModalBackClose } from "../../hooks/useModalBackClose";
+import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 
 interface Props {
   duty: EffectiveDuty | null;
   typeNames: Record<string, string>;
   locationNames: Record<string, string>;
   onClose: () => void;
-  onRequestSwap: (duty: EffectiveDuty) => void;
+  onRequestSwap?: (duty: EffectiveDuty) => void;
 }
 
 export default function DutyDetailModal({ duty, typeNames, locationNames, onClose, onRequestSwap }: Props) {
+  const { t } = useTranslation();
   useModalBackClose(onClose);
   const { user } = useAuth();
   const { openSoldierModal } = useSoldierModal();
@@ -106,6 +109,14 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
                 </span>
               </div>
             )}
+            <div className="flex gap-2">
+              <span className="text-gray-400 w-14 shrink-0">{t("duty_detail.required_range")}</span>
+              <span className="text-gray-700 dark:text-gray-300">
+                {dutyType?.required_range_type
+                  ? RANGE_TYPE_LABELS[dutyType.required_range_type] ?? dutyType.required_range_type
+                  : t("duty_detail.no_required_range")}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -155,22 +166,26 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
         </div>
 
         {/* Actions */}
-        <div className="px-5 pb-5 pt-2 border-t dark:border-gray-700 flex gap-2">
-          <button
-            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium"
-            onClick={() => onRequestSwap(duty)}
-          >
-            בקש החלפה
-          </button>
-          {shift && (
-            <button
-              className="flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 py-2 rounded-lg text-sm font-medium"
-              onClick={() => setShowShiftPanel(true)}
-            >
-              פרטי משמרת
-            </button>
-          )}
-        </div>
+        {(onRequestSwap || shift) && (
+          <div className="px-5 pb-5 pt-2 border-t dark:border-gray-700 flex gap-2">
+            {onRequestSwap && (
+              <button
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium"
+                onClick={() => onRequestSwap(duty)}
+              >
+                בקש החלפה
+              </button>
+            )}
+            {shift && (
+              <button
+                className="flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 py-2 rounded-lg text-sm font-medium"
+                onClick={() => setShowShiftPanel(true)}
+              >
+                פרטי משמרת
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {showShiftPanel && shift && (

@@ -995,7 +995,12 @@
     "move_soldier": "העברת חייל",
     "target_node": "יחידת יעד",
     "move_confirm": "שלח בקשת העברה",
-    "cancel": "ביטול"
+    "cancel": "ביטול",
+    "view_duty_details": "צפה בפרטי התורנות"
+  },
+  "duty_detail": {
+    "required_range": "מטווח נדרש",
+    "no_required_range": "לא נדרש"
   },
   "reserve_ratio": "יחס רזרבה",
   "reserve_minimum": "מינימום רזרבה",
@@ -1357,6 +1362,12 @@
       "noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
       "uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
       "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}"
+    },
+    "shiftDetail": {
+      "requiredRange": "נדרש לפחות מטווח מסוג {{rangeType}}",
+      "noRequiredRange": "לא נדרש מטווח לתורנות זו",
+      "warning": "חוסר כשירות מטווחים",
+      "unavailable": "נתוני כשירות מטווחים אינם זמינים"
     },
     "tablistLabel": "תצוגת מטווחים",
     "warning": {

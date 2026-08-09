@@ -47,6 +47,13 @@ export interface UpcomingAssignment {
   soldier_name: string;
   duty_type_id: string;
   duty_type_name: string;
+  duty_location_id: string;
+  duty_location_name: string;
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  shift_id: string | null;
   node_name: string;
   is_reserve: boolean;
 }

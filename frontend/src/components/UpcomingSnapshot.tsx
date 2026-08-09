@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import type { UpcomingDay, UpcomingAssignment } from "../api/commanderDashboard";
+import type { EffectiveDuty } from "../api/assignments";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 import SoldierLink from "./SoldierLink";
+import DutyDetailModal from "./dashboard/DutyDetailModal";
 
 interface Props {
   data: UpcomingDay[] | null;
@@ -32,7 +35,11 @@ function Badge({ a, onSelect }: { a: UpcomingAssignment; onSelect: (a: UpcomingA
 export default function UpcomingSnapshot({ data }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const publicSettings = usePublicSettings();
   const [selected, setSelected] = useState<UpcomingAssignment | null>(null);
+  const [detailDuty, setDetailDuty] = useState<EffectiveDuty | null>(null);
+  const [detailLocationNames, setDetailLocationNames] = useState<Record<string, string>>({});
+  const forcedCallupEnabled = publicSettings?.["forced_callup.enabled"] === true;
 
   function handleForcedRelease(a: UpcomingAssignment) {
     const confirmed = window.confirm(
@@ -40,6 +47,28 @@ export default function UpcomingSnapshot({ data }: Props) {
     );
     if (!confirmed) return;
     navigate(`/commander/hakpaza?soldierId=${a.soldier_id}&assignmentId=${a.assignment_id}`);
+  }
+
+  function openDutyDetails(a: UpcomingAssignment) {
+    setSelected(null);
+    setDetailLocationNames({ [a.duty_location_id]: a.duty_location_name });
+    setDetailDuty({
+      assignment_id: a.assignment_id,
+      soldier_id: a.soldier_id,
+      duty_type_id: a.duty_type_id,
+      duty_type_name: a.duty_type_name,
+      duty_location_id: a.duty_location_id,
+      start_date: a.start_date,
+      end_date: a.end_date,
+      start_time: a.start_time,
+      end_time: a.end_time,
+      start_at: `${a.start_date}T${a.start_time}`,
+      end_at: `${a.end_date}T${a.end_time}`,
+      shift_id: a.shift_id,
+      is_reserve: a.is_reserve,
+      weapon_ineligible: false,
+      weapon_ineligible_reason: null,
+    });
   }
   if (!data || data.length === 0) return <p className="text-gray-500">{t("command_dashboard.no_upcoming")}</p>;
   const today = new Date().toISOString().slice(0, 10);
@@ -81,7 +110,14 @@ export default function UpcomingSnapshot({ data }: Props) {
               <div><span className="text-gray-500 dark:text-gray-400">יחידה:</span> {selected.node_name || "?"}</div>
               {selected.is_reserve && <div className="text-amber-700 dark:text-amber-400 font-medium">רזרבה</div>}
             </div>
-            {selected.soldier_id && (
+            <button
+              type="button"
+              onClick={() => openDutyDetails(selected)}
+              className="mt-4 w-full px-3 py-1.5 rounded text-sm font-medium border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950"
+            >
+              {t("command_dashboard.view_duty_details")}
+            </button>
+            {selected.soldier_id && forcedCallupEnabled && (
               <button
                 onClick={() => handleForcedRelease(selected)}
                 className="mt-4 w-full px-3 py-1.5 rounded text-sm font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
@@ -92,6 +128,16 @@ export default function UpcomingSnapshot({ data }: Props) {
           </div>
         </div>
       )}
+
+      <DutyDetailModal
+        duty={detailDuty}
+        typeNames={detailDuty ? { [detailDuty.duty_type_id]: detailDuty.duty_type_name } : {}}
+        locationNames={detailLocationNames}
+        onClose={() => {
+          setDetailDuty(null);
+          setDetailLocationNames({});
+        }}
+      />
     </div>
   );
 }

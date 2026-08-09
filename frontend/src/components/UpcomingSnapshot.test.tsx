@@ -5,7 +5,13 @@ import UpcomingSnapshot from "./UpcomingSnapshot";
 import type { UpcomingDay } from "../api/commanderDashboard";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => ({
+      "command_dashboard.view_duty_details": "צפה בפרטי התורנות",
+      "duty_detail.required_range": "מטווח נדרש",
+      "duty_detail.no_required_range": "לא נדרש",
+    })[key] ?? key,
+  }),
 }));
 
 const mockNavigate = vi.fn();
@@ -21,6 +27,42 @@ vi.mock("./SoldierLink", () => ({
   default: ({ name }: { name: string }) => <span>{name}</span>,
 }));
 
+const mockUsePublicSettings = vi.fn();
+vi.mock("../hooks/usePublicSettings", () => ({
+  usePublicSettings: () => mockUsePublicSettings(),
+}));
+
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ user: null }),
+}));
+
+vi.mock("../contexts/SoldierModalContext", () => ({
+  useSoldierModal: () => ({ openSoldierModal: vi.fn() }),
+}));
+
+vi.mock("../hooks/useModalBackClose", () => ({
+  useModalBackClose: () => {},
+}));
+
+vi.mock("../api/dutyConfig", () => ({
+  listDutyTypes: vi.fn().mockResolvedValue([
+    {
+      id: "dt-1",
+      name: "שמירות",
+      required_range_type: "laser",
+      start_time: null,
+      end_time: null,
+      instructions: null,
+      contact_name: null,
+      contact_phone: null,
+    },
+  ]),
+}));
+
+vi.mock("../api/calendar", () => ({
+  getCalendarShift: vi.fn().mockResolvedValue(null),
+}));
+
 const data: UpcomingDay[] = [
   {
     date: "2026-07-06",
@@ -31,6 +73,13 @@ const data: UpcomingDay[] = [
         soldier_name: "דני כהן",
         duty_type_id: "dt-1",
         duty_type_name: "שמירות",
+        duty_location_id: "loc-1",
+        duty_location_name: "שער צפון",
+        start_date: "2026-07-06",
+        end_date: "2026-07-07",
+        start_time: "08:00",
+        end_time: "12:00",
+        shift_id: "shift-1",
         node_name: "ספקטרה",
         is_reserve: false,
       },
@@ -40,6 +89,8 @@ const data: UpcomingDay[] = [
 
 beforeEach(() => {
   mockNavigate.mockReset();
+  mockUsePublicSettings.mockReset();
+  mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": true });
   vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
@@ -52,6 +103,27 @@ function renderWithRouter() {
 }
 
 describe("UpcomingSnapshot soldier modal", () => {
+  it("hides commander release when forced callup is disabled", () => {
+    mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": false });
+    renderWithRouter();
+
+    fireEvent.click(screen.getByText("דני כהן"));
+
+    expect(screen.queryByRole("button", { name: "שחרור פיקודי" })).not.toBeInTheDocument();
+  });
+
+  it("opens the existing duty details from the selected upcoming assignment", async () => {
+    renderWithRouter();
+    fireEvent.click(screen.getByText("דני כהן"));
+
+    fireEvent.click(screen.getByRole("button", { name: "צפה בפרטי התורנות" }));
+
+    expect(screen.getByRole("dialog", { name: "שמירות" })).toBeInTheDocument();
+    expect(screen.getByText("06.07.2026")).toBeInTheDocument();
+    expect(screen.getByText("שער צפון")).toBeInTheDocument();
+    expect(await screen.findByText("מטווח לייזר")).toBeInTheDocument();
+  });
+
   it("opens the modal on badge click and closes it via the ✕ button (no bottom ביטול button)", () => {
     renderWithRouter();
     fireEvent.click(screen.getByText("דני כהן"));

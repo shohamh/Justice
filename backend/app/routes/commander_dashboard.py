@@ -65,6 +65,13 @@ class UpcomingAssignment(BaseModel):
     soldier_name: str
     duty_type_id: str
     duty_type_name: str
+    duty_location_id: uuid.UUID
+    duty_location_name: str
+    start_date: date
+    end_date: date
+    start_time: str
+    end_time: str
+    shift_id: uuid.UUID | None
     node_name: str
     is_reserve: bool
 
