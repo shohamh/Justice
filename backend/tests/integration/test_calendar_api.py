@@ -345,6 +345,7 @@ def test_shift_detail_projects_required_range_and_assignee_eligibility(
         "required_range_type": "laser",
         "qualification_source": None,
         "covered_by_range_date": None,
+        "covering_range_type": None,
         "projected_valid_until": None,
         "reason": "weapon_qualification",
         "duty_type_name": duty_type.name,
