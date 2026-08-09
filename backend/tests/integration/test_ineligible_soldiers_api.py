@@ -174,6 +174,11 @@ def test_planning_view_combines_all_duty_manager_roots_and_deduplicates_overlap(
             ),
         ]
     )
+    root_soldier = create_soldier(
+        admin_session,
+        personal_number=f"planning-root-{_uid()}",
+        hierarchy_node_id=planning_root.id,
+    )
     overlapping_soldier = create_soldier(
         admin_session,
         personal_number=f"planning-overlap-{_uid()}",
@@ -196,10 +201,33 @@ def test_planning_view_combines_all_duty_manager_roots_and_deduplicates_overlap(
     assert response.status_code == 200, response.text
     body = response.json()
     soldier_ids = [soldier["soldier_id"] for soldier in body["soldiers"]]
-    assert body["count"] == 2
-    assert set(soldier_ids) == {str(overlapping_soldier.id), str(second_soldier.id)}
+    assert body["count"] == 3
+    assert set(soldier_ids) == {
+        str(root_soldier.id),
+        str(overlapping_soldier.id),
+        str(second_soldier.id),
+    }
     assert soldier_ids.count(str(overlapping_soldier.id)) == 1
     assert str(excluded_soldier.id) not in soldier_ids
+    nodes_by_id = {node["id"]: node for node in body["nodes"]}
+    assert nodes_by_id[str(planning_root.id)]["path_ids"] == [str(planning_root.id)]
+    assert nodes_by_id[str(planning_root.id)]["parent_id"] is None
+    assert nodes_by_id[str(planning_child.id)]["path_ids"] == [
+        str(planning_root.id),
+        str(planning_child.id),
+    ]
+    assert nodes_by_id[str(planning_child.id)]["parent_id"] == str(planning_root.id)
+    assert nodes_by_id[str(second_planning_root.id)]["path_ids"] == [str(second_planning_root.id)]
+    assert nodes_by_id[str(second_planning_root.id)]["parent_id"] is None
+    soldiers_by_id = {soldier["soldier_id"]: soldier for soldier in body["soldiers"]}
+    assert soldiers_by_id[str(root_soldier.id)]["hierarchy_path_ids"] == [str(planning_root.id)]
+    assert soldiers_by_id[str(overlapping_soldier.id)]["hierarchy_path_ids"] == [
+        str(planning_root.id),
+        str(planning_child.id),
+    ]
+    assert soldiers_by_id[str(second_soldier.id)]["hierarchy_path_ids"] == [
+        str(second_planning_root.id)
+    ]
 
     count_response = client.get(
         "/api/ranges/ineligible-soldiers/count", headers=auth_headers(duty_manager)

@@ -103,8 +103,10 @@ def _visible_path(
 ) -> list[uuid.UUID]:
     if roots is None:
         return list(path_ids)
-    deepest_root_index = max(index for index, node_id in enumerate(path_ids) if node_id in roots)
-    return list(path_ids[deepest_root_index:])
+    shallowest_root_index = next(
+        index for index, node_id in enumerate(path_ids) if node_id in roots
+    )
+    return list(path_ids[shallowest_root_index:])
 
 
 def _node_out(
