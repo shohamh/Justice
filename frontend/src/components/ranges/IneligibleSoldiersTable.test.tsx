@@ -75,8 +75,8 @@ const planningResponse: IneligibleSoldiersResponse = {
   ],
 };
 
-function renderTable(response = planningResponse) {
-  return render(<SoldierModalProvider><IneligibleSoldiersTable data={response} /></SoldierModalProvider>);
+function renderTable(response = planningResponse, audience?: "planning" | "commander") {
+  return render(<SoldierModalProvider><IneligibleSoldiersTable data={response} audience={audience} /></SoldierModalProvider>);
 }
 
 describe("IneligibleSoldiersTable", () => {
@@ -107,6 +107,18 @@ describe("IneligibleSoldiersTable", () => {
     expect(screen.getByText("מטווח לייזר בתוקף עד 31.12.2026")).toBeInTheDocument();
   });
 
+  it("renders the same read-only hierarchy table for commander-scoped data", () => {
+    renderTable(planningResponse, "commander");
+
+    expect(screen.getByTestId("ineligible-soldiers-table")).toBeInTheDocument();
+
+    fireEvent.click(within(screen.getByTestId("ineligible-node-company")).getByRole("button"));
+
+    expect(screen.getByTestId("ineligible-soldiers-node-company")).toBeInTheDocument();
+    expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveTextContent("משובץ לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026");
+    expect(screen.queryByRole("button", { name: /שבץ|הסמך|עדכן/ })).not.toBeInTheDocument();
+  });
+
   it("explains uncovered duties and planned coverage in Hebrew as well as by color", () => {
     renderTable();
     fireEvent.click(within(screen.getByTestId("ineligible-node-company")).getByRole("button"));
@@ -118,11 +130,19 @@ describe("IneligibleSoldiersTable", () => {
     expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveClass("bg-red-100", "dark:bg-red-900/40");
   });
 
-  it("sorts hierarchy and expanded soldier columns while preserving the expanded unit", () => {
+  it("sorts hierarchy rows and preserves the expanded unit while sorting soldier columns", () => {
     renderTable();
     fireEvent.click(within(screen.getByTestId("ineligible-node-company")).getByRole("button"));
 
-    fireEvent.click(screen.getByRole("columnheader", { name: "יחידה" }));
+    const hierarchyTable = screen.getByTestId("ineligible-soldiers-table");
+    const hierarchyHeader = within(hierarchyTable).getByRole("columnheader", { name: "יחידה" });
+    fireEvent.click(hierarchyHeader);
+
+    expect(screen.getAllByTestId(/^ineligible-node-/).map((row) => row.cells[1].textContent)).toEqual([
+      "מחלקהמחלקה 1",
+      "פיקודפיקוד עליון",
+      "פלוגהפלוגה א",
+    ]);
     expect(screen.getByTestId("ineligible-soldiers-node-company")).toBeInTheDocument();
 
     const soldierTable = screen.getByTestId("ineligible-soldiers-node-company");

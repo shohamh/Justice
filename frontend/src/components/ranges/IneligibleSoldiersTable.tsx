@@ -7,10 +7,14 @@ import { formatRangeEligibilityExplanation } from "../../utils/rangeEligibilityE
 import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
 
-interface Props {
+export type IneligibleSoldiersAudience = "planning" | "commander";
+
+export interface IneligibleSoldiersTableProps {
   data?: IneligibleSoldiersResponse;
   loading?: boolean;
   error?: boolean;
+  /** @default "planning". Callers own query scope; this component only presents the supplied data. */
+  audience?: IneligibleSoldiersAudience;
 }
 
 interface HierarchyRow extends IneligibleHierarchyNode {
@@ -62,7 +66,7 @@ function formatDate(value: string): string {
   return `${day}.${month}.${year}`;
 }
 
-export function IneligibleSoldiersTable({ data, loading, error }: Props) {
+export function IneligibleSoldiersTable({ data, loading, error }: IneligibleSoldiersTableProps) {
   const { t } = useTranslation();
   const { levelTypes } = useLevelTypes();
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
