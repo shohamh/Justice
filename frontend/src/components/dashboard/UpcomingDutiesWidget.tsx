@@ -8,10 +8,19 @@ interface Props {
   onOpenDuty: (duty: EffectiveDuty) => void;
 }
 
+function statusLabel(d: EffectiveDuty): { text: string; calledUp: boolean } {
+  if (d.is_reserve && d.called_up_from) {
+    const range = d.called_up_from === d.called_up_to
+      ? d.called_up_from
+      : `${d.called_up_from}–${d.called_up_to}`;
+    return { text: `הוקפץ ${range}`, calledUp: true };
+  }
+  return { text: d.is_reserve ? "רזרבה" : "ראשי", calledUp: false };
+}
+
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty }: Props) {
   const today = new Date().toISOString().split("T")[0];
   const upcoming = duties
-    // end_date is exclusive, so "not yet over" means end_date is after today.
     .filter((d) => d.end_date > today)
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
 
@@ -21,25 +30,18 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
       {upcoming.length === 0 ? (
         <p className="text-sm text-gray-500">אין תורנויות קרובות</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-gray-600">
-              <th className="text-right pb-2 font-medium">תאריך</th>
-              <th className="text-right pb-2 font-medium">סוג</th>
-              <th className="text-right pb-2 font-medium">מיקום</th>
-              <th className="pb-2 w-6"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {upcoming.map((d) => (
-              <tr
+        <div className="space-y-2">
+          {upcoming.map((d) => {
+            const status = statusLabel(d);
+            return (
+              <div
                 key={d.assignment_id}
                 role="button"
                 tabIndex={0}
-                className={`border-b last:border-0 cursor-pointer ${
+                className={`rounded-lg p-3 cursor-pointer transition ${
                   d.is_reserve
-                    ? "border-dashed border-2 border-gray-400 dark:border-gray-500 bg-gray-100/40 dark:bg-gray-700/30 hover:bg-gray-100/70 dark:hover:bg-gray-700/50"
-                    : "dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    ? "border-2 border-dashed border-amber-400 dark:border-amber-500 bg-amber-50/50 dark:bg-amber-900/20 hover:bg-amber-50/80 dark:hover:bg-amber-900/30"
+                    : "border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 hover:bg-gray-100 dark:hover:bg-gray-700"
                 }`}
                 onClick={() => onOpenDuty(d)}
                 onKeyDown={(e) => {
@@ -50,21 +52,22 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
                 }}
                 title="פתח פרטים"
               >
-                <td className="py-2">
-                  {d.is_reserve && (
-                    <span className="inline-block text-[10px] px-1 rounded bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 me-1">
-                      רזרבה
-                    </span>
-                  )}
-                  {formatDutyRange(d.start_date, d.end_date)}
-                </td>
-                <td className="py-2">{typeNames[d.duty_type_id] ?? "—"}</td>
-                <td className="py-2">{locationNames[d.duty_location_id] ?? "—"}</td>
-                <td className="py-2 text-gray-400 text-xs">›</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-medium text-sm">{typeNames[d.duty_type_id] ?? "—"}</div>
+                    <div className={`text-xs mt-0.5 ${status.calledUp ? "text-amber-700 dark:text-amber-400 font-medium" : "text-gray-500 dark:text-gray-400"}`}>
+                      {status.text}
+                    </div>
+                  </div>
+                  <span className="text-gray-400 text-xs">›</span>
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {formatDutyRange(d.start_date, d.end_date)} · {locationNames[d.duty_location_id] ?? "—"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </section>
   );

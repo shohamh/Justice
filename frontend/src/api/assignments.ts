@@ -27,6 +27,8 @@ export interface EffectiveDuty {
   end_at: string;
   shift_id?: string | null;
   is_reserve: boolean;
+  called_up_from: string | null;
+  called_up_to: string | null;
   weapon_ineligible: boolean;
   weapon_ineligible_reason: string | null;
 }
