@@ -144,6 +144,24 @@ def fairness_components(
     return svc.fairness_components(session)
 
 
+@router.get("/eligibility-groups")
+def eligibility_groups(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[dict]:
+    """Lightweight view of fairness_components() for scoping auto-assign selection —
+    same connected components, without the per-soldier detail."""
+    full = svc.fairness_components(session)
+    return [
+        {
+            "duty_type_ids": c["duty_type_ids"],
+            "duty_type_names": c["duty_type_names"],
+            "soldier_count": c["soldier_count"],
+        }
+        for c in full["components"]
+    ]
+
+
 @router.get("/soldiers/{soldier_id}/effort-breakdown", response_model=EffortBreakdownOut)
 def effort_breakdown(
     soldier_id: uuid.UUID,
