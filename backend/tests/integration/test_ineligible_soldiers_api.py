@@ -12,6 +12,7 @@ from app.db.models import (
     RangeEvent,
     RangeType,
 )
+from app.services.settings_loader import set_setting
 from tests.helpers import (
     auth_headers,
     create_duty_location,
@@ -33,6 +34,7 @@ def _list(client, soldier, audience: str):
 
 
 def _add_future_weapon_duty_and_matching_range(session, *, soldier, node) -> None:
+    set_setting(session, "mitvachim.enabled", True, actor_id=None)
     duty_location = create_duty_location(session, name=f"duty-location-{_uid()}")
     range_location = create_range_location(session, name=f"range-location-{_uid()}")
     duty_type = DutyType(
@@ -132,6 +134,12 @@ def test_commander_view_includes_descendants_and_excludes_duty_manager_only_node
     assert descendant["valid_qualifications"] == []
     assert descendant["has_upcoming_weapon_duty"] is True
     assert descendant["has_upcoming_matching_range"] is True
+    assert descendant["upcoming_weapon_duties"][0]["eligible"] is True
+    assert descendant["upcoming_weapon_duties"][0]["qualification_source"] == "planned_range"
+    assert (
+        descendant["upcoming_weapon_duties"][0]["covered_by_range_date"]
+        == (date.today() + timedelta(days=3)).isoformat()
+    )
     assert (
         descendant["upcoming_weapon_duties"][0]["start_date"]
         == (date.today() + timedelta(days=7)).isoformat()
