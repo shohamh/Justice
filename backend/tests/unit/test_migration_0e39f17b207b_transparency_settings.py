@@ -76,11 +76,11 @@ def test_nonempty_old_array_migrates_to_most_senior_level():
         assert old_row is None
 
 
-def test_empty_or_missing_old_value_migrates_to_every_soldier():
+def test_empty_or_missing_old_value_migrates_to_default_level():
     with _db_at_down_revision() as (engine, run_migration):
         run_migration()
         with engine.begin() as conn:
             row = conn.execute(text(
                 "SELECT value FROM system_settings WHERE key = 'transparency.min_visible_level'"
             )).scalar()
-        assert row == "every_soldier"
+        assert row == "מדור"

@@ -33,9 +33,9 @@ def upgrade() -> None:
             ),
             {"keys": list(old)},
         ).all()
-        min_level = min(ranks, key=lambda r: r.rank).key if ranks else "every_soldier"
+        min_level = min(ranks, key=lambda r: r.rank).key if ranks else "מדור"
     else:
-        min_level = "every_soldier"
+        min_level = "מדור"
 
     conn.execute(
         sa.text(
