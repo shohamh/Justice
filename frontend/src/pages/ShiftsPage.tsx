@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +13,7 @@ import AutoAssignResponsibilityModal from "../components/AutoAssignResponsibilit
 import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
+import { listEligibilityGroups, EligibilityGroup } from "../api/scoring";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import HierarchyNodeFilter from "../components/HierarchyNodeFilter";
 import { type ColDef } from "../components/DataTable";
@@ -438,6 +439,9 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
   const dutyTypes = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
 
+  const eligibilityGroupsQuery = useQuery({ queryKey: queryKeys.eligibilityGroups(), queryFn: listEligibilityGroups });
+  const eligibilityGroups = useMemo(() => eligibilityGroupsQuery.data ?? [], [eligibilityGroupsQuery.data]);
+
   const locationsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
   const locations = useMemo(() => locationsQuery.data ?? [], [locationsQuery.data]);
 
@@ -513,6 +517,11 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     }
   }, [t, invalidateShifts]);
 
+  const selectByDutyTypeIds = useCallback((dutyTypeIds: string[]) => {
+    const matching = displayedShifts.filter(s => dutyTypeIds.includes(s.duty_type_id)).map(s => s.id);
+    setSelectedShiftIds(prev => Array.from(new Set([...prev, ...matching])));
+  }, [displayedShifts]);
+
   const dtName = useCallback((id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8), [dutyTypes]);
   const locName = useCallback((id: string) => locations.find(l => l.id === id)?.name ?? id.slice(0, 8), [locations]);
   const eligibleUnitsLabel = useCallback((s: DutyShift) => {
@@ -536,6 +545,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           }
           onClick={e => e.stopPropagation()}
           aria-label="בחר משמרת"
+          data-testid={`shift-row-checkbox-${s.id}`}
         />
       ),
     },
@@ -753,6 +763,36 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             {t("shifts.filter_to")}
             <DateInput value={dateTo} onChange={iso => { setDateTo(iso); if (iso && dateFrom && iso < dateFrom) setDateFrom(iso); }} min={dateFrom || undefined} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
+          <label className="flex items-center gap-2">
+            {t("shifts.filter_by_duty_type")}
+            <select
+              multiple
+              data-testid="quick-filter-duty-type"
+              className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32"
+              onChange={(e) => selectByDutyTypeIds(Array.from(e.target.selectedOptions, o => o.value))}
+            >
+              {dutyTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
+            </select>
+          </label>
+          {eligibilityGroups.length > 0 && (
+            <label className="flex items-center gap-2">
+              {t("shifts.filter_by_eligibility_group")}
+              <select
+                multiple
+                data-testid="quick-filter-eligibility-group"
+                className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32"
+                onChange={(e) => {
+                  const indices = Array.from(e.target.selectedOptions, o => Number(o.value));
+                  const ids = indices.flatMap(i => eligibilityGroups[i]?.duty_type_ids ?? []);
+                  selectByDutyTypeIds(ids);
+                }}
+              >
+                {eligibilityGroups.map((g: EligibilityGroup, i: number) => (
+                  <option key={i} value={i}>{`${g.soldier_count} חיילים כשירים ל${g.duty_type_names.join(", ")}`}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {displayedShifts.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <button

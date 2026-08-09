@@ -733,6 +733,8 @@
     "notes": "הערות",
     "filter_from": "מתאריך",
     "filter_to": "עד תאריך",
+    "filter_by_duty_type": "סנן לפי סוג תורנות",
+    "filter_by_eligibility_group": "סנן לפי קבוצת כשירות",
     "status": "סטטוס שיבוץ",
     "shift_status": "סטטוס",
     "active": "פעיל",
