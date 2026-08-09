@@ -245,6 +245,35 @@ def test_cancelled_matching_range_alone_does_not_cover_a_future_weapon_duty(
     assert record.upcoming_matching_ranges == ()
 
 
+def test_partial_matching_range_does_not_cover_every_future_weapon_duty(
+    app_session: Session,
+) -> None:
+    node = create_node(app_session, level="branch", name="Root")
+    laser_duty = _duty_type(app_session, name="Laser duty", required_range_type=RangeType.laser)
+    live_duty = _duty_type(app_session, name="Live duty", required_range_type=RangeType.live)
+    soldier = create_soldier(app_session, personal_number="inq-302", hierarchy_node_id=node.id)
+    _duty(app_session, soldier_id=soldier.id, duty_type=laser_duty, start_date=AS_OF)
+    _duty(
+        app_session,
+        soldier_id=soldier.id,
+        duty_type=live_duty,
+        start_date=AS_OF + timedelta(days=1),
+    )
+    _range_assignment(
+        app_session,
+        soldier_id=soldier.id,
+        node_id=node.id,
+        range_type=RangeType.laser,
+        event_date=AS_OF,
+    )
+    app_session.commit()
+
+    record = list_ineligible_soldiers(app_session, roots={node.id}, as_of=AS_OF)[0]
+
+    assert record.has_upcoming_weapon_duty is True
+    assert record.has_upcoming_matching_range is False
+
+
 def test_batches_related_records_for_all_scoped_soldiers(app_session: Session) -> None:
     root = create_node(app_session, level="branch", name="Root")
     soldiers = [

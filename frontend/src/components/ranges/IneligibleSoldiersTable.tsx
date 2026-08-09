@@ -61,7 +61,7 @@ export function IneligibleSoldiersTable({ data, loading, error }: Props) {
     const urgent = soldier.has_upcoming_weapon_duty && !soldier.has_upcoming_matching_range;
     const dutyText = soldier.upcoming_weapon_duties.map((duty) => `${duty.duty_type_name} ${duty.start_date}`).join(", ");
     const rangeText = soldier.upcoming_matching_ranges
-      .map((range) => `מטווח מתוכנן ${RANGE_TYPE_LABELS[range.range_type] ?? range.range_type} ${range.date}`)
+      .map((range) => `${t("range_qualification.plannedRange")} ${RANGE_TYPE_LABELS[range.range_type] ?? range.range_type} ${range.date}`)
       .join(", ");
     return <span data-testid={`ineligible-warning-${soldier.soldier_id}`} className={`inline-block rounded px-2 py-1 ${urgent
       ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
@@ -73,37 +73,37 @@ export function IneligibleSoldiersTable({ data, loading, error }: Props) {
   const nodeColumns: ColDef<HierarchyRow>[] = [
     {
       id: "node",
-      header: "יחידה",
+      header: t("range_qualification.columns.unit"),
       cell: (node) => <span className="flex items-center gap-2" style={{ paddingRight: node.depth * 16 }}><span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">{levelLabelByKey.get(node.level) ?? node.level}</span><span>{node.name}</span></span>,
       sortValue: (node) => node.name,
       filterValue: (node) => node.name,
     },
-    { id: "count", header: "חיילים ללא הסמכה", cell: (node) => node.soldierCount, sortValue: (node) => node.soldierCount },
+    { id: "count", header: t("range_qualification.columns.count"), cell: (node) => node.soldierCount, sortValue: (node) => node.soldierCount },
   ];
   const soldierColumns: ColDef<IneligibleSoldier>[] = [
-    { id: "soldier", header: "חייל", cell: (soldier) => <SoldierLink id={soldier.soldier_id} name={soldier.soldier_name} />, sortValue: (soldier) => soldier.soldier_name, filterValue: (soldier) => `${soldier.soldier_name} ${soldier.personal_number}` },
-    { id: "qualification", header: "הסמכות בתוקף", cell: qualificationText, filterValue: qualificationText },
-    { id: "context", header: "הקשר עתידי", cell: warningContent },
+    { id: "soldier", header: t("range_qualification.columns.soldier"), cell: (soldier) => <SoldierLink id={soldier.soldier_id} name={soldier.soldier_name} />, sortValue: (soldier) => soldier.soldier_name, filterValue: (soldier) => `${soldier.soldier_name} ${soldier.personal_number}` },
+    { id: "qualification", header: t("range_qualification.columns.qualification"), cell: qualificationText, filterValue: qualificationText },
+    { id: "context", header: t("range_qualification.columns.context"), cell: warningContent },
   ];
 
-  if (loading) return <div data-testid="ineligible-soldiers-view" role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-600 dark:border-gray-600 dark:text-gray-300">טוען חיילים ללא הסמכה…</div>;
-  if (error) return <div data-testid="ineligible-soldiers-view" role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">טעינת החיילים ללא הסמכה נכשלה</div>;
-  if (!data || data.count === 0) return <div data-testid="ineligible-soldiers-view" role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-600 dark:border-gray-600 dark:text-gray-300">אין חיילים ללא הסמכת מטווח</div>;
+  if (loading) return <div data-testid="ineligible-soldiers-view" role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-600 dark:border-gray-600 dark:text-gray-300">{t("range_qualification.soldiersLoading")}</div>;
+  if (error) return <div data-testid="ineligible-soldiers-view" role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">{t("range_qualification.soldiersError")}</div>;
+  if (!data || data.count === 0) return <div data-testid="ineligible-soldiers-view" role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-600 dark:border-gray-600 dark:text-gray-300">{t("range_qualification.soldiersEmpty")}</div>;
 
   return <div data-testid="ineligible-soldiers-view" className="space-y-3" dir="rtl">
-    <p className="text-sm text-gray-700 dark:text-gray-200">{data.count} חיילים ללא הסמכת מטווח</p>
+    <p className="text-sm text-gray-700 dark:text-gray-200">{t("range_qualification.soldiersCount", { count: data.count })}</p>
     <DataTable
       columns={nodeColumns}
       data={rows}
-      filterPlaceholder="סינון יחידות..."
-      emptyMessage="אין יחידות להצגה"
+      filterPlaceholder={t("range_qualification.filterUnits")}
+      emptyMessage={t("range_qualification.emptyUnits")}
       testId="ineligible-soldiers-table"
       rowTestId={(node) => `ineligible-node-${node.id}`}
       rowClassName={(node) => (node.id === expandedNodeId ? "bg-indigo-50 dark:bg-indigo-950" : "")}
       expandable={{
         isExpanded: (node) => node.id === expandedNodeId,
         onToggle: (node) => setExpandedNodeId((current) => current === node.id ? null : node.id),
-        content: (node) => <div className="p-2"><DataTable columns={soldierColumns} data={soldiersForNode(data, node.id)} filterPlaceholder="סינון חיילים..." emptyMessage="אין חיילים ללא הסמכה ביחידה זו" testId={`ineligible-soldiers-node-${node.id}`} /></div>,
+        content: (node) => <div className="p-2"><DataTable columns={soldierColumns} data={soldiersForNode(data, node.id)} filterPlaceholder={t("range_qualification.filterSoldiers")} emptyMessage={t("range_qualification.emptySoldiersInUnit")} testId={`ineligible-soldiers-node-${node.id}`} /></div>,
       }}
     />
   </div>;

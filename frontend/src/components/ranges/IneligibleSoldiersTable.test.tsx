@@ -10,6 +10,9 @@ vi.mock("react-i18next", () => ({
       "range_qualification.warning.normal": "אין כשירות מטווח בתוקף",
       "range_qualification.warning.urgent": "תורנות נשק קרובה ללא מטווח תואם",
       "range_qualification.qualificationExpiry": `בתוקף עד ${options?.date}`,
+      "range_qualification.soldiersLoading": "טוען חיילים ללא הסמכה...",
+      "range_qualification.soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
+      "range_qualification.soldiersEmpty": "אין חיילים ללא הסמכת מטווח",
     }[key] ?? key),
   }),
 }));

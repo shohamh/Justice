@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelRangeEvent, createRangeEvent, decideRangeExcusal, deleteRangeEvent, excuseRangeAssignment, getRangeEvent, getRangeExcusalRequests, getRanges, removeRangeAssignment, CreateRangeEventBody, UpdateRangeEventBody, RangeEvent, RangeType, updateRangeEvent } from "../api/ranges";
@@ -20,6 +21,7 @@ import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
 import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../utils/rangeLabels";
 
 export default function RangesPage() {
+  const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const [selected, setSelected] = useState<string | null>(params.get("event"));
   const showIneligible = params.get("tab") === "ineligible";
@@ -128,9 +130,9 @@ export default function RangesPage() {
 
   return <Layout><section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="ranges-page">
     <div className="flex flex-wrap justify-between items-center gap-2"><h1 className="text-xl font-semibold">מטווחים</h1>{!showIneligible && manage && <button type="button" data-testid="create-event-button" onClick={() => setFormEvent(null)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">מטווח חדש</button>}</div>
-    <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700" role="tablist" aria-label="תצוגת מטווחים">
-      <button type="button" role="tab" aria-selected={!showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete("tab"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${!showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>לוח מטווחים</button>
-      <button type="button" role="tab" aria-selected={showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set("tab", "ineligible"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>כשירות חיילים</button>
+     <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700" role="tablist" aria-label={t("range_qualification.tablistLabel")}>
+       <button type="button" role="tab" aria-selected={!showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete("tab"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${!showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>{t("range_qualification.tabs.schedule")}</button>
+       <button type="button" role="tab" aria-selected={showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set("tab", "ineligible"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>{t("range_qualification.tabs.qualification")}</button>
     </div>
     {showIneligible && <IneligibleSoldiersTable data={ineligibleSoldiers.data} loading={ineligibleSoldiers.isLoading} error={ineligibleSoldiers.isError} />}
     <div className={showIneligible ? "hidden" : undefined}>

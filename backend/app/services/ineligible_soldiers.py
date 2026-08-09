@@ -168,6 +168,21 @@ def _upcoming_matching_ranges_by_soldier(
     return {soldier_id: tuple(ranges) for soldier_id, ranges in ranges_by_soldier.items()}
 
 
+def _has_matching_range_for_each_duty(
+    duties: tuple[UpcomingWeaponDuty, ...],
+    ranges: tuple[UpcomingMatchingRange, ...],
+) -> bool:
+    """Require a scheduled matching range for every future weapon duty."""
+    return bool(duties) and all(
+        any(
+            scheduled.range_type == duty.required_range_type
+            and scheduled.date <= duty.start_date
+            for scheduled in ranges
+        )
+        for duty in duties
+    )
+
+
 def list_ineligible_soldiers(
     session: Session,
     *,
@@ -222,7 +237,9 @@ def list_ineligible_soldiers(
                 hierarchy_path_ids=tuple(node.path_ids),
                 valid_qualifications=valid_qualifications,
                 has_upcoming_weapon_duty=bool(upcoming_weapon_duties),
-                has_upcoming_matching_range=bool(upcoming_matching_ranges),
+                has_upcoming_matching_range=_has_matching_range_for_each_duty(
+                    upcoming_weapon_duties, upcoming_matching_ranges
+                ),
                 upcoming_weapon_duties=upcoming_weapon_duties,
                 upcoming_matching_ranges=upcoming_matching_ranges,
             )
