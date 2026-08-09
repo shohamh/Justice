@@ -1000,7 +1000,8 @@
   },
   "duty_detail": {
     "required_range": "מטווח נדרש",
-    "no_required_range": "לא נדרש"
+    "no_required_range": "לא נדרש",
+    "required_range_unavailable": "נתוני מטווח נדרש אינם זמינים"
   },
   "reserve_ratio": "יחס רזרבה",
   "reserve_minimum": "מינימום רזרבה",

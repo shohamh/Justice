@@ -18,6 +18,8 @@ interface Props {
   onRequestSwap?: (duty: EffectiveDuty) => void;
 }
 
+type DutyTypeLookupState = "loading" | "available" | "unavailable";
+
 export default function DutyDetailModal({ duty, typeNames, locationNames, onClose, onRequestSwap }: Props) {
   const { t } = useTranslation();
   useModalBackClose(onClose);
@@ -25,11 +27,12 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
   const { openSoldierModal } = useSoldierModal();
   const [shift, setShift] = useState<CalendarShift | null>(null);
   const [dutyType, setDutyType] = useState<DutyType | null>(null);
+  const [dutyTypeLookupState, setDutyTypeLookupState] = useState<DutyTypeLookupState>("loading");
   const [loading, setLoading] = useState(false);
   const [showShiftPanel, setShowShiftPanel] = useState(false);
 
   useEffect(() => {
-    if (!duty) { setShift(null); setDutyType(null); setShowShiftPanel(false); return; }
+    if (!duty) { setShift(null); setDutyType(null); setDutyTypeLookupState("loading"); setShowShiftPanel(false); return; }
     function handleKeyDown(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
@@ -40,11 +43,16 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
     setLoading(true);
     setShift(null);
     setDutyType(null);
-    const dtFetch = listDutyTypes().then((dts) => dts.find((d) => d.id === duty.duty_type_id) ?? null);
-    const shiftFetch = duty.shift_id ? getCalendarShift(duty.shift_id) : Promise.resolve(null);
+    setDutyTypeLookupState("loading");
+    const dtFetch = listDutyTypes()
+      .then((dts) => {
+        const dt = dts.find((d) => d.id === duty.duty_type_id) ?? null;
+        return { dt, state: dt ? "available" : "unavailable" } as const;
+      })
+      .catch(() => ({ dt: null, state: "unavailable" } as const));
+    const shiftFetch = duty.shift_id ? getCalendarShift(duty.shift_id).catch(() => null) : Promise.resolve(null);
     Promise.all([dtFetch, shiftFetch])
-      .then(([dt, sh]) => { setDutyType(dt); setShift(sh); })
-      .catch(() => {})
+      .then(([{ dt, state }, sh]) => { setDutyType(dt); setDutyTypeLookupState(state); setShift(sh); })
       .finally(() => setLoading(false));
   }, [duty]);
 
@@ -112,7 +120,11 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
             <div className="flex gap-2">
               <span className="text-gray-400 w-14 shrink-0">{t("duty_detail.required_range")}</span>
               <span className="text-gray-700 dark:text-gray-300">
-                {dutyType?.required_range_type
+                {dutyTypeLookupState === "loading"
+                  ? "…"
+                  : dutyTypeLookupState === "unavailable"
+                    ? t("duty_detail.required_range_unavailable")
+                    : dutyType?.required_range_type
                   ? RANGE_TYPE_LABELS[dutyType.required_range_type] ?? dutyType.required_range_type
                   : t("duty_detail.no_required_range")}
               </span>

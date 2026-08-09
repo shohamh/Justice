@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import UpcomingSnapshot from "./UpcomingSnapshot";
 import type { UpcomingDay } from "../api/commanderDashboard";
+import { listDutyTypes } from "../api/dutyConfig";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -10,6 +11,7 @@ vi.mock("react-i18next", () => ({
       "command_dashboard.view_duty_details": "צפה בפרטי התורנות",
       "duty_detail.required_range": "מטווח נדרש",
       "duty_detail.no_required_range": "לא נדרש",
+      "duty_detail.required_range_unavailable": "נתוני מטווח נדרש אינם זמינים",
     })[key] ?? key,
   }),
 }));
@@ -122,6 +124,17 @@ describe("UpcomingSnapshot soldier modal", () => {
     expect(screen.getByText("06.07.2026")).toBeInTheDocument();
     expect(screen.getByText("שער צפון")).toBeInTheDocument();
     expect(await screen.findByText("מטווח לייזר")).toBeInTheDocument();
+  });
+
+  it("shows required-range data as unavailable when the duty type lookup fails", async () => {
+    vi.mocked(listDutyTypes).mockRejectedValueOnce(new Error("unavailable"));
+    renderWithRouter();
+    fireEvent.click(screen.getByText("דני כהן"));
+
+    fireEvent.click(screen.getByRole("button", { name: "צפה בפרטי התורנות" }));
+
+    expect(await screen.findByText("נתוני מטווח נדרש אינם זמינים")).toBeInTheDocument();
+    expect(screen.queryByText("לא נדרש")).not.toBeInTheDocument();
   });
 
   it("opens the modal on badge click and closes it via the ✕ button (no bottom ביטול button)", () => {
