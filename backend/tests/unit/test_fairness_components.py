@@ -45,3 +45,22 @@ def test_single_soldier_component_has_no_stats():
     s1 = uuid4()
     res = _build_fairness_components({s1: {A}}, {A: "A"}, {s1: 0.5}, {s1: "x"})
     assert res["components"][0]["effort"] is None  # <2 soldiers -> no spread
+
+
+def test_fairness_components_includes_duty_type_ids():
+    A, B = uuid4(), uuid4()
+    s1, s2 = uuid4(), uuid4()
+    type_names = {A: "גדר", B: "שער"}
+    # s1,s2 do {A,B}
+    eligible = {s1: {A, B}, s2: {A, B}}
+    effort = {s1: 0.1, s2: 0.3}
+    names = {s1: "a", s2: "b"}
+
+    res = _build_fairness_components(eligible, type_names, effort, names)
+
+    assert len(res["components"]) == 1
+    component = res["components"][0]
+    assert "duty_type_ids" in component
+    assert set(component["duty_type_ids"]) == {str(A), str(B)}
+    # Verify they are sorted strings (consistent ordering)
+    assert component["duty_type_ids"] == sorted([str(A), str(B)])

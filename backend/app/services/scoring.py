@@ -723,6 +723,7 @@ def _build_fairness_components(
         effs = [effort_by_id.get(sid, 0.0) for sid in g["soldiers"]]
         comp_type_ids: set[uuid.UUID] = g["type_ids"]
         components.append({
+            "duty_type_ids": sorted(str(tid) for tid in comp_type_ids),
             "duty_type_names": sorted(type_names[tid] for tid in comp_type_ids if tid in type_names),
             "soldier_count": len(g["soldiers"]),
             "effort": _effort_stats(effs),
