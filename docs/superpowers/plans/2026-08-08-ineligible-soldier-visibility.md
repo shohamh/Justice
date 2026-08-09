@@ -2015,7 +2015,7 @@ git commit -m "feat: let soldiers request a swap directly from a newly-ineligibl
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run the full backend fast suite**
+- [x] **Step 1: Run the full backend fast suite**
 
 ```bash
 cd backend
@@ -2023,14 +2023,14 @@ pytest -q
 ```
 Expected: all green (aside from any already-known, pre-existing, unrelated flaky failures — verify any failure passes in isolation and touches code this plan never modified before treating it as pre-existing).
 
-- [ ] **Step 2: Run the backend slow suite**
+- [x] **Step 2: Run the backend slow suite**
 
 ```bash
 pytest --slow -q
 ```
 Expected: all green.
 
-- [ ] **Step 3: Run the full frontend suite**
+- [x] **Step 3: Run the full frontend suite**
 
 ```bash
 cd frontend
@@ -2040,8 +2040,8 @@ npx tsc --noEmit -p .
 ```
 Expected: all green, zero lint warnings.
 
-- [ ] **Step 4: Manual smoke test in the browser**
+- [x] **Step 4: Manual smoke test in the browser**
 
 Start the dev stack, log in as an admin. Create a `DutyType` with `requires_weapon=true` and `required_range_type=laser` (now possible via the API directly, per Task 3), create a shift for it, assign a soldier with no range qualification (bypassing the soft-warning-with-override from the weapon-qualification-eligibility feature), then either wait for the daily worker or manually call `recheck_assignments` for that assignment (e.g. via a one-off script) — confirm: the nav badge count increments, the ⚠️ appears on the shifts table row, the ⚠️ + "Replace" button appear in the shift detail panel, the soldier sees the "request swap" prompt on their own duties page, and a notification was created for the soldier, their commander, and the duty managers in scope.
 
-- [ ] **Step 5: No commit needed** — this task only verifies prior commits; if any regression surfaces, fix it within the task that introduced it and re-run this task.
+- [x] **Step 5: No commit needed** — this task only verifies prior commits; if any regression surfaces, fix it within the task that introduced it and re-run this task.
