@@ -117,6 +117,14 @@ def test_transparency_exemptions_redacted_for_plain_soldier(client: TestClient, 
     assert row["has_global_exemption"] is None
 
 
+def test_fairness_components_403_for_plain_soldier_by_default(client: TestClient, admin_session: Session):
+    # Same gating as /scoring/transparency: default transparency.min_visible_level
+    # is "מדור", so a plain soldier with no command/DM scope has no visibility.
+    s = create_soldier(admin_session, personal_number="5600040", role="soldier")
+    r = client.get("/api/scoring/fairness-components", headers=auth_headers(s))
+    assert r.status_code == 403
+
+
 def test_soldier_can_read_own_breakdown(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="5600004", role="soldier")
     r = client.get(f"/api/scoring/soldiers/{s.id}", headers=auth_headers(s))

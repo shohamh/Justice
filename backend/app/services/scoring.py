@@ -744,12 +744,14 @@ def _build_fairness_components(
     }
 
 
-def fairness_components(session: Session) -> dict[str, Any]:
+def fairness_components(session: Session, *, viewer: Soldier | None = None) -> dict[str, Any]:
     """Effort spread (פיזור) split by connected components of soldiers who share
-    duty-type eligibility, plus the soldiers exempt from every active duty type."""
+    duty-type eligibility, plus the soldiers exempt from every active duty type.
+    Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope)."""
     from app.services.algorithm_bridge import load_soldier_inputs
 
-    rows = transparency_rows(session)["rows"]
+    rows = transparency_rows(session, viewer=viewer)["rows"]
+    visible_ids = {r["soldier_id"] for r in rows}
     effort_by_id = {r["soldier_id"]: float(r["effort_score"]) for r in rows}
     name_by_id = {r["soldier_id"]: r["full_name"] for r in rows}
 
@@ -762,6 +764,8 @@ def fairness_components(session: Session) -> dict[str, Any]:
     }
     inputs = load_soldier_inputs(session, as_of=date.today())
     eligible_types = {
-        si.id: (active_type_ids - set(si.exempted_duty_type_ids)) for si in inputs
+        si.id: (active_type_ids - set(si.exempted_duty_type_ids))
+        for si in inputs
+        if si.id in visible_ids
     }
     return _build_fairness_components(eligible_types, type_names, effort_by_id, name_by_id, soldier_eligible_types=eligible_types)

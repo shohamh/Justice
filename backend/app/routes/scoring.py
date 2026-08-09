@@ -124,7 +124,9 @@ def fairness_components(
 ) -> dict:
     """Effort spread (פיזור) split per connected component of soldiers who share
     duty-type eligibility, plus the count of soldiers exempt from every duty."""
-    return svc.fairness_components(session)
+    if not has_any_visibility(session, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
+    return svc.fairness_components(session, viewer=user)
 
 
 @router.get("/soldiers/{soldier_id}/effort-breakdown", response_model=EffortBreakdownOut)
