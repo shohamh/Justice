@@ -17,7 +17,18 @@ vi.mock("../api/systemSettings", async () => {
 });
 
 vi.mock("../hooks/useLevelTypes", () => ({
-  useLevelTypes: () => ({ levelTypes: [{ id: "lt1", key: "branch", label: "חטיבה", rank: 1 }], loading: false, refresh: vi.fn() }),
+  useLevelTypes: () => ({
+    levelTypes: [
+      { id: "lt1", key: "branch", label: "חטיבה", rank: 1 },
+      // "מדור" is a real hierarchy level key (production DBs use Hebrew keys)
+      // and the default value of transparency.min_visible_level, so it must be
+      // present for the select to render its default instead of falling back
+      // to the first option.
+      { id: "lt2", key: "מדור", label: "מדור", rank: 2 },
+    ],
+    loading: false,
+    refresh: vi.fn(),
+  }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -106,16 +117,21 @@ describe("SystemSettingsContent export/import", () => {
     expect(screen.getByText("ללא הגבלה")).toBeInTheDocument();
   });
 
-  it("renders a checkbox per level type for the transparency visibility setting, unchecked by default", async () => {
+  it("renders the transparency min-visible-level select populated from level types, defaulting to מדור", async () => {
     renderWithProviders(<SystemSettingsContent />);
     await waitFor(() => expect(systemSettingsApi.getSystemSettings).toHaveBeenCalled());
 
-    expect(screen.getByText("אילו רמות פיקוד רשאיות לצפות בדף השקיפות (בנוסף לאחראי תורנויות ומנהל)")).toBeInTheDocument();
-    const checkbox = screen.getAllByText("חטיבה").find((el) => el.closest("label"))!.closest("label")!.querySelector("input[type=checkbox]") as HTMLInputElement;
-    expect(checkbox).not.toBeChecked();
+    expect(screen.getByText("החל ממפקדים/אחראי תורנויות באיזה דרג ניתן לראות נתוני שקיפות במערכת")).toBeInTheDocument();
+    const select = screen.getByText("החל ממפקדים/אחראי תורנויות באיזה דרג ניתן לראות נתוני שקיפות במערכת").closest("div")!.parentElement!.parentElement!.querySelector("select") as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    // Every soldier option plus each configured hierarchy level; the field
+    // defaults to מדור when no value has been saved yet.
+    expect(select.value).toBe("מדור");
+    const optionLabels = Array.from(select.options).map((o) => o.textContent);
+    expect(optionLabels).toEqual(["כל חייל", "חטיבה", "מדור"]);
   });
 
-  it("saves the transparency setting as an array of selected level keys, and as [] when unchecked", async () => {
+  it("saves the transparency min-visible-level selection and the levels-above numbers", async () => {
     // A distinguishing value (differs from the field's default) lets us wait for the
     // fetched settings to actually land in component state before interacting —
     // otherwise the load-sync effect can fire after our click and clobber the draft.
@@ -124,27 +140,27 @@ describe("SystemSettingsContent export/import", () => {
     });
     vi.mocked(systemSettingsApi.updateSystemSettings).mockResolvedValue({
       "eligibility.mitvahim_months": 42,
-      "transparency.visible_commander_levels": ["branch"],
     });
     renderWithProviders(<SystemSettingsContent />);
     await screen.findByDisplayValue("42");
 
-    const checkbox = screen.getAllByText("חטיבה").find((el) => el.closest("label"))!.closest("label")!.querySelector("input[type=checkbox]") as HTMLInputElement;
+    const select = screen.getByText("החל ממפקדים/אחראי תורנויות באיזה דרג ניתן לראות נתוני שקיפות במערכת").closest("div")!.parentElement!.parentElement!.querySelector("select") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "branch" } });
 
-    fireEvent.click(checkbox);
+    const commanderInput = screen.getByText("כמה דרגים מעל תחום הפיקוד יכול מפקד לראות (לצורך השוואה)").closest("div")!.parentElement!.parentElement!.querySelector("input") as HTMLInputElement;
+    fireEvent.change(commanderInput, { target: { value: "2" } });
+
+    const dutyManagerInput = screen.getByText("כמה דרגים מעל תחום האחריות יכול אחראי תורנויות לראות (לצורך השוואה)").closest("div")!.parentElement!.parentElement!.querySelector("input") as HTMLInputElement;
+    fireEvent.change(dutyManagerInput, { target: { value: "3" } });
+
     fireEvent.click(screen.getByText("שמור שינויים"));
 
     await waitFor(() => expect(systemSettingsApi.updateSystemSettings).toHaveBeenCalled());
     expect(vi.mocked(systemSettingsApi.updateSystemSettings).mock.calls[0][0]).toMatchObject({
-      "transparency.visible_commander_levels": ["branch"],
-    });
-
-    // Unchecking again should reproduce an empty array, not drop the key or leave it truthy.
-    fireEvent.click(checkbox);
-    fireEvent.click(screen.getByText("שמור שינויים"));
-    await waitFor(() => expect(systemSettingsApi.updateSystemSettings).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(systemSettingsApi.updateSystemSettings).mock.calls[1][0]).toMatchObject({
-      "transparency.visible_commander_levels": [],
+      "eligibility.mitvahim_months": 42,
+      "transparency.min_visible_level": "branch",
+      "transparency.commander_levels_above": 2,
+      "transparency.duty_manager_levels_above": 3,
     });
   });
 

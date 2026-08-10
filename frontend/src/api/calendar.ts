@@ -1,4 +1,6 @@
 import { api } from "./client";
+import type { DutyEligibilityFact } from "./ineligibleSoldiers";
+import type { RangeType } from "./ranges";
 
 // Old types (still used by UnitCalendar)
 export interface CalAssignment {
@@ -47,6 +49,7 @@ export interface CalendarShiftAssignee {
   hierarchy_path_ids: string[];
   weapon_ineligible: boolean;
   weapon_ineligible_reason: string | null;
+  range_eligibility: DutyEligibilityFact | null;
 }
 
 export async function dismissReserve(
@@ -63,6 +66,7 @@ export interface CalendarShift {
   duty_type_id: string;
   duty_type_name: string;
   duty_type_color: string;
+  required_range_type: RangeType | null;
   duty_location_name: string;
   start_date: string;
   end_date: string;
@@ -95,4 +99,15 @@ export async function getCalendarShifts(
 
 export async function getCalendarShift(shiftId: string): Promise<CalendarShift> {
   return (await api.get<CalendarShift>(`/calendar/shifts/${shiftId}`)).data;
+}
+
+export function getCalendarWeaponIneligibleCount(
+  params: { nodeId?: string; soldierId?: string; date_from?: string; date_to?: string },
+): Promise<{ count: number }> {
+  const { nodeId, soldierId, ...rest } = params;
+  return api
+    .get<{ count: number }>("/calendar/weapon-ineligible/count", {
+      params: { node_id: nodeId, soldier_id: soldierId, ...rest },
+    })
+    .then((response) => response.data);
 }

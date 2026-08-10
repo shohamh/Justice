@@ -15,6 +15,8 @@ import ShiftAssignModal from "./ShiftAssignModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
+import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
+import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { EventDetailModal, RosterSection } from "./planning";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
@@ -142,6 +144,27 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
     return <SoldierLink id={a.soldierId} name={a.name} />;
   }
 
+  function rangeEligibilityIndicator(assignee: CalendarShiftAssignee): React.ReactNode {
+    if (!shift.required_range_type) return null;
+    if (!assignee.range_eligibility) {
+      return (
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {t("range_qualification.shiftDetail.unavailable")}
+        </span>
+      );
+    }
+    if (assignee.range_eligibility.eligible) return null;
+    return (
+      <span
+        aria-label={t("range_qualification.shiftDetail.warning")}
+        title={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
+        className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300"
+      >
+        ⚠️
+      </span>
+    );
+  }
+
   return (
     <EventDetailModal
       open
@@ -149,6 +172,19 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
       subtitle={formatDutyRange(shift.start_date, shift.end_date)}
       onClose={onClose}
     >
+        <div
+          className={`mb-4 rounded border px-3 py-2 text-sm font-medium ${
+            shift.required_range_type
+              ? "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+              : "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+          }`}
+        >
+          {shift.required_range_type
+            ? t("range_qualification.shiftDetail.requiredRange", {
+                rangeType: RANGE_TYPE_LABELS[shift.required_range_type] ?? shift.required_range_type,
+              })
+            : t("range_qualification.shiftDetail.noRequiredRange")}
+        </div>
         {(() => {
           const dt = shiftDutyTypes[shift.duty_type_id];
           if (!dt) return null;
@@ -203,9 +239,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                     <div className="flex items-center gap-2">
                       <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
                       <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
-                      {a.weapon_ineligible && (
-                        <span title={a.weapon_ineligible_reason ?? undefined} className="mr-1 text-red-500 dark:text-red-400">⚠️</span>
-                      )}
+                      {rangeEligibilityIndicator(a)}
                       {a.hierarchy_label && <span className="text-xs text-gray-400">({a.hierarchy_label})</span>}
                       {isCalledUp && (
                         <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
@@ -325,9 +359,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                   <div className="flex items-center gap-2">
                     <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
                     <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
-                    {a.weapon_ineligible && (
-                      <span title={a.weapon_ineligible_reason ?? undefined} className="mr-1 text-red-500 dark:text-red-400">⚠️</span>
-                    )}
+                    {rangeEligibilityIndicator(a)}
                     <span className="text-xs text-purple-500">({t("reserve_label")})</span>
                     {a.hierarchy_label && (
                       <span className="text-xs text-gray-400">({a.hierarchy_label})</span>

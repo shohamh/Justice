@@ -86,6 +86,17 @@ export interface FairnessComponents {
 export async function getFairnessComponents(): Promise<FairnessComponents> {
   return (await api.get<FairnessComponents>(`/scoring/fairness-components`)).data;
 }
+
+export interface EligibilityGroup {
+  duty_type_ids: string[];
+  duty_type_names: string[];
+  soldier_count: number;
+}
+
+export async function listEligibilityGroups(): Promise<EligibilityGroup[]> {
+  return (await api.get<EligibilityGroup[]>(`/scoring/eligibility-groups`)).data;
+}
+
 export async function getBreakdown(soldierId: string): Promise<Breakdown> {
   return (await api.get<Breakdown>(`/scoring/soldiers/${soldierId}`)).data;
 }

@@ -58,6 +58,7 @@ from app.routes import bug_reports as bug_report_routes
 from app.routes import search as search_routes
 from app.routes import no_show as no_show_routes
 from app.routes import ranges as ranges_routes
+from app.routes import range_qualification_visibility as range_qualification_visibility_routes
 from app.routes import range_locations as range_locations_routes
 from app.settings import get_settings
 
@@ -197,6 +198,7 @@ def create_app() -> FastAPI:
     app.include_router(bug_report_routes.router, prefix="/api")
     app.include_router(search_routes.router, prefix="/api")
     app.include_router(no_show_routes.router, prefix="/api")
+    app.include_router(range_qualification_visibility_routes.router, prefix="/api")
     app.include_router(ranges_routes.router, prefix="/api")
     app.include_router(range_locations_routes.router, prefix="/api")
     return app

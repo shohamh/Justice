@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyAssignment,
+    DutyLocation,
     DutyShift,
     DutyType,
     ExemptionRequest,
@@ -321,6 +322,8 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
     soldier_map = {s.id: s for s in soldiers}
     duty_type_rows = session.execute(select(DutyType)).scalars().all()
     duty_type_map = {dt.id: dt for dt in duty_type_rows}
+    location_rows = session.execute(select(DutyLocation)).scalars().all()
+    location_map = {location.id: location for location in location_rows}
     node_rows = session.execute(select(HierarchyNode)).scalars().all()
     node_map = {n.id: n for n in node_rows}
 
@@ -328,6 +331,7 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
         d = max(a.start_date, today)
         soldier = soldier_map.get(a.soldier_id)
         dt = duty_type_map.get(a.duty_type_id)
+        location = location_map.get(a.duty_location_id)
         node = node_map.get(soldier.hierarchy_node_id) if soldier else None
         while d < min(a.end_date, end + timedelta(days=1)):
             day_map.setdefault(d, []).append(
@@ -337,6 +341,13 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
                     "soldier_name": soldier.full_name if soldier else "",
                     "duty_type_id": str(a.duty_type_id),
                     "duty_type_name": dt.name if dt else "",
+                    "duty_location_id": str(a.duty_location_id),
+                    "duty_location_name": location.name if location else "",
+                    "start_date": str(a.start_date),
+                    "end_date": str(a.end_date),
+                    "start_time": a.start_time,
+                    "end_time": a.end_time,
+                    "shift_id": str(a.duty_shift_id) if a.duty_shift_id else None,
                     "node_name": node.name if node else "",
                     "is_reserve": a.is_reserve,
                 }

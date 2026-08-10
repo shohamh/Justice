@@ -60,3 +60,12 @@ def test_me_defaults_theme_preference_to_system(client, admin_session):
     r = client.get("/api/me", headers=auth_headers(s))
     assert r.status_code == 200
     assert r.json()["theme_preference"] == "system"
+
+
+def test_me_includes_can_view_transparency(client, admin_session):
+    from tests.helpers import create_soldier, auth_headers
+
+    s = create_soldier(admin_session, personal_number="7600023")
+    r = client.get("/api/me", headers=auth_headers(s))
+    assert r.status_code == 200
+    assert r.json()["can_view_transparency"] is False

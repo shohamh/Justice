@@ -13,8 +13,11 @@ vi.mock("../auth/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-const mockT = (key: string, fallback?: string) =>
-  key === "weapon_ineligible.replace" ? "החלף" : (fallback ?? key);
+const mockT = (key: string, options?: string | Record<string, string>) => {
+  if (key === "weapon_ineligible.replace") return "החלף";
+  if (typeof options === "string") return options;
+  return options?.rangeType ? `${key} ${options.rangeType}` : key;
+};
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mockT }),
 }));
@@ -83,6 +86,7 @@ function makeAssignee(overrides: Partial<CalendarShiftAssignee>): CalendarShiftA
     hierarchy_path_ids: [],
     weapon_ineligible: false,
     weapon_ineligible_reason: null,
+    range_eligibility: null,
     ...overrides,
   };
 }
@@ -104,6 +108,7 @@ function makeShift(assignees: CalendarShiftAssignee[]): CalendarShift {
     assigned_count: 2,
     fill_status: "full",
     reserve_count: 1,
+    required_range_type: "laser",
     assignees,
   };
 }
@@ -131,7 +136,7 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
     vi.mocked(assignmentsApi.getShiftCandidates).mockClear();
   });
 
-  it("shows a warning marker with the reason as title next to an ineligible primary", () => {
+  it("shows a neutral state rather than a warning when only the legacy flag is present", () => {
     mockUseAuth.mockReturnValue({ user: null });
     renderPanel(
       makeShift([
@@ -146,14 +151,15 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
       ])
     );
 
-    expect(within(nameRow("חייל לא כשיר")).getByTitle(WEAPON_REASON)).toHaveTextContent("⚠️");
-    // The eligible assignee on the same shift gets no marker.
-    expect(within(nameRow("חייל כשיר")).queryByTitle(WEAPON_REASON)).toBeNull();
+    expect(within(nameRow("חייל לא כשיר")).queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
+    expect(within(nameRow("חייל לא כשיר")).getByText("range_qualification.shiftDetail.unavailable")).toBeInTheDocument();
+    // The eligible assignee on the same shift gets no marker either.
+    expect(within(nameRow("חייל כשיר")).queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
     // Non-manager viewers see no Replace action.
     expect(screen.queryByText("החלף")).toBeNull();
   });
 
-  it("shows the marker next to an ineligible reserve too", () => {
+  it("shows a neutral state for a reserve when only the legacy flag is present", () => {
     mockUseAuth.mockReturnValue({ user: null });
     renderPanel(
       makeShift([
@@ -168,7 +174,57 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
       ])
     );
 
-    expect(within(nameRow("רזרב לא כשיר")).getByTitle(WEAPON_REASON)).toHaveTextContent("⚠️");
+    expect(within(nameRow("רזרב לא כשיר")).queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
+    expect(within(nameRow("רזרב לא כשיר")).getByText("range_qualification.shiftDetail.unavailable")).toBeInTheDocument();
+  });
+  it("shows the required range and projection warning only for an uncovered assignee", () => {
+    mockUseAuth.mockReturnValue({ user: null });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          soldier_name: "חייל ללא מטווח",
+          range_eligibility: {
+            eligible: false,
+            required_range_type: "laser",
+            qualification_source: null,
+            covered_by_range_date: null,
+            projected_valid_until: null,
+            reason: "weapon_qualification",
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+        makeAssignee({
+          assignment_id: "a-covered",
+          soldier_id: "s-covered",
+          soldier_name: "חייל עם מטווח",
+          range_eligibility: {
+            eligible: true,
+            required_range_type: "laser",
+            qualification_source: "planned_range",
+            covered_by_range_date: "2026-08-08",
+            projected_valid_until: "2027-08-08",
+            reason: null,
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+      ])
+    );
+
+    expect(screen.getByText(/range_qualification\.shiftDetail\.requiredRange/)).toHaveTextContent("מטווח לייזר");
+    expect(within(nameRow("חייל ללא מטווח")).getByLabelText("range_qualification.shiftDetail.warning")).toHaveAttribute(
+      "title",
+      expect.stringContaining("range_qualification.explanation.uncoveredDuty")
+    );
+    expect(within(nameRow("חייל עם מטווח")).queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
+  });
+
+  it("shows a neutral state when a required-range eligibility fact is unavailable", () => {
+    mockUseAuth.mockReturnValue({ user: null });
+    renderPanel(makeShift([makeAssignee({ soldier_name: "חייל ללא נתון" })]));
+
+    expect(screen.getByText("range_qualification.shiftDetail.unavailable")).toBeInTheDocument();
   });
 });
 
@@ -179,7 +235,7 @@ describe("ShiftDetailPanel Replace action", () => {
     vi.mocked(assignmentsApi.getShiftCandidates).mockClear();
   });
 
-  it("shows a Replace button for a duty manager next to the ineligible marker", () => {
+  it("shows a Replace button for a duty manager with a legacy ineligible flag", () => {
     mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
     renderPanel(
       makeShift([
@@ -193,9 +249,7 @@ describe("ShiftDetailPanel Replace action", () => {
       ])
     );
 
-    expect(within(nameRow("חייל לא כשיר")).getByTitle(WEAPON_REASON)).toHaveTextContent("⚠️");
-    // The Replace button lives in the row's right-aligned action group,
-    // not inside the name group that holds the marker.
+    // The Replace button lives in the row's right-aligned action group.
     expect(
       within(screen.getByText("חייל לא כשיר").closest("div.border") as HTMLElement).getByText("החלף")
     ).toBeInTheDocument();
@@ -322,7 +376,6 @@ describe("ShiftDetailPanel Replace action", () => {
     );
 
     const row = screen.getByText("רזרב נקרא").closest("div.border") as HTMLElement;
-    expect(within(row).getByTitle(WEAPON_REASON)).toHaveTextContent("⚠️");
     expect(within(row).getByText("reserve_called_up 2026-08-10–2026-08-11")).toBeInTheDocument();
     expect(within(row).getByText("החלף")).toBeInTheDocument();
 

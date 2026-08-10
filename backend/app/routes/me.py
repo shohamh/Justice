@@ -13,6 +13,7 @@ from app.auth.deps import get_current_user, require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierEnrollmentRequest, TelegramLink
 from app.db.session import get_session
 from app.services import email_verification as ev_svc
+from app.services.authority import has_any_visibility
 from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -49,6 +50,7 @@ class MeResponse(BaseModel):
     is_career: bool = False
     enrollment_pending: bool = False
     theme_preference: str = "system"
+    can_view_transparency: bool = False
 
 
 class SetEmailRequest(BaseModel):
@@ -107,6 +109,8 @@ def me(
         ).limit(1)
     ).first() is not None
 
+    can_view_transparency = has_any_visibility(session, user)
+
     return MeResponse(
         id=user.id,
         personal_number=user.personal_number,
@@ -138,6 +142,7 @@ def me(
         is_career=user.is_career,
         enrollment_pending=enrollment_pending,
         theme_preference=user.theme_preference,
+        can_view_transparency=can_view_transparency,
     )
 
 

@@ -410,6 +410,7 @@
     "duty_type_filter_label": "סוגי תורנויות",
     "range_filter_label": "סוגי מטווחים",
     "weapon_ineligible_filter": "מוצגות רק תורנויות עם חיילים שאינם כשירים מבחינת הכשרת נשק",
+    "weapon_ineligible_count": "{{count}} חיילים אינם כשירים מבחינת הכשרת נשק",
     "swap_requests_count": "{{count}} בקשות החלפה",
     "swap_requests_has": "יש בקשת החלפה",
     "cover_for_free": "כסה בחינם"
@@ -732,6 +733,8 @@
     "notes": "הערות",
     "filter_from": "מתאריך",
     "filter_to": "עד תאריך",
+    "filter_by_duty_type": "סנן לפי סוג תורנות",
+    "filter_by_eligibility_group": "סנן לפי קבוצת כשירות",
     "status": "סטטוס שיבוץ",
     "shift_status": "סטטוס",
     "active": "פעיל",
@@ -994,7 +997,13 @@
     "move_soldier": "העברת חייל",
     "target_node": "יחידת יעד",
     "move_confirm": "שלח בקשת העברה",
-    "cancel": "ביטול"
+    "cancel": "ביטול",
+    "view_duty_details": "צפה בפרטי התורנות"
+  },
+  "duty_detail": {
+    "required_range": "מטווח נדרש",
+    "no_required_range": "לא נדרש",
+    "required_range_unavailable": "נתוני מטווח נדרש אינם זמינים"
   },
   "reserve_ratio": "יחס רזרבה",
   "reserve_minimum": "מינימום רזרבה",
@@ -1235,8 +1244,6 @@
     "save": "שמור שינויים"
   },
   "admin_settings": {
-    "transparency_visible_levels": "אילו רמות פיקוד רשאיות לצפות בדף השקיפות (בנוסף לאחראי תורנויות ומנהל)",
-    "transparency_no_level_types": "אין רמות היררכיה מוגדרות",
     "constraints_reset_period": "תקופת איפוס ימי אילוץ"
   },
   "enrollment": {
@@ -1320,6 +1327,58 @@
       "confirm_assignment": "אישור השיבוץ נכשל",
       "confirm_assignments": "אישור השיבוצים נכשל",
       "save_assignments": "שמירת השיבוצים נכשלה"
+    }
+  },
+  "range_qualification": {
+    "title": "חיילים ללא כשירות מטווח",
+    "tabs": {
+      "schedule": "לוח מטווחים",
+      "qualification": "כשירות מטווחים"
+    },
+    "columns": {
+      "soldier": "חייל",
+      "hierarchy": "מסגרת",
+      "qualification": "כשירות",
+      "upcomingDuty": "תורנות נשק קרובה",
+      "upcomingRange": "מטווח תואם",
+      "unit": "יחידה",
+      "count": "חיילים ללא הסמכה",
+      "context": "הקשר עתידי"
+    },
+    "loading": "טוען נתוני כשירות...",
+    "empty": "כל החיילים כשירים למטווח",
+    "error": "טעינת נתוני הכשירות נכשלה",
+    "qualificationExpiry": "בתוקף עד {{date}}",
+    "soldiersLoading": "טוען חיילים ללא הסמכה...",
+    "soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
+    "soldiersEmpty": "אין חיילים ללא הסמכת מטווח",
+    "soldiersCount": "{{count}} חיילים ללא הסמכת מטווח",
+    "filterUnits": "סינון יחידות...",
+    "emptyUnits": "אין יחידות להצגה",
+    "filterSoldiers": "סינון חיילים...",
+    "emptySoldiersInUnit": "אין חיילים ללא הסמכה ביחידה זו",
+    "plannedRange": "מטווח מתוכנן",
+    "explanation": {
+      "noCurrentQualification": "אין מטווחים בתוקף",
+      "noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
+      "uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
+      "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}"
+    },
+    "shiftDetail": {
+      "requiredRange": "נדרש לפחות מטווח מסוג {{rangeType}}",
+      "noRequiredRange": "לא נדרש מטווח לתורנות זו",
+      "warning": "חוסר כשירות מטווחים",
+      "unavailable": "נתוני כשירות מטווחים אינם זמינים"
+    },
+    "tablistLabel": "תצוגת מטווחים",
+    "warning": {
+      "normal": "אין מטווחים בתוקף",
+      "urgent": "תורנות נשק קרובה ללא מטווח תואם"
+    },
+    "dashboard": {
+      "title": "חיילים ללא כשירות מטווח",
+      "description": "חיילים ללא כשירות מטווח בתוקף או ללא מטווח תואם לתורנות נשק קרובה.",
+      "empty": "אין חיילים הדורשים טיפול"
     }
   },
   "action": {

@@ -9,7 +9,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
-import { CalendarShift, getCalendarShifts } from "../api/calendar";
+import { CalendarShift, getCalendarShifts, getCalendarWeaponIneligibleCount } from "../api/calendar";
 import { loadCalendarData } from "../api/calendarData";
 import {
   RangeEvent, getRanges, getMyRanges, getRangeEvent, getRangeExcusalRequests,
@@ -33,6 +33,13 @@ const RANGE_TYPE_COLORS: Record<string, string> = {
   live: "#db2777",
   alal: "#0891b2",
 };
+
+const CALENDAR_EVENT_INTERACTION_CLASSES = [
+  "cursor-pointer",
+  "transition",
+  "hover:brightness-110",
+  "dark:hover:brightness-125",
+];
 
 
 interface UnitCalendarProps {
@@ -68,6 +75,7 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
   const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
   const [ranges, setRanges] = useState<RangeEvent[]>([]);
+  const [weaponIneligibleCount, setWeaponIneligibleCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
@@ -81,11 +89,30 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
+  const warningCountRequestRef = useRef(0);
 
   const fetchData = useCallback(async (from: string, to: string) => {
     if (!nodeId && !soldierId) return;
     setLoading(true);
     setError(null);
+    setWeaponIneligibleCount(null);
+    const warningCountRequest = ++warningCountRequestRef.current;
+    void getCalendarWeaponIneligibleCount({
+      nodeId: soldierId ? undefined : nodeId,
+      soldierId,
+      date_from: from,
+      date_to: to,
+    })
+      .then(({ count }) => {
+        if (warningCountRequest === warningCountRequestRef.current) {
+          setWeaponIneligibleCount(count);
+        }
+      })
+      .catch(() => {
+        if (warningCountRequest === warningCountRequestRef.current) {
+          setWeaponIneligibleCount(null);
+        }
+      });
     try {
       const { calendar, ranges: rangeEvents } = await loadCalendarData(
         () => getCalendarShifts({ nodeId: soldierId ? undefined : nodeId, soldierId, date_from: from, date_to: to }),
@@ -107,6 +134,8 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
 
   useEffect(() => {
     dateRangeRef.current = null;
+    warningCountRequestRef.current += 1;
+    setWeaponIneligibleCount(null);
     setShifts([]);
     setRanges([]);
     setSelectedShift(null);
@@ -166,7 +195,16 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
     [ranges, effectiveRangeTypeFilter],
   );
 
-  const shiftEvents = useMemo(() => filteredShifts.map(shiftToCalendarEvent), [filteredShifts]);
+  const shiftEvents = useMemo(
+    () => filteredShifts.map((shift) => {
+      const event = shiftToCalendarEvent(shift);
+      return {
+        ...event,
+        classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES, ...event.classNames],
+      };
+    }),
+    [filteredShifts],
+  );
 
   const rangeCalEvents = useMemo(() =>
     filteredRanges.map((r) => {
@@ -179,7 +217,7 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
         allDay: !hasTime,
         backgroundColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
         borderColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
-        classNames: [] as string[],
+        classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES],
         extendedProps: { rangeId: r.id },
       };
     }),
@@ -236,9 +274,17 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
           {t("unit_calendar.weapon_ineligible_filter")}
         </p>
       )}
-      {(dutyTypesInView.length > 1 || rangesEnabled) && (
-        <div className="flex flex-wrap gap-3 text-sm items-center">
-          {dutyTypesInView.length > 1 && (
+      {weaponIneligibleCount !== null && weaponIneligibleCount > 0 && (
+        <span
+          data-testid="unit-calendar-weapon-warning"
+          title={t("unit_calendar.weapon_ineligible_count", { count: weaponIneligibleCount })}
+          className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-sm font-semibold text-red-700 dark:bg-red-950 dark:text-red-200"
+        >
+          <span aria-hidden="true">⚠</span>
+          {weaponIneligibleCount}
+        </span>
+      )}
+      <div className="flex flex-wrap gap-3 text-sm items-center">
             <CheckboxListDropdown
               items={dutyTypesInView.map((dt) => ({ id: dt.id, label: dt.name }))}
               selected={effectiveDutyTypeFilter}
@@ -246,7 +292,6 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
               triggerLabel={t("unit_calendar.duty_type_filter_label") || "סוגי תורנויות"}
               panelDir="rtl"
             />
-          )}
           {rangesEnabled && (
             <CheckboxListDropdown
               items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}
@@ -256,8 +301,7 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
               panelDir="rtl"
             />
           )}
-        </div>
-      )}
+      </div>
 
       {loading && <p className="text-gray-500 text-sm">{t("unit_calendar.loading")}</p>}
       {error && <p className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}

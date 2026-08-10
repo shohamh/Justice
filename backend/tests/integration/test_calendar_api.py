@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -12,9 +12,350 @@ from app.db.models import (
     DutyReserveLink,
     DutyShift,
     DutyType,
+    RangeAssignment,
+    RangeEvent,
     RangeType,
+    SoldierRangeQualification,
 )
-from tests.helpers import auth_headers, create_node, create_soldier
+from app.services.settings_loader import set_setting
+from tests.helpers import auth_headers, create_node, create_range_location, create_soldier
+
+
+def test_calendar_weapon_ineligible_count_is_scoped_unique_and_projects_duty_dates(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="calendar-warning-admin", role="admin")
+    visible_node = create_node(admin_session, level="branch", name="calendar-warning-visible")
+    other_node = create_node(admin_session, level="branch", name="calendar-warning-other")
+    warned = create_soldier(
+        admin_session, personal_number="calendar-warning-warned", hierarchy_node_id=visible_node.id
+    )
+    qualified = create_soldier(
+        admin_session, personal_number="calendar-warning-qualified", hierarchy_node_id=visible_node.id
+    )
+    outside_scope = create_soldier(
+        admin_session, personal_number="calendar-warning-outside", hierarchy_node_id=other_node.id
+    )
+    weapon_duty = DutyType(
+        name="calendar-warning-weapon",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    plain_duty = DutyType(name="calendar-warning-plain", score_per_day=Decimal("1.00"))
+    location = DutyLocation(name="calendar-warning-location")
+    admin_session.add_all([weapon_duty, plain_duty, location])
+    admin_session.flush()
+
+    duty_day = date.today() + timedelta(days=10)
+
+    def add_assignment(soldier_id, duty_type, day):
+        shift = DutyShift(
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            start_date=day,
+            end_date=day + timedelta(days=1),
+            required_count=1,
+            status="active",
+        )
+        admin_session.add(shift)
+        admin_session.flush()
+        assignment = DutyAssignment(
+            soldier_id=soldier_id,
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            duty_shift_id=shift.id,
+            start_date=day,
+            end_date=day + timedelta(days=1),
+            status="published",
+        )
+        admin_session.add(assignment)
+
+    # Two visible weapon duties for one soldier must yield one warning. A
+    # non-weapon duty must not contribute, and a different subtree is hidden.
+    add_assignment(warned.id, weapon_duty, duty_day)
+    add_assignment(warned.id, weapon_duty, duty_day + timedelta(days=1))
+    add_assignment(warned.id, plain_duty, duty_day)
+    add_assignment(qualified.id, weapon_duty, duty_day)
+    add_assignment(outside_scope.id, weapon_duty, duty_day)
+
+    # This qualification is valid today but expires before the duty, so the
+    # count must evaluate the scheduled duty date rather than the request date.
+    admin_session.add(
+        SoldierRangeQualification(
+            soldier_id=qualified.id,
+            range_type=RangeType.laser,
+            valid_until=duty_day - timedelta(days=1),
+        )
+    )
+    for is_reserve, is_draft in [(True, False), (False, True)]:
+        event = RangeEvent(
+            hierarchy_node_id=visible_node.id,
+            range_type=RangeType.laser,
+            date=duty_day,
+            range_location_id=create_range_location(admin_session).id,
+            required_count=1,
+        )
+        admin_session.add(event)
+        admin_session.flush()
+        admin_session.add(
+            RangeAssignment(
+                range_event_id=event.id,
+                soldier_id=warned.id,
+                is_reserve=is_reserve,
+                is_draft=is_draft,
+            )
+        )
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(
+        "/api/calendar/weapon-ineligible/count",
+        params={
+            "node_id": str(visible_node.id),
+            "date_from": duty_day.isoformat(),
+            "date_to": (duty_day + timedelta(days=1)).isoformat(),
+        },
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"count": 2}
+
+
+def test_calendar_weapon_ineligible_count_forbids_non_admin_outside_requested_node(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="calendar-count-admin", role="admin")
+    visible_node = create_node(admin_session, level="branch", name="calendar-count-visible")
+    outside_node = create_node(admin_session, level="branch", name="calendar-count-outside")
+    outsider = create_soldier(
+        admin_session,
+        personal_number="calendar-count-outsider",
+        role="commander",
+        hierarchy_node_id=outside_node.id,
+    )
+    outside_node.commander_id = outsider.id
+    assigned = create_soldier(
+        admin_session, personal_number="calendar-count-assigned", hierarchy_node_id=visible_node.id
+    )
+    duty_type = DutyType(
+        name="calendar-count-weapon",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    location = DutyLocation(name="calendar-count-location")
+    day = date.today() + timedelta(days=10)
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+        required_count=1,
+        status="active",
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=assigned.id,
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            duty_shift_id=shift.id,
+            start_date=day,
+            end_date=day + timedelta(days=1),
+            status="published",
+        )
+    )
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(
+        "/api/calendar/weapon-ineligible/count",
+        params={"node_id": str(visible_node.id), "date_from": day.isoformat(), "date_to": day.isoformat()},
+        headers=auth_headers(outsider),
+    )
+
+    assert response.status_code == 403, response.text
+
+
+def test_calendar_weapon_ineligible_count_excludes_past_duties_and_counts_called_up_reserves(
+    client: TestClient, admin_session: Session
+):
+    """Only future active assignees contribute to the calendar warning badge."""
+    admin = create_soldier(admin_session, personal_number="calendar-count-window-admin", role="admin")
+    node = create_node(admin_session, level="branch", name="calendar-count-window-node")
+    past_one = create_soldier(
+        admin_session, personal_number="calendar-count-window-past-one", hierarchy_node_id=node.id
+    )
+    past_two = create_soldier(
+        admin_session, personal_number="calendar-count-window-past-two", hierarchy_node_id=node.id
+    )
+    called_up = create_soldier(
+        admin_session, personal_number="calendar-count-window-called-up", hierarchy_node_id=node.id
+    )
+    duty_type = DutyType(
+        name="calendar-count-window-weapon",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    location = DutyLocation(name="calendar-count-window-location")
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+
+    past_day = date.today() - timedelta(days=2)
+    future_day = date.today() + timedelta(days=3)
+
+    def add_assignment(soldier_id, day, *, is_reserve=False, called_up_from=None, called_up_to=None):
+        shift = DutyShift(
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            start_date=day,
+            end_date=day + timedelta(days=1),
+            required_count=1,
+            status="active",
+        )
+        admin_session.add(shift)
+        admin_session.flush()
+        admin_session.add(
+            DutyAssignment(
+                soldier_id=soldier_id,
+                duty_type_id=duty_type.id,
+                duty_location_id=location.id,
+                duty_shift_id=shift.id,
+                start_date=day,
+                end_date=day + timedelta(days=1),
+                status="published",
+                is_reserve=is_reserve,
+                called_up_from=called_up_from,
+                called_up_to=called_up_to,
+            )
+        )
+
+    # The requested window intentionally includes past dates. The two past
+    # primaries must not contribute; the future called-up reserve is displayed
+    # as an active assignee and must contribute.
+    add_assignment(past_one.id, past_day)
+    add_assignment(past_two.id, past_day)
+    add_assignment(
+        called_up.id,
+        future_day,
+        is_reserve=True,
+        called_up_from=future_day,
+        called_up_to=future_day,
+    )
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(
+        "/api/calendar/weapon-ineligible/count",
+        params={
+            "node_id": str(node.id),
+            "date_from": (past_day - timedelta(days=1)).isoformat(),
+            "date_to": future_day.isoformat(),
+        },
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"count": 1}
+
+
+def test_shift_detail_projects_required_range_and_assignee_eligibility(
+    client: TestClient, admin_session: Session
+):
+    """The selected shift exposes duty-date facts, not stored assignment flags."""
+    admin = create_soldier(admin_session, personal_number="detail-eligibility-admin", role="admin")
+    node = create_node(admin_session, level="branch", name="detail-eligibility-node")
+    uncovered = create_soldier(
+        admin_session, personal_number="detail-eligibility-uncovered", hierarchy_node_id=node.id
+    )
+    current = create_soldier(
+        admin_session, personal_number="detail-eligibility-current", hierarchy_node_id=node.id
+    )
+    planned = create_soldier(
+        admin_session, personal_number="detail-eligibility-planned", hierarchy_node_id=node.id
+    )
+    duty_type = DutyType(
+        name="detail-eligibility-weapon",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        required_range_type=RangeType.laser,
+    )
+    location = DutyLocation(name="detail-eligibility-location")
+    duty_day = date.today() + timedelta(days=12)
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=duty_day,
+        end_date=duty_day + timedelta(days=1),
+        required_count=3,
+        status="active",
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    for soldier in (uncovered, current, planned):
+        admin_session.add(
+            DutyAssignment(
+                soldier_id=soldier.id,
+                duty_type_id=duty_type.id,
+                duty_location_id=location.id,
+                duty_shift_id=shift.id,
+                start_date=duty_day,
+                end_date=duty_day + timedelta(days=1),
+                status="published",
+                weapon_ineligible=False,
+            )
+        )
+    admin_session.add(
+        SoldierRangeQualification(
+            soldier_id=current.id,
+            range_type=RangeType.laser,
+            valid_until=duty_day,
+        )
+    )
+    range_event = RangeEvent(
+        hierarchy_node_id=node.id,
+        range_type=RangeType.laser,
+        date=duty_day - timedelta(days=4),
+        range_location_id=create_range_location(admin_session).id,
+        required_count=1,
+    )
+    admin_session.add(range_event)
+    admin_session.flush()
+    admin_session.add(RangeAssignment(range_event_id=range_event.id, soldier_id=planned.id))
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(f"/api/calendar/shifts/{shift.id}", headers=auth_headers(admin))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["required_range_type"] == "laser"
+    assignees = {assignee["soldier_id"]: assignee for assignee in body["assignees"]}
+    uncovered_fact = assignees[str(uncovered.id)]["range_eligibility"]
+    assert uncovered_fact == {
+        "eligible": False,
+        "required_range_type": "laser",
+        "qualification_source": None,
+        "covered_by_range_date": None,
+        "covering_range_type": None,
+        "projected_valid_until": None,
+        "reason": "weapon_qualification",
+        "duty_type_name": duty_type.name,
+        "start_date": duty_day.isoformat(),
+    }
+    assert assignees[str(current.id)]["range_eligibility"]["qualification_source"] == "current_qualification"
+    planned_fact = assignees[str(planned.id)]["range_eligibility"]
+    assert planned_fact["eligible"] is True
+    assert planned_fact["qualification_source"] == "planned_range"
+    assert planned_fact["covered_by_range_date"] == (duty_day - timedelta(days=4)).isoformat()
 
 
 def test_commander_sees_subtree_calendar(client: TestClient, admin_session: Session):
@@ -350,6 +691,7 @@ def test_shift_detail_redacts_weapon_ineligibility_from_outside_soldier(
     assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
     assert assignee["weapon_ineligible"] is False
     assert assignee["weapon_ineligible_reason"] is None
+    assert assignee["range_eligibility"] is None
 
 
 def test_calendar_shifts_redacts_weapon_ineligibility_from_outside_soldier(

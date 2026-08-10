@@ -25,6 +25,7 @@ from app.db.models import (
 from app.algorithm.duration import calendar_days_touched, score_days
 from app.services.eligibility import inferred_service_type
 from app.auth.authz import scope_root_ids
+from app.services.authority import can_view_soldier_scope
 
 _UNSET: object = object()
 
@@ -547,10 +548,16 @@ def transparency_rows(
     )
 
     rows: list[dict[str, Any]] = []
+    population_spd: list[Decimal] = []
     for s in soldiers:
+        node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
         ad = active_days_map.get(s.id, 1)
-        node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
+        # Normalisation is computed over the FULL active population (dev
+        # behavior) regardless of which rows this viewer may see.
+        population_spd.append(cum / Decimal(ad))
+        if viewer is not None and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+            continue
         soldier_exemptions = exemptions_by_soldier.get(s.id, [])
         in_scope = node is not None and any(root in node.path_ids for root in roots)
         if in_scope:
@@ -603,8 +610,8 @@ def transparency_rows(
                 "effort_offset_raw": effort_offset_raw,
             }
         )
-    if rows:
-        avg_spd = sum(r["score_per_day"] for r in rows) / Decimal(len(rows))
+    if population_spd:
+        avg_spd = sum(population_spd) / Decimal(len(population_spd))
     else:
         avg_spd = Decimal("0")
     for r in rows:
@@ -612,7 +619,11 @@ def transparency_rows(
             r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
         )
     rows.sort(key=lambda r: r["effort_score"], reverse=True)
-    return {"rows": rows, "can_see_exemption_aggregates": can_see_exemption_aggregates}
+    return {
+        "rows": rows,
+        "can_see_exemption_aggregates": can_see_exemption_aggregates,
+        "population_count": len(soldiers),
+    }
 
 
 def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[str, Any]:
@@ -723,6 +734,7 @@ def _build_fairness_components(
         effs = [effort_by_id.get(sid, 0.0) for sid in g["soldiers"]]
         comp_type_ids: set[uuid.UUID] = g["type_ids"]
         components.append({
+            "duty_type_ids": sorted(str(tid) for tid in comp_type_ids),
             "duty_type_names": sorted(type_names[tid] for tid in comp_type_ids if tid in type_names),
             "soldier_count": len(g["soldiers"]),
             "effort": _effort_stats(effs),
@@ -741,12 +753,14 @@ def _build_fairness_components(
     }
 
 
-def fairness_components(session: Session) -> dict[str, Any]:
+def fairness_components(session: Session, *, viewer: Soldier | None = None) -> dict[str, Any]:
     """Effort spread (פיזור) split by connected components of soldiers who share
-    duty-type eligibility, plus the soldiers exempt from every active duty type."""
+    duty-type eligibility, plus the soldiers exempt from every active duty type.
+    Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope)."""
     from app.services.algorithm_bridge import load_soldier_inputs
 
-    rows = transparency_rows(session)["rows"]
+    rows = transparency_rows(session, viewer=viewer)["rows"]
+    visible_ids = {r["soldier_id"] for r in rows}
     effort_by_id = {r["soldier_id"]: float(r["effort_score"]) for r in rows}
     name_by_id = {r["soldier_id"]: r["full_name"] for r in rows}
 
@@ -759,6 +773,8 @@ def fairness_components(session: Session) -> dict[str, Any]:
     }
     inputs = load_soldier_inputs(session, as_of=date.today())
     eligible_types = {
-        si.id: (active_type_ids - set(si.exempted_duty_type_ids)) for si in inputs
+        si.id: (active_type_ids - set(si.exempted_duty_type_ids))
+        for si in inputs
+        if si.id in visible_ids
     }
     return _build_fairness_components(eligible_types, type_names, effort_by_id, name_by_id, soldier_eligible_types=eligible_types)

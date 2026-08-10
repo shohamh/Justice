@@ -37,6 +37,7 @@ export interface Me {
   direct_commander_name?: string | null;
   profile_picture_url?: string | null;
   is_career?: boolean;
+  can_view_transparency?: boolean;
 }
 
 export interface NodeOut {

@@ -13,7 +13,11 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import scoring as scoring_svc
-from app.services.calendar_shifts import get_calendar_shifts, get_single_shift
+from app.services.calendar_shifts import (
+    count_calendar_weapon_ineligible_soldiers,
+    get_calendar_shifts,
+    get_single_shift,
+)
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -43,6 +47,18 @@ class CalendarShiftAssigneeDismissal(BaseModel):
     reason: str | None
 
 
+class CalendarRangeEligibilityFact(BaseModel):
+    eligible: bool
+    required_range_type: str | None
+    qualification_source: str | None
+    covered_by_range_date: date | None
+    covering_range_type: str | None
+    projected_valid_until: date | None
+    reason: str | None
+    duty_type_name: str
+    start_date: date
+
+
 class CalendarShiftAssignee(BaseModel):
     assignment_id: uuid.UUID
     soldier_id: uuid.UUID
@@ -59,6 +75,7 @@ class CalendarShiftAssignee(BaseModel):
     hierarchy_path_ids: list[str] = []
     weapon_ineligible: bool = False
     weapon_ineligible_reason: str | None = None
+    range_eligibility: CalendarRangeEligibilityFact | None = None
 
 
 class CalendarShiftOut(BaseModel):
@@ -66,6 +83,7 @@ class CalendarShiftOut(BaseModel):
     duty_type_id: uuid.UUID
     duty_type_name: str
     duty_type_color: str
+    required_range_type: str | None = None
     duty_location_name: str
     start_date: date
     end_date: date
@@ -83,6 +101,10 @@ class CalendarShiftOut(BaseModel):
 
 class CalendarShiftsResponse(BaseModel):
     shifts: list[CalendarShiftOut]
+
+
+class CalendarWeaponIneligibleCountOut(BaseModel):
+    count: int
 
 
 def _duty_type_color(duty_type_id: uuid.UUID) -> str:
@@ -140,6 +162,7 @@ def _redact_shift_reasons(shift: CalendarShiftOut, user: Soldier, roots: set[uui
         if not can_view_private:
             assignee.weapon_ineligible = False
             assignee.weapon_ineligible_reason = None
+            assignee.range_eligibility = None
         for d in assignee.dismissals:
             d.reason = _visible_reason(
                 user, assignee.soldier_id, assignee.hierarchy_path_ids, roots, d.reason
@@ -244,7 +267,14 @@ def calendar_shifts(
     else:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="node_id_or_soldier_id_required")
     roots = scope_root_ids(session, user)
-    raw = get_calendar_shifts(session, node_id=node_id, soldier_id=soldier_id, date_from=date_from, date_to=date_to)
+    raw = get_calendar_shifts(
+        session,
+        node_id=node_id,
+        soldier_id=soldier_id,
+        date_from=date_from,
+        date_to=date_to,
+        include_eligibility_facts=True,
+    )
     swap_counts = _swap_counts_for_shifts(session, [s["id"] for s in raw])
     shifts = []
     for s in raw:
@@ -252,3 +282,50 @@ def calendar_shifts(
         _redact_shift_reasons(shift, user, roots)
         shifts.append(shift)
     return CalendarShiftsResponse(shifts=shifts)
+
+
+@router.get("/weapon-ineligible/count", response_model=CalendarWeaponIneligibleCountOut)
+def calendar_weapon_ineligible_count(
+    node_id: uuid.UUID | None = None,
+    soldier_id: uuid.UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> CalendarWeaponIneligibleCountOut:
+    if soldier_id is not None:
+        if soldier_id != user.id and user.role != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    elif node_id is not None:
+        node = session.get(HierarchyNode, node_id)
+        if node is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+        authorize(session, user, Action.HIERARCHY_READ, target_node=node)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="node_id_or_soldier_id_required",
+        )
+    roots = scope_root_ids(session, user)
+    visible_soldier_ids: set[uuid.UUID] | None = None
+    if user.role != "admin":
+        visible_soldier_ids = {user.id}
+        visible_soldier_ids.update(
+            soldier_id
+            for soldier_id, hierarchy_path_ids in session.execute(
+                select(Soldier.id, HierarchyNode.path_ids).join(
+                    HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id
+                )
+            ).all()
+            if roots & set(hierarchy_path_ids or [])
+        )
+    return CalendarWeaponIneligibleCountOut(
+        count=count_calendar_weapon_ineligible_soldiers(
+            session,
+            node_id=node_id,
+            soldier_id=soldier_id,
+            date_from=date_from,
+            date_to=date_to,
+            visible_soldier_ids=visible_soldier_ids,
+        )
+    )

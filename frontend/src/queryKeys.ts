@@ -69,6 +69,7 @@ export const queryKeys = {
   algorithmJob: (jobId: string) => ["algorithm", "job", jobId] as const,
   soldierDetail: (soldierId: string) => ["soldiers", "detail", soldierId] as const,
   fairnessComponents: () => ["scoring", "fairnessComponents"] as const,
+  eligibilityGroups: () => ["eligibilityGroups"] as const,
   effortGapNodes: (referenceDate?: string) => ["potential", "effortGap", referenceDate ?? null] as const,
   effortBreakdown: (soldierId: string) => ["scoring", "effortBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
@@ -89,4 +90,7 @@ export const queryKeys = {
   rangeEvent: (id: string) => ["ranges", id] as const,
   rangeExcusalRequests: (id: string) => ["ranges", id, "excusal-requests"] as const,
   rangeLocations: () => ["rangeLocations"] as const,
+  ineligibleSoldiers: (audience: "planning" | "commander") =>
+    ["ranges", "ineligibleSoldiers", audience] as const,
+  ineligibleSoldierCount: () => ["ranges", "ineligibleSoldiers", "count"] as const,
 };
