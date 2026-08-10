@@ -370,6 +370,51 @@ def test_transparency_rows_excludes_out_of_scope_soldiers_for_junior_commander(a
     assert outsider.id not in ids
 
 
+def test_transparency_normalisation_uses_full_population_for_subset_viewer(admin_session):
+    # A commander who sees only 1 of 3 active soldiers must still get
+    # normalised_score computed against ALL active soldiers' average (dev
+    # behavior) — NOT against the viewer-visible subset, and
+    # population_count reports the full basis.
+    from app.services.settings_loader import set_setting
+    from tests.helpers import create_node
+
+    own = create_node(admin_session, level="team", name="norm-own")
+    other = create_node(admin_session, level="team", name="norm-other")
+    cmd = create_soldier(admin_session, personal_number="8800201", role="commander")
+    own.commander_id = cmd.id
+    visible = create_soldier(admin_session, personal_number="8800202", hierarchy_node_id=own.id)
+    hidden = create_soldier(admin_session, personal_number="8800203", hierarchy_node_id=other.id)
+    admin_session.flush()
+    dt = _dt(admin_session, "שמירה-norm", "2.00")
+    loc = _loc(admin_session, "מוצב-norm")
+    create_assignment(
+        admin_session,
+        soldier_id=visible.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date.today() - timedelta(days=3),
+        end_date=date.today() - timedelta(days=1),
+        notes=None,
+        actor_id=None,
+    )
+    # cmd commands a "team" (rank 7) node; threshold "מדור" (rank 6) is NOT
+    # met, so without levels-above expansion cmd sees only his own subtree.
+    set_setting(admin_session, "transparency.min_visible_level", "מדור", actor_id=None)
+    admin_session.commit()
+
+    result = transparency_rows(admin_session, viewer=cmd)
+    visible_row = next(r for r in result["rows"] if r["soldier_id"] == visible.id)
+    assert {r["soldier_id"] for r in result["rows"]} == {visible.id}
+    assert hidden.id not in {r["soldier_id"] for r in result["rows"]}
+
+    full_rows = transparency_rows(admin_session)["rows"]
+    assert result["population_count"] == len(full_rows)
+    population_avg = sum(r["score_per_day"] for r in full_rows) / Decimal(len(full_rows))
+    assert visible_row["normalised_score"] == visible_row["score_per_day"] / population_avg
+    # With only ONE visible row the old (subset) math would normalise to 1.
+    assert visible_row["normalised_score"] != Decimal("1")
+
+
 def test_breakdown(admin_session):
     s = create_soldier(admin_session, personal_number="8500005")
     dt = _dt(admin_session, "שמירה-bd", "1.50")

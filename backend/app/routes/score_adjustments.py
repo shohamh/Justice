@@ -80,7 +80,8 @@ def preview_adjustment(
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
 
-    rows = transparency_rows(session, viewer=user)["rows"]
+    result = transparency_rows(session, viewer=user)
+    rows = result["rows"]
     soldier_row = next((r for r in rows if r["soldier_id"] == soldier_id), None)
     if soldier_row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier_not_in_transparency")
@@ -89,7 +90,7 @@ def preview_adjustment(
     spd_before = Decimal(str(soldier_row["score_per_day"]))
     normalised_before = Decimal(str(soldier_row["normalised_score"]))
     ad = int(soldier_row["active_days"])
-    n = len(rows)
+    n = result["population_count"]
 
     cum_after = cum_before + delta
     spd_after = cum_after / Decimal(ad)

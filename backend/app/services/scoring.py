@@ -548,12 +548,16 @@ def transparency_rows(
     )
 
     rows: list[dict[str, Any]] = []
+    population_spd: list[Decimal] = []
     for s in soldiers:
         node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
-        if viewer is not None and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
-            continue
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
         ad = active_days_map.get(s.id, 1)
+        # Normalisation is computed over the FULL active population (dev
+        # behavior) regardless of which rows this viewer may see.
+        population_spd.append(cum / Decimal(ad))
+        if viewer is not None and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+            continue
         soldier_exemptions = exemptions_by_soldier.get(s.id, [])
         in_scope = node is not None and any(root in node.path_ids for root in roots)
         if in_scope:
@@ -606,8 +610,8 @@ def transparency_rows(
                 "effort_offset_raw": effort_offset_raw,
             }
         )
-    if rows:
-        avg_spd = sum(r["score_per_day"] for r in rows) / Decimal(len(rows))
+    if population_spd:
+        avg_spd = sum(population_spd) / Decimal(len(population_spd))
     else:
         avg_spd = Decimal("0")
     for r in rows:
@@ -615,7 +619,11 @@ def transparency_rows(
             r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
         )
     rows.sort(key=lambda r: r["effort_score"], reverse=True)
-    return {"rows": rows, "can_see_exemption_aggregates": can_see_exemption_aggregates}
+    return {
+        "rows": rows,
+        "can_see_exemption_aggregates": can_see_exemption_aggregates,
+        "population_count": len(soldiers),
+    }
 
 
 def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[str, Any]:
