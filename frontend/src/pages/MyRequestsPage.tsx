@@ -44,6 +44,7 @@ export default function MyRequestsPage() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSizeErrors, setUploadSizeErrors] = useState<string[]>([]);
   const [erMedical, setErMedical] = useState(false);
+  const [erPermanent, setErPermanent] = useState(false);
   const [expandedExemption, setExpandedExemption] = useState<Set<string>>(new Set());
 
   const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -147,7 +148,7 @@ export default function MyRequestsPage() {
       const createdReq = await submitExemptionRequest({
         exemption_type_id: erTypeId,
         start_date: erStart,
-        end_date: erEnd || null,
+        end_date: erPermanent ? null : (erEnd || null),
         reason: erReason || null,
       });
       // Upload any attached files automatically
@@ -155,7 +156,7 @@ export default function MyRequestsPage() {
         await uploadExemptionFile(createdReq.id, f);
       }
       setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
-      setUploadFiles([]); setUploadSizeErrors([]); setErMedical(false);
+      setUploadFiles([]); setUploadSizeErrors([]); setErMedical(false); setErPermanent(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myExemptionRequests() });
     } catch (err: unknown) {
       setErError(translateApiError(err, t));
@@ -315,7 +316,16 @@ export default function MyRequestsPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.end_date")}</label>
-                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(iso) => setErEnd(iso)} min={erStart || undefined} data-testid="er-end" />
+                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erPermanent ? "" : erEnd} onChange={(iso) => setErEnd(iso)} min={erStart || undefined} disabled={erPermanent} required={!erPermanent} data-testid="er-end" />
+                <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <input
+                    type="checkbox"
+                    checked={erPermanent}
+                    onChange={(e) => { setErPermanent(e.target.checked); if (e.target.checked) setErEnd(""); }}
+                    data-testid="er-permanent"
+                  />
+                  {t("exemption_requests.permanent")}
+                </label>
               </div>
               <div className="flex flex-col gap-1 flex-1 min-w-32">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.reason")}</label>
@@ -418,7 +428,7 @@ export default function MyRequestsPage() {
             <button
               type="submit"
               className="bg-indigo-600 text-white px-4 py-1.5 rounded disabled:opacity-50 text-sm"
-              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0) || enrollmentPending || !isDateRangeValid(erStart, erEnd)}
+              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0) || enrollmentPending || (!erPermanent && !isDateRangeValid(erStart, erEnd)) || (!erPermanent && !erEnd)}
               data-testid="er-submit"
             >
               {erSubmitting ? t("app.loading") : t("exemption_requests.send")}

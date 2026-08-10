@@ -1,9 +1,17 @@
-﻿from datetime import date, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyType, RangeAssignment, RangeExcusalStatus, RangeType
+from app.db.models import (
+    DutyType,
+    Notification,
+    NotificationType,
+    RangeAssignment,
+    RangeExcusalStatus,
+    RangeType,
+)
 from app.services.range_excusal import request_primary_excusal, request_reserve_excusal
 from app.services.ranges import add_range_assignment, create_range_event
 from tests.helpers import create_node, create_range_location, create_soldier
@@ -104,3 +112,28 @@ def test_reserve_excusal_request_stores_range_event_id(app_session: Session) -> 
     # The assignment is deleted synchronously by request_reserve_excusal — confirm
     # range_event_id survives that even within the same request/response cycle.
     assert request.range_assignment_id is None
+
+
+def test_primary_excusal_notifies_duty_managers_with_event_id(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="excusal dm")
+    dm = create_soldier(app_session, personal_number="excusal-dm", role="duty_manager", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="weapon dm", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    soldier = create_soldier(app_session, personal_number="excusal-soldier", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    request = request_primary_excusal(app_session, assignment=assignment, reason="בדיקה", requested_by=soldier.id)
+
+    dm_notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == dm.id,
+            Notification.type == NotificationType.range_excusal_pending,
+            Notification.reference_id == request.id,
+        )
+    ).scalar_one()
+    assert dm_notif.metadata_json == {"event_id": str(assignment.range_event_id)}

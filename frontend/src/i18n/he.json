@@ -21,7 +21,8 @@
   },
   "home": {
     "welcome": "שלום, {{name}}",
-    "logout": "יציאה"
+    "logout": "יציאה",
+    "duty_primary": "ראשי"
   },
   "common": {
     "yes": "כן",
@@ -539,6 +540,7 @@
     "type": "סוג פטור",
     "start_date": "מתאריך",
     "end_date": "עד תאריך",
+    "permanent": "פטור קבוע",
     "reason": "סיבה",
     "send": "שלח בקשת פטור",
     "pending": "ממתין לאישור",
@@ -1096,6 +1098,8 @@
     "mark_read": "סמן כנקרא",
     "mark_all_read": "סמן הכל כנקרא",
     "dismiss": "מחק",
+    "approve": "אשר",
+    "reject": "דחה",
     "view_all": "לכל ההתראות",
     "telegram": "טלגרם",
     "link_telegram": "קשר חשבון טלגרם",

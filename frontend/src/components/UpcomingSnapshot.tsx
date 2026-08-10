@@ -66,6 +66,8 @@ export default function UpcomingSnapshot({ data }: Props) {
       end_at: `${a.end_date}T${a.end_time}`,
       shift_id: a.shift_id,
       is_reserve: a.is_reserve,
+      called_up_from: null,
+      called_up_to: null,
       weapon_ineligible: false,
       weapon_ineligible_reason: null,
     });

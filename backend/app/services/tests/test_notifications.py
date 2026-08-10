@@ -104,3 +104,27 @@ def test_broadcast_announcement_restricted_to_hierarchy_only_reaches_descendants
     assert notified_ids == {in_scope_1.id, in_scope_2.id}
     assert out_of_scope.id not in notified_ids
     assert ann.recipient_count == 2
+
+
+def test_create_notification_persists_metadata(app_session):
+    from app.db.models import NotificationType
+    from app.services.notifications import create_notification
+
+    soldier = create_soldier(app_session, personal_number=f"meta_1_{_uid()}")
+    notif = create_notification(
+        app_session, soldier_id=soldier.id, type=NotificationType.announcement,
+        title="test", metadata={"event_id": "abc-123"},
+    )
+    app_session.refresh(notif)
+    assert notif.metadata_json == {"event_id": "abc-123"}
+
+
+def test_create_notification_defaults_metadata_to_none(app_session):
+    from app.db.models import NotificationType
+    from app.services.notifications import create_notification
+
+    soldier = create_soldier(app_session, personal_number=f"meta_2_{_uid()}")
+    notif = create_notification(
+        app_session, soldier_id=soldier.id, type=NotificationType.announcement, title="test",
+    )
+    assert notif.metadata_json is None
