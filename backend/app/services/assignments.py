@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -23,6 +23,7 @@ from app.db.models import (
 from app.services.notifications import create_notification
 from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
+from app.services.weapon_eligibility import compute_eligibility
 
 _OVERRIDE_REASONS = {"replacement", "no_show_covered", "cancelled", "manual_edit"}
 
@@ -133,7 +134,8 @@ def create_assignment(
         raise AssignmentError("bad_date_range")
     if session.get(Soldier, soldier_id) is None:
         raise AssignmentError("soldier_not_found")
-    if session.get(DutyType, duty_type_id) is None:
+    duty_type = session.get(DutyType, duty_type_id)
+    if duty_type is None:
         raise AssignmentError("duty_type_not_found")
     if session.get(DutyLocation, duty_location_id) is None:
         raise AssignmentError("location_not_found")
@@ -175,6 +177,15 @@ def create_assignment(
         is_reserve=is_reserve,
         created_by=actor_id,
     )
+    if duty_type.required_range_type is not None:
+        eligible, _ = compute_eligibility(
+            session, soldier_id=soldier_id,
+            required_range_type=duty_type.required_range_type, as_of=start_date,
+        )
+        if not eligible:
+            a.weapon_ineligible = True
+            a.weapon_ineligible_reason = "אין הכשרת נשק בתוקף לתאריך התורנות"
+            a.weapon_ineligible_detected_at = datetime.now(UTC)
     session.add(a)
     session.flush()
     create_notification(session, soldier_id=a.soldier_id,
