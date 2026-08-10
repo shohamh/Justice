@@ -29,7 +29,13 @@ def _duty_color_for(duty_type_id: uuid.UUID) -> str:
     isn't present in the loaded DutyType map (e.g. a dangling reference),
     so a shift never falls back to an invalid empty color (which renders
     as black in the calendar UI)."""
-    return f"hsl({hash(duty_type_id) % 360}, 65%, 55%)"
+    hue = hash(duty_type_id) % 360
+    # Hues in the yellow band read as washed-out against the calendar's
+    # white event text (worse once the hover brightness filter brightens
+    # both background and text toward white together) — darken just that
+    # band to keep it legible.
+    lightness = 42 if 40 <= hue <= 70 else 55
+    return f"hsl({hue}, 65%, {lightness}%)"
 
 
 def _shift_instants(shift: DutyShift) -> tuple[Any, Any]:
@@ -144,8 +150,7 @@ def get_calendar_shifts(
 
     dt_map: dict[uuid.UUID, tuple[str, str, str | None]] = {}
     for dt in session.execute(select(DutyType)).scalars().all():
-        h = hash(dt.id) % 360
-        dt_map[dt.id] = (dt.name, f"hsl({h}, 65%, 55%)", dt.required_range_type)
+        dt_map[dt.id] = (dt.name, _duty_color_for(dt.id), dt.required_range_type)
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
 
@@ -405,8 +410,7 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
 
     dt_map: dict[uuid.UUID, tuple[str, str, str | None]] = {}
     for dt in session.execute(select(DutyType)).scalars().all():
-        h = hash(dt.id) % 360
-        dt_map[dt.id] = (dt.name, f"hsl({h}, 65%, 55%)", dt.required_range_type)
+        dt_map[dt.id] = (dt.name, _duty_color_for(dt.id), dt.required_range_type)
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
 

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -11,19 +10,12 @@ import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalendarShift, getCalendarShifts, getCalendarWeaponIneligibleCount } from "../api/calendar";
 import { loadCalendarData } from "../api/calendarData";
-import {
-  RangeEvent, getRanges, getMyRanges, getRangeEvent, getRangeExcusalRequests,
-  excuseRangeAssignment, decideRangeExcusal,
-} from "../api/ranges";
-import { listSoldiers } from "../api/soldiers";
-import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../utils/rangeLabels";
+import { RangeEvent, getRanges, getMyRanges } from "../api/ranges";
+import { listDutyTypes } from "../api/dutyConfig";
+import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
-import { useAuth } from "../auth/AuthContext";
-import { canPlan } from "../auth/permissions";
-import { queryKeys } from "../queryKeys";
 import ShiftDetailPanel from "./ShiftDetailPanel";
-import { EventDetailModal } from "./planning";
-import RangeDetailContent from "./ranges/RangeDetailContent";
+import RangeDetailModal from "./ranges/RangeDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
 import { shiftToCalendarEvent, shiftSpansMultipleDays, shiftEdgeLabels } from "../utils/shiftCalendarEvent";
 import CheckboxListDropdown from "./CheckboxListDropdown";
@@ -68,9 +60,6 @@ export function filterCalendarShifts(
 
 export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly = false }: UnitCalendarProps) {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const manage = canPlan(user);
-  const queryClient = useQueryClient();
   const publicSettings = usePublicSettings();
   const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
@@ -87,6 +76,7 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string[] | null>(null);
   const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
+  const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
   const warningCountRequestRef = useRef(0);
@@ -141,6 +131,15 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
     setSelectedShift(null);
   }, [nodeId, soldierId]);
 
+  // The duty-type filter should list every active duty type, not just the
+  // ones that happen to have a shift in the currently-loaded date range —
+  // a personal (soldierId) view can easily have zero shifts visible.
+  useEffect(() => {
+    listDutyTypes()
+      .then(types => setAllDutyTypes(types.filter(dt => dt.active).map(dt => ({ id: dt.id, name: dt.name }))))
+      .catch(() => setAllDutyTypes([]));
+  }, []);
+
   // rangesEnabled starts out false/unknown until usePublicSettings resolves,
   // which usually happens after FullCalendar's initial datesSet already ran
   // and fetched with ranges disabled. Since datesSet won't fire again unless
@@ -161,12 +160,13 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
   }
 
   const dutyTypesInView = useMemo(() => {
+    if (allDutyTypes.length > 0) return allDutyTypes;
     const seen = new Map<string, string>();
     for (const s of shifts) {
       if (!seen.has(s.duty_type_id)) seen.set(s.duty_type_id, s.duty_type_name);
     }
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
-  }, [shifts]);
+  }, [allDutyTypes, shifts]);
 
   const rangeTypeOptions = useMemo(
     () => Object.entries(RANGE_TYPE_LABELS).map(([id, name]) => ({ id, name })),
@@ -239,28 +239,6 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
     const shift = shifts.find(s => s.id === shiftId);
     if (shift) setSelectedShift(shift);
   }
-
-  const rangeEventQuery = useQuery({
-    queryKey: queryKeys.rangeEvent(selectedRangeId as string),
-    queryFn: () => getRangeEvent(selectedRangeId as string),
-    enabled: !!selectedRangeId,
-  });
-  const rangeSoldiersQuery = useQuery({
-    queryKey: queryKeys.soldiers(),
-    queryFn: listSoldiers,
-    enabled: !!selectedRangeId,
-  });
-  const rangeExcusalQuery = useQuery({
-    queryKey: queryKeys.rangeExcusalRequests(selectedRangeId as string),
-    queryFn: () => getRangeExcusalRequests(selectedRangeId as string),
-    enabled: !!selectedRangeId && !!user?.is_duty_manager,
-  });
-  const rangeSoldierName = (id: string) => rangeSoldiersQuery.data?.find(s => s.id === id)?.full_name ?? id;
-  const invalidateSelectedRange = async () => {
-    if (!selectedRangeId) return;
-    await queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedRangeId) });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(selectedRangeId) });
-  };
 
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
   return (
@@ -349,6 +327,12 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
                   <span className="font-semibold truncate">
                     {RANGE_TYPE_LABELS[range.range_type] ?? range.range_type} — {range.location}
                   </span>
+                  <div className="truncate">
+                    {range.primary_filled ?? 0}/{range.required_count} {t("unit_calendar.soldiers_count")}
+                    {range.reserve_count > 0 && (
+                      <span className="mr-1">| {range.reserve_filled ?? 0}/{range.reserve_count} {t("reserve_label")}</span>
+                    )}
+                  </div>
                 </div>
               );
             }
@@ -396,35 +380,8 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
         />
       )}
 
-      {selectedRangeId && rangeEventQuery.data && (
-        <EventDetailModal
-          open
-          title={rangeEventQuery.data.location}
-          subtitle={`${RANGE_TYPE_LABELS[rangeEventQuery.data.range_type] ?? rangeEventQuery.data.range_type} · ${rangeEventQuery.data.date}`}
-          onClose={() => setSelectedRangeId(null)}
-          metadata={[
-            { label: "סטטוס", value: RANGE_EVENT_STATUS_LABELS[rangeEventQuery.data.status] ?? rangeEventQuery.data.status },
-            { label: "שעות", value: `${rangeEventQuery.data.start_time ?? "—"}–${rangeEventQuery.data.end_time ?? "—"}` },
-          ]}
-        >
-          <RangeDetailContent
-            event={rangeEventQuery.data}
-            canManage={manage}
-            canEditAttendance={rangeEventQuery.data.can_edit_attendance}
-            userId={user?.id}
-            soldierName={rangeSoldierName}
-            excusalRequests={rangeExcusalQuery.data}
-            onExcuse={async (id, reason) => {
-              await excuseRangeAssignment(rangeEventQuery.data!.id, id, reason);
-              await invalidateSelectedRange();
-            }}
-            onDecide={async (id, approve) => {
-              await decideRangeExcusal(rangeEventQuery.data!.id, id, approve);
-              await invalidateSelectedRange();
-            }}
-            onAttendance={() => { void invalidateSelectedRange(); }}
-          />
-        </EventDetailModal>
+      {selectedRangeId && (
+        <RangeDetailModal rangeId={selectedRangeId} onClose={() => setSelectedRangeId(null)} />
       )}
     </div>
   );

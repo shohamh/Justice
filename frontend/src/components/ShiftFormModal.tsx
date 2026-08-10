@@ -343,11 +343,11 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
               <div className="flex gap-2">
                 <label className="block text-sm flex-1">
                   {t("shifts.start_time")}
-                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+                  <input type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
                 </label>
                 <label className="block text-sm flex-1">
                   {t("shifts.end_time")}
-                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+                  <input type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
                 </label>
               </div>
             </>

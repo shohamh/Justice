@@ -13,6 +13,7 @@ import UnitCalendar from "../components/UnitCalendar";
 import DutyDetailModal from "../components/dashboard/DutyDetailModal";
 import UpcomingDutiesWidget from "../components/dashboard/UpcomingDutiesWidget";
 import UpcomingRangesWidget from "../components/dashboard/UpcomingRangesWidget";
+import RangeDetailModal from "../components/ranges/RangeDetailModal";
 import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
@@ -62,6 +63,7 @@ export default function HomePage() {
   const publicSettings = usePublicSettings();
 
   const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
+  const [openRangeId, setOpenRangeId] = useState<string | null>(null);
 
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
 
@@ -279,8 +281,12 @@ export default function HomePage() {
         {publicSettings?.["mitvachim.enabled"] === true && (
           <UpcomingRangesWidget
             ranges={ranges}
-            onOpenRange={(range) => navigate(`/ranges?event=${range.id}`)}
+            onOpenRange={(range) => setOpenRangeId(range.id)}
           />
+        )}
+
+        {openRangeId && (
+          <RangeDetailModal rangeId={openRangeId} onClose={() => setOpenRangeId(null)} />
         )}
 
         <SwapStatusWidget swaps={mySwaps} />
