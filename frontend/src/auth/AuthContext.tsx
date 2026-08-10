@@ -38,16 +38,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("auth:session-expired", handler);
   }, []);
 
-  // `user` is otherwise only refreshed on login/mount — if an admin approves this
-  // soldier's enrollment while they're already logged in, enrollment_pending would
-  // stay stale (true) for the rest of the session with no way to clear it short of
-  // logging out and back in. Poll until it flips, so pages gating on it (swap/
-  // constraint/exemption forms) unblock without requiring a re-login.
+  // `user` is otherwise only refreshed on login/mount — any server-side change to
+  // this soldier's own record (enrollment approved, a profile field-update request
+  // approved by a commander/duty manager, etc.) would stay stale for the rest of
+  // the session with no way to pick it up short of logging out and back in. Poll
+  // periodically so pages reading `user` (enrollment gates, last-range-date
+  // banners, profile display) reflect approvals without requiring a re-login.
   useEffect(() => {
-    if (!user?.enrollment_pending) return;
-    const interval = setInterval(() => { fetchMe().then(setUser).catch(() => {}); }, 30000);
+    if (!user) return;
+    const interval = setInterval(() => { fetchMe().then(setUser).catch(() => {}); }, 60000);
     return () => clearInterval(interval);
-  }, [user?.enrollment_pending]);
+  }, [user === null]);
 
   const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
     const r = await apiLogin(personal_number, password, remember_me);

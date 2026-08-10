@@ -31,6 +31,7 @@ import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getRanges } from "../api/ranges";
+import { listPendingTransferRequests } from "../api/hierarchyTransfers";
 import { lastDutyDay } from "../utils/formatDate";
 
 function offsetDate(days: number): string {
@@ -141,6 +142,13 @@ export default function HomePage() {
     enabled: canApprove,
   });
   const pendingFieldUpdates = pendingFieldUpdatesQuery.data ?? 0;
+
+  const pendingTransfersQuery = useQuery({
+    queryKey: queryKeys.pendingHierarchyTransfers(),
+    queryFn: listPendingTransferRequests,
+    enabled: canApprove,
+  });
+  const pendingTransfers = pendingTransfersQuery.data ?? [];
 
   function handleOpenDuty(duty: EffectiveDuty) {
     setSelectedDuty(duty);
@@ -298,6 +306,7 @@ export default function HomePage() {
             pendingConstraints={pendingConstraints}
             pendingExemptions={pendingExemptions}
             pendingFieldUpdates={pendingFieldUpdates}
+            pendingTransfers={pendingTransfers}
           />
         )}
 

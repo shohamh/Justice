@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { EnrollmentRequestDTO } from "../../api/enrollment";
 import { SwapRequest } from "../../api/swaps";
+import { TransferRequest } from "../../api/hierarchyTransfers";
 
 interface Props {
   pendingEnrollments: EnrollmentRequestDTO[];
@@ -8,6 +9,7 @@ interface Props {
   pendingConstraints: number;
   pendingExemptions: number;
   pendingFieldUpdates: number;
+  pendingTransfers: TransferRequest[];
 }
 
 function CountChip({ n }: { n: number }) {
@@ -19,9 +21,9 @@ function CountChip({ n }: { n: number }) {
 }
 
 export default function PendingApprovalsWidget({
-  pendingEnrollments, pendingSwaps, pendingConstraints, pendingExemptions, pendingFieldUpdates,
+  pendingEnrollments, pendingSwaps, pendingConstraints, pendingExemptions, pendingFieldUpdates, pendingTransfers,
 }: Props) {
-  const total = pendingEnrollments.length + pendingSwaps.length + pendingConstraints + pendingExemptions + pendingFieldUpdates;
+  const total = pendingEnrollments.length + pendingSwaps.length + pendingConstraints + pendingExemptions + pendingFieldUpdates + pendingTransfers.length;
   if (total === 0) return null;
 
   return (
@@ -65,6 +67,14 @@ export default function PendingApprovalsWidget({
             <Link to="/approvals?tab=field_updates" className="flex items-center justify-between hover:text-indigo-600">
               <span>עדכוני פרופיל</span>
               <CountChip n={pendingFieldUpdates} />
+            </Link>
+          </li>
+        )}
+        {pendingTransfers.length > 0 && (
+          <li>
+            <Link to="/approvals?tab=transfers" className="flex items-center justify-between hover:text-indigo-600">
+              <span>בקשות העברה</span>
+              <CountChip n={pendingTransfers.length} />
             </Link>
           </li>
         )}

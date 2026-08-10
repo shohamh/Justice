@@ -17,7 +17,7 @@ function Probe() {
   return <div data-testid="pending">{String(enrollmentPending)}</div>;
 }
 
-describe("AuthContext — enrollment_pending polling", () => {
+describe("AuthContext — periodic refresh while logged in", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockRefresh.mockReset();
@@ -28,7 +28,7 @@ describe("AuthContext — enrollment_pending polling", () => {
     vi.useRealTimers();
   });
 
-  it("polls fetchMe every 30s while enrollment_pending is true and picks up the flip to false", async () => {
+  it("polls fetchMe every 60s while logged in and picks up server-side changes (e.g. an approved profile field update)", async () => {
     mockRefresh.mockResolvedValue({ data: { access_token: "t" } });
     mockFetchMe
       .mockResolvedValueOnce({ id: "1", enrollment_pending: true })
@@ -44,15 +44,15 @@ describe("AuthContext — enrollment_pending polling", () => {
     expect(screen.getByTestId("pending").textContent).toBe("true");
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30000);
+      await vi.advanceTimersByTimeAsync(60000);
     });
 
     expect(screen.getByTestId("pending").textContent).toBe("false");
     expect(mockFetchMe).toHaveBeenCalledTimes(2);
   });
 
-  it("does not poll once enrollment_pending is already false", async () => {
-    mockRefresh.mockResolvedValue({ data: { access_token: "t" } });
+  it("does not poll before the initial login/mount fetch resolves", async () => {
+    mockRefresh.mockReturnValue(new Promise(() => {})); // never resolves
     mockFetchMe.mockResolvedValue({ id: "1", enrollment_pending: false });
 
     render(
@@ -61,13 +61,10 @@ describe("AuthContext — enrollment_pending polling", () => {
       </AuthProvider>,
     );
 
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-    expect(screen.getByTestId("pending").textContent).toBe("false");
-
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60000);
     });
 
-    expect(mockFetchMe).toHaveBeenCalledTimes(1);
+    expect(mockFetchMe).toHaveBeenCalledTimes(0);
   });
 });
