@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-10 (3)
+
+### Fixes
+- Editing a range (מטווח) with existing assignments no longer fails silently on a date/type change: the edit form now loads the full event (including assignments) so the schedule-change confirmation checkbox appears as expected, instead of the backend rejecting the save and the UI showing a generic "שמירת המטווח נכשלה" error.
+
 ## 2026-08-10 (2)
 
 ### Features
