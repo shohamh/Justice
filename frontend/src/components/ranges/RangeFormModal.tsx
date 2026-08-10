@@ -4,6 +4,7 @@ import { CreateRangeEventBody, RangeEvent, RangeType, UpdateRangeEventBody } fro
 import { RangeLocation, createRangeLocation } from "../../api/rangeLocations";
 import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 import Combobox from "../Combobox";
+import TimeInput from "../TimeInput";
 
 interface Props { open: boolean; event?: RangeEvent | null; hierarchyNodeId: string; locations: RangeLocation[]; onClose: () => void; onSubmit: (body: CreateRangeEventBody | UpdateRangeEventBody) => Promise<void>; }
 export default function RangeFormModal({ open, event, hierarchyNodeId, locations: initialLocations, onClose, onSubmit }: Props) {
@@ -45,7 +46,7 @@ export default function RangeFormModal({ open, event, hierarchyNodeId, locations
       <label key={key} className="block text-sm">
         {label}
         {type === "time" ? (
-          <input id={id} data-testid={id} type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={value} onChange={e => onChange(e.target.value)} className={inputClass} />
+          <TimeInput id={id} data-testid={id} value={value as string} onChange={onChange} className={inputClass} />
         ) : (
           <input id={id} data-testid={id} type={type} value={value} min={type === "number" ? 0 : undefined} onChange={e => onChange(e.target.value)} className={inputClass} />
         )}

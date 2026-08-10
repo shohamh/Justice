@@ -13,6 +13,7 @@ import {
 } from "../api/dutyConfig";
 import { getRanks } from "../api/soldiers";
 import SubHierarchySelector from "./SubHierarchySelector";
+import TimeInput from "./TimeInput";
 import { translateApiError } from "../utils/translateApiError";
 
 type Reqs = NonNullable<DutyType["requirements"]>;
@@ -170,11 +171,11 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
             </div>
             <div className="w-24">
               <label htmlFor="duty-type-start-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.start_time")}</label>
-              <input id="duty-type-start-time" type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={startTime} onChange={e => setStartTime(e.target.value)} className={inputCls} />
+              <TimeInput id="duty-type-start-time" value={startTime} onChange={setStartTime} className={inputCls} />
             </div>
             <div className="w-24">
               <label htmlFor="duty-type-end-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.end_time")}</label>
-              <input id="duty-type-end-time" type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={endTime} onChange={e => setEndTime(e.target.value)} className={inputCls} />
+              <TimeInput id="duty-type-end-time" value={endTime} onChange={setEndTime} className={inputCls} />
             </div>
           </div>
 
