@@ -1236,6 +1236,7 @@ class Notification(Base):
     body: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     reference_type: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, default=None)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True, default=None)
     is_read: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
