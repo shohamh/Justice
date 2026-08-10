@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AxiosError } from "axios";
 
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import {
@@ -28,12 +29,32 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
   const [requests, setRequests] = useState<ExemptionRequest[]>([]);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [denied, setDenied] = useState(false);
 
   const refresh = useCallback(async () => {
-    setItems(await listExemptions(soldierId));
+    try {
+      setItems(await listExemptions(soldierId));
+      setDenied(false);
+    } catch (err) {
+      if ((err as AxiosError)?.response?.status === 403) {
+        setDenied(true);
+        setItems([]);
+      } else {
+        throw err;
+      }
+    }
   }, [soldierId]);
   const refreshRequests = useCallback(async () => {
-    setRequests(await listExemptionRequestsForSoldier(soldierId));
+    try {
+      setRequests(await listExemptionRequestsForSoldier(soldierId));
+    } catch (err) {
+      if ((err as AxiosError)?.response?.status === 403) {
+        setDenied(true);
+        setRequests([]);
+      } else {
+        throw err;
+      }
+    }
   }, [soldierId]);
   useEffect(() => { void refreshRequests(); }, [refreshRequests]);
   useEffect(() => {
@@ -115,9 +136,18 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
       {/* Active exemptions — card section */}
       <div>
         <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">
-          {t("exemptions.title")} ({activeItems.length})
+          {denied ? (
+            <>
+              {t("exemptions.title")}{" "}
+              <span className="text-gray-400 dark:text-gray-500 font-normal" data-testid="exemptions-denied">
+                ({t("exemptions.hidden")})
+              </span>
+            </>
+          ) : (
+            <>{t("exemptions.title")} ({activeItems.length})</>
+          )}
         </h3>
-        {activeItems.length === 0 ? (
+        {denied ? null : activeItems.length === 0 ? (
           <p className="text-sm text-gray-500" data-testid="exemptions-empty">
             {t("exemptions.none")}
           </p>
@@ -212,6 +242,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
       )}
 
       {/* Exemption request history */}
+      {!denied && (
       <div>
         <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">
           {t("exemptions.requests_title")} ({requests.length})
@@ -278,6 +309,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
           </ul>
         )}
       </div>
+      )}
 
       {/* Grant form */}
       {canManage && (

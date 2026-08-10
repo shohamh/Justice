@@ -227,7 +227,8 @@
     "category_global": "גלובלי",
     "category_partial": "חלקי",
     "granted_by": "הוענק על ידי",
-    "no_permission_details": "אין הרשאה לצפות בפרטים"
+    "no_permission_details": "אין הרשאה לצפות בפרטים",
+    "hidden": "חסוי"
   },
   "team": {
     "title": "אנשי צוות והיררכיה",
