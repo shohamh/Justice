@@ -42,6 +42,26 @@ def test_list_notifications(client: TestClient, admin_session: Session):
     assert data["items"][0]["is_read"] is False
 
 
+def test_list_notifications_carries_metadata(client: TestClient, admin_session: Session):
+    """Pin the NotificationOut.metadata <-> _out mapping used by the UI.
+
+    A notification created with metadata must surface that metadata verbatim
+    in the list API response — the frontend relies on it (e.g. duty-history
+    deep links from notification rows)."""
+    s = create_soldier(admin_session, personal_number="9001040")
+    headers = auth_headers(s)
+    payload = {"event_id": "abc-123", "duty_type_name": "שמירה"}
+    n = Notification(soldier_id=s.id, type=NotificationType.announcement, title="Meta")
+    n.metadata_json = payload
+    admin_session.add(n)
+    admin_session.commit()
+    resp = client.get("/api/notifications", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["items"][0]["metadata"] == payload
+
+
 def test_mark_read(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="9001004")
     headers = auth_headers(s)

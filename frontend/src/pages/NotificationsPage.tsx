@@ -8,7 +8,7 @@ import { usePagePagination } from "../hooks/usePagePagination";
 import { listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS, isQuickDecisionNotification } from "../api/notifications";
 import { soldierApproveSwap, soldierRejectSwap } from "../api/swaps";
 import { decideRangeExcusal } from "../api/ranges";
-import { Check, X, Trash2 } from "lucide-react";
+import { Check, Eye, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 
 export default function NotificationsPage() {
@@ -133,7 +133,7 @@ export default function NotificationsPage() {
                     </>
                   )}
                   <button onClick={() => handleMarkRead(n.id)} className="p-1.5 rounded text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-600" aria-label={t("notifications.mark_read")} title={t("notifications.mark_read")}>
-                    <Check size={14} />
+                    <Eye size={14} />
                   </button>
                   <button onClick={() => handleDelete(n.id)} className="p-1.5 rounded text-gray-500 hover:bg-red-100 hover:text-red-600 dark:text-gray-400 dark:hover:bg-red-900" aria-label={t("notifications.dismiss")} title={t("notifications.dismiss")}>
                     <Trash2 size={14} />
