@@ -5,6 +5,7 @@ import { queryKeys } from "../../queryKeys";
 import { getRangeEvent, getRangeExcusalRequests, excuseRangeAssignment, decideRangeExcusal } from "../../api/ranges";
 import { listSoldiers } from "../../api/soldiers";
 import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../../utils/rangeLabels";
+import { formatDate } from "../../utils/formatDate";
 import { EventDetailModal } from "../planning";
 import RangeDetailContent from "./RangeDetailContent";
 
@@ -39,7 +40,7 @@ export default function RangeDetailModal({ rangeId, onClose }: Props) {
     <EventDetailModal
       open
       title={rangeEventQuery.data.location}
-      subtitle={`${RANGE_TYPE_LABELS[rangeEventQuery.data.range_type] ?? rangeEventQuery.data.range_type} · ${rangeEventQuery.data.date}`}
+      subtitle={`${RANGE_TYPE_LABELS[rangeEventQuery.data.range_type] ?? rangeEventQuery.data.range_type} · ${formatDate(rangeEventQuery.data.date)}`}
       onClose={onClose}
       metadata={[
         { label: "סטטוס", value: RANGE_EVENT_STATUS_LABELS[rangeEventQuery.data.status] ?? rangeEventQuery.data.status },

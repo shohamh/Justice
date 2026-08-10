@@ -5,6 +5,7 @@ import { SoldierDTO } from "../../api/soldiers";
 import { EventDetailModal } from "../planning";
 import TableSearchInput from "../TableSearchInput";
 import { translateApiError } from "../../utils/translateApiError";
+import { formatDate } from "../../utils/formatDate";
 
 export interface RangeEditAssignmentsModalProps {
   open: boolean;
@@ -251,7 +252,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     );
   }
 
-  return <EventDetailModal open={open} title={text("ranges.edit_assignments", "עריכת שיבוצים")} subtitle={`${event.location} · ${event.date}`} onClose={onClose}>
+  return <EventDetailModal open={open} title={text("ranges.edit_assignments", "עריכת שיבוצים")} subtitle={`${event.location} · ${formatDate(event.date)}`} onClose={onClose}>
     <div className="overflow-y-auto flex-1 space-y-5">
       {error && <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
