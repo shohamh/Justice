@@ -38,7 +38,7 @@ export function getNotificationLink(
     return `/algorithm?jobId=${n.reference_id}`;
   }
   if (n.reference_type === "swap_request") {
-    return n.type === "swap_offer" ? "/swaps?tab=incoming" : "/swaps?tab=mine";
+    return (n.type === "swap_offer" || n.type === "swap_offer_incoming") ? "/swaps?tab=incoming" : "/swaps?tab=mine";
   }
   if (n.reference_type === "personal_constraint" || n.reference_type === "exemption_request") {
     return "/my-requests";
