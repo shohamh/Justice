@@ -90,6 +90,12 @@ def request_primary_excusal(
         title="בקשת ההיעדרות נשלחה", reference_type="range_excusal_request",
         reference_id=request.id, actor_id=requested_by,
     )
+    notify_duty_managers_in_scope(
+        session, soldier_id=assignment.soldier_id, type=NotificationType.range_excusal_pending,
+        title="בקשת היעדרות ממתינה להחלטה", reference_type="range_excusal_request",
+        reference_id=request.id, actor_id=requested_by,
+        metadata={"event_id": str(assignment.range_event_id)},
+    )
     session.commit()
     session.refresh(request)
     return request
