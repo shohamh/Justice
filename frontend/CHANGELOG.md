@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-10 (4)
+
+### Features
+- Range detail modal: primary and reserve rosters merged with attendance actions (נכח/לא נכח) directly on each row, plus a search field to filter both lists by soldier name.
+- Unit calendar duty-type filter now lists every active duty type (previously derived only from currently-loaded shifts, so a personal calendar view with no visible shifts showed an empty filter).
+- Range headcount now shown on a second line under range events in the unit calendar.
+- Time inputs (shifts, ranges, shift templates, duty types) now use a shared smart-mask control: typed digits progressively resolve into a valid 24h time as you type (e.g. "842" -> "8:42", "165" -> "16:50" on blur), with invalid combinations flagged in red — replacing native browser time pickers and their locale-dependent AM/PM display.
+- Pending-approvals widgets (homepage and command dashboard) now include hierarchy transfer requests, previously the only one of six approval categories not surfaced there.
+
+### Fixes
+- Clicking a range in "מטווחים קרובים" now opens the range detail modal in place instead of navigating away to the ranges page.
+- Today's ranges are no longer excluded from "מטווחים קרובים" (off-by-one date filter).
+- Range dates now display in dd.mm.yyyy format instead of raw ISO across the upcoming-ranges widget, range detail modals, the range planning table, and the transparency table's enrollment date.
+- Fixed RTL alignment of the date column in the upcoming-ranges widget.
+- Duty-type calendar colors that fell in the yellow hue band are now darkened so hover highlighting no longer washes out event text against white.
+- Exemptions panel now shows "(חסוי)" instead of "(0)" when the viewer lacks permission to view a soldier's exemptions, instead of looking identical to genuinely having none.
+- A soldier's own profile data (e.g. an approved last-range-date field update) no longer stays stale for the rest of the session — the session now refreshes periodically instead of only at login.
+- `weapon_ineligible` is now computed when an assignment is created or an algorithm proposal is accepted, instead of only being backfilled by unrelated later triggers — soldiers with no range qualifications at all now show the ineligibility warning immediately on a fresh assignment.
+- Added missing i18n labels for two notification types and corrected a mislabeled reserve-shortfall notification string.
+
 ## 2026-08-10 (3)
 
 ### Fixes
