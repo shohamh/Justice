@@ -17,6 +17,7 @@
 ### Chores
 - Added design specs and implementation plans for the transparency/visibility permission rework and homepage/notification clarity and auto-assign scope filters.
 - Removed tracked SDD scratch artifacts.
+- Ignored rotated log files (`logs/*.log.*`) to keep them out of `git status` noise.
 
 ## 2026-08-09
 
