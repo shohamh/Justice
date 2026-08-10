@@ -13,6 +13,7 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import { ExcelExportButton } from "../components/ExcelExportButton";
 import SoldierLink from "../components/SoldierLink";
 import ExemptionsCell from "../components/ExemptionsCell";
+import { formatDate } from "../utils/formatDate";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
 import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../components/FairnessComponentsCard";
@@ -570,7 +571,7 @@ export default function TransparencyPage() {
       filterValue: (r) => r.exemptions_display,
       exportValue: (r) => r.exemptions_display || "—",
     },
-    { id: "enrolled_at", header: t("transparency.enrolled_at"), cell: (r) => r.enrolled_at, sortValue: (r) => r.enrolled_at },
+    { id: "enrolled_at", header: t("transparency.enrolled_at"), cell: (r) => formatDate(r.enrolled_at), sortValue: (r) => r.enrolled_at },
     { id: "active_days", header: t("transparency.active_days"), cell: (r) => r.active_days, sortValue: (r) => r.active_days },
     {
       id: "rank", header: t("transparency.rank"),

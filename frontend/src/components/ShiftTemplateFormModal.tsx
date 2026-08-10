@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { formatTimeInput, normalizeTime } from "../utils/timeMask";
 import {
   CreateTemplateInput,
   RecurrenceType,
@@ -109,6 +110,7 @@ function VisualizationCell({ label, colorBg, topPct, heightPct, inactive, isStar
 }
 
 function TimePicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [invalid, setInvalid] = useState(false);
   return (
     <div className="flex-1">
       <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">{label}</span>
@@ -116,10 +118,17 @@ function TimePicker({ label, value, onChange }: { label: string; value: string; 
         type="text"
         inputMode="numeric"
         placeholder="HH:MM"
-        pattern="[0-2][0-9]:[0-5][0-9]"
         value={value}
-        onChange={e => onChange(e.target.value)}
-        className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+        onChange={e => {
+          const { display, valid } = formatTimeInput(e.target.value);
+          setInvalid(!valid && display !== "");
+          onChange(display);
+        }}
+        onBlur={() => {
+          const { valid } = formatTimeInput(value);
+          if (valid && value !== "") onChange(normalizeTime(value));
+        }}
+        className={`block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${invalid ? "border-red-500 text-red-600 dark:border-red-500 dark:text-red-400" : ""}`}
       />
       <div className="flex gap-1 mt-1 flex-wrap">
         {TIME_PRESETS.map(t => (

@@ -1,5 +1,6 @@
 import { RangeEvent } from "../../api/ranges";
 import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
+import { formatDate } from "../../utils/formatDate";
 
 interface Props {
   ranges: RangeEvent[];
@@ -9,7 +10,7 @@ interface Props {
 export default function UpcomingRangesWidget({ ranges, onOpenRange }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = ranges
-    .filter((r) => r.assigned_to_me === true && r.date > today && r.status === "planned")
+    .filter((r) => r.assigned_to_me === true && r.date >= today && r.status === "planned")
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return (
@@ -35,7 +36,7 @@ export default function UpcomingRangesWidget({ ranges, onOpenRange }: Props) {
                 onClick={() => onOpenRange(range)}
                 title="פתח פרטים"
               >
-                <td className="py-2" dir="ltr">{range.date}</td>
+                <td className="py-2">{formatDate(range.date)}</td>
                 <td className="py-2">{RANGE_TYPE_LABELS[range.range_type] ?? range.range_type}</td>
                 <td className="py-2">{range.location}</td>
                 <td className="py-2 text-gray-400 text-xs">›</td>

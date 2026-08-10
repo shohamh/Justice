@@ -227,7 +227,8 @@
     "category_global": "גלובלי",
     "category_partial": "חלקי",
     "granted_by": "הוענק על ידי",
-    "no_permission_details": "אין הרשאה לצפות בפרטים"
+    "no_permission_details": "אין הרשאה לצפות בפרטים",
+    "hidden": "חסוי"
   },
   "team": {
     "title": "אנשי צוות והיררכיה",
@@ -1168,9 +1169,11 @@
     "type_range_excusal_rejected": "בקשת פטור ממטווח נדחתה",
     "type_range_reserve_promoted": "קודמת משיבוץ מילואים למטווח",
     "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
-    "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי",
+    "type_range_excusal_no_backfill": "אין רזרבה זמינה לשיבוץ חלופי",
     "type_weapon_ineligible_detected": "נמצאו חיילים שאינם כשירים לנשק",
-    "type_bug_report_comment": "תגובה חדשה לדיווח באג"
+    "type_bug_report_comment": "תגובה חדשה לדיווח באג",
+    "type_range_absence_reported_to_commander": "דווחה היעדרות ממטווח למפקד",
+    "type_range_attendance_corrected_to_present": "נוכחות במטווח תוקנה ל'נכח'"
   },
   "announcements": {
     "title": "הכרזות",

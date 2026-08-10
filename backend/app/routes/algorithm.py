@@ -27,6 +27,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services.algorithm_bridge import run_algorithm_job
+from app.services.duty_eligibility_watch import recheck_assignments
 from app.audit.writer import write_audit
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
@@ -913,6 +914,8 @@ def accept_proposal(
         after={"status": "published"},
         context={"job_id": str(job_id)},
     )
+    session.flush()
+    recheck_assignments(session, [a.id])
     _maybe_publish_job(session, job_id)
     session.commit()
     return {"status": "published"}
@@ -960,6 +963,7 @@ def bulk_accept_proposals(
                 for aid in accepted_ids
             ])
         )
+        recheck_assignments(session, accepted_ids)
 
     _maybe_publish_job(session, job_id)
     session.commit()

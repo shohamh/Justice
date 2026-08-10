@@ -28,6 +28,7 @@ import { listPendingSwaps } from "../api/swaps";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
+import { listPendingTransferRequests } from "../api/hierarchyTransfers";
 
 export default function CommandDashboardPage() {
   const { t } = useTranslation();
@@ -77,6 +78,9 @@ export default function CommandDashboardPage() {
   const pendingFieldUpdatesQuery = useQuery({ queryKey: queryKeys.pendingFieldUpdatesCount(), queryFn: getPendingFieldUpdateCount });
   const pendingFieldUpdates = pendingFieldUpdatesQuery.data ?? 0;
 
+  const pendingTransfersQuery = useQuery({ queryKey: queryKeys.pendingHierarchyTransfers(), queryFn: listPendingTransferRequests });
+  const pendingTransfers = pendingTransfersQuery.data ?? [];
+
   // Passed down to children (HierarchyTree, EntriesExitsPanel) that trigger a
   // broad refresh after a mutation whose exact blast radius on this page's
   // ~14 independent widgets isn't worth tracking precisely — invalidate
@@ -97,6 +101,7 @@ export default function CommandDashboardPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.commandDashboardOwnPotentialAll() }),
     ]);
   }, [queryClient]);
@@ -151,6 +156,7 @@ export default function CommandDashboardPage() {
           pendingConstraints={pendingConstraints}
           pendingExemptions={pendingExemptions}
           pendingFieldUpdates={pendingFieldUpdates}
+          pendingTransfers={pendingTransfers}
         />
       ),
     },
