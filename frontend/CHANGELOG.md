@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-10 (2)
+
+### Features
+- Homepage duty widget restyled for clearer reserve/primary/called-up distinction, with called_up_from/to surfaced on effective duty spans.
+- Notifications got real icon buttons, including quick approve/reject directly from swap-offer and range-excusal notifications, plus a mark-read icon (eye) distinct from approve.
+- Exemption decision notifications now include the exemption type name and date range; exemption requests gained a permanent-exemption checkbox.
+- Duty managers in scope are now notified when a range excusal request is pending.
+
+### Fixes
+- Swap-offer-incoming notifications route to the incoming swaps tab instead of the outgoing one.
+- Homepage widget duty labels are now routed through i18n instead of hardcoded text.
+- Revoking an already-expired (no-op) exemption no longer performs an unnecessary exemption-type lookup.
+
+### Chores
+- Added a nullable metadata column to Notification, with backing migration and expanded test coverage for notifications, exemptions, and range excusal.
+
 ## 2026-08-10
 
 ### Features
