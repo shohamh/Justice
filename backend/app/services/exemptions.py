@@ -158,13 +158,13 @@ def revoke_exemption(
     ex = session.get(SoldierExemption, exemption_id)
     if ex is None:
         raise ExemptionError("exemption_not_found")
-    et = session.get(ExemptionType, ex.exemption_type_id)
     today = date.today()
     if ex.end_date is not None and ex.end_date < today:
         # Already expired: revoking would otherwise push end_date forward to
         # today, re-opening a closed exemption. Treat as a true no-op — no
         # fields change, no notification.
         return
+    et = session.get(ExemptionType, ex.exemption_type_id)
 
     before = {"end_date": ex.end_date.isoformat() if ex.end_date else None}
     if ex.start_date <= today:
