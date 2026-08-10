@@ -531,11 +531,8 @@ def get_soldier_duty_history(
     is_self = s.id == user.id
     is_plain_soldier = user.role == "soldier"
 
-    if not is_self and not is_plain_soldier:
-        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
-    elif not is_self and is_plain_soldier:
-        if not can_view_soldier_scope(session, user, _node_of(session, s)):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if not is_self and not can_view_soldier_scope(session, user, _node_of(session, s)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     if include_drafts and user.role != "admin" and not is_duty_manager(session, user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")

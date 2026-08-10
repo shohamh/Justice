@@ -279,3 +279,51 @@ def test_duty_history_200_for_plain_soldier_commanding_target_node(
     assert "assignment" in event_types
     assert "exemption" not in event_types
     assert event_types <= _PUBLIC_EVENT_TYPES
+
+
+def test_duty_history_200_for_senior_rank_commander_viewing_unrelated_soldier(
+    client: TestClient, admin_session: Session
+):
+    # Human ruling: can_view_soldier_scope governs duty-history for EVERY
+    # non-self viewer, not just plain soldiers. A commander whose commanded
+    # node meets the min_visible_level rank threshold may view an unrelated
+    # soldier's duty history. Level keys here are the conftest-seeded English
+    # ones, so the threshold is set to the "group" (rank 6) key the commander
+    # commands and meets; the migration-seeded default "מדור" label does not
+    # resolve against those keys (pre-existing labeling quirk, out of scope).
+    from app.services.settings_loader import set_setting
+
+    own = create_node(admin_session, level="group", name="dh_senior_own")
+    other = create_node(admin_session, level="team", name="dh_senior_other")
+    cmd = create_soldier(admin_session, personal_number="dh_senior_001", role="commander")
+    own.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="dh_senior_002", hierarchy_node_id=other.id)
+    set_setting(admin_session, "transparency.min_visible_level", "group", actor_id=None)
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
+    assert r.status_code == 200
+
+
+def test_duty_history_200_for_commander_with_levels_above_sibling_branch(
+    client: TestClient, admin_session: Session
+):
+    # A commander with transparency.commander_levels_above >= 1 (the
+    # comparison-unit use case) may view duty history of a soldier in a
+    # sibling branch under the same ancestor. The commanded node is a
+    # "team" (rank 7, below the "מדור" threshold), so only the
+    # levels-above expansion path can authorize this.
+    from app.services.settings_loader import set_setting
+
+    top = create_node(admin_session, level="department", name="dh_above_top")
+    center = create_node(admin_session, level="branch", name="dh_above_center", parent=top)
+    own = create_node(admin_session, level="team", name="dh_above_own", parent=center)
+    sibling = create_node(admin_session, level="team", name="dh_above_sibling", parent=center)
+    cmd = create_soldier(admin_session, personal_number="dh_above_001", role="commander")
+    own.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="dh_above_002", hierarchy_node_id=sibling.id)
+    set_setting(admin_session, "transparency.commander_levels_above", 1, actor_id=None)
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
+    assert r.status_code == 200
