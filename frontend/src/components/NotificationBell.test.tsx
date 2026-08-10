@@ -1,13 +1,24 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import NotificationBell from "./NotificationBell";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import * as notificationsApi from "../api/notifications";
+import * as swapsApi from "../api/swaps";
+import * as rangesApi from "../api/ranges";
 import * as bugReportsApi from "../api/bugReports";
 
-vi.mock("../api/notifications");
+vi.mock("../api/notifications", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/notifications")>()),
+  getUnreadCount: vi.fn(),
+  listNotifications: vi.fn(),
+  markRead: vi.fn(),
+  markAllRead: vi.fn(),
+  deleteNotification: vi.fn(),
+}));
+vi.mock("../api/swaps");
+vi.mock("../api/ranges");
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
 vi.mock("../api/bugReports", async (importOriginal) => ({
@@ -38,6 +49,7 @@ const baseNotification = {
   reference_id: null,
   is_read: false,
   created_at: new Date().toISOString(),
+  metadata: null,
 };
 
 beforeEach(() => {
@@ -113,5 +125,49 @@ describe("NotificationBell icon differentiation", () => {
     (await screen.findByText("תגובה חדשה")).click();
 
     expect(await screen.findByText("the modal opened")).toBeInTheDocument();
+  });
+});
+
+describe("NotificationBell quick decisions", () => {
+  it("always shows mark-read and dismiss buttons regardless of type", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, id: "n1", title: "Announcement", type: "announcement" }],
+      total: 1,
+    });
+    renderBell();
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Announcement");
+    expect(screen.getByLabelText("notifications.mark_read")).toBeInTheDocument();
+    expect(screen.getByLabelText("notifications.dismiss")).toBeInTheDocument();
+    expect(screen.queryByLabelText("notifications.approve")).not.toBeInTheDocument();
+  });
+
+  it("shows approve/reject for swap_offer_incoming and calls the soldier-decision API", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, id: "n1", title: "Swap offer", type: "swap_offer_incoming", reference_type: "swap_request", reference_id: "req1" }],
+      total: 1,
+    });
+    vi.mocked(swapsApi.soldierApproveSwap).mockResolvedValue({} as never);
+    renderBell();
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Swap offer");
+    screen.getByLabelText("notifications.approve").click();
+    await waitFor(() => expect(swapsApi.soldierApproveSwap).toHaveBeenCalledWith("req1"));
+  });
+
+  it("shows approve/reject for range_excusal_pending and calls decideRangeExcusal with metadata.event_id", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{
+        ...baseNotification, id: "n1", title: "Excusal pending", type: "range_excusal_pending",
+        reference_type: "range_excusal_request", reference_id: "req1", metadata: { event_id: "evt1" },
+      }],
+      total: 1,
+    });
+    vi.mocked(rangesApi.decideRangeExcusal).mockResolvedValue({} as never);
+    renderBell();
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Excusal pending");
+    screen.getByLabelText("notifications.reject").click();
+    await waitFor(() => expect(rangesApi.decideRangeExcusal).toHaveBeenCalledWith("evt1", "req1", false));
   });
 });

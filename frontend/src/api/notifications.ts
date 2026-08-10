@@ -10,6 +10,7 @@ export interface NotificationDTO {
   reference_id: string | null;
   is_read: boolean;
   created_at: string;
+  metadata: Record<string, unknown> | null;
 }
 
 
@@ -50,6 +51,14 @@ export function getNotificationLink(
     return `/ranges?event=${n.reference_id}`;
   }
   return null;
+}
+
+// Notification types that carry a quick approve/reject decision pair in the
+// notification list/dropdown (swap offers and range excusal requests).
+export const QUICK_DECISION_TYPES = ["swap_offer_incoming", "range_excusal_pending"] as const;
+
+export function isQuickDecisionNotification(n: Pick<NotificationDTO, "type">): boolean {
+  return (QUICK_DECISION_TYPES as readonly string[]).includes(n.type);
 }
 
 export const RANGE_NOTIFICATION_TYPES = [
