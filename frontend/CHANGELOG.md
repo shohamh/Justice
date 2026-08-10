@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-10
+
+### Features
+- Transparency page visibility rework: the "visible commander levels" multiselect is replaced by a single rank-threshold setting (minimum visible level), plus separate "levels above" thresholds for which commanders and duty managers can view the transparency page, fairness components, effort breakdown, and other soldiers' duty history. Computed live from the hierarchy, so the transparency page, fairness/effort data, and duty-history are now scoped per viewer instead of being all-or-nothing.
+- The transparency page now only queries data when the current user is actually allowed to view it, and duty-history access for other soldiers follows the same visibility scope as the transparency data.
+- Shifts page gained quick-filter selection by duty type and eligibility group, backed by a new eligibility-groups summary endpoint.
+- Ranges/calendar pages now explain range eligibility in detail, including a dedicated commander dashboard panel listing unqualified soldiers and the reason each soldier doesn't qualify for a given range.
+
+### Fixes
+- Transparency score normalisation is now computed over the full active population (matching the previous behavior) instead of only over rows the viewer can see, and the score-adjustment preview uses the same population count.
+- Closed a duty-history leak where an unrelated plain soldier could retrieve another soldier's duty history; access now requires commander/duty-manager visibility scope, with admin and event-type redaction checks preserved.
+- Corrected the default transparency minimum visible level to מדור (previously every-soldier), and fixed plan/spec contradictions that documented the wrong default.
+- Range warning counts are now correct and not stale, unavailable range data is distinguished from missing, and commander release/duty-detail gating was tightened.
+
+### Chores
+- Added design specs and implementation plans for the transparency/visibility permission rework and homepage/notification clarity and auto-assign scope filters.
+- Removed tracked SDD scratch artifacts.
+
 ## 2026-08-09
 
 ### Features
