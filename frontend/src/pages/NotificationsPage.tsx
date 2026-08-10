@@ -5,7 +5,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import { usePagePagination } from "../hooks/usePagePagination";
-import { listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
+import { listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS, isQuickDecisionNotification } from "../api/notifications";
+import { soldierApproveSwap, soldierRejectSwap } from "../api/swaps";
+import { decideRangeExcusal } from "../api/ranges";
+import { Check, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 
 export default function NotificationsPage() {
@@ -41,6 +44,21 @@ export default function NotificationsPage() {
   async function handleDelete(id: string) {
     await deleteNotification(id);
     await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+  }
+
+  async function handleDecision(n: NotificationDTO, approve: boolean) {
+    try {
+      if (n.type === "swap_offer_incoming" && n.reference_id) {
+        await (approve ? soldierApproveSwap(n.reference_id) : soldierRejectSwap(n.reference_id));
+      } else if (n.type === "range_excusal_pending" && n.reference_id) {
+        const eventId = n.metadata?.event_id as string | undefined;
+        if (!eventId) return;
+        await decideRangeExcusal(eventId, n.reference_id, approve);
+      } else {
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+    } catch { /* ignore — individual failures surface through the swap/range pages */ }
   }
 
   function handleNotificationClick(n: NotificationDTO) {
@@ -94,13 +112,31 @@ export default function NotificationsPage() {
                   <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleString("he-IL")}</p>
                 </div>
                 <div className="flex gap-1">
-                  {!n.is_read && (
-                    <button onClick={() => handleMarkRead(n.id)} className="text-xs text-gray-400 hover:text-indigo-600" title={t("notifications.mark_read")}>
-                      ✓
-                    </button>
+                  {isQuickDecisionNotification(n) && (
+                    <>
+                      <button
+                        onClick={() => handleDecision(n, true)}
+                        className="p-1.5 rounded bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300 dark:hover:bg-green-800"
+                        aria-label={t("notifications.approve")}
+                        title={t("notifications.approve")}
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDecision(n, false)}
+                        className="p-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
+                        aria-label={t("notifications.reject")}
+                        title={t("notifications.reject")}
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
                   )}
-                  <button onClick={() => handleDelete(n.id)} className="text-xs text-gray-400 hover:text-red-600" title={t("notifications.dismiss")}>
-                    ✕
+                  <button onClick={() => handleMarkRead(n.id)} className="p-1.5 rounded text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-600" aria-label={t("notifications.mark_read")} title={t("notifications.mark_read")}>
+                    <Check size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(n.id)} className="p-1.5 rounded text-gray-500 hover:bg-red-100 hover:text-red-600 dark:text-gray-400 dark:hover:bg-red-900" aria-label={t("notifications.dismiss")} title={t("notifications.dismiss")}>
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>

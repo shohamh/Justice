@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.db.models import (
     DutyManagerScope,
@@ -165,6 +165,75 @@ def test_reject_works_at_duty_manager_stage(app_session):
     approve_commander_step(app_session, req.id, approved_by=commander.id)
     result = reject_request(app_session, req.id, decided_by=dm.id)
     assert result.status == "rejected"
+
+
+def test_reject_request_notification_includes_type_name_and_dates(app_session):
+    et = ExemptionType(name="חופשה")
+    app_session.add(et)
+    app_session.flush()
+    soldier = _soldier(app_session)
+    decider = _soldier(app_session)
+    req = submit_request(
+        app_session, soldier.id, et.id,
+        start_date=date(2026, 8, 10), end_date=date(2026, 8, 15), reason="סיבה",
+    )
+    reject_request(app_session, request_id=req.id, decided_by=decider.id,
+                   decision_note="לא מספיק ימי חופשה")
+    notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == soldier.id,
+            Notification.reference_id == req.id,
+            Notification.type == NotificationType.exemption_rejected,
+        )
+    ).scalar_one()
+    assert "חופשה" in notif.title
+    assert "2026-08-10" in notif.title and "2026-08-15" in notif.title
+    assert notif.body == "לא מספיק ימי חופשה"
+
+
+def test_reject_request_notification_marks_permanent_exemption(app_session):
+    et = ExemptionType(name="רפואי")
+    app_session.add(et)
+    app_session.flush()
+    soldier = _soldier(app_session)
+    decider = _soldier(app_session)
+    req = submit_request(
+        app_session, soldier.id, et.id,
+        start_date=date(2026, 8, 10), end_date=None, reason="סיבה",
+    )
+    reject_request(app_session, request_id=req.id, decided_by=decider.id)
+    notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == soldier.id,
+            Notification.reference_id == req.id,
+            Notification.type == NotificationType.exemption_rejected,
+        )
+    ).scalar_one()
+    assert "קבוע" in notif.title
+
+
+def test_approve_duty_manager_step_notification_includes_type_name_and_dates(app_session):
+    et = ExemptionType(name="אישי")
+    app_session.add(et)
+    app_session.flush()
+    soldier = _soldier(app_session)
+    commander = _soldier(app_session)
+    decider = _soldier(app_session)
+    req = submit_request(
+        app_session, soldier.id, et.id,
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 3), reason="סיבה",
+    )
+    approve_commander_step(app_session, req.id, approved_by=commander.id)
+    approve_duty_manager_step(app_session, request_id=req.id, decided_by=decider.id)
+    notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == soldier.id,
+            Notification.reference_id == req.id,
+            Notification.type == NotificationType.exemption_approved,
+        )
+    ).scalar_one()
+    assert "אישי" in notif.title
+    assert "2026-09-01" in notif.title and "2026-09-03" in notif.title
 
 
 def test_escalation_apply_immediately_grants_and_creates_pending_dm_request(app_session):

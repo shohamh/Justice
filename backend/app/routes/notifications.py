@@ -28,6 +28,7 @@ class NotificationOut(BaseModel):
     reference_id: uuid.UUID | None
     is_read: bool
     created_at: datetime
+    metadata: dict | None = None
 
 
 class NotificationPrefOut(BaseModel):
@@ -173,6 +174,7 @@ def _out(n: Notification) -> NotificationOut:
         id=n.id, soldier_id=n.soldier_id, title=n.title, body=n.body,
         type=n.type.value, reference_type=n.reference_type,
         reference_id=n.reference_id, is_read=n.is_read, created_at=n.created_at,
+        metadata=n.metadata_json,
     )
 
 

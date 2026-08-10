@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
+import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS, isQuickDecisionNotification } from "../api/notifications";
+import { soldierApproveSwap, soldierRejectSwap } from "../api/swaps";
+import { decideRangeExcusal } from "../api/ranges";
+import { Check, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 
 export default function NotificationBell() {
@@ -57,6 +60,22 @@ export default function NotificationBell() {
     const { count } = await markAllRead().catch(() => ({ count: 0 }));
     setUnread(Math.max(0, unread - count));
     setNotifications([]);
+  }
+
+  async function handleDecision(n: NotificationDTO, approve: boolean) {
+    try {
+      if (n.type === "swap_offer_incoming" && n.reference_id) {
+        await (approve ? soldierApproveSwap(n.reference_id) : soldierRejectSwap(n.reference_id));
+      } else if (n.type === "range_excusal_pending" && n.reference_id) {
+        const eventId = n.metadata?.event_id as string | undefined;
+        if (!eventId) return;
+        await decideRangeExcusal(eventId, n.reference_id, approve);
+      } else {
+        return;
+      }
+      setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+      setUnread((u) => Math.max(0, u - 1));
+    } catch { /* ignore — surfaced via the full review page if it fails */ }
   }
 
   function handleNotificationClick(n: NotificationDTO) {
@@ -127,8 +146,32 @@ export default function NotificationBell() {
                     {n.body && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{n.body}</p>}
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => handleMarkRead(n.id)} className="text-xs text-gray-400 hover:text-gray-600" title={t("notifications.mark_read")}>✓</button>
-                    <button onClick={() => handleDelete(n.id)} className="text-xs text-gray-400 hover:text-red-600" title={t("notifications.dismiss")}>✕</button>
+                    {isQuickDecisionNotification(n) && (
+                      <>
+                        <button
+                          onClick={() => handleDecision(n, true)}
+                          className="p-1.5 rounded bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900 dark:text-green-300 dark:hover:bg-green-800"
+                          aria-label={t("notifications.approve")}
+                          title={t("notifications.approve")}
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDecision(n, false)}
+                          className="p-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
+                          aria-label={t("notifications.reject")}
+                          title={t("notifications.reject")}
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => handleMarkRead(n.id)} className="p-1.5 rounded text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-600" aria-label={t("notifications.mark_read")} title={t("notifications.mark_read")}>
+                      <Check size={14} />
+                    </button>
+                    <button onClick={() => handleDelete(n.id)} className="p-1.5 rounded text-gray-500 hover:bg-red-100 hover:text-red-600 dark:text-gray-400 dark:hover:bg-red-900" aria-label={t("notifications.dismiss")} title={t("notifications.dismiss")}>
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
               ))

@@ -289,6 +289,7 @@ def create_notification(
     reference_type: str | None = None,
     reference_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
+    metadata: dict | None = None,
 ) -> Notification | None:
     pref = session.execute(
         select(NotificationPreference).where(
@@ -301,6 +302,7 @@ def create_notification(
     notif = Notification(
         soldier_id=soldier_id, type=type, title=title, body=body,
         reference_type=reference_type, reference_id=reference_id,
+        metadata_json=metadata,
     )
     session.add(notif)
     session.flush()
@@ -451,6 +453,7 @@ def _create_notif(
     session: Session, *, soldier_id: uuid.UUID, type: NotificationType,
     title: str, body: str | None, reference_type: str | None,
     reference_id: uuid.UUID | None, actor_id: uuid.UUID | None,
+    metadata: dict | None = None,
 ) -> None:
     pref = session.execute(
         select(NotificationPreference).where(
@@ -461,7 +464,8 @@ def _create_notif(
     if pref is not None and not pref.in_app_enabled:
         return
     notif = Notification(soldier_id=soldier_id, type=type, title=title, body=body,
-                         reference_type=reference_type, reference_id=reference_id)
+                         reference_type=reference_type, reference_id=reference_id,
+                         metadata_json=metadata)
     session.add(notif)
     soldier = session.get(Soldier, soldier_id)
     if pref is None or pref.push_enabled:
@@ -562,6 +566,7 @@ def notify_duty_managers_in_scope(
     reference_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
     exclude_soldier_ids: set[uuid.UUID] | None = None,
+    metadata: dict | None = None,
 ) -> None:
     """Notify every duty manager whose scope covers soldier_id's hierarchy node."""
     from app.db.models import DutyManagerScope
@@ -591,6 +596,7 @@ def notify_duty_managers_in_scope(
             type=type, title=f"{soldier.full_name}: {title}",
             body=body, reference_type=reference_type,
             reference_id=reference_id, actor_id=actor_id,
+            metadata=metadata,
         )
 
 
