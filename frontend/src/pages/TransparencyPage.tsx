@@ -291,13 +291,17 @@ export default function TransparencyPage() {
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
   const [effortBreakdownFor, setEffortBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
 
+  const canViewTransparency = user?.can_view_transparency ?? true; // true until /me loads, avoids a flash-then-hide for allowed users
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
     queryFn: getTransparency,
+    enabled: canViewTransparency,
   });
   const rows = useMemo(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
   const canSeeExemptionAggregates = transparencyQuery.data?.can_see_exemption_aggregates ?? false;
-  const transparencyForbidden = isAxiosError(transparencyQuery.error) && transparencyQuery.error.response?.status === 403;
+  const transparencyForbidden =
+    user?.can_view_transparency === false ||
+    (isAxiosError(transparencyQuery.error) && transparencyQuery.error.response?.status === 403);
 
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
@@ -305,6 +309,7 @@ export default function TransparencyPage() {
   const fairnessComponentsQuery = useQuery({
     queryKey: queryKeys.fairnessComponents(),
     queryFn: getFairnessComponents,
+    enabled: canViewTransparency,
   });
   const fairnessComponents = fairnessComponentsQuery.data ?? null;
 

@@ -7,8 +7,21 @@ from app.db.models import DutyLocation, DutyType
 from tests.helpers import auth_headers, create_soldier
 
 
-def test_transparency_open_to_any_authed_user(client: TestClient, admin_session: Session):
+def test_transparency_403_for_plain_soldier_by_default(client: TestClient, admin_session: Session):
+    # Default transparency.min_visible_level is "מדור" (not "every_soldier"), so a
+    # plain soldier with no command/DM scope has no visibility by default.
     s = create_soldier(admin_session, personal_number="5600001", role="soldier")
+    r = client.get("/api/scoring/transparency", headers=auth_headers(s))
+    assert r.status_code == 403
+
+
+def test_transparency_200_when_every_soldier(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+
+    s = create_soldier(admin_session, personal_number="5600009", role="soldier")
+    set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
+    admin_session.commit()
+
     r = client.get("/api/scoring/transparency", headers=auth_headers(s))
     assert r.status_code == 200
     body = r.json()
@@ -16,48 +29,38 @@ def test_transparency_open_to_any_authed_user(client: TestClient, admin_session:
     assert "can_see_exemption_aggregates" in body
 
 
-def test_transparency_denied_for_commander_at_excluded_level(client: TestClient, admin_session: Session):
+def test_transparency_allowed_for_commander_of_own_subtree(client: TestClient, admin_session: Session):
+    # A commander of any node always passes the has_any_visibility endpoint gate,
+    # regardless of that node's level — the old visible_commander_levels
+    # multiselect no longer governs this (retired by the transparency rework).
     from tests.helpers import create_node
-    from app.services.settings_loader import set_setting
 
     cmd = create_soldier(admin_session, personal_number="5600030", role="soldier")
-    create_node(admin_session, level="team", name="team-excl", commander_id=cmd.id)
-    set_setting(admin_session, "transparency.visible_commander_levels", ["brigade"], actor_id=None)
+    create_node(admin_session, level="team", name="team-incl", commander_id=cmd.id)
     admin_session.commit()
 
     r = client.get("/api/scoring/transparency", headers=auth_headers(cmd))
+    assert r.status_code == 200
+
+
+def test_transparency_403_for_duty_manager_without_scope(client: TestClient, admin_session: Session):
+    # A duty_manager role alone no longer grants visibility — it requires an
+    # actual DutyManagerScope row (or the every_soldier setting).
+    dm = create_soldier(admin_session, personal_number="5600032", role="duty_manager")
+
+    r = client.get("/api/scoring/transparency", headers=auth_headers(dm))
     assert r.status_code == 403
 
 
-def test_transparency_allowed_for_commander_at_included_level(client: TestClient, admin_session: Session):
+def test_transparency_allowed_for_duty_manager_with_scope(client: TestClient, admin_session: Session):
     from tests.helpers import create_node
-    from app.services.settings_loader import set_setting
 
-    cmd = create_soldier(admin_session, personal_number="5600031", role="soldier")
-    create_node(admin_session, level="team", name="team-incl", commander_id=cmd.id)
-    set_setting(admin_session, "transparency.visible_commander_levels", ["team", "branch"], actor_id=None)
-    admin_session.commit()
-
-    r = client.get("/api/scoring/transparency", headers=auth_headers(cmd))
-    assert r.status_code == 200
-
-
-def test_transparency_allowed_for_duty_manager_regardless_of_level(
-    client: TestClient, admin_session: Session
-):
-    from app.services.settings_loader import set_setting
-
-    dm = create_soldier(admin_session, personal_number="5600032", role="duty_manager")
-    set_setting(admin_session, "transparency.visible_commander_levels", ["team"], actor_id=None)
-    admin_session.commit()
+    node = create_node(admin_session, level="team", name="team-dm-scope")
+    dm = create_soldier(
+        admin_session, personal_number="5600034", role="duty_manager", hierarchy_node_id=node.id
+    )
 
     r = client.get("/api/scoring/transparency", headers=auth_headers(dm))
-    assert r.status_code == 200
-
-
-def test_transparency_allowed_by_default(client: TestClient, admin_session: Session):
-    s = create_soldier(admin_session, personal_number="5600033", role="soldier")
-    r = client.get("/api/scoring/transparency", headers=auth_headers(s))
     assert r.status_code == 200
 
 
@@ -90,6 +93,11 @@ def test_transparency_exemptions_redacted_for_plain_soldier(client: TestClient, 
     from app.db.models import ExemptionType, SoldierExemption
     from tests.helpers import create_node
 
+    from app.services.settings_loader import set_setting
+
+    # Widen row-scope visibility so the plain viewer's row isn't filtered out
+    # entirely — this test targets exemption redaction, not row-scope gating.
+    set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
     node = create_node(admin_session, level="division", name="div-api-redact")
     viewer = create_soldier(admin_session, personal_number="5600007", role="soldier")
     target = create_soldier(admin_session, personal_number="5600008", hierarchy_node_id=node.id)
@@ -107,6 +115,14 @@ def test_transparency_exemptions_redacted_for_plain_soldier(client: TestClient, 
     row = next(x for x in body["rows"] if x["soldier_id"] == str(target.id))
     assert row["exemptions_display"] == "חסוי"
     assert row["has_global_exemption"] is None
+
+
+def test_fairness_components_403_for_plain_soldier_by_default(client: TestClient, admin_session: Session):
+    # Same gating as /scoring/transparency: default transparency.min_visible_level
+    # is "מדור", so a plain soldier with no command/DM scope has no visibility.
+    s = create_soldier(admin_session, personal_number="5600040", role="soldier")
+    r = client.get("/api/scoring/fairness-components", headers=auth_headers(s))
+    assert r.status_code == 403
 
 
 def test_soldier_can_read_own_breakdown(client: TestClient, admin_session: Session):
@@ -163,6 +179,9 @@ def test_transparency_exemptions_array_empty_when_redacted(client: TestClient, a
     from app.db.models import ExemptionType, SoldierExemption
     from tests.helpers import create_node
 
+    from app.services.settings_loader import set_setting
+
+    set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
     node = create_node(admin_session, level="division", name="div-api-exarr2")
     viewer = create_soldier(admin_session, personal_number="5600022", role="soldier")
     target = create_soldier(admin_session, personal_number="5600023", hierarchy_node_id=node.id)
@@ -178,3 +197,10 @@ def test_transparency_exemptions_array_empty_when_redacted(client: TestClient, a
     row = next(x for x in r.json()["rows"] if x["soldier_id"] == str(target.id))
     assert row["exemptions_visible"] is False
     assert row["exemptions"] == []
+
+
+def test_effort_breakdown_403_for_unrelated_plain_soldier(client: TestClient, admin_session: Session):
+    a = create_soldier(admin_session, personal_number="5600050", role="soldier")
+    b = create_soldier(admin_session, personal_number="5600051", role="soldier")
+    r = client.get(f"/api/scoring/soldiers/{b.id}/effort-breakdown", headers=auth_headers(a))
+    assert r.status_code == 403

@@ -1,9 +1,11 @@
 from datetime import date
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import TelegramLink
+from app.db.models import DutyAssignment, DutyLocation, DutyType, ExemptionType, SoldierExemption, TelegramLink
+from app.routes.soldiers import _PUBLIC_EVENT_TYPES
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -216,3 +218,112 @@ def test_phone_and_email_hidden_when_public_settings_disabled(client: TestClient
     body = r.json()
     assert body["phone"] is None
     assert body["email"] is None
+
+
+def test_duty_history_403_for_unrelated_plain_soldier_by_default(client: TestClient, admin_session: Session):
+    # Default transparency.min_visible_level is "מדור" (not "every_soldier"), so a
+    # plain soldier with no command/DM scope over the target's node has no
+    # visibility into that soldier's duty history by default. Previously this
+    # endpoint had no permission check at all for the other-soldier branch.
+    viewer = create_soldier(admin_session, personal_number="dh_403_001", role="soldier")
+    target = create_soldier(admin_session, personal_number="dh_403_002", role="soldier")
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(viewer))
+    assert r.status_code == 403
+
+
+def test_duty_history_200_for_plain_soldier_commanding_target_node(
+    client: TestClient, admin_session: Session
+):
+    # A soldier who commands the target's hierarchy node passes
+    # can_view_soldier_scope even though their role label is plain "soldier"
+    # (dual-role pattern) — mirrors /scoring/transparency's commander check.
+    # Also seeds one public-type event (assignment) and one non-public-type
+    # event (exemption, not in _PUBLIC_EVENT_TYPES = {"assignment",
+    # "cancellation"}) to prove that passing the new can_view_soldier_scope
+    # gate does NOT bypass the existing event-type redaction for a
+    # plain-soldier viewer — the two checks are independent layers.
+    node = create_node(admin_session, level="team", name="dh_200_node")
+    cmd = create_soldier(admin_session, personal_number="dh_200_001", role="soldier")
+    node.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="dh_200_002", hierarchy_node_id=node.id)
+
+    dt = DutyType(name="שמירה-dh200", score_per_day=Decimal("2.00"))
+    loc = DutyLocation(name="מוצב-dh200")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=target.id,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 1, 2),
+        )
+    )
+
+    et = ExemptionType(name="פטור-dh200")
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(
+            soldier_id=target.id, exemption_type_id=et.id, start_date=date(2026, 1, 1)
+        )
+    )
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
+    assert r.status_code == 200
+    event_types = {e["event_type"] for e in r.json()}
+    assert "assignment" in event_types
+    assert "exemption" not in event_types
+    assert event_types <= _PUBLIC_EVENT_TYPES
+
+
+def test_duty_history_200_for_senior_rank_commander_viewing_unrelated_soldier(
+    client: TestClient, admin_session: Session
+):
+    # Human ruling: can_view_soldier_scope governs duty-history for EVERY
+    # non-self viewer, not just plain soldiers. A commander whose commanded
+    # node meets the min_visible_level rank threshold may view an unrelated
+    # soldier's duty history. Level keys here are the conftest-seeded English
+    # ones, so the threshold is set to the "group" (rank 6) key the commander
+    # commands and meets; the migration-seeded default "מדור" label does not
+    # resolve against those keys (pre-existing labeling quirk, out of scope).
+    from app.services.settings_loader import set_setting
+
+    own = create_node(admin_session, level="group", name="dh_senior_own")
+    other = create_node(admin_session, level="team", name="dh_senior_other")
+    cmd = create_soldier(admin_session, personal_number="dh_senior_001", role="commander")
+    own.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="dh_senior_002", hierarchy_node_id=other.id)
+    set_setting(admin_session, "transparency.min_visible_level", "group", actor_id=None)
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
+    assert r.status_code == 200
+
+
+def test_duty_history_200_for_commander_with_levels_above_sibling_branch(
+    client: TestClient, admin_session: Session
+):
+    # A commander with transparency.commander_levels_above >= 1 (the
+    # comparison-unit use case) may view duty history of a soldier in a
+    # sibling branch under the same ancestor. The commanded node is a
+    # "team" (rank 7, below the "מדור" threshold), so only the
+    # levels-above expansion path can authorize this.
+    from app.services.settings_loader import set_setting
+
+    top = create_node(admin_session, level="department", name="dh_above_top")
+    center = create_node(admin_session, level="branch", name="dh_above_center", parent=top)
+    own = create_node(admin_session, level="team", name="dh_above_own", parent=center)
+    sibling = create_node(admin_session, level="team", name="dh_above_sibling", parent=center)
+    cmd = create_soldier(admin_session, personal_number="dh_above_001", role="commander")
+    own.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="dh_above_002", hierarchy_node_id=sibling.id)
+    set_setting(admin_session, "transparency.commander_levels_above", 1, actor_id=None)
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
+    assert r.status_code == 200

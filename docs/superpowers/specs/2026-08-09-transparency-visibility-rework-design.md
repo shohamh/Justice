@@ -19,7 +19,7 @@
 
 | מפתח | סוג | משמעות | ברירת מחדל |
 |---|---|---|---|
-| `transparency.min_visible_level` | מפתח דרג (`HierarchyLevelType.key`) או ה-sentinel `"every_soldier"` | הדרג המינימלי שמפקד/אחראי תורנויות צריך להחזיק (בכל צומת שהוא מפקד/אחראי עליו) כדי לראות שקיפות והיסטוריית תורנויות של **כולם**, לא רק בתחומו | `"every_soldier"` (פתוח — תואם להתנהגות הקיימת כשההגדרה ריקה) |
+| `transparency.min_visible_level` | מפתח דרג (`HierarchyLevelType.key`) או ה-sentinel `"every_soldier"` | הדרג המינימלי שמפקד/אחראי תורנויות צריך להחזיק (בכל צומת שהוא מפקד/אחראי עליו) כדי לראות שקיפות והיסטוריית תורנויות של **כולם**, לא רק בתחומו | `"מדור"` (סגור לחיילים פשוטים כברירת מחדל — תואם את הכוונה המקורית לסגור את הפרצה בהיסטוריית תורנויות מיד עם השדרוג, בלי תלות בפעולת אדמין. שונה במכוון מברירת המחדל "פתוח לגמרי" של ההגדרה הישנה) |
 | `transparency.commander_levels_above` | מספר שלם ≥ 0 | כמה דרגים מעל הצומת שהמפקד מפקד עליו הוא רואה בנוסף לתת-העץ שלו (0 = תת-העץ שלו בלבד, כהיום) | `0` |
 | `transparency.duty_manager_levels_above` | מספר שלם ≥ 0 | אותו דבר, עבור אחראי תורנויות ביחס לשורש/י ה-`DutyManagerScope` שלו | `0` |
 
@@ -29,10 +29,10 @@
 
 ### מיגרציה
 
-- אם `transparency.visible_commander_levels` הישן היה ריק/לא מוגדר → `min_visible_level = "every_soldier"`.
+- אם `transparency.visible_commander_levels` הישן היה ריק/לא מוגדר → `min_visible_level = "מדור"` (ברירת המחדל החדשה, לא `"every_soldier"`).
 - אם היה מוגדר (מערך לא ריק) → `min_visible_level` = הדרג הבכיר ביותר (rank הנמוך ביותר) מבין הדרגים שנבחרו במערך הישן.
 - `commander_levels_above` ו-`duty_manager_levels_above` מתחילים ב-`0` בכל הפריסות הקיימות (ללא שינוי התנהגות בציר הזה עד שאדמין יבחר להרחיב).
-- מיגרציית Alembic data-migration שקוראת את הערך הישן, מחשבת את החדש, וכותבת. אם המפתח הישן לא קיים כלל (התקנה חדשה) — נכתב ברירת המחדל `"every_soldier"` ישירות.
+- מיגרציית Alembic data-migration שקוראת את הערך הישן, מחשבת את החדש, וכותבת. אם המפתח הישן לא קיים כלל (התקנה חדשה) — נכתב ברירת המחדל `"מדור"` ישירות.
 
 ### פונקציית הרשאה משותפת
 
@@ -43,7 +43,7 @@
    - לכל צומת שה-viewer מפקד עליו (`HierarchyNode.commander_id == viewer.id`): חשב אב-קדמון `commander_levels_above` צעדים למעלה לאורך `path_ids` (עצירה בשורש אם חורג); אם `target_node` נמצא בתת-העץ של אותו אב-קדמון (כלומר, ה-id שלו מופיע ב-`target_node.path_ids`) → `True`.
    - אותו דבר עבור כל שורש `DutyManagerScope` של ה-viewer, עם `duty_manager_levels_above`.
 3. **דרג בכיר מספיק רואה את כולם:**
-   - `threshold = get_setting("transparency.min_visible_level", "every_soldier")`.
+   - `threshold = get_setting("transparency.min_visible_level", "מדור")` (ברירת מחדל אם השורה חסרה — ראו טבלת ההגדרות למעלה).
    - אם `threshold == "every_soldier"` → `True` (לכולם, כולל חיילים פשוטים).
    - אחרת: קח את הדרג הבכיר ביותר (rank מינימלי) מבין כל הצמתים שה-viewer מפקד/מנהל תורנויות עליהם. אם הוא קיים ו-rank שלו ≤ ה-rank של `threshold` (כלומר בכיר יותר או שווה) → `True`.
 4. אחרת → `False`.

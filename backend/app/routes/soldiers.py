@@ -32,6 +32,7 @@ from app.services.soldiers import (
     submit_field_update,
     update_soldier_profile,
 )
+from app.services.authority import can_view_soldier_scope
 from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
 from app.services.duty_history import get_duty_history
 from app.services.reserves import get_current_reserve_stats
@@ -530,8 +531,8 @@ def get_soldier_duty_history(
     is_self = s.id == user.id
     is_plain_soldier = user.role == "soldier"
 
-    if not is_self and not is_plain_soldier:
-        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+    if not is_self and not can_view_soldier_scope(session, user, _node_of(session, s)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     if include_drafts and user.role != "admin" and not is_duty_manager(session, user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")

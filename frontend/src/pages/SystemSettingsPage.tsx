@@ -14,7 +14,7 @@ interface SettingDef {
   key: string;
   label: string;
   description?: string;
-  type: "boolean" | "number" | "decimal" | "select" | "date" | "text" | "multiselect";
+  type: "boolean" | "number" | "decimal" | "select" | "date" | "text";
   defaultValue: string | number | boolean | string[];
   options?: { value: string; label: string }[];
 }
@@ -316,10 +316,22 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "שקיפות",
     settings: [
       {
-        key: "transparency.visible_commander_levels",
-        label: "",
-        type: "multiselect" as const,
-        defaultValue: [],
+        key: "transparency.min_visible_level",
+        label: "החל ממפקדים/אחראי תורנויות באיזה דרג ניתן לראות נתוני שקיפות במערכת",
+        type: "select" as const,
+        defaultValue: "מדור",
+      },
+      {
+        key: "transparency.commander_levels_above",
+        label: "כמה דרגים מעל תחום הפיקוד יכול מפקד לראות (לצורך השוואה)",
+        type: "number" as const,
+        defaultValue: 0,
+      },
+      {
+        key: "transparency.duty_manager_levels_above",
+        label: "כמה דרגים מעל תחום האחריות יכול אחראי תורנויות לראות (לצורך השוואה)",
+        type: "number" as const,
+        defaultValue: 0,
       },
     ],
   },
@@ -354,7 +366,6 @@ function resolveValue(map: SettingsMap, def: SettingDef): string | number | bool
   if (raw === undefined || raw === null) return def.defaultValue;
   if (def.type === "boolean") return Boolean(raw);
   if (def.type === "number") return Number(raw);
-  if (def.type === "multiselect") return Array.isArray(raw) ? raw : [];
   return String(raw);
 }
 
@@ -372,6 +383,13 @@ export function SystemSettingsContent() {
   // this one has no "no restriction" entry. Shared by every "minimum level"
   // setting (commander exemption grants, medical document view thresholds).
   const commanderExemptionLevelOptions = levelTypes.map(lt => ({ value: lt.key, label: lt.label }));
+  // "Every soldier" is the most permissive option for the transparency minimum
+  // visible level, so it is offered in addition to the configured hierarchy
+  // levels (unlike the commander-exemption lists above).
+  const transparencyMinVisibleLevelOptions = [
+    { value: "every_soldier", label: "כל חייל" },
+    ...levelTypes.map(lt => ({ value: lt.key, label: lt.label })),
+  ];
   const MIN_LEVEL_SETTING_KEYS = new Set([
     "exemptions.commander_exemption_min_level",
     "exemptions.medical_doc_min_commander_level",
@@ -511,41 +529,14 @@ export function SystemSettingsContent() {
               <div key={def.key} className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                    {def.key === "transparency.visible_commander_levels"
-                      ? t("admin_settings.transparency_visible_levels")
-                      : def.key === "constraints.reset_period"
-                        ? t("admin_settings.constraints_reset_period")
-                        : def.label}
+                    {def.key === "constraints.reset_period"
+                      ? t("admin_settings.constraints_reset_period")
+                      : def.label}
                   </div>
                   {def.description && <div className="text-xs text-gray-400 dark:text-gray-300 mt-0.5">{def.description}</div>}
                 </div>
                 <div className="flex-shrink-0">
-                  {def.type === "multiselect" ? (
-                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto" dir="rtl">
-                      {levelTypes.map((lt) => {
-                        const selected = Array.isArray(value) && value.includes(lt.key);
-                        return (
-                          <label key={lt.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={(e) => {
-                                const current = Array.isArray(value) ? value : [];
-                                const next = e.target.checked
-                                  ? [...current, lt.key]
-                                  : current.filter((k) => k !== lt.key);
-                                setValue(def.key, next);
-                              }}
-                            />
-                            {lt.label}
-                          </label>
-                        );
-                      })}
-                      {levelTypes.length === 0 && (
-                        <span className="text-xs text-gray-400">{t("admin_settings.transparency_no_level_types")}</span>
-                      )}
-                    </div>
-                  ) : def.type === "boolean" ? (
+                  {def.type === "boolean" ? (
                     <button
                       dir="ltr"
                       onClick={() => setValue(def.key, !value)}
@@ -561,7 +552,9 @@ export function SystemSettingsContent() {
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
                       dir="rtl"
                     >
-                      {(def.key === "swaps.restrict_to_hierarchy_level"
+                      {(def.key === "transparency.min_visible_level"
+                        ? transparencyMinVisibleLevelOptions
+                        : def.key === "swaps.restrict_to_hierarchy_level"
                         ? hierarchyLevelOptions
                         : MIN_LEVEL_SETTING_KEYS.has(def.key)
                         ? commanderExemptionLevelOptions
