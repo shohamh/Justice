@@ -7,12 +7,16 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    CommanderNotificationScope, DutyAssignment, DutyLocation, DutyShift, DutyType, Notification, NotificationType, RangeType,
-    SoldierRangeQualification,
+    CommanderNotificationScope, DutyAssignment, DutyLocation, DutyShift, DutyType, Notification, NotificationType,
+    RangeAssignment, RangeEvent, RangeType, SoldierRangeQualification,
 )
 from app.services.duty_eligibility_watch import recheck_assignments
 from app.services.settings_loader import set_setting
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
+
+# Keep planned-range fixtures safely inside weapon_eligibility's real today-based
+# future window (mirrors test_range_eligibility_projection.py's AS_OF convention).
+AS_OF = date.today() + timedelta(days=6)
 
 
 def _make_weapon_assignment(
@@ -153,3 +157,152 @@ def test_non_weapon_duty_type_is_never_checked(app_session: Session) -> None:
     app_session.refresh(assignment)
     assert changed == 0
     assert assignment.weapon_ineligible is False
+
+
+def _make_info_duty_assignment(
+    session: Session, *, soldier_id, node_id, start_date: date = AS_OF, required_range_type: str = RangeType.laser,
+) -> DutyAssignment:
+    set_setting(session, "mitvachim.enabled", True, actor_id=None)
+    dt = DutyType(
+        name=f"watch-info-{soldier_id}-{start_date.isoformat()}", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=required_range_type,
+    )
+    session.add(dt)
+    session.flush()
+    assignment = DutyAssignment(
+        soldier_id=soldier_id, duty_type_id=dt.id, duty_location_id=create_duty_location(session).id,
+        start_date=start_date, end_date=start_date, status="published",
+    )
+    session.add(assignment)
+    session.commit()
+    session.refresh(assignment)
+    return assignment
+
+
+def _add_planned_range(
+    session: Session, *, soldier_id, node_id, range_type: str, event_date: date,
+) -> RangeAssignment:
+    event = RangeEvent(
+        hierarchy_node_id=node_id, range_type=range_type, date=event_date,
+        range_location_id=create_range_location(session).id, required_count=1,
+    )
+    session.add(event)
+    session.flush()
+    assignment = RangeAssignment(
+        range_event_id=event.id, soldier_id=soldier_id, is_reserve=False, is_draft=False,
+    )
+    session.add(assignment)
+    session.commit()
+    return assignment
+
+
+def test_recheck_assignments_detects_new_info_signal(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="watch-info-node-1")
+    soldier = create_soldier(app_session, personal_number="watch-info-sol-1", hierarchy_node_id=node.id)
+    assignment = _make_info_duty_assignment(app_session, soldier_id=soldier.id, node_id=node.id)
+    _add_planned_range(
+        app_session, soldier_id=soldier.id, node_id=node.id,
+        range_type=RangeType.laser, event_date=AS_OF - timedelta(days=1),
+    )
+
+    recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+
+    assert assignment.range_info_active is True
+    assert assignment.range_info_covering_range_type is not None
+    assert assignment.range_info_detected_at is not None
+
+    notif_types = {
+        n.type for n in app_session.query(Notification).filter_by(soldier_id=assignment.soldier_id)
+    }
+    assert NotificationType.range_covers_duty_info in notif_types
+
+
+def test_recheck_assignments_does_not_renotify_when_covering_range_unchanged(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="watch-info-node-2")
+    soldier = create_soldier(app_session, personal_number="watch-info-sol-2", hierarchy_node_id=node.id)
+    assignment = _make_info_duty_assignment(app_session, soldier_id=soldier.id, node_id=node.id)
+    _add_planned_range(
+        app_session, soldier_id=soldier.id, node_id=node.id,
+        range_type=RangeType.laser, event_date=AS_OF - timedelta(days=1),
+    )
+
+    recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+    first_detected_at = assignment.range_info_detected_at
+    notif_count_after_first = app_session.query(Notification).filter_by(
+        soldier_id=assignment.soldier_id, type=NotificationType.range_covers_duty_info,
+    ).count()
+
+    recheck_assignments(app_session, [assignment.id])  # nothing changed
+    app_session.refresh(assignment)
+
+    assert assignment.range_info_detected_at == first_detected_at
+    notif_count_after_second = app_session.query(Notification).filter_by(
+        soldier_id=assignment.soldier_id, type=NotificationType.range_covers_duty_info,
+    ).count()
+    assert notif_count_after_second == notif_count_after_first
+
+
+def test_recheck_assignments_renotifies_when_covering_range_changes(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="watch-info-node-3")
+    soldier = create_soldier(app_session, personal_number="watch-info-sol-3", hierarchy_node_id=node.id)
+    assignment = _make_info_duty_assignment(app_session, soldier_id=soldier.id, node_id=node.id)
+    first_range = _add_planned_range(
+        app_session, soldier_id=soldier.id, node_id=node.id,
+        range_type=RangeType.laser, event_date=AS_OF - timedelta(days=1),
+    )
+
+    recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+    first_detected_at = assignment.range_info_detected_at
+
+    # Move the soldier off the first RangeEvent's roster and onto a second one
+    # whose window also covers the duty's start_date, so the covering range changes.
+    app_session.delete(first_range)
+    app_session.commit()
+    _add_planned_range(
+        app_session, soldier_id=soldier.id, node_id=node.id,
+        range_type=RangeType.laser, event_date=AS_OF - timedelta(days=2),
+    )
+
+    recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+
+    assert assignment.range_info_detected_at != first_detected_at
+    notif_count = app_session.query(Notification).filter_by(
+        soldier_id=assignment.soldier_id, type=NotificationType.range_covers_duty_info,
+    ).count()
+    assert notif_count == 2
+
+
+def test_recheck_assignments_clears_info_signal_silently_when_no_longer_covered(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="watch-info-node-4")
+    soldier = create_soldier(app_session, personal_number="watch-info-sol-4", hierarchy_node_id=node.id)
+    assignment = _make_info_duty_assignment(app_session, soldier_id=soldier.id, node_id=node.id)
+    planned = _add_planned_range(
+        app_session, soldier_id=soldier.id, node_id=node.id,
+        range_type=RangeType.laser, event_date=AS_OF - timedelta(days=1),
+    )
+
+    recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+    assert assignment.range_info_active is True
+
+    # Remove the covering RangeAssignment entirely (soldier no longer has any
+    # planned range covering the duty, and no current qualification either).
+    app_session.delete(planned)
+    app_session.commit()
+
+    recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+
+    assert assignment.range_info_active is False
+    assert assignment.range_info_covered_by_date is None
+    assert assignment.range_info_covering_range_type is None
+    # No NEW info notification should have been created for the clearing --
+    # count stays at 1 (from the initial detection only).
+    notif_count = app_session.query(Notification).filter_by(
+        soldier_id=assignment.soldier_id, type=NotificationType.range_covers_duty_info,
+    ).count()
+    assert notif_count == 1
