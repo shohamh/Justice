@@ -1171,6 +1171,7 @@
     "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
     "type_range_excusal_no_backfill": "אין רזרבה זמינה לשיבוץ חלופי",
     "type_weapon_ineligible_detected": "נמצאו חיילים שאינם כשירים לנשק",
+    "type_range_covers_duty_info": "מטווח מתוכנן יכסה תורנות",
     "type_bug_report_comment": "תגובה חדשה לדיווח באג",
     "type_range_absence_reported_to_commander": "דווחה היעדרות ממטווח למפקד",
     "type_range_attendance_corrected_to_present": "נוכחות במטווח תוקנה ל'נכח'"
@@ -1375,7 +1376,11 @@
       "requiredRange": "נדרש לפחות מטווח מסוג {{rangeType}}",
       "noRequiredRange": "לא נדרש מטווח לתורנות זו",
       "warning": "חוסר כשירות מטווחים",
-      "unavailable": "נתוני כשירות מטווחים אינם זמינים"
+      "unavailable": "נתוני כשירות מטווחים אינם זמינים",
+      "info": "מטווח מתוכנן יכסה את התורנות"
+    },
+    "calendarBadge": {
+      "info": "מטווח מתוכנן יכסה תורנות"
     },
     "tablistLabel": "תצוגת מטווחים",
     "warning": {
