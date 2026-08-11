@@ -167,3 +167,46 @@ def test_register_rejects_partial_exemption_request(client, admin_session):
     resp = client.post("/api/auth/register", json=payload)
     assert resp.status_code == 400
     assert resp.json()["detail"] == "exemption_missing_fields"
+
+
+def test_register_accepts_permanent_exemption_row(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    from app.db.models import ExemptionType
+    et = ExemptionType(name=f"פטור-reg-permanent-{_uid()}", is_commander_exemption=False)
+    admin_session.add(et)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id, exemption_requests=[
+        {"exemption_type_id": str(et.id), "start_date": None, "end_date": None, "reason": "פטור קבוע"},
+    ])
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 200, resp.text
+
+    from app.db.models import ExemptionRequest
+    req = admin_session.query(ExemptionRequest).filter_by(exemption_type_id=et.id).one()
+    assert req.start_date is None
+    assert req.end_date is None
+
+
+def test_register_rejects_exemption_row_with_end_date_but_no_start_date(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    from app.db.models import ExemptionType
+    et = ExemptionType(name=f"פטור-reg-badrow-{_uid()}", is_commander_exemption=False)
+    admin_session.add(et)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id, exemption_requests=[
+        {"exemption_type_id": str(et.id), "start_date": None,
+         "end_date": (date.today() + timedelta(days=10)).isoformat(), "reason": "x"},
+    ])
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "start_date_required"

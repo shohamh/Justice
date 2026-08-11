@@ -120,10 +120,15 @@ def register(
     session.flush()
 
     for er in exemption_requests:
-        if not er.get("exemption_type_id") or not er.get("start_date"):
+        exemption_type_id_raw = er.get("exemption_type_id")
+        start_date_raw = er.get("start_date")
+        end_date_raw = er.get("end_date")
+        if not exemption_type_id_raw:
             raise RegistrationError("exemption_missing_fields")
+        if end_date_raw and not start_date_raw:
+            raise RegistrationError("start_date_required")
         try:
-            exemption_type_id = uuid.UUID(str(er["exemption_type_id"]))
+            exemption_type_id = uuid.UUID(str(exemption_type_id_raw))
         except ValueError as exc:
             raise RegistrationError("exemption_missing_fields") from exc
         et = session.get(ExemptionType, exemption_type_id)
@@ -131,13 +136,13 @@ def register(
             raise RegistrationError("exemption_type_not_found")
         if et.is_commander_exemption:
             raise RegistrationError("commander_exemption_not_requestable")
-        if er.get("end_date") and er["end_date"] < er["start_date"]:
+        if end_date_raw and start_date_raw and end_date_raw < start_date_raw:
             raise RegistrationError("bad_date_range")
         session.add(ExemptionRequest(
             soldier_id=soldier.id,
             exemption_type_id=exemption_type_id,
-            start_date=er["start_date"],
-            end_date=er.get("end_date") or None,
+            start_date=start_date_raw or None,
+            end_date=end_date_raw or None,
             reason=er.get("reason"),
             status="pending_commander",
             enrollment_request_id=enrollment_req.id,
