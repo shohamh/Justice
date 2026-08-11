@@ -52,3 +52,25 @@ def test_submit_request_accepts_real_reason(admin_session):
     )
     admin_session.commit()
     assert req.reason == "גב תפוס"
+
+
+def test_submit_request_allows_permanent_with_no_dates(admin_session):
+    s = create_soldier(admin_session, personal_number="7800005")
+    et = _et(admin_session, "פטור-permanent-test")
+    req = submit_request(
+        admin_session, soldier_id=s.id, exemption_type_id=et.id,
+        start_date=None, end_date=None, reason="פטור קבוע",
+    )
+    admin_session.commit()
+    assert req.start_date is None
+    assert req.end_date is None
+
+
+def test_submit_request_rejects_end_date_without_start_date(admin_session):
+    s = create_soldier(admin_session, personal_number="7800006")
+    et = _et(admin_session, "פטור-permanent-test-2")
+    with pytest.raises(ExemptionRequestError, match="start_date_required"):
+        submit_request(
+            admin_session, soldier_id=s.id, exemption_type_id=et.id,
+            start_date=None, end_date=date.today() + timedelta(days=10), reason="סיבה",
+        )

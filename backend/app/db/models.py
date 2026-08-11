@@ -689,7 +689,7 @@ class ExemptionRequest(Base):
     exemption_type_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exemption_types.id", ondelete="RESTRICT")
     )
-    start_date: Mapped[date] = mapped_column(Date)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     enrollment_request_id: Mapped[uuid.UUID | None] = mapped_column(
