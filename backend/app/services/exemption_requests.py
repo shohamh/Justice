@@ -199,6 +199,9 @@ def approve_duty_manager_step(
     req.decided_by = decided_by
     req.decision_note = decision_note
 
+    if req.start_date is None:
+        req.start_date = date.today()
+
     exemption = SoldierExemption(
         soldier_id=req.soldier_id,
         exemption_type_id=req.exemption_type_id,

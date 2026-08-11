@@ -58,7 +58,7 @@ class ExemptionRequestOut(BaseModel):
     soldier_name: str = ""
     node_name: str | None = None
     exemption_type_id: uuid.UUID | None    # None when viewer cannot see private fields
-    start_date: str
+    start_date: str | None
     end_date: str | None
     reason: str | None                      # None when viewer cannot see private fields
     status: str
@@ -75,7 +75,7 @@ class ExemptionRequestOut(BaseModel):
 
 class CreateExemptionRequest(BaseModel):
     exemption_type_id: uuid.UUID
-    start_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    start_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     end_date: str | None = None
     reason: str = Field(min_length=1, max_length=1000)
 
@@ -117,7 +117,7 @@ def _out(
         soldier_name=soldier_name,
         node_name=node_name,
         exemption_type_id=req.exemption_type_id if include_sensitive else None,
-        start_date=req.start_date.isoformat(),
+        start_date=req.start_date.isoformat() if req.start_date else None,
         end_date=req.end_date.isoformat() if req.end_date else None,
         reason=req.reason if include_sensitive else None,
         status=req.status,
@@ -190,7 +190,7 @@ def create_exemption_request(
             session,
             soldier_id=user.id,
             exemption_type_id=body.exemption_type_id,
-            start_date=date.fromisoformat(body.start_date),
+            start_date=date.fromisoformat(body.start_date) if body.start_date else None,
             end_date=date.fromisoformat(body.end_date) if body.end_date else None,
             reason=body.reason,
         )

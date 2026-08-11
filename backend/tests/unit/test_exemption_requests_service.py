@@ -74,3 +74,29 @@ def test_submit_request_rejects_end_date_without_start_date(admin_session):
             admin_session, soldier_id=s.id, exemption_type_id=et.id,
             start_date=None, end_date=date.today() + timedelta(days=10), reason="סיבה",
         )
+
+
+def test_approve_duty_manager_step_fills_start_date_for_permanent_request(admin_session):
+    from app.services.exemption_requests import approve_commander_step, approve_duty_manager_step
+    from app.db.models import SoldierExemption
+
+    s = create_soldier(admin_session, personal_number="7800007")
+    approver = create_soldier(admin_session, personal_number="7800008")
+    et = _et(admin_session, "פטור-permanent-approve-test")
+    req = submit_request(
+        admin_session, soldier_id=s.id, exemption_type_id=et.id,
+        start_date=None, end_date=None, reason="פטור קבוע",
+    )
+    admin_session.commit()
+
+    approve_commander_step(admin_session, req.id, approved_by=approver.id)
+    admin_session.commit()
+    approve_duty_manager_step(admin_session, req.id, decided_by=approver.id)
+    admin_session.commit()
+
+    assert req.start_date == date.today()
+    exemption = admin_session.query(SoldierExemption).filter_by(
+        soldier_id=s.id, exemption_type_id=et.id,
+    ).one()
+    assert exemption.start_date == date.today()
+    assert exemption.end_date is None
