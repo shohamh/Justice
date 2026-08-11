@@ -270,7 +270,10 @@ def bulk_ineligible_duty_blocks(
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
     """For each soldier, the set of duty-block ids (among `duties`) they are NOT
     eligible for due to weapon qualification. Blocks whose `required_range_type`
-    is None are never included. Returns {} entirely if the feature is disabled.
+    is None are never included, and blocks requiring "alal" are never included
+    either -- אל"ל eligibility is reactive/warning-only, never a hard
+    scheduling constraint (unlike live/laser). Returns {} entirely if the
+    feature is disabled.
 
     respect_system_toggle: when True (default), short-circuits to {} if either
     מטווחים (mitvachim.enabled) or the weapon_qualification.enforce_eligibility
@@ -288,7 +291,10 @@ def bulk_ineligible_duty_blocks(
     elif not _mitvachim_enabled(session):
         return {}
 
-    relevant = [d for d in duties if d.required_range_type is not None]
+    # אל"ל eligibility is always reactive (warning-only) -- never a hard
+    # scheduling constraint. Only live/laser requirements still hard-block
+    # the (duty, soldier) pair from the solver's eligible set.
+    relevant = [d for d in duties if d.required_range_type not in (None, "alal")]
     if not relevant:
         return {}
 
