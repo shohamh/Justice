@@ -46,6 +46,8 @@ class UpcomingWeaponDutyOut(BaseModel):
     covering_range_type: RangeType | None
     projected_valid_until: date_type | None
     reason: str | None
+    last_qualification_type: RangeType | None
+    last_qualification_date: date_type | None
 
 
 class UpcomingMatchingRangeOut(BaseModel):
@@ -162,6 +164,8 @@ def _soldier_out(
                 covering_range_type=record.duty_eligibility[duty.assignment_id].covering_range_type,
                 projected_valid_until=record.duty_eligibility[duty.assignment_id].projected_valid_until,
                 reason=record.duty_eligibility[duty.assignment_id].reason,
+                last_qualification_type=record.duty_eligibility[duty.assignment_id].last_qualification_type,
+                last_qualification_date=record.duty_eligibility[duty.assignment_id].last_qualification_date,
             )
             for duty in record.upcoming_weapon_duties
         ],

@@ -487,3 +487,52 @@ def test_projects_and_counts_only_each_soldiers_own_duty_assignments(
         )
         == 0
     )
+
+
+def test_project_duty_eligibility_includes_last_qualification_when_ineligible(
+    app_session: Session,
+) -> None:
+    soldier = create_soldier(app_session, personal_number="proj-last-001")
+    duty = _duty(
+        app_session,
+        soldier_id=soldier.id,
+        required_range_type=RangeType.alal,
+        start_date=date.today() + timedelta(days=5),
+    )
+    _enable_enforcement(app_session)
+    app_session.add(SoldierRangeQualification(
+        soldier_id=soldier.id, range_type=RangeType.laser,
+        valid_until=date.today() - timedelta(days=100),
+    ))
+    app_session.commit()
+
+    facts = project_duty_eligibility(
+        app_session, soldier_ids=[soldier.id], duty_ids=[duty.id], as_of=date.today(),
+    )
+    fact = facts[soldier.id, duty.id]
+
+    assert fact.eligible is False
+    assert fact.last_qualification_type == RangeType.laser
+    assert fact.last_qualification_date == date.today() - timedelta(days=100)
+
+
+def test_project_duty_eligibility_last_qualification_none_when_never_qualified(
+    app_session: Session,
+) -> None:
+    soldier = create_soldier(app_session, personal_number="proj-last-002")
+    duty = _duty(
+        app_session,
+        soldier_id=soldier.id,
+        required_range_type=RangeType.alal,
+        start_date=date.today() + timedelta(days=5),
+    )
+    _enable_enforcement(app_session)
+    app_session.commit()
+
+    facts = project_duty_eligibility(
+        app_session, soldier_ids=[soldier.id], duty_ids=[duty.id], as_of=date.today(),
+    )
+    fact = facts[soldier.id, duty.id]
+
+    assert fact.last_qualification_type is None
+    assert fact.last_qualification_date is None

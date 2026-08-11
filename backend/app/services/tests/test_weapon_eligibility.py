@@ -17,7 +17,11 @@ from app.db.models import (
 )
 from app.services.ranges import add_range_assignment, cancel_range_event, create_range_event, mark_attendance
 from app.services.settings_loader import set_setting
-from app.services.weapon_eligibility import bulk_ineligible_duty_blocks, compute_eligibility
+from app.services.weapon_eligibility import (
+    _latest_qualification_by_soldier,
+    bulk_ineligible_duty_blocks,
+    compute_eligibility,
+)
 from tests.helpers import create_node, create_range_location, create_soldier
 
 
@@ -344,3 +348,31 @@ def test_past_no_show_does_not_grant_eligibility(app_session: Session) -> None:
         as_of=date.today(),
     )
     assert eligible is False
+
+
+def test_latest_qualification_by_soldier_ignores_validity_and_picks_max(app_session: Session) -> None:
+    soldier = create_soldier(app_session, personal_number="latest-001")
+    app_session.add_all([
+        SoldierRangeQualification(
+            soldier_id=soldier.id, range_type=RangeType.laser,
+            valid_until=date.today() - timedelta(days=400),  # expired
+        ),
+        SoldierRangeQualification(
+            soldier_id=soldier.id, range_type=RangeType.live,
+            valid_until=date.today() - timedelta(days=10),  # expired, but most recent
+        ),
+    ])
+    app_session.commit()
+
+    result = _latest_qualification_by_soldier(app_session, soldier_ids=[soldier.id])
+
+    assert result[soldier.id] == (RangeType.live, date.today() - timedelta(days=10))
+
+
+def test_latest_qualification_by_soldier_returns_none_for_soldier_with_no_rows(app_session: Session) -> None:
+    soldier = create_soldier(app_session, personal_number="latest-002")
+    app_session.commit()
+
+    result = _latest_qualification_by_soldier(app_session, soldier_ids=[soldier.id])
+
+    assert result[soldier.id] is None

@@ -118,6 +118,38 @@ def _max_qualification_valid_untils(
     }
 
 
+def _latest_qualification_by_soldier(
+    session: Session,
+    *,
+    soldier_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, tuple[str, date] | None]:
+    """Most recent SoldierRangeQualification per soldier, regardless of validity.
+
+    Unlike `_max_qualification_valid_untils`, this does NOT filter by tier or
+    exclude expired rows -- it answers "what's the last range this soldier ever
+    did at all," used to enrich the "no valid qualification" explanation with
+    "last done: <type> on <date>" instead of a bare negative.
+    """
+    unique_soldier_ids = set(soldier_ids)
+    if not unique_soldier_ids:
+        return {}
+    from app.db.models import SoldierRangeQualification
+
+    latest: dict[uuid.UUID, tuple[str, date]] = {}
+    for soldier_id, range_type, valid_until in session.execute(
+        select(
+            SoldierRangeQualification.soldier_id,
+            SoldierRangeQualification.range_type,
+            SoldierRangeQualification.valid_until,
+        ).where(SoldierRangeQualification.soldier_id.in_(unique_soldier_ids))
+    ).all():
+        previous = latest.get(soldier_id)
+        if previous is None or valid_until > previous[1]:
+            latest[soldier_id] = (range_type, valid_until)
+
+    return {soldier_id: latest.get(soldier_id) for soldier_id in unique_soldier_ids}
+
+
 def _future_windows_by_soldier_and_required_type(
     session: Session,
     *,
