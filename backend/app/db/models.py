@@ -382,6 +382,12 @@ class DutyAssignment(Base):
     weapon_ineligible_detected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    range_info_active: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    range_info_covered_by_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    range_info_covering_range_type: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    range_info_detected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -1225,6 +1231,7 @@ class NotificationType(str, _enum.Enum):
     range_attendance_corrected_to_present = "range_attendance_corrected_to_present"
     bug_report_comment = "bug_report_comment"
     weapon_ineligible_detected = "weapon_ineligible_detected"
+    range_covers_duty_info = "range_covers_duty_info"
 
 
 class Notification(Base):
