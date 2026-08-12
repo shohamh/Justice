@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-13
+
+### Fixes
+- Shift-modal range-eligibility warning/info badges are now click-to-open (previously a hover-only tooltip, so tapping them did nothing) and show a visible warning count on unit-calendar event tiles instead of burying the count in a hover title.
+- The warning/info explanation popover is now positioned to stay within the viewport instead of overflowing outside the modal on narrow/mobile screens.
+
 ## 2026-08-12
 
 ### Features
