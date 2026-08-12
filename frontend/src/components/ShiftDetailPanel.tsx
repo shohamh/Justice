@@ -146,6 +146,8 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
 
   function rangeEligibilityIndicator(assignee: CalendarShiftAssignee): React.ReactNode {
     if (!shift.required_range_type) return null;
+    const canSeeEligibility = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+    if (!canSeeEligibility) return null;
     if (!assignee.range_eligibility) {
       return (
         <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -153,16 +155,29 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
         </span>
       );
     }
-    if (assignee.range_eligibility.eligible) return null;
-    return (
-      <span
-        aria-label={t("range_qualification.shiftDetail.warning")}
-        title={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
-        className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300"
-      >
-        ⚠️
-      </span>
-    );
+    if (!assignee.range_eligibility.eligible) {
+      return (
+        <span
+          aria-label={t("range_qualification.shiftDetail.warning")}
+          title={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
+          className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300"
+        >
+          ⚠️
+        </span>
+      );
+    }
+    if (assignee.range_eligibility.qualification_source === "planned_range") {
+      return (
+        <span
+          aria-label={t("range_qualification.shiftDetail.info")}
+          title={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
+          className="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+        >
+          ℹ️
+        </span>
+      );
+    }
+    return null;
   }
 
   return (
