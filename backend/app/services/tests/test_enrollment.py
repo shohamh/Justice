@@ -71,7 +71,9 @@ def test_approve_without_exemptions_activates_immediately(admin_session):
     assert req.decided_by == decider.id
 
 
-def test_approve_with_pending_exemptions_sets_commander_approved(admin_session):
+def test_approve_with_pending_exemptions_still_activates_immediately(admin_session):
+    # A linked exemption request still awaiting its own decision no longer
+    # gates the soldier's node placement — it resolves independently.
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}", role="admin")
@@ -86,8 +88,8 @@ def test_approve_with_pending_exemptions_sets_commander_approved(admin_session):
     admin_session.refresh(soldier)
     admin_session.refresh(req)
 
-    assert req.status == "commander_approved"
-    assert soldier.hierarchy_node_id == holding.id
+    assert req.status == "approved"
+    assert soldier.hierarchy_node_id == node.id
 
 
 def test_try_activate_activates_when_all_exemptions_closed(admin_session):
@@ -110,7 +112,7 @@ def test_try_activate_activates_when_all_exemptions_closed(admin_session):
     assert soldier.hierarchy_node_id == node.id
 
 
-def test_try_activate_does_not_activate_when_exemption_still_pending(admin_session):
+def test_try_activate_activates_even_when_exemption_still_pending(admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
@@ -125,8 +127,8 @@ def test_try_activate_does_not_activate_when_exemption_still_pending(admin_sessi
     admin_session.refresh(soldier)
     admin_session.refresh(req)
 
-    assert req.status == "commander_approved"
-    assert soldier.hierarchy_node_id == holding.id
+    assert req.status == "approved"
+    assert soldier.hierarchy_node_id == node.id
 
 
 def test_reject_leaves_soldier_in_holding(admin_session):

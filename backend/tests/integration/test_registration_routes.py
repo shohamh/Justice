@@ -144,6 +144,50 @@ def test_register_nodes_returns_list(client, admin_session):
     assert isinstance(resp.json(), list)
 
 
+def test_validate_code_is_rate_limited_per_ip(client, admin_session, monkeypatch):
+    from app.settings import get_settings
+    from app.rate_limit import limiter
+
+    monkeypatch.setenv("INVITE_CODE_RATE_LIMIT", "2/minute")
+    get_settings.cache_clear()
+    limiter.reset()
+    try:
+        invite = create_invite_code(admin_session, uses_left=3, actor_id=None)
+        admin_session.commit()
+
+        for _ in range(2):
+            r = client.get(f"/api/auth/register/validate-code?code={invite.code}")
+            assert r.status_code == 200
+
+        r = client.get(f"/api/auth/register/validate-code?code={invite.code}")
+        assert r.status_code == 429
+    finally:
+        get_settings.cache_clear()
+        limiter.reset()
+
+
+def test_register_nodes_is_rate_limited_per_ip(client, admin_session, monkeypatch):
+    from app.settings import get_settings
+    from app.rate_limit import limiter
+
+    monkeypatch.setenv("INVITE_CODE_RATE_LIMIT", "2/minute")
+    get_settings.cache_clear()
+    limiter.reset()
+    try:
+        invite = create_invite_code(admin_session, uses_left=3, actor_id=None)
+        admin_session.commit()
+
+        for _ in range(2):
+            r = client.get(f"/api/auth/register/nodes?invite_code={invite.code}")
+            assert r.status_code == 200
+
+        r = client.get(f"/api/auth/register/nodes?invite_code={invite.code}")
+        assert r.status_code == 429
+    finally:
+        get_settings.cache_clear()
+        limiter.reset()
+
+
 def test_register_nodes_rejects_missing_code(client):
     resp = client.get("/api/auth/register/nodes")
     assert resp.status_code == 422

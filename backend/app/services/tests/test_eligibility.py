@@ -86,6 +86,12 @@ def test_sgan_is_ambiguous_and_accepts_either_track():
     validate_rank_track_compatibility(rank="סגן", is_career=False)
 
 
+def test_samal_rishon_is_unrestricted_and_accepts_either_track():
+    from app.services.eligibility import validate_rank_track_compatibility
+    validate_rank_track_compatibility(rank="סמר", is_career=True)
+    validate_rank_track_compatibility(rank="סמר", is_career=False)  # should not raise
+
+
 def test_unknown_rank_is_not_restricted():
     from app.services.eligibility import validate_rank_track_compatibility
     validate_rank_track_compatibility(rank="not_a_real_rank", is_career=True)

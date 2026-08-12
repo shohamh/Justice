@@ -117,7 +117,7 @@ describe("TransparencyPage exemptions column", () => {
     renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
 
     await waitFor(() => {
-      expect(screen.getByText("מגבלה רפואית (עד 15/08/2026)")).toBeInTheDocument();
+      expect(screen.getByText("מגבלה רפואית (עד 15.08.2026)")).toBeInTheDocument();
     });
   });
 

@@ -463,6 +463,7 @@
     "reorder_would_violate_tree": "הסידור המבוקש יפר את מבנה העץ ההיררכי",
     "discharge_date_before_enlistment": "תאריך השחרור חייב להיות אחרי תאריך הגיוס",
     "mandatory_end_after_discharge": "תאריך סיום החובה לא יכול להיות אחרי תאריך השחרור",
+    "mandatory_end_before_enlistment": "תאריך סיום החובה לא יכול להיות לפני תאריך הגיוס",
     "rank_track_incompatible": "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר",
     "career_discharge_in_past": "תאריך השחרור של חייל בקבע לא יכול להיות בעבר",
     "discharge_date_in_past": "תאריך השחרור חייב להיות בעתיד",
@@ -1210,6 +1211,7 @@
     "step_review": "סקירה ואישור",
     "invite_code_label": "קוד הזמנה",
     "invite_code_invalid": "קוד שגוי או מוצה",
+    "invite_code_rate_limited": "יותר מדי ניסיונות. נסה שוב בעוד {{seconds}} שניות.",
     "next": "הבא",
     "back": "חזור",
     "skip": "דלג",
@@ -1235,7 +1237,13 @@
     },
     "rank_track_incompatible_chovah": "לא ניתן להיות בדרגה זו במסלול חובה",
     "rank_track_incompatible_keva": "לא ניתן להיות בדרגה זו במסלול קבע",
-    "discharge_date_must_be_future": "תאריך השחרור חייב להיות בעתיד"
+    "discharge_date_must_be_future": "תאריך השחרור חייב להיות בעתיד",
+    "mandatory_end_before_enlistment": "תאריך סיום החובה לא יכול להיות לפני תאריך הגיוס",
+    "field_required": "שדה חובה",
+    "phone_required": "מספר טלפון הוא שדה חובה",
+    "email_invalid": "כתובת אימייל לא תקינה",
+    "password_required": "סיסמה היא שדה חובה",
+    "confirm_password_required": "יש לאמת את הסיסמה"
   },
   "telegram_setup": {
     "title": "חיבור טלגרם",

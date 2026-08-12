@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExemptionDetail, getExemptionDetail } from "../api/exemptions";
-import { formatDdMmYyyy } from "../utils/formatDate";
+import { formatDate } from "../utils/formatDate";
 import { DaysBadge } from "./DaysBadge";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
@@ -56,9 +56,9 @@ export default function ExemptionInstanceModal({ soldierId, exemptionId, onClose
               {detail.is_global ? t("exemptions.category_global") : t("exemptions.category_partial")}
             </span>
             <p className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <span>{formatDdMmYyyy(detail.start_date)}</span>
+              <span>{formatDate(detail.start_date)}</span>
               {" → "}
-              <span>{detail.end_date ? formatDdMmYyyy(detail.end_date) : t("exemptions.forever")}</span>
+              <span>{detail.end_date ? formatDate(detail.end_date) : t("exemptions.forever")}</span>
               <DaysBadge start={detail.start_date} end={detail.end_date} />
             </p>
             {detail.reason && (

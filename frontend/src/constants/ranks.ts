@@ -22,8 +22,10 @@ const CHOVAH_ONLY_RANKS = ["טוראי", "רבט", "סמל", "סגמ", "קמא"]
 const RASAN_AND_ABOVE = OFFICER_RANKS.slice(OFFICER_RANKS.indexOf("רסן"));
 // קא"ב and סרן are קבע-only per product confirmation, but fall below רס"ן in
 // OFFICER_RANKS so they must be added explicitly — not covered by RASAN_AND_ABOVE.
+// סמ"ר is deliberately unrestricted (like סגן): it's held both by
+// extended-חובה soldiers and by קבע soldiers, so it's excluded here.
 const KEVA_ONLY_RANKS = [
-  ...ENLISTED_RANKS.filter((r) => !CHOVAH_ONLY_RANKS.includes(r)),
+  ...ENLISTED_RANKS.filter((r) => !CHOVAH_ONLY_RANKS.includes(r) && r !== "סמר"),
   ...RASAN_AND_ABOVE,
   "קאב",
   "סרן",

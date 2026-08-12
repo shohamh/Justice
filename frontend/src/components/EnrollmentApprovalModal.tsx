@@ -1,4 +1,5 @@
 import { FormEvent, MouseEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, onClose, onDone }: Props) {
+  const { t } = useTranslation();
   useModalBackClose(onClose);
 
   function handleBackdropClick(e: MouseEvent<HTMLDivElement>) {
@@ -247,7 +249,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
                           : "bg-gray-100 text-gray-600"
                       }`}
                     >
-                      {er.status === "pending" ? "ממתין" : er.status === "approved" ? "אושר" : "נדחה"}
+                      {t(`exemptions.request_status_${er.status}`)}
                     </span>
                   </li>
                 ))}

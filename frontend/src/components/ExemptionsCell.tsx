@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ExemptionSummaryItem } from "../api/exemptions";
-import { formatDdMmYyyy } from "../utils/formatDate";
+import { formatDate } from "../utils/formatDate";
 import ExemptionInstanceModal from "./ExemptionInstanceModal";
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
 
 function chipLabel(item: ExemptionSummaryItem): string {
   return item.end_date
-    ? `${item.exemption_type_name} (עד ${formatDdMmYyyy(item.end_date)})`
+    ? `${item.exemption_type_name} (עד ${formatDate(item.end_date)})`
     : item.exemption_type_name;
 }
 

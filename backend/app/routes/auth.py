@@ -356,8 +356,11 @@ def register(
 
 
 @router.get("/register/nodes", response_model=list[NodeOut])
+@limiter.limit(lambda: get_settings().invite_code_rate_limit)
 def register_nodes(
     invite_code: str,
+    request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> list[NodeOut]:
     from sqlalchemy import select as sa_select
@@ -385,7 +388,7 @@ def register_nodes(
 
 
 @router.get("/register/validate-code")
-@limiter.limit("20/hour")
+@limiter.limit(lambda: get_settings().invite_code_rate_limit)
 def validate_invite_code(
     code: str,
     request: Request,

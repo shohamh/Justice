@@ -13,8 +13,8 @@ describe("ExemptionInstanceModal", () => {
     });
     render(<ExemptionInstanceModal soldierId="s1" exemptionId="ex-1" onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText("פטור רפואי")).toBeInTheDocument());
-    expect(screen.getByText("01/01/2026")).toBeInTheDocument();
-    expect(screen.getByText("01/05/2026")).toBeInTheDocument();
+    expect(screen.getByText("01.01.2026")).toBeInTheDocument();
+    expect(screen.getByText("01.05.2026")).toBeInTheDocument();
     expect(screen.getByText("בעיה רפואית")).toBeInTheDocument();
     expect(screen.getByText("יוסי כהן")).toBeInTheDocument();
   });

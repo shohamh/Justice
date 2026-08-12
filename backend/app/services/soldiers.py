@@ -41,6 +41,12 @@ def _check_soldier_dates(
 ) -> None:
     if discharge_date is not None and enlistment_date is not None and discharge_date <= enlistment_date:
         raise SoldierValidationError("discharge_date_before_enlistment")
+    if (
+        mandatory_end_date is not None
+        and enlistment_date is not None
+        and mandatory_end_date < enlistment_date
+    ):
+        raise SoldierValidationError("mandatory_end_before_enlistment")
     if mandatory_end_date is not None and discharge_date is not None and mandatory_end_date > discharge_date:
         raise SoldierValidationError("mandatory_end_after_discharge")
     if is_career and discharge_date is not None and discharge_date < date.today():

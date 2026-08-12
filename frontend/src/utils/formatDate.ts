@@ -85,15 +85,3 @@ export function toExclusiveEndDate(lastDutyDayInclusive: string): string {
 export function formatDutyRange(start: string, endExclusive: string): string {
   return formatDateRange(start, lastDutyDay(endExclusive));
 }
-
-/**
- * DD/MM/YYYY (slashes), matching the existing backend-formatted
- * exemptions_display string exactly (see scoring.py's _exemption_label) —
- * intentionally NOT the dot-separated format used elsewhere in this file,
- * since exemption chip/modal labels must read identically to what
- * Transparency already shows today.
- */
-export function formatDdMmYyyy(isoDate: string): string {
-  const [y, m, d] = isoDate.split("-");
-  return `${d}/${m}/${y}`;
-}

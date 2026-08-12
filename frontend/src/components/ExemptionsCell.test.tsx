@@ -35,7 +35,7 @@ describe("ExemptionsCell", () => {
         soldierId="s1"
       />
     );
-    expect(screen.getByRole("button", { name: "פטור בדיקה (עד 01/05/2026)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "פטור בדיקה (עד 01.05.2026)" })).toBeInTheDocument();
   });
 
   it("renders a chip without a date suffix when end_date is null", () => {

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import ExemptionRequest, HierarchyNode, NotificationType, Soldier, SoldierEnrollmentRequest
+from app.db.models import HierarchyNode, NotificationType, Soldier, SoldierEnrollmentRequest
 from app.services.notifications import create_notification
 
 
@@ -19,17 +19,14 @@ def try_activate(
     session: Session,
     enrollment_request_id: uuid.UUID,
 ) -> None:
-    """Move soldier to requested node if commander has approved and no exemptions are pending."""
+    """Move soldier to requested node once the commander has approved.
+
+    Any exemption requests submitted alongside registration resolve
+    independently on their own track (see app.services.exemption_requests) —
+    they no longer gate the soldier's node placement.
+    """
     req = session.get(SoldierEnrollmentRequest, enrollment_request_id)
     if req is None or req.status != "commander_approved":
-        return
-    pending = session.execute(
-        select(ExemptionRequest).where(
-            ExemptionRequest.enrollment_request_id == enrollment_request_id,
-            ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
-        )
-    ).scalars().all()
-    if pending:
         return
     soldier = session.get(Soldier, req.soldier_id)
     if soldier is None:

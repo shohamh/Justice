@@ -44,6 +44,11 @@ describe("rank/track compatibility", () => {
     expect(isRankTrackCompatible("סגן", true)).toBe(true);
     expect(isRankTrackCompatible("סגן", false)).toBe(true);
   });
+
+  it("allows סמ\"ר (samal rishon) on either track", () => {
+    expect(isRankTrackCompatible("סמר", true)).toBe(true);
+    expect(isRankTrackCompatible("סמר", false)).toBe(true);
+  });
 });
 
 describe("קא\"ם rank", () => {

@@ -76,6 +76,8 @@ export default function RegisterPage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [exemptionTypes, setExemptionTypes] = useState<PublicExemptionType[]>([]);
   const [codeValid, setCodeValid] = useState<boolean | null>(null);
+  const [codeRateLimitedSeconds, setCodeRateLimitedSeconds] = useState<string | null>(null);
+  const [step2Attempted, setStep2Attempted] = useState(false);
 
   const registrationSettingsQuery = useQuery({
     queryKey: queryKeys.registrationPublicSettings(),
@@ -100,12 +102,21 @@ export default function RegisterPage() {
   }
 
   async function checkCode() {
-    const valid = await validateInviteCode(form.invite_code);
-    setCodeValid(valid);
-    if (valid) {
-      fetchRegisterNodes(form.invite_code).then(setNodes).catch(() => {});
+    setCodeRateLimitedSeconds(null);
+    try {
+      const valid = await validateInviteCode(form.invite_code);
+      setCodeValid(valid);
+      if (valid) {
+        fetchRegisterNodes(form.invite_code).then(setNodes).catch(() => {});
+      }
+      return valid;
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 429) {
+        setCodeRateLimitedSeconds(err.response.headers["retry-after"] ?? null);
+      }
+      setCodeValid(false);
+      return false;
     }
-    return valid;
   }
 
   async function handleSubmit() {
@@ -188,6 +199,18 @@ export default function RegisterPage() {
   const dischargeDateError = form.discharge_date && form.discharge_date < new Date().toISOString().slice(0, 10)
     ? t("register.discharge_date_must_be_future")
     : null;
+  const mandatoryEndBeforeEnlistmentError = form.mandatory_end_date && form.enlistment_date
+    && form.mandatory_end_date < form.enlistment_date
+    ? t("register.mandatory_end_before_enlistment")
+    : null;
+  const emailError = form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
+    ? t("register.email_invalid")
+    : null;
+  const step2Invalid =
+    !form.personal_number || !form.full_name || !isValidIsraeliPhone(form.phone) || !form.email || !!emailError ||
+    !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
+    !!mandatoryEndBeforeEnlistmentError || !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
+    !passwordValid(form.password) || form.password !== form.confirm_password;
 
   return (
     <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
@@ -207,7 +230,13 @@ export default function RegisterPage() {
               <input className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.invite_code}
                 onChange={e => { set("invite_code", e.target.value); setCodeValid(null); }} />
             </label>
-            {codeValid === false && <p className="text-red-600 text-sm">{t("register.invite_code_invalid")}</p>}
+            {codeValid === false && (
+              <p className="text-red-600 text-sm">
+                {codeRateLimitedSeconds
+                  ? t("register.invite_code_rate_limited", { seconds: codeRateLimitedSeconds })
+                  : t("register.invite_code_invalid")}
+              </p>
+            )}
             <button className="w-full bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
               onClick={async () => { if (await checkCode()) setStep(2); }} disabled={!form.invite_code}>
               {t("register.next")}
@@ -222,10 +251,12 @@ export default function RegisterPage() {
             <label className="block text-sm">מספר אישי <span className="text-red-500">*</span>
               <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.personal_number} onChange={e => set("personal_number", e.target.value)} />
+              {step2Attempted && !form.personal_number && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             <label className="block text-sm">שם מלא <span className="text-red-500">*</span>
               <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.full_name} onChange={e => set("full_name", e.target.value)} />
+              {step2Attempted && !form.full_name && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             <label className="block text-sm">טלפון <span className="text-red-500">*</span>
               <input type="tel" dir="ltr" placeholder="05X-XXXXXXX" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -233,15 +264,35 @@ export default function RegisterPage() {
               {form.phone && !isValidIsraeliPhone(form.phone) && (
                 <span className="text-red-600 text-xs">מספר טלפון לא תקין</span>
               )}
+              {step2Attempted && !form.phone && <p className="text-red-600 text-xs mt-1">{t("register.phone_required")}</p>}
             </label>
             <label className="block text-sm">אימייל <span className="text-red-500">*</span>
               <input type="email" placeholder={emailPlaceholder} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.email} onChange={e => set("email", e.target.value)} />
+              {emailError && <p className="text-red-600 text-xs mt-1">{emailError}</p>}
+              {step2Attempted && !form.email && !emailError && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             <label className="block text-sm">מגדר <span className="text-red-500">*</span>
               <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.gender} onChange={e => set("gender", e.target.value)}>
                 <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option><option value="other">אחר</option>
               </select>
+              {step2Attempted && !form.gender && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
+            </label>
+            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
+              <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
+                <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={form[key] as string} onChange={iso => set(key, iso)} />
+                {key === "mandatory_end_date" && mandatoryEndBeforeEnlistmentError && (
+                  <p className="text-red-600 text-xs mt-1">{mandatoryEndBeforeEnlistmentError}</p>
+                )}
+                {step2Attempted && !form[key] && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
+              </label>
+            ))}
+            <label className="block text-sm">שחרור <span className="text-red-500">*</span>
+              <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={form.discharge_date} onChange={iso => set("discharge_date", iso)} />
+              {dischargeDateError && <p className="text-red-600 text-xs mt-1">{dischargeDateError}</p>}
+              {step2Attempted && !form.discharge_date && !dischargeDateError && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             <label className="block text-sm">דרגה <span className="text-red-500">*</span>
               <Combobox
@@ -262,6 +313,7 @@ export default function RegisterPage() {
                 placeholder="בחר"
               />
               {rankTrackError && <p className="text-red-600 text-xs mt-1">{rankTrackError}</p>}
+              {step2Attempted && !form.rank && !rankTrackError && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             {form.rank && (
               <div className="text-xs text-gray-500 space-x-3 flex gap-3">
@@ -269,17 +321,6 @@ export default function RegisterPage() {
                 {deriveBahad1Graduate(form.rank) && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה&quot;ד 1</span>}
               </div>
             )}
-            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
-              <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
-                <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  value={form[key] as string} onChange={iso => set(key, iso)} />
-              </label>
-            ))}
-            <label className="block text-sm">שחרור <span className="text-red-500">*</span>
-              <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                value={form.discharge_date} onChange={iso => set("discharge_date", iso)} />
-              {dischargeDateError && <p className="text-red-600 text-xs mt-1">{dischargeDateError}</p>}
-            </label>
             {form.is_officer && (
               <label className="block text-sm">אל&quot;ל אחרון
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -302,23 +343,19 @@ export default function RegisterPage() {
             <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
               <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
               <PasswordStrengthHint password={form.password} />
+              {step2Attempted && !form.password && <p className="text-red-600 text-xs mt-1">{t("register.password_required")}</p>}
             </label>
             <label className="block text-sm">אימות סיסמה <span className="text-red-500">*</span>
               <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
+              {step2Attempted && !form.confirm_password && <p className="text-red-600 text-xs mt-1">{t("register.confirm_password_required")}</p>}
             </label>
             {form.confirm_password && form.password !== form.confirm_password && (
               <p className="text-red-600 text-sm">הסיסמאות אינן תואמות</p>
             )}
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(1)}>{t("register.back")}</button>
-              <button className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={
-                  !form.personal_number || !form.full_name || !isValidIsraeliPhone(form.phone) || !form.email ||
-                  !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
-                  !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
-                  !passwordValid(form.password) || form.password !== form.confirm_password
-                }
-                onClick={() => setStep(3)}>{t("register.next")}</button>
+              <button className="flex-1 bg-indigo-600 text-white py-2 rounded"
+                onClick={() => { if (step2Invalid) setStep2Attempted(true); else setStep(3); }}>{t("register.next")}</button>
             </div>
           </div>
         )}

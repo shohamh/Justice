@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import "../i18n";
 import EnrollmentApprovalModal from "./EnrollmentApprovalModal";
 
 vi.mock("../api/enrollment", () => ({
@@ -52,5 +53,25 @@ describe("EnrollmentApprovalModal", () => {
 
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: /Test Soldier/ })).toBeInTheDocument();
+  });
+
+  it("labels a still-pending linked exemption request correctly, not as rejected", () => {
+    render(
+      <EnrollmentApprovalModal
+        req={{
+          ...request,
+          exemption_requests: [
+            { id: "ex-1", exemption_type_id: null, start_date: "2026-01-01", end_date: null, reason: null, status: "pending_commander" },
+          ],
+        }}
+        nodes={[]}
+        exemptionTypes={[]}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("ממתין לאישור מפקד")).toBeInTheDocument();
+    expect(screen.queryByText("נדחה")).not.toBeInTheDocument();
   });
 });

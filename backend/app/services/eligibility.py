@@ -36,11 +36,12 @@ SOLDIER_EDITABLE_FIELDS = {
 # Ranks that structurally cannot exist on the other track, confirmed with
 # product: קא"ב, סרן, and קא"ם are קבע-only officer ranks (added explicitly
 # below, since none of them fall under RANKS_RASAN_AND_ABOVE); סג"ם is always
-# חובה (already covered by CHOVAH_ONLY_RANKS). סגן is the only rank left
-# deliberately unrestricted — it can be either track.
+# חובה (already covered by CHOVAH_ONLY_RANKS). סגן and סמ"ר are deliberately
+# unrestricted — סמ"ר is commonly held both by extended-חובה soldiers and by
+# קבע soldiers, so it can be either track.
 _CHOVAH_ONLY_TRACK_RANKS = frozenset(CHOVAH_ONLY_RANKS)
 _KEVA_ONLY_TRACK_RANKS = frozenset(
-    [r for r in ENLISTED_RANKS if r not in CHOVAH_ONLY_RANKS]
+    [r for r in ENLISTED_RANKS if r not in CHOVAH_ONLY_RANKS and r != "סמר"]
     + list(RANKS_RASAN_AND_ABOVE)
     + ["קאב", "סרן", "קאם"]
 )

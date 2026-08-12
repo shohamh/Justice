@@ -465,7 +465,7 @@ def _active_exemptions_by_soldier(
 def _exemption_label(exemption: SoldierExemption, ex_type: ExemptionType) -> str:
     category = "גלובלי" if ex_type.is_global else "חלקי"
     if exemption.end_date is not None:
-        return f"{ex_type.name} ({category}, עד {exemption.end_date.strftime('%d/%m/%Y')})"
+        return f"{ex_type.name} ({category}, עד {exemption.end_date.strftime('%d.%m.%Y')})"
     return f"{ex_type.name} ({category})"
 
 

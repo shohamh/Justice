@@ -36,6 +36,21 @@ def test_update_soldier_profile_rejects_mandatory_end_after_discharge(admin_sess
         )
 
 
+def test_update_soldier_profile_rejects_mandatory_end_before_enlistment(admin_session):
+    from app.services.soldiers import update_soldier_profile, SoldierValidationError
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920006")
+    soldier.enlistment_date = date(2024, 1, 1)
+    admin_session.commit()
+
+    with pytest.raises(SoldierValidationError, match="mandatory_end_before_enlistment"):
+        update_soldier_profile(
+            admin_session, soldier=soldier,
+            fields={"mandatory_end_date": date(2023, 6, 1)}, actor_id=None,
+        )
+
+
 def test_update_soldier_profile_rejects_career_discharge_in_past(admin_session):
     from app.services.soldiers import update_soldier_profile, SoldierValidationError
     from tests.helpers import create_soldier
