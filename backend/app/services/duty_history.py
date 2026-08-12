@@ -601,7 +601,7 @@ def get_duty_history(
             TimelineEvent(
                 id=er.id,
                 event_type="exemption_request",
-                date=er.start_date.isoformat(),
+                date=er.start_date.isoformat() if er.start_date else er.created_at.date().isoformat(),
                 end_date=_isodate(er.end_date),
                 title=f"בקשת פטור: {et_name}",
                 description=er.reason,

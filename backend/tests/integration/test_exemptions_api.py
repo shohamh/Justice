@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -118,7 +119,8 @@ def test_patch_pending_commander_request_succeeds(client: TestClient, admin_sess
     req = client.post(
         "/api/me/exemption-requests",
         headers=auth_headers(soldier),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
+        data={"payload": json.dumps({"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"})},
+        files=[],
     ).json()
     assert req["status"] == "pending_commander"
     r = client.patch(
@@ -143,7 +145,8 @@ def test_patch_rejects_retargeting_to_commander_exemption_type(client: TestClien
     req = client.post(
         "/api/me/exemption-requests",
         headers=auth_headers(soldier),
-        json={"exemption_type_id": str(regular.id), "start_date": "2026-01-01", "reason": "בדיקה"},
+        data={"payload": json.dumps({"exemption_type_id": str(regular.id), "start_date": "2026-01-01", "reason": "בדיקה"})},
+        files=[],
     ).json()
     r = client.patch(
         f"/api/exemption-requests/{req['id']}",
@@ -152,6 +155,58 @@ def test_patch_rejects_retargeting_to_commander_exemption_type(client: TestClien
     )
     assert r.status_code == 400
     assert r.json()["detail"] == "commander_exemption_not_requestable"
+
+
+def test_patch_rejects_setting_end_date_without_start_date(client: TestClient, admin_session: Session):
+    """The PATCH route lets an approver set start_date/end_date independently.
+    Setting only end_date on a permanent (start_date=None) request would
+    produce the one state the rest of the system forbids
+    (start_date=None, end_date=<date>), which later crashes
+    _format_exemption_period when the request is rejected. Must be blocked
+    up front instead."""
+    admin = create_soldier(admin_session, personal_number="5200015", role="admin")
+    soldier = create_soldier(admin_session, personal_number="5200016")
+    et = _et(admin_session, "פטור-ר8")
+    req = client.post(
+        "/api/me/exemption-requests",
+        headers=auth_headers(soldier),
+        data={"payload": json.dumps({
+            "exemption_type_id": str(et.id), "start_date": None, "end_date": None, "reason": "פטור קבוע",
+        })},
+        files=[],
+    ).json()
+    assert req["start_date"] is None
+
+    r = client.patch(
+        f"/api/exemption-requests/{req['id']}",
+        headers=auth_headers(admin),
+        json={"end_date": "2026-06-01"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "start_date_required"
+
+
+def test_reject_permanent_start_date_pending_request_does_not_crash(client: TestClient, admin_session: Session):
+    """A permanent exemption request (start_date=None, end_date=None) must be
+    rejectable without _format_exemption_period crashing on a None start_date."""
+    admin = create_soldier(admin_session, personal_number="5200017", role="admin")
+    soldier = create_soldier(admin_session, personal_number="5200018")
+    et = _et(admin_session, "פטור-ר9")
+    req = client.post(
+        "/api/me/exemption-requests",
+        headers=auth_headers(soldier),
+        data={"payload": json.dumps({
+            "exemption_type_id": str(et.id), "start_date": None, "end_date": None, "reason": "פטור קבוע",
+        })},
+        files=[],
+    ).json()
+
+    r = client.post(
+        f"/api/exemption-requests/{req['id']}/reject",
+        headers=auth_headers(admin),
+        json={"decision_note": "לא רלוונטי"},
+    )
+    assert r.status_code == 200, r.text
 
 
 def test_detail_endpoint_shows_reason_when_authorized(client: TestClient, admin_session: Session):
@@ -349,7 +404,8 @@ def test_exemption_request_includes_nearest_commander_and_duty_manager(client: T
     req = client.post(
         "/api/me/exemption-requests",
         headers=auth_headers(soldier),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
+        data={"payload": json.dumps({"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"})},
+        files=[],
     ).json()
     assert req["nearest_commander"]["id"] == str(cmd.id)
     assert req["nearest_commander"]["name"] == cmd.full_name

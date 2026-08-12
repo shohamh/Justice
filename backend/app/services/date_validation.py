@@ -6,7 +6,7 @@ MAX_REQUEST_SPAN_DAYS = 364  # 1 year minus 1 day
 
 
 def check_max_span(
-    start_date: date,
+    start_date: date | None,
     end_date: date | None,
     error_cls: type[Exception],
     message: str = "date_range_too_long",

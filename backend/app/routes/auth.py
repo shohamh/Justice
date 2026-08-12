@@ -1,9 +1,10 @@
 import json
 import logging
+import re
 import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from typing import Annotated
 from pydantic import BaseModel, Field, field_validator
 from slowapi.util import get_remote_address
@@ -14,12 +15,13 @@ from app.audit.writer import write_audit
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
-from app.db.models import ExemptionType, HierarchyNode, Soldier
+from app.db.models import ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services import email_verification as ev_svc
 from app.services import password_reset as pwd_reset_svc
 from app.services import registration as reg_svc
+from app.services.file_validation import FileValidationError, validate_exemption_file
 from app.services.invite_codes import InviteCodeError, validate_code
 from app.services.registration import RegistrationError
 from app.services.soldiers import PasswordPolicyError, bump_token_version, validate_password
@@ -313,14 +315,43 @@ def change_password(
 
 
 @router.post("/register", response_model=LoginResponse)
-def register(
-    body: RegisterRequest,
+async def register(
+    request: Request,
     response: Response,
+    payload: str = Form(...),
     session: Session = Depends(get_session),
 ) -> LoginResponse:
     settings = get_settings()
     try:
-        soldier = reg_svc.register(
+        body = RegisterRequest.model_validate_json(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    form = await request.form()
+    exemption_files: dict[int, list[tuple[str, str, bytes]]] = {}
+    for i in range(len(body.exemption_requests)):
+        key = f"exemption_files_{i}"
+        parts = [p for p in form.getlist(key) if not isinstance(p, str)]
+        row_files: list[tuple[str, str, bytes]] = []
+        for part in parts:
+            data = await part.read()
+            try:
+                validate_exemption_file(part.content_type or "", data)
+            except FileValidationError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            row_files.append((part.filename or "file", part.content_type or "", data))
+        if row_files:
+            exemption_files[i] = row_files
+
+    for i, er in enumerate(body.exemption_requests):
+        exemption_type_id = er.get("exemption_type_id")
+        if exemption_type_id:
+            et = session.get(ExemptionType, exemption_type_id)
+            if et is not None and et.is_medical and not exemption_files.get(i):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="medical_exemption_requires_file")
+
+    try:
+        soldier, created_requests = reg_svc.register(
             session,
             invite_code=body.invite_code,
             personal_number=body.personal_number,
@@ -342,6 +373,23 @@ def register(
             exemption_requests=body.exemption_requests,
             personal_constraints=body.personal_constraints,
         )
+        session.flush()
+
+        # reg_svc.register() returns created_requests in the exact order it
+        # inserted them (the same order as body.exemption_requests), so
+        # zipping by position lines up each ExemptionRequest with the files
+        # uploaded for its row. (ExemptionRequest.id is a random UUID, so an
+        # id-ordered re-query would NOT reproduce this order.)
+        for i, req in enumerate(created_requests):
+            for filename, content_type, data in exemption_files.get(i, []):
+                session.add(ExemptionRequestFile(
+                    exemption_request_id=req.id,
+                    file_name=re.sub(r"[^\w.\-]", "_", filename).replace("..", "_")[:200],
+                    content_type=content_type,
+                    data=data,
+                    uploaded_by=soldier.id,
+                ))
+
         session.commit()
     except (InviteCodeError, RegistrationError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -462,6 +510,7 @@ class PublicExemptionTypeOut(BaseModel):
     id: uuid.UUID
     name: str
     description: str | None = None
+    is_medical: bool
 
 
 @router.get("/exemption-types", response_model=list[PublicExemptionTypeOut])
@@ -476,4 +525,4 @@ def list_public_exemption_types(
         .where(ExemptionType.is_commander_exemption.is_(False))
         .order_by(ExemptionType.name)
     ).scalars().all()
-    return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description) for et in types]
+    return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_medical=et.is_medical) for et in types]

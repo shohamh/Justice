@@ -22,7 +22,6 @@ import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValida
 import {
   listMyExemptionRequests,
   submitExemptionRequest,
-  uploadExemptionFile,
 } from "../api/exemptions";
 
 export default function MyRequestsPage() {
@@ -139,22 +138,21 @@ export default function MyRequestsPage() {
   async function onErSubmit(e: FormEvent) {
     e.preventDefault();
     setErError(null);
-    if (!isDateRangeValid(erStart, erEnd)) {
+    if (!erPermanent && !isDateRangeValid(erStart, erEnd)) {
       setErError(t("errors.date_range_invalid"));
       return;
     }
     setErSubmitting(true);
     try {
-      const createdReq = await submitExemptionRequest({
-        exemption_type_id: erTypeId,
-        start_date: erStart,
-        end_date: erPermanent ? null : (erEnd || null),
-        reason: erReason || null,
-      });
-      // Upload any attached files automatically
-      for (const f of uploadFiles) {
-        await uploadExemptionFile(createdReq.id, f);
-      }
+      await submitExemptionRequest(
+        {
+          exemption_type_id: erTypeId,
+          start_date: erPermanent ? null : erStart,
+          end_date: erPermanent ? null : (erEnd || null),
+          reason: erReason || null,
+        },
+        uploadFiles,
+      );
       setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
       setUploadFiles([]); setUploadSizeErrors([]); setErMedical(false); setErPermanent(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myExemptionRequests() });
@@ -312,7 +310,7 @@ export default function MyRequestsPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.start_date")}</label>
-                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(iso) => setErStart(iso)} max={erEnd || undefined} required data-testid="er-start" />
+                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erPermanent ? "" : erStart} onChange={(iso) => setErStart(iso)} max={erEnd || undefined} disabled={erPermanent} required={!erPermanent} data-testid="er-start" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.end_date")}</label>
@@ -321,7 +319,10 @@ export default function MyRequestsPage() {
                   <input
                     type="checkbox"
                     checked={erPermanent}
-                    onChange={(e) => { setErPermanent(e.target.checked); if (e.target.checked) setErEnd(""); }}
+                    onChange={(e) => {
+                      setErPermanent(e.target.checked);
+                      if (e.target.checked) { setErStart(""); setErEnd(""); }
+                    }}
                     data-testid="er-permanent"
                   />
                   {t("exemption_requests.permanent")}
@@ -428,7 +429,7 @@ export default function MyRequestsPage() {
             <button
               type="submit"
               className="bg-indigo-600 text-white px-4 py-1.5 rounded disabled:opacity-50 text-sm"
-              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0) || enrollmentPending || (!erPermanent && !isDateRangeValid(erStart, erEnd)) || (!erPermanent && !erEnd)}
+              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0) || enrollmentPending || (!erPermanent && (!isDateRangeValid(erStart, erEnd) || !erStart || !erEnd))}
               data-testid="er-submit"
             >
               {erSubmitting ? t("app.loading") : t("exemption_requests.send")}
@@ -444,8 +445,8 @@ export default function MyRequestsPage() {
               <li key={er.id} className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-3">
                   <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
-                  <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
-                  <DaysBadge start={er.start_date} end={er.end_date} />
+                  <span dir="ltr">{er.start_date ?? t("exemption_requests.start_date_pending_approval")} → {er.end_date ?? t("exemptions.forever")}</span>
+                  {er.start_date && <DaysBadge start={er.start_date} end={er.end_date} />}
                   {er.reason && <span className="text-gray-700 dark:text-gray-300">{er.reason}</span>}
                   <span className={`text-xs ${
                     er.status === "approved" ? "text-green-600 dark:text-green-400" :

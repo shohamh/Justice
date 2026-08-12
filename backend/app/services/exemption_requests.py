@@ -12,8 +12,8 @@ from app.services.exemptions import ExemptionError, grant_commander_exemption
 from app.services.notifications import create_notification
 
 
-def _format_exemption_period(start_date: date, end_date: date | None) -> str:
-    if end_date is None:
+def _format_exemption_period(start_date: date | None, end_date: date | None) -> str:
+    if start_date is None or end_date is None:
         return "קבוע"
     return f"{start_date.isoformat()}–{end_date.isoformat()}"
 
@@ -26,15 +26,18 @@ def submit_request(
     session: Session,
     soldier_id: uuid.UUID,
     exemption_type_id: uuid.UUID,
-    start_date: date,
+    start_date: date | None,
     end_date: date | None = None,
     reason: str | None = None,
 ) -> ExemptionRequest:
     if not reason or not reason.strip():
         raise ExemptionRequestError("reason_required")
-    if end_date and end_date < start_date:
+    if end_date is not None and start_date is None:
+        raise ExemptionRequestError("start_date_required")
+    if end_date and start_date and end_date < start_date:
         raise ExemptionRequestError("bad_date_range")
-    check_max_span(start_date, end_date, ExemptionRequestError)
+    if start_date is not None:
+        check_max_span(start_date, end_date, ExemptionRequestError)
 
     et = session.get(ExemptionType, exemption_type_id)
     if et is None:
@@ -195,6 +198,9 @@ def approve_duty_manager_step(
     req.status = "approved"
     req.decided_by = decided_by
     req.decision_note = decision_note
+
+    if req.start_date is None:
+        req.start_date = date.today()
 
     exemption = SoldierExemption(
         soldier_id=req.soldier_id,

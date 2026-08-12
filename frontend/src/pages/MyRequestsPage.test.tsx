@@ -171,43 +171,43 @@ describe("MyRequestsPage - constraint start date cannot be in the past", () => {
 });
 
 describe("MyRequestsPage - permanent exemption checkbox", () => {
-  it("permanent checkbox disables the end-date field and submits end_date: null", async () => {
+  it("permanent checkbox disables both date fields and submits null start_date and end_date", async () => {
     vi.mocked(dutyConfigApi.listExemptionTypes).mockResolvedValue([
       { id: "et-1", name: "סוג פטור", description: null, active: true },
     ]);
     renderPage();
     await screen.findByTestId("constraints-remaining");
 
-    // Select a type in the Combobox the way Combobox.test.tsx drives it
-    // (focus opens the dropdown; selecting fires on pointerUp). The button
-    // role disambiguates from the request-list row showing the same name.
     fireEvent.focus(screen.getByTestId("er-type"));
     const typeOption = screen.getByRole("button", { name: "סוג פטור" });
     fireEvent.pointerDown(typeOption);
     fireEvent.pointerUp(typeOption);
 
-    fireEvent.change(screen.getByTestId("er-start"), { target: { value: "01092026" } });
-
     fireEvent.click(screen.getByTestId("er-permanent"));
+    expect(screen.getByTestId("er-start")).toBeDisabled();
     expect(screen.getByTestId("er-end")).toBeDisabled();
 
+    fireEvent.change(screen.getByTestId("er-reason"), { target: { value: "פטור קבוע" } });
     fireEvent.click(screen.getByTestId("er-submit"));
 
     await waitFor(() => {
       expect(vi.mocked(exemptionsApi.submitExemptionRequest)).toHaveBeenCalledWith(
-        expect.objectContaining({ end_date: null, start_date: "2026-09-01" }),
+        expect.objectContaining({ start_date: null, end_date: null }),
+        [],
       );
     });
   });
 
-  it("unchecking permanent re-enables and requires the end-date field", async () => {
+  it("unchecking permanent re-enables and requires both date fields", async () => {
     renderPage();
     await screen.findByTestId("constraints-remaining");
 
     const permanent = screen.getByTestId("er-permanent");
-    fireEvent.click(permanent); // check — disables the end-date field
+    fireEvent.click(permanent); // check — disables both date fields
+    expect(screen.getByTestId("er-start")).toBeDisabled();
     expect(screen.getByTestId("er-end")).toBeDisabled();
-    fireEvent.click(permanent); // uncheck — re-enables and requires it again
+    fireEvent.click(permanent); // uncheck — re-enables and requires them again
+    expect(screen.getByTestId("er-start")).not.toBeDisabled();
     expect(screen.getByTestId("er-end")).not.toBeDisabled();
     expect(screen.getByTestId("er-end")).toBeRequired();
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { translateApiError } from "./translateApiError";
+import i18n from "../i18n";
 
 const dict: Record<string, string> = {
   "errors.generic": "שגיאה",
@@ -45,5 +46,25 @@ describe("translateApiError", () => {
     const msg = translateApiError(err, tWithDefault, "fallback");
     expect(msg).toContain("settings.eligible_node_ids");
     expect(msg).not.toBe("fallback");
+  });
+
+  // Regression test: medical_exemption_requires_file and start_date_required
+  // were only added under register.errors.* (consumed by RegisterPage's own
+  // error-mapping), not the flat top-level errors.* namespace that
+  // translateApiError looks up. Pages that route errors through
+  // translateApiError (e.g. MyRequestsPage) showed a generic fallback for
+  // these two real server error codes instead of a real message. Uses the
+  // app's actual i18n instance (real he.json), not the mock dict above, so
+  // this only passes if the keys genuinely exist at errors.<code>.
+  it("resolves medical_exemption_requires_file via the real he.json errors namespace", () => {
+    const msg = translateApiError(axiosErrorWithDetail("medical_exemption_requires_file"), i18n.t.bind(i18n), "fallback");
+    expect(msg).not.toBe("fallback");
+    expect(msg).toBe("יש לצרף מסמך רפואי לבקשת פטור רפואי");
+  });
+
+  it("resolves start_date_required via the real he.json errors namespace", () => {
+    const msg = translateApiError(axiosErrorWithDetail("start_date_required"), i18n.t.bind(i18n), "fallback");
+    expect(msg).not.toBe("fallback");
+    expect(msg).toBe("יש למלא תאריך התחלה כאשר מוזן תאריך סיום");
   });
 });

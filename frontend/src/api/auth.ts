@@ -50,6 +50,13 @@ export interface NodeOut {
   parent_id: string | null;
 }
 
+export interface RegisterExemptionRow {
+  exemption_type_id: string;
+  start_date: string | null;
+  end_date: string | null;
+  reason: string;
+}
+
 export interface RegisterPayload {
   invite_code: string;
   personal_number: string;
@@ -68,7 +75,7 @@ export interface RegisterPayload {
   has_military_driving_license: boolean;
   military_driving_license_expiry: string | null;
   requested_node_id: string;
-  exemption_requests: object[];
+  exemption_requests: RegisterExemptionRow[];
   personal_constraints: object[];
 }
 
@@ -90,8 +97,15 @@ export async function changePassword(current_password: string, new_password: str
   await api.post("/auth/change-password", { current_password, new_password });
 }
 
-export async function register(payload: RegisterPayload): Promise<LoginResponse> {
-  const r = await api.post<LoginResponse>("/auth/register", payload);
+export async function register(payload: RegisterPayload, exemptionFiles: File[][] = []): Promise<LoginResponse> {
+  const formData = new FormData();
+  formData.append("payload", JSON.stringify(payload));
+  exemptionFiles.forEach((files, i) => {
+    for (const f of files) formData.append(`exemption_files_${i}`, f);
+  });
+  const r = await api.post<LoginResponse>("/auth/register", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return r.data;
 }
 
@@ -109,6 +123,7 @@ export interface PublicExemptionType {
   id: string;
   name: string;
   description: string | null;
+  is_medical: boolean;
 }
 
 export async function listPublicExemptionTypes(): Promise<PublicExemptionType[]> {

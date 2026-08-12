@@ -2,7 +2,7 @@ import pytest
 from datetime import date, timedelta
 
 from app.db.models import ExemptionType
-from app.services.exemption_requests import ExemptionRequestError, submit_request
+from app.services.exemption_requests import ExemptionRequestError, _format_exemption_period, submit_request
 from tests.helpers import create_soldier
 
 
@@ -52,3 +52,62 @@ def test_submit_request_accepts_real_reason(admin_session):
     )
     admin_session.commit()
     assert req.reason == "גב תפוס"
+
+
+def test_submit_request_allows_permanent_with_no_dates(admin_session):
+    s = create_soldier(admin_session, personal_number="7800005")
+    et = _et(admin_session, "פטור-permanent-test")
+    req = submit_request(
+        admin_session, soldier_id=s.id, exemption_type_id=et.id,
+        start_date=None, end_date=None, reason="פטור קבוע",
+    )
+    admin_session.commit()
+    assert req.start_date is None
+    assert req.end_date is None
+
+
+def test_submit_request_rejects_end_date_without_start_date(admin_session):
+    s = create_soldier(admin_session, personal_number="7800006")
+    et = _et(admin_session, "פטור-permanent-test-2")
+    with pytest.raises(ExemptionRequestError, match="start_date_required"):
+        submit_request(
+            admin_session, soldier_id=s.id, exemption_type_id=et.id,
+            start_date=None, end_date=date.today() + timedelta(days=10), reason="סיבה",
+        )
+
+
+def test_format_exemption_period_handles_none_start_date():
+    """Regression test: _format_exemption_period used to dereference
+    start_date.isoformat() unconditionally whenever end_date was not None,
+    crashing for the forbidden (but PATCH-reachable) state of
+    start_date=None, end_date=<date>."""
+    assert _format_exemption_period(None, date(2026, 6, 1)) == "קבוע"
+    assert _format_exemption_period(None, None) == "קבוע"
+    assert _format_exemption_period(date(2026, 1, 1), None) == "קבוע"
+    assert _format_exemption_period(date(2026, 1, 1), date(2026, 2, 1)) == "2026-01-01–2026-02-01"
+
+
+def test_approve_duty_manager_step_fills_start_date_for_permanent_request(admin_session):
+    from app.services.exemption_requests import approve_commander_step, approve_duty_manager_step
+    from app.db.models import SoldierExemption
+
+    s = create_soldier(admin_session, personal_number="7800007")
+    approver = create_soldier(admin_session, personal_number="7800008")
+    et = _et(admin_session, "פטור-permanent-approve-test")
+    req = submit_request(
+        admin_session, soldier_id=s.id, exemption_type_id=et.id,
+        start_date=None, end_date=None, reason="פטור קבוע",
+    )
+    admin_session.commit()
+
+    approve_commander_step(admin_session, req.id, approved_by=approver.id)
+    admin_session.commit()
+    approve_duty_manager_step(admin_session, req.id, decided_by=approver.id)
+    admin_session.commit()
+
+    assert req.start_date == date.today()
+    exemption = admin_session.query(SoldierExemption).filter_by(
+        soldier_id=s.id, exemption_type_id=et.id,
+    ).one()
+    assert exemption.start_date == date.today()
+    assert exemption.end_date is None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -136,12 +137,13 @@ def test_pending_soldier_cannot_submit_exemption_request(client: TestClient, adm
     r = client.post(
         "/api/me/exemption-requests",
         headers=auth_headers(s),
-        json={
+        data={"payload": json.dumps({
             "exemption_type_id": str(et.id),
             "start_date": (date.today() + timedelta(days=1)).isoformat(),
             "end_date": None,
             "reason": "test",
-        },
+        })},
+        files=[],
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "enrollment_pending"

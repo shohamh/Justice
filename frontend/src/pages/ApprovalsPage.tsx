@@ -519,8 +519,8 @@ export default function ApprovalsPage() {
                       : null}
                   </p>
                   <p className="text-sm flex items-center gap-2" dir="ltr">
-                    <span>{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
-                    <DaysBadge start={er.start_date} end={er.end_date} />
+                    <span>{er.start_date ?? t("exemption_requests.start_date_pending_approval")} → {er.end_date ?? t("exemptions.forever")}</span>
+                    {er.start_date && <DaysBadge start={er.start_date} end={er.end_date} />}
                   </p>
                   <p className="text-xs text-gray-500 mb-2">{er.reason ?? "מידע פרטי"}</p>
                   <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap mb-2">

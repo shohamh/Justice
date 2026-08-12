@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import uuid
 
-from app.db.models import HierarchyNode, Notification, NotificationType, SoldierEnrollmentRequest, SystemSetting
+from app.db.models import (
+    ExemptionRequest,
+    ExemptionType,
+    HierarchyNode,
+    Notification,
+    NotificationType,
+    SoldierEnrollmentRequest,
+    SystemSetting,
+)
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -39,6 +47,45 @@ def test_admin_can_list_pending(client, admin_session):
     resp = client.get("/api/enrollment-requests/pending", headers=auth_headers(admin))
     assert resp.status_code == 200
     assert len(resp.json()) >= 1
+
+
+def test_pending_list_survives_permanent_exemption_request(client, admin_session):
+    """Regression test: a permanent exemption request (start_date=None) attached
+    to a pending enrollment used to crash EnrollmentExemptionOut serialization
+    (er.start_date.isoformat() with no None guard), 500ing GET /pending for
+    every commander/duty manager as long as the row existed."""
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+    et = ExemptionType(name=f"et_{_uid()}", is_commander_exemption=False)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        ExemptionRequest(
+            soldier_id=soldier.id,
+            exemption_type_id=et.id,
+            enrollment_request_id=req.id,
+            start_date=None,
+            reason="פטור קבוע",
+            status="pending",
+        )
+    )
+    admin_session.commit()
+
+    resp = client.get("/api/enrollment-requests/pending", headers=auth_headers(admin))
+    assert resp.status_code == 200
+    matching = next(r for r in resp.json() if r["id"] == str(req.id))
+    assert matching["exemption_requests"][0]["start_date"] is None
+
+    patched = client.patch(
+        f"/api/enrollment-requests/{req.id}",
+        headers=auth_headers(admin),
+        json={"full_name": soldier.full_name},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["exemption_requests"][0]["start_date"] is None
 
 
 def test_admin_can_approve(client, admin_session):
