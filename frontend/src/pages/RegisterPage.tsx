@@ -14,6 +14,7 @@ import PasswordStrengthHint, { passwordValid } from "../components/PasswordStren
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
+import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
 import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
@@ -39,7 +40,14 @@ function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   return result;
 }
 
-interface ExemptionRow { exemption_type_id: string; start_date: string; end_date: string; reason: string; }
+interface ExemptionRow {
+  exemption_type_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  permanent: boolean;
+  files: File[];
+}
 interface ConstraintRow { start_date: string; end_date: string; reason: string; }
 interface FormData {
   invite_code: string; personal_number: string; full_name: string;
@@ -112,6 +120,7 @@ export default function RegisterPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const validRows = form.exemption_requests.filter(er => er.exemption_type_id && (er.permanent || er.start_date));
       const resp = await register({
         invite_code: form.invite_code,
         personal_number: form.personal_number,
@@ -130,9 +139,14 @@ export default function RegisterPage() {
         has_military_driving_license: form.has_military_driving_license,
         military_driving_license_expiry: form.has_military_driving_license ? (form.military_driving_license_expiry || null) : null,
         requested_node_id: form.requested_node_id,
-        exemption_requests: form.exemption_requests.filter(er => er.exemption_type_id && er.start_date),
+        exemption_requests: validRows.map(er => ({
+          exemption_type_id: er.exemption_type_id,
+          start_date: er.permanent ? null : er.start_date,
+          end_date: er.permanent ? null : (er.end_date || null),
+          reason: er.reason,
+        })),
         personal_constraints: form.personal_constraints.filter(pc => pc.start_date && pc.end_date),
-      });
+      }, validRows.map(er => er.files));
       await loginWithToken(resp.access_token);
       // telegramRequired from useAuth() here would reflect this component's
       // last render (before loginWithToken populated `user`), so it can't be
@@ -151,6 +165,8 @@ export default function RegisterPage() {
         "requested node not found": t("register.errors.node_not_found"),
         "exemption_missing_fields": t("register.errors.exemption_missing_fields"),
         "constraint_missing_fields": t("register.errors.constraint_missing_fields"),
+        "medical_exemption_requires_file": t("register.errors.medical_exemption_requires_file"),
+        "start_date_required": t("register.errors.start_date_required"),
       };
       const mappedDetail = detail && detail.startsWith("rank_track_incompatible")
         ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
@@ -326,10 +342,13 @@ export default function RegisterPage() {
         {step === 3 && (
           <div className="space-y-3">
             <h2 className="font-semibold">{t("register.step_exemptions")}</h2>
-            {form.exemption_requests.map((er, i) => (
+            {form.exemption_requests.map((er, i) => {
+              const rowType = exemptionTypes.find(et => et.id === er.exemption_type_id);
+              const isMedical = rowType?.is_medical ?? false;
+              return (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
                 <Combobox
-                  items={exemptionTypes.map(et => ({ id: et.id, name: et.name }))}
+                  items={exemptionTypes.map(et => ({ id: et.id, name: `${et.name}${et.is_medical ? " 🏥" : ""}` }))}
                   value={er.exemption_type_id}
                   onChange={v => {
                     const rows = [...form.exemption_requests];
@@ -338,26 +357,78 @@ export default function RegisterPage() {
                   }}
                   placeholder="סוג פטור"
                 />
-                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
-                  max={er.end_date || undefined}
+                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.permanent ? "" : er.start_date}
+                  max={er.end_date || undefined} disabled={er.permanent}
                   onChange={iso => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], start_date: iso}; set("exemption_requests", rows); }} />
-                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}
-                  min={er.start_date || undefined}
+                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.permanent ? "" : er.end_date}
+                  min={er.start_date || undefined} disabled={er.permanent}
                   onChange={iso => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], end_date: iso}; set("exemption_requests", rows); }} />
+                <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={er.permanent}
+                    data-testid={`register-er-permanent-${i}`}
+                    onChange={e => {
+                      const rows = [...form.exemption_requests];
+                      rows[i] = { ...rows[i], permanent: e.target.checked, start_date: e.target.checked ? "" : rows[i].start_date, end_date: e.target.checked ? "" : rows[i].end_date };
+                      set("exemption_requests", rows);
+                    }}
+                  />
+                  {t("exemption_requests.permanent")}
+                </label>
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.reason}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], reason: e.target.value}; set("exemption_requests", rows); }} />
+                <div className={`rounded border-2 border-dashed p-2 space-y-1 ${isMedical ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-gray-600"}`}>
+                  <p className="text-xs">{isMedical ? t("exemption_requests.upload_required") : t("exemption_requests.upload_optional")}</p>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,image/*"
+                    data-testid={`register-er-files-${i}`}
+                    onChange={async e => {
+                      const picked = Array.from(e.target.files ?? []);
+                      e.target.value = "";
+                      const signatureChecks = await Promise.all(picked.map(f => validateFileSignature(f, PDF_IMAGE_SIGNATURES)));
+                      const valid = picked.filter((_, j) => signatureChecks[j]);
+                      const rows = [...form.exemption_requests];
+                      rows[i] = { ...rows[i], files: [...rows[i].files, ...valid] };
+                      set("exemption_requests", rows);
+                    }}
+                  />
+                  {er.files.length > 0 && (
+                    <ul className="text-xs space-y-0.5">
+                      {er.files.map((f, j) => (
+                        <li key={j} className="flex items-center gap-1">
+                          <span className="truncate max-w-40">{f.name}</span>
+                          <button type="button" className="text-red-400" onClick={() => {
+                            const rows = [...form.exemption_requests];
+                            rows[i] = { ...rows[i], files: rows[i].files.filter((_, k) => k !== j) };
+                            set("exemption_requests", rows);
+                          }}>✕</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <button className="text-red-600 text-xs" onClick={() => set("exemption_requests", form.exemption_requests.filter((_,j) => j !== i))}>{t("register.remove")}</button>
               </div>
-            ))}
+              );
+            })}
             <button className="text-indigo-600 dark:text-indigo-300 text-sm"
-              onClick={() => set("exemption_requests", [...form.exemption_requests, {exemption_type_id:"",start_date:"",end_date:"",reason:""}])}>
+              onClick={() => set("exemption_requests", [...form.exemption_requests, {exemption_type_id:"",start_date:"",end_date:"",reason:"",permanent:false,files:[]}])}>
               + {t("register.add_exemption")}
             </button>
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(2)}>{t("register.back")}</button>
               <button
                 className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={form.exemption_requests.some(er => !er.exemption_type_id || !er.start_date || !isDateRangeValid(er.start_date, er.end_date))}
+                disabled={form.exemption_requests.some(er => {
+                  if (!er.exemption_type_id) return true;
+                  if (!er.permanent && (!er.start_date || !isDateRangeValid(er.start_date, er.end_date))) return true;
+                  const rowType = exemptionTypes.find(et => et.id === er.exemption_type_id);
+                  if (rowType?.is_medical && er.files.length === 0) return true;
+                  return false;
+                })}
                 onClick={() => setStep(4)}
               >
                 {t("register.next")}

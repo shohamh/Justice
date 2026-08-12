@@ -1232,6 +1232,8 @@
       "node_not_found": "המסגרת שנבחרה לא נמצאה",
       "exemption_missing_fields": "יש למלא סוג פטור ותאריך התחלה לכל בקשת פטור, או להסיר את השורה",
       "constraint_missing_fields": "יש למלא תאריך התחלה וסיום לכל אילוץ, או להסיר את השורה",
+      "medical_exemption_requires_file": "יש לצרף מסמך רפואי לבקשת פטור רפואי",
+      "start_date_required": "יש למלא תאריך התחלה כאשר מוזן תאריך סיום",
       "network": "שגיאת רשת. נסה שוב."
     },
     "rank_track_incompatible_chovah": "לא ניתן להיות בדרגה זו במסלול חובה",
