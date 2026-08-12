@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,7 +15,9 @@ from app.auth.authz import (
 )
 from app.rate_limit import limiter
 from app.auth.deps import require_enrolled, require_password_changed
-from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier, SoldierEnrollmentRequest
+from app.db.models import (
+    ExemptionRequest, ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier, SoldierEnrollmentRequest,
+)
 from app.db.session import get_session
 from app.services.authority import (
     commander_can_grant_commander_exemption, dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
@@ -171,11 +173,32 @@ def _nearest_approvers(
 
 
 @router.post("/me/exemption-requests", response_model=ExemptionRequestOut, status_code=status.HTTP_201_CREATED)
-def create_exemption_request(
-    body: CreateExemptionRequest,
+async def create_exemption_request(
+    payload: str = Form(...),
+    files: list[UploadFile] = File(default=[]),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_enrolled),
 ) -> ExemptionRequestOut:
+    try:
+        body = CreateExemptionRequest.model_validate_json(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    file_payloads: list[tuple[str, str, bytes]] = []
+    for f in files:
+        if not f.filename:
+            continue
+        data = await f.read()
+        try:
+            validate_exemption_file(f.content_type or "", data)
+        except FileValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        file_payloads.append((f.filename, f.content_type or "", data))
+
+    et = session.get(ExemptionType, body.exemption_type_id)
+    if et is not None and et.is_medical and not file_payloads:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="medical_exemption_requires_file")
+
     try:
         req = submit_request(
             session,
@@ -187,9 +210,29 @@ def create_exemption_request(
         )
     except ExemptionRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    saved_files: list[ExemptionFileOut] = []
+    for filename, content_type, data in file_payloads:
+        ef = ExemptionRequestFile(
+            exemption_request_id=req.id,
+            file_name=re.sub(r"[^\w.\-]", "_", filename).replace("..", "_")[:200],
+            content_type=content_type,
+            data=data,
+            uploaded_by=user.id,
+        )
+        session.add(ef)
+        session.flush()
+        saved_files.append(ExemptionFileOut(
+            id=ef.id, file_name=ef.file_name, content_type=ef.content_type,
+            created_at=ef.created_at.isoformat(),
+        ))
+
     session.commit()
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
-    return _out(req, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(
+        req, include_sensitive=True, files=saved_files,
+        nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+    )
 
 
 @router.get("/me/exemption-requests", response_model=list[ExemptionRequestOut])

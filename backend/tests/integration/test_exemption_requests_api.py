@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -7,20 +8,25 @@ from app.db.models import ExemptionType
 from tests.helpers import auth_headers, create_soldier
 
 
+def _post_exemption_request(client, headers, payload, files=None):
+    return client.post(
+        "/api/me/exemption-requests",
+        headers=headers,
+        data={"payload": json.dumps(payload)},
+        files=files or [],
+    )
+
+
 def test_submit_exemption_request_rejects_missing_reason(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="7800010")
     et = ExemptionType(name="פטור-api-reason", is_commander_exemption=False)
     admin_session.add(et)
     admin_session.commit()
 
-    r = client.post(
-        "/api/me/exemption-requests",
-        headers=auth_headers(s),
-        json={
-            "exemption_type_id": str(et.id),
-            "start_date": (date.today() + timedelta(days=1)).isoformat(),
-        },
-    )
+    r = _post_exemption_request(client, auth_headers(s), {
+        "exemption_type_id": str(et.id),
+        "start_date": (date.today() + timedelta(days=1)).isoformat(),
+    })
     assert r.status_code == 422
 
 
@@ -30,15 +36,59 @@ def test_submit_permanent_exemption_request_via_api(client: TestClient, admin_se
     admin_session.add(et)
     admin_session.commit()
 
-    r = client.post(
-        "/api/me/exemption-requests",
-        headers=auth_headers(s),
-        json={
-            "exemption_type_id": str(et.id),
-            "start_date": None,
-            "end_date": None,
-            "reason": "פטור קבוע",
-        },
-    )
+    r = _post_exemption_request(client, auth_headers(s), {
+        "exemption_type_id": str(et.id),
+        "start_date": None,
+        "end_date": None,
+        "reason": "פטור קבוע",
+    })
     assert r.status_code == 201, r.text
     assert r.json()["start_date"] is None
+
+
+def test_medical_exemption_request_without_file_is_rejected(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7800012")
+    et = ExemptionType(name="פטור-api-medical", is_commander_exemption=False, is_medical=True)
+    admin_session.add(et)
+    admin_session.commit()
+
+    r = _post_exemption_request(client, auth_headers(s), {
+        "exemption_type_id": str(et.id),
+        "start_date": (date.today() + timedelta(days=1)).isoformat(),
+        "reason": "סיבה רפואית",
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"] == "medical_exemption_requires_file"
+
+
+def test_medical_exemption_request_with_file_is_accepted(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7800013")
+    et = ExemptionType(name="פטור-api-medical-2", is_commander_exemption=False, is_medical=True)
+    admin_session.add(et)
+    admin_session.commit()
+
+    r = _post_exemption_request(
+        client, auth_headers(s),
+        {
+            "exemption_type_id": str(et.id),
+            "start_date": (date.today() + timedelta(days=1)).isoformat(),
+            "reason": "סיבה רפואית",
+        },
+        files=[("files", ("doc.pdf", b"%PDF-1.4 fake but valid header", "application/pdf"))],
+    )
+    assert r.status_code == 201, r.text
+    assert len(r.json()["files"]) == 1
+
+
+def test_non_medical_exemption_request_without_file_is_still_accepted(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7800014")
+    et = ExemptionType(name="פטור-api-nonmedical", is_commander_exemption=False, is_medical=False)
+    admin_session.add(et)
+    admin_session.commit()
+
+    r = _post_exemption_request(client, auth_headers(s), {
+        "exemption_type_id": str(et.id),
+        "start_date": (date.today() + timedelta(days=1)).isoformat(),
+        "reason": "סיבה",
+    })
+    assert r.status_code == 201, r.text
