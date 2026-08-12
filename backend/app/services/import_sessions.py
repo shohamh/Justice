@@ -25,6 +25,10 @@ from app.db.models import (
     HierarchyNode,
     ImportSession,
     PersonalConstraint,
+    RangeEvent,
+    RangeEventStatus,
+    RangeLocation,
+    RangeType,
     ShiftTemplate,
     Soldier,
     SoldierEnrollmentRequest,
@@ -221,6 +225,131 @@ def _resolve_duty_locations(
             "base": base,
             "active": active,
             "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def _resolve_range_locations(
+    session: Session,
+    data: ParsedImportData,
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    overrides = overrides or {}
+    existing_by_name = {
+        loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()
+    }
+    out = []
+    for row in data.range_locations:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        name = field("name", row.name)
+        active = field("active", row.active)
+
+        if not name:
+            errors.append("חסר שם מיקום מטווח")
+        existing = existing_by_name.get(name) if name else None
+        action = "error" if errors else ("update" if existing else "new")
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "name": name,
+            "active": active,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def _resolve_range_events(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
+    overrides = overrides or {}
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()}
+
+    out = []
+    for row in data.range_events:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
+        range_type = field("range_type", row.range_type)
+        event_date = field("date", row.date)
+        range_location_name = field("range_location_name", row.range_location_name)
+        required_count = field("required_count", row.required_count)
+        reserve_count = field("reserve_count", row.reserve_count)
+        start_time = field("start_time", row.start_time)
+        end_time = field("end_time", row.end_time)
+        arrival_instructions = field("arrival_instructions", row.arrival_instructions)
+        contact_name = field("contact_name", row.contact_name)
+        contact_phone = field("contact_phone", row.contact_phone)
+        notes = field("notes", row.notes)
+        status = field("status", row.status) or RangeEventStatus.planned.value
+
+        node = None
+        if hierarchy_node_name:
+            row_key = f"range_events:{row.source_row}"
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(hierarchy_node_name)
+            if mapped_id:
+                try:
+                    node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if node is None:
+                node = nodes_by_name.get(hierarchy_node_name)
+        if node is None:
+            errors.append(f"יחידה לא מזוהה '{hierarchy_node_name}'")
+
+        location = locations_by_name.get(range_location_name) if range_location_name else None
+        if location is None:
+            errors.append(f"מיקום מטווח לא מזוהה '{range_location_name}'")
+
+        if range_type not in (rt.value for rt in RangeType):
+            errors.append(f"סוג מטווח לא תקין '{range_type}'")
+        if not event_date:
+            errors.append("חסר תאריך")
+        if status not in (s.value for s in RangeEventStatus):
+            errors.append(f"סטטוס לא תקין '{status}'")
+
+        action = "error" if errors else "new"
+
+        if action == "new" and node is not None and actor.role != "admin":
+            if not is_node_in_actor_scope(session=session, actor=actor, node_id=node.id):
+                action = "out_of_scope"
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "hierarchy_node_name": hierarchy_node_name,
+            "resolved_hierarchy_node_id": str(node.id) if node is not None else None,
+            "range_type": range_type,
+            "date": event_date,
+            "range_location_name": range_location_name,
+            "resolved_range_location_id": str(location.id) if location is not None else None,
+            "required_count": required_count,
+            "reserve_count": reserve_count,
+            "start_time": start_time,
+            "end_time": end_time,
+            "arrival_instructions": arrival_instructions,
+            "contact_name": contact_name,
+            "contact_phone": contact_phone,
+            "notes": notes,
+            "status": status,
         })
     return out
 
