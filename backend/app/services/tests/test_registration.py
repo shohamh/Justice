@@ -55,7 +55,7 @@ def test_register_places_soldier_in_holding_node(admin_session):
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
 
-    soldier = register(
+    soldier, _created_exemption_requests = register(
         admin_session, invite_code=invite.code, requested_node_id=node.id,
         exemption_requests=[], personal_constraints=[], **_base()
     )
@@ -115,7 +115,7 @@ def test_register_decrements_invite_code(admin_session):
     invite = create_invite_code(admin_session, uses_left=2, actor_id=None)
     admin_session.commit()
     register(admin_session, invite_code=invite.code, requested_node_id=node.id,
-             exemption_requests=[], personal_constraints=[], **_base())
+              exemption_requests=[], personal_constraints=[], **_base())
     admin_session.commit()
     admin_session.refresh(invite)
     assert invite.uses_left == 1
@@ -160,7 +160,7 @@ def test_register_starts_as_chovah_while_mandatory_service_is_ongoing(admin_sess
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
 
-    soldier = register(
+    soldier, _created_exemption_requests = register(
         admin_session, invite_code=invite.code, requested_node_id=node.id,
         exemption_requests=[], personal_constraints=[],
         **_base(discharge_date=date.today() + timedelta(days=365 * 5)),
@@ -182,7 +182,7 @@ def test_register_links_exemptions_to_enrollment(admin_session):
     admin_session.add(ex_type)
     admin_session.commit()
 
-    soldier = register(
+    soldier, created_exemption_requests = register(
         admin_session, invite_code=invite.code, requested_node_id=node.id,
         exemption_requests=[{
             "exemption_type_id": ex_type.id,
@@ -193,6 +193,9 @@ def test_register_links_exemptions_to_enrollment(admin_session):
         personal_constraints=[], **_base()
     )
     admin_session.commit()
+
+    assert len(created_exemption_requests) == 1
+    assert created_exemption_requests[0].exemption_type_id == ex_type.id
 
     enrollment_req = admin_session.execute(
         sa.select(SoldierEnrollmentRequest).where(SoldierEnrollmentRequest.soldier_id == soldier.id)
@@ -286,7 +289,7 @@ def test_register_allows_keva_only_rank_once_mandatory_service_has_ended(admin_s
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
 
-    soldier = register(
+    soldier, _created_exemption_requests = register(
         admin_session, invite_code=invite.code, requested_node_id=node.id,
         exemption_requests=[], personal_constraints=[],
         **_base(
@@ -331,7 +334,7 @@ def test_register_derives_bahad1_graduate_from_rank(admin_session):
     # derive_is_career to land on True and pass rank/track compatibility —
     # otherwise register() raises rank_track_incompatible before we ever get
     # to check the derived bahad1_graduate value.
-    officer = register(
+    officer, _created_exemption_requests = register(
         admin_session, invite_code=invite.code, requested_node_id=node.id,
         exemption_requests=[], personal_constraints=[],
         **_base(
@@ -345,7 +348,7 @@ def test_register_derives_bahad1_graduate_from_rank(admin_session):
 
     invite2 = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
-    kaab_officer = register(
+    kaab_officer, _created_exemption_requests2 = register(
         admin_session, invite_code=invite2.code, requested_node_id=node.id,
         exemption_requests=[], personal_constraints=[],
         **_base(

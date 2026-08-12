@@ -278,3 +278,44 @@ def test_register_accepts_medical_exemption_row_with_file(client, admin_session)
     from app.db.models import ExemptionRequest, ExemptionRequestFile
     req = admin_session.query(ExemptionRequest).filter_by(exemption_type_id=et.id).one()
     assert admin_session.query(ExemptionRequestFile).filter_by(exemption_request_id=req.id).count() == 1
+
+
+def test_register_matches_files_to_correct_row_with_multiple_exemption_rows(client, admin_session):
+    # Regression test: ExemptionRequest.id is a random UUID with no relation
+    # to insertion order, so files must be matched to rows using the order
+    # reg_svc.register() returns them in — not by re-querying and sorting by id.
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    from app.db.models import ExemptionType
+    et_medical_a = ExemptionType(name=f"פטור-reg-multi-a-{_uid()}", is_commander_exemption=False, is_medical=True)
+    et_plain = ExemptionType(name=f"פטור-reg-multi-b-{_uid()}", is_commander_exemption=False, is_medical=False)
+    et_medical_c = ExemptionType(name=f"פטור-reg-multi-c-{_uid()}", is_commander_exemption=False, is_medical=True)
+    admin_session.add_all([et_medical_a, et_plain, et_medical_c])
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id, exemption_requests=[
+        {"exemption_type_id": str(et_medical_a.id), "start_date": date.today().isoformat(), "end_date": None, "reason": "a"},
+        {"exemption_type_id": str(et_plain.id), "start_date": date.today().isoformat(), "end_date": None, "reason": "b"},
+        {"exemption_type_id": str(et_medical_c.id), "start_date": date.today().isoformat(), "end_date": None, "reason": "c"},
+    ])
+    resp = _post_register(client, payload, files=[
+        ("exemption_files_0", ("file-a.pdf", b"%PDF-1.4 file for row a", "application/pdf")),
+        ("exemption_files_2", ("file-c.pdf", b"%PDF-1.4 file for row c", "application/pdf")),
+    ])
+    assert resp.status_code == 200, resp.text
+
+    from app.db.models import ExemptionRequest, ExemptionRequestFile
+    req_a = admin_session.query(ExemptionRequest).filter_by(exemption_type_id=et_medical_a.id).one()
+    req_b = admin_session.query(ExemptionRequest).filter_by(exemption_type_id=et_plain.id).one()
+    req_c = admin_session.query(ExemptionRequest).filter_by(exemption_type_id=et_medical_c.id).one()
+
+    files_a = admin_session.query(ExemptionRequestFile).filter_by(exemption_request_id=req_a.id).all()
+    files_b = admin_session.query(ExemptionRequestFile).filter_by(exemption_request_id=req_b.id).all()
+    files_c = admin_session.query(ExemptionRequestFile).filter_by(exemption_request_id=req_c.id).all()
+
+    assert [f.file_name for f in files_a] == ["file-a.pdf"]
+    assert files_b == []
+    assert [f.file_name for f in files_c] == ["file-c.pdf"]

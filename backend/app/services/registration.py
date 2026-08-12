@@ -47,7 +47,7 @@ def register(
     personal_constraints: list[dict],
     has_military_driving_license: bool = False,
     military_driving_license_expiry: date | None = None,
-) -> Soldier:
+) -> tuple[Soldier, list[ExemptionRequest]]:
     consume_invite_code(session, code=invite_code)
 
     if session.execute(
@@ -119,6 +119,7 @@ def register(
     session.add(enrollment_req)
     session.flush()
 
+    created_exemption_requests: list[ExemptionRequest] = []
     for er in exemption_requests:
         exemption_type_id_raw = er.get("exemption_type_id")
         start_date_raw = er.get("start_date")
@@ -138,7 +139,7 @@ def register(
             raise RegistrationError("commander_exemption_not_requestable")
         if end_date_raw and start_date_raw and end_date_raw < start_date_raw:
             raise RegistrationError("bad_date_range")
-        session.add(ExemptionRequest(
+        exemption_request = ExemptionRequest(
             soldier_id=soldier.id,
             exemption_type_id=exemption_type_id,
             start_date=start_date_raw or None,
@@ -146,7 +147,9 @@ def register(
             reason=er.get("reason"),
             status="pending_commander",
             enrollment_request_id=enrollment_req.id,
-        ))
+        )
+        session.add(exemption_request)
+        created_exemption_requests.append(exemption_request)
 
     for pc in personal_constraints:
         if not pc.get("start_date") or not pc.get("end_date"):
@@ -169,4 +172,4 @@ def register(
         has_exemptions=len(exemption_requests) > 0,
     )
 
-    return soldier
+    return soldier, created_exemption_requests

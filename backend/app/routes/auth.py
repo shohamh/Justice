@@ -15,7 +15,7 @@ from app.audit.writer import write_audit
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
-from app.db.models import ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier, SoldierEnrollmentRequest
+from app.db.models import ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services import email_verification as ev_svc
@@ -351,7 +351,7 @@ async def register(
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="medical_exemption_requires_file")
 
     try:
-        soldier = reg_svc.register(
+        soldier, created_requests = reg_svc.register(
             session,
             invite_code=body.invite_code,
             personal_number=body.personal_number,
@@ -375,14 +375,11 @@ async def register(
         )
         session.flush()
 
-        from app.db.models import ExemptionRequest as ExemptionRequestModel
-        created_requests = session.query(ExemptionRequestModel).filter_by(
-            enrollment_request_id=session.query(SoldierEnrollmentRequest.id)
-            .filter_by(soldier_id=soldier.id).scalar_subquery()
-        ).order_by(ExemptionRequestModel.id).all()
-        # exemption_requests rows are inserted by reg_svc.register in the same
-        # order as body.exemption_requests, so zipping by position lines up
-        # each created ExemptionRequest with the files uploaded for its row.
+        # reg_svc.register() returns created_requests in the exact order it
+        # inserted them (the same order as body.exemption_requests), so
+        # zipping by position lines up each ExemptionRequest with the files
+        # uploaded for its row. (ExemptionRequest.id is a random UUID, so an
+        # id-ordered re-query would NOT reproduce this order.)
         for i, req in enumerate(created_requests):
             for filename, content_type, data in exemption_files.get(i, []):
                 session.add(ExemptionRequestFile(
