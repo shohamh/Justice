@@ -137,7 +137,11 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
   });
 
   it("shows a neutral state rather than a warning when only the legacy flag is present", () => {
-    mockUseAuth.mockReturnValue({ user: null });
+    // Eligibility badges are gated to admins/commanders/duty managers (see the
+    // "commander who is not a duty manager" and "plain soldier" tests below
+    // for the gate itself) — use a privileged viewer here so this test can
+    // focus on the neutral-state rendering.
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
     renderPanel(
       makeShift([
         makeAssignee({
@@ -155,12 +159,10 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
     expect(within(nameRow("חייל לא כשיר")).getByText("range_qualification.shiftDetail.unavailable")).toBeInTheDocument();
     // The eligible assignee on the same shift gets no marker either.
     expect(within(nameRow("חייל כשיר")).queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
-    // Non-manager viewers see no Replace action.
-    expect(screen.queryByText("החלף")).toBeNull();
   });
 
   it("shows a neutral state for a reserve when only the legacy flag is present", () => {
-    mockUseAuth.mockReturnValue({ user: null });
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
     renderPanel(
       makeShift([
         makeAssignee({
@@ -178,7 +180,7 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
     expect(within(nameRow("רזרב לא כשיר")).getByText("range_qualification.shiftDetail.unavailable")).toBeInTheDocument();
   });
   it("shows the required range and projection warning only for an uncovered assignee", () => {
-    mockUseAuth.mockReturnValue({ user: null });
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
     renderPanel(
       makeShift([
         makeAssignee({
@@ -221,10 +223,97 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
   });
 
   it("shows a neutral state when a required-range eligibility fact is unavailable", () => {
-    mockUseAuth.mockReturnValue({ user: null });
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
     renderPanel(makeShift([makeAssignee({ soldier_name: "חייל ללא נתון" })]));
 
     expect(screen.getByText("range_qualification.shiftDetail.unavailable")).toBeInTheDocument();
+  });
+
+  it("shows a blue info badge for an assignee covered only by a planned range", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          soldier_name: "חייל עם מטווח מתוכנן",
+          range_eligibility: {
+            eligible: true,
+            required_range_type: "laser",
+            qualification_source: "planned_range",
+            covered_by_range_date: "2026-12-01",
+            projected_valid_until: "2027-06-01",
+            reason: null,
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+      ])
+    );
+
+    expect(screen.getByLabelText("range_qualification.shiftDetail.info")).toBeInTheDocument();
+  });
+
+  it("hides both the red and blue eligibility badges from a plain soldier", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "s1", role: "soldier", is_commander: false, is_duty_manager: false } });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          assignment_id: "a-bad",
+          soldier_id: "s-bad",
+          soldier_name: "חייל לא כשיר",
+          range_eligibility: {
+            eligible: false,
+            required_range_type: "laser",
+            qualification_source: null,
+            covered_by_range_date: null,
+            projected_valid_until: null,
+            reason: "weapon_qualification",
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+        makeAssignee({
+          assignment_id: "a-planned",
+          soldier_id: "s-planned",
+          soldier_name: "חייל עם מטווח מתוכנן",
+          range_eligibility: {
+            eligible: true,
+            required_range_type: "laser",
+            qualification_source: "planned_range",
+            covered_by_range_date: "2026-12-01",
+            projected_valid_until: "2027-06-01",
+            reason: null,
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+      ])
+    );
+
+    expect(screen.queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
+    expect(screen.queryByLabelText("range_qualification.shiftDetail.info")).toBeNull();
+  });
+
+  it("shows the existing red badge to a commander who is not a duty manager", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "cmd-1", role: "commander", is_commander: true, is_duty_manager: false } });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          soldier_name: "חייל ללא מטווח",
+          range_eligibility: {
+            eligible: false,
+            required_range_type: "laser",
+            qualification_source: null,
+            covered_by_range_date: null,
+            projected_valid_until: null,
+            reason: "weapon_qualification",
+            duty_type_name: "שמירה",
+            start_date: "2026-08-10",
+          },
+        }),
+      ])
+    );
+
+    expect(screen.getByLabelText("range_qualification.shiftDetail.warning")).toBeInTheDocument();
   });
 });
 

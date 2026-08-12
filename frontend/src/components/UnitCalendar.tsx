@@ -14,6 +14,8 @@ import { RangeEvent, getRanges, getMyRanges } from "../api/ranges";
 import { listDutyTypes } from "../api/dutyConfig";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
+import { useAuth } from "../auth/AuthContext";
+import { canApprove } from "../auth/permissions";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
@@ -60,6 +62,8 @@ export function filterCalendarShifts(
 
 export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly = false }: UnitCalendarProps) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const canSeeRangeEligibilityBadges = canApprove(user);
   const publicSettings = usePublicSettings();
   const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
@@ -351,6 +355,15 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
                 )}
                 <div className="flex items-center gap-1 w-full">
                   <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
+                  {canSeeRangeEligibilityBadges && shift.assignees.some((a) => a.range_eligibility?.qualification_source === "planned_range") && (
+                    <span
+                      aria-label={t("range_qualification.calendarBadge.info")}
+                      title={t("range_qualification.calendarBadge.info")}
+                      className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full px-1 text-[10px] leading-4 flex-shrink-0"
+                    >
+                      ℹ️
+                    </span>
+                  )}
                   {swapCount > 0 && (
                     <span className="bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
                       {swapCount}

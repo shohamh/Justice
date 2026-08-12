@@ -267,10 +267,29 @@ def bulk_ineligible_duty_blocks(
     soldier_ids: Sequence[uuid.UUID],
     duties: Sequence[DutyBlock],
     respect_system_toggle: bool = True,
+    include_alal: bool = False,
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
     """For each soldier, the set of duty-block ids (among `duties`) they are NOT
     eligible for due to weapon qualification. Blocks whose `required_range_type`
     is None are never included. Returns {} entirely if the feature is disabled.
+
+    This function has two consumers with different needs around אל"ל:
+
+    - The CP-SAT algorithm bridge (algorithm_bridge.py) uses the result as a
+      HARD exclusion from the solver's eligible (duty, soldier) pairs. אל"ל
+      eligibility is reactive/warning-only and must never hard-block the
+      solver (unlike live/laser, which still do). That caller should pass
+      include_alal=False (the default).
+    - The manual assign-modal candidates endpoint (routes/shifts.py) uses the
+      result purely as an advisory signal -- to show an amber warning marker
+      and demote a candidate in sort order before a human manually assigns
+      them, never to block anything. אל"ל warnings should keep surfacing
+      there exactly like live/laser. That caller should pass
+      include_alal=True.
+
+    include_alal: when False (default), blocks requiring "alal" are excluded
+    from consideration so they're never hard-blocked. When True, אל"ל blocks
+    are treated the same as live/laser and can appear in the result.
 
     respect_system_toggle: when True (default), short-circuits to {} if either
     מטווחים (mitvachim.enabled) or the weapon_qualification.enforce_eligibility
@@ -288,7 +307,8 @@ def bulk_ineligible_duty_blocks(
     elif not _mitvachim_enabled(session):
         return {}
 
-    relevant = [d for d in duties if d.required_range_type is not None]
+    excluded_types: tuple[str | None, ...] = (None,) if include_alal else (None, "alal")
+    relevant = [d for d in duties if d.required_range_type not in excluded_types]
     if not relevant:
         return {}
 

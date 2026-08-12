@@ -1187,7 +1187,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     # and potentially discard an explicit per-run override.
                     weapon_ineligible = bulk_ineligible_duty_blocks(
                         session, soldier_ids=[s.id for s in soldiers], duties=duties,
-                        respect_system_toggle=False,
+                        respect_system_toggle=False, include_alal=False,
                     )
                     for s in soldiers:
                         s.weapon_ineligible_duty_block_ids = weapon_ineligible.get(s.id, set())
