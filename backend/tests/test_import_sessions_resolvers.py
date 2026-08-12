@@ -376,6 +376,7 @@ def test_resolve_and_score_passes_hierarchy_node_name_mappings_to_resolve_hierar
     result = _resolve_and_score(app_session, data, admin, selections=selections)
     row = result["hierarchy"][0]
     assert row["resolved_parent_id"] == str(existing_parent.id)
+    assert row["errors"] == []
 
 
 def test_resolve_range_locations_new_and_update(app_session):
