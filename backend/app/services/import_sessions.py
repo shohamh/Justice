@@ -1219,6 +1219,7 @@ def _resolve_and_score(
     node_by_name = nm.get("hierarchy_node", {}).get("by_name", {})
     node_by_row  = nm.get("hierarchy_node", {}).get("by_row", {})
     duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("duty_shifts", {}))
+    range_events = _resolve_range_events(session, data, actor, node_by_name, node_by_row, fo.get("range_events", {}))
     return {
         "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row, fo.get("soldiers", {})),
         "duty_shifts": duty_shifts,
@@ -1238,6 +1239,9 @@ def _resolve_and_score(
         "soldier_exemptions": resolve_soldier_exemptions(session, data, fo.get("soldier_exemptions", {})),
         "exemption_requests": resolve_exemption_requests(session, data, fo.get("exemption_requests", {})),
         "swap_requests": resolve_swap_requests(session, data, fo.get("swap_requests", {})),
+        "range_locations": _resolve_range_locations(session, data, fo.get("range_locations", {})),
+        "range_events": range_events,
+        "range_assignments": _resolve_range_assignments(session, data, actor, range_events, fo.get("range_assignments", {})),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }

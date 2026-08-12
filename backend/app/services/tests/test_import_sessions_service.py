@@ -21,7 +21,7 @@ from app.services.import_sessions import (
     reparse_session,
     set_selections,
 )
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_soldier, create_range_location
 
 
 def _uid() -> str:
@@ -2054,3 +2054,23 @@ def test_system_settings_import_hidden_key_is_row_error(admin_session):
     from app.db.models import SystemSetting
     setting = admin_session.get(SystemSetting, "system.holding_node_id")
     assert setting is None
+
+
+def test_create_session_resolves_range_sheets(admin_session):
+    admin = create_soldier(admin_session, personal_number="admin-7", role="admin")
+    node = create_node(admin_session, name="מדור א", level="group")
+    create_range_location(admin_session, name="מטווח דרומי")
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws_loc = wb.create_sheet("range_locations")
+    ws_loc.append(["name", "active"])
+    ws_loc.append(["מטווח חדש", "true"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    sess = create_session(admin_session, filename="ranges.xlsx", content=buf.getvalue(), actor=admin)
+    assert len(sess.parsed_state["range_locations"]) == 1
+    assert sess.parsed_state["range_locations"][0]["action"] == "new"
+    assert sess.parsed_state["range_events"] == []
+    assert sess.parsed_state["range_assignments"] == []
