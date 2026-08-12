@@ -263,8 +263,8 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                   {t(`exemptions.request_status_${req.status}`)}
                 </p>
                 <p className="text-sm flex items-center gap-2" dir="ltr">
-                  <span>{formatDate(req.start_date)} → {req.end_date ? formatDate(req.end_date) : t("exemptions.forever")}</span>
-                  <DaysBadge start={req.start_date} end={req.end_date} />
+                  <span>{req.start_date ? formatDate(req.start_date) : t("exemption_requests.start_date_pending_approval")} → {req.end_date ? formatDate(req.end_date) : t("exemptions.forever")}</span>
+                  {req.start_date && <DaysBadge start={req.start_date} end={req.end_date} />}
                 </p>
                 {req.reason && <p className="text-xs text-gray-500 mb-2">{req.reason}</p>}
                 {canManage && (req.status === "pending_commander" || req.status === "pending_duty_manager") && (

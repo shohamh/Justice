@@ -50,7 +50,7 @@ export interface ExemptionRequest {
   soldier_name: string;
   node_name: string | null;
   exemption_type_id: string | null;
-  start_date: string;
+  start_date: string | null;
   end_date: string | null;
   reason: string | null;
   status: "pending_commander" | "pending_duty_manager" | "approved" | "rejected";
@@ -82,13 +82,22 @@ export async function listMyExemptionRequests(): Promise<ExemptionRequest[]> {
   return (await api.get<ExemptionRequest[]>("/me/exemption-requests")).data;
 }
 
-export async function submitExemptionRequest(input: {
-  exemption_type_id: string;
-  start_date: string;
-  end_date?: string | null;
-  reason?: string | null;
-}): Promise<ExemptionRequest> {
-  return (await api.post<ExemptionRequest>("/me/exemption-requests", input)).data;
+export async function submitExemptionRequest(
+  input: {
+    exemption_type_id: string;
+    start_date: string | null;
+    end_date?: string | null;
+    reason?: string | null;
+  },
+  files: File[] = [],
+): Promise<ExemptionRequest> {
+  const formData = new FormData();
+  formData.append("payload", JSON.stringify(input));
+  for (const f of files) formData.append("files", f);
+  const r = await api.post<ExemptionRequest>("/me/exemption-requests", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return r.data;
 }
 
 export async function listPendingExemptionRequests(): Promise<ExemptionRequest[]> {

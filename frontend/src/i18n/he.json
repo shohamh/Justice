@@ -542,6 +542,7 @@
     "start_date": "מתאריך",
     "end_date": "עד תאריך",
     "permanent": "פטור קבוע",
+    "start_date_pending_approval": "ייקבע באישור",
     "reason": "סיבה",
     "send": "שלח בקשת פטור",
     "pending": "ממתין לאישור",
