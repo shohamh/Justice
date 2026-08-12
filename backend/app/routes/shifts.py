@@ -749,6 +749,7 @@ def get_shift_candidates(
         )
         weapon_ineligible = bulk_ineligible_duty_blocks(
             session, soldier_ids=[si.id for si in soldier_inputs], duties=[synthetic_block],
+            include_alal=True,
         )
 
     result: list[ShiftCandidateOut] = []

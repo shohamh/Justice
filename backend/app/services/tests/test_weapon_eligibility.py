@@ -279,6 +279,32 @@ def test_bulk_ineligible_duty_blocks_excludes_alal_duties(app_session: Session) 
     assert laser_block.id in result.get(soldier.id, set())
 
 
+def test_bulk_ineligible_duty_blocks_include_alal_restores_alal_block(app_session: Session) -> None:
+    """The advisory manual-assign-modal candidates endpoint (routes/shifts.py)
+    passes include_alal=True to keep showing the אל"ל warning marker to a human
+    before they manually assign someone -- unlike the algorithm bridge's hard
+    exclusion, this is never a scheduling block. include_alal=True must restore
+    the אל"ל block id in the result."""
+    node = create_node(app_session, level="branch", name="we-node-alal-include")
+    _make_weapon_eligible(app_session, node.id)
+    _enable_mitvachim(app_session)
+    soldier = create_soldier(app_session, personal_number="we-017", hierarchy_node_id=node.id)
+    app_session.commit()
+
+    alal_block = DutyBlock(
+        id=__import__("uuid").uuid4(), duty_type_id=__import__("uuid").uuid4(),
+        duty_location_id=__import__("uuid").uuid4(),
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1),
+        score_per_day=Decimal("1.00"), required_range_type=RangeType.alal,
+    )
+
+    result = bulk_ineligible_duty_blocks(
+        app_session, soldier_ids=[soldier.id], duties=[alal_block], include_alal=True,
+    )
+
+    assert alal_block.id in result.get(soldier.id, set())
+
+
 def test_mitvachim_disabled_makes_everyone_eligible_regardless_of_enforce_setting(app_session: Session) -> None:
     """Finding 1 (Critical): the ranges module (מטווחים) defaults to OFF, and every
     requires_weapon=True DutyType was backfilled with a required_range_type by the

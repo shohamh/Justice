@@ -13,6 +13,7 @@ import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import ShiftAssignModal from "./ShiftAssignModal";
 import { useAuth } from "../auth/AuthContext";
+import { canApprove } from "../auth/permissions";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
 import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
@@ -146,7 +147,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
 
   function rangeEligibilityIndicator(assignee: CalendarShiftAssignee): React.ReactNode {
     if (!shift.required_range_type) return null;
-    const canSeeEligibility = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+    const canSeeEligibility = canApprove(user);
     if (!canSeeEligibility) return null;
     if (!assignee.range_eligibility) {
       return (

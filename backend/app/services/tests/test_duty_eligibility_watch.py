@@ -90,6 +90,53 @@ def test_transition_to_ineligible_updates_cache_and_notifies_exact_audience(app_
     assert {n.soldier_id for n in notifs} == {soldier.id, commander.id, duty_manager.id}
 
 
+def test_transition_to_ineligible_fires_for_alal_duty(app_session: Session) -> None:
+    """Regression for the Task-1 change making אל"ל hard-block-free in the CP-SAT
+    solver: compute_eligibility/recheck_assignments is range-type-agnostic, so the
+    reactive red-warning path (weapon_ineligible flip + notification) must still
+    fire for an אל"ל-requiring duty assigned to an unqualified soldier, exactly
+    like it does for laser above."""
+    set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
+    parent = create_node(app_session, level="division", name="watch-parent-alal")
+    node = create_node(app_session, level="branch", name="watch-node-alal", parent=parent)
+    higher_commander = create_soldier(
+        app_session, personal_number="watch-cmd-parent-alal", hierarchy_node_id=parent.id,
+    )
+    parent.commander_id = higher_commander.id
+    commander = create_soldier(app_session, personal_number="watch-cmd-alal", hierarchy_node_id=node.id)
+    node.commander_id = commander.id
+    duty_manager = create_soldier(
+        app_session, personal_number="watch-dm-alal", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    soldier = create_soldier(app_session, personal_number="watch-sol-alal", hierarchy_node_id=node.id)
+    app_session.add_all([
+        CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=node.id),
+        CommanderNotificationScope(commander_id=higher_commander.id, hierarchy_node_id=parent.id),
+    ])
+    app_session.commit()
+
+    assignment = _make_weapon_assignment(
+        app_session, soldier_id=soldier.id, node_id=node.id, start_date=date.today() + timedelta(days=5),
+        required_range_type=RangeType.alal,
+    )
+    assert assignment.weapon_ineligible is False
+
+    changed = recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+
+    assert changed == 1
+    assert assignment.weapon_ineligible is True
+    assert assignment.weapon_ineligible_reason is not None
+    assert assignment.weapon_ineligible_detected_at is not None
+
+    notifs = app_session.query(Notification).filter(
+        Notification.type == NotificationType.weapon_ineligible_detected,
+        Notification.reference_id == assignment.id,
+    ).all()
+    assert len(notifs) == 3
+    assert {n.soldier_id for n in notifs} == {soldier.id, commander.id, duty_manager.id}
+
+
 def test_transition_to_eligible_updates_cache_silently(app_session: Session) -> None:
     set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
     node = create_node(app_session, level="branch", name="watch-node-2")

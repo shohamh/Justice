@@ -39,6 +39,42 @@ def test_ineligible_candidate_flagged_but_not_removed(client, admin_session):
     assert cand["blocked"] is False  # stays selectable, unlike constraint/assignment blocks
 
 
+def test_ineligible_candidate_flagged_for_alal_duty(client, admin_session):
+    """Regression for Finding 1: bulk_ineligible_duty_blocks' Task-1 אל"ל
+    exclusion (for the algorithm bridge's hard block) must not silence the
+    advisory weapon_warning shown here for אל"ל-requiring shifts -- this
+    candidates endpoint is purely advisory (never a hard block) and should
+    behave identically for אל"ל as it does for live/laser."""
+    node = create_node(admin_session, level="branch", name="wc-node-alal")
+    dm = create_soldier(admin_session, personal_number="wc-dm-alal", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="wc-sol-alal", hierarchy_node_id=node.id)
+    dt = DutyType(
+        name="wc-weapon-duty-alal", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.alal,
+    )
+    loc = DutyLocation(name="wc-loc-alal")
+    admin_session.add_all([dt, loc])
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    admin_session.commit()
+
+    start = (date.today() + timedelta(days=10)).isoformat()
+    end = (date.today() + timedelta(days=11)).isoformat()
+    shift_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
+        "start_date": start, "end_date": end, "required_count": 1,
+    }, headers=auth_headers(dm))
+    assert shift_resp.status_code == 201
+    shift_id = shift_resp.json()["id"]
+
+    resp = client.get(f"/api/shifts/{shift_id}/candidates", headers=auth_headers(dm))
+    assert resp.status_code == 200
+    candidates = {c["soldier_id"]: c for c in resp.json()}
+    assert str(soldier.id) in candidates
+    cand = candidates[str(soldier.id)]
+    assert cand["weapon_warning"] is True
+    assert cand["blocked"] is False
+
+
 def test_eligible_candidate_has_no_warning(client, admin_session):
     from app.services.ranges import add_range_assignment, create_range_event
     from tests.helpers import create_range_location

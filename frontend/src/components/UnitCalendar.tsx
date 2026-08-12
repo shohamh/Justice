@@ -15,6 +15,7 @@ import { listDutyTypes } from "../api/dutyConfig";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { useAuth } from "../auth/AuthContext";
+import { canApprove } from "../auth/permissions";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
@@ -62,7 +63,7 @@ export function filterCalendarShifts(
 export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly = false }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const canSeeRangeEligibilityBadges = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+  const canSeeRangeEligibilityBadges = canApprove(user);
   const publicSettings = usePublicSettings();
   const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
