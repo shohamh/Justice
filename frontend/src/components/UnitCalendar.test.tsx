@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
@@ -12,8 +13,9 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mocks.t }),
 }));
 
+const mockUseAuth = vi.fn(() => ({ user: null as { role?: string; is_commander?: boolean; is_duty_manager?: boolean } | null }));
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => mockUseAuth(),
 }));
 
 vi.mock("../hooks/usePublicSettings", () => ({
@@ -30,9 +32,10 @@ vi.mock("../api/calendarData", () => ({
 }));
 
 vi.mock("@fullcalendar/react", () => ({
-  default: ({ datesSet, events }: {
+  default: ({ datesSet, events, eventContent }: {
     datesSet: (arg: unknown) => void;
-    events: Array<{ id: string; title: string; classNames: string[] }>;
+    events: Array<{ id: string; title: string; classNames: string[]; extendedProps?: Record<string, unknown> }>;
+    eventContent?: (arg: { event: { extendedProps: Record<string, unknown> } }) => ReactNode;
   }) => (
     <div>
       <button
@@ -58,6 +61,7 @@ vi.mock("@fullcalendar/react", () => ({
       {events.map((event) => (
         <button key={event.id} data-testid={`calendar-event-${event.id}`} className={event.classNames.join(" ")}>
           {event.title}
+          {eventContent && eventContent({ event: { extendedProps: event.extendedProps ?? {} } })}
         </button>
       ))}
     </div>
@@ -97,6 +101,53 @@ function shift(id: string, dutyTypeId: string, weaponIneligible: boolean): Calen
       hierarchy_path_ids: [],
       weapon_ineligible: weaponIneligible,
       weapon_ineligible_reason: weaponIneligible ? "reason" : null,
+    }],
+  };
+}
+
+function shiftWithPlannedRangeAssignee(id: string): CalendarShift {
+  return {
+    id,
+    duty_type_id: "guard",
+    duty_type_name: "Duty",
+    duty_type_color: "#000",
+    duty_location_name: "Location",
+    start_date: "2026-08-01",
+    end_date: "2026-08-02",
+    start_time: "08:00",
+    end_time: "16:00",
+    start_at: "2026-08-01T08:00:00",
+    end_at: "2026-08-02T16:00:00",
+    required_count: 1,
+    assigned_count: 1,
+    fill_status: "full",
+    reserve_count: 0,
+    assignees: [{
+      assignment_id: `${id}-assignment`,
+      soldier_id: `${id}-soldier`,
+      soldier_name: "Soldier",
+      hierarchy_label: null,
+      is_reserve: false,
+      profile_picture_url: null,
+      dismissals: [],
+      reserve_assignment_id: null,
+      reserve_hierarchy_distance: null,
+      called_up_from: null,
+      called_up_to: null,
+      primary_assignment_ids: [],
+      hierarchy_path_ids: [],
+      weapon_ineligible: false,
+      weapon_ineligible_reason: null,
+      range_eligibility: {
+        eligible: true,
+        required_range_type: "laser",
+        qualification_source: "planned_range",
+        covered_by_range_date: "2026-08-01",
+        projected_valid_until: "2027-08-01",
+        reason: null,
+        duty_type_name: "Duty",
+        start_date: "2026-08-01",
+      },
     }],
   };
 }
@@ -234,5 +285,30 @@ describe("UnitCalendar eligibility warning", () => {
     renderCalendar();
 
     expect(screen.getByText("unit_calendar.duty_type_filter_label")).toBeInTheDocument();
+  });
+});
+
+describe("UnitCalendar range eligibility info indicator", () => {
+  test("shows an info indicator on the event tile when an assignee is covered by a planned range", async () => {
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
+    loadCalendarWith([shiftWithPlannedRangeAssignee("planned")]);
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockResolvedValue({ count: 0 });
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByLabelText("range_qualification.calendarBadge.info")).toBeInTheDocument();
+  });
+
+  test("hides the info indicator from a plain soldier viewing the calendar", async () => {
+    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false } });
+    loadCalendarWith([shiftWithPlannedRangeAssignee("planned-soldier")]);
+    vi.mocked(calendarApi.getCalendarWeaponIneligibleCount).mockResolvedValue({ count: 0 });
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await screen.findByTestId("calendar-event-planned-soldier");
+    expect(screen.queryByLabelText("range_qualification.calendarBadge.info")).not.toBeInTheDocument();
   });
 });
