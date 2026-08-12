@@ -38,6 +38,7 @@ export interface Me {
   profile_picture_url?: string | null;
   is_career?: boolean;
   can_view_transparency?: boolean;
+  alal_relevant?: boolean;
 }
 
 export interface NodeOut {
