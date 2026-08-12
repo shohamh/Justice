@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from sqlalchemy.orm import Session
 
 from app.auth.jwt_tokens import issue_access_token
 from app.auth.password import hash_password
-from app.db.models import DutyLocation, DutyManagerScope, HierarchyNode, RangeLocation, Soldier
+from app.db.models import DutyLocation, DutyManagerScope, HierarchyNode, RangeAssignment, RangeEvent, RangeLocation, Soldier
 
 
 def create_node(
@@ -73,6 +74,38 @@ def create_range_location(session: Session, *, name: str = "מיקום מטוו�
     session.add(location)
     session.flush()
     return location
+
+
+def create_range_event(
+    session: Session, *, hierarchy_node, range_location, range_type: str = "live",
+    event_date: date | None = None, required_count: int = 5, reserve_count: int = 0,
+    status: str = "planned",
+) -> RangeEvent:
+    event = RangeEvent(
+        hierarchy_node_id=hierarchy_node.id,
+        range_type=range_type,
+        date=event_date or date(2024, 6, 15),
+        range_location_id=range_location.id,
+        required_count=required_count,
+        reserve_count=reserve_count,
+        status=status,
+    )
+    session.add(event)
+    session.flush()
+    return event
+
+
+def create_range_assignment(
+    session: Session, *, range_event: RangeEvent, soldier: Soldier,
+    is_reserve: bool = False, attendance_status: str = "pending",
+) -> RangeAssignment:
+    assignment = RangeAssignment(
+        range_event_id=range_event.id, soldier_id=soldier.id,
+        is_reserve=is_reserve, attendance_status=attendance_status,
+    )
+    session.add(assignment)
+    session.flush()
+    return assignment
 
 
 def auth_headers(soldier: Soldier) -> dict[str, str]:
