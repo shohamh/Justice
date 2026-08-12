@@ -411,8 +411,8 @@
     "duty_detail": "פרטי תורנות",
     "duty_type_filter_label": "סוגי תורנויות",
     "range_filter_label": "סוגי מטווחים",
-    "weapon_ineligible_filter": "מוצגות רק תורנויות עם חיילים שאינם כשירים מבחינת הכשרת נשק",
-    "weapon_ineligible_count": "{{count}} חיילים אינם כשירים מבחינת הכשרת נשק",
+    "eventWarningBadge": "{{count}} חיילים לא כשירים למטווח",
+    "eventInfoBadge": "צפוי לעשות {{rangeType}} ב{{date}}",
     "swap_requests_count": "{{count}} בקשות החלפה",
     "swap_requests_has": "יש בקשת החלפה",
     "cover_for_free": "כסה בחינם"

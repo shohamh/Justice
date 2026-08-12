@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 
@@ -37,9 +36,7 @@ function buildDepthMap(nodes: NodeDTO[]): Map<string, number> {
 
 export default function UnitCalendarPage() {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
   const [nodeId, setNodeId] = useState<string>("");
-  const weaponIneligibleOnly = searchParams.get("filter") === "weapon_ineligible";
 
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const nodes = useMemo(() => treeOrder(treeQuery.data ?? []), [treeQuery.data]);
@@ -66,7 +63,7 @@ export default function UnitCalendarPage() {
           />
         </div>
         {effectiveNodeId ? (
-          <UnitCalendar nodeId={effectiveNodeId} weaponIneligibleOnly={weaponIneligibleOnly} />
+          <UnitCalendar nodeId={effectiveNodeId} />
         ) : <p data-testid="unit-calendar-empty">{t("unit_calendar.none")}</p>}
       </section>
     </Layout>
