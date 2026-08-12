@@ -210,3 +210,15 @@ def test_register_rejects_exemption_row_with_end_date_but_no_start_date(client, 
     resp = client.post("/api/auth/register", json=payload)
     assert resp.status_code == 400
     assert resp.json()["detail"] == "start_date_required"
+
+
+def test_public_exemption_types_expose_is_medical(client, admin_session):
+    from app.db.models import ExemptionType
+    et = ExemptionType(name=f"פטור-medical-{_uid()}", is_commander_exemption=False, is_medical=True)
+    admin_session.add(et)
+    admin_session.commit()
+
+    resp = client.get("/api/auth/exemption-types")
+    assert resp.status_code == 200
+    row = next(r for r in resp.json() if r["id"] == str(et.id))
+    assert row["is_medical"] is True

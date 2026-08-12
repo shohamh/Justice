@@ -108,6 +108,7 @@ export interface PublicExemptionType {
   id: string;
   name: string;
   description: string | null;
+  is_medical: boolean;
 }
 
 export async function listPublicExemptionTypes(): Promise<PublicExemptionType[]> {

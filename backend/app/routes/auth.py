@@ -459,6 +459,7 @@ class PublicExemptionTypeOut(BaseModel):
     id: uuid.UUID
     name: str
     description: str | None = None
+    is_medical: bool
 
 
 @router.get("/exemption-types", response_model=list[PublicExemptionTypeOut])
@@ -473,4 +474,4 @@ def list_public_exemption_types(
         .where(ExemptionType.is_commander_exemption.is_(False))
         .order_by(ExemptionType.name)
     ).scalars().all()
-    return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description) for et in types]
+    return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_medical=et.is_medical) for et in types]
