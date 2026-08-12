@@ -276,6 +276,11 @@ describe("RangesPage", () => {
     fireEvent.click(await screen.findByText("מטווח עריכה"));
     expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("edit-range-event-edit"));
+    // The edit button fetches fresh event data before opening the form
+    // (unlike the cancel dialog below, which opens synchronously) — press
+    // Escape only once the form has actually mounted, otherwise it's still
+    // caught by the still-open detail modal's own Escape handler instead.
+    await screen.findByTestId("range-form");
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(screen.queryByTestId("range-form")).not.toBeInTheDocument());
