@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-12
+
+### Features
+- Range eligibility warnings: calendar events and unit-calendar tiles now show a "planned range covers this duty" badge/indicator, with notifications to the soldier, commander, and duty managers when a planned range will cover an otherwise-uncovered duty.
+- New soldier-scoped range-status endpoint; a soldier's range-qualification status is now shown on their profile page and in the soldier modal, and uncovered-duty explanations are enriched with the soldier's last qualification date.
+- Weapon-eligibility warnings moved from a standalone banner onto per-event calendar badges.
+- Homepage אל"ל warning is now gated by structural duty-type relevance instead of an officer/career flag, and is suppressed entirely for soldiers exempt from all אל"ל duty types.
+- Registration/exemptions: added a permanent-exemption toggle (disables both dates, atomic file+request submit), required medical file now enforced both client- and server-side for medical exemption rows/requests, plus registration field-level validation and invite-code rate limiting.
+- Duty type settings gained a required-range-type picker.
+
+### Fixes
+- Duty assignment is never hard-blocked on a missing אל"ל qualification — the warning stays advisory only.
+- Nullable `start_date` is now guarded consistently across enrollment, duty-history, export, and PATCH paths for permanent exemptions.
+- Exemption requests are now returned in insertion order from registration so uploaded files correctly match their rows.
+- Exemption dates are now dot-formatted; the requested node is applied on enrollment approval; the pending-exemption status label, mandatory-end/enlistment date ordering, and samal-rishon rank track were all corrected.
+
+### Chores
+- Extracted a shared exemption-file validation helper.
+- Untracked `logs/backend.log.1`.
+- Added design specs and implementation plans for range-eligibility warnings, permanent-exemption/medical-file requirements, and the upcoming ranges export/import feature.
+
 ## 2026-08-10 (4)
 
 ### Features
