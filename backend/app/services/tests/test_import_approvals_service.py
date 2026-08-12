@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import uuid
+from datetime import date
 from datetime import date as date_type
 from decimal import Decimal
 
@@ -11,13 +12,18 @@ from sqlalchemy import select
 
 from app.db.models import (
     DutyAssignment, DutyLocation, DutyShift, ExemptionRequest, ExemptionType,
-    PersonalConstraint, Soldier, SoldierEnrollmentRequest, SoldierExemption,
-    SoldierFieldUpdate, SwapCandidate, SwapManagerApproval, SwapRequest,
+    PersonalConstraint, RangeAssignment, RangeExcusalRequest, RangeType, Soldier,
+    SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
+    SoldierRangeQualification, SwapCandidate, SwapManagerApproval, SwapRequest,
 )
 from app.services.duty_config import create_duty_type
 import app.services.import_parsers.v1_standard  # noqa: F401
+from app.services.import_approvals import resolve_range_excusal_requests, resolve_soldier_range_qualifications
+from app.services.import_parsers.schema import ImportRangeExcusalRequestRow, ImportSoldierRangeQualificationRow, ParsedImportData
 from app.services.import_sessions import confirm_session, create_session
-from tests.helpers import create_node, create_soldier
+from tests.helpers import (
+    create_node, create_range_assignment, create_range_event, create_range_location, create_soldier,
+)
 
 
 def _uid() -> str:
@@ -682,3 +688,77 @@ def test_swap_request_confirm_reconfirm_is_idempotent_no_duplicate_approval_rows
         select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == existing.id)
     ).scalars().all()
     assert len(approvals) == 1
+
+
+# ---------------------------------------------------------------------------
+# soldier_range_qualifications / range_excusal_requests
+# ---------------------------------------------------------------------------
+
+def test_resolve_soldier_range_qualifications_new_and_update(app_session):
+    soldier = create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי")
+    existing = SoldierRangeQualification(soldier_id=soldier.id, range_type="live", valid_until=date(2024, 1, 1))
+    app_session.add(existing)
+    app_session.flush()
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        soldier_range_qualifications=[
+            ImportSoldierRangeQualificationRow(source_row=2, id=str(existing.id), soldier_personal_number="12345", range_type="live", valid_until="2025-01-01"),
+            ImportSoldierRangeQualificationRow(source_row=3, soldier_personal_number="12345", range_type="alal", valid_until="2025-06-01"),
+        ],
+    )
+    result = resolve_soldier_range_qualifications(app_session, data)
+    assert result[0]["action"] == "update"
+    assert result[0]["existing_id"] == str(existing.id)
+    assert result[1]["action"] == "new"
+
+
+def test_resolve_soldier_range_qualifications_invalid_range_type_error(app_session):
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        soldier_range_qualifications=[
+            ImportSoldierRangeQualificationRow(source_row=2, soldier_personal_number="12345", range_type="bogus", valid_until="2025-01-01"),
+        ],
+    )
+    result = resolve_soldier_range_qualifications(app_session, data)
+    assert result[0]["action"] == "error"
+
+
+def test_resolve_range_excusal_requests_matches_existing_assignment(app_session):
+    node = create_node(app_session, name="מדור א", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    soldier = create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+    assignment = create_range_assignment(app_session, range_event=event, soldier=soldier)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_excusal_requests=[
+            ImportRangeExcusalRequestRow(
+                source_row=2, soldier_personal_number="12345", requested_by_personal_number="12345",
+                hierarchy_node_name="מדור א", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי", reason="חופשה", status="pending",
+            )
+        ],
+    )
+    result = resolve_range_excusal_requests(app_session, data)
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["resolved_range_event_id"] == str(event.id)
+    assert row["resolved_range_assignment_id"] == str(assignment.id)
+
+
+def test_resolve_range_excusal_requests_invalid_status_error(app_session):
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_excusal_requests=[
+            ImportRangeExcusalRequestRow(
+                source_row=2, soldier_personal_number="12345", range_type="live",
+                date="2024-06-15", range_location_name="מטווח דרומי", status="not_a_status",
+            )
+        ],
+    )
+    result = resolve_range_excusal_requests(app_session, data)
+    assert result[0]["action"] == "error"

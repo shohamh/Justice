@@ -29,6 +29,7 @@ from app.db.models import (
     RangeAttendanceStatus,
     RangeEvent,
     RangeEventStatus,
+    RangeExcusalRequest,
     RangeLocation,
     RangeType,
     ShiftTemplate,
@@ -36,6 +37,7 @@ from app.db.models import (
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SoldierRangeQualification,
     SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
@@ -54,8 +56,9 @@ from app.services.duty_config import (
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
 from app.services.import_approvals import (
     resolve_bug_reports, resolve_exemption_requests, resolve_personal_constraints,
-    resolve_soldier_enrollment_requests, resolve_soldier_exemptions, resolve_soldier_field_updates,
-    resolve_swap_requests, resolve_system_settings,
+    resolve_range_excusal_requests, resolve_soldier_enrollment_requests, resolve_soldier_exemptions,
+    resolve_soldier_field_updates, resolve_soldier_range_qualifications, resolve_swap_requests,
+    resolve_system_settings,
 )
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
@@ -1239,6 +1242,8 @@ def _resolve_and_score(
         "soldier_enrollment_requests": resolve_soldier_enrollment_requests(session, data, fo.get("soldier_enrollment_requests", {})),
         "soldier_exemptions": resolve_soldier_exemptions(session, data, fo.get("soldier_exemptions", {})),
         "exemption_requests": resolve_exemption_requests(session, data, fo.get("exemption_requests", {})),
+        "soldier_range_qualifications": resolve_soldier_range_qualifications(session, data, fo.get("soldier_range_qualifications", {})),
+        "range_excusal_requests": resolve_range_excusal_requests(session, data, fo.get("range_excusal_requests", {})),
         "swap_requests": resolve_swap_requests(session, data, fo.get("swap_requests", {})),
         "range_locations": _resolve_range_locations(session, data, fo.get("range_locations", {})),
         "range_events": range_events,
@@ -2161,6 +2166,80 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "soldier_exemptions", "error": str(exc)})
+
+    # ── Soldier range qualifications ──────────────────────────────────────
+    for row in state.get("soldier_range_qualifications", []):
+        effective = _effective_action(selections, "soldier_range_qualifications", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    srq = SoldierRangeQualification(
+                        soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                        range_type=row["range_type"],
+                        valid_until=date_type.fromisoformat(row["valid_until"]),
+                    )
+                    session.add(srq)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    srq = session.get(SoldierRangeQualification, uuid.UUID(row["existing_id"]))
+                    if srq is not None:
+                        srq.range_type = row["range_type"]
+                        srq.valid_until = date_type.fromisoformat(row["valid_until"])
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "soldier_range_qualifications", "error": str(exc)})
+
+    # ── Range excusal requests ──────────────────────────────────────────
+    for row in state.get("range_excusal_requests", []):
+        effective = _effective_action(selections, "range_excusal_requests", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    rer = RangeExcusalRequest(
+                        range_assignment_id=(
+                            uuid.UUID(row["resolved_range_assignment_id"]) if row.get("resolved_range_assignment_id") else None
+                        ),
+                        range_event_id=(
+                            uuid.UUID(row["resolved_range_event_id"]) if row.get("resolved_range_event_id") else None
+                        ),
+                        requested_by=(
+                            uuid.UUID(row["resolved_requested_by_id"]) if row.get("resolved_requested_by_id") else None
+                        ),
+                        reason=row.get("reason") or "",
+                        status=row["status"],
+                    )
+                    if row.get("resolved_decided_by_id"):
+                        rer.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        rer.decided_at = datetime.now(UTC)
+                    rer.decision_note = row.get("decision_note")
+                    session.add(rer)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    rer = session.get(RangeExcusalRequest, uuid.UUID(row["existing_id"]))
+                    if rer is not None:
+                        rer.status = row["status"]
+                        if row.get("reason") is not None:
+                            rer.reason = row["reason"]
+                        if row.get("resolved_decided_by_id"):
+                            rer.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        rer.decision_note = row.get("decision_note")
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_excusal_requests", "error": str(exc)})
 
     # ── Exemption requests ───────────────────────────────────────────────
     for row in state.get("exemption_requests", []):
