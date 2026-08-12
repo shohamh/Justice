@@ -60,6 +60,7 @@ from app.services.import_approvals import (
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
+from app.services.range_locations import create_range_location
 from app.services.settings_loader import set_setting
 from app.services.shift_quotas import set_shift_quotas
 from app.services.shift_templates import create_template, update_template
@@ -1328,6 +1329,10 @@ def confirm_session(
     created_assignments: list[str] = []
     created_shift_templates: list[str] = []
     shift_row_to_id: dict[int, uuid.UUID] = {}
+    created_range_locations: list[str] = []
+    created_range_events: list[str] = []
+    created_range_assignments: list[str] = []
+    range_event_row_to_id: dict[int, uuid.UUID] = {}
 
     # ── Soldiers ────────────────────────────────────────────────────────
     for row in state.get("soldiers", []):
@@ -1567,6 +1572,109 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_locations", "error": str(exc)})
+
+    # ── Range locations ─────────────────────────────────────────────────
+    for row in state.get("range_locations", []):
+        effective = _effective_action(selections, "range_locations", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    new_loc = create_range_location(session, name=row["name"], actor_id=actor.id)
+                    if row.get("active") is not None:
+                        new_loc.active = row["active"]
+                    created += 1
+                    created_range_locations.append(str(new_loc.id))
+                elif effective == "update" and row.get("existing_id"):
+                    loc = session.get(RangeLocation, uuid.UUID(row["existing_id"]))
+                    if loc is not None:
+                        loc.name = row["name"]
+                        if row.get("active") is not None:
+                            loc.active = row["active"]
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_locations", "error": str(exc)})
+
+    # ── Range events ─────────────────────────────────────────────────────
+    for row in state.get("range_events", []):
+        effective = _effective_action(selections, "range_events", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        if effective != "new":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                event = RangeEvent(
+                    hierarchy_node_id=uuid.UUID(row["resolved_hierarchy_node_id"]),
+                    range_type=row["range_type"],
+                    date=date_type.fromisoformat(row["date"]),
+                    range_location_id=uuid.UUID(row["resolved_range_location_id"]),
+                    required_count=row["required_count"],
+                    reserve_count=row.get("reserve_count") or 0,
+                    status=row.get("status") or "planned",
+                    start_time=row.get("start_time"),
+                    end_time=row.get("end_time"),
+                    arrival_instructions=row.get("arrival_instructions"),
+                    contact_name=row.get("contact_name"),
+                    contact_phone=row.get("contact_phone"),
+                    notes=row.get("notes"),
+                    created_by=actor.id,
+                )
+                session.add(event)
+                session.flush()
+            created += 1
+            created_range_events.append(str(event.id))
+            range_event_row_to_id[row["row"]] = event.id
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_events", "error": str(exc)})
+
+    # ── Range assignments ───────────────────────────────────────────────
+    for row in state.get("range_assignments", []):
+        effective = _effective_action(selections, "range_assignments", row)
+        if row["action"] in ("error", "out_of_scope", "skip") or effective == "skip":
+            skipped += 1
+            continue
+        if effective != "new":
+            skipped += 1
+            continue
+        try:
+            if row.get("resolved_range_event_id"):
+                range_event_id = uuid.UUID(row["resolved_range_event_id"])
+            elif row.get("matched_session_row") is not None:
+                mapped = range_event_row_to_id.get(row["matched_session_row"])
+                if mapped is None:
+                    errors.append({
+                        "row": row["row"], "type": "range_assignments",
+                        "error": "המטווח המתאים לא נוצר (דולג או נכשל)",
+                    })
+                    continue
+                range_event_id = mapped
+            else:
+                errors.append({"row": row["row"], "type": "range_assignments", "error": "לא נמצא מטווח תואם"})
+                continue
+
+            with session.begin_nested():
+                assignment = RangeAssignment(
+                    range_event_id=range_event_id,
+                    soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                    is_reserve=row.get("is_reserve") or False,
+                    is_draft=row.get("is_draft") or False,
+                    attendance_status=row.get("attendance_status") or "pending",
+                    note=row.get("note"),
+                )
+                session.add(assignment)
+            created += 1
+            created_range_assignments.append(str(assignment.id))
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_assignments", "error": str(exc)})
 
     # ── Duty types ──────────────────────────────────────────────────────
     for row in state.get("duty_types", []):
@@ -2202,6 +2310,9 @@ def confirm_session(
         "duty_shifts": created_duty_shifts,
         "assignments": created_assignments,
         "shift_templates": created_shift_templates,
+        "range_locations": created_range_locations,
+        "range_events": created_range_events,
+        "range_assignments": created_range_assignments,
     }
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)

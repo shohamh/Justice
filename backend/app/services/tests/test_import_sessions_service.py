@@ -9,7 +9,15 @@ import openpyxl
 import pytest
 from sqlalchemy import select
 
-from app.db.models import DutyManagerScope, DutyLocation, DutyShiftNodeQuota, Soldier
+from app.db.models import (
+    DutyManagerScope,
+    DutyLocation,
+    DutyShiftNodeQuota,
+    RangeAssignment,
+    RangeEvent,
+    RangeLocation,
+    Soldier,
+)
 from app.services.duty_config import create_duty_type
 import app.services.import_parsers.v1_standard  # noqa: F401  (registers "v1_standard" parser)
 from app.services.import_sessions import (
@@ -2074,3 +2082,35 @@ def test_create_session_resolves_range_sheets(admin_session):
     assert sess.parsed_state["range_locations"][0]["action"] == "new"
     assert sess.parsed_state["range_events"] == []
     assert sess.parsed_state["range_assignments"] == []
+
+
+def test_confirm_session_creates_range_event_and_assignment(app_session):
+    admin = create_soldier(app_session, personal_number="admin-8", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    soldier = create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    create_range_location(app_session, name="מטווח דרומי")
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws_ev = wb.create_sheet("range_events")
+    ws_ev.append([
+        "hierarchy_node_name", "range_type", "date", "range_location_name", "required_count",
+    ])
+    ws_ev.append(["מדור א", "live", "15.06.2024", "מטווח דרומי", "10"])
+    ws_as = wb.create_sheet("range_assignments")
+    ws_as.append(["personal_number", "full_name", "hierarchy_node_name", "range_type", "date", "range_location_name"])
+    ws_as.append(["12345", "ישראל ישראלי", "מדור א", "live", "15.06.2024", "מטווח דרומי"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    sess = create_session(app_session, filename="ranges.xlsx", content=buf.getvalue(), actor=admin)
+    result = confirm_session(app_session, session_id=sess.id, actor=admin)
+
+    assert result["errors"] == []
+    events = app_session.execute(select(RangeEvent)).scalars().all()
+    assert len(events) == 1
+    assert events[0].required_count == 10
+    assignments = app_session.execute(select(RangeAssignment)).scalars().all()
+    assert len(assignments) == 1
+    assert assignments[0].soldier_id == soldier.id
+    assert assignments[0].range_event_id == events[0].id
