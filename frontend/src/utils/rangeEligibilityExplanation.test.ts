@@ -1,7 +1,8 @@
 import type { TFunction } from "i18next";
 import { describe, expect, it } from "vitest";
 import type { DutyEligibilityFact } from "../api/ineligibleSoldiers";
-import { formatRangeEligibilityExplanation } from "./rangeEligibilityExplanation";
+import type { RangeStatus } from "../api/rangeStatus";
+import { formatRangeEligibilityExplanation, formatRangeStatus } from "./rangeEligibilityExplanation";
 
 const translations: Record<string, string> = {
   "range_qualification.explanation.noCurrentQualification": "אין מטווחים בתוקף",
@@ -9,7 +10,10 @@ const translations: Record<string, string> = {
   "range_qualification.explanation.uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
   "range_qualification.explanation.plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}",
   "range_qualification.explanation.neverQualified": "אין מטווחים בתוקף",
-  "range_qualification.explanation.lastQualification": "מטווח אחרון - {{rangeType}} ב{{date}}",
+  "range_qualification.explanation.lastQualification": "מטווח אחרון - {{rangeType}} (בתוקף עד {{date}})",
+  "range_qualification.status.eligible": "כשיר למטווח מסוג {{rangeType}}; בתוקף עד {{date}}",
+  "range_qualification.status.ineligible": "אין כשירות מטווח מסוג {{rangeType}}",
+  "range_qualification.status.enforcementDisabled": "אכיפת כשירות מטווח מסוג {{rangeType}} אינה פעילה כעת",
 };
 
 const t = ((key: string, options?: Record<string, string>) =>
@@ -88,5 +92,82 @@ describe("formatRangeEligibilityExplanation", () => {
       t,
     );
     expect(result).toContain("אין מטווחים בתוקף");
+  });
+});
+
+function rangeStatus(overrides: Partial<RangeStatus>): RangeStatus {
+  return {
+    required_range_type: "laser",
+    eligible: false,
+    qualification_source: null,
+    covered_by_range_date: null,
+    covering_range_type: null,
+    projected_valid_until: null,
+    last_qualification_type: null,
+    last_qualification_date: null,
+    ...overrides,
+  };
+}
+
+describe("formatRangeStatus", () => {
+  it("renders an eligible status with the valid-until date and no undefined text", () => {
+    const result = formatRangeStatus(
+      rangeStatus({
+        eligible: true,
+        qualification_source: "current_qualification",
+        projected_valid_until: "2027-02-20",
+      }),
+      t,
+    );
+    expect(result).toBe("כשיר למטווח מסוג מטווח לייזר; בתוקף עד 20.02.2027");
+    expect(result).not.toContain("undefined");
+    expect(result).not.toContain("אין כשירות מטווח");
+  });
+
+  it("renders planned-range coverage using the same phrasing as duty-based explanations", () => {
+    const result = formatRangeStatus(
+      rangeStatus({
+        eligible: true,
+        qualification_source: "planned_range",
+        covered_by_range_date: "2026-08-20",
+        projected_valid_until: "2027-02-20",
+      }),
+      t,
+    );
+    expect(result).toBe("מטווח מתוכנן מסוג מטווח לייזר בתאריך 20.08.2026 מכסה את התורנות; הכשירות צפויה בתוקף עד 20.02.2027");
+    expect(result).not.toContain("undefined");
+  });
+
+  it("renders a neutral message when enforcement is disabled", () => {
+    const result = formatRangeStatus(
+      rangeStatus({ eligible: true, qualification_source: "enforcement_disabled" }),
+      t,
+    );
+    expect(result).toBe("אכיפת כשירות מטווח מסוג מטווח לייזר אינה פעילה כעת");
+    expect(result).not.toContain("undefined");
+  });
+
+  it("renders an ineligible status with the last-qualification clause and no duty reference", () => {
+    const result = formatRangeStatus(
+      rangeStatus({
+        required_range_type: "live",
+        eligible: false,
+        qualification_source: null,
+        last_qualification_type: "live",
+        last_qualification_date: "2026-03-01",
+      }),
+      t,
+    );
+    expect(result).toBe("אין כשירות מטווח מסוג מטווח חי מטווח אחרון - מטווח חי (בתוקף עד 01.03.2026)");
+    expect(result).not.toContain("undefined");
+  });
+
+  it("renders an ineligible status with never-qualified when there is no last qualification", () => {
+    const result = formatRangeStatus(
+      rangeStatus({ required_range_type: "alal", eligible: false, qualification_source: null }),
+      t,
+    );
+    expect(result).toBe('אין כשירות מטווח מסוג אל"ל אין מטווחים בתוקף');
+    expect(result).not.toContain("undefined");
   });
 });

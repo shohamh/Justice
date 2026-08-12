@@ -26,7 +26,7 @@ import Combobox from "../components/Combobox";
 import DateInput from "../components/DateInput";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
-import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
+import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -278,22 +278,7 @@ export default function ProfilePage() {
               <ul className="mt-1 space-y-1">
                 {rangeStatus.statuses.map((s) => (
                   <li key={s.required_range_type} className="text-xs">
-                    {formatRangeEligibilityExplanation(
-                      {
-                        eligible: s.eligible,
-                        required_range_type: s.required_range_type,
-                        qualification_source: s.qualification_source,
-                        covered_by_range_date: s.covered_by_range_date,
-                        covering_range_type: s.covering_range_type,
-                        projected_valid_until: s.projected_valid_until,
-                        reason: null,
-                        duty_type_name: "",
-                        start_date: "",
-                        last_qualification_type: s.last_qualification_type,
-                        last_qualification_date: s.last_qualification_date,
-                      },
-                      t,
-                    )}
+                    {formatRangeStatus(s, t)}
                   </li>
                 ))}
               </ul>

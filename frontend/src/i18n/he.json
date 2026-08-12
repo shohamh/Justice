@@ -1371,7 +1371,7 @@
       "uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
       "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}",
       "neverQualified": "אין מטווחים בתוקף",
-      "lastQualification": "מטווח אחרון - {{rangeType}} ב{{date}}"
+      "lastQualification": "מטווח אחרון - {{rangeType}} (בתוקף עד {{date}})"
     },
     "shiftDetail": {
       "requiredRange": "נדרש לפחות מטווח מסוג {{rangeType}}",
@@ -1381,8 +1381,9 @@
     },
     "status": {
       "sectionTitle": "מצב מטווחים",
-      "eligible": "כשיר",
-      "ineligible": "לא כשיר"
+      "eligible": "כשיר למטווח מסוג {{rangeType}}; בתוקף עד {{date}}",
+      "ineligible": "אין כשירות מטווח מסוג {{rangeType}}",
+      "enforcementDisabled": "אכיפת כשירות מטווח מסוג {{rangeType}} אינה פעילה כעת"
     },
     "tablistLabel": "תצוגת מטווחים",
     "warning": {

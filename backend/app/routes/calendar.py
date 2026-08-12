@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, Soldier, SwapRequest
+from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, RangeType, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import scoring as scoring_svc
 from app.services.calendar_shifts import (
@@ -57,6 +57,8 @@ class CalendarRangeEligibilityFact(BaseModel):
     reason: str | None
     duty_type_name: str
     start_date: date
+    last_qualification_type: RangeType | None
+    last_qualification_date: date | None
 
 
 class CalendarShiftAssignee(BaseModel):

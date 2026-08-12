@@ -15,7 +15,7 @@ import { listDutyTypes } from "../api/dutyConfig";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { useAuth } from "../auth/AuthContext";
-import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
+import { formatDate, formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
@@ -339,7 +339,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
                         rangeType:
                           RANGE_TYPE_LABELS[plannedCoverageAssignee.range_eligibility.covering_range_type ?? ""]
                           ?? plannedCoverageAssignee.range_eligibility.covering_range_type,
-                        date: plannedCoverageAssignee.range_eligibility.covered_by_range_date,
+                        date: formatDate(plannedCoverageAssignee.range_eligibility.covered_by_range_date),
                       })}
                       className="inline-flex items-center rounded bg-blue-100 px-1 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-shrink-0"
                     >
