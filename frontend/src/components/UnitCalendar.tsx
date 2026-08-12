@@ -322,14 +322,15 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
                   {ineligibleAssignees.length > 0 && (
                     <span
                       data-testid={`shift-warning-badge-${shift.id}`}
+                      aria-label={t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length })}
                       title={
                         ineligibleAssignees.length === 1
                           ? formatRangeEligibilityExplanation(ineligibleAssignees[0].range_eligibility!, t)
                           : t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length })
                       }
-                      className="inline-flex items-center rounded bg-red-100 px-1 text-red-700 dark:bg-red-950 dark:text-red-300 flex-shrink-0"
+                      className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 text-red-700 dark:bg-red-950 dark:text-red-300 flex-shrink-0"
                     >
-                      ⚠
+                      ⚠<span className="text-[10px] leading-4">{ineligibleAssignees.length}</span>
                     </span>
                   )}
                   {plannedCoverageAssignee?.range_eligibility?.covered_by_range_date && (

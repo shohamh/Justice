@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import { SwapRequest, listSwapsForAssignment, checkCoverEligibility } from "../api/swaps";
@@ -37,6 +37,56 @@ function SoldierAvatar({ url, name }: { url: string | null | undefined; name: st
     <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0 text-indigo-700 dark:text-indigo-300 font-semibold text-xs">
       {initials}
     </div>
+  );
+}
+
+function RangeEligibilityBadge({
+  kind,
+  label,
+  explanation,
+}: {
+  kind: "warning" | "info";
+  label: string;
+  explanation: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const colorCls =
+    kind === "warning"
+      ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+      : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+
+  return (
+    <span ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        aria-label={label}
+        title={explanation}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className={`inline-flex items-center rounded px-1.5 py-0.5 ${colorCls}`}
+      >
+        {kind === "warning" ? "⚠️" : "ℹ️"}
+      </button>
+      {open && (
+        <div
+          role="tooltip"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute z-10 top-full mt-1 w-56 rounded border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+        >
+          {explanation}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -158,24 +208,20 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
     }
     if (!assignee.range_eligibility.eligible) {
       return (
-        <span
-          aria-label={t("range_qualification.shiftDetail.warning")}
-          title={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
-          className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300"
-        >
-          ⚠️
-        </span>
+        <RangeEligibilityBadge
+          kind="warning"
+          label={t("range_qualification.shiftDetail.warning")}
+          explanation={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
+        />
       );
     }
     if (assignee.range_eligibility.qualification_source === "planned_range") {
       return (
-        <span
-          aria-label={t("range_qualification.shiftDetail.info")}
-          title={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
-          className="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-        >
-          ℹ️
-        </span>
+        <RangeEligibilityBadge
+          kind="info"
+          label={t("range_qualification.shiftDetail.info")}
+          explanation={formatRangeEligibilityExplanation(assignee.range_eligibility, t)}
+        />
       );
     }
     return null;
