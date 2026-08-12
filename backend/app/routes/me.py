@@ -13,6 +13,7 @@ from app.auth.deps import get_current_user, require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierEnrollmentRequest, TelegramLink
 from app.db.session import get_session
 from app.services import email_verification as ev_svc
+from app.services.alal_relevance import is_alal_relevant
 from app.services.authority import has_any_visibility
 from app.services.settings_loader import get_setting
 
@@ -51,6 +52,7 @@ class MeResponse(BaseModel):
     enrollment_pending: bool = False
     theme_preference: str = "system"
     can_view_transparency: bool = False
+    alal_relevant: bool = False
 
 
 class SetEmailRequest(BaseModel):
@@ -143,6 +145,7 @@ def me(
         enrollment_pending=enrollment_pending,
         theme_preference=user.theme_preference,
         can_view_transparency=can_view_transparency,
+        alal_relevant=is_alal_relevant(session, user),
     )
 
 

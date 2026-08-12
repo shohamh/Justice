@@ -27,6 +27,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services import duty_config as svc
+from app.services.alal_relevance import invalidate_alal_relevance_cache
 
 router = APIRouter(prefix="/duty-config", tags=["duty-config"])
 
@@ -172,6 +173,7 @@ def create_duty_type(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(dt)
+    invalidate_alal_relevance_cache()
     return _dt_out(dt)
 
 
@@ -230,6 +232,7 @@ def update_duty_type(
         if affected_ids:
             recheck_assignments(session, affected_ids)
 
+    invalidate_alal_relevance_cache()
     session.refresh(dt)
     return _dt_out(dt)
 
@@ -314,6 +317,7 @@ def delete_duty_type(
         )
     session.delete(dt)
     session.commit()
+    invalidate_alal_relevance_cache()
 
 
 # ---- locations ----

@@ -69,3 +69,20 @@ def test_me_includes_can_view_transparency(client, admin_session):
     r = client.get("/api/me", headers=auth_headers(s))
     assert r.status_code == 200
     assert r.json()["can_view_transparency"] is False
+
+
+def test_me_includes_alal_relevant_flag(client, admin_session) -> None:
+    from app.db.models import DutyType, RangeType
+
+    node = create_node(admin_session, level="team", name="me-alal-team")
+    soldier = create_soldier(admin_session, personal_number="me-alal-001", hierarchy_node_id=node.id)
+    admin_session.add(DutyType(
+        name="me-alal-duty", score_per_day=1, requires_weapon=True,
+        required_range_type=RangeType.alal, eligible_node_ids=[node.id],
+    ))
+    admin_session.commit()
+
+    response = client.get("/api/me", headers=auth_headers(soldier))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["alal_relevant"] is True
