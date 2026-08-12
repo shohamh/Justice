@@ -9,11 +9,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import is_commander, is_duty_manager
+from app.auth.authz import Action, authorize, is_commander, is_duty_manager
 from app.auth.deps import require_password_changed
 from app.db.models import DutyManagerScope, HierarchyNode, RangeType, Soldier
 from app.db.session import get_session
 from app.services import ineligible_soldiers as svc
+from app.services.soldier_range_status import list_relevant_range_statuses
 
 router = APIRouter(prefix="/ranges", tags=["ranges"])
 
@@ -78,6 +79,22 @@ class IneligibleSoldiersOut(BaseModel):
 
 class IneligibleSoldierCountOut(BaseModel):
     count: int
+
+
+class RangeStatusOut(BaseModel):
+    required_range_type: RangeType
+    eligible: bool
+    qualification_source: str | None
+    covered_by_range_date: date_type | None
+    covering_range_type: RangeType | None
+    projected_valid_until: date_type | None
+    last_qualification_type: RangeType | None
+    last_qualification_date: date_type | None
+
+
+class SoldierRangeStatusOut(BaseModel):
+    soldier_id: uuid.UUID
+    statuses: list[RangeStatusOut]
 
 
 def _resolve_roots(session: Session, *, user: Soldier, audience: Audience) -> set[uuid.UUID] | None:
@@ -238,3 +255,42 @@ def list_ineligible_soldiers(
 ) -> IneligibleSoldiersOut:
     roots = _resolve_roots(session, user=user, audience=audience)
     return _response(session, roots=roots)
+
+
+soldiers_router = APIRouter(prefix="/soldiers", tags=["ranges"])
+
+
+@soldiers_router.get("/{soldier_id}/range-status", response_model=SoldierRangeStatusOut)
+def get_soldier_range_status(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierRangeStatusOut:
+    target = session.get(Soldier, soldier_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    is_self = target.id == user.id
+    if not is_self and user.role != "admin":
+        target_node = (
+            session.get(HierarchyNode, target.hierarchy_node_id)
+            if target.hierarchy_node_id
+            else None
+        )
+        authorize(session, user, Action.SOLDIER_READ, target_node=target_node)
+    statuses = list_relevant_range_statuses(session, soldier=target)
+    return SoldierRangeStatusOut(
+        soldier_id=target.id,
+        statuses=[
+            RangeStatusOut(
+                required_range_type=s.required_range_type,
+                eligible=s.eligible,
+                qualification_source=s.qualification_source,
+                covered_by_range_date=s.covered_by_range_date,
+                covering_range_type=s.covering_range_type,
+                projected_valid_until=s.projected_valid_until,
+                last_qualification_type=s.last_qualification_type,
+                last_qualification_date=s.last_qualification_date,
+            )
+            for s in statuses
+        ],
+    )
