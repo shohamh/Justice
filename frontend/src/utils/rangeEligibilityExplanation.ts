@@ -30,9 +30,16 @@ export function formatRangeEligibilityExplanation(fact: DutyEligibilityFact, t: 
     return t("range_qualification.explanation.noCurrentQualification");
   }
 
-  return t("range_qualification.explanation.uncoveredDuty", {
+  const lastQualificationClause = fact.last_qualification_date
+    ? t("range_qualification.explanation.lastQualification", {
+        rangeType: RANGE_TYPE_LABELS[fact.last_qualification_type ?? ""] ?? fact.last_qualification_type,
+        date: formatDate(fact.last_qualification_date),
+      })
+    : t("range_qualification.explanation.neverQualified");
+
+  return `${t("range_qualification.explanation.uncoveredDuty", {
     dutyType: fact.duty_type_name,
     rangeType: RANGE_TYPE_LABELS[fact.required_range_type] ?? fact.required_range_type,
     date: formatDate(fact.start_date),
-  });
+  })} ${lastQualificationClause}`;
 }

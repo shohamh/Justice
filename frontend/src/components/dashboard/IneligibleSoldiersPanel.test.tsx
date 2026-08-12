@@ -17,6 +17,8 @@ vi.mock("react-i18next", () => ({
       "range_qualification.qualificationExpiry": `בתוקף עד ${options?.date}`,
       "range_qualification.explanation.noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
       "range_qualification.explanation.uncoveredDuty": `מוצב לתורנות ${options?.dutyType} שדורשת לפחות מטווח מסוג ${options?.rangeType} בתאריך ${options?.date}`,
+      "range_qualification.explanation.neverQualified": "אין מטווחים בתוקף",
+      "range_qualification.explanation.lastQualification": `מטווח אחרון - ${options?.rangeType} ב${options?.date}`,
       "range_qualification.soldiersLoading": "טוען חיילים ללא הסמכה...",
       "range_qualification.soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
       "range_qualification.soldiersEmpty": "אין חיילים ללא הסמכת מטווח",
@@ -95,7 +97,7 @@ describe("IneligibleSoldiersPanel", () => {
     const soldierTable = screen.getByTestId("ineligible-soldiers-node-company");
     expect(within(soldierTable).getByRole("button", { name: "נועם כהן" })).toBeInTheDocument();
     expect(within(soldierTable).getByRole("button", { name: "אורי פרץ" })).toBeInTheDocument();
-    expect(within(soldierTable).getByText("מוצב לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026")).toBeInTheDocument();
+    expect(within(soldierTable).getByText("מוצב לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026 אין מטווחים בתוקף")).toBeInTheDocument();
 
     const hierarchyTable = screen.getByTestId("ineligible-soldiers-table");
     await act(async () => {

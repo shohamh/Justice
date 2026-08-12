@@ -8,6 +8,8 @@ const translations: Record<string, string> = {
   "range_qualification.explanation.noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
   "range_qualification.explanation.uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
   "range_qualification.explanation.plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}",
+  "range_qualification.explanation.neverQualified": "אין מטווחים בתוקף",
+  "range_qualification.explanation.lastQualification": "מטווח אחרון - {{rangeType}} ב{{date}}",
 };
 
 const t = ((key: string, options?: Record<string, string>) =>
@@ -27,6 +29,8 @@ function fact(overrides: Partial<DutyEligibilityFact>): DutyEligibilityFact {
     reason: "weapon_qualification",
     duty_type_name: "שמירה",
     start_date: "2026-08-21",
+    last_qualification_type: null,
+    last_qualification_date: null,
     ...overrides,
   };
 }
@@ -41,7 +45,7 @@ describe("formatRangeEligibilityExplanation", () => {
   });
 
   it("explains an uncovered weapon duty with its required range and date", () => {
-    expect(formatRangeEligibilityExplanation(fact({ required_range_type: "live" }), t)).toBe("משובץ לתורנות שמירה שדורשת לפחות מטווח מסוג מטווח חי בתאריך 21.08.2026");
+    expect(formatRangeEligibilityExplanation(fact({ required_range_type: "live" }), t)).toBe("משובץ לתורנות שמירה שדורשת לפחות מטווח מסוג מטווח חי בתאריך 21.08.2026 אין מטווחים בתוקף");
   });
 
   it("explains planned-range coverage and projected validity instead of an uncovered duty", () => {
@@ -63,5 +67,26 @@ describe("formatRangeEligibilityExplanation", () => {
       covering_range_type: "live",
       projected_valid_until: "2027-02-20",
     }), t)).toBe("מטווח מתוכנן מסוג מטווח חי בתאריך 20.08.2026 מכסה את התורנות; הכשירות צפויה בתוקף עד 20.02.2027");
+  });
+
+  it("appends the last qualification when uncovered and previously qualified", () => {
+    const result = formatRangeEligibilityExplanation(
+      fact({
+        required_range_type: "laser",
+        qualification_source: null,
+        last_qualification_type: "laser",
+        last_qualification_date: "2026-03-01",
+      }),
+      t,
+    );
+    expect(result).toContain("מטווח אחרון");
+  });
+
+  it("notes never-qualified when uncovered and no last qualification exists", () => {
+    const result = formatRangeEligibilityExplanation(
+      fact({ required_range_type: "laser", qualification_source: null, last_qualification_type: null, last_qualification_date: null }),
+      t,
+    );
+    expect(result).toContain("אין מטווחים בתוקף");
   });
 });

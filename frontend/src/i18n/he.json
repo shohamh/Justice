@@ -1369,7 +1369,9 @@
       "noCurrentQualification": "אין מטווחים בתוקף",
       "noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
       "uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
-      "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}"
+      "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}",
+      "neverQualified": "אין מטווחים בתוקף",
+      "lastQualification": "מטווח אחרון - {{rangeType}} ב{{date}}"
     },
     "shiftDetail": {
       "requiredRange": "נדרש לפחות מטווח מסוג {{rangeType}}",

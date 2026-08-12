@@ -26,6 +26,8 @@ export interface DutyEligibilityFact {
   reason: string | null;
   duty_type_name: string;
   start_date: string;
+  last_qualification_type: RangeType | null;
+  last_qualification_date: string | null;
 }
 
 export interface UpcomingWeaponDuty extends DutyEligibilityFact {
