@@ -333,6 +333,41 @@ def test_export_exemption_requests_sheet(client, admin_session):
     assert row[7] == "pending"
 
 
+def test_export_exemption_requests_sheet_survives_permanent_request(client, admin_session):
+    """Regression test: a permanent exemption request (start_date=None) used
+    to crash the whole XLSX export (r.start_date.isoformat() with no None
+    guard) for admins as soon as any such row existed, not just the row
+    itself failing to render."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    node = create_hierarchy_node(admin_session, level="group", name=f"מדור_{_uid()}", parent_id=None)
+    soldier = create_soldier(
+        admin_session, personal_number=f"sld_{_uid()}", hierarchy_node_id=node.id
+    )
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=node.id))
+    et = ExemptionType(name=f"et_{_uid()}", is_global=False, is_medical=False, is_commander_exemption=False)
+    admin_session.add(et)
+    admin_session.flush()
+    req = ExemptionRequest(
+        soldier_id=soldier.id,
+        exemption_type_id=et.id,
+        start_date=None,
+        reason="פטור קבוע",
+        status="pending",
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/approvals/export?sheets=exemption_requests",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    rows = list(wb["exemption_requests"].iter_rows(min_row=2, values_only=True))
+    row = next(r for r in rows if r[0] == str(req.id))
+    assert not row[4]
+
+
 def test_export_exemption_requests_sheet_redacts_reason_when_actor_out_of_scope(client, admin_session):
     """Same privacy policy as constraints: an export actor with no
     commander/duty-manager scope over the soldier's node must not see the

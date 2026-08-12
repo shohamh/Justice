@@ -440,6 +440,8 @@
     "no_permission": "אין לך הרשאה לבצע פעולה זו",
     "exemption_request_not_pending": "בקשת הפטור כבר טופלה",
     "exemption_type_not_found": "סוג הפטור לא נמצא",
+    "medical_exemption_requires_file": "יש לצרף מסמך רפואי לבקשת פטור רפואי",
+    "start_date_required": "יש למלא תאריך התחלה כאשר מוזן תאריך סיום",
     "insufficient_rank_for_exemption_approval": "נדרש דרג רסן ומעלה לאישור פטורים",
     "name_taken": "השם כבר קיים במערכת",
     "exemption_type_in_use": "סוג הפטור בשימוש ולא ניתן למחוק אותו",

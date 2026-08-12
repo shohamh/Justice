@@ -3,7 +3,7 @@ import { api } from "./client";
 export interface EnrollmentExemptionDTO {
   id: string;
   exemption_type_id: string | null;
-  start_date: string;
+  start_date: string | null;
   end_date: string | null;
   reason: string | null;
   status: string;

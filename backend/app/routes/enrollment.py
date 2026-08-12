@@ -44,7 +44,7 @@ class NearestApproverOut(BaseModel):
 class EnrollmentExemptionOut(BaseModel):
     id: uuid.UUID
     exemption_type_id: uuid.UUID | None
-    start_date: str
+    start_date: str | None
     end_date: str | None
     reason: str | None
     status: str
@@ -186,7 +186,7 @@ def _soldier_to_out(
             EnrollmentExemptionOut(
                 id=er.id,
                 exemption_type_id=er.exemption_type_id,
-                start_date=er.start_date.isoformat(),
+                start_date=er.start_date.isoformat() if er.start_date else None,
                 end_date=er.end_date.isoformat() if er.end_date else None,
                 reason=er.reason,
                 status=er.status,

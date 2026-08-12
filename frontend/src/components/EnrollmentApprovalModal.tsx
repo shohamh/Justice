@@ -1,4 +1,5 @@
 import { FormEvent, MouseEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, onClose, onDone }: Props) {
+  const { t } = useTranslation();
   useModalBackClose(onClose);
 
   function handleBackdropClick(e: MouseEvent<HTMLDivElement>) {
@@ -236,7 +238,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
                     <span className="font-medium">
                       {er.exemption_type_id ? (typeById[er.exemption_type_id] ?? er.exemption_type_id) : "—"}
                     </span>
-                    {" · "}{er.start_date}{er.end_date ? ` → ${er.end_date}` : " → ללא הגבלה"}
+                    {" · "}{er.start_date ?? t("exemption_requests.start_date_pending_approval")}{er.end_date ? ` → ${er.end_date}` : " → ללא הגבלה"}
                     {er.reason && <span className="text-gray-500"> · {er.reason}</span>}
                     <span
                       className={`mr-2 px-1 rounded text-xs ${

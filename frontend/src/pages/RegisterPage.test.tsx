@@ -106,4 +106,46 @@ describe("RegisterPage - exemption rows", () => {
 
     expect(screen.getByText("register.next")).toBeDisabled();
   });
+
+  // Regression tests: unlike MyRequestsPage, RegisterPage's per-row file
+  // picker used to have no size cap, and files that failed the magic-byte
+  // signature check were silently dropped from `valid` with zero feedback —
+  // a soldier attaching a genuine oversized or funky-header PDF saw nothing
+  // happen and "next" just stayed disabled with no explanation.
+  it("shows the oversized file in a rejected-files list instead of silently dropping it", async () => {
+    await goToExemptionsStep();
+    fireEvent.click(screen.getByText("+ register.add_exemption"));
+
+    const input = screen.getByTestId("register-er-files-0");
+    const bigFile = new File([new Uint8Array(11 * 1024 * 1024)], "big.pdf", { type: "application/pdf" });
+    fireEvent.change(input, { target: { files: [bigFile] } });
+
+    await waitFor(() => expect(screen.getByText("exemption_requests.file_too_large")).toBeInTheDocument());
+    expect(screen.getByText("big.pdf")).toBeInTheDocument();
+  });
+
+  it("shows a file with a bad magic-byte signature in the rejected-files list instead of dropping it silently", async () => {
+    await goToExemptionsStep();
+    fireEvent.click(screen.getByText("+ register.add_exemption"));
+
+    const input = screen.getByTestId("register-er-files-0");
+    const badFile = new File(["not actually a pdf"], "fake.pdf", { type: "application/pdf" });
+    fireEvent.change(input, { target: { files: [badFile] } });
+
+    await waitFor(() => expect(screen.getByText("exemption_requests.file_too_large")).toBeInTheDocument());
+    expect(screen.getByText("fake.pdf")).toBeInTheDocument();
+  });
+
+  it("keeps each row's rejected-files list independent", async () => {
+    await goToExemptionsStep();
+    fireEvent.click(screen.getByText("+ register.add_exemption"));
+    fireEvent.click(screen.getByText("+ register.add_exemption"));
+
+    const badFile = new File(["nope"], "row0-bad.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByTestId("register-er-files-0"), { target: { files: [badFile] } });
+    await waitFor(() => expect(screen.getByText("row0-bad.pdf")).toBeInTheDocument());
+
+    // Row 1's dropzone shouldn't show row 0's rejected file.
+    expect(screen.queryAllByText("row0-bad.pdf")).toHaveLength(1);
+  });
 });

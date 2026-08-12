@@ -430,6 +430,8 @@ def patch_exemption_request(
             req.end_date = _date.fromisoformat(body.end_date)
     if body.reason is not None:
         req.reason = body.reason or None
+    if req.end_date is not None and req.start_date is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date_required")
     session.commit()
     if req.enrollment_request_id:
         from app.services.enrollment import try_activate

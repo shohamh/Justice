@@ -4,7 +4,15 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyAssignment, DutyLocation, DutyType, ExemptionType, SoldierExemption, TelegramLink
+from app.db.models import (
+    DutyAssignment,
+    DutyLocation,
+    DutyType,
+    ExemptionRequest,
+    ExemptionType,
+    SoldierExemption,
+    TelegramLink,
+)
 from app.routes.soldiers import _PUBLIC_EVENT_TYPES
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -169,6 +177,34 @@ def test_dual_role_commander_can_see_draft_duty_history(client, admin_session):
         headers=auth_headers(dual),
     )
     assert r.status_code == 200
+
+
+def test_duty_history_survives_permanent_pending_exemption_request(client: TestClient, admin_session: Session):
+    """Regression test: get_duty_history iterates every ExemptionRequest for a
+    soldier with no status filter, so a pending *permanent* request
+    (start_date=None) used to crash TimelineEvent construction
+    (er.start_date.isoformat() with no None guard) and 500 the soldier's own
+    profile / duty-history page for anyone viewing it."""
+    admin = create_soldier(admin_session, personal_number="dh_perm_admin", role="admin")
+    target = create_soldier(admin_session, personal_number="dh_perm_target")
+    et = ExemptionType(name="פטור-dh-perm")
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        ExemptionRequest(
+            soldier_id=target.id,
+            exemption_type_id=et.id,
+            start_date=None,
+            reason="פטור קבוע",
+            status="pending_commander",
+        )
+    )
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(admin))
+    assert r.status_code == 200
+    event = next(e for e in r.json() if e["event_type"] == "exemption_request")
+    assert event["date"] is not None
 
 
 def test_plain_soldier_can_view_another_soldiers_basic_profile(client: TestClient, admin_session: Session):

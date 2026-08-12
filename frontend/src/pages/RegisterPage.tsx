@@ -84,6 +84,12 @@ export default function RegisterPage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [exemptionTypes, setExemptionTypes] = useState<PublicExemptionType[]>([]);
   const [codeValid, setCodeValid] = useState<boolean | null>(null);
+  // Per-row rejected-file names (oversized or failed the magic-byte signature
+  // check), indexed to match form.exemption_requests — mirrors MyRequestsPage's
+  // single uploadSizeErrors list, but split per row since registration can have
+  // several exemption rows each with their own dropzone.
+  const [rowFileErrors, setRowFileErrors] = useState<string[][]>([]);
+  const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
   const registrationSettingsQuery = useQuery({
     queryKey: queryKeys.registrationPublicSettings(),
@@ -388,13 +394,31 @@ export default function RegisterPage() {
                     onChange={async e => {
                       const picked = Array.from(e.target.files ?? []);
                       e.target.value = "";
-                      const signatureChecks = await Promise.all(picked.map(f => validateFileSignature(f, PDF_IMAGE_SIGNATURES)));
-                      const valid = picked.filter((_, j) => signatureChecks[j]);
+                      const withinSize = picked.filter(f => f.size <= MAX_FILE_BYTES);
+                      const oversized = picked.filter(f => f.size > MAX_FILE_BYTES).map(f => f.name);
+                      const signatureChecks = await Promise.all(
+                        withinSize.map(f => validateFileSignature(f, PDF_IMAGE_SIGNATURES)),
+                      );
+                      const valid = withinSize.filter((_, j) => signatureChecks[j]);
+                      const invalidType = withinSize.filter((_, j) => !signatureChecks[j]).map(f => f.name);
                       const rows = [...form.exemption_requests];
                       rows[i] = { ...rows[i], files: [...rows[i].files, ...valid] };
                       set("exemption_requests", rows);
+                      setRowFileErrors(prev => {
+                        const next = [...prev];
+                        next[i] = [...oversized, ...invalidType];
+                        return next;
+                      });
                     }}
                   />
+                  {(rowFileErrors[i]?.length ?? 0) > 0 && (
+                    <div className="rounded p-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+                      <p className="text-xs font-medium text-red-700 dark:text-red-300">{t("exemption_requests.file_too_large")}</p>
+                      <ul className="text-xs text-red-600 dark:text-red-400 mt-0.5 list-disc list-inside">
+                        {rowFileErrors[i].map(name => <li key={name}>{name}</li>)}
+                      </ul>
+                    </div>
+                  )}
                   {er.files.length > 0 && (
                     <ul className="text-xs space-y-0.5">
                       {er.files.map((f, j) => (
@@ -410,12 +434,18 @@ export default function RegisterPage() {
                     </ul>
                   )}
                 </div>
-                <button className="text-red-600 text-xs" onClick={() => set("exemption_requests", form.exemption_requests.filter((_,j) => j !== i))}>{t("register.remove")}</button>
+                <button className="text-red-600 text-xs" onClick={() => {
+                  set("exemption_requests", form.exemption_requests.filter((_,j) => j !== i));
+                  setRowFileErrors(prev => prev.filter((_, j) => j !== i));
+                }}>{t("register.remove")}</button>
               </div>
               );
             })}
             <button className="text-indigo-600 dark:text-indigo-300 text-sm"
-              onClick={() => set("exemption_requests", [...form.exemption_requests, {exemption_type_id:"",start_date:"",end_date:"",reason:"",permanent:false,files:[]}])}>
+              onClick={() => {
+                set("exemption_requests", [...form.exemption_requests, {exemption_type_id:"",start_date:"",end_date:"",reason:"",permanent:false,files:[]}]);
+                setRowFileErrors(prev => [...prev, []]);
+              }}>
               + {t("register.add_exemption")}
             </button>
             <div className="flex gap-2">

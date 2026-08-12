@@ -143,7 +143,7 @@ def _write_exemption_requests(wb: openpyxl.Workbook, session: Session, actor: So
         reason = r.reason if include_sensitive else None
         ws.append([
             str(r.id), pn, name, et.name if et else "",
-            r.start_date.isoformat(), r.end_date.isoformat() if r.end_date else "",
+            r.start_date.isoformat() if r.start_date else "", r.end_date.isoformat() if r.end_date else "",
             reason, r.status, commander_pn, decided_pn, r.decision_note, files, r.created_at.isoformat(),
         ])
 

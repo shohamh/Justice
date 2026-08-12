@@ -12,8 +12,8 @@ from app.services.exemptions import ExemptionError, grant_commander_exemption
 from app.services.notifications import create_notification
 
 
-def _format_exemption_period(start_date: date, end_date: date | None) -> str:
-    if end_date is None:
+def _format_exemption_period(start_date: date | None, end_date: date | None) -> str:
+    if start_date is None or end_date is None:
         return "קבוע"
     return f"{start_date.isoformat()}–{end_date.isoformat()}"
 
