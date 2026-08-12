@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
@@ -13,6 +14,8 @@ import DateInput from "../components/DateInput";
 import { useAuth } from "../auth/AuthContext";
 import { formatDate } from "../utils/formatDate";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { getSoldierRangeStatus } from "../api/rangeStatus";
+import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -70,6 +73,11 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   useEffect(() => { setSoldierData(soldier); }, [soldier]);
 
   const [tab, setTab] = useState<TabKey>("details");
+  const { data: rangeStatus } = useQuery({
+    queryKey: ["soldierRangeStatus", soldierData.id],
+    queryFn: () => getSoldierRangeStatus(soldierData.id),
+    enabled: tab === "profile",
+  });
   const [editing, setEditing] = useState(initialEditing);
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");
@@ -380,6 +388,18 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
             {soldierData.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldierData.last_mitvahim_date)}</span></div>}
             {soldierData.is_officer && soldierData.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldierData.last_alal_date)}</span></div>}
+            {rangeStatus && rangeStatus.statuses.length > 0 && (
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">{t("range_qualification.status.sectionTitle")}</span>
+                <ul className="mt-1 space-y-1">
+                  {rangeStatus.statuses.map((s) => (
+                    <li key={s.required_range_type} className="text-xs">
+                      {formatRangeStatus(s, t)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.service_type")}</span>
               <span>{soldierData.is_career ? t("soldier_profile.career") : t("soldier_profile.mandatory")}</span>

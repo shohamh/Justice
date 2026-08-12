@@ -280,6 +280,9 @@ def test_shift_detail_projects_required_range_and_assignee_eligibility(
     planned = create_soldier(
         admin_session, personal_number="detail-eligibility-planned", hierarchy_node_id=node.id
     )
+    past_qualified = create_soldier(
+        admin_session, personal_number="detail-eligibility-past-qualified", hierarchy_node_id=node.id
+    )
     duty_type = DutyType(
         name="detail-eligibility-weapon",
         score_per_day=Decimal("1.00"),
@@ -300,7 +303,7 @@ def test_shift_detail_projects_required_range_and_assignee_eligibility(
     )
     admin_session.add(shift)
     admin_session.flush()
-    for soldier in (uncovered, current, planned):
+    for soldier in (uncovered, current, planned, past_qualified):
         admin_session.add(
             DutyAssignment(
                 soldier_id=soldier.id,
@@ -318,6 +321,13 @@ def test_shift_detail_projects_required_range_and_assignee_eligibility(
             soldier_id=current.id,
             range_type=RangeType.laser,
             valid_until=duty_day,
+        )
+    )
+    admin_session.add(
+        SoldierRangeQualification(
+            soldier_id=past_qualified.id,
+            range_type=RangeType.laser,
+            valid_until=duty_day - timedelta(days=200),
         )
     )
     range_event = RangeEvent(
@@ -350,12 +360,21 @@ def test_shift_detail_projects_required_range_and_assignee_eligibility(
         "reason": "weapon_qualification",
         "duty_type_name": duty_type.name,
         "start_date": duty_day.isoformat(),
+        "last_qualification_type": None,
+        "last_qualification_date": None,
     }
     assert assignees[str(current.id)]["range_eligibility"]["qualification_source"] == "current_qualification"
     planned_fact = assignees[str(planned.id)]["range_eligibility"]
     assert planned_fact["eligible"] is True
     assert planned_fact["qualification_source"] == "planned_range"
     assert planned_fact["covered_by_range_date"] == (duty_day - timedelta(days=4)).isoformat()
+
+    # A soldier whose only qualification has expired still surfaces the
+    # last-qualification fields through the calendar's flattened schema
+    # (regression: these were dropped by CalendarRangeEligibilityFact).
+    past_qualified_fact = assignees[str(past_qualified.id)]["range_eligibility"]
+    assert past_qualified_fact["last_qualification_type"] == "laser"
+    assert past_qualified_fact["last_qualification_date"] == (duty_day - timedelta(days=200)).isoformat()
 
 
 def test_commander_sees_subtree_calendar(client: TestClient, admin_session: Session):

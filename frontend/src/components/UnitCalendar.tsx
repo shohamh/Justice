@@ -8,7 +8,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
-import { CalendarShift, getCalendarShifts, getCalendarWeaponIneligibleCount } from "../api/calendar";
+import { CalendarShift, getCalendarShifts } from "../api/calendar";
 import { loadCalendarData } from "../api/calendarData";
 import { RangeEvent, getRanges, getMyRanges } from "../api/ranges";
 import { listDutyTypes } from "../api/dutyConfig";
@@ -16,6 +16,7 @@ import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { useAuth } from "../auth/AuthContext";
 import { canApprove } from "../auth/permissions";
+import { formatDate, formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
@@ -44,8 +45,6 @@ interface UnitCalendarProps {
   // entirely (a duty or range can involve a soldier outside its own node's
   // subtree, e.g. as a reserve or a cross-unit range assignment).
   soldierId?: string;
-  // When set, show only shifts with at least one weapon-ineligible assignee.
-  weaponIneligibleOnly?: boolean;
 }
 
 export function filterCalendarShifts(
@@ -60,15 +59,14 @@ export function filterCalendarShifts(
   );
 }
 
-export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly = false }: UnitCalendarProps) {
+export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const canSeeRangeEligibilityBadges = canApprove(user);
+  const canSeeEligibilityBadges = canApprove(user);
   const publicSettings = usePublicSettings();
   const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
   const [ranges, setRanges] = useState<RangeEvent[]>([]);
-  const [weaponIneligibleCount, setWeaponIneligibleCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
@@ -83,30 +81,11 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
   const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
-  const warningCountRequestRef = useRef(0);
 
   const fetchData = useCallback(async (from: string, to: string) => {
     if (!nodeId && !soldierId) return;
     setLoading(true);
     setError(null);
-    setWeaponIneligibleCount(null);
-    const warningCountRequest = ++warningCountRequestRef.current;
-    void getCalendarWeaponIneligibleCount({
-      nodeId: soldierId ? undefined : nodeId,
-      soldierId,
-      date_from: from,
-      date_to: to,
-    })
-      .then(({ count }) => {
-        if (warningCountRequest === warningCountRequestRef.current) {
-          setWeaponIneligibleCount(count);
-        }
-      })
-      .catch(() => {
-        if (warningCountRequest === warningCountRequestRef.current) {
-          setWeaponIneligibleCount(null);
-        }
-      });
     try {
       const { calendar, ranges: rangeEvents } = await loadCalendarData(
         () => getCalendarShifts({ nodeId: soldierId ? undefined : nodeId, soldierId, date_from: from, date_to: to }),
@@ -128,8 +107,6 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
 
   useEffect(() => {
     dateRangeRef.current = null;
-    warningCountRequestRef.current += 1;
-    setWeaponIneligibleCount(null);
     setShifts([]);
     setRanges([]);
     setSelectedShift(null);
@@ -190,8 +167,8 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
   );
 
   const filteredShifts = useMemo(
-    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, weaponIneligibleOnly),
-    [shifts, effectiveDutyTypeFilter, weaponIneligibleOnly],
+    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, false),
+    [shifts, effectiveDutyTypeFilter],
   );
 
   const filteredRanges = useMemo(
@@ -247,25 +224,6 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
   return (
     <div className="space-y-4">
-      {weaponIneligibleOnly && (
-        <p
-          role="status"
-          data-testid="unit-calendar-weapon-filter"
-          className="text-sm font-medium text-red-700 dark:text-red-300"
-        >
-          {t("unit_calendar.weapon_ineligible_filter")}
-        </p>
-      )}
-      {weaponIneligibleCount !== null && weaponIneligibleCount > 0 && (
-        <span
-          data-testid="unit-calendar-weapon-warning"
-          title={t("unit_calendar.weapon_ineligible_count", { count: weaponIneligibleCount })}
-          className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-sm font-semibold text-red-700 dark:bg-red-950 dark:text-red-200"
-        >
-          <span aria-hidden="true">⚠</span>
-          {weaponIneligibleCount}
-        </span>
-      )}
       <div className="flex flex-wrap gap-3 text-sm items-center">
             <CheckboxListDropdown
               items={dutyTypesInView.map((dt) => ({ id: dt.id, label: dt.name }))}
@@ -342,6 +300,12 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
             }
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;
+            const ineligibleAssignees = canSeeEligibilityBadges
+              ? shift.assignees.filter((a) => a.weapon_ineligible)
+              : [];
+            const plannedCoverageAssignee = canSeeEligibilityBadges && ineligibleAssignees.length === 0
+              ? shift.assignees.find((a) => a.range_eligibility?.qualification_source === "planned_range")
+              : undefined;
             const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
             const isMultiDay = shiftSpansMultipleDays(shift);
             const edgeLabels = isMultiDay ? shiftEdgeLabels(shift) : null;
@@ -355,13 +319,32 @@ export default function UnitCalendar({ nodeId, soldierId, weaponIneligibleOnly =
                 )}
                 <div className="flex items-center gap-1 w-full">
                   <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
-                  {canSeeRangeEligibilityBadges && shift.assignees.some((a) => a.range_eligibility?.qualification_source === "planned_range") && (
+                  {ineligibleAssignees.length > 0 && (
                     <span
-                      aria-label={t("range_qualification.calendarBadge.info")}
-                      title={t("range_qualification.calendarBadge.info")}
-                      className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full px-1 text-[10px] leading-4 flex-shrink-0"
+                      data-testid={`shift-warning-badge-${shift.id}`}
+                      title={
+                        ineligibleAssignees.length === 1
+                          ? formatRangeEligibilityExplanation(ineligibleAssignees[0].range_eligibility!, t)
+                          : t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length })
+                      }
+                      className="inline-flex items-center rounded bg-red-100 px-1 text-red-700 dark:bg-red-950 dark:text-red-300 flex-shrink-0"
                     >
-                      ℹ️
+                      ⚠
+                    </span>
+                  )}
+                  {plannedCoverageAssignee?.range_eligibility?.covered_by_range_date && (
+                    <span
+                      data-testid={`shift-info-badge-${shift.id}`}
+                      aria-label={t("range_qualification.calendarBadge.info")}
+                      title={t("unit_calendar.eventInfoBadge", {
+                        rangeType:
+                          RANGE_TYPE_LABELS[plannedCoverageAssignee.range_eligibility.covering_range_type ?? ""]
+                          ?? plannedCoverageAssignee.range_eligibility.covering_range_type,
+                        date: formatDate(plannedCoverageAssignee.range_eligibility.covered_by_range_date),
+                      })}
+                      className="inline-flex items-center rounded bg-blue-100 px-1 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-shrink-0"
+                    >
+                      ℹ
                     </span>
                   )}
                   {swapCount > 0 && (

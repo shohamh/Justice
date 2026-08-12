@@ -60,6 +60,8 @@ const noWeaponDutyFact: DutyEligibilityFact = {
   reason: null,
   duty_type_name: "",
   start_date: "",
+  last_qualification_type: null,
+  last_qualification_date: null,
 };
 
 function formatDate(value: string): string {

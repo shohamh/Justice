@@ -16,6 +16,7 @@ from app.services.weapon_eligibility import (
     _enforce_enabled,
     _future_windows_by_soldier_and_required_type,
     _is_eligible_from_data,
+    _latest_qualification_by_soldier,
     _max_qualification_valid_untils,
     _pending_excusal_disqualifies,
 )
@@ -30,6 +31,8 @@ class DutyEligibilityFact:
     covering_range_type: str | None
     projected_valid_until: date | None
     reason: str | None
+    last_qualification_type: str | None
+    last_qualification_date: date | None
 
 
 @dataclass(frozen=True)
@@ -100,6 +103,8 @@ def project_duty_eligibility(
                 covering_range_type=None,
                 projected_valid_until=None,
                 reason=None,
+                last_qualification_type=None,
+                last_qualification_date=None,
             )
             for duty_id, requirement in requirements.items()
         }
@@ -121,6 +126,9 @@ def project_duty_eligibility(
         disqualify_pending=_pending_excusal_disqualifies(session),
         future_start=future_start,
     )
+    latest_qualifications = _latest_qualification_by_soldier(
+        session, soldier_ids=list(projected_soldier_ids),
+    )
 
     facts: dict[tuple[uuid.UUID, uuid.UUID], DutyEligibilityFact] = {}
     for duty_id, requirement in requirements.items():
@@ -135,6 +143,8 @@ def project_duty_eligibility(
                 covering_range_type=None,
                 projected_valid_until=None,
                 reason=None,
+                last_qualification_type=None,
+                last_qualification_date=None,
             )
             continue
         current_valid_until = valid_untils[soldier_id, required_range_type]
@@ -161,6 +171,7 @@ def project_duty_eligibility(
             covered_by_range_date = None
             covering_range_type = None
             projected_valid_until = None
+        latest = latest_qualifications.get(soldier_id)
         facts[soldier_id, duty_id] = DutyEligibilityFact(
             eligible=eligible,
             required_range_type=required_range_type,
@@ -169,6 +180,8 @@ def project_duty_eligibility(
             covering_range_type=covering_range_type,
             projected_valid_until=projected_valid_until,
             reason=None if eligible else "weapon_qualification",
+            last_qualification_type=latest[0] if latest else None,
+            last_qualification_date=latest[1] if latest else None,
         )
     return facts
 

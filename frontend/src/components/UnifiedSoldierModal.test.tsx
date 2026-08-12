@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import type { SoldierDTO } from "../api/soldiers";
@@ -14,6 +15,9 @@ vi.mock("../api/constraints", () => ({
   listSoldierConstraints: vi.fn().mockResolvedValue([]),
   approveConstraint: vi.fn(),
   rejectConstraint: vi.fn(),
+}));
+vi.mock("../api/rangeStatus", () => ({
+  getSoldierRangeStatus: vi.fn().mockResolvedValue({ soldier_id: "s1", statuses: [] }),
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -50,15 +54,18 @@ const soldier: SoldierDTO = {
 };
 
 function renderModal() {
+  const qc = new QueryClient();
   return render(
-    <UnifiedSoldierModal
-      soldier={soldier}
-      score={null}
-      nodes={[]}
-      onClose={vi.fn()}
-      onRefresh={vi.fn()}
-      initialEditing
-    />,
+    <QueryClientProvider client={qc}>
+      <UnifiedSoldierModal
+        soldier={soldier}
+        score={null}
+        nodes={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        initialEditing
+      />
+    </QueryClientProvider>,
   );
 }
 

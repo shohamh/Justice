@@ -411,8 +411,8 @@
     "duty_detail": "פרטי תורנות",
     "duty_type_filter_label": "סוגי תורנויות",
     "range_filter_label": "סוגי מטווחים",
-    "weapon_ineligible_filter": "מוצגות רק תורנויות עם חיילים שאינם כשירים מבחינת הכשרת נשק",
-    "weapon_ineligible_count": "{{count}} חיילים אינם כשירים מבחינת הכשרת נשק",
+    "eventWarningBadge": "{{count}} חיילים לא כשירים למטווח",
+    "eventInfoBadge": "צפוי לעשות {{rangeType}} ב{{date}}",
     "swap_requests_count": "{{count}} בקשות החלפה",
     "swap_requests_has": "יש בקשת החלפה",
     "cover_for_free": "כסה בחינם"
@@ -1378,7 +1378,9 @@
       "noCurrentQualification": "אין מטווחים בתוקף",
       "noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
       "uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
-      "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}"
+      "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}",
+      "neverQualified": "אין מטווחים בתוקף",
+      "lastQualification": "מטווח אחרון - {{rangeType}} (בתוקף עד {{date}})"
     },
     "shiftDetail": {
       "requiredRange": "נדרש לפחות מטווח מסוג {{rangeType}}",
@@ -1389,6 +1391,12 @@
     },
     "calendarBadge": {
       "info": "מטווח מתוכנן יכסה תורנות"
+    },
+    "status": {
+      "sectionTitle": "מצב מטווחים",
+      "eligible": "כשיר למטווח מסוג {{rangeType}}; בתוקף עד {{date}}",
+      "ineligible": "אין כשירות מטווח מסוג {{rangeType}}",
+      "enforcementDisabled": "אכיפת כשירות מטווח מסוג {{rangeType}} אינה פעילה כעת"
     },
     "tablistLabel": "תצוגת מטווחים",
     "warning": {

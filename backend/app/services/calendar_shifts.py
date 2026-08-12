@@ -78,6 +78,8 @@ def _attach_range_eligibility_facts(session: Session, shifts: list[dict[str, Any
                     "reason": fact.reason,
                     "duty_type_name": shift["duty_type_name"],
                     "start_date": shift["start_date"],
+                    "last_qualification_type": fact.last_qualification_type,
+                    "last_qualification_date": fact.last_qualification_date,
                 }
                 if fact is not None
                 else None
