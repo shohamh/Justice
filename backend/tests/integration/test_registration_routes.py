@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, timedelta
 
@@ -10,6 +11,14 @@ from tests.helpers import create_node
 
 def _uid():
     return uuid.uuid4().hex[:8]
+
+
+def _post_register(client, payload, files=None):
+    return client.post(
+        "/api/auth/register",
+        data={"payload": json.dumps(payload)},
+        files=files or [],
+    )
 
 
 def _setup_holding(session):
@@ -56,7 +65,7 @@ def test_register_rejects_missing_phone(client, admin_session):
 
     payload = _payload(invite.code, node.id)
     del payload["phone"]
-    resp = client.post("/api/auth/register", json=payload)
+    resp = _post_register(client, payload)
     assert resp.status_code == 422
 
 
@@ -67,7 +76,7 @@ def test_register_rejects_invalid_phone_format(client, admin_session):
     admin_session.commit()
 
     payload = _payload(invite.code, node.id, phone="not-a-phone-number")
-    resp = client.post("/api/auth/register", json=payload)
+    resp = _post_register(client, payload)
     assert resp.status_code == 422
 
 
@@ -82,7 +91,7 @@ def test_register_stores_military_driving_license(client, admin_session):
         has_military_driving_license=True,
         military_driving_license_expiry=(date.today() + timedelta(days=365)).isoformat(),
     )
-    resp = client.post("/api/auth/register", json=payload)
+    resp = _post_register(client, payload)
     assert resp.status_code == 200
 
     from app.db.models import Soldier
@@ -98,7 +107,7 @@ def test_register_defaults_military_driving_license_to_false(client, admin_sessi
     admin_session.commit()
 
     payload = _payload(invite.code, node.id)
-    resp = client.post("/api/auth/register", json=payload)
+    resp = _post_register(client, payload)
     assert resp.status_code == 200
 
     from app.db.models import Soldier
@@ -113,7 +122,7 @@ def test_register_returns_access_token(client, admin_session):
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
 
-    resp = client.post("/api/auth/register", json=_payload(invite.code, node.id))
+    resp = _post_register(client, _payload(invite.code, node.id))
     assert resp.status_code == 200
     assert "access_token" in resp.json()
 
@@ -124,7 +133,7 @@ def test_register_exhausted_code_returns_400(client, admin_session):
     invite = create_invite_code(admin_session, uses_left=0, actor_id=None)
     admin_session.commit()
 
-    resp = client.post("/api/auth/register", json=_payload(invite.code, node.id))
+    resp = _post_register(client, _payload(invite.code, node.id))
     assert resp.status_code == 400
 
 
@@ -164,7 +173,7 @@ def test_register_rejects_partial_exemption_request(client, admin_session):
         invite.code, node.id,
         exemption_requests=[{"exemption_type_id": "", "start_date": "", "end_date": "", "reason": ""}],
     )
-    resp = client.post("/api/auth/register", json=payload)
+    resp = _post_register(client, payload)
     assert resp.status_code == 400
     assert resp.json()["detail"] == "exemption_missing_fields"
 
@@ -183,7 +192,7 @@ def test_register_accepts_permanent_exemption_row(client, admin_session):
     payload = _payload(invite.code, node.id, exemption_requests=[
         {"exemption_type_id": str(et.id), "start_date": None, "end_date": None, "reason": "פטור קבוע"},
     ])
-    resp = client.post("/api/auth/register", json=payload)
+    resp = _post_register(client, payload)
     assert resp.status_code == 200, resp.text
 
     from app.db.models import ExemptionRequest
@@ -207,7 +216,7 @@ def test_register_rejects_exemption_row_with_end_date_but_no_start_date(client, 
         {"exemption_type_id": str(et.id), "start_date": None,
          "end_date": (date.today() + timedelta(days=10)).isoformat(), "reason": "x"},
     ])
-    resp = client.post("/api/auth/register", json=payload)
+    resp = _post_register(client, payload)
     assert resp.status_code == 400
     assert resp.json()["detail"] == "start_date_required"
 
@@ -222,3 +231,50 @@ def test_public_exemption_types_expose_is_medical(client, admin_session):
     assert resp.status_code == 200
     row = next(r for r in resp.json() if r["id"] == str(et.id))
     assert row["is_medical"] is True
+
+
+def test_register_rejects_medical_exemption_row_without_file(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    from app.db.models import ExemptionType
+    et = ExemptionType(name=f"פטור-reg-medical-{_uid()}", is_commander_exemption=False, is_medical=True)
+    admin_session.add(et)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id, exemption_requests=[
+        {"exemption_type_id": str(et.id), "start_date": date.today().isoformat(), "end_date": None, "reason": "רפואי"},
+    ])
+    resp = _post_register(client, payload)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "medical_exemption_requires_file"
+
+    # Nothing should have been persisted — the whole registration is atomic.
+    from app.db.models import Soldier
+    assert admin_session.query(Soldier).filter_by(personal_number=payload["personal_number"]).first() is None
+
+
+def test_register_accepts_medical_exemption_row_with_file(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    from app.db.models import ExemptionType
+    et = ExemptionType(name=f"פטור-reg-medical2-{_uid()}", is_commander_exemption=False, is_medical=True)
+    admin_session.add(et)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id, exemption_requests=[
+        {"exemption_type_id": str(et.id), "start_date": date.today().isoformat(), "end_date": None, "reason": "רפואי"},
+    ])
+    resp = _post_register(client, payload, files=[
+        ("exemption_files_0", ("doc.pdf", b"%PDF-1.4 fake but valid header", "application/pdf")),
+    ])
+    assert resp.status_code == 200, resp.text
+
+    from app.db.models import ExemptionRequest, ExemptionRequestFile
+    req = admin_session.query(ExemptionRequest).filter_by(exemption_type_id=et.id).one()
+    assert admin_session.query(ExemptionRequestFile).filter_by(exemption_request_id=req.id).count() == 1
