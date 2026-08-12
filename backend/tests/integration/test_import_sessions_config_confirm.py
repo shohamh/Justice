@@ -288,3 +288,20 @@ def test_confirm_creates_and_updates_duty_type_start_end_time(client, admin_sess
     admin_session.refresh(dt)
     assert dt.start_time.strftime("%H:%M") == "21:00"
     assert dt.end_time.strftime("%H:%M") == "07:00"
+
+
+def test_session_row_summary_includes_range_sheets(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    xlsx = _wb({"range_locations": [["name", "active"], ["מטווח חדש", "true"]]})
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+
+    listing = client.get(
+        "/api/import/sessions", headers={"Authorization": f"Bearer {_token(admin)}"}
+    ).json()
+    entry = next(s for s in listing if s["id"] == session_id)
+    assert entry["row_summary"]["range_locations"] == 1
+    assert entry["row_summary"]["range_events"] == 0
+    assert entry["row_summary"]["range_assignments"] == 0
+    assert entry["row_summary"]["soldier_range_qualifications"] == 0
+    assert entry["row_summary"]["range_excusal_requests"] == 0
