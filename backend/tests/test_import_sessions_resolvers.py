@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from app.db.models import DutyLocation, HierarchyLevelType, Soldier
+from sqlalchemy import select
+
+from app.db.models import DutyLocation, HierarchyLevelType, RangeLocation, Soldier
 from app.services.import_parsers.schema import (
     ImportDutyLocationRow,
     ImportHierarchyNodeRow,
+    ImportRangeAssignmentRow,
     ImportRangeEventRow,
     ImportRangeLocationRow,
     ParsedImportData,
@@ -11,10 +14,11 @@ from app.services.import_parsers.schema import (
 from app.services.import_sessions import (
     _resolve_duty_locations,
     _resolve_hierarchy,
+    _resolve_range_assignments,
     _resolve_range_events,
     _resolve_range_locations,
 )
-from tests.helpers import create_node, create_range_location, create_soldier
+from tests.helpers import create_node, create_range_event, create_range_location, create_soldier
 
 
 def test_resolve_duty_locations_new_and_update(app_session):
@@ -457,4 +461,73 @@ def test_resolve_range_events_invalid_range_type_error(app_session):
         ],
     )
     result = _resolve_range_events(app_session, data, admin)
+    assert result[0]["action"] == "error"
+
+
+def test_resolve_range_assignments_matches_existing_event(app_session):
+    admin = create_soldier(app_session, personal_number="admin-4", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    soldier = create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="מדור א", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(app_session, data, admin, [])
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["resolved_soldier_id"] == str(soldier.id)
+    assert row["resolved_range_event_id"] == str(event.id)
+
+
+def test_resolve_range_assignments_matches_session_created_event(app_session):
+    admin = create_soldier(app_session, personal_number="admin-5", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    create_range_location(app_session, name="מטווח דרומי")
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+
+    resolved_events = [{
+        "row": 2, "action": "new", "range_type": "live", "date": "2024-06-15",
+        "resolved_hierarchy_node_id": str(node.id),
+        "resolved_range_location_id": str(
+            app_session.execute(select(RangeLocation)).scalar_one().id
+        ),
+    }]
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=3, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="מדור א", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(app_session, data, admin, resolved_events)
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["resolved_range_event_id"] is None
+    assert row["matched_session_row"] == 2
+
+
+def test_resolve_range_assignments_soldier_not_found_error(app_session):
+    admin = create_soldier(app_session, personal_number="admin-6", role="admin")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="99999", full_name="לא קיים",
+                range_type="live", date="2024-06-15", range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(app_session, data, admin, [])
     assert result[0]["action"] == "error"

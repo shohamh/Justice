@@ -42,10 +42,11 @@ def create_soldier(
     password: str = "password-1234",
     hierarchy_node_id: uuid.UUID | None = None,
     must_change_password: bool = False,
+    full_name: str | None = None,
 ) -> Soldier:
     s = Soldier(
         personal_number=personal_number,
-        full_name=f"Test {personal_number}",
+        full_name=full_name or f"Test {personal_number}",
         password_hash=hash_password(password),
         role=role,
         hierarchy_node_id=hierarchy_node_id,

@@ -25,6 +25,8 @@ from app.db.models import (
     HierarchyNode,
     ImportSession,
     PersonalConstraint,
+    RangeAssignment,
+    RangeAttendanceStatus,
     RangeEvent,
     RangeEventStatus,
     RangeLocation,
@@ -350,6 +352,147 @@ def _resolve_range_events(
             "contact_phone": contact_phone,
             "notes": notes,
             "status": status,
+        })
+    return out
+
+
+def _resolve_range_assignments(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    resolved_range_events: list[dict],
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    overrides = overrides or {}
+
+    soldiers_by_pn = {s.personal_number: s for s in session.execute(select(Soldier)).scalars()}
+    soldiers_by_full_name: dict[str, list[Soldier]] = {}
+    for s in soldiers_by_pn.values():
+        soldiers_by_full_name.setdefault(s.full_name, []).append(s)
+
+    existing_events = session.execute(select(RangeEvent)).scalars().all()
+    existing_event_by_key: dict[tuple, RangeEvent] = {}
+    for ev in existing_events:
+        key = (ev.hierarchy_node_id, ev.range_type, ev.date.isoformat(), ev.range_location_id)
+        existing_event_by_key[key] = ev
+
+    session_event_by_key: dict[tuple, dict] = {}
+    for ev_row in resolved_range_events:
+        if (
+            ev_row["action"] != "new"
+            or not ev_row.get("resolved_hierarchy_node_id")
+            or not ev_row.get("resolved_range_location_id")
+        ):
+            continue
+        key = (
+            uuid.UUID(ev_row["resolved_hierarchy_node_id"]), ev_row["range_type"],
+            ev_row["date"], uuid.UUID(ev_row["resolved_range_location_id"]),
+        )
+        session_event_by_key[key] = ev_row
+
+    existing_assignment_pairs = {
+        (a.soldier_id, a.range_event_id) for a in session.execute(select(RangeAssignment)).scalars()
+    }
+
+    out = []
+    for row in data.range_assignments:
+        errors: list[str] = []
+        warnings: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        personal_number = field("personal_number", row.personal_number)
+        full_name = field("full_name", row.full_name)
+        hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
+        range_type = field("range_type", row.range_type)
+        event_date = field("date", row.date)
+        range_location_name = field("range_location_name", row.range_location_name)
+        is_reserve = field("is_reserve", row.is_reserve)
+        is_draft = field("is_draft", row.is_draft)
+        attendance_status = field("attendance_status", row.attendance_status) or RangeAttendanceStatus.pending.value
+        note = field("note", row.note)
+
+        soldier = soldiers_by_pn.get(personal_number) if personal_number else None
+        if soldier is not None:
+            if soldier.full_name != full_name:
+                errors.append(
+                    f"שם מלא '{full_name}' אינו תואם לחייל עם מספר אישי '{personal_number}' ('{soldier.full_name}')"
+                )
+        else:
+            candidates = soldiers_by_full_name.get(full_name, []) if full_name else []
+            if len(candidates) == 1:
+                soldier = candidates[0]
+                warnings.append(f"נמצא לפי שם — מספר אישי '{personal_number}' לא נמצא")
+            elif len(candidates) > 1:
+                errors.append(f"מספר אישי '{personal_number}' לא נמצא ושם '{full_name}' אינו חד משמעי")
+            else:
+                errors.append(f"לא נמצא חייל עם מספר אישי '{personal_number}' או שם '{full_name}'")
+
+        resolved_node = None
+        if hierarchy_node_name:
+            resolved_node = session.execute(
+                select(HierarchyNode).where(HierarchyNode.name == hierarchy_node_name)
+            ).scalar_one_or_none()
+            if resolved_node is None:
+                errors.append(f"יחידה לא מזוהה '{hierarchy_node_name}'")
+
+        location = session.execute(
+            select(RangeLocation).where(RangeLocation.name == range_location_name)
+        ).scalar_one_or_none() if range_location_name else None
+        if location is None:
+            errors.append(f"מיקום מטווח לא מזוהה '{range_location_name}'")
+
+        if range_type not in (rt.value for rt in RangeType):
+            errors.append(f"סוג מטווח לא תקין '{range_type}'")
+
+        resolved_range_event_id: str | None = None
+        matched_session_row: int | None = None
+        if resolved_node is not None and location is not None and event_date and range_type in (rt.value for rt in RangeType):
+            key = (resolved_node.id, range_type, event_date, location.id)
+            existing_match = existing_event_by_key.get(key)
+            session_match = session_event_by_key.get(key)
+            if existing_match is not None:
+                resolved_range_event_id = str(existing_match.id)
+            elif session_match is not None:
+                matched_session_row = session_match["row"]
+            else:
+                errors.append("לא נמצא מטווח תואם (יחידה, סוג, תאריך ומיקום)")
+
+        action = "error" if errors else "new"
+
+        if action == "new" and soldier is not None and actor.role != "admin":
+            if soldier.hierarchy_node_id is None or not is_node_in_actor_scope(
+                session=session, actor=actor, node_id=soldier.hierarchy_node_id
+            ):
+                action = "out_of_scope"
+
+        if (
+            action == "new"
+            and soldier is not None
+            and resolved_range_event_id is not None
+            and (soldier.id, uuid.UUID(resolved_range_event_id)) in existing_assignment_pairs
+        ):
+            action = "skip"
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "warnings": warnings,
+            "personal_number": personal_number,
+            "full_name": full_name,
+            "range_type": range_type,
+            "date": event_date,
+            "range_location_name": range_location_name,
+            "is_reserve": is_reserve,
+            "is_draft": is_draft,
+            "attendance_status": attendance_status,
+            "note": note,
+            "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
+            "resolved_range_event_id": resolved_range_event_id,
+            "matched_session_row": matched_session_row,
         })
     return out
 
