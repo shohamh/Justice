@@ -25,6 +25,8 @@ import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
 import DateInput from "../components/DateInput";
 import { usePublicSettings } from "../hooks/usePublicSettings";
+import { getSoldierRangeStatus } from "../api/rangeStatus";
+import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -119,6 +121,12 @@ export default function ProfilePage() {
     flatten(hierarchyTreeQuery.data ?? []);
     return flat;
   }, [hierarchyTreeQuery.data]);
+
+  const { data: rangeStatus } = useQuery({
+    queryKey: ["soldierRangeStatus", user?.id],
+    queryFn: () => getSoldierRangeStatus(user!.id),
+    enabled: !!user?.id,
+  });
 
   function militaryLicensePayload(hasLicense: boolean, expiry: string): string {
     return JSON.stringify({ has_license: hasLicense, expiry_date: expiry || null });
@@ -264,6 +272,33 @@ export default function ProfilePage() {
           {user?.discharge_date && <div><span className="font-medium">{t("soldier_profile.discharge_date")}:</span> {formatDate(user.discharge_date)}</div>}
           {user?.last_mitvahim_date && <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {formatDate(user.last_mitvahim_date)}</div>}
           {user?.last_alal_date && <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {formatDate(user.last_alal_date)}</div>}
+          {rangeStatus && rangeStatus.statuses.length > 0 && (
+            <div className="col-span-2">
+              <span className="font-medium">{t("range_qualification.status.sectionTitle")}:</span>
+              <ul className="mt-1 space-y-1">
+                {rangeStatus.statuses.map((s) => (
+                  <li key={s.required_range_type} className="text-xs">
+                    {formatRangeEligibilityExplanation(
+                      {
+                        eligible: s.eligible,
+                        required_range_type: s.required_range_type,
+                        qualification_source: s.qualification_source,
+                        covered_by_range_date: s.covered_by_range_date,
+                        covering_range_type: s.covering_range_type,
+                        projected_valid_until: s.projected_valid_until,
+                        reason: null,
+                        duty_type_name: "",
+                        start_date: "",
+                        last_qualification_type: s.last_qualification_type,
+                        last_qualification_date: s.last_qualification_date,
+                      },
+                      t,
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {user?.direct_commander_id && user?.direct_commander_name && (
             <div>
               <span className="font-medium">{t("soldier_profile.direct_commander")}:</span>{" "}

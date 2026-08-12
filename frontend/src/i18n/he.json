@@ -1379,6 +1379,11 @@
       "warning": "חוסר כשירות מטווחים",
       "unavailable": "נתוני כשירות מטווחים אינם זמינים"
     },
+    "status": {
+      "sectionTitle": "מצב מטווחים",
+      "eligible": "כשיר",
+      "ineligible": "לא כשיר"
+    },
     "tablistLabel": "תצוגת מטווחים",
     "warning": {
       "normal": "אין מטווחים בתוקף",
