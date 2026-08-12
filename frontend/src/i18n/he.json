@@ -694,6 +694,8 @@
     "enlisted_allowed": "חוגרים מותרים",
     "requires_bahad1": "נדרש בוגר בה\"ד 1",
     "requires_military_driving_license": "נדרש רשנ\"צ",
+    "required_range_type": "רמת מטווחים נדרשת ליומן",
+    "required_range_type_none": "ללא",
     "save": "שמור דרישות"
   },
   "weapon_ineligible": {

@@ -653,6 +653,13 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 'עבודות בינוי ושיפוץ בבסיס. יש להגיע עם ציוד עבודה מתאים. לדווח לרס"ר הבינוי על התקדמות.',
             ),
         ]
+        # Range level required for the calendar's qualification badge — kept in sync
+        # with the requires_mitvahim/requires_alal flags in each duty type's `reqs` above.
+        required_range_type_by_name = {
+            "שמירות": "laser",
+            'אבט"ש': "laser",
+            'הגנ"ש': "alal",
+        }
         duty_types = []
         for name, spd, desc, reqs, rr, rmin, is_ext, cname, cphone, stime, etime, instrs in dt_defs:
             dt = DutyType(
@@ -668,6 +675,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 start_time=stime,
                 end_time=etime,
                 instructions=instrs,
+                required_range_type=required_range_type_by_name.get(name),
             )
             session.add(dt)
             session.flush()

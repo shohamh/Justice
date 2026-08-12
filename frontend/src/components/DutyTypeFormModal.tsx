@@ -15,6 +15,7 @@ import { getRanks } from "../api/soldiers";
 import SubHierarchySelector from "./SubHierarchySelector";
 import TimeInput from "./TimeInput";
 import { translateApiError } from "../utils/translateApiError";
+import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 
 type Reqs = NonNullable<DutyType["requirements"]>;
 
@@ -41,6 +42,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
     initial == null ? "" : initial.is_external ? "true" : "false"
   );
   const [reqs, setReqs] = useState<Reqs>(initial?.requirements ?? {});
+  const [requiredRangeType, setRequiredRangeType] = useState<string>(initial?.required_range_type ?? "");
   const [restHours, setRestHours] = useState<string>(
     initial?.requirements?.rest_hours != null ? String(initial.requirements.rest_hours) : ""
   );
@@ -96,6 +98,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
         instructions: instructions || null,
         is_external: isExternal === "true",
         eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
+        required_range_type: requiredRangeType || null,
       };
       let dt: DutyType;
       if (initial) {
@@ -309,6 +312,24 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
                       {label}
                     </label>
                   ))}
+                </div>
+
+                {/* Required range type (calendar qualification badge) */}
+                <div>
+                  <label htmlFor="duty-type-required-range-type" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                    {t("eligibility.required_range_type")}
+                  </label>
+                  <select
+                    id="duty-type-required-range-type"
+                    value={requiredRangeType}
+                    onChange={e => setRequiredRangeType(e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">{t("eligibility.required_range_type_none")}</option>
+                    {Object.entries(RANGE_TYPE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}
