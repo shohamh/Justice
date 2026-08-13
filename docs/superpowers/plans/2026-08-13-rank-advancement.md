@@ -38,7 +38,7 @@
 - `backend/app/db/models.py` — `Soldier.next_rank_date_overridden`, `Soldier.current_rank_since`, `RankAdvancementInterval` model, two new `NotificationType` members
 - `backend/app/services/eligibility.py` — `check_soldier_for_assignment` uses assignment date instead of `date.today()`
 - `backend/app/services/potential.py` — `_rank_as_of` delegates to the new chained projection instead of its own single-step logic
-- `backend/app/algorithm/types.py` — new `SoldierInput.rank_ineligible_duty_block_ids` field
+- `backend/app/algorithm/types.py` — new `SoldierInput.future_ineligible_duty_block_ids` field
 - `backend/app/algorithm/solver.py` — two new checks (mirroring the two existing `weapon_ineligible_duty_block_ids` checks)
 - `backend/app/algorithm/model.py` — one new check (mirroring the existing `weapon_ineligible_duty_block_ids` check)
 - `backend/app/services/algorithm_bridge.py` — populate the new field alongside the existing weapon-eligibility population
