@@ -169,6 +169,23 @@ def get_calendar_shifts(
 
     shift_ids = [s.id for s in shifts]
 
+    # Shifts that are filled by someone, anywhere (not scoped to the subtree) -
+    # used below to tell "genuinely open" shifts (visible in every sub-framework
+    # view) apart from shifts filled entirely by soldiers outside the subtree
+    # (which should disappear once a sub-framework is selected).
+    shift_ids_with_any_assignment: set[uuid.UUID] = set()
+    if soldier_id is None:
+        shift_ids_with_any_assignment = set(
+            session.execute(
+                select(DutyAssignment.duty_shift_id).where(
+                    DutyAssignment.duty_shift_id.in_(shift_ids),
+                    DutyAssignment.status.in_(["published", "algorithm_draft"]),
+                )
+            )
+            .scalars()
+            .all()
+        )
+
     assignments = (
         session.execute(
             select(DutyAssignment).where(
@@ -323,9 +340,15 @@ def get_calendar_shifts(
     result = []
     for shift in shifts:
         assignees = assignees_by_shift.get(shift.id, [])
-        # Personal view: skip shifts this soldier isn't actually assigned to
-        # (the base query above pulls every active shift in range, unfiltered).
-        if soldier_id is not None and not assignees:
+        # The base query above pulls every active shift in range, unfiltered.
+        if soldier_id is not None:
+            # Personal view: skip shifts this soldier isn't actually assigned to.
+            if not assignees:
+                continue
+        elif not assignees and shift.id in shift_ids_with_any_assignment:
+            # Sub-framework view: skip shifts filled entirely by soldiers
+            # outside the subtree. Genuinely open shifts (no assignee at all)
+            # stay visible in every sub-framework view.
             continue
         dt_name, dt_color, required_range_type = dt_map.get(
             shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id), None)
