@@ -784,4 +784,21 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByText("אשר וייבא")).not.toBeInTheDocument();
   });
+
+  it("shows tab counts for the new range sheets", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_locations = [
+      { row: 2, action: "new", errors: [], name: "מטווח דרומי", active: true, existing_id: null },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+
+    expect(screen.getByText("מיקומי מטווח (1)")).toBeInTheDocument();
+    expect(screen.getByText("מטווחים (0)")).toBeInTheDocument();
+    expect(screen.getByText("שיבוצי מטווח (0)")).toBeInTheDocument();
+    expect(screen.getByText("כשירויות מטווח (0)")).toBeInTheDocument();
+    expect(screen.getByText("בקשות פטור ממטווח (0)")).toBeInTheDocument();
+  });
 });

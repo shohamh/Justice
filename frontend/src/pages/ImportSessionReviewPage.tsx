@@ -30,6 +30,11 @@ import {
   type SoldierExemptionImportRow,
   type ExemptionRequestImportRow,
   type SwapRequestImportRow,
+  type RangeLocationImportRow,
+  type RangeEventImportRow,
+  type RangeAssignmentImportRow,
+  type SoldierRangeQualificationImportRow,
+  type RangeExcusalRequestImportRow,
   getSession,
   reparseSession,
   saveSelections,
@@ -38,6 +43,15 @@ import {
   listNodesForImport,
 } from "../api/importSessions";
 import { translateApiError } from "../utils/translateApiError";
+
+// Range sheet row types used in content blocks (tasks 3-7)
+// @ts-ignore TS6196: type is intentionally defined but unused here; will be used in tasks 3-7
+type RangeSheetRow =
+  | RangeLocationImportRow
+  | RangeEventImportRow
+  | RangeAssignmentImportRow
+  | SoldierRangeQualificationImportRow
+  | RangeExcusalRequestImportRow;
 
 type ActionValue = RowBase["action"];
 
@@ -73,7 +87,12 @@ type TabKey =
   | "soldier_enrollment_requests"
   | "soldier_exemptions"
   | "exemption_requests"
-  | "swap_requests";
+  | "swap_requests"
+  | "range_locations"
+  | "range_events"
+  | "range_assignments"
+  | "soldier_range_qualifications"
+  | "range_excusal_requests";
 
 type GroupKey =
   | "soldiers"
@@ -91,7 +110,12 @@ type GroupKey =
   | "soldier_enrollment_requests"
   | "soldier_exemptions"
   | "exemption_requests"
-  | "swap_requests";
+  | "swap_requests"
+  | "range_locations"
+  | "range_events"
+  | "range_assignments"
+  | "soldier_range_qualifications"
+  | "range_excusal_requests";
 
 function StatusChip({
   action,
@@ -509,6 +533,11 @@ export default function ImportSessionReviewPage() {
     soldier_exemptions,
     exemption_requests,
     swap_requests,
+    range_locations,
+    range_events,
+    range_assignments,
+    soldier_range_qualifications,
+    range_excusal_requests,
   } = detail.parsed_state;
 
   return (
@@ -541,6 +570,11 @@ export default function ImportSessionReviewPage() {
               ["soldier_exemptions", `פטורי חיילים (${soldier_exemptions.length})`],
               ["exemption_requests", `בקשות פטור (${exemption_requests.length})`],
               ["swap_requests", `בקשות החלפה (${swap_requests.length})`],
+              ["range_locations", `מיקומי מטווח (${range_locations.length})`],
+              ["range_events", `מטווחים (${range_events.length})`],
+              ["range_assignments", `שיבוצי מטווח (${range_assignments.length})`],
+              ["soldier_range_qualifications", `כשירויות מטווח (${soldier_range_qualifications.length})`],
+              ["range_excusal_requests", `בקשות פטור ממטווח (${range_excusal_requests.length})`],
             ] as [TabKey, string][]
           ).map(([key, label]) => (
             <button
