@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { ArrowLeftRight } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -303,9 +304,10 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
             const ineligibleAssignees = canSeeEligibilityBadges
               ? shift.assignees.filter((a) => a.weapon_ineligible || a.range_eligibility?.eligible === false)
               : [];
-            const plannedCoverageAssignee = canSeeEligibilityBadges && ineligibleAssignees.length === 0
-              ? shift.assignees.find((a) => a.range_eligibility?.qualification_source === "planned_range")
-              : undefined;
+            const plannedCoverageAssignees = canSeeEligibilityBadges && ineligibleAssignees.length === 0
+              ? shift.assignees.filter((a) => a.range_eligibility?.qualification_source === "planned_range" && a.range_eligibility.covered_by_range_date)
+              : [];
+            const plannedCoverageAssignee = plannedCoverageAssignees[0];
             const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
             const isMultiDay = shiftSpansMultipleDays(shift);
             const edgeLabels = isMultiDay ? shiftEdgeLabels(shift) : null;
@@ -337,19 +339,24 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
                     <span
                       data-testid={`shift-info-badge-${shift.id}`}
                       aria-label={t("range_qualification.calendarBadge.info")}
-                      title={t("unit_calendar.eventInfoBadge", {
-                        rangeType:
-                          RANGE_TYPE_LABELS[plannedCoverageAssignee.range_eligibility.covering_range_type ?? ""]
-                          ?? plannedCoverageAssignee.range_eligibility.covering_range_type,
-                        date: formatDate(plannedCoverageAssignee.range_eligibility.covered_by_range_date),
-                      })}
-                      className="inline-flex items-center rounded bg-blue-100 px-1 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-shrink-0"
+                      title={
+                        plannedCoverageAssignees.length === 1
+                          ? t("unit_calendar.eventInfoBadge", {
+                              rangeType:
+                                RANGE_TYPE_LABELS[plannedCoverageAssignee.range_eligibility.covering_range_type ?? ""]
+                                ?? plannedCoverageAssignee.range_eligibility.covering_range_type,
+                              date: formatDate(plannedCoverageAssignee.range_eligibility.covered_by_range_date),
+                            })
+                          : t("unit_calendar.eventInfoBadgeCount", { count: plannedCoverageAssignees.length })
+                      }
+                      className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-shrink-0"
                     >
-                      ℹ
+                      ℹ<span className="text-[10px] leading-4">{plannedCoverageAssignees.length}</span>
                     </span>
                   )}
                   {swapCount > 0 && (
-                    <span className="bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
+                    <span className="inline-flex items-center gap-0.5 bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
+                      <ArrowLeftRight size={10} />
                       {swapCount}
                     </span>
                   )}

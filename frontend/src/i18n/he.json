@@ -413,6 +413,7 @@
     "range_filter_label": "סוגי מטווחים",
     "eventWarningBadge": "{{count}} חיילים לא כשירים למטווח",
     "eventInfoBadge": "צפוי לעשות {{rangeType}} ב{{date}}",
+    "eventInfoBadgeCount": "{{count}} חיילים צפויים להיות כשירים לאחר מטווח מתוכנן",
     "swap_requests_count": "{{count}} בקשות החלפה",
     "swap_requests_has": "יש בקשת החלפה",
     "cover_for_free": "כסה בחינם"
