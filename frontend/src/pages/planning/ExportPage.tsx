@@ -72,6 +72,7 @@ const CONFIG_SHEET_OPTIONS = [
   { key: "exemption_types", label: "פטורים" },
   { key: "system_settings", label: "הגדרות מערכת" },
   { key: "bug_reports", label: "דוחות תקלות" },
+  { key: "range_locations", label: "מיקומי מטווח" },
 ] as const;
 
 const DATA_SHEET_OPTIONS = [
@@ -79,6 +80,8 @@ const DATA_SHEET_OPTIONS = [
   { key: "duty_shifts", label: "משמרות" },
   { key: "assignments", label: "שיבוצים" },
   { key: "shift_templates", label: "תבניות תורנות" },
+  { key: "range_events", label: "מטווחים" },
+  { key: "range_assignments", label: "שיבוצי מטווח" },
 ] as const;
 
 const ALL_KEYS = [

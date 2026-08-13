@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     BugReport, ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
-    Soldier, SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
-    SwapCandidate, SwapRequest, SystemSetting,
+    RangeAssignment, RangeEvent, RangeExcusalRequest, RangeExcusalStatus, RangeLocation,
+    RangeType, Soldier, SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
+    SoldierRangeQualification, SwapCandidate, SwapRequest, SystemSetting,
 )
 from app.services import settings_loader
 from app.services.import_parsers.schema import ParsedImportData
@@ -238,6 +239,135 @@ def resolve_soldier_exemptions(session: Session, data: ParsedImportData, overrid
             "granted_by_personal_number": granted_by_pn,
             "resolved_granted_by_id": str(granted_by.id) if granted_by else None,
             "revoked": revoked, "revoke_reason": revoke_reason,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def resolve_soldier_range_qualifications(session: Session, data: ParsedImportData, overrides: dict[str, dict] | None = None) -> list[dict]:
+    overrides = overrides or {}
+    soldiers_by_pn = _soldiers_by_pn(session)
+    out = []
+    for row in data.soldier_range_qualifications:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        soldier_pn = field("soldier_personal_number", row.soldier_personal_number)
+        range_type = field("range_type", row.range_type)
+        valid_until = field("valid_until", row.valid_until)
+
+        soldier = soldiers_by_pn.get(soldier_pn) if soldier_pn else None
+        if soldier is None:
+            errors.append(f"חייל לא מזוהה '{soldier_pn}'")
+        if range_type not in (rt.value for rt in RangeType):
+            errors.append(f"סוג מטווח לא תקין '{range_type}'")
+        if not valid_until:
+            errors.append("חסר תאריך תוקף")
+
+        existing = None
+        if row.id:
+            try:
+                existing = session.get(SoldierRangeQualification, uuid.UUID(row.id))
+            except ValueError:
+                errors.append(f"מזהה לא תקין '{row.id}'")
+
+        action = "error" if errors else ("update" if existing is not None else "new")
+        out.append({
+            "row": row.source_row, "action": action, "errors": errors,
+            "id": row.id, "soldier_personal_number": soldier_pn,
+            "resolved_soldier_id": str(soldier.id) if soldier else None,
+            "range_type": range_type, "valid_until": valid_until,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def resolve_range_excusal_requests(session: Session, data: ParsedImportData, overrides: dict[str, dict] | None = None) -> list[dict]:
+    overrides = overrides or {}
+    soldiers_by_pn = _soldiers_by_pn(session)
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()}
+    events = session.execute(select(RangeEvent)).scalars().all()
+    events_by_key = {
+        (ev.hierarchy_node_id, ev.range_type, ev.date.isoformat(), ev.range_location_id): ev
+        for ev in events
+    }
+    assignments_by_event_and_soldier = {
+        (a.range_event_id, a.soldier_id): a for a in session.execute(select(RangeAssignment)).scalars()
+    }
+
+    out = []
+    for row in data.range_excusal_requests:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        soldier_pn = field("soldier_personal_number", row.soldier_personal_number)
+        requested_by_pn = field("requested_by_personal_number", row.requested_by_personal_number)
+        hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
+        range_type = field("range_type", row.range_type)
+        event_date = field("date", row.date)
+        range_location_name = field("range_location_name", row.range_location_name)
+        reason = field("reason", row.reason)
+        status = field("status", row.status)
+        decided_by_pn = field("decided_by_personal_number", row.decided_by_personal_number)
+        decision_note = field("decision_note", row.decision_note)
+
+        existing = None
+        if row.id:
+            try:
+                existing = session.get(RangeExcusalRequest, uuid.UUID(row.id))
+            except ValueError:
+                errors.append(f"מזהה לא תקין '{row.id}'")
+
+        soldier = soldiers_by_pn.get(soldier_pn) if soldier_pn else None
+        # An approved excusal's linked RangeAssignment is deleted on approval
+        # (range_assignment_id is SET NULL), so re-exporting it has no way to
+        # recover soldier_personal_number. Only error on a missing soldier
+        # when the sheet actually provided a (now-unresolvable) personal
+        # number, or when this is a genuinely new row (no existing match by
+        # id) that needs a soldier to create — an update to an already-known
+        # row with an empty soldier_pn is a legitimate round-trip, not an error.
+        if soldier is None and (soldier_pn or existing is None):
+            errors.append(f"חייל לא מזוהה '{soldier_pn}'")
+        requested_by = soldiers_by_pn.get(requested_by_pn) if requested_by_pn else None
+        if requested_by_pn and requested_by is None:
+            errors.append(f"מבקש לא מזוהה '{requested_by_pn}'")
+        decided_by = soldiers_by_pn.get(decided_by_pn) if decided_by_pn else None
+        if decided_by_pn and decided_by is None:
+            errors.append(f"מחליט לא מזוהה '{decided_by_pn}'")
+        if status not in (s.value for s in RangeExcusalStatus):
+            errors.append(f"סטטוס לא תקין '{status}'")
+
+        node = nodes_by_name.get(hierarchy_node_name) if hierarchy_node_name else None
+        location = locations_by_name.get(range_location_name) if range_location_name else None
+        event = None
+        assignment = None
+        if node is not None and location is not None and event_date and range_type in (rt.value for rt in RangeType):
+            event = events_by_key.get((node.id, range_type, event_date, location.id))
+        if event is not None and soldier is not None:
+            assignment = assignments_by_event_and_soldier.get((event.id, soldier.id))
+
+        action = "error" if errors else ("update" if existing is not None else "new")
+        out.append({
+            "row": row.source_row, "action": action, "errors": errors,
+            "id": row.id, "soldier_personal_number": soldier_pn,
+            "resolved_soldier_id": str(soldier.id) if soldier else None,
+            "requested_by_personal_number": requested_by_pn,
+            "resolved_requested_by_id": str(requested_by.id) if requested_by else None,
+            "hierarchy_node_name": hierarchy_node_name, "range_type": range_type, "date": event_date,
+            "range_location_name": range_location_name,
+            "resolved_range_event_id": str(event.id) if event else None,
+            "resolved_range_assignment_id": str(assignment.id) if assignment else None,
+            "reason": reason, "status": status,
+            "decided_by_personal_number": decided_by_pn,
+            "resolved_decided_by_id": str(decided_by.id) if decided_by else None,
+            "decision_note": decision_note,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out

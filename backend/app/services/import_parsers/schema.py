@@ -121,6 +121,66 @@ class ImportAssignmentRow(BaseModel):
     notes: str | None = None
 
 
+class ImportRangeLocationRow(BaseModel):
+    source_row: int
+    name: str
+    active: bool | None = None
+
+
+class ImportRangeEventRow(BaseModel):
+    source_row: int
+    hierarchy_node_name: str | None = None
+    range_type: str
+    date: str
+    range_location_name: str
+    required_count: int
+    reserve_count: int = 0
+    start_time: str | None = None
+    end_time: str | None = None
+    arrival_instructions: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    notes: str | None = None
+    status: str | None = None
+
+
+class ImportRangeAssignmentRow(BaseModel):
+    source_row: int
+    personal_number: str
+    full_name: str
+    hierarchy_node_name: str | None = None
+    range_type: str
+    date: str
+    range_location_name: str
+    is_reserve: bool = False
+    is_draft: bool = False
+    attendance_status: str | None = None
+    note: str | None = None
+
+
+class ImportSoldierRangeQualificationRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    soldier_personal_number: str
+    range_type: str
+    valid_until: str
+
+
+class ImportRangeExcusalRequestRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    soldier_personal_number: str
+    requested_by_personal_number: str | None = None
+    hierarchy_node_name: str | None = None
+    range_type: str
+    date: str
+    range_location_name: str
+    reason: str | None = None
+    status: str
+    decided_by_personal_number: str | None = None
+    decision_note: str | None = None
+
+
 class ImportSwapRequestRow(BaseModel):
     source_row: int
     id: str | None = None
@@ -237,6 +297,11 @@ class ParsedImportData(BaseModel):
     shift_templates: list[ImportShiftTemplateRow] = []
     exemption_types: list[ImportExemptionTypeRow] = []
     assignments: list[ImportAssignmentRow] = []
+    range_locations: list[ImportRangeLocationRow] = []
+    range_events: list[ImportRangeEventRow] = []
+    range_assignments: list[ImportRangeAssignmentRow] = []
+    soldier_range_qualifications: list[ImportSoldierRangeQualificationRow] = []
+    range_excusal_requests: list[ImportRangeExcusalRequestRow] = []
     swap_requests: list[ImportSwapRequestRow] = []
     exemption_requests: list[ImportExemptionRequestRow] = []
     soldier_field_updates: list[ImportSoldierFieldUpdateRow] = []

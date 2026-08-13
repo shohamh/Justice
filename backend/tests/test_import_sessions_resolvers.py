@@ -1,13 +1,24 @@
 from __future__ import annotations
 
-from app.db.models import DutyLocation, HierarchyLevelType, Soldier
+from sqlalchemy import select
+
+from app.db.models import DutyLocation, HierarchyLevelType, RangeLocation, Soldier
 from app.services.import_parsers.schema import (
     ImportDutyLocationRow,
     ImportHierarchyNodeRow,
+    ImportRangeAssignmentRow,
+    ImportRangeEventRow,
+    ImportRangeLocationRow,
     ParsedImportData,
 )
-from app.services.import_sessions import _resolve_duty_locations, _resolve_hierarchy
-from tests.helpers import create_node, create_soldier
+from app.services.import_sessions import (
+    _resolve_duty_locations,
+    _resolve_hierarchy,
+    _resolve_range_assignments,
+    _resolve_range_events,
+    _resolve_range_locations,
+)
+from tests.helpers import create_node, create_range_event, create_range_location, create_soldier
 
 
 def test_resolve_duty_locations_new_and_update(app_session):
@@ -342,6 +353,8 @@ def test_resolve_and_score_includes_all_expected_keys(app_session):
         "personal_constraints", "soldier_field_updates", "soldier_enrollment_requests",
         "soldier_exemptions", "exemption_requests", "swap_requests",
         "system_settings", "bug_reports",
+        "range_locations", "range_events", "range_assignments",
+        "soldier_range_qualifications", "range_excusal_requests",
     }
     assert set(result.keys()) == expected_keys
 
@@ -370,3 +383,248 @@ def test_resolve_and_score_passes_hierarchy_node_name_mappings_to_resolve_hierar
     row = result["hierarchy"][0]
     assert row["resolved_parent_id"] == str(existing_parent.id)
     assert row["errors"] == []
+
+
+def test_resolve_range_locations_new_and_update(app_session):
+    existing = create_range_location(app_session, name="מטווח קיים")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_locations=[
+            ImportRangeLocationRow(source_row=2, name="מטווח קיים", active=False),
+            ImportRangeLocationRow(source_row=3, name="מטווח חדש", active=True),
+        ],
+    )
+    result = _resolve_range_locations(app_session, data)
+    assert result[0]["action"] == "update"
+    assert result[0]["existing_id"] == str(existing.id)
+    assert result[1]["action"] == "new"
+    assert result[1]["existing_id"] is None
+
+
+def test_resolve_range_locations_missing_name_error(app_session):
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_locations=[ImportRangeLocationRow(source_row=2, name="", active=True)],
+    )
+    result = _resolve_range_locations(app_session, data)
+    assert result[0]["action"] == "error"
+
+
+def test_resolve_range_events_new(app_session):
+    admin = create_soldier(app_session, personal_number="admin-1", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_events=[
+            ImportRangeEventRow(
+                source_row=2, hierarchy_node_name="מדור א", range_type="live",
+                date="2024-06-15", range_location_name="מטווח דרומי",
+                required_count=10, reserve_count=2, status="planned",
+            )
+        ],
+    )
+    result = _resolve_range_events(app_session, data, admin)
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["resolved_hierarchy_node_id"] == str(node.id)
+    assert row["resolved_range_location_id"] == str(loc.id)
+    assert row["required_count"] == 10
+
+
+def test_resolve_range_events_unknown_location_error(app_session):
+    admin = create_soldier(app_session, personal_number="admin-2", role="admin")
+    create_node(app_session, name="מדור א", level="group")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_events=[
+            ImportRangeEventRow(
+                source_row=2, hierarchy_node_name="מדור א", range_type="live",
+                date="2024-06-15", range_location_name="לא קיים", required_count=10,
+            )
+        ],
+    )
+    result = _resolve_range_events(app_session, data, admin)
+    assert result[0]["action"] == "error"
+    assert any("מטווח" in e for e in result[0]["errors"])
+
+
+def test_resolve_range_events_invalid_range_type_error(app_session):
+    admin = create_soldier(app_session, personal_number="admin-3", role="admin")
+    create_node(app_session, name="מדור א", level="group")
+    create_range_location(app_session, name="מטווח דרומי")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_events=[
+            ImportRangeEventRow(
+                source_row=2, hierarchy_node_name="מדור א", range_type="not_a_type",
+                date="2024-06-15", range_location_name="מטווח דרומי", required_count=10,
+            )
+        ],
+    )
+    result = _resolve_range_events(app_session, data, admin)
+    assert result[0]["action"] == "error"
+
+
+def test_resolve_range_assignments_matches_existing_event(app_session):
+    admin = create_soldier(app_session, personal_number="admin-4", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    soldier = create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="מדור א", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(app_session, data, admin, [])
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["resolved_soldier_id"] == str(soldier.id)
+    assert row["resolved_range_event_id"] == str(event.id)
+    assert row["hierarchy_node_name"] == "מדור א"
+    assert row["resolved_hierarchy_node_id"] == str(node.id)
+
+
+def test_resolve_range_assignments_matches_session_created_event(app_session):
+    admin = create_soldier(app_session, personal_number="admin-5", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    location = create_range_location(app_session, name="מטווח דרומי")
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+
+    resolved_events = [{
+        "row": 2, "action": "new", "range_type": "live", "date": "2024-06-15",
+        "resolved_hierarchy_node_id": str(node.id),
+        "resolved_range_location_id": str(location.id),
+    }]
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=3, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="מדור א", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(app_session, data, admin, resolved_events)
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["resolved_range_event_id"] is None
+    assert row["matched_session_row"] == 2
+
+
+def test_resolve_range_assignments_soldier_not_found_error(app_session):
+    admin = create_soldier(app_session, personal_number="admin-6", role="admin")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="99999", full_name="לא קיים",
+                range_type="live", date="2024-06-15", range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(app_session, data, admin, [])
+    assert result[0]["action"] == "error"
+
+
+def test_resolve_range_assignments_duplicate_names_no_crash(app_session):
+    """Regression guard: hierarchy_nodes.name and range_locations.name carry no
+    unique DB constraint. Duplicate names must not raise MultipleResultsFound
+    (the old code queried HierarchyNode/RangeLocation by name via
+    scalar_one_or_none(), which crashes the whole session upload on a
+    duplicate) — resolution must use a name->row dict lookup like
+    _resolve_range_events already does, where the last row wins instead of
+    raising."""
+    admin = create_soldier(app_session, personal_number="admin-7", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    create_node(app_session, name="מדור א", level="group")  # duplicate name
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    create_range_location(app_session, name="מטווח דרומי")  # duplicate name
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="מדור א", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    # Must not raise MultipleResultsFound.
+    result = _resolve_range_assignments(app_session, data, admin, [])
+    assert result[0]["row"] == 2
+
+
+def test_resolve_range_assignments_honors_node_by_name_override(app_session):
+    """Regression guard: a user who remaps an ambiguous hierarchy_node_name via
+    the review UI's picker (on the range_events tab) must have that mapping
+    honored when _resolve_range_assignments matches the same node on the
+    range_assignments tab — mirrors _resolve_range_events' own
+    node_by_name/node_by_row override mechanism."""
+    admin = create_soldier(app_session, personal_number="admin-8", role="admin")
+    node = create_node(app_session, name="מדור אמיתי", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="שם לא תואם", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(
+        app_session, data, admin, [],
+        node_by_name={"שם לא תואם": str(node.id)},
+    )
+    row = result[0]
+    assert row["errors"] == []
+    assert row["action"] == "new"
+    assert row["resolved_range_event_id"] == str(event.id)
+
+
+def test_resolve_and_score_passes_node_mappings_to_resolve_range_assignments(app_session):
+    """Regression guard: _resolve_and_score must forward the same
+    node_by_name/node_by_row selections it already passes to
+    _resolve_range_events into _resolve_range_assignments, so a name mapping
+    picked on one tab is honored on the other."""
+    admin = create_soldier(app_session, personal_number="admin-9", role="admin")
+    node = create_node(app_session, name="מדור אמיתי", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="שם לא תואם", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    selections = {
+        "_name_mappings": {
+            "hierarchy_node": {"by_name": {"שם לא תואם": str(node.id)}},
+        },
+    }
+    result = _resolve_and_score(app_session, data, admin, selections=selections)
+    row = result["range_assignments"][0]
+    assert row["errors"] == []
+    assert row["resolved_range_event_id"] == str(event.id)

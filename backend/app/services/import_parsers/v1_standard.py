@@ -18,10 +18,15 @@ from app.services.import_parsers.schema import (
     ImportHierarchyNodeRow,
     ImportNodeQuota,
     ImportPersonalConstraintRow,
+    ImportRangeAssignmentRow,
+    ImportRangeEventRow,
+    ImportRangeExcusalRequestRow,
+    ImportRangeLocationRow,
     ImportShiftTemplateRow,
     ImportSoldierEnrollmentRequestRow,
     ImportSoldierExemptionRow,
     ImportSoldierFieldUpdateRow,
+    ImportSoldierRangeQualificationRow,
     ImportSoldierRow,
     ImportSwapRequestRow,
     ImportSystemSettingRow,
@@ -34,6 +39,8 @@ KNOWN_SHEETS = {
     "swap_requests", "exemption_requests", "soldier_field_updates",
     "soldier_enrollment_requests", "personal_constraints", "soldier_exemptions",
     "system_settings", "bug_reports",
+    "range_locations", "range_events", "range_assignments",
+    "soldier_range_qualifications", "range_excusal_requests",
 }
 
 
@@ -439,6 +446,81 @@ class V1StandardParser:
             for r in _sheet_rows(wb, "bug_reports")
         ]
 
+        range_locations = [
+            ImportRangeLocationRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                active=_parse_bool(r.get("active")),
+            )
+            for r in _sheet_rows(wb, "range_locations")
+        ]
+
+        range_events = [
+            ImportRangeEventRow(
+                source_row=r["_row"],
+                hierarchy_node_name=str(r.get("hierarchy_node_name") or "").strip() or None,
+                range_type=str(r.get("range_type") or "").strip(),
+                date=_parse_date(r.get("date")) or "",
+                range_location_name=str(r.get("range_location_name") or "").strip(),
+                required_count=int(r.get("required_count") or 1),
+                reserve_count=int(r.get("reserve_count") or 0),
+                start_time=str(r.get("start_time") or "").strip() or None,
+                end_time=str(r.get("end_time") or "").strip() or None,
+                arrival_instructions=str(r.get("arrival_instructions") or "").strip() or None,
+                contact_name=str(r.get("contact_name") or "").strip() or None,
+                contact_phone=str(r.get("contact_phone") or "").strip() or None,
+                notes=str(r.get("notes") or "").strip() or None,
+                status=str(r.get("status") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "range_events")
+        ]
+
+        range_assignments = [
+            ImportRangeAssignmentRow(
+                source_row=r["_row"],
+                personal_number=str(r.get("personal_number") or "").strip(),
+                full_name=str(r.get("full_name") or "").strip(),
+                hierarchy_node_name=str(r.get("hierarchy_node_name") or "").strip() or None,
+                range_type=str(r.get("range_type") or "").strip(),
+                date=_parse_date(r.get("date")) or "",
+                range_location_name=str(r.get("range_location_name") or "").strip(),
+                is_reserve=_parse_bool(r.get("is_reserve")) or False,
+                is_draft=_parse_bool(r.get("is_draft")) or False,
+                attendance_status=str(r.get("attendance_status") or "").strip() or None,
+                note=str(r.get("note") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "range_assignments")
+        ]
+
+        soldier_range_qualifications = [
+            ImportSoldierRangeQualificationRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
+                range_type=str(r.get("range_type") or "").strip(),
+                valid_until=_parse_date(r.get("valid_until")) or "",
+            )
+            for r in _sheet_rows(wb, "soldier_range_qualifications")
+        ]
+
+        range_excusal_requests = [
+            ImportRangeExcusalRequestRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
+                requested_by_personal_number=str(r.get("requested_by_personal_number") or "").strip() or None,
+                hierarchy_node_name=str(r.get("hierarchy_node_name") or "").strip() or None,
+                range_type=str(r.get("range_type") or "").strip(),
+                date=_parse_date(r.get("date")) or "",
+                range_location_name=str(r.get("range_location_name") or "").strip(),
+                reason=str(r.get("reason") or "").strip() or None,
+                status=str(r.get("status") or "").strip(),
+                decided_by_personal_number=str(r.get("decided_by_personal_number") or "").strip() or None,
+                decision_note=str(r.get("decision_note") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "range_excusal_requests")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
@@ -456,6 +538,11 @@ class V1StandardParser:
             soldier_exemptions=soldier_exemptions,
             system_settings=system_settings,
             bug_reports=bug_reports,
+            range_locations=range_locations,
+            range_events=range_events,
+            range_assignments=range_assignments,
+            soldier_range_qualifications=soldier_range_qualifications,
+            range_excusal_requests=range_excusal_requests,
             parser_id=self.id,
             parser_warnings=warnings,
         )

@@ -128,4 +128,45 @@ describe("ExportPage", () => {
       );
     });
   });
+
+  it("renders checkboxes for the new range sheets", async () => {
+    renderWithProviders(<ExportPage />);
+    await waitFor(() => screen.getByText("ייצוא"));
+    expect(screen.getByLabelText(/מיקומי מטווח/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^מטווחים$/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/שיבוצי מטווח/)).toBeInTheDocument();
+  });
+
+  it("calls /config/export with range_locations when checked", async () => {
+    renderWithProviders(<ExportPage />);
+    await waitFor(() => screen.getByText("ייצוא"));
+    fireEvent.click(screen.getByLabelText(/מיקומי מטווח/));
+    fireEvent.click(screen.getByText("ייצוא"));
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/config/export?sheets=range_locations"),
+        expect.anything(),
+      );
+    });
+  });
+
+  it("calls /import/export with range_events and range_assignments when checked", async () => {
+    const importWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(importWb, XLSX.utils.aoa_to_sheet([["hierarchy_node_name"], ["מדור א"]]), "range_events");
+    const importBuf = XLSX.write(importWb, { type: "array", bookType: "xlsx" });
+    const fetchMock = vi.fn().mockResolvedValue({ arrayBuffer: () => Promise.resolve(importBuf) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithProviders(<ExportPage />);
+    fireEvent.click(await screen.findByLabelText(/^מטווחים$/));
+    fireEvent.click(await screen.findByLabelText(/שיבוצי מטווח/));
+    fireEvent.click(screen.getByText("ייצוא"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/import/export?sheets=range_events,range_assignments",
+        expect.objectContaining({ headers: expect.any(Object) }),
+      );
+    });
+  });
 });

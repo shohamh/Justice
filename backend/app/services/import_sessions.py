@@ -25,11 +25,19 @@ from app.db.models import (
     HierarchyNode,
     ImportSession,
     PersonalConstraint,
+    RangeAssignment,
+    RangeAttendanceStatus,
+    RangeEvent,
+    RangeEventStatus,
+    RangeExcusalRequest,
+    RangeLocation,
+    RangeType,
     ShiftTemplate,
     Soldier,
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SoldierRangeQualification,
     SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
@@ -48,12 +56,14 @@ from app.services.duty_config import (
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
 from app.services.import_approvals import (
     resolve_bug_reports, resolve_exemption_requests, resolve_personal_constraints,
-    resolve_soldier_enrollment_requests, resolve_soldier_exemptions, resolve_soldier_field_updates,
-    resolve_swap_requests, resolve_system_settings,
+    resolve_range_excusal_requests, resolve_soldier_enrollment_requests, resolve_soldier_exemptions,
+    resolve_soldier_field_updates, resolve_soldier_range_qualifications, resolve_swap_requests,
+    resolve_system_settings,
 )
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
+from app.services.range_locations import create_range_location
 from app.services.settings_loader import set_setting
 from app.services.shift_quotas import set_shift_quotas
 from app.services.shift_templates import create_template, update_template
@@ -221,6 +231,284 @@ def _resolve_duty_locations(
             "base": base,
             "active": active,
             "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def _resolve_range_locations(
+    session: Session,
+    data: ParsedImportData,
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    overrides = overrides or {}
+    existing_by_name = {
+        loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()
+    }
+    out = []
+    for row in data.range_locations:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        name = field("name", row.name)
+        active = field("active", row.active)
+
+        if not name:
+            errors.append("חסר שם מיקום מטווח")
+        existing = existing_by_name.get(name) if name else None
+        action = "error" if errors else ("update" if existing else "new")
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "name": name,
+            "active": active,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def _resolve_range_events(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
+    overrides = overrides or {}
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()}
+
+    out = []
+    for row in data.range_events:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
+        range_type = field("range_type", row.range_type)
+        event_date = field("date", row.date)
+        range_location_name = field("range_location_name", row.range_location_name)
+        required_count = field("required_count", row.required_count)
+        reserve_count = field("reserve_count", row.reserve_count)
+        start_time = field("start_time", row.start_time)
+        end_time = field("end_time", row.end_time)
+        arrival_instructions = field("arrival_instructions", row.arrival_instructions)
+        contact_name = field("contact_name", row.contact_name)
+        contact_phone = field("contact_phone", row.contact_phone)
+        notes = field("notes", row.notes)
+        status = field("status", row.status) or RangeEventStatus.planned.value
+
+        node = None
+        if hierarchy_node_name:
+            row_key = f"range_events:{row.source_row}"
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(hierarchy_node_name)
+            if mapped_id:
+                try:
+                    node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if node is None:
+                node = nodes_by_name.get(hierarchy_node_name)
+        if node is None:
+            errors.append(f"יחידה לא מזוהה '{hierarchy_node_name}'")
+
+        location = locations_by_name.get(range_location_name) if range_location_name else None
+        if location is None:
+            errors.append(f"מיקום מטווח לא מזוהה '{range_location_name}'")
+
+        if range_type not in (rt.value for rt in RangeType):
+            errors.append(f"סוג מטווח לא תקין '{range_type}'")
+        if not event_date:
+            errors.append("חסר תאריך")
+        if status not in (s.value for s in RangeEventStatus):
+            errors.append(f"סטטוס לא תקין '{status}'")
+
+        action = "error" if errors else "new"
+
+        if action == "new" and node is not None and actor.role != "admin":
+            if not is_node_in_actor_scope(session=session, actor=actor, node_id=node.id):
+                action = "out_of_scope"
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "hierarchy_node_name": hierarchy_node_name,
+            "resolved_hierarchy_node_id": str(node.id) if node is not None else None,
+            "range_type": range_type,
+            "date": event_date,
+            "range_location_name": range_location_name,
+            "resolved_range_location_id": str(location.id) if location is not None else None,
+            "required_count": required_count,
+            "reserve_count": reserve_count,
+            "start_time": start_time,
+            "end_time": end_time,
+            "arrival_instructions": arrival_instructions,
+            "contact_name": contact_name,
+            "contact_phone": contact_phone,
+            "notes": notes,
+            "status": status,
+        })
+    return out
+
+
+def _resolve_range_assignments(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    resolved_range_events: list[dict],
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
+    overrides = overrides or {}
+
+    soldiers_by_pn = {s.personal_number: s for s in session.execute(select(Soldier)).scalars()}
+    soldiers_by_full_name: dict[str, list[Soldier]] = {}
+    for s in soldiers_by_pn.values():
+        soldiers_by_full_name.setdefault(s.full_name, []).append(s)
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()}
+
+    existing_events = session.execute(select(RangeEvent)).scalars().all()
+    existing_event_by_key: dict[tuple, RangeEvent] = {}
+    for ev in existing_events:
+        key = (ev.hierarchy_node_id, ev.range_type, ev.date.isoformat(), ev.range_location_id)
+        existing_event_by_key[key] = ev
+
+    session_event_by_key: dict[tuple, dict] = {}
+    for ev_row in resolved_range_events:
+        if (
+            ev_row["action"] != "new"
+            or not ev_row.get("resolved_hierarchy_node_id")
+            or not ev_row.get("resolved_range_location_id")
+        ):
+            continue
+        key = (
+            uuid.UUID(ev_row["resolved_hierarchy_node_id"]), ev_row["range_type"],
+            ev_row["date"], uuid.UUID(ev_row["resolved_range_location_id"]),
+        )
+        session_event_by_key[key] = ev_row
+
+    existing_assignment_pairs = {
+        (a.soldier_id, a.range_event_id) for a in session.execute(select(RangeAssignment)).scalars()
+    }
+
+    out = []
+    for row in data.range_assignments:
+        errors: list[str] = []
+        warnings: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        personal_number = field("personal_number", row.personal_number)
+        full_name = field("full_name", row.full_name)
+        hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
+        range_type = field("range_type", row.range_type)
+        event_date = field("date", row.date)
+        range_location_name = field("range_location_name", row.range_location_name)
+        is_reserve = field("is_reserve", row.is_reserve)
+        is_draft = field("is_draft", row.is_draft)
+        attendance_status = field("attendance_status", row.attendance_status) or RangeAttendanceStatus.pending.value
+        note = field("note", row.note)
+
+        soldier = soldiers_by_pn.get(personal_number) if personal_number else None
+        if soldier is not None:
+            if soldier.full_name != full_name:
+                errors.append(
+                    f"שם מלא '{full_name}' אינו תואם לחייל עם מספר אישי '{personal_number}' ('{soldier.full_name}')"
+                )
+        else:
+            candidates = soldiers_by_full_name.get(full_name, []) if full_name else []
+            if len(candidates) == 1:
+                soldier = candidates[0]
+                warnings.append(f"נמצא לפי שם — מספר אישי '{personal_number}' לא נמצא")
+            elif len(candidates) > 1:
+                errors.append(f"מספר אישי '{personal_number}' לא נמצא ושם '{full_name}' אינו חד משמעי")
+            else:
+                errors.append(f"לא נמצא חייל עם מספר אישי '{personal_number}' או שם '{full_name}'")
+
+        resolved_node = None
+        if hierarchy_node_name:
+            row_key = f"range_assignments:{row.source_row}"
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(hierarchy_node_name)
+            if mapped_id:
+                try:
+                    resolved_node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if resolved_node is None:
+                resolved_node = nodes_by_name.get(hierarchy_node_name)
+            if resolved_node is None:
+                errors.append(f"יחידה לא מזוהה '{hierarchy_node_name}'")
+
+        location = locations_by_name.get(range_location_name) if range_location_name else None
+        if location is None:
+            errors.append(f"מיקום מטווח לא מזוהה '{range_location_name}'")
+
+        if range_type not in (rt.value for rt in RangeType):
+            errors.append(f"סוג מטווח לא תקין '{range_type}'")
+
+        resolved_range_event_id: str | None = None
+        matched_session_row: int | None = None
+        if resolved_node is not None and location is not None and event_date and range_type in (rt.value for rt in RangeType):
+            key = (resolved_node.id, range_type, event_date, location.id)
+            existing_match = existing_event_by_key.get(key)
+            session_match = session_event_by_key.get(key)
+            if existing_match is not None:
+                resolved_range_event_id = str(existing_match.id)
+            elif session_match is not None:
+                matched_session_row = session_match["row"]
+            else:
+                errors.append("לא נמצא מטווח תואם (יחידה, סוג, תאריך ומיקום)")
+
+        action = "error" if errors else "new"
+
+        if action == "new" and soldier is not None and actor.role != "admin":
+            if soldier.hierarchy_node_id is None or not is_node_in_actor_scope(
+                session=session, actor=actor, node_id=soldier.hierarchy_node_id
+            ):
+                action = "out_of_scope"
+
+        if (
+            action == "new"
+            and soldier is not None
+            and resolved_range_event_id is not None
+            and (soldier.id, uuid.UUID(resolved_range_event_id)) in existing_assignment_pairs
+        ):
+            action = "skip"
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "warnings": warnings,
+            "personal_number": personal_number,
+            "full_name": full_name,
+            "hierarchy_node_name": hierarchy_node_name,
+            "range_type": range_type,
+            "date": event_date,
+            "range_location_name": range_location_name,
+            "is_reserve": is_reserve,
+            "is_draft": is_draft,
+            "attendance_status": attendance_status,
+            "note": note,
+            "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
+            "resolved_hierarchy_node_id": str(resolved_node.id) if resolved_node is not None else None,
+            "resolved_range_event_id": resolved_range_event_id,
+            "matched_session_row": matched_session_row,
         })
     return out
 
@@ -947,6 +1235,7 @@ def _resolve_and_score(
     node_by_name = nm.get("hierarchy_node", {}).get("by_name", {})
     node_by_row  = nm.get("hierarchy_node", {}).get("by_row", {})
     duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("duty_shifts", {}))
+    range_events = _resolve_range_events(session, data, actor, node_by_name, node_by_row, fo.get("range_events", {}))
     return {
         "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row, fo.get("soldiers", {})),
         "duty_shifts": duty_shifts,
@@ -965,7 +1254,14 @@ def _resolve_and_score(
         "soldier_enrollment_requests": resolve_soldier_enrollment_requests(session, data, fo.get("soldier_enrollment_requests", {})),
         "soldier_exemptions": resolve_soldier_exemptions(session, data, fo.get("soldier_exemptions", {})),
         "exemption_requests": resolve_exemption_requests(session, data, fo.get("exemption_requests", {})),
+        "soldier_range_qualifications": resolve_soldier_range_qualifications(session, data, fo.get("soldier_range_qualifications", {})),
+        "range_excusal_requests": resolve_range_excusal_requests(session, data, fo.get("range_excusal_requests", {})),
         "swap_requests": resolve_swap_requests(session, data, fo.get("swap_requests", {})),
+        "range_locations": _resolve_range_locations(session, data, fo.get("range_locations", {})),
+        "range_events": range_events,
+        "range_assignments": _resolve_range_assignments(
+            session, data, actor, range_events, node_by_name, node_by_row, fo.get("range_assignments", {})
+        ),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }
@@ -1052,6 +1348,10 @@ def confirm_session(
     created_assignments: list[str] = []
     created_shift_templates: list[str] = []
     shift_row_to_id: dict[int, uuid.UUID] = {}
+    created_range_locations: list[str] = []
+    created_range_events: list[str] = []
+    created_range_assignments: list[str] = []
+    range_event_row_to_id: dict[int, uuid.UUID] = {}
 
     # ── Soldiers ────────────────────────────────────────────────────────
     for row in state.get("soldiers", []):
@@ -1291,6 +1591,109 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_locations", "error": str(exc)})
+
+    # ── Range locations ─────────────────────────────────────────────────
+    for row in state.get("range_locations", []):
+        effective = _effective_action(selections, "range_locations", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    new_loc = create_range_location(session, name=row["name"], actor_id=actor.id)
+                    if row.get("active") is not None:
+                        new_loc.active = row["active"]
+                    created += 1
+                    created_range_locations.append(str(new_loc.id))
+                elif effective == "update" and row.get("existing_id"):
+                    loc = session.get(RangeLocation, uuid.UUID(row["existing_id"]))
+                    if loc is not None:
+                        loc.name = row["name"]
+                        if row.get("active") is not None:
+                            loc.active = row["active"]
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_locations", "error": str(exc)})
+
+    # ── Range events ─────────────────────────────────────────────────────
+    for row in state.get("range_events", []):
+        effective = _effective_action(selections, "range_events", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        if effective != "new":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                event = RangeEvent(
+                    hierarchy_node_id=uuid.UUID(row["resolved_hierarchy_node_id"]),
+                    range_type=row["range_type"],
+                    date=date_type.fromisoformat(row["date"]),
+                    range_location_id=uuid.UUID(row["resolved_range_location_id"]),
+                    required_count=row["required_count"],
+                    reserve_count=row.get("reserve_count") or 0,
+                    status=row.get("status") or "planned",
+                    start_time=row.get("start_time"),
+                    end_time=row.get("end_time"),
+                    arrival_instructions=row.get("arrival_instructions"),
+                    contact_name=row.get("contact_name"),
+                    contact_phone=row.get("contact_phone"),
+                    notes=row.get("notes"),
+                    created_by=actor.id,
+                )
+                session.add(event)
+                session.flush()
+            created += 1
+            created_range_events.append(str(event.id))
+            range_event_row_to_id[row["row"]] = event.id
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_events", "error": str(exc)})
+
+    # ── Range assignments ───────────────────────────────────────────────
+    for row in state.get("range_assignments", []):
+        effective = _effective_action(selections, "range_assignments", row)
+        if row["action"] in ("error", "out_of_scope", "skip") or effective == "skip":
+            skipped += 1
+            continue
+        if effective != "new":
+            skipped += 1
+            continue
+        try:
+            if row.get("resolved_range_event_id"):
+                range_event_id = uuid.UUID(row["resolved_range_event_id"])
+            elif row.get("matched_session_row") is not None:
+                mapped = range_event_row_to_id.get(row["matched_session_row"])
+                if mapped is None:
+                    errors.append({
+                        "row": row["row"], "type": "range_assignments",
+                        "error": "המטווח המתאים לא נוצר (דולג או נכשל)",
+                    })
+                    continue
+                range_event_id = mapped
+            else:
+                errors.append({"row": row["row"], "type": "range_assignments", "error": "לא נמצא מטווח תואם"})
+                continue
+
+            with session.begin_nested():
+                assignment = RangeAssignment(
+                    range_event_id=range_event_id,
+                    soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                    is_reserve=row.get("is_reserve") or False,
+                    is_draft=row.get("is_draft") or False,
+                    attendance_status=row.get("attendance_status") or "pending",
+                    note=row.get("note"),
+                )
+                session.add(assignment)
+            created += 1
+            created_range_assignments.append(str(assignment.id))
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_assignments", "error": str(exc)})
 
     # ── Duty types ──────────────────────────────────────────────────────
     for row in state.get("duty_types", []):
@@ -1778,6 +2181,80 @@ def confirm_session(
         except Exception as exc:
             errors.append({"row": row["row"], "type": "soldier_exemptions", "error": str(exc)})
 
+    # ── Soldier range qualifications ──────────────────────────────────────
+    for row in state.get("soldier_range_qualifications", []):
+        effective = _effective_action(selections, "soldier_range_qualifications", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    srq = SoldierRangeQualification(
+                        soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                        range_type=row["range_type"],
+                        valid_until=date_type.fromisoformat(row["valid_until"]),
+                    )
+                    session.add(srq)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    srq = session.get(SoldierRangeQualification, uuid.UUID(row["existing_id"]))
+                    if srq is not None:
+                        srq.range_type = row["range_type"]
+                        srq.valid_until = date_type.fromisoformat(row["valid_until"])
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "soldier_range_qualifications", "error": str(exc)})
+
+    # ── Range excusal requests ──────────────────────────────────────────
+    for row in state.get("range_excusal_requests", []):
+        effective = _effective_action(selections, "range_excusal_requests", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    rer = RangeExcusalRequest(
+                        range_assignment_id=(
+                            uuid.UUID(row["resolved_range_assignment_id"]) if row.get("resolved_range_assignment_id") else None
+                        ),
+                        range_event_id=(
+                            uuid.UUID(row["resolved_range_event_id"]) if row.get("resolved_range_event_id") else None
+                        ),
+                        requested_by=(
+                            uuid.UUID(row["resolved_requested_by_id"]) if row.get("resolved_requested_by_id") else None
+                        ),
+                        reason=row.get("reason") or "",
+                        status=row["status"],
+                    )
+                    if row.get("resolved_decided_by_id"):
+                        rer.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        rer.decided_at = datetime.now(UTC)
+                    rer.decision_note = row.get("decision_note")
+                    session.add(rer)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    rer = session.get(RangeExcusalRequest, uuid.UUID(row["existing_id"]))
+                    if rer is not None:
+                        rer.status = row["status"]
+                        if row.get("reason") is not None:
+                            rer.reason = row["reason"]
+                        if row.get("resolved_decided_by_id"):
+                            rer.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        rer.decision_note = row.get("decision_note")
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "range_excusal_requests", "error": str(exc)})
+
     # ── Exemption requests ───────────────────────────────────────────────
     for row in state.get("exemption_requests", []):
         effective = _effective_action(selections, "exemption_requests", row)
@@ -1926,6 +2403,9 @@ def confirm_session(
         "duty_shifts": created_duty_shifts,
         "assignments": created_assignments,
         "shift_templates": created_shift_templates,
+        "range_locations": created_range_locations,
+        "range_events": created_range_events,
+        "range_assignments": created_range_assignments,
     }
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)

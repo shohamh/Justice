@@ -596,3 +596,68 @@ def test_bug_reports_sheet_absent_gives_empty_list():
     ])
     data = V1StandardParser().parse(wb)
     assert data.bug_reports == []
+
+
+def test_parses_range_sheets():
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    ws_loc = wb.create_sheet("range_locations")
+    ws_loc.append(["name", "active"])
+    ws_loc.append(["מטווח דרומי", "true"])
+
+    ws_ev = wb.create_sheet("range_events")
+    ws_ev.append([
+        "hierarchy_node_name", "range_type", "date", "range_location_name",
+        "required_count", "reserve_count", "start_time", "end_time",
+        "arrival_instructions", "contact_name", "contact_phone", "notes", "status",
+    ])
+    ws_ev.append([
+        "מדור א", "live", "15.06.2024", "מטווח דרומי",
+        "10", "2", "08:00", "12:00", "התייצבות בשער", "דני", "050-1234567", "", "planned",
+    ])
+
+    ws_as = wb.create_sheet("range_assignments")
+    ws_as.append([
+        "personal_number", "full_name", "hierarchy_node_name", "range_type", "date",
+        "range_location_name", "is_reserve", "is_draft", "attendance_status", "note",
+    ])
+    ws_as.append(["12345", "ישראל ישראלי", "מדור א", "live", "15.06.2024", "מטווח דרומי", "false", "false", "pending", ""])
+
+    ws_q = wb.create_sheet("soldier_range_qualifications")
+    ws_q.append(["id", "soldier_personal_number", "range_type", "valid_until"])
+    ws_q.append(["", "12345", "live", "15.06.2025"])
+
+    ws_ex = wb.create_sheet("range_excusal_requests")
+    ws_ex.append([
+        "id", "soldier_personal_number", "requested_by_personal_number", "hierarchy_node_name",
+        "range_type", "date", "range_location_name", "reason", "status",
+        "decided_by_personal_number", "decision_note",
+    ])
+    ws_ex.append(["", "12345", "12345", "מדור א", "live", "15.06.2024", "מטווח דרומי", "חופשה", "pending", "", ""])
+
+    data = V1StandardParser().parse(wb)
+
+    assert len(data.range_locations) == 1
+    assert data.range_locations[0].name == "מטווח דרומי"
+    assert data.range_locations[0].active is True
+
+    assert len(data.range_events) == 1
+    ev = data.range_events[0]
+    assert ev.hierarchy_node_name == "מדור א"
+    assert ev.range_type == "live"
+    assert ev.date == "2024-06-15"
+    assert ev.range_location_name == "מטווח דרומי"
+    assert ev.required_count == 10
+    assert ev.reserve_count == 2
+    assert ev.status == "planned"
+
+    assert len(data.range_assignments) == 1
+    assert data.range_assignments[0].personal_number == "12345"
+    assert data.range_assignments[0].attendance_status == "pending"
+
+    assert len(data.soldier_range_qualifications) == 1
+    assert data.soldier_range_qualifications[0].valid_until == "2025-06-15"
+
+    assert len(data.range_excusal_requests) == 1
+    assert data.range_excusal_requests[0].status == "pending"

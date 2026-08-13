@@ -270,6 +270,8 @@ def test_template_download(client, admin_session):
     assert set(wb.sheetnames) == {
         "soldiers", "duty_shifts", "assignments",
         "duty_locations", "hierarchy", "duty_types", "exemption_types", "shift_templates",
+        "range_locations", "range_events", "range_assignments",
+        "soldier_range_qualifications", "range_excusal_requests",
     }
     headers = [c.value for c in next(wb["assignments"].iter_rows(min_row=1, max_row=1))]
     assert headers == [

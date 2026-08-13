@@ -9,7 +9,7 @@ import openpyxl
 from app.db.models import DutyLocation
 from app.services.duty_config import create_duty_type, create_exemption_type, set_exemption_duty_types
 from app.services.hierarchy import create_node, set_commander
-from tests.helpers import auth_headers, create_soldier
+from tests.helpers import auth_headers, create_range_location, create_soldier
 
 
 def _uid() -> str:
@@ -37,7 +37,7 @@ def test_export_returns_only_requested_sheets(client, admin_session):
     assert any(r[0] == loc.name for r in rows)
 
 
-def test_export_defaults_to_all_six_sheets(client, admin_session):
+def test_export_defaults_to_all_sheets(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     resp = client.get(
         "/api/config/export", headers={"Authorization": f"Bearer {_token(admin)}"}
@@ -51,7 +51,25 @@ def test_export_defaults_to_all_six_sheets(client, admin_session):
         "exemption_types",
         "system_settings",
         "bug_reports",
+        "range_locations",
     }
+
+
+def test_export_includes_range_locations(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    loc = create_range_location(admin_session, name=f"מטווח_{_uid()}")
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/config/export?sheets=range_locations",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert wb.sheetnames == ["range_locations"]
+    rows = list(wb["range_locations"].iter_rows(values_only=True))
+    assert rows[0] == ("name", "active")
+    assert any(r[0] == loc.name for r in rows[1:])
 
 
 def test_export_hierarchy_includes_commander_and_duty_managers(client, admin_session):

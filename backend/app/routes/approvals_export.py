@@ -12,8 +12,9 @@ from app.auth.authz import can_see_private
 from app.auth.deps import require_duty_manager_or_admin
 from app.db.models import (
     ExemptionRequest, ExemptionRequestFile, ExemptionType, HierarchyNode,
-    PersonalConstraint, Soldier, SoldierEnrollmentRequest, SoldierExemption,
-    SoldierFieldUpdate, SwapCandidate, SwapManagerApproval, SwapRequest,
+    PersonalConstraint, RangeAssignment, RangeExcusalRequest, RangeEvent, RangeLocation,
+    Soldier, SoldierEnrollmentRequest, SoldierExemption,
+    SoldierFieldUpdate, SoldierRangeQualification, SwapCandidate, SwapManagerApproval, SwapRequest,
 )
 from app.db.session import get_session
 
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/approvals", tags=["approvals-export"])
 ALL_SHEETS = [
     "swap_requests", "exemption_requests", "soldier_field_updates",
     "soldier_enrollment_requests", "personal_constraints", "soldier_exemptions",
+    "soldier_range_qualifications", "range_excusal_requests",
 ]
 
 
@@ -219,6 +221,59 @@ def _write_swap_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier
             ])
 
 
+def _write_soldier_range_qualifications(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
+    ws = wb.create_sheet("soldier_range_qualifications")
+    ws.append(["id", "soldier_personal_number", "soldier_name", "range_type", "valid_until"])
+    soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
+    for q in session.execute(select(SoldierRangeQualification)).scalars():
+        pn, name = _soldier_label(soldiers_by_id, q.soldier_id)
+        ws.append([str(q.id), pn, name, q.range_type.value, q.valid_until.isoformat()])
+
+
+def _write_range_excusal_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
+    ws = wb.create_sheet("range_excusal_requests")
+    ws.append([
+        "id", "soldier_personal_number", "soldier_name", "requested_by_personal_number",
+        "hierarchy_node_name", "range_type", "date", "range_location_name",
+        "reason", "status", "decided_by_personal_number", "decision_note", "requested_at",
+    ])
+    soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
+    nodes_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars()}
+    locations_by_id = {loc.id: loc for loc in session.execute(select(RangeLocation)).scalars()}
+    events_by_id = {ev.id: ev for ev in session.execute(select(RangeEvent)).scalars()}
+    assignments_by_id = {a.id: a for a in session.execute(select(RangeAssignment)).scalars()}
+    visibility_cache: dict = {}
+    for r in session.execute(select(RangeExcusalRequest)).scalars():
+        assignment = assignments_by_id.get(r.range_assignment_id) if r.range_assignment_id else None
+        soldier_id = assignment.soldier_id if assignment else None
+        pn, _name = _soldier_label(soldiers_by_id, soldier_id) if soldier_id else ("", "")
+        requested_pn = _soldier_label(soldiers_by_id, r.requested_by)[0] if r.requested_by else ""
+        decided_pn = _soldier_label(soldiers_by_id, r.decided_by)[0] if r.decided_by else ""
+        event = events_by_id.get(r.range_event_id) if r.range_event_id else None
+        node = nodes_by_id.get(event.hierarchy_node_id) if event else None
+        loc = locations_by_id.get(event.range_location_id) if event else None
+        # Same can_see_private + per-soldier cache pattern as
+        # _write_personal_constraints / _write_exemption_requests. Approved
+        # excusals have their linked RangeAssignment deleted (SET NULL), so
+        # soldier_id can't be resolved for those rows — no soldier to check
+        # permission against, so reason is just omitted (not an error).
+        soldier = soldiers_by_id.get(soldier_id) if soldier_id else None
+        if soldier is None:
+            include_reason = False
+        elif soldier_id in visibility_cache:
+            include_reason = visibility_cache[soldier_id]
+        else:
+            include_reason = can_see_private(session, actor, soldier)
+            visibility_cache[soldier_id] = include_reason
+        reason = r.reason if include_reason else None
+        ws.append([
+            str(r.id), pn, "", requested_pn,
+            node.name if node else "", event.range_type.value if event else "",
+            event.date.isoformat() if event else "", loc.name if loc else "",
+            reason, r.status.value, decided_pn, r.decision_note, r.requested_at.isoformat(),
+        ])
+
+
 _WRITERS = {
     "swap_requests": _write_swap_requests,
     "exemption_requests": _write_exemption_requests,
@@ -226,6 +281,8 @@ _WRITERS = {
     "soldier_enrollment_requests": _write_soldier_enrollment_requests,
     "personal_constraints": _write_personal_constraints,
     "soldier_exemptions": _write_soldier_exemptions,
+    "soldier_range_qualifications": _write_soldier_range_qualifications,
+    "range_excusal_requests": _write_range_excusal_requests,
 }
 
 

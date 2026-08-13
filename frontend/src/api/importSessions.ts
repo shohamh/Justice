@@ -105,6 +105,76 @@ export interface AssignmentRow extends RowBase {
   matched_session_row: number | null;
 }
 
+export interface RangeLocationImportRow extends RowBase {
+  name: string;
+  active: boolean | null;
+  existing_id: string | null;
+}
+
+export interface RangeEventImportRow extends RowBase {
+  hierarchy_node_name: string | null;
+  resolved_hierarchy_node_id: string | null;
+  range_type: string;
+  date: string;
+  range_location_name: string;
+  resolved_range_location_id: string | null;
+  required_count: number;
+  reserve_count: number;
+  start_time: string | null;
+  end_time: string | null;
+  arrival_instructions: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+  status: string;
+}
+
+export interface RangeAssignmentImportRow extends RowBase {
+  personal_number: string;
+  full_name: string;
+  hierarchy_node_name: string | null;
+  resolved_hierarchy_node_id: string | null;
+  range_type: string;
+  date: string;
+  range_location_name: string;
+  is_reserve: boolean;
+  is_draft: boolean;
+  attendance_status: string;
+  note: string | null;
+  resolved_soldier_id: string | null;
+  resolved_range_event_id: string | null;
+  matched_session_row: number | null;
+}
+
+export interface SoldierRangeQualificationImportRow extends RowBase {
+  id: string | null;
+  soldier_personal_number: string;
+  resolved_soldier_id: string | null;
+  range_type: string;
+  valid_until: string;
+  existing_id: string | null;
+}
+
+export interface RangeExcusalRequestImportRow extends RowBase {
+  id: string | null;
+  soldier_personal_number: string;
+  resolved_soldier_id: string | null;
+  requested_by_personal_number: string | null;
+  resolved_requested_by_id: string | null;
+  hierarchy_node_name: string | null;
+  range_type: string;
+  date: string;
+  range_location_name: string;
+  resolved_range_event_id: string | null;
+  resolved_range_assignment_id: string | null;
+  reason: string | null;
+  status: string;
+  decided_by_personal_number: string | null;
+  resolved_decided_by_id: string | null;
+  decision_note: string | null;
+  existing_id: string | null;
+}
+
 export interface DutyLocationRow extends RowBase {
   name: string;
   base: string | null;
@@ -300,6 +370,11 @@ export interface ParsedState {
   soldier_exemptions: SoldierExemptionImportRow[];
   exemption_requests: ExemptionRequestImportRow[];
   swap_requests: SwapRequestImportRow[];
+  range_locations: RangeLocationImportRow[];
+  range_events: RangeEventImportRow[];
+  range_assignments: RangeAssignmentImportRow[];
+  soldier_range_qualifications: SoldierRangeQualificationImportRow[];
+  range_excusal_requests: RangeExcusalRequestImportRow[];
   parser_id: string;
   parser_warnings: string[];
 }
@@ -323,6 +398,11 @@ export interface SessionSummary {
     soldier_exemptions: number;
     exemption_requests: number;
     swap_requests: number;
+    range_locations: number;
+    range_events: number;
+    range_assignments: number;
+    soldier_range_qualifications: number;
+    range_excusal_requests: number;
   };
 }
 

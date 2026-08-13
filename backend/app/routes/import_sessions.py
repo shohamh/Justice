@@ -50,6 +50,11 @@ def _session_summary(sess: ImportSession) -> dict[str, Any]:
             "exemption_types": len(state.get("exemption_types", [])),
             "system_settings": len(state.get("system_settings", [])),
             "bug_reports": len(state.get("bug_reports", [])),
+            "range_locations": len(state.get("range_locations", [])),
+            "range_events": len(state.get("range_events", [])),
+            "range_assignments": len(state.get("range_assignments", [])),
+            "soldier_range_qualifications": len(state.get("soldier_range_qualifications", [])),
+            "range_excusal_requests": len(state.get("range_excusal_requests", [])),
         },
     }
 

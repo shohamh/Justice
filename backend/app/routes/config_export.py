@@ -18,6 +18,7 @@ from app.db.models import (
     ExemptionDutyTypeMap,
     ExemptionType,
     HierarchyNode,
+    RangeLocation,
     Soldier,
     SystemSetting,
 )
@@ -26,7 +27,10 @@ from app.services.settings_loader import _HIDDEN_KEYS
 
 router = APIRouter(prefix="/config", tags=["config-export"])
 
-ALL_SHEETS = ["duty_types", "duty_locations", "hierarchy", "exemption_types", "system_settings", "bug_reports"]
+ALL_SHEETS = [
+    "duty_types", "duty_locations", "hierarchy", "exemption_types", "system_settings", "bug_reports",
+    "range_locations",
+]
 
 
 def _write_duty_locations(wb: openpyxl.Workbook, session: Session) -> None:
@@ -137,6 +141,13 @@ def _write_bug_reports(wb: openpyxl.Workbook, session: Session) -> None:
         ])
 
 
+def _write_range_locations(wb: openpyxl.Workbook, session: Session) -> None:
+    ws = wb.create_sheet("range_locations")
+    ws.append(["name", "active"])
+    for loc in session.execute(select(RangeLocation)).scalars():
+        ws.append([loc.name, loc.active])
+
+
 _WRITERS = {
     "duty_locations": _write_duty_locations,
     "hierarchy": _write_hierarchy,
@@ -144,6 +155,7 @@ _WRITERS = {
     "exemption_types": _write_exemption_types,
     "system_settings": _write_system_settings,
     "bug_reports": _write_bug_reports,
+    "range_locations": _write_range_locations,
 }
 
 

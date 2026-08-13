@@ -14,15 +14,23 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    RangeExcusalRequest,
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SoldierRangeQualification,
     SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
 )
 from app.services.hierarchy import create_node as create_hierarchy_node
-from tests.helpers import auth_headers, create_soldier
+from tests.helpers import (
+    auth_headers,
+    create_range_assignment,
+    create_range_event,
+    create_range_location,
+    create_soldier,
+)
 
 
 def _uid() -> str:
@@ -210,7 +218,7 @@ def test_export_swap_requests_sheet(client, admin_session):
     assert rejected_segment in segments
 
 
-def test_export_defaults_to_all_six_sheets(client, admin_session):
+def test_export_defaults_to_all_sheets(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     resp = client.get(
         "/api/approvals/export", headers={"Authorization": f"Bearer {_token(admin)}"}
@@ -220,7 +228,51 @@ def test_export_defaults_to_all_six_sheets(client, admin_session):
     assert set(wb.sheetnames) == {
         "swap_requests", "exemption_requests", "soldier_field_updates",
         "soldier_enrollment_requests", "personal_constraints", "soldier_exemptions",
+        "soldier_range_qualifications", "range_excusal_requests",
     }
+
+
+def test_export_includes_range_sheets(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    node = create_hierarchy_node(admin_session, level="group", name=f"מדור_{_uid()}", parent_id=None)
+    soldier = create_soldier(admin_session, personal_number=f"sld_{_uid()}", hierarchy_node_id=node.id)
+    range_loc = create_range_location(admin_session, name=f"מטווח_{_uid()}")
+    event = create_range_event(
+        admin_session, hierarchy_node=node, range_location=range_loc,
+        range_type="live", event_date=date(2026, 6, 20),
+    )
+    assignment = create_range_assignment(admin_session, range_event=event, soldier=soldier)
+
+    qualification = SoldierRangeQualification(
+        soldier_id=soldier.id, range_type="live", valid_until=date(2027, 1, 1),
+    )
+    admin_session.add(qualification)
+    excusal = RangeExcusalRequest(
+        range_assignment_id=assignment.id, range_event_id=event.id,
+        requested_by=soldier.id, reason="חופשה",
+    )
+    admin_session.add(excusal)
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/approvals/export?sheets=soldier_range_qualifications,range_excusal_requests",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert set(wb.sheetnames) == {"soldier_range_qualifications", "range_excusal_requests"}
+
+    q_rows = list(wb["soldier_range_qualifications"].iter_rows(min_row=2, values_only=True))
+    q_row = next(r for r in q_rows if r[0] == str(qualification.id))
+    assert q_row[1] == soldier.personal_number
+    assert q_row[3] == "live"
+
+    r_rows = list(wb["range_excusal_requests"].iter_rows(min_row=2, values_only=True))
+    r_row = next(r for r in r_rows if r[0] == str(excusal.id))
+    assert r_row[1] == soldier.personal_number
+    assert r_row[4] == node.name
+    assert r_row[5] == "live"
+    assert r_row[9] == "pending"
 
 
 def test_export_soldier_field_updates_sheet(client, admin_session):
