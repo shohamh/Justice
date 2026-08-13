@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Soldiers automatically advance rank on a configured future date (with notification to the soldier and their commander), and duty-assignment eligibility — both manual validation and the CP-SAT solver — accounts for a soldier's *projected* state (rank, career track, departure) as of each duty's own date, not just today.
+**Goal:** Soldiers automatically advance rank on a configured future date (with notification to the soldier and their commander), and duty-assignment eligibility — both manual validation and the CP-SAT solver — accounts for a soldier's *projected* state (rank, career track, mitvahim/alal recency, driving-license expiry, exemptions, departure) as of each duty's own date, not just today.
 
-**Architecture:** A new `RankAdvancementInterval` config table drives a daily background worker (mirroring the existing `duty_eligibility_worker.py` pattern) that promotes soldiers and auto-chains their next promotion date. A new projection module (`rank_eligibility_projection.py`, mirroring the existing `range_eligibility_projection.py`/`weapon_eligibility.py` "as-of" pattern) computes a soldier's rank/career/departure state as of any future date, and feeds both `check_soldier_for_assignment` (manual path) and a new `SoldierInput.rank_ineligible_duty_block_ids` field (solver path, mirroring the existing `weapon_ineligible_duty_block_ids` field exactly).
+**Architecture:** A new `RankAdvancementInterval` config table drives a daily background worker (mirroring the existing `duty_eligibility_worker.py` pattern) that promotes soldiers and auto-chains their next promotion date. A new projection module (`rank_eligibility_projection.py`, mirroring the existing `range_eligibility_projection.py`/`weapon_eligibility.py` "as-of" pattern) computes a soldier's projected rank/career/departure state as of any future date, and feeds `check_soldier_for_assignment` (manual path, via a new `rank_override` parameter on `_is_eligible`) and a new `SoldierInput.future_ineligible_duty_block_ids` field (solver path, mirroring the existing `weapon_ineligible_duty_block_ids` field exactly) that also folds in per-block-date exemption checking — generalizing the fix beyond rank to every eligibility factor that can change value within a single solve's planning window.
 
 **Tech Stack:** Python/FastAPI/SQLAlchemy/Alembic backend, React/TypeScript frontend, pytest with Testcontainers Postgres, OR-Tools CP-SAT solver.
 
@@ -13,7 +13,7 @@
 - Spec: `docs/superpowers/specs/2026-08-13-rank-advancement-design.md` — read it before starting; this plan implements it section by section.
 - No auto-advancement crosses from the enlisted ladder to the officer ladder — chaining only moves within the soldier's current track's ladder (per spec "Out of scope").
 - No new "קבע entry date" field — career-track status stays derived from `mandatory_end_date` via `derive_is_career`, evaluated as-of a future date instead of today.
-- Exemptions/personal-constraints date-range checks are already correct against a specific date and must not be touched.
+- Manual-path exemption/personal-constraint checks in `check_soldier_for_assignment` and solver-side personal-constraint checking (`solver.py:305-317`) are already correct against a specific date and must not be touched. Only the CP-SAT solver's exemption-to-duty-type/location mapping (`algorithm_bridge.py` lines ~205-217, evaluated once at solve-start) is in scope — it becomes per-duty-block-date in Task 7.
 - Follow existing repo conventions exactly where a precedent exists (daily worker loop shape, `NotificationType` + `_FRONTEND_PATHS` pattern, `weapon_ineligible_duty_block_ids` pattern for solver-side date-sensitive exclusion, `SystemSetting`/`SettingDef` pattern for admin config).
 - Test markers: use `-m soldiers` or `-m duty` per `backend/pyproject.toml` (see CLAUDE.md). Run only the tests relevant to each task; do not run the full suite until told to.
 
@@ -24,7 +24,7 @@
 **New files:**
 - `backend/alembic/versions/<rev>_add_rank_advancement.py` — migration
 - `backend/app/services/rank_advancement.py` — ladder lookup, interval CRUD, promotion/chaining math, config-change recompute
-- `backend/app/services/rank_eligibility_projection.py` — as-of-a-date rank/career/departure projection + `bulk_rank_ineligible_duty_blocks`
+- `backend/app/services/rank_eligibility_projection.py` — as-of-a-date rank/career/departure projection + `bulk_future_ineligible_duty_blocks` (rank + recency + license + exemptions, per duty-block date)
 - `backend/app/rank_advancement_worker.py` — daily promote + warn worker
 - `backend/app/routes/rank_advancement.py` — `GET /soldiers/rank-ladder`, `PUT /soldiers/rank-advancement-intervals`
 - `backend/app/services/tests/test_rank_advancement.py`
@@ -663,7 +663,7 @@ def project_soldier_state(session: Session, *, soldier: Soldier, as_of: date) ->
         rank = next_rank
         next_date = compute_next_rank_date(session, rank=rank, since=next_date)
 
-    is_career = derive_is_career(rank, soldier.mandatory_end_date, soldier.discharge_date, as_of=as_of)
+    is_career = derive_is_career(rank, soldier.mandatory_end_date, soldier.discharge_date, today=as_of)
 
     departed = False
     if soldier.discharge_date is not None and soldier.discharge_date <= as_of:
@@ -674,21 +674,10 @@ def project_soldier_state(session: Session, *, soldier: Soldier, as_of: date) ->
     return ProjectedSoldierState(rank=rank, is_career=is_career, departed=departed)
 ```
 
-`derive_is_career`'s exact signature (found: `derive_is_career(rank, mandatory_end_date, discharge_date)`, reference date implicitly `date.today()`) needs a reference-date parameter added — do that as part of this task:
-
-- [ ] **Step 3a: Add an `as_of` parameter to `derive_is_career`**
-
-In `backend/app/services/eligibility.py`, find `derive_is_career` (around line 95-111). Change its signature from using `date.today()` internally to accepting an explicit reference date defaulting to today, e.g.:
-
-```python
-def derive_is_career(
-    rank: str | None, mandatory_end_date: date | None, discharge_date: date | None, *, as_of: date | None = None
-) -> bool:
-    reference = as_of or date.today()
-    ...  # replace every internal use of date.today() in this function's body with `reference`
-```
-
-Keep the default `as_of=None → date.today()` so every existing call site (which doesn't pass `as_of`) is unaffected.
+`derive_is_career` (`eligibility.py:95-111`) already accepts an optional
+`today: date | None = None` reference-date parameter (defaulting to
+`date.today()` internally) — no signature change needed. Just pass
+`today=as_of` as shown above.
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -696,7 +685,9 @@ Keep the default `as_of=None → date.today()` so every existing call site (whic
 pytest backend/app/services/tests/test_rank_eligibility_projection.py -v
 pytest backend/app/services/tests/test_eligibility.py -v
 ```
-Expected: PASS. The second command guards against having broken `derive_is_career`'s existing callers.
+Expected: PASS. The second command guards against having broken any
+existing `derive_is_career` caller (there should be none, since this task
+doesn't change its signature).
 
 - [ ] **Step 5: Commit**
 
@@ -791,84 +782,179 @@ git commit -m "fix: chain multiple rank advancement steps in potential calculati
 **Interfaces:**
 - Consumes: `project_soldier_state` (Task 4).
 
-**Context:** `check_soldier_for_assignment` (`eligibility.py:205-298`) hardcodes `today = date.today()` at line 221 for the rank/service-type/career portion of its check. It needs to use the assignment's own date instead. Confirm the function's actual parameter name for the assignment/duty date by reading `eligibility.py:205-230` before editing (the spec draft assumed `assignment.start_date`; verify against the real parameter list, which the Task 4 exploration only summarized, not transcribed in full).
+**Context:** Verified against the real file. `check_soldier_for_assignment`
+(`eligibility.py:205-298`) hardcodes `today = date.today()` at line 221,
+used only at lines 236-240 to call `_is_eligible(soldier, reqs,
+mitvahim_months=.., alal_months=.., today=today)` for the duty-type
+eligibility check. It does not currently check departure
+(`discharge_date`/`left_at`) at all. `_is_eligible` itself already
+recomputes mitvahim/alal recency, driving-license expiry, and
+service-type/קבע correctly for whatever `today` it's given (see the spec's
+"Why rank is the only field that needs projecting") — the only thing
+missing is a projected rank and a departure check.
 
-- [ ] **Step 1: Write a failing test**
+- [ ] **Step 1: Add `rank_override` to `_is_eligible`**
+
+In `backend/app/services/eligibility.py`, change `_is_eligible`'s signature
+(line 124) from:
+
+```python
+def _is_eligible(soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date) -> bool:
+```
+
+to:
+
+```python
+def _is_eligible(
+    soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date,
+    rank_override: str | None = None,
+) -> bool:
+```
+
+And change the `allowed_ranks` check (lines 142-144) from:
+
+```python
+    if reqs.allowed_ranks:
+        if not soldier.rank or soldier.rank not in reqs.allowed_ranks:
+            return False
+```
+
+to:
+
+```python
+    if reqs.allowed_ranks:
+        effective_rank = rank_override if rank_override is not None else soldier.rank
+        if not effective_rank or effective_rank not in reqs.allowed_ranks:
+            return False
+```
+
+Every existing call site (`compute_eligibility_exclusions` at line 199,
+`check_soldier_for_assignment` at line 238) omits `rank_override`, so
+`soldier.rank` is used exactly as before — no behavior change for them
+yet.
+
+- [ ] **Step 2: Write a failing regression test for the new parameter**
+
+Add to `test_eligibility.py`, next to the existing `_is_eligible` tests:
+
+```python
+def test_is_eligible_uses_rank_override_when_provided():
+    soldier = _soldier(rank="טוראי")  # use this file's existing soldier-builder helper
+    reqs = DutyTypeRequirements(allowed_ranks=["רבט"])
+    assert _is_eligible(soldier, reqs, mitvahim_months=6, alal_months=3, today=date(2026, 1, 1)) is False
+    assert _is_eligible(
+        soldier, reqs, mitvahim_months=6, alal_months=3, today=date(2026, 1, 1), rank_override="רבט"
+    ) is True
+```
+
+- [ ] **Step 3: Run to verify pass**
+
+```bash
+pytest backend/app/services/tests/test_eligibility.py -v
+```
+Expected: PASS, full file (confirms both the new override behavior and that every existing call site is unaffected).
+
+- [ ] **Step 4: Write a failing test for `check_soldier_for_assignment`'s date-projection**
 
 Add to `test_eligibility.py`:
 
 ```python
-def test_check_soldier_for_assignment_uses_projected_rank_for_future_date(app_session):
+def test_check_soldier_for_assignment_uses_projected_rank_for_future_assignment_date(app_session):
     from app.services.rank_advancement import upsert_interval
     from tests.helpers import create_soldier
     # Construct a soldier who is NOT eligible today (wrong rank for the duty
     # type's allowed_ranks) but WILL be eligible by the assignment's date,
     # once projected forward through a configured advancement.
-    ...  # concrete duty-type + soldier setup mirroring existing tests in this
-        # file for check_soldier_for_assignment; assert the today-check fails
-        # and the future-dated check passes.
+    ...  # concrete duty-type + soldier + DutyAssignment setup mirroring the
+        # existing check_soldier_for_assignment tests in this file; assert
+        # the returned (eligible, reason) tuple is (False, ...) when the
+        # assignment's start_date is before the projected promotion date and
+        # (True, None) when it's on/after.
+
+
+def test_check_soldier_for_assignment_excludes_departed_soldier(app_session):
+    from tests.helpers import create_soldier
+    # soldier.discharge_date before the assignment's start_date -> excluded
+    ...  # mirror the same setup pattern
 ```
 
-Write this test by copying the existing setup pattern used by the nearest existing `check_soldier_for_assignment` test in `test_eligibility.py` (duty type with `allowed_ranks`, soldier constructed via `tests.helpers.create_soldier` or the file's local `_soldier` builder) rather than inventing new fixtures — read that existing test first, then mirror its shape with two assertions: current-date check excludes the soldier, future-date check (past `next_rank_date` chained to the eligible rank) includes them.
+Write both by copying the existing setup pattern used by the nearest
+existing `check_soldier_for_assignment` test in `test_eligibility.py` (duty
+type with `allowed_ranks`, soldier + `DutyAssignment` constructed via
+`tests.helpers.create_soldier`/whatever local builder this file already
+uses) rather than inventing new fixtures.
 
-- [ ] **Step 2: Run to verify failure**
+- [ ] **Step 5: Run to verify failure**
 
 ```bash
-pytest backend/app/services/tests/test_eligibility.py -k future_date -v
+pytest backend/app/services/tests/test_eligibility.py -k "future_assignment_date or excludes_departed" -v
 ```
 Expected: FAIL.
 
-- [ ] **Step 3: Update `check_soldier_for_assignment`**
+- [ ] **Step 6: Update `check_soldier_for_assignment`**
 
 At `eligibility.py:221`, replace:
 
 ```python
-today = date.today()
+    today = date.today()
 ```
 
-with the assignment's own date (exact attribute name confirmed during Step 1's read — likely `assignment.start_date` or a `duty_date` parameter), and route the rank/service-type/career portion of the check through:
+with:
 
 ```python
-from app.services.rank_eligibility_projection import project_soldier_state
-projected = project_soldier_state(session, soldier=soldier, as_of=assignment_date)
+    from app.services.rank_eligibility_projection import project_soldier_state
+    projected = project_soldier_state(session, soldier=soldier, as_of=assignment.start_date)
+    if projected.departed:
+        return False, "החייל סיים שירות עד תאריך זה"
+    today = assignment.start_date
 ```
 
-using `projected.rank` and `projected.is_career` in place of `soldier.rank`/`soldier.is_career` wherever the existing rank/service-type eligibility logic in this function reads them, and treating `projected.departed` as an immediate exclusion. Leave the exemption/personal-constraint/scheduling-conflict checks (lines 244-296) untouched — they already use the assignment's date correctly.
+Then update the `_is_eligible` call at lines 238-239 to pass the projected
+rank:
 
-- [ ] **Step 4: Run to verify pass**
+```python
+                if not _is_eligible(soldier, reqs, mitvahim_months=mitvahim_months,
+                                    alal_months=alal_months, today=today, rank_override=projected.rank):
+```
+
+Leave the exemption/personal-constraint/scheduling-conflict checks (lines
+244-296) untouched — they already use `assignment.start_date`/`end_date`
+correctly.
+
+- [ ] **Step 7: Run to verify pass**
 
 ```bash
 pytest backend/app/services/tests/test_eligibility.py -v
 ```
 Expected: PASS, full file (guards against breaking any existing `check_soldier_for_assignment` case).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add backend/app/services/eligibility.py backend/app/services/tests/test_eligibility.py
-git commit -m "fix: check_soldier_for_assignment projects rank/career as of the assignment date"
+git commit -m "fix: check_soldier_for_assignment projects rank/departure as of the assignment date"
 ```
 
 ---
 
-### Task 7: CP-SAT solver — date-sensitive rank exclusion
+### Task 7: CP-SAT solver — date-sensitive exclusion for rank, recency, license, and exemptions
 
 **Files:**
 - Modify: `backend/app/algorithm/types.py`
 - Modify: `backend/app/algorithm/solver.py`
 - Modify: `backend/app/algorithm/model.py`
-- Create: `backend/app/services/rank_eligibility_projection.py` (extend — add `bulk_rank_ineligible_duty_blocks`)
+- Modify: `backend/app/services/rank_eligibility_projection.py` (extend — add `bulk_future_ineligible_duty_blocks`)
 - Modify: `backend/app/services/algorithm_bridge.py`
 - Test: `backend/app/services/tests/test_rank_eligibility_projection.py`
 - Test: `backend/app/algorithm/tests/test_solver.py`
 
 **Interfaces:**
-- Consumes: `project_soldier_state` (Task 4), the existing `weapon_ineligible_duty_block_ids` pattern (`types.py:46`, `solver.py:320,1365`, `model.py:337`, `algorithm_bridge.py:1181-1194`) as the exact template to mirror.
-- Produces: `SoldierInput.rank_ineligible_duty_block_ids: set[uuid.UUID]`, `bulk_rank_ineligible_duty_blocks(session, *, soldier_ids, duties) -> dict[uuid.UUID, set[uuid.UUID]]`.
+- Consumes: `project_soldier_state` (Task 4), `_is_eligible`'s `rank_override` parameter (Task 6), the existing `weapon_ineligible_duty_block_ids` pattern (`types.py:46`, `solver.py:320,1365`, `model.py:337`, `algorithm_bridge.py:1181-1194`) as the exact template to mirror.
+- Produces: `SoldierInput.future_ineligible_duty_block_ids: set[uuid.UUID]`, `bulk_future_ineligible_duty_blocks(session, *, soldier_ids, duties) -> dict[uuid.UUID, set[uuid.UUID]]`.
 
-**Context:** Today, `compute_eligibility_exclusions` in `algorithm_bridge.py` (line 240-242) is evaluated once at a single `as_of` (`planning_start`) for the whole solve and produces one static `exempted_duty_type_ids` set per soldier (`SoldierInput.exempted_duty_type_ids`, `types.py:40`), applied identically to every duty block regardless of that block's own date. This means a soldier's projected-future rank change is invisible to the solver even though `DutyBlock` objects each carry their own `start_date`. The fix mirrors the existing `weapon_ineligible_duty_block_ids` field exactly: a per-(soldier, block) exclusion set, populated once by a bulk helper, checked at each place the solver currently checks `weapon_ineligible_duty_block_ids`.
+**Context:** Verified against the real files. Today, `compute_eligibility_exclusions` in `algorithm_bridge.py` (line 240-242) is evaluated once at a single `as_of` (`planning_start`) for the whole solve and produces one static `exempted_duty_type_ids` set per soldier (`SoldierInput.exempted_duty_type_ids`, `types.py:40`), applied identically to every duty block regardless of that block's own date. Separately, exemption-to-duty-type mapping (`algorithm_bridge.py` lines ~205-217, `soldier_exempt_dtype_ids`/`soldier_exempt_locids`) is also evaluated once at `as_of`, so exemptions starting or ending within the planning window are invisible to the solver. But `_is_eligible` (`eligibility.py:124-168`) already correctly re-evaluates mitvahim/alal recency, driving-license expiry, and service-type/קבע for whatever `today` it's given — Task 6 already added a `rank_override` parameter to cover the one thing it doesn't recompute (rank). So the fix here is: call `_is_eligible(..., today=block.start_date, rank_override=projected.rank)` once per (soldier, duty-block), plus a separate per-block exemption-date check, and store the combined result as a new block-level exclusion field — mirroring `weapon_ineligible_duty_block_ids` exactly. This does **not** remove `exempted_duty_type_ids`/`compute_eligibility_exclusions` — those stay in place for same-day-snapshot consumers (`diagnose.py`, `explain.py`, the active-days/fairness calculation) that are unrelated to per-duty-date projection.
 
-- [ ] **Step 1: Write failing tests for `bulk_rank_ineligible_duty_blocks`**
+- [ ] **Step 1: Write failing tests for `bulk_future_ineligible_duty_blocks` — rank**
 
 Append to `test_rank_eligibility_projection.py`:
 
@@ -877,15 +963,15 @@ from app.algorithm.types import DutyBlock
 import uuid
 
 
-def _duty_block(duty_type_id, day, allowed_ranks=None):
+def _duty_block(duty_type_id, day, duty_location_id=None):
     return DutyBlock(
-        id=uuid.uuid4(), duty_type_id=duty_type_id, duty_location_id=uuid.uuid4(),
+        id=uuid.uuid4(), duty_type_id=duty_type_id, duty_location_id=duty_location_id or uuid.uuid4(),
         start_date=day, end_date=day, score_per_day=1,
     )
 
 
-def test_bulk_rank_ineligible_excludes_block_when_projected_rank_fails_requirement(app_session):
-    from app.services.rank_eligibility_projection import bulk_rank_ineligible_duty_blocks
+def test_bulk_future_ineligible_excludes_block_when_projected_rank_fails_requirement(app_session):
+    from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
     from app.db.models import DutyType
     from tests.helpers import create_soldier
 
@@ -895,14 +981,14 @@ def test_bulk_rank_ineligible_excludes_block_when_projected_rank_fails_requireme
     app_session.flush()
     block = _duty_block(dt.id, date(2026, 6, 1))
 
-    result = bulk_rank_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
 
     assert block.id in result.get(s.id, set())
 
 
-def test_bulk_rank_ineligible_includes_block_when_projected_rank_satisfies_requirement(app_session):
+def test_bulk_future_ineligible_includes_block_when_projected_rank_satisfies_requirement(app_session):
     from app.services.rank_advancement import upsert_interval
-    from app.services.rank_eligibility_projection import bulk_rank_ineligible_duty_blocks
+    from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
     from app.db.models import DutyType
     from tests.helpers import create_soldier
 
@@ -915,7 +1001,7 @@ def test_bulk_rank_ineligible_includes_block_when_projected_rank_satisfies_requi
     # duty is far enough out that the soldier will have advanced to רבט by then
     block = _duty_block(dt.id, date(2026, 6, 1))
 
-    result = bulk_rank_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
 
     assert block.id not in result.get(s.id, set())
 ```
@@ -925,21 +1011,30 @@ Write the `DutyType.requirements` JSON shape to exactly match `DutyTypeRequireme
 - [ ] **Step 2: Run to verify failure**
 
 ```bash
-pytest backend/app/services/tests/test_rank_eligibility_projection.py -k bulk_rank_ineligible -v
+pytest backend/app/services/tests/test_rank_eligibility_projection.py -k bulk_future_ineligible -v
 ```
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Implement `bulk_rank_ineligible_duty_blocks`**
+- [ ] **Step 3: Implement `bulk_future_ineligible_duty_blocks` — rank/recency/license/career/departure**
 
 Append to `backend/app/services/rank_eligibility_projection.py`:
 
 ```python
-def bulk_rank_ineligible_duty_blocks(
+import uuid
+from typing import Sequence
+
+from sqlalchemy import select
+
+from app.algorithm.types import DutyBlock
+
+
+def bulk_future_ineligible_duty_blocks(
     session: Session, *, soldier_ids: Sequence[uuid.UUID], duties: Sequence[DutyBlock]
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
     """For each soldier, the set of duty-block ids (among `duties`) they will
-    NOT satisfy the rank/service-type/career requirement for, projecting
-    their rank/career state forward to each block's own start_date.
+    NOT be eligible for as of that block's own start_date -- covering
+    projected rank, service-type/career, mitvahim/alal recency,
+    driving-license expiry, active exemptions, and departure.
 
     Mirrors app.services.weapon_eligibility.bulk_ineligible_duty_blocks's
     shape/contract exactly -- see that function's docstring for why this is a
@@ -947,6 +1042,7 @@ def bulk_rank_ineligible_duty_blocks(
     """
     from app.db.models import DutyType, Soldier
     from app.services.eligibility import DutyTypeRequirements, _is_eligible
+    from app.services.settings_loader import get_setting_int
 
     soldiers = session.execute(select(Soldier).where(Soldier.id.in_(soldier_ids))).scalars().all()
     duty_type_ids = {d.duty_type_id for d in duties}
@@ -955,8 +1051,9 @@ def bulk_rank_ineligible_duty_blocks(
             select(DutyType).where(DutyType.id.in_(duty_type_ids))
         ).scalars().all()
     }
+    mitvahim_months = get_setting_int(session, "eligibility.mitvahim_months", 6)
+    alal_months = get_setting_int(session, "eligibility.alal_months", 3)
 
-    result: dict[uuid.UUID, set[uuid.UUID]] = {}
     # Group blocks by distinct start_date so the (soldier, date) projection
     # is only computed once per date, not once per block.
     dates = sorted({d.start_date for d in duties})
@@ -965,8 +1062,11 @@ def bulk_rank_ineligible_duty_blocks(
         for d in dates:
             projections[(s.id, d)] = project_soldier_state(session, soldier=s, as_of=d)
 
+    exempt_blocks = _bulk_exempt_duty_blocks(session, soldier_ids=soldier_ids, duties=duties)
+
+    result: dict[uuid.UUID, set[uuid.UUID]] = {}
     for s in soldiers:
-        excluded: set[uuid.UUID] = set()
+        excluded: set[uuid.UUID] = set(exempt_blocks.get(s.id, set()))
         for block in duties:
             dt = duty_types.get(block.duty_type_id)
             if dt is None:
@@ -980,110 +1080,265 @@ def bulk_rank_ineligible_duty_blocks(
                 excluded.add(block.id)
                 continue
             if not _is_eligible(
-                rank=projected.rank, is_career=projected.is_career, soldier=s, requirements=reqs,
-                today=block.start_date,
+                s, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months,
+                today=block.start_date, rank_override=projected.rank,
             ):
                 excluded.add(block.id)
         result[s.id] = excluded
     return result
 ```
 
-Note: `_is_eligible`'s exact parameter list must be confirmed against `eligibility.py:124-168` (Task 4's exploration summarized but didn't transcribe it in full) — adjust the call above to match its real signature, keeping the intent: evaluate the same rank/service-type/career eligibility rule `_is_eligible` already implements, but against `projected.rank`/`projected.is_career` instead of `soldier.rank`/`soldier.is_career`. If `_is_eligible` isn't structured to accept an overridden rank/career directly, add optional `rank_override`/`is_career_override` parameters to it (defaulting to `None`, falling back to `soldier.rank`/`soldier.is_career`) rather than duplicating its logic here.
-
-Add the necessary imports (`Sequence`, `uuid`, `date`) at the top of `rank_eligibility_projection.py`.
+Confirm `get_setting_int`'s real import path/signature against `settings_loader.py:59-63` (same function `algorithm_bridge.py` already uses indirectly via its own `_setting_int` wrapper — using `get_setting_int` directly here is simpler and equivalent).
 
 - [ ] **Step 4: Run to verify pass**
 
 ```bash
 pytest backend/app/services/tests/test_rank_eligibility_projection.py -v
 ```
-Expected: PASS.
+Expected: PASS for the rank-only cases (the exemption piece, `_bulk_exempt_duty_blocks`, doesn't exist yet — implemented next).
 
-- [ ] **Step 5: Add the `SoldierInput` field**
+- [ ] **Step 5: Write failing tests for the exemption piece**
+
+Append to `test_rank_eligibility_projection.py`:
+
+```python
+def test_bulk_future_ineligible_excludes_block_covered_by_future_exemption(app_session):
+    from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
+    from app.db.models import DutyType, ExemptionType, ExemptionDutyTypeMap, SoldierExemption
+    from tests.helpers import create_soldier
+
+    s = create_soldier(app_session, rank="טוראי")
+    dt = DutyType(name="x", requirements={})
+    et = ExemptionType(name="y", is_global=False)
+    app_session.add_all([dt, et])
+    app_session.flush()
+    app_session.add(ExemptionDutyTypeMap(exemption_type_id=et.id, duty_type_id=dt.id))
+    # exemption starts in the future -- not active "today", but covers the block's date
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date(2026, 5, 1), end_date=date(2026, 7, 1),
+    ))
+    app_session.flush()
+
+    block = _duty_block(dt.id, date(2026, 6, 1))
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_includes_block_after_exemption_ends(app_session):
+    from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
+    from app.db.models import DutyType, ExemptionType, ExemptionDutyTypeMap, SoldierExemption
+    from tests.helpers import create_soldier
+
+    s = create_soldier(app_session, rank="טוראי")
+    dt = DutyType(name="x", requirements={})
+    et = ExemptionType(name="y", is_global=False)
+    app_session.add_all([dt, et])
+    app_session.flush()
+    app_session.add(ExemptionDutyTypeMap(exemption_type_id=et.id, duty_type_id=dt.id))
+    # exemption is active "today" but ends before the block's date
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date(2026, 1, 1), end_date=date(2026, 2, 1),
+    ))
+    app_session.flush()
+
+    block = _duty_block(dt.id, date(2026, 6, 1))
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id not in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_excludes_block_by_global_exemption(app_session):
+    from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
+    from app.db.models import DutyType, ExemptionType, SoldierExemption
+    from tests.helpers import create_soldier
+
+    s = create_soldier(app_session, rank="טוראי")
+    dt = DutyType(name="x", requirements={})
+    et = ExemptionType(name="global", is_global=True)
+    app_session.add_all([dt, et])
+    app_session.flush()
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id, start_date=date(2026, 1, 1), end_date=None,
+    ))
+    app_session.flush()
+
+    block = _duty_block(dt.id, date(2026, 6, 1))
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id in result.get(s.id, set())
+```
+
+Confirm `ExemptionType`/`SoldierExemption`/`ExemptionDutyTypeMap`/`ExemptionDutyLocationMap` field names against `eligibility.py:244-273`'s existing use of them before finalizing these tests.
+
+- [ ] **Step 6: Run to verify failure**
+
+```bash
+pytest backend/app/services/tests/test_rank_eligibility_projection.py -k "exempt" -v
+```
+Expected: FAIL (`ImportError` — `_bulk_exempt_duty_blocks` referenced in Step 3's implementation doesn't exist yet).
+
+- [ ] **Step 7: Implement `_bulk_exempt_duty_blocks`**
+
+Append to `backend/app/services/rank_eligibility_projection.py`, adapting the exemption-resolution logic `check_soldier_for_assignment` already uses at `eligibility.py:244-273` from "one soldier, one assignment" to "many soldiers, many blocks":
+
+```python
+def _bulk_exempt_duty_blocks(
+    session: Session, *, soldier_ids: Sequence[uuid.UUID], duties: Sequence[DutyBlock]
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """For each soldier, duty-block ids covered by an active exemption as of
+    that block's own start_date (global, or mapped to the block's duty type
+    or location)."""
+    from app.db.models import ExemptionDutyLocationMap, ExemptionDutyTypeMap, ExemptionType, SoldierExemption
+
+    exemptions = session.execute(
+        select(SoldierExemption).where(SoldierExemption.soldier_id.in_(soldier_ids))
+    ).scalars().all()
+    if not exemptions:
+        return {}
+
+    exemption_type_ids = {e.exemption_type_id for e in exemptions}
+    types_by_id = {
+        et.id: et for et in session.execute(
+            select(ExemptionType).where(ExemptionType.id.in_(exemption_type_ids))
+        ).scalars().all()
+    }
+    dtype_map: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for row in session.execute(
+        select(ExemptionDutyTypeMap).where(ExemptionDutyTypeMap.exemption_type_id.in_(exemption_type_ids))
+    ).scalars().all():
+        dtype_map.setdefault(row.exemption_type_id, set()).add(row.duty_type_id)
+    loc_map: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for row in session.execute(
+        select(ExemptionDutyLocationMap).where(ExemptionDutyLocationMap.exemption_type_id.in_(exemption_type_ids))
+    ).scalars().all():
+        loc_map.setdefault(row.exemption_type_id, set()).add(row.duty_location_id)
+
+    by_soldier: dict[uuid.UUID, list] = {}
+    for e in exemptions:
+        by_soldier.setdefault(e.soldier_id, []).append(e)
+
+    result: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for soldier_id, soldier_exemptions in by_soldier.items():
+        excluded: set[uuid.UUID] = set()
+        for block in duties:
+            for e in soldier_exemptions:
+                if e.start_date > block.start_date:
+                    continue
+                if e.end_date is not None and e.end_date < block.start_date:
+                    continue
+                et = types_by_id.get(e.exemption_type_id)
+                if et is not None and et.is_global:
+                    excluded.add(block.id)
+                    break
+                if block.duty_type_id in dtype_map.get(e.exemption_type_id, set()):
+                    excluded.add(block.id)
+                    break
+                if block.duty_location_id in loc_map.get(e.exemption_type_id, set()):
+                    excluded.add(block.id)
+                    break
+        result[soldier_id] = excluded
+    return result
+```
+
+Confirm `SoldierExemption`'s date-range semantics (`start_date`/`end_date`, `end_date` nullable = open-ended) and `ExemptionType.is_global` against the real model definitions in `models.py` before finalizing — match the same inclusive/exclusive boundary convention `check_soldier_for_assignment` uses (`eligibility.py:248-251` compares against `assignment.end_date`/`assignment.start_date`; here each block is a single day so `start_date <= block.start_date <= end_date` is the natural equivalent).
+
+- [ ] **Step 8: Run to verify pass**
+
+```bash
+pytest backend/app/services/tests/test_rank_eligibility_projection.py -v
+```
+Expected: PASS, full file.
+
+- [ ] **Step 9: Add the `SoldierInput` field**
 
 In `backend/app/algorithm/types.py`, immediately after `weapon_ineligible_duty_block_ids` (line 46):
 
 ```python
-    # Duty-block ids this soldier's PROJECTED rank/service-type/career state
-    # (as of that block's own start_date) will not satisfy. Populated by
-    # algorithm_bridge via bulk_rank_ineligible_duty_blocks, mirroring
+    # Duty-block ids this soldier will NOT be eligible for as of that
+    # block's own start_date -- covers projected rank, service-type/career,
+    # mitvahim/alal recency, driving-license expiry, active exemptions, and
+    # departure. Populated by algorithm_bridge via
+    # bulk_future_ineligible_duty_blocks, mirroring
     # weapon_ineligible_duty_block_ids above. Empty by default for existing
     # callers/tests/fixtures.
-    rank_ineligible_duty_block_ids: set[uuid.UUID] = field(default_factory=set)
+    future_ineligible_duty_block_ids: set[uuid.UUID] = field(default_factory=set)
 ```
 
-- [ ] **Step 6: Add solver/model checks**
+- [ ] **Step 10: Add solver/model checks**
 
 In `backend/app/algorithm/solver.py`, at both locations mirroring line 320 (`if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids: continue`) — there are two, at lines 320 and 1365 — add immediately after each:
 
 ```python
-            if d.id in s.rank_ineligible_duty_block_ids:
+            if d.id in s.future_ineligible_duty_block_ids:
                 continue
 ```
 
-(No settings gate — unlike weapon qualification, rank eligibility is not an optional enforcement toggle.)
+(No settings gate — unlike weapon qualification, none of the factors folded into this field are optional enforcement toggles.)
 
 In `backend/app/algorithm/model.py`, at the equivalent location (line 337), add the same check immediately after.
 
-- [ ] **Step 7: Write a solver-level regression test**
+- [ ] **Step 11: Write a solver-level regression test**
 
 Add to `backend/app/algorithm/tests/test_solver.py`, following the existing style of `weapon_ineligible_duty_block_ids`-based tests in that file (search for one and mirror its shape):
 
 ```python
-def test_solver_excludes_soldier_from_rank_ineligible_block():
+def test_solver_excludes_soldier_from_future_ineligible_block():
     duty = _duty(...)  # use this file's existing duty-construction helper
-    soldier = _soldier(..., rank_ineligible_duty_block_ids={duty.id})
+    soldier = _soldier(..., future_ineligible_duty_block_ids={duty.id})
     result = solve(soldiers=[soldier], duties=[duty], ...)  # match the file's existing solve() call shape
     assert duty.id not in {a.duty_id for a in result.assignments if a.soldier_id == soldier.id}
 ```
 
 Read an existing `weapon_ineligible_duty_block_ids` test in this file first and copy its exact fixture/call conventions rather than guessing parameter names.
 
-- [ ] **Step 8: Run to verify pass**
+- [ ] **Step 12: Run to verify pass**
 
 ```bash
 pytest backend/app/algorithm/tests/test_solver.py -v
 ```
 Expected: PASS, full file.
 
-- [ ] **Step 9: Wire into `algorithm_bridge.py`**
+- [ ] **Step 13: Wire into `algorithm_bridge.py`**
 
 In `algorithm_bridge.py`, immediately after the existing weapon-eligibility block (after line 1194's `_phase("weapon_eligibility: done")`):
 
 ```python
-            _phase("rank_eligibility: start")
-            from app.services.rank_eligibility_projection import bulk_rank_ineligible_duty_blocks
-            rank_ineligible = bulk_rank_ineligible_duty_blocks(
+            _phase("future_eligibility: start")
+            from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
+            future_ineligible = bulk_future_ineligible_duty_blocks(
                 session, soldier_ids=[s.id for s in soldiers], duties=duties,
             )
             for s in soldiers:
-                s.rank_ineligible_duty_block_ids = rank_ineligible.get(s.id, set())
-            _phase("rank_eligibility: done")
+                s.future_ineligible_duty_block_ids = future_ineligible.get(s.id, set())
+            _phase("future_eligibility: done")
 ```
 
-- [ ] **Step 10: Write an `algorithm_bridge` integration test**
+- [ ] **Step 14: Write an `algorithm_bridge` integration test**
 
-Add to `backend/app/services/tests/test_algorithm_bridge.py`, following the existing style of the file's `weapon_ineligible_duty_block_ids`-population tests (search for one) — construct a soldier who fails the projected-rank check for a duty block dated in the future, run the bridge's soldier-loading function, and assert `rank_ineligible_duty_block_ids` on the resulting `SoldierInput` contains that block's id.
+Add to `backend/app/services/tests/test_algorithm_bridge.py`, following the existing style of the file's `weapon_ineligible_duty_block_ids`-population tests (search for one) — construct a soldier who fails the projected-rank check for a duty block dated in the future, run the bridge's soldier-loading function, and assert `future_ineligible_duty_block_ids` on the resulting `SoldierInput` contains that block's id. Add a second case using a future-dated exemption instead of rank.
 
-- [ ] **Step 11: Run to verify pass**
+- [ ] **Step 15: Run to verify pass**
 
 ```bash
 pytest backend/app/services/tests/test_algorithm_bridge.py -v
 ```
 Expected: PASS.
 
-- [ ] **Step 12: Run the full algorithm test suite as a regression guard**
+- [ ] **Step 16: Run the full algorithm test suite as a regression guard**
 
 ```bash
 pytest -m algorithm -v
 ```
 Expected: PASS. (Do not run `--slow` here — save that for pre-release per CLAUDE.md.)
 
-- [ ] **Step 13: Commit**
+- [ ] **Step 17: Commit**
 
 ```bash
 git add backend/app/algorithm/types.py backend/app/algorithm/solver.py backend/app/algorithm/model.py backend/app/services/rank_eligibility_projection.py backend/app/services/algorithm_bridge.py backend/app/algorithm/tests/test_solver.py backend/app/services/tests/test_algorithm_bridge.py backend/app/services/tests/test_rank_eligibility_projection.py
-git commit -m "feat: exclude projected-rank-ineligible soldiers from CP-SAT candidate pool per duty date"
+git commit -m "feat: exclude soldiers ineligible-by-projected-date (rank, recency, license, exemptions) from CP-SAT candidate pool per duty block"
 ```
 
 ---
@@ -1649,6 +1904,6 @@ git commit -m "feat: rank ladder from API, admin UI for advancement intervals an
 
 ## Self-Review Notes
 
-- **Spec coverage:** rank ladder as structured config + API (Task 12), interval config admin-editable + recompute-on-change (Tasks 3, 11, 12), daily promotion + auto-chain + notifications (Tasks 8-9), advance-warning notification (Task 9), future-eligibility projection wired into both the manual check (Task 6) and the CP-SAT solver (Task 7), override tracking (Task 10), no track-crossing (enforced structurally in `get_next_rank`, Task 2), no new קבע-entry field (confirmed — `derive_is_career` reused with an `as_of` param, Task 4).
+- **Spec coverage:** rank ladder as structured config + API (Task 12), interval config admin-editable + recompute-on-change (Tasks 3, 11, 12), daily promotion + auto-chain + notifications (Tasks 8-9), advance-warning notification (Task 9), future-eligibility projection wired into both the manual check (Task 6) and the CP-SAT solver (Task 7), override tracking (Task 10), no track-crossing (enforced structurally in `get_next_rank`, Task 2), no new קבע-entry field (confirmed — `derive_is_career` already accepts a `today` reference-date param, Task 4), and the broadened per-duty-block-date CP-SAT fix covering rank + mitvahim/alal recency + driving-license expiry + exemptions (Task 7, added after the initial plan when the algorithm exploration surfaced that `_is_eligible` already handles the recency/license factors correctly given the right `today` — only rank and exemptions needed new machinery).
+- Task 4, Task 6, and Task 7 were revised after verifying `eligibility.py`'s real contents directly (rather than from a summarized exploration report): `derive_is_career` already takes a `today` parameter (no signature change needed, Task 4 Step 3a removed), `_is_eligible` reads `soldier.rank`/`soldier.is_officer` directly rather than taking rank/career as parameters (Task 6 adds a `rank_override` parameter instead of the originally-assumed override-object approach), and `check_soldier_for_assignment` has no existing departure check (Task 6 adds one).
 - Several route/import paths (`session_scope`, `get_session`, `require_role`, `apiFetch`, the frontend data-fetching hook convention) are marked "confirm against an existing file" rather than guessed outright, since this plan was written without opening every one of those files — the implementer must resolve them from the named existing files before writing code, not invent new ones.
-- `_is_eligible`'s exact parameter list (Task 7) needs confirmation against the live file before use — the plan describes the required behavior (accept a rank/career override) precisely enough to adapt either the function itself or the call site once its real signature is visible.
