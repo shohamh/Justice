@@ -365,14 +365,20 @@ def _resolve_range_assignments(
     data: ParsedImportData,
     actor: Soldier,
     resolved_range_events: list[dict],
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
     overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
     overrides = overrides or {}
 
     soldiers_by_pn = {s.personal_number: s for s in session.execute(select(Soldier)).scalars()}
     soldiers_by_full_name: dict[str, list[Soldier]] = {}
     for s in soldiers_by_pn.values():
         soldiers_by_full_name.setdefault(s.full_name, []).append(s)
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()}
 
     existing_events = session.execute(select(RangeEvent)).scalars().all()
     existing_event_by_key: dict[tuple, RangeEvent] = {}
@@ -436,15 +442,19 @@ def _resolve_range_assignments(
 
         resolved_node = None
         if hierarchy_node_name:
-            resolved_node = session.execute(
-                select(HierarchyNode).where(HierarchyNode.name == hierarchy_node_name)
-            ).scalar_one_or_none()
+            row_key = f"range_assignments:{row.source_row}"
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(hierarchy_node_name)
+            if mapped_id:
+                try:
+                    resolved_node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if resolved_node is None:
+                resolved_node = nodes_by_name.get(hierarchy_node_name)
             if resolved_node is None:
                 errors.append(f"יחידה לא מזוהה '{hierarchy_node_name}'")
 
-        location = session.execute(
-            select(RangeLocation).where(RangeLocation.name == range_location_name)
-        ).scalar_one_or_none() if range_location_name else None
+        location = locations_by_name.get(range_location_name) if range_location_name else None
         if location is None:
             errors.append(f"מיקום מטווח לא מזוהה '{range_location_name}'")
 
@@ -1247,7 +1257,9 @@ def _resolve_and_score(
         "swap_requests": resolve_swap_requests(session, data, fo.get("swap_requests", {})),
         "range_locations": _resolve_range_locations(session, data, fo.get("range_locations", {})),
         "range_events": range_events,
-        "range_assignments": _resolve_range_assignments(session, data, actor, range_events, fo.get("range_assignments", {})),
+        "range_assignments": _resolve_range_assignments(
+            session, data, actor, range_events, node_by_name, node_by_row, fo.get("range_assignments", {})
+        ),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }

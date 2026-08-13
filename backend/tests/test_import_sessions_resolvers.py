@@ -533,3 +533,98 @@ def test_resolve_range_assignments_soldier_not_found_error(app_session):
     )
     result = _resolve_range_assignments(app_session, data, admin, [])
     assert result[0]["action"] == "error"
+
+
+def test_resolve_range_assignments_duplicate_names_no_crash(app_session):
+    """Regression guard: hierarchy_nodes.name and range_locations.name carry no
+    unique DB constraint. Duplicate names must not raise MultipleResultsFound
+    (the old code queried HierarchyNode/RangeLocation by name via
+    scalar_one_or_none(), which crashes the whole session upload on a
+    duplicate) — resolution must use a name->row dict lookup like
+    _resolve_range_events already does, where the last row wins instead of
+    raising."""
+    admin = create_soldier(app_session, personal_number="admin-7", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    create_node(app_session, name="מדור א", level="group")  # duplicate name
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    create_range_location(app_session, name="מטווח דרומי")  # duplicate name
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="מדור א", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    # Must not raise MultipleResultsFound.
+    result = _resolve_range_assignments(app_session, data, admin, [])
+    assert result[0]["row"] == 2
+
+
+def test_resolve_range_assignments_honors_node_by_name_override(app_session):
+    """Regression guard: a user who remaps an ambiguous hierarchy_node_name via
+    the review UI's picker (on the range_events tab) must have that mapping
+    honored when _resolve_range_assignments matches the same node on the
+    range_assignments tab — mirrors _resolve_range_events' own
+    node_by_name/node_by_row override mechanism."""
+    admin = create_soldier(app_session, personal_number="admin-8", role="admin")
+    node = create_node(app_session, name="מדור אמיתי", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="שם לא תואם", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    result = _resolve_range_assignments(
+        app_session, data, admin, [],
+        node_by_name={"שם לא תואם": str(node.id)},
+    )
+    row = result[0]
+    assert row["errors"] == []
+    assert row["action"] == "new"
+    assert row["resolved_range_event_id"] == str(event.id)
+
+
+def test_resolve_and_score_passes_node_mappings_to_resolve_range_assignments(app_session):
+    """Regression guard: _resolve_and_score must forward the same
+    node_by_name/node_by_row selections it already passes to
+    _resolve_range_events into _resolve_range_assignments, so a name mapping
+    picked on one tab is honored on the other."""
+    admin = create_soldier(app_session, personal_number="admin-9", role="admin")
+    node = create_node(app_session, name="מדור אמיתי", level="group")
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_assignments=[
+            ImportRangeAssignmentRow(
+                source_row=2, personal_number="12345", full_name="ישראל ישראלי",
+                hierarchy_node_name="שם לא תואם", range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי",
+            )
+        ],
+    )
+    selections = {
+        "_name_mappings": {
+            "hierarchy_node": {"by_name": {"שם לא תואם": str(node.id)}},
+        },
+    }
+    result = _resolve_and_score(app_session, data, admin, selections=selections)
+    row = result["range_assignments"][0]
+    assert row["errors"] == []
+    assert row["resolved_range_event_id"] == str(event.id)
