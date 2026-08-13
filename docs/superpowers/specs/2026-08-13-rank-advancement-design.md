@@ -99,7 +99,7 @@ everything from one source:
     {"rank": "טוראי", "months_to_next": 4},
     {"rank": "רבט", "months_to_next": 8},
     ...
-    {"rank": "רסמ", "months_to_next": null}
+    {"rank": "רנג", "months_to_next": null}
   ],
   "officer": [
     {"rank": "קמא", "months_to_next": 6},

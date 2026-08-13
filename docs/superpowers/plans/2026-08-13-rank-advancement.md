@@ -207,7 +207,7 @@ def test_get_next_rank_mid_ladder():
 
 
 def test_get_next_rank_top_of_enlisted_ladder_returns_none():
-    assert get_next_rank("רסמ") is None
+    assert get_next_rank("רנג") is None
 
 
 def test_get_next_rank_top_of_officer_ladder_returns_none():
@@ -217,7 +217,7 @@ def test_get_next_rank_top_of_officer_ladder_returns_none():
 def test_get_next_rank_never_crosses_enlisted_to_officer():
     # top enlisted rank has no "next" even though the officer ladder starts
     # right after it conceptually -- crossing is never automatic.
-    assert get_next_rank("רסמ") is None
+    assert get_next_rank("רנג") is None
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -1490,13 +1490,13 @@ def test_promote_due_soldiers_stops_at_top_of_ladder(app_session):
     from app.rank_advancement_worker import _promote_soldier
     from tests.helpers import create_soldier
 
-    s = create_soldier(app_session, rank="רסמ")  # top of enlisted ladder
+    s = create_soldier(app_session, rank="רנג")  # top of enlisted ladder
     s.next_rank_date = date(2026, 1, 1)
     app_session.flush()
 
     _promote_soldier(app_session, s, today=date(2026, 1, 1))
 
-    assert s.rank == "רסמ"
+    assert s.rank == "רנג"
     assert s.next_rank_date is None
 
 
