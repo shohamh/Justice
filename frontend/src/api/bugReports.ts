@@ -18,7 +18,7 @@ export async function submitBugReport(payload: BugReportSubmitPayload): Promise<
 
 export interface BugReportSummary {
   id: string;
-  reporter_id: string;
+  reporter_id: string | null;
   description: string;
   severity: BugReportSeverity;
   status: BugReportStatus;

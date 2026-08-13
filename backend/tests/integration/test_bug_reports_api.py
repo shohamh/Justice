@@ -303,7 +303,7 @@ def test_import_bug_reports_rejects_invalid_json_but_continues(client: TestClien
     assert admin_session.get(BugReport, uuid.UUID(good["id"])) is not None
 
 
-def test_import_bug_reports_reports_error_for_unknown_reporter(client: TestClient, admin_session: Session):
+def test_import_bug_reports_imports_with_null_reporter_for_unknown_reporter(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="bugapi030", role="admin")
     reporter = create_soldier(admin_session, personal_number="bugapi031")
     payload = _mirror_payload(reporter, reporter_id=str(uuid.uuid4()))
@@ -315,8 +315,10 @@ def test_import_bug_reports_reports_error_for_unknown_reporter(client: TestClien
     )
     assert resp.status_code == 200
     result = resp.json()["results"][0]
-    assert result["status"] == "error"
-    assert admin_session.get(BugReport, uuid.UUID(payload["id"])) is None
+    assert result["status"] == "imported"
+    imported = admin_session.get(BugReport, uuid.UUID(payload["id"]))
+    assert imported is not None
+    assert imported.reporter_id is None
 
 
 def test_submit_bug_report_returns_429_after_daily_cap(client: TestClient, admin_session: Session):

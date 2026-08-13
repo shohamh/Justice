@@ -110,7 +110,7 @@ def submit_bug_report(
 
 class BugReportSummaryOut(BaseModel):
     id: uuid.UUID
-    reporter_id: uuid.UUID
+    reporter_id: uuid.UUID | None
     description: str
     severity: str
     status: str
@@ -451,7 +451,7 @@ def create_bug_report_comment(
     session.add(comment)
     session.commit()
     session.refresh(comment)
-    if comment.author_id != report.reporter_id:
+    if report.reporter_id is not None and comment.author_id != report.reporter_id:
         create_notification(
             session,
             soldier_id=report.reporter_id,
