@@ -1639,6 +1639,162 @@ export default function ImportSessionReviewPage() {
           </div>
         )}
 
+        {tab === "range_events" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">יחידה</th>
+                  <th className="text-right p-3">סוג</th>
+                  <th className="text-right p-3">תאריך</th>
+                  <th className="text-right p-3">מיקום</th>
+                  <th className="text-right p-3">נדרש</th>
+                  <th className="text-right p-3">רזרבה</th>
+                  <th className="text-right p-3">שעת התחלה</th>
+                  <th className="text-right p-3">שעת סיום</th>
+                  <th className="text-right p-3">הערות</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {range_events.map((row: RangeEventImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  const unresolvedNode = !row.resolved_hierarchy_node_id;
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={unresolvedNode ? "text-red-600" : ""}>{row.hierarchy_node_name}</span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.range_type : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.range_type}
+                            onChange={(e) => setFieldOverride("range_events", row.row, "range_type", e.target.value)}
+                          >
+                            <option value="laser">לייזר</option>
+                            <option value="live">חי</option>
+                            <option value="alal">אלל</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.date : (
+                          <DateInput
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.date}
+                            onBlur={(iso) => setFieldOverride("range_events", row.row, "date", iso)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <span className={row.resolved_range_location_id ? "" : "text-red-600"}>{row.range_location_name}</span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.required_count : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.required_count}
+                            onBlur={(e) => setFieldOverride("range_events", row.row, "required_count", Number(e.target.value))}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reserve_count : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reserve_count}
+                            onBlur={(e) => setFieldOverride("range_events", row.row, "reserve_count", Number(e.target.value))}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_time ?? ""}
+                            onBlur={(e) => setFieldOverride("range_events", row.row, "start_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_time ?? ""}
+                            onBlur={(e) => setFieldOverride("range_events", row.row, "end_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.notes ?? "—" : (
+                          <textarea
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.notes ?? ""}
+                            onBlur={(e) => setFieldOverride("range_events", row.row, "notes", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "hierarchy_node_name", label: "יחידה", value: row.hierarchy_node_name },
+                                { key: "resolved_hierarchy_node_id", label: "מזהה יחידה", value: row.resolved_hierarchy_node_id },
+                                { key: "range_type", label: "סוג", value: row.range_type },
+                                { key: "date", label: "תאריך", value: row.date, editable: { type: "date", onChange: (v) => setFieldOverride("range_events", row.row, "date", v) } },
+                                { key: "range_location_name", label: "מיקום", value: row.range_location_name },
+                                { key: "resolved_range_location_id", label: "מזהה מיקום", value: row.resolved_range_location_id },
+                                { key: "required_count", label: "נדרש", value: row.required_count, editable: { type: "number", onChange: (v) => setFieldOverride("range_events", row.row, "required_count", v) } },
+                                { key: "reserve_count", label: "רזרבה", value: row.reserve_count, editable: { type: "number", onChange: (v) => setFieldOverride("range_events", row.row, "reserve_count", v) } },
+                                { key: "start_time", label: "שעת התחלה", value: row.start_time, editable: { type: "text", onChange: (v) => setFieldOverride("range_events", row.row, "start_time", v) } },
+                                { key: "end_time", label: "שעת סיום", value: row.end_time, editable: { type: "text", onChange: (v) => setFieldOverride("range_events", row.row, "end_time", v) } },
+                                { key: "arrival_instructions", label: "הנחיות הגעה", value: row.arrival_instructions, editable: { type: "text", onChange: (v) => setFieldOverride("range_events", row.row, "arrival_instructions", v) } },
+                                { key: "contact_name", label: "איש קשר", value: row.contact_name, editable: { type: "text", onChange: (v) => setFieldOverride("range_events", row.row, "contact_name", v) } },
+                                { key: "contact_phone", label: "טלפון איש קשר", value: row.contact_phone, editable: { type: "text", onChange: (v) => setFieldOverride("range_events", row.row, "contact_phone", v) } },
+                                { key: "notes", label: "הערות", value: row.notes, editable: { type: "textarea", onChange: (v) => setFieldOverride("range_events", row.row, "notes", v) } },
+                                { key: "status", label: "סטטוס מטווח", value: row.status },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("range_events", row)}
+                              onChange={(e) => setRowAction("range_events", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {tab === "hierarchy" && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
             <table className="w-full text-sm">

@@ -433,6 +433,59 @@ describe("ImportSessionReviewPage", () => {
     });
   });
 
+  it("renders a range_events row with editable required_count", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_events = [{
+      row: 2, action: "new", errors: [],
+      hierarchy_node_name: "מדור א", resolved_hierarchy_node_id: "node-1",
+      range_type: "live", date: "2024-06-15",
+      range_location_name: "מטווח דרומי", resolved_range_location_id: "loc-1",
+      required_count: 10, reserve_count: 2, start_time: null, end_time: null,
+      arrival_instructions: null, contact_name: null, contact_phone: null,
+      notes: null, status: "planned",
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("מטווחים (1)"));
+
+    const countInput = await screen.findByDisplayValue("10");
+    fireEvent.blur(countInput, { target: { value: "12" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_events: expect.objectContaining({ "2": expect.objectContaining({ required_count: 12 }) }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("shows an unresolved range_events hierarchy_node_name in red", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_events = [{
+      row: 2, action: "error", errors: ["יחידה לא מזוהה 'לא קיים'"],
+      hierarchy_node_name: "לא קיים", resolved_hierarchy_node_id: null,
+      range_type: "live", date: "2024-06-15",
+      range_location_name: "מטווח דרומי", resolved_range_location_id: "loc-1",
+      required_count: 10, reserve_count: 0, start_time: null, end_time: null,
+      arrival_instructions: null, contact_name: null, contact_phone: null,
+      notes: null, status: "planned",
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("מטווחים (1)"));
+
+    await screen.findByText("שגיאה");
+    expect(screen.getByText("לא קיים")).toHaveClass("text-red-600");
+  });
+
   it("renders the system_settings and bug_reports tabs with row counts", async () => {
     const detail = makeDraftDetail();
     detail.parsed_state.system_settings = [
