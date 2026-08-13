@@ -497,6 +497,7 @@ def _resolve_range_assignments(
             "warnings": warnings,
             "personal_number": personal_number,
             "full_name": full_name,
+            "hierarchy_node_name": hierarchy_node_name,
             "range_type": range_type,
             "date": event_date,
             "range_location_name": range_location_name,
@@ -505,6 +506,7 @@ def _resolve_range_assignments(
             "attendance_status": attendance_status,
             "note": note,
             "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
+            "resolved_hierarchy_node_id": str(resolved_node.id) if resolved_node is not None else None,
             "resolved_range_event_id": resolved_range_event_id,
             "matched_session_row": matched_session_row,
         })

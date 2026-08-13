@@ -488,6 +488,8 @@ def test_resolve_range_assignments_matches_existing_event(app_session):
     assert row["action"] == "new"
     assert row["resolved_soldier_id"] == str(soldier.id)
     assert row["resolved_range_event_id"] == str(event.id)
+    assert row["hierarchy_node_name"] == "מדור א"
+    assert row["resolved_hierarchy_node_id"] == str(node.id)
 
 
 def test_resolve_range_assignments_matches_session_created_event(app_session):
