@@ -318,8 +318,22 @@ def resolve_range_excusal_requests(session: Session, data: ParsedImportData, ove
         decided_by_pn = field("decided_by_personal_number", row.decided_by_personal_number)
         decision_note = field("decision_note", row.decision_note)
 
+        existing = None
+        if row.id:
+            try:
+                existing = session.get(RangeExcusalRequest, uuid.UUID(row.id))
+            except ValueError:
+                errors.append(f"מזהה לא תקין '{row.id}'")
+
         soldier = soldiers_by_pn.get(soldier_pn) if soldier_pn else None
-        if soldier is None:
+        # An approved excusal's linked RangeAssignment is deleted on approval
+        # (range_assignment_id is SET NULL), so re-exporting it has no way to
+        # recover soldier_personal_number. Only error on a missing soldier
+        # when the sheet actually provided a (now-unresolvable) personal
+        # number, or when this is a genuinely new row (no existing match by
+        # id) that needs a soldier to create — an update to an already-known
+        # row with an empty soldier_pn is a legitimate round-trip, not an error.
+        if soldier is None and (soldier_pn or existing is None):
             errors.append(f"חייל לא מזוהה '{soldier_pn}'")
         requested_by = soldiers_by_pn.get(requested_by_pn) if requested_by_pn else None
         if requested_by_pn and requested_by is None:
@@ -338,13 +352,6 @@ def resolve_range_excusal_requests(session: Session, data: ParsedImportData, ove
             event = events_by_key.get((node.id, range_type, event_date, location.id))
         if event is not None and soldier is not None:
             assignment = assignments_by_event_and_soldier.get((event.id, soldier.id))
-
-        existing = None
-        if row.id:
-            try:
-                existing = session.get(RangeExcusalRequest, uuid.UUID(row.id))
-            except ValueError:
-                errors.append(f"מזהה לא תקין '{row.id}'")
 
         action = "error" if errors else ("update" if existing is not None else "new")
         out.append({

@@ -762,3 +762,38 @@ def test_resolve_range_excusal_requests_invalid_status_error(app_session):
     )
     result = resolve_range_excusal_requests(app_session, data)
     assert result[0]["action"] == "error"
+
+
+def test_resolve_range_excusal_requests_approved_update_with_no_soldier_pn_no_error(app_session):
+    """Regression guard: an approved excusal's linked RangeAssignment is
+    deleted on approval (range_assignment_id SET NULL), so re-exporting it
+    has no way to recover soldier_personal_number — the export writer emits
+    an empty cell for that row. Re-importing an unmodified export of an
+    already-known (id-matched) approved excusal must resolve as a clean
+    update, not error out on "soldier not found", or every approved excusal
+    would fail to round-trip."""
+    existing = RangeExcusalRequest(
+        range_assignment_id=None,
+        range_event_id=None,
+        requested_by=None,
+        reason="חופשה",
+        status="approved",
+    )
+    app_session.add(existing)
+    app_session.flush()
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        range_excusal_requests=[
+            ImportRangeExcusalRequestRow(
+                source_row=2, id=str(existing.id), soldier_personal_number="",
+                range_type="live", date="2024-06-15",
+                range_location_name="מטווח דרומי", reason="חופשה", status="approved",
+            )
+        ],
+    )
+    result = resolve_range_excusal_requests(app_session, data)
+    row = result[0]
+    assert row["errors"] == []
+    assert row["action"] == "update"
+    assert row["existing_id"] == str(existing.id)
