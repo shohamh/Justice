@@ -55,6 +55,10 @@ class Soldier(Base):
     is_career: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     next_rank_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    next_rank_date_overridden: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    current_rank_since: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     bahad1_graduate: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
@@ -998,6 +1002,19 @@ class SoldierRangeQualification(Base):
     )
 
 
+class RankAdvancementInterval(Base):
+    __tablename__ = "rank_advancement_intervals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    track: Mapped[str] = mapped_column(Text, nullable=False)
+    rank: Mapped[str] = mapped_column(Text, nullable=False)
+    months_to_next: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        sa.UniqueConstraint("track", "rank", name="uq_rank_advancement_interval_track_rank"),
+    )
+
+
 class PotentialModifier(Base):
     __tablename__ = "potential_modifiers"
 
@@ -1232,6 +1249,8 @@ class NotificationType(str, _enum.Enum):
     bug_report_comment = "bug_report_comment"
     weapon_ineligible_detected = "weapon_ineligible_detected"
     range_covers_duty_info = "range_covers_duty_info"
+    rank_advanced = "rank_advanced"
+    rank_advancement_soon = "rank_advancement_soon"
 
 
 class Notification(Base):
