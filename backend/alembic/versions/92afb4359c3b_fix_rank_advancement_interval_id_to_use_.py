@@ -28,18 +28,24 @@ def upgrade() -> None:
         sa.Column(
             "id",
             sa.UUID(as_uuid=True),
-            primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
             nullable=False,
         ),
     )
+    # Explicitly create the primary key constraint (ADD COLUMN with primary_key=True
+    # doesn't create the constraint in Postgres; it only works with CREATE TABLE)
+    op.create_primary_key("rank_advancement_intervals_pkey", "rank_advancement_intervals", ["id"])
 
 
 def downgrade() -> None:
     """Downgrade schema - revert id back to Integer."""
+    # Drop the primary key constraint first
+    op.drop_constraint("rank_advancement_intervals_pkey", "rank_advancement_intervals", type_="pk")
     # Revert back to Integer id (though this loses any UUID values)
     op.execute("ALTER TABLE rank_advancement_intervals DROP COLUMN id CASCADE")
     op.add_column(
         "rank_advancement_intervals",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
     )
+    # Explicitly create the primary key constraint for the Integer id
+    op.create_primary_key("rank_advancement_intervals_pkey", "rank_advancement_intervals", ["id"])
