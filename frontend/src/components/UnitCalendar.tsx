@@ -301,7 +301,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;
             const ineligibleAssignees = canSeeEligibilityBadges
-              ? shift.assignees.filter((a) => a.weapon_ineligible)
+              ? shift.assignees.filter((a) => a.weapon_ineligible || a.range_eligibility?.eligible === false)
               : [];
             const plannedCoverageAssignee = canSeeEligibilityBadges && ineligibleAssignees.length === 0
               ? shift.assignees.find((a) => a.range_eligibility?.qualification_source === "planned_range")
@@ -324,8 +324,8 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
                       data-testid={`shift-warning-badge-${shift.id}`}
                       aria-label={t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length })}
                       title={
-                        ineligibleAssignees.length === 1
-                          ? formatRangeEligibilityExplanation(ineligibleAssignees[0].range_eligibility!, t)
+                        ineligibleAssignees.length === 1 && ineligibleAssignees[0].range_eligibility
+                          ? formatRangeEligibilityExplanation(ineligibleAssignees[0].range_eligibility, t)
                           : t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length })
                       }
                       className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 text-red-700 dark:bg-red-950 dark:text-red-300 flex-shrink-0"
