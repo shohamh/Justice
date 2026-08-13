@@ -336,6 +336,7 @@ _ALL_DATA_TABLES = [
     "email_verification_tokens",
     "registration_invite_codes",
     "soldier_enrollment_requests",
+    "rank_advancement_intervals",
     "exemption_types",
     "duty_types",
     "duty_locations",
