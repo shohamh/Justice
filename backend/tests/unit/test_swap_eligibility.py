@@ -5,6 +5,7 @@ from app.db.models import (
     ExemptionType, PersonalConstraint, Soldier, SoldierExemption,
 )
 from app.services.eligibility import check_soldier_for_assignment
+from tests.helpers import create_soldier
 
 
 def _base(session):
@@ -188,3 +189,56 @@ def test_exclude_assignment_id_skips_conflict(admin_session):
         admin_session, cover.id, a.id, exclude_assignment_id=conflict.id
     )
     assert ok is True
+
+
+def test_check_soldier_for_assignment_uses_projected_rank_for_future_assignment_date(admin_session):
+    """A soldier who does not yet hold an allowed rank today, but who will be
+    projected forward to it by the assignment's own start_date, must be
+    evaluated against the projected rank -- not soldier.rank as of today."""
+    dt = DutyType(name="dt-rank-proj", score_per_day=1, requirements={"allowed_ranks": ["רבט"]})
+    loc = DutyLocation(name="loc-rank-proj")
+    soldier = create_soldier(admin_session, personal_number="rankproj-1")
+    soldier.rank = "טוראי"
+    soldier.next_rank_date = date(2026, 3, 1)
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+
+    early = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 2, 1), end_date=date(2026, 2, 1), status="published",
+    )
+    late = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 3, 1), end_date=date(2026, 3, 1), status="published",
+    )
+    admin_session.add_all([early, late])
+    admin_session.flush()
+
+    ok, reason = check_soldier_for_assignment(admin_session, soldier.id, early.id)
+    assert ok is False
+    assert reason == "אי-כשירות לסוג תורנות זה"
+
+    ok2, reason2 = check_soldier_for_assignment(admin_session, soldier.id, late.id)
+    assert ok2 is True
+    assert reason2 is None
+
+
+def test_check_soldier_for_assignment_excludes_departed_soldier(admin_session):
+    dt = DutyType(name="dt-departed", score_per_day=1)
+    loc = DutyLocation(name="loc-departed")
+    soldier = create_soldier(admin_session, personal_number="departed-1")
+    soldier.rank = "טוראי"
+    soldier.discharge_date = date(2026, 5, 1)
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+
+    a = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1), status="published",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    ok, reason = check_soldier_for_assignment(admin_session, soldier.id, a.id)
+    assert ok is False
+    assert reason == "החייל סיים שירות עד תאריך זה"
