@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.audit.writer import write_audit
+from app.auth.authz import scope_root_ids
 from app.db.models import (
     HierarchyNode,
     Notification,
@@ -300,8 +301,22 @@ def delete_range_event(session: Session, *, event: RangeEvent) -> None:
     session.commit()
 
 
+def _soldier_in_authorized_scope(session: Session, *, node: HierarchyNode, user: Soldier | None) -> bool:
+    """True if `node` falls under the requesting user's commander/duty-manager
+    scope. Mirrors range_auto_assign._soldier_pool's widened scope, so a candidate
+    the panel legitimately offered (e.g. from a sibling sub-unit under the user's
+    broader command) doesn't turn around and get rejected here as "outside the
+    event's subunit". user=None (no caller context, e.g. internal/test callers)
+    means this check is skipped entirely."""
+    if user is None or user.role == "admin":
+        return user is not None
+    roots = scope_root_ids(session, user)
+    return any(root in node.path_ids for root in roots)
+
+
 def _validate_and_build_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
+    user: Soldier | None = None,
 ) -> RangeAssignment:
     """Same validation as add_range_assignment (subtree membership, exemption,
     same-date conflict) but only constructs the row — does not add/commit/notify.
@@ -312,7 +327,10 @@ def _validate_and_build_assignment(
         raise RangeValidationError("soldier_not_found")
     node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
     event_node = session.get(HierarchyNode, event.hierarchy_node_id)
-    if node is None or event_node is None or event.hierarchy_node_id not in node.path_ids:
+    if node is None or event_node is None:
+        raise RangeValidationError("soldier_outside_event_subunit")
+    in_event_subtree = event.hierarchy_node_id in node.path_ids
+    if not in_event_subtree and not _soldier_in_authorized_scope(session, node=node, user=user):
         raise RangeValidationError("soldier_outside_event_subunit")
     if is_range_exempt(session, soldier=soldier, event_date=event.date):
         raise RangeValidationError("soldier_range_exempt")
@@ -347,6 +365,7 @@ def _check_capacity(session: Session, *, event: RangeEvent, new_primary: int, ne
 def add_range_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
     assignment_reason_code: str = "manual", assignment_reason_text: str | None = "שיבוץ ידני",
+    user: Soldier | None = None,
 ) -> RangeAssignment:
     _acquire_range_assignment_date_lock(session, event_date=event.date)
     session.refresh(event)
@@ -357,7 +376,9 @@ def add_range_assignment(
         new_primary=0 if is_reserve else 1,
         new_reserve=1 if is_reserve else 0,
     )
-    assignment = _validate_and_build_assignment(session, event=event, soldier_id=soldier_id, is_reserve=is_reserve)
+    assignment = _validate_and_build_assignment(
+        session, event=event, soldier_id=soldier_id, is_reserve=is_reserve, user=user,
+    )
 
     existing_soldier_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
         RangeAssignment.range_event_id == event.id,
@@ -384,7 +405,7 @@ def add_range_assignment(
 def assign_batch(
     session: Session, *, event: RangeEvent,
     primary_soldier_ids: list[uuid.UUID], reserve_soldier_ids: list[uuid.UUID],
-    actor_id: uuid.UUID | None = None,
+    actor_id: uuid.UUID | None = None, user: Soldier | None = None,
 ) -> list[RangeAssignment]:
     """All-or-nothing: validates every soldier before adding any row, so a single
     invalid soldier in the batch fails the whole call with no partial writes.
@@ -404,15 +425,15 @@ def assign_batch(
     from app.services.range_auto_assign import _rank_candidate
 
     rows = [
-        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=False)
+        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=False, user=user)
         for sid in primary_soldier_ids
     ] + [
-        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=True)
+        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=True, user=user)
         for sid in reserve_soldier_ids
     ]
     for row in rows:
         soldier = session.get(Soldier, row.soldier_id)
-        _, reason_code = _rank_candidate(session, soldier=soldier, event=event)
+        _, reason_code, _explanation = _rank_candidate(session, soldier=soldier, event=event)
         row.assignment_reason_code = reason_code
         session.add(row)
     session.flush()
