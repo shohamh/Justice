@@ -101,6 +101,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileLicenseExpiry, setProfileLicenseExpiry] = useState(soldier.military_driving_license_expiry ?? "");
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
+  const mandatoryEndBeforeEnlistmentError = profileMandEnd && profileEnlistment && profileMandEnd < profileEnlistment
+    ? t("register.mandatory_end_before_enlistment")
+    : null;
+
   useEffect(() => {
     setFullName(soldierData.full_name);
     setPhone(soldierData.phone ?? "");
@@ -143,6 +147,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   async function handleProfileSave(e: FormEvent) {
     e.preventDefault();
     if (isCommander) return;  // UI hides button, but guard against keyboard submit
+    if (mandatoryEndBeforeEnlistmentError) return;
     setSavingProfile(true);
     setProfileError(null);
     try {
@@ -448,6 +453,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.mandatory_end_date")}</span>
                 <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMandEnd} onChange={setProfileMandEnd} />
+                {mandatoryEndBeforeEnlistmentError && <p className="text-red-600 text-xs mt-1">{mandatoryEndBeforeEnlistmentError}</p>}
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.discharge_date")}</span>
@@ -494,7 +500,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {!isCommander && (
               <div className="flex justify-end gap-2">
                 <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => { setProfileError(null); setEditing(false); }}>{t("team.cancel")}</button>
-                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("duty_config.save")}</button>
+                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile || !!mandatoryEndBeforeEnlistmentError}>{t("duty_config.save")}</button>
               </div>
             )}
           </form>
