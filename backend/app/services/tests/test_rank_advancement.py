@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from app.db.models import RankAdvancementInterval
 from app.services.rank_advancement import (
     compute_next_rank_date, get_interval_months, get_next_rank, get_track,
-    upsert_interval,
+    upsert_interval, set_interval_and_recompute, get_rank_ladder,
 )
+from tests.helpers import create_soldier
 
 
 def test_get_track_enlisted():
@@ -82,3 +83,52 @@ def test_upsert_interval_updates_existing_row(app_session):
     ).scalars().all()
     assert len(rows) == 1
     assert rows[0].months_to_next == 6
+
+
+def test_set_interval_and_recompute_updates_non_overridden_soldiers(app_session):
+    s = create_soldier(app_session, personal_number="1234567")
+    s.rank = "טוראי"
+    s.current_rank_since = date(2026, 1, 1)
+    s.next_rank_date_overridden = False
+    app_session.flush()
+
+    count = set_interval_and_recompute(
+        app_session, track="enlisted", rank="טוראי", months_to_next=4, actor_id=None
+    )
+
+    assert count == 1
+    assert s.next_rank_date == date(2026, 5, 1)
+
+
+def test_set_interval_and_recompute_skips_overridden_soldiers(app_session):
+    s = create_soldier(app_session, personal_number="1234568")
+    s.rank = "טוראי"
+    s.current_rank_since = date(2026, 1, 1)
+    s.next_rank_date = date(2099, 1, 1)
+    s.next_rank_date_overridden = True
+    app_session.flush()
+
+    set_interval_and_recompute(app_session, track="enlisted", rank="טוראי", months_to_next=4, actor_id=None)
+
+    assert s.next_rank_date == date(2099, 1, 1)
+
+
+def test_set_interval_and_recompute_ignores_other_ranks(app_session):
+    s = create_soldier(app_session, personal_number="1234569")
+    s.rank = "רבט"
+    s.current_rank_since = date(2026, 1, 1)
+    s.next_rank_date = None
+    s.next_rank_date_overridden = False
+    app_session.flush()
+
+    set_interval_and_recompute(app_session, track="enlisted", rank="טוראי", months_to_next=4, actor_id=None)
+
+    assert s.next_rank_date is None
+
+
+def test_get_rank_ladder_shape(app_session):
+    upsert_interval(app_session, track="enlisted", rank="טוראי", months_to_next=4, actor_id=None)
+    ladder = get_rank_ladder(app_session)
+    assert ladder["enlisted"][0] == {"rank": "טוראי", "months_to_next": 4}
+    assert ladder["enlisted"][-1]["months_to_next"] is None
+    assert ladder["officer"][0]["rank"] == "קמא"
