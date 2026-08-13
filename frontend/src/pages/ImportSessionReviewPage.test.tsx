@@ -410,6 +410,29 @@ describe("ImportSessionReviewPage", () => {
     expect(within(row).getByText("אישור")).toBeInTheDocument();
   });
 
+  it("renders a range_locations row and toggles it to skip", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_locations = [
+      { row: 2, action: "new", errors: [], name: "מטווח דרומי", active: true, existing_id: null },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("מיקומי מטווח (1)"));
+
+    const row = await screen.findByDisplayValue("מטווח דרומי");
+    const select = row.closest("tr")!.querySelector("select")!;
+    fireEvent.change(select, { target: { value: "skip" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({ range_locations: expect.objectContaining({ "2": "skip" }) }),
+      );
+    });
+  });
+
   it("renders the system_settings and bug_reports tabs with row counts", async () => {
     const detail = makeDraftDetail();
     detail.parsed_state.system_settings = [
