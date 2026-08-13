@@ -71,20 +71,13 @@ class PotentialResult:
     partial_exemption_count: int = 0
 
 
-def _rank_as_of(soldier: Soldier, reference_date: date) -> str | None:
-    """Resolve the soldier's rank as of reference_date, applying next_rank_date if reached."""
+def _rank_as_of(session: Session, soldier: Soldier, reference_date: date) -> str | None:
+    """Resolve the soldier's rank as of reference_date, chaining through any
+    configured advancement intervals reached by that date."""
     if soldier.rank is None:
         return None
-    if soldier.next_rank_date is not None and soldier.next_rank_date <= reference_date:
-        from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
-        for track in (ENLISTED_RANKS, OFFICER_RANKS):
-            if soldier.rank in track:
-                idx = track.index(soldier.rank)
-                if idx + 1 < len(track):
-                    return track[idx + 1]
-                return soldier.rank
-        return soldier.rank
-    return soldier.rank
+    from app.services.rank_eligibility_projection import project_soldier_state
+    return project_soldier_state(session, soldier=soldier, as_of=reference_date).rank
 
 
 def _base_eligible_duty_types(
@@ -169,7 +162,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
     details: list[SoldierPotentialDetail] = []
     raw_count = 0
     for s in subtree_soldiers:
-        rank = _rank_as_of(s, reference_date)
+        rank = _rank_as_of(session, s, reference_date)
         eligible_duty_type_ids = list(active_dt_ids - exclusions.get(s.id, set()))
         if s.left_at is not None and s.left_at <= reference_date:
             details.append(SoldierPotentialDetail(
