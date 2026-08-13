@@ -44,15 +44,6 @@ import {
 } from "../api/importSessions";
 import { translateApiError } from "../utils/translateApiError";
 
-// Range sheet row types used in content blocks (tasks 3-7)
-// @ts-ignore TS6196: type is intentionally defined but unused here; will be used in tasks 3-7
-type RangeSheetRow =
-  | RangeLocationImportRow
-  | RangeEventImportRow
-  | RangeAssignmentImportRow
-  | SoldierRangeQualificationImportRow
-  | RangeExcusalRequestImportRow;
-
 type ActionValue = RowBase["action"];
 
 const ACTION_LABEL: Record<ActionValue, string> = {
@@ -1988,6 +1979,128 @@ export default function ImportSessionReviewPage() {
                               className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                               value={currentSelection("soldier_range_qualifications", row)}
                               onChange={(e) => setRowAction("soldier_range_qualifications", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "range_excusal_requests" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">מ&quot;א חייל</th>
+                  <th className="text-right p-3">מטווח</th>
+                  <th className="text-right p-3">סיבה</th>
+                  <th className="text-right p-3">סטטוס אישור</th>
+                  <th className="text-right p-3">מחליט</th>
+                  <th className="text-right p-3">הערת החלטה</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {range_excusal_requests.map((row: RangeExcusalRequestImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_soldier_id ? "" : "text-red-600"}>{row.soldier_personal_number}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className={row.resolved_range_event_id ? "" : "text-red-600"}>
+                          {row.hierarchy_node_name} · {row.range_type} · {row.date}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reason ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reason ?? ""}
+                            onBlur={(e) => setFieldOverride("range_excusal_requests", row.row, "reason", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.status}
+                            onChange={(e) => setFieldOverride("range_excusal_requests", row.row, "status", e.target.value)}
+                          >
+                            <option value="pending">ממתין</option>
+                            <option value="approved">מאושר</option>
+                            <option value="rejected">נדחה</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.decided_by_personal_number ? (
+                          <span className={row.resolved_decided_by_id ? "" : "text-red-600"}>{row.decided_by_personal_number}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.decision_note ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.decision_note ?? ""}
+                            onBlur={(e) => setFieldOverride("range_excusal_requests", row.row, "decision_note", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "soldier_personal_number", label: "מ\"א חייל", value: row.soldier_personal_number },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "requested_by_personal_number", label: "מ\"א מבקש", value: row.requested_by_personal_number },
+                                { key: "hierarchy_node_name", label: "יחידה", value: row.hierarchy_node_name },
+                                { key: "range_type", label: "סוג מטווח", value: row.range_type },
+                                { key: "date", label: "תאריך", value: row.date },
+                                { key: "range_location_name", label: "מיקום", value: row.range_location_name },
+                                { key: "resolved_range_event_id", label: "מזהה מטווח", value: row.resolved_range_event_id },
+                                { key: "resolved_range_assignment_id", label: "מזהה שיבוץ", value: row.resolved_range_assignment_id },
+                                { key: "reason", label: "סיבה", value: row.reason, editable: { type: "text", onChange: (v) => setFieldOverride("range_excusal_requests", row.row, "reason", v) } },
+                                { key: "status", label: "סטטוס אישור", value: row.status },
+                                { key: "decided_by_personal_number", label: "מ\"א מחליט", value: row.decided_by_personal_number },
+                                { key: "decision_note", label: "הערת החלטה", value: row.decision_note, editable: { type: "text", onChange: (v) => setFieldOverride("range_excusal_requests", row.row, "decision_note", v) } },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("range_excusal_requests", row)}
+                              onChange={(e) => setRowAction("range_excusal_requests", row.row, e.target.value)}
                             >
                               <option value={row.action}>אישור</option>
                               {row.action !== "skip" && <option value="skip">דלג</option>}

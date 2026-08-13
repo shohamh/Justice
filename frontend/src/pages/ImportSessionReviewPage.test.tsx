@@ -937,4 +937,38 @@ describe("ImportSessionReviewPage", () => {
       );
     });
   });
+
+  it("renders a range_excusal_requests row with an editable status", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_excusal_requests = [{
+      row: 2, action: "new", errors: [], id: null,
+      soldier_personal_number: "12345", resolved_soldier_id: "soldier-1",
+      requested_by_personal_number: "12345", resolved_requested_by_id: "soldier-1",
+      hierarchy_node_name: "מדור א", range_type: "live", date: "2024-06-15",
+      range_location_name: "מטווח דרומי", resolved_range_event_id: "event-1",
+      resolved_range_assignment_id: "assignment-1", reason: "חופשה", status: "pending",
+      decided_by_personal_number: null, resolved_decided_by_id: null,
+      decision_note: null, existing_id: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("בקשות פטור ממטווח (1)"));
+
+    await screen.findByText("12345");
+    const select = screen.getByText("12345").closest("tr")!.querySelector("select")!;
+    fireEvent.change(select, { target: { value: "approved" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_excusal_requests: expect.objectContaining({ "2": expect.objectContaining({ status: "approved" }) }),
+          }),
+        }),
+      );
+    });
+  });
 });
