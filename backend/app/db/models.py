@@ -1005,7 +1005,9 @@ class SoldierRangeQualification(Base):
 class RankAdvancementInterval(Base):
     __tablename__ = "rank_advancement_intervals"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
     track: Mapped[str] = mapped_column(Text, nullable=False)
     rank: Mapped[str] = mapped_column(Text, nullable=False)
     months_to_next: Mapped[int | None] = mapped_column(Integer, nullable=True)
