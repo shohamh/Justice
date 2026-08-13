@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.algorithm.types import DutyBlock
 from app.db.models import Soldier
 from app.services.eligibility import derive_is_career
 from app.services.rank_advancement import compute_next_rank_date, get_next_rank
@@ -44,3 +48,153 @@ def project_soldier_state(session: Session, *, soldier: Soldier, as_of: date) ->
         departed = True
 
     return ProjectedSoldierState(rank=rank, is_career=is_career, departed=departed)
+
+
+def _bulk_exempt_duty_blocks(
+    session: Session, *, soldier_ids: Sequence[uuid.UUID], duties: Sequence[DutyBlock]
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """For each soldier, duty-block ids covered by an active exemption as of
+    that block's own start_date (global, or mapped to the block's duty type
+    or location).
+
+    Adapts the exemption resolution eligibility.check_soldier_for_assignment
+    does for one soldier/one assignment to many soldiers/many blocks, using
+    the same boundary convention (start_date <= day <= end_date, with a NULL
+    end_date meaning open-ended).
+    """
+    from app.db.models import (
+        ExemptionDutyLocationMap,
+        ExemptionDutyTypeMap,
+        ExemptionType,
+        SoldierExemption,
+    )
+
+    if not soldier_ids or not duties:
+        return {}
+
+    exemptions = session.execute(
+        select(SoldierExemption).where(SoldierExemption.soldier_id.in_(soldier_ids))
+    ).scalars().all()
+    if not exemptions:
+        return {}
+
+    exemption_type_ids = {e.exemption_type_id for e in exemptions}
+    types_by_id = {
+        et.id: et
+        for et in session.execute(
+            select(ExemptionType).where(ExemptionType.id.in_(exemption_type_ids))
+        ).scalars().all()
+    }
+    dtype_map: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for row in session.execute(
+        select(ExemptionDutyTypeMap).where(
+            ExemptionDutyTypeMap.exemption_type_id.in_(exemption_type_ids)
+        )
+    ).scalars().all():
+        dtype_map.setdefault(row.exemption_type_id, set()).add(row.duty_type_id)
+    loc_map: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for row in session.execute(
+        select(ExemptionDutyLocationMap).where(
+            ExemptionDutyLocationMap.exemption_type_id.in_(exemption_type_ids)
+        )
+    ).scalars().all():
+        loc_map.setdefault(row.exemption_type_id, set()).add(row.duty_location_id)
+
+    by_soldier: dict[uuid.UUID, list[SoldierExemption]] = {}
+    for e in exemptions:
+        by_soldier.setdefault(e.soldier_id, []).append(e)
+
+    result: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for soldier_id, soldier_exemptions in by_soldier.items():
+        excluded: set[uuid.UUID] = set()
+        for block in duties:
+            for e in soldier_exemptions:
+                if e.start_date > block.start_date:
+                    continue
+                if e.end_date is not None and e.end_date < block.start_date:
+                    continue
+                et = types_by_id.get(e.exemption_type_id)
+                if et is not None and et.is_global:
+                    excluded.add(block.id)
+                    break
+                if block.duty_type_id in dtype_map.get(e.exemption_type_id, set()):
+                    excluded.add(block.id)
+                    break
+                if block.duty_location_id in loc_map.get(e.exemption_type_id, set()):
+                    excluded.add(block.id)
+                    break
+        result[soldier_id] = excluded
+    return result
+
+
+def bulk_future_ineligible_duty_blocks(
+    session: Session, *, soldier_ids: Sequence[uuid.UUID], duties: Sequence[DutyBlock]
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """For each soldier, the set of duty-block ids (among `duties`) they will
+    NOT be eligible for as of that block's own start_date -- covering
+    projected rank, service-type/career, mitvahim/alal recency,
+    driving-license expiry, active exemptions, and departure.
+
+    Mirrors app.services.weapon_eligibility.bulk_ineligible_duty_blocks's
+    shape/contract exactly -- see that function's docstring for why this is a
+    hard per-block exclusion rather than a single soldier-level set. Unlike
+    weapon qualification there is no enforcement toggle: none of the factors
+    folded in here are optional.
+    """
+    from app.db.models import DutyType
+    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+    from app.services.settings_loader import get_setting_int
+
+    if not soldier_ids or not duties:
+        return {}
+
+    soldiers = session.execute(
+        select(Soldier).where(Soldier.id.in_(soldier_ids))
+    ).scalars().all()
+    duty_type_ids = {d.duty_type_id for d in duties}
+    duty_types = {
+        dt.id: dt
+        for dt in session.execute(
+            select(DutyType).where(DutyType.id.in_(duty_type_ids))
+        ).scalars().all()
+    }
+    mitvahim_months = get_setting_int(session, "eligibility.mitvahim_months", 6)
+    alal_months = get_setting_int(session, "eligibility.alal_months", 3)
+
+    # Group blocks by distinct start_date so the (soldier, date) projection
+    # is only computed once per date, not once per block.
+    dates = sorted({d.start_date for d in duties})
+    projections: dict[tuple[uuid.UUID, date], ProjectedSoldierState] = {}
+    for s in soldiers:
+        for d in dates:
+            projections[(s.id, d)] = project_soldier_state(session, soldier=s, as_of=d)
+
+    # Cache parsed requirements per duty type -- duties usually reuse a handful.
+    reqs_by_duty_type: dict[uuid.UUID, DutyTypeRequirements | None] = {}
+    for dt_id, dt in duty_types.items():
+        try:
+            reqs_by_duty_type[dt_id] = DutyTypeRequirements.model_validate(dt.requirements or {})
+        except Exception:
+            reqs_by_duty_type[dt_id] = None
+
+    exempt_blocks = _bulk_exempt_duty_blocks(session, soldier_ids=soldier_ids, duties=duties)
+
+    result: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for s in soldiers:
+        excluded: set[uuid.UUID] = set(exempt_blocks.get(s.id, set()))
+        for block in duties:
+            projected = projections[(s.id, block.start_date)]
+            if projected.departed:
+                excluded.add(block.id)
+                continue
+            reqs = reqs_by_duty_type.get(block.duty_type_id)
+            if reqs is None:
+                continue
+            if not _is_eligible(
+                s, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months,
+                today=block.start_date, rank_override=projected.rank,
+            ):
+                excluded.add(block.id)
+        if excluded:
+            result[s.id] = excluded
+    return result
