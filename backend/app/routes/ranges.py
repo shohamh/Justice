@@ -297,6 +297,7 @@ def add_assignment(
             assignment_reason_text=(
                 body.assignment_reason_text.strip() if body.assignment_reason_text is not None else None
             ),
+            user=user,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -322,7 +323,7 @@ def batch_assign(
         created = svc.assign_batch(
             session, event=event,
             primary_soldier_ids=body.primaries, reserve_soldier_ids=body.reserves,
-            actor_id=user.id,
+            actor_id=user.id, user=user,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -566,8 +567,8 @@ class RangeCandidateOut(BaseModel):
     full_name: str
     personal_number: str
     reason_code: str
-    blocked: bool
-    blocked_reason: str | None = None
+    explanation: str
+    conflict_warning: str | None = None
 
 
 @router.get("/{event_id}/candidates", response_model=list[RangeCandidateOut])
@@ -579,11 +580,11 @@ def get_range_candidates(
     _require_enabled(session)
     event = _load_event(session, event_id)
     authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
-    ranked = auto_assign_svc.rank_candidates(session, event=event)
+    ranked = auto_assign_svc.rank_candidates(session, event=event, user=user)
     return [
         RangeCandidateOut(
             soldier_id=c.soldier.id, full_name=c.soldier.full_name, personal_number=c.soldier.personal_number,
-            reason_code=c.reason_code, blocked=c.blocked, blocked_reason=c.blocked_reason,
+            reason_code=c.reason_code, explanation=c.explanation, conflict_warning=c.conflict_warning,
         )
         for c in ranked
     ]

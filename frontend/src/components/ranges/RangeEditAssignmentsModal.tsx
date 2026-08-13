@@ -19,6 +19,8 @@ export interface RangeEditAssignmentsModalProps {
 const REASON_LABEL: Record<string, string> = {
   manual: "שיבוץ ידני",
   qualified: "כשירות תקפה למטווח",
+  duty_priority: "עדיפות לפי תורנות קרובה",
+  reserve_duty_priority: "עדיפות לפי תורנות רזרבה קרובה",
   weapon_duty_priority: "עדיפות לפי מטווח הנשק הקרוב",
   available_and_balanced: "זמינות ואיזון הסגל",
   legacy: "שיבוץ קיים",
@@ -43,6 +45,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const [reasonText, setReasonText] = useState("");
   const [savingReason, setSavingReason] = useState<string | null>(null);
   const [rangeCandidates, setRangeCandidates] = useState<RangeCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [primarySelected, setPrimarySelected] = useState<Set<string>>(new Set());
   const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -67,7 +70,11 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 
   useEffect(() => {
     if (!editable) return;
-    getRangeCandidates(event.id).then(setRangeCandidates).catch(() => setRangeCandidates([]));
+    setCandidatesLoading(true);
+    getRangeCandidates(event.id)
+      .then(setRangeCandidates)
+      .catch(() => setRangeCandidates([]))
+      .finally(() => setCandidatesLoading(false));
   }, [event.id, editable]);
 
   const pendingPrimaries = useMemo(() => rangeCandidates.filter(c => primarySelected.has(c.soldier_id)), [rangeCandidates, primarySelected]);
@@ -81,15 +88,15 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const primaryFull = primary.length + pendingPrimaries.length >= event.required_count;
   const reserveFull = reserves.length + pendingReserves.length >= event.reserve_count;
 
-  const primaryCandidates = useMemo(() => {
-    const available = rangeCandidates.filter(c => !reserveSelected.has(c.soldier_id));
-    return { unblocked: available.filter(c => !c.blocked), blocked: available.filter(c => c.blocked) };
-  }, [rangeCandidates, reserveSelected]);
+  const primaryCandidates = useMemo(
+    () => rangeCandidates.filter(c => !reserveSelected.has(c.soldier_id)),
+    [rangeCandidates, reserveSelected]
+  );
 
-  const reserveCandidates = useMemo(() => {
-    const available = rangeCandidates.filter(c => !primarySelected.has(c.soldier_id));
-    return { unblocked: available.filter(c => !c.blocked), blocked: available.filter(c => c.blocked) };
-  }, [rangeCandidates, primarySelected]);
+  const reserveCandidates = useMemo(
+    () => rangeCandidates.filter(c => !primarySelected.has(c.soldier_id)),
+    [rangeCandidates, primarySelected]
+  );
 
   function togglePrimary(id: string) {
     if (!primarySelected.has(id) && primarySlotsLeft === 0) {
@@ -112,12 +119,12 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   }
 
   function autoSelectPrimary() {
-    const top = primaryCandidates.unblocked.slice(0, primarySlotsLeft).map(c => c.soldier_id);
+    const top = primaryCandidates.slice(0, primarySlotsLeft).map(c => c.soldier_id);
     setPrimarySelected(new Set(top));
   }
 
   function autoSelectReserve() {
-    const top = reserveCandidates.unblocked.slice(0, reserveSlotsLeft).map(c => c.soldier_id);
+    const top = reserveCandidates.slice(0, reserveSlotsLeft).map(c => c.soldier_id);
     setReserveSelected(new Set(top));
   }
 
@@ -254,8 +261,6 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 
   return <EventDetailModal open={open} title={text("ranges.edit_assignments", "עריכת שיבוצים")} subtitle={`${event.location} · ${formatDate(event.date)}`} onClose={onClose}>
     <div className="overflow-y-auto flex-1 space-y-5">
-      {error && <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
       {/* Summary table — current + pending */}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -275,9 +280,9 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
         {!hasCurrentOrPending ? (
           <p className="text-xs text-gray-400 italic">{text("ranges.no_assignments", "אין שיבוצים עדיין")}</p>
         ) : (
-          <div className="border dark:border-gray-600 rounded overflow-x-auto">
+          <div className="border dark:border-gray-600 rounded overflow-x-auto max-h-64 overflow-y-auto">
             <table className="w-full text-xs">
-              <thead className="bg-gray-50 dark:bg-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                 <tr>
                   <th className="text-right p-2 font-medium">{text("ranges.name_label", "שם")}</th>
                   <th className="text-right p-2 font-medium">{text("ranges.type_label", "סוג")}</th>
@@ -347,17 +352,17 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
               <div className="flex items-center gap-2">
                 <div className="flex-1"><TableSearchInput value={primarySearch} onChange={setPrimarySearch} /></div>
                 <div className="flex gap-2 text-xs whitespace-nowrap">
-                  <button type="button" data-testid="range-auto-select-primary" onClick={autoSelectPrimary} disabled={primarySlotsLeft === 0 || primaryCandidates.unblocked.length === 0} className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">{text("ranges.auto_select", "בחר אוטומטית")}</button>
+                  <button type="button" data-testid="range-auto-select-primary" onClick={autoSelectPrimary} disabled={primarySlotsLeft === 0 || primaryCandidates.length === 0} className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">{text("ranges.auto_select", "בחר אוטומטית")}</button>
                   <button type="button" onClick={() => setPrimarySelected(new Set())} className="text-blue-600 dark:text-blue-400 hover:underline">{text("ranges.cancel_selection", "בטל")}</button>
                 </div>
               </div>
               <CandidateTable
-                unblocked={primaryCandidates.unblocked.filter(c => matchesQuery(c.full_name, c.personal_number, primarySearch))}
-                blocked={primaryCandidates.blocked.filter(c => matchesQuery(c.full_name, c.personal_number, primarySearch))}
+                candidates={primaryCandidates.filter(c => matchesQuery(c.full_name, c.personal_number, primarySearch))}
                 selected={primarySelected}
                 onToggle={togglePrimary}
                 testIdPrefix="candidate-checkbox"
                 full={primarySlotsLeft === 0}
+                loading={candidatesLoading}
               />
             </div>
           )}
@@ -381,21 +386,23 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
               <div className="flex items-center gap-2">
                 <div className="flex-1"><TableSearchInput value={reserveSearch} onChange={setReserveSearch} /></div>
                 <div className="flex gap-2 text-xs whitespace-nowrap">
-                  <button type="button" data-testid="range-auto-select-reserve" onClick={autoSelectReserve} disabled={reserveSlotsLeft === 0 || reserveCandidates.unblocked.length === 0} className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">{text("ranges.auto_select", "בחר אוטומטית")}</button>
+                  <button type="button" data-testid="range-auto-select-reserve" onClick={autoSelectReserve} disabled={reserveSlotsLeft === 0 || reserveCandidates.length === 0} className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">{text("ranges.auto_select", "בחר אוטומטית")}</button>
                   <button type="button" onClick={() => setReserveSelected(new Set())} className="text-blue-600 dark:text-blue-400 hover:underline">{text("ranges.cancel_selection", "בטל")}</button>
                 </div>
               </div>
               <CandidateTable
-                unblocked={reserveCandidates.unblocked.filter(c => matchesQuery(c.full_name, c.personal_number, reserveSearch))}
-                blocked={reserveCandidates.blocked.filter(c => matchesQuery(c.full_name, c.personal_number, reserveSearch))}
+                candidates={reserveCandidates.filter(c => matchesQuery(c.full_name, c.personal_number, reserveSearch))}
                 selected={reserveSelected}
                 onToggle={toggleReserve}
                 testIdPrefix="reserve-candidate-checkbox"
                 full={reserveSlotsLeft === 0}
+                loading={candidatesLoading}
               />
             </div>
           )}
         </div>
+
+        {error && <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
         <button type="button" data-testid="save-assignments" disabled={saving || totalSelected === 0} onClick={() => void saveSelection()} className={`${actionClass} border-green-600 bg-green-600 text-white`}>
           {saving ? text("ranges.saving", "שומר...") : `${text("ranges.save_assignments", "שמור שיבוצים")}${totalSelected > 0 ? ` (${totalSelected})` : ""}`}
@@ -410,32 +417,31 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 }
 
 interface CandidateTableProps {
-  unblocked: RangeCandidate[];
-  blocked: RangeCandidate[];
+  candidates: RangeCandidate[];
   selected: Set<string>;
   onToggle: (id: string) => void;
   testIdPrefix: string;
   full: boolean;
+  loading: boolean;
 }
 
-function CandidateTable({ unblocked, blocked, selected, onToggle, testIdPrefix, full }: CandidateTableProps) {
-  const [blockedOpen, setBlockedOpen] = useState(false);
+function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, loading }: CandidateTableProps) {
   return (
-    <div className="border dark:border-gray-600 rounded overflow-x-auto">
+    <div className="border dark:border-gray-600 rounded overflow-x-auto max-h-64 overflow-y-auto">
       <table className="w-full text-xs">
         <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
           <tr>
             <th className="p-2 w-8"></th>
             <th className="text-right p-2 font-medium">שם</th>
             <th className="text-right p-2 font-medium">מ&quot;א</th>
-            <th className="text-right p-2 font-medium">סיבה</th>
+            <th className="text-right p-2 font-medium">תעדוף</th>
           </tr>
         </thead>
         <tbody>
-          {unblocked.length === 0 && blocked.length === 0 && (
-            <tr><td colSpan={4} className="p-2 text-center text-gray-400 italic">אין מועמדים זמינים</td></tr>
+          {candidates.length === 0 && (
+            <tr><td colSpan={4} className="p-2 text-center text-gray-400 italic">{loading ? "טוען רשימת מועמדים..." : "אין מועמדים זמינים"}</td></tr>
           )}
-          {unblocked.map(c => {
+          {candidates.map(c => {
             const isSelected = selected.has(c.soldier_id);
             const isDisabled = full && !isSelected;
             return (
@@ -445,30 +451,26 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, testIdPrefix, 
                 onClick={() => !isDisabled && onToggle(c.soldier_id)}
               >
                 <td className="p-2"><input type="checkbox" data-testid={`${testIdPrefix}-${c.soldier_id}`} checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
-                <td className="p-2">{c.full_name}</td>
+                <td className="p-2">
+                  {c.full_name}
+                  {c.conflict_warning && (
+                    <span
+                      title={c.conflict_warning}
+                      aria-label={c.conflict_warning}
+                      className="mr-1 text-amber-500 dark:text-amber-400"
+                    >⚠️</span>
+                  )}
+                </td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-                <td className="p-2 text-gray-500 dark:text-gray-400">{REASON_LABEL[c.reason_code] ?? c.reason_code}</td>
+                <td className="p-2 text-gray-500 dark:text-gray-400">
+                  {c.explanation || (REASON_LABEL[c.reason_code] ?? c.reason_code)}
+                  {c.conflict_warning && (
+                    <span className="block text-amber-600 dark:text-amber-400">{c.conflict_warning}</span>
+                  )}
+                </td>
               </tr>
             );
           })}
-          {blocked.length > 0 && (
-            <tr className="border-t dark:border-gray-600">
-              <td colSpan={4} className="px-2 py-1 bg-gray-50 dark:bg-gray-700/50">
-                <button type="button" onClick={() => setBlockedOpen(v => !v)} className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center gap-1">
-                  <span>{blockedOpen ? "▾" : "▸"}</span>
-                  <span>חסומים ({blocked.length})</span>
-                </button>
-              </td>
-            </tr>
-          )}
-          {blockedOpen && blocked.map(c => (
-            <tr key={c.soldier_id} className="border-t dark:border-gray-600 opacity-40">
-              <td className="p-2"><input type="checkbox" data-testid={`${testIdPrefix}-${c.soldier_id}`} disabled /></td>
-              <td className="p-2">{c.full_name}</td>
-              <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason ?? ""}</td>
-            </tr>
-          ))}
         </tbody>
       </table>
     </div>

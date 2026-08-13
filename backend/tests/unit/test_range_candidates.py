@@ -6,15 +6,30 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyAssignment,
+    DutyManagerScope,
     DutyType,
+    ExemptionType,
     PersonalConstraint,
     RangeAssignment,
     RangeType,
+    Soldier,
+    SoldierExemption,
     SoldierRangeQualification,
 )
 from app.services.range_auto_assign import rank_candidates
 from app.services.ranges import add_range_assignment, create_range_event
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
+
+
+def _dm_for(session: Session, node, *, personal_number: str) -> Soldier:
+    """A duty manager scoped to `node`, standing in for the commander/DM whose
+    authorized scope the candidate pool is now drawn from. Deliberately placed
+    outside `node` themselves (hierarchy_node_id=None) so the dm doesn't show up
+    as a stray candidate in their own ranked list."""
+    dm = create_soldier(session, personal_number=personal_number, role="duty_manager", hierarchy_node_id=None)
+    session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=node.id))
+    session.commit()
+    return dm
 
 
 def _weapon_duty_type(session: Session, *, node, name: str) -> DutyType:
@@ -28,51 +43,51 @@ def _event(session: Session, *, required_count: int = 2, reserve_count: int = 1)
     node = create_node(session, level="branch", name="candidates")
     session.add(DutyType(name="weapon candidates", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
     session.flush()
+    dm = _dm_for(session, node, personal_number="cand-dm")
     event = create_range_event(
         session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=date.today() + timedelta(days=5),
         range_location_id=create_range_location(session, name="range").id,
         required_count=required_count, reserve_count=reserve_count,
     )
-    return node, event
+    return node, event, dm
 
 
 def test_ranks_available_soldiers_and_excludes_already_assigned(app_session: Session) -> None:
-    node, event = _event(app_session)
+    node, event, dm = _event(app_session)
     already = create_soldier(app_session, personal_number="cand-assigned", hierarchy_node_id=node.id)
     add_range_assignment(app_session, event=event, soldier_id=already.id, is_reserve=False)
     open_candidate = create_soldier(app_session, personal_number="cand-open", hierarchy_node_id=node.id)
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     ranked_ids = {c.soldier.id for c in ranked}
     assert already.id not in ranked_ids
     assert open_candidate.id in ranked_ids
-    assert all(not c.blocked for c in ranked)
+    assert all(c.conflict_warning is None for c in ranked)
 
 
-def test_marks_exempt_soldier_as_blocked_instead_of_excluding(app_session: Session) -> None:
-    node, event = _event(app_session)
-    soldier = create_soldier(app_session, personal_number="cand-exempt", hierarchy_node_id=node.id)
+def test_qualified_soldier_appears_with_no_conflict_warning(app_session: Session) -> None:
+    node, event, dm = _event(app_session)
+    soldier = create_soldier(app_session, personal_number="cand-qual", hierarchy_node_id=node.id)
 
-    from app.db.models import SoldierRangeQualification
     app_session.add(SoldierRangeQualification(
         soldier_id=soldier.id, range_type=RangeType.laser,
         valid_until=event.date + timedelta(days=365), source_range_event_id=None, source_range_assignment_id=None,
     ))
     app_session.commit()
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
-    assert mine.blocked is False
+    assert mine.conflict_warning is None
     assert mine.reason_code == "qualified"
 
 
 def test_does_not_write_any_assignment_rows(app_session: Session) -> None:
-    node, event = _event(app_session)
+    node, event, dm = _event(app_session)
     create_soldier(app_session, personal_number="cand-readonly", hierarchy_node_id=node.id)
 
-    rank_candidates(app_session, event=event)
+    rank_candidates(app_session, event=event, user=dm)
 
     remaining = app_session.execute(
         select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
@@ -80,23 +95,46 @@ def test_does_not_write_any_assignment_rows(app_session: Session) -> None:
     assert remaining == []
 
 
-def test_candidates_exclude_soldier_outside_subtree(app_session: Session) -> None:
+def test_candidates_exclude_soldier_outside_scope(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה א-outside")
     other_node = create_node(app_session, level="פלוגה", name="פלוגה ב-outside")
     _weapon_duty_type(app_session, node=node, name="weapon-a-outside")
+    dm = _dm_for(app_session, node, personal_number="6000000")
     outsider = create_soldier(app_session, personal_number="6000001", hierarchy_node_id=other_node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     assert outsider.id not in {c.soldier.id for c in ranked}
 
 
-def test_marks_range_exempt_soldier_as_blocked(app_session: Session) -> None:
+def test_candidates_include_soldier_from_sibling_node_in_managers_scope(app_session: Session) -> None:
+    """Regression test: a commander/DM whose scope spans a parent unit must be able
+    to draw reserve candidates from any sub-unit under it, not only the specific
+    sub-unit the range event happens to be tied to — otherwise the reserve pool
+    dries up as soon as that one sub-unit's soldiers are all assigned as primaries."""
+    parent = create_node(app_session, level="גדוד", name="גדוד היקף")
+    event_node = create_node(app_session, level="פלוגה", name="פלוגה מארחת", parent=parent)
+    sibling_node = create_node(app_session, level="פלוגה", name="פלוגה שכנה", parent=parent)
+    _weapon_duty_type(app_session, node=parent, name="weapon-sibling-scope")
+    dm = _dm_for(app_session, parent, personal_number="6000002")
+    sibling_soldier = create_soldier(app_session, personal_number="6000003", hierarchy_node_id=sibling_node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=event_node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    assert sibling_soldier.id in {c.soldier.id for c in ranked}
+
+
+def test_hard_excludes_range_exempt_soldier(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה פטור")
+    dm = _dm_for(app_session, node, personal_number="6000003a")
     # No requires_weapon duty type eligible for this node -> soldier is structurally exempt.
     soldier = create_soldier(app_session, personal_number="6000003", hierarchy_node_id=node.id)
     event = create_range_event(
@@ -104,16 +142,46 @@ def test_marks_range_exempt_soldier_as_blocked(app_session: Session) -> None:
         event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
-    mine = next(c for c in ranked if c.soldier.id == soldier.id)
-    assert mine.blocked is True
-    assert mine.blocked_reason == "exempt"
+    assert soldier.id not in {c.soldier.id for c in ranked}
 
 
-def test_marks_soldier_with_approved_constraint_as_blocked(app_session: Session) -> None:
+def test_hard_excludes_soldier_with_weapons_forbidding_exemption_even_with_urgent_duty(app_session: Session) -> None:
+    """Exemptions are a hard, permanent eligibility gate — unlike a personal
+    constraint or duty-day conflict, an urgent upcoming duty never overrides one."""
+    node = create_node(app_session, level="פלוגה", name="פלוגה פטור-דחוף")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-exempt-urgent")
+    dm = _dm_for(app_session, node, personal_number="6000003b")
+    soldier = create_soldier(app_session, personal_number="6000003c", hierarchy_node_id=node.id)
+    location = create_duty_location(app_session)
+    urgent_duty_date = date.today() + timedelta(days=5)
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=urgent_duty_date, end_date=urgent_duty_date, status="published",
+    ))
+    exemption_type = ExemptionType(name="פציעה", forbids_weapons=True, is_global=False)
+    app_session.add(exemption_type)
+    app_session.flush()
+    app_session.add(SoldierExemption(
+        soldier_id=soldier.id, exemption_type_id=exemption_type.id,
+        start_date=date.today(), end_date=None,
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=1), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    assert soldier.id not in {c.soldier.id for c in ranked}
+
+
+def test_hard_excludes_constrained_soldier_with_no_urgent_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה אילוץ")
     _weapon_duty_type(app_session, node=node, name="weapon-constraint")
+    dm = _dm_for(app_session, node, personal_number="6000004a")
     soldier = create_soldier(app_session, personal_number="6000004", hierarchy_node_id=node.id)
     event_date = date.today() + timedelta(days=5)
     event = create_range_event(
@@ -126,17 +194,54 @@ def test_marks_soldier_with_approved_constraint_as_blocked(app_session: Session)
     ))
     app_session.flush()
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    assert soldier.id not in {c.soldier.id for c in ranked}
+
+
+def test_keeps_constrained_soldier_with_urgent_upcoming_duty_and_shows_conflict_warning(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אילוץ דחוף")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-constraint-urgent")
+    dm = _dm_for(app_session, node, personal_number="6000004b")
+    soldier = create_soldier(app_session, personal_number="6000004c", hierarchy_node_id=node.id)
+    event_date = date.today() + timedelta(days=5)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+    constraint_start = event_date - timedelta(days=1)
+    constraint_end = event_date + timedelta(days=1)
+    app_session.add(PersonalConstraint(
+        soldier_id=soldier.id, start_date=constraint_start, end_date=constraint_end,
+        reason="חופשה", status="approved",
+    ))
+    location = create_duty_location(app_session)
+    urgent_duty_date = date.today() + timedelta(days=20)
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=urgent_duty_date, end_date=urgent_duty_date, status="published",
+    ))
+    app_session.flush()
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
-    assert mine.blocked is True
-    assert mine.blocked_reason == "constraint"
+    assert mine.conflict_warning == (
+        f"אילוץ מאושר {constraint_start.strftime('%d.%m.%Y')}–{constraint_end.strftime('%d.%m.%Y')}"
+    )
 
 
-def test_marks_soldier_on_duty_that_day_as_blocked(app_session: Session) -> None:
+def test_hard_excludes_soldier_on_duty_that_day_with_no_urgent_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה בתורנות")
     location = create_duty_location(app_session)
-    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-on-duty")
+    # A weapon duty type must exist for the node so the soldier isn't structurally
+    # exempt -- the conflicting duty itself is deliberately non-weapon, so it can't
+    # double as the "urgent upcoming duty" justification for the override.
+    _weapon_duty_type(app_session, node=node, name="weapon-on-duty")
+    non_weapon_dt = DutyType(name="שמירה רגילה", score_per_day=Decimal("1.00"), requires_weapon=False)
+    app_session.add(non_weapon_dt)
+    app_session.flush()
+    dm = _dm_for(app_session, node, personal_number="6000005a")
     soldier = create_soldier(app_session, personal_number="6000005", hierarchy_node_id=node.id)
     event_date = date.today() + timedelta(days=5)
     event = create_range_event(
@@ -144,22 +249,79 @@ def test_marks_soldier_on_duty_that_day_as_blocked(app_session: Session) -> None
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
     app_session.add(DutyAssignment(
-        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        soldier_id=soldier.id, duty_type_id=non_weapon_dt.id, duty_location_id=location.id,
         start_date=event_date, end_date=event_date + timedelta(days=1), status="published",
     ))
     app_session.flush()
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    assert soldier.id not in {c.soldier.id for c in ranked}
+
+
+def test_keeps_soldier_on_duty_that_day_with_urgent_upcoming_duty_and_shows_conflict_warning(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה בתורנות דחופה")
+    location = create_duty_location(app_session)
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-on-duty-urgent")
+    dm = _dm_for(app_session, node, personal_number="6000005b")
+    soldier = create_soldier(app_session, personal_number="6000005c", hierarchy_node_id=node.id)
+    event_date = date.today() + timedelta(days=5)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+    conflicting_duty_type = DutyType(name="שמירה", score_per_day=Decimal("1.00"), requires_weapon=False)
+    app_session.add(conflicting_duty_type)
+    app_session.flush()
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=conflicting_duty_type.id, duty_location_id=location.id,
+        start_date=event_date, end_date=event_date + timedelta(days=1), status="published",
+    ))
+    urgent_duty_date = date.today() + timedelta(days=10)
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=urgent_duty_date, end_date=urgent_duty_date, status="published",
+    ))
+    app_session.flush()
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
-    assert mine.blocked is True
-    assert mine.blocked_reason == "duty_assignment"
+    assert mine.conflict_warning == f"משובץ לתורנות 'שמירה' ב-{event_date.strftime('%d.%m.%Y')}"
 
 
-def test_does_not_block_soldier_when_duty_ends_on_event_date(app_session: Session) -> None:
+def test_urgent_duty_outside_30_day_window_does_not_rescue_constrained_soldier(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה חלון-זמן")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-window")
+    dm = _dm_for(app_session, node, personal_number="6000004d")
+    soldier = create_soldier(app_session, personal_number="6000004e", hierarchy_node_id=node.id)
+    event_date = date.today() + timedelta(days=5)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+    app_session.add(PersonalConstraint(
+        soldier_id=soldier.id, start_date=event_date - timedelta(days=1),
+        end_date=event_date + timedelta(days=1), reason="חופשה", status="approved",
+    ))
+    location = create_duty_location(app_session)
+    far_duty_date = date.today() + timedelta(days=31)
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=far_duty_date, end_date=far_duty_date, status="published",
+    ))
+    app_session.flush()
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    assert soldier.id not in {c.soldier.id for c in ranked}
+
+
+def test_does_not_exclude_soldier_when_duty_ends_on_event_date(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה סוף-תורנות-בלעדי")
     location = create_duty_location(app_session)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-duty-exclusive-end")
+    dm = _dm_for(app_session, node, personal_number="6000008a")
     soldier = create_soldier(app_session, personal_number="6000008", hierarchy_node_id=node.id)
     event_date = date.today() + timedelta(days=5)
     event = create_range_event(
@@ -172,15 +334,15 @@ def test_does_not_block_soldier_when_duty_ends_on_event_date(app_session: Sessio
     ))
     app_session.flush()
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
-    mine = next(c for c in ranked if c.soldier.id == soldier.id)
-    assert mine.blocked is False
+    assert soldier.id in {c.soldier.id for c in ranked}
 
 
-def test_marks_soldier_at_another_range_same_day_as_blocked(app_session: Session) -> None:
+def test_hard_excludes_soldier_at_another_range_same_day_even_with_urgent_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה מטווח-אחר")
-    _weapon_duty_type(app_session, node=node, name="weapon-other-range")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-other-range")
+    dm = _dm_for(app_session, node, personal_number="6000006a")
     soldier = create_soldier(app_session, personal_number="6000006", hierarchy_node_id=node.id)
     event_date = date.today() + timedelta(days=5)
     other_event = create_range_event(
@@ -188,26 +350,32 @@ def test_marks_soldier_at_another_range_same_day_as_blocked(app_session: Session
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח אחר").id, required_count=1,
     )
     add_range_assignment(app_session, event=other_event, soldier_id=soldier.id, is_reserve=False)
+    location = create_duty_location(app_session)
+    urgent_duty_date = date.today() + timedelta(days=10)
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=urgent_duty_date, end_date=urgent_duty_date, status="published",
+    ))
+    app_session.flush()
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
-    mine = next(c for c in ranked if c.soldier.id == soldier.id)
-    assert mine.blocked is True
-    assert mine.blocked_reason == "range_assignment"
+    assert soldier.id not in {c.soldier.id for c in ranked}
 
 
 def test_applies_all_eligibility_filters_independently_before_ranking(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה eligibility matrix")
     other_node = create_node(app_session, level="פלוגה", name="פלוגה outside matrix")
-    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-eligibility-matrix")
+    _weapon_duty_type(app_session, node=node, name="weapon-eligibility-matrix")
+    dm = _dm_for(app_session, node, personal_number="6000009a")
     duty_location = create_duty_location(app_session)
     event_date = date.today() + timedelta(days=5)
     eligible = create_soldier(app_session, personal_number="6000010", hierarchy_node_id=node.id)
-    outside_subtree = create_soldier(app_session, personal_number="6000011", hierarchy_node_id=other_node.id)
+    outside_scope = create_soldier(app_session, personal_number="6000011", hierarchy_node_id=other_node.id)
     constrained = create_soldier(app_session, personal_number="6000012", hierarchy_node_id=node.id)
     on_duty = create_soldier(app_session, personal_number="6000013", hierarchy_node_id=node.id)
     at_another_range = create_soldier(app_session, personal_number="6000014", hierarchy_node_id=node.id)
@@ -215,8 +383,11 @@ def test_applies_all_eligibility_filters_independently_before_ranking(app_sessio
         soldier_id=constrained.id, start_date=event_date, end_date=event_date,
         reason="approved leave", status="approved",
     ))
+    non_weapon_dt = DutyType(name="שמירה מטריקס", score_per_day=Decimal("1.00"), requires_weapon=False)
+    app_session.add(non_weapon_dt)
+    app_session.flush()
     app_session.add(DutyAssignment(
-        soldier_id=on_duty.id, duty_type_id=weapon_dt.id, duty_location_id=duty_location.id,
+        soldier_id=on_duty.id, duty_type_id=non_weapon_dt.id, duty_location_id=duty_location.id,
         start_date=event_date, end_date=event_date + timedelta(days=1), status="published",
     ))
     other_event = create_range_event(
@@ -230,31 +401,33 @@ def test_applies_all_eligibility_filters_independently_before_ranking(app_sessio
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
     ranked_ids = {c.soldier.id for c in ranked}
 
-    assert outside_subtree.id not in ranked_ids
-    by_id = {c.soldier.id: c for c in ranked}
-    assert by_id[eligible.id].blocked is False
-    assert by_id[constrained.id].blocked is True
-    assert by_id[constrained.id].blocked_reason == "constraint"
-    assert by_id[on_duty.id].blocked is True
-    assert by_id[on_duty.id].blocked_reason == "duty_assignment"
-    assert by_id[at_another_range.id].blocked is True
-    assert by_id[at_another_range.id].blocked_reason == "range_assignment"
+    assert eligible.id in ranked_ids
+    assert outside_scope.id not in ranked_ids
+    assert constrained.id not in ranked_ids
+    assert on_duty.id not in ranked_ids
+    assert at_another_range.id not in ranked_ids
 
 
-def test_tier_a_sorts_before_tier_b_before_tier_c(app_session: Session) -> None:
+def test_tier_a_sorts_before_tier_b_before_tier_c_before_tier_d(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה שכבות")
     location = create_duty_location(app_session)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-tiers")
+    dm = _dm_for(app_session, node, personal_number="6100000")
     event_date = date.today() + timedelta(days=5)
 
-    tier_c_soldier = create_soldier(app_session, personal_number="6100001", hierarchy_node_id=node.id)
+    tier_d_soldier = create_soldier(app_session, personal_number="6100001", hierarchy_node_id=node.id)
     app_session.add(SoldierRangeQualification(
-        soldier_id=tier_c_soldier.id, range_type=RangeType.laser, valid_until=event_date + timedelta(days=30),
+        soldier_id=tier_d_soldier.id, range_type=RangeType.laser, valid_until=event_date + timedelta(days=30),
     ))
-    tier_b_soldier = create_soldier(app_session, personal_number="6100002", hierarchy_node_id=node.id)
+    tier_c_soldier = create_soldier(app_session, personal_number="6100002", hierarchy_node_id=node.id)
+    tier_b_soldier = create_soldier(app_session, personal_number="6100005", hierarchy_node_id=node.id)
+    app_session.add(DutyAssignment(
+        soldier_id=tier_b_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1), status="published", is_reserve=True,
+    ))
     tier_a_soldier = create_soldier(app_session, personal_number="6100003", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=tier_a_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
@@ -264,19 +437,20 @@ def test_tier_a_sorts_before_tier_b_before_tier_c(app_session: Session) -> None:
 
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=4,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     order = [c.soldier.id for c in ranked]
-    assert order == [tier_a_soldier.id, tier_b_soldier.id, tier_c_soldier.id]
+    assert order == [tier_a_soldier.id, tier_b_soldier.id, tier_c_soldier.id, tier_d_soldier.id]
 
 
 def test_tier_a_orders_by_earliest_duty_start(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה טייר-א")
     location = create_duty_location(app_session)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-tier-a-order")
+    dm = _dm_for(app_session, node, personal_number="6200000")
     event_date = date.today() + timedelta(days=5)
 
     later_soldier = create_soldier(app_session, personal_number="6200001", hierarchy_node_id=node.id)
@@ -296,15 +470,16 @@ def test_tier_a_orders_by_earliest_duty_start(app_session: Session) -> None:
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     order = [c.soldier.id for c in ranked]
     assert order == [sooner_soldier.id, later_soldier.id]
 
 
-def test_tier_c_orders_by_soonest_expiring_qualification(app_session: Session) -> None:
-    node = create_node(app_session, level="פלוגה", name="פלוגה טייר-ג")
-    _weapon_duty_type(app_session, node=node, name="weapon-tier-c-order")
+def test_tier_d_orders_by_soonest_expiring_qualification(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה טייר-ד")
+    _weapon_duty_type(app_session, node=node, name="weapon-tier-d-order")
+    dm = _dm_for(app_session, node, personal_number="6300000")
     event_date = date.today() + timedelta(days=5)
 
     expires_later = create_soldier(app_session, personal_number="6300001", hierarchy_node_id=node.id)
@@ -322,19 +497,20 @@ def test_tier_c_orders_by_soonest_expiring_qualification(app_session: Session) -
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     order = [c.soldier.id for c in ranked]
     assert order == [expires_sooner.id, expires_later.id]
 
 
-def test_qualification_at_higher_range_type_counts_as_tier_c(app_session: Session) -> None:
+def test_qualification_at_higher_range_type_counts_as_tier_d(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה איכות-גבוהה")
     _weapon_duty_type(app_session, node=node, name="weapon-higher-qual")
+    dm = _dm_for(app_session, node, personal_number="6400000")
     event_date = date.today() + timedelta(days=5)
 
     soldier = create_soldier(app_session, personal_number="6400001", hierarchy_node_id=node.id)
-    # Qualified at "live" (higher than the event's "laser") -> still Tier C for a laser event.
+    # Qualified at "live" (higher than the event's "laser") -> still Tier D for a laser event.
     app_session.add(SoldierRangeQualification(
         soldier_id=soldier.id, range_type=RangeType.live, valid_until=event_date + timedelta(days=10),
     ))
@@ -345,30 +521,32 @@ def test_qualification_at_higher_range_type_counts_as_tier_c(app_session: Sessio
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "qualified"
-    assert mine.blocked is False
 
 
 def test_reason_code_available_and_balanced_when_no_qualification_or_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגת סיבת שיבוץ")
     _weapon_duty_type(app_session, node=node, name="תורנות נשק סיבת שיבוץ")
+    dm = _dm_for(app_session, node, personal_number="7010000")
     soldier = create_soldier(app_session, personal_number="7010001", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "available_and_balanced"
+    assert mine.explanation == "מעולם לא ביצע מטווחים"
 
 
-def test_reason_code_weapon_duty_priority_for_future_weapon_duty(app_session: Session) -> None:
+def test_reason_code_duty_priority_for_future_regular_weapon_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות נשק")
+    dm = _dm_for(app_session, node, personal_number="7010003")
     soldier = create_soldier(app_session, personal_number="7010004", hierarchy_node_id=node.id)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="תורנות נשק עדיפות")
     location = create_duty_location(app_session)
@@ -383,7 +561,101 @@ def test_reason_code_weapon_duty_priority_for_future_weapon_duty(app_session: Se
         event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
-    ranked = rank_candidates(app_session, event=event)
+    ranked = rank_candidates(app_session, event=event, user=dm)
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
-    assert mine.reason_code == "weapon_duty_priority"
+    assert mine.reason_code == "duty_priority"
+    assert mine.explanation == f"תורנות קרובה ב-{future_duty_date.strftime('%d.%m.%Y')}"
+
+
+def test_reason_code_reserve_duty_priority_for_future_reserve_weapon_duty(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות רזרבה")
+    dm = _dm_for(app_session, node, personal_number="7010005")
+    soldier = create_soldier(app_session, personal_number="7010006", hierarchy_node_id=node.id)
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="תורנות רזרבה עדיפות")
+    location = create_duty_location(app_session)
+    future_duty_date = date.today() + timedelta(days=3)
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=future_duty_date, end_date=future_duty_date, status="published", is_reserve=True,
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    mine = next(c for c in ranked if c.soldier.id == soldier.id)
+    assert mine.reason_code == "reserve_duty_priority"
+    assert mine.explanation == f"תורנות רזרבה קרובה ב-{future_duty_date.strftime('%d.%m.%Y')}"
+
+
+def test_regular_duty_outranks_reserve_duty(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות משולבת")
+    dm = _dm_for(app_session, node, personal_number="7010007")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="תורנות משולבת")
+    location = create_duty_location(app_session)
+
+    reserve_soldier = create_soldier(app_session, personal_number="7010008", hierarchy_node_id=node.id)
+    app_session.add(DutyAssignment(
+        soldier_id=reserve_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1),
+        status="published", is_reserve=True,
+    ))
+    regular_soldier = create_soldier(app_session, personal_number="7010009", hierarchy_node_id=node.id)
+    app_session.add(DutyAssignment(
+        soldier_id=regular_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=date.today() + timedelta(days=20), end_date=date.today() + timedelta(days=20),
+        status="published", is_reserve=False,
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    order = [c.soldier.id for c in ranked]
+    # Regular duty (rank 0) sorts before reserve duty (rank 1), even though the
+    # reserve soldier's duty date is sooner.
+    assert order == [regular_soldier.id, reserve_soldier.id]
+
+
+def test_explanation_shows_last_valid_until_when_previously_qualified(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגת פג תוקף")
+    _weapon_duty_type(app_session, node=node, name="תורנות פג תוקף")
+    dm = _dm_for(app_session, node, personal_number="7010010")
+    soldier = create_soldier(app_session, personal_number="7010011", hierarchy_node_id=node.id)
+    expired_until = date.today() - timedelta(days=30)
+    app_session.add(SoldierRangeQualification(
+        soldier_id=soldier.id, range_type=RangeType.laser, valid_until=expired_until,
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    mine = next(c for c in ranked if c.soldier.id == soldier.id)
+    assert mine.reason_code == "available_and_balanced"
+    assert mine.explanation == f"אין מטווחים בתוקף מ-{expired_until.strftime('%d.%m.%Y')}"
+
+
+def test_admin_sees_soldiers_across_the_whole_tree(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אדמין")
+    _weapon_duty_type(app_session, node=node, name="weapon-admin-scope")
+    admin = create_soldier(app_session, personal_number="7020000", role="admin")
+    soldier = create_soldier(app_session, personal_number="7020001", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=admin)
+
+    assert soldier.id in {c.soldier.id for c in ranked}

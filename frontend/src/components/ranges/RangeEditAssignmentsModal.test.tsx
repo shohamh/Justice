@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+﻿import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { RangeEvent } from "../../api/ranges";
 import * as rangesApi from "../../api/ranges";
@@ -135,9 +135,9 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("renders the ranked candidate panel with auto-select and lets a manager save a batch", async () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
-      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
-      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
-      { soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "available_and_balanced", blocked: true, blocked_reason: "exempt" },
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
+      { soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
     ]);
     vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
       { id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "qualified", assignment_reason_text: null },
@@ -155,8 +155,8 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("does not auto-select any reserve candidates once the reserve slots are already full", async () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
-      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
-      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
     ]);
     // reserve_count: 1, and one reserve assignment already fills that slot.
     renderModal({ event: { ...event([assignment("a1", "s3", true)]), reserve_count: 1 } });
@@ -171,8 +171,8 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("disables auto-select once a pending (not-yet-saved) selection already fills the slots", async () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
-      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
-      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
     ]);
     renderModal({ event: { ...event([]), required_count: 1 } });
 
@@ -185,8 +185,8 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("filters the primary candidate list live as the user types in the search box", async () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
-      { soldier_id: "s1", full_name: "אורי", personal_number: "111", reason_code: "qualified", blocked: false, blocked_reason: null },
-      { soldier_id: "s2", full_name: "דנה", personal_number: "222", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
+      { soldier_id: "s1", full_name: "אורי", personal_number: "111", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "222", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
     ]);
     renderModal({ event: event([]) });
 
@@ -199,21 +199,39 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.getByTestId("candidate-checkbox-s2")).toBeInTheDocument();
   });
 
-  it("shows blocked candidates but keeps their checkbox disabled", async () => {
+  it("shows a loading placeholder while candidates are being fetched, not the empty-state message", async () => {
+    let resolveCandidates: (value: rangesApi.RangeCandidate[]) => void = () => {};
+    vi.mocked(rangesApi.getRangeCandidates).mockReturnValue(
+      new Promise(resolve => { resolveCandidates = resolve; })
+    );
+    renderModal({ event: event([]) });
+
+    expect(await screen.findAllByText("טוען רשימת מועמדים...")).toHaveLength(2);
+    expect(screen.queryByText("אין מועמדים זמינים")).not.toBeInTheDocument();
+
+    resolveCandidates([]);
+    expect(await screen.findAllByText("אין מועמדים זמינים")).toHaveLength(2);
+  });
+
+  it("shows a conflict-warning badge for a candidate kept despite a scheduling conflict, but leaves them selectable", async () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
-      { soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "available_and_balanced", blocked: true, blocked_reason: "exempt" },
+      {
+        soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "duty_priority",
+        explanation: "תורנות קרובה ב-20.08.2026",
+        conflict_warning: "אילוץ מאושר 18.08.2026–20.08.2026",
+      },
     ]);
     renderModal({ event: event([]) });
 
-    const toggles = await screen.findAllByText(/חסומים/);
-    fireEvent.click(toggles[0]);
     const checkbox = await screen.findByTestId("candidate-checkbox-s3");
-    expect(checkbox).toBeDisabled();
+    expect(checkbox).not.toBeDisabled();
+    expect(screen.getAllByTitle("אילוץ מאושר 18.08.2026–20.08.2026").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("אילוץ מאושר 18.08.2026–20.08.2026").length).toBeGreaterThan(0);
   });
 
   it("shows a user-facing error when saving the batch fails", async () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
-      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
     ]);
     vi.mocked(rangesApi.batchAssignRange).mockRejectedValue(new Error("batch"));
     renderModal({ event: event([]) });
@@ -226,7 +244,7 @@ describe("RangeEditAssignmentsModal", () => {
   it("re-fetches candidates after a successful batch save so a just-assigned soldier is no longer offered", async () => {
     vi.mocked(rangesApi.getRangeCandidates)
       .mockResolvedValueOnce([
-        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
       ])
       .mockResolvedValueOnce([]);
     vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
@@ -245,7 +263,7 @@ describe("RangeEditAssignmentsModal", () => {
     vi.mocked(rangesApi.getRangeCandidates)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
-        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
       ]);
     vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
