@@ -21,7 +21,9 @@ checked against the assignment's own date and need no change.
 
 1. Rank ladder becomes structured config (not just an allow-list), shared
    with the frontend via API instead of hand-duplicated.
-2. New per-track, per-rank promotion-interval config, admin-editable.
+2. New per-track, per-rank promotion-interval config, admin-editable —
+   editing it recomputes `next_rank_date` for affected soldiers who don't
+   have a manual override.
 3. Daily worker that promotes soldiers whose `next_rank_date` has arrived,
    auto-chains the next `next_rank_date`, and notifies soldier + commander.
 4. Advance-warning notification a configurable number of days before
@@ -100,8 +102,17 @@ other global settings (confirm storage mechanism during implementation —
 likely the same settings table/loader used for existing global toggles in
 `settings_loader.py`).
 
-No new columns on `Soldier`. `next_rank_date` (already exists) is reused
-as-is.
+### New columns on `Soldier`
+
+- `next_rank_date_overridden: bool`, default `false`. Distinguishes an
+  auto-computed `next_rank_date` from one a commander manually set, so that
+  editing `RankAdvancementInterval` only recomputes the soldiers who
+  haven't been manually overridden. See "Reacting to interval-config
+  changes" below.
+- `current_rank_since: date`, nullable. The date the soldier's current
+  `rank` took effect (enlistment date for their initial rank, or the
+  promotion date for any subsequent one). Needed to recompute
+  `next_rank_date` correctly when interval config changes after the fact.
 
 ## Promotion worker
 
@@ -139,10 +150,28 @@ Each run:
 
 Set at enlistment: when a soldier is created/enrolled with an initial rank,
 `next_rank_date = enlistment_date + <that rank's configured
-months_to_next>` for the soldier's initial track. If a commander manually
-edits `next_rank_date` afterward (at any point), that edit only affects the
-next promotion — once it fires, the worker resumes auto-chaining from the
-config table as normal (no permanent opt-out flag).
+months_to_next>` for the soldier's initial track, with
+`next_rank_date_overridden = false`.
+
+If a commander manually edits `next_rank_date` via the soldier profile/edit
+endpoint (promotion, delay, or correction), set
+`next_rank_date_overridden = true`. That edit only affects the *next*
+promotion — once the worker fires it, it auto-chains the following date
+from the config table and resets `next_rank_date_overridden = false`, so
+auto-computation resumes as normal (no permanent opt-out).
+
+### Reacting to interval-config changes
+
+When an admin edits `RankAdvancementInterval` (adds/changes
+`months_to_next` for a rank+track), recompute `next_rank_date` for every
+soldier where `next_rank_date_overridden = false` and current `rank`
+matches the changed row's track+rank: new `next_rank_date` =
+`current_rank_since + new months_to_next`. Soldiers with
+`next_rank_date_overridden = true` are left untouched.
+
+`current_rank_since` must be set everywhere `rank` is written: the
+enlistment-time initializer (= `enlistment_date`) and the promotion worker
+(= `today`, the promotion date).
 
 ## Future-eligibility projection
 
@@ -188,7 +217,10 @@ range projection instead if that's a better fit):
 - Backend: unit tests for the promotion worker (mid-ladder chaining,
   top-of-enlisted-ladder stop, top-of-officer-ladder stop, no
   track-crossing, discharged soldiers skipped, manual override then
-  resumed auto-chain), the warning-notification exact-day-match logic, and
+  resumed auto-chain, `current_rank_since` set correctly on both
+  enlistment and promotion), the interval-config-change recompute
+  (overridden soldiers untouched, non-overridden soldiers recomputed from
+  `current_rank_since`), the warning-notification exact-day-match logic, and
   `project_soldier_state` (rank projection across zero/one/multiple
   chained promotions before `as_of`, career-track flip projected forward,
   departure exclusion).
