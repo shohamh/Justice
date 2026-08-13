@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-13 (3)
+
+### Features
+- Bulk export/import support for ranges (מטווחים): range locations, scheduled range days, soldier assignments/attendance, per-soldier range qualifications, and excusal requests can now be exported to Excel and re-imported through the existing import-review workflow, alongside soldiers/duty shifts/config data. Five new review tabs were added to the import-session review page, and matching checkboxes to the unified export page.
+
+### Fixes
+- The range-assignments review tab now shows the unit and lets you correct the date/type when a bulk-imported assignment doesn't match any range day, instead of only letting you skip the row.
+- Approved range excusal requests now re-import correctly from an exported file (previously errored every time, since the export had no way to identify which soldier an already-approved request belonged to).
+- Range excusal reasons are now masked in exports based on viewer permission, consistent with how other soldier-authored reasons (personal constraints, exemption requests) are already handled.
+
 ## 2026-08-13 (2)
 
 ### Features
