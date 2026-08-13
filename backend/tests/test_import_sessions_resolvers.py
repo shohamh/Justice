@@ -495,15 +495,13 @@ def test_resolve_range_assignments_matches_existing_event(app_session):
 def test_resolve_range_assignments_matches_session_created_event(app_session):
     admin = create_soldier(app_session, personal_number="admin-5", role="admin")
     node = create_node(app_session, name="מדור א", level="group")
-    create_range_location(app_session, name="מטווח דרומי")
+    location = create_range_location(app_session, name="מטווח דרומי")
     create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
 
     resolved_events = [{
         "row": 2, "action": "new", "range_type": "live", "date": "2024-06-15",
         "resolved_hierarchy_node_id": str(node.id),
-        "resolved_range_location_id": str(
-            app_session.execute(select(RangeLocation)).scalar_one().id
-        ),
+        "resolved_range_location_id": str(location.id),
     }]
     data = ParsedImportData(
         parser_id="v1_standard",
