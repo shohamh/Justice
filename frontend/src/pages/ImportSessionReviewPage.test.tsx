@@ -486,6 +486,37 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByText("לא קיים")).toHaveClass("text-red-600");
   });
 
+  it("renders a range_assignments row with an editable attendance_status", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_assignments = [{
+      row: 2, action: "new", errors: [], warnings: [],
+      personal_number: "12345", full_name: "ישראל ישראלי",
+      range_type: "live", date: "2024-06-15", range_location_name: "מטווח דרומי",
+      is_reserve: false, is_draft: false, attendance_status: "pending", note: null,
+      resolved_soldier_id: "soldier-1", resolved_range_event_id: "event-1", matched_session_row: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("שיבוצי מטווח (1)"));
+
+    await screen.findByText("ישראל ישראלי");
+    const select = screen.getByText("ישראל ישראלי").closest("tr")!.querySelectorAll("select")[0];
+    fireEvent.change(select, { target: { value: "present" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_assignments: expect.objectContaining({ "2": expect.objectContaining({ attendance_status: "present" }) }),
+          }),
+        }),
+      );
+    });
+  });
+
   it("renders the system_settings and bug_reports tabs with row counts", async () => {
     const detail = makeDraftDetail();
     detail.parsed_state.system_settings = [

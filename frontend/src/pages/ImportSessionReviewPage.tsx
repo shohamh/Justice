@@ -1795,6 +1795,125 @@ export default function ImportSessionReviewPage() {
           </div>
         )}
 
+        {tab === "range_assignments" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">מ&quot;א</th>
+                  <th className="text-right p-3">סוג</th>
+                  <th className="text-right p-3">תאריך</th>
+                  <th className="text-right p-3">מיקום</th>
+                  <th className="text-right p-3">רזרבה</th>
+                  <th className="text-right p-3">נוכחות</th>
+                  <th className="text-right p-3">הערה</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {range_assignments.map((row: RangeAssignmentImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_soldier_id ? "" : "text-red-600"}>{row.full_name}</span>
+                      </td>
+                      <td className="p-3">{row.personal_number}</td>
+                      <td className="p-3">{row.range_type}</td>
+                      <td className="p-3">{row.date}</td>
+                      <td className="p-3">
+                        <span className={row.resolved_range_event_id || row.matched_session_row !== null ? "" : "text-red-600"}>
+                          {row.range_location_name}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_reserve ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_reserve}
+                            onChange={(e) => setFieldOverride("range_assignments", row.row, "is_reserve", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.attendance_status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.attendance_status}
+                            onChange={(e) => setFieldOverride("range_assignments", row.row, "attendance_status", e.target.value)}
+                          >
+                            <option value="pending">ממתין</option>
+                            <option value="present">נוכח</option>
+                            <option value="no_show">לא הגיע</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.note ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.note ?? ""}
+                            onBlur={(e) => setFieldOverride("range_assignments", row.row, "note", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "personal_number", label: "מ\"א", value: row.personal_number },
+                                { key: "full_name", label: "שם", value: row.full_name },
+                                { key: "range_type", label: "סוג", value: row.range_type },
+                                { key: "date", label: "תאריך", value: row.date },
+                                { key: "range_location_name", label: "מיקום", value: row.range_location_name },
+                                { key: "is_reserve", label: "רזרבה", value: row.is_reserve, editable: { type: "checkbox", onChange: (v) => setFieldOverride("range_assignments", row.row, "is_reserve", v) } },
+                                { key: "is_draft", label: "טיוטה", value: row.is_draft, editable: { type: "checkbox", onChange: (v) => setFieldOverride("range_assignments", row.row, "is_draft", v) } },
+                                { key: "attendance_status", label: "נוכחות", value: row.attendance_status },
+                                { key: "note", label: "הערה", value: row.note, editable: { type: "text", onChange: (v) => setFieldOverride("range_assignments", row.row, "note", v) } },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "resolved_range_event_id", label: "מזהה מטווח", value: row.resolved_range_event_id },
+                                { key: "matched_session_row", label: "שורה תואמת", value: row.matched_session_row },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                                { key: "warnings", label: "אזהרות", value: row.warnings },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("range_assignments", row)}
+                              onChange={(e) => setRowAction("range_assignments", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {tab === "hierarchy" && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
             <table className="w-full text-sm">
