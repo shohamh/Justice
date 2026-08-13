@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-13 (2)
+
+### Features
+- Unit-calendar info badge (planned-range coverage) now shows how many soldiers it covers, matching the warning badge; the swap-count badge gained a matching icon.
+
+### Fixes
+- Unit-calendar warning badge now catches a soldier who never had a valid qualification from the start, not just one who lost it after assignment — previously it only checked a DB flag set retroactively by a background job, so it silently missed soldiers the shift-detail modal already flagged correctly.
+- Range assignment modal: the candidate pool for a range event now draws from the requesting commander/duty manager's full authorized scope instead of just the event's own hierarchy node, so the reserve list no longer dries up when that one sub-unit is full. Soldiers with a genuine hard conflict (weapons-forbidding exemption, structural ineligibility, already assigned to another range that day) are now excluded from the list entirely instead of shown greyed-out; soldiers blocked only by a personal constraint or overlapping duty stay selectable — with a conflict-warning badge — when they have a weapon-requiring duty within 30 days.
+- Fixed a save failure introduced by the scope-widening above: the backend still hard-rejected a selected soldier who was outside the event's own hierarchy node even when in scope, so saving a legitimately-offered candidate could fail with a generic error. Range assignment failures now show the real reason instead of a generic message, and the error is shown next to the save button instead of the top of the modal.
+- Range candidate table now shows a תעדוף column explaining why each candidate is ranked where they are, a loading placeholder instead of a misleading "no candidates" message while the list loads, and keeps its own scroll contained instead of growing the whole modal.
+
+### Chores
+- Batched the range-candidate ranking/eligibility queries (previously ~10-12 per soldier) into a fixed handful of bulk queries regardless of candidate count, fixing a real slowdown once the candidate pool widened to a manager's full scope.
+
 ## 2026-08-13
 
 ### Fixes
