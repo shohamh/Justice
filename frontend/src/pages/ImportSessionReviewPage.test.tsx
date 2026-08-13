@@ -137,6 +137,11 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
       soldier_exemptions: [],
       exemption_requests: [],
       swap_requests: [],
+      range_locations: [],
+      range_events: [],
+      range_assignments: [],
+      soldier_range_qualifications: [],
+      range_excusal_requests: [],
       parser_id: "p1",
       parser_warnings: [],
     },
@@ -403,6 +408,149 @@ describe("ImportSessionReviewPage", () => {
     fireEvent.click(screen.getByText("מיקומי תורנות (1)"));
     const row = (await screen.findByDisplayValue("שער חדש")).closest("tr")!;
     expect(within(row).getByText("אישור")).toBeInTheDocument();
+  });
+
+  it("renders a range_locations row and toggles it to skip", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_locations = [
+      { row: 2, action: "new", errors: [], name: "מטווח דרומי", active: true, existing_id: null },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("מיקומי מטווח (1)"));
+
+    const row = await screen.findByDisplayValue("מטווח דרומי");
+    const select = row.closest("tr")!.querySelector("select")!;
+    fireEvent.change(select, { target: { value: "skip" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({ range_locations: expect.objectContaining({ "2": "skip" }) }),
+      );
+    });
+  });
+
+  it("renders a range_events row with editable required_count", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_events = [{
+      row: 2, action: "new", errors: [],
+      hierarchy_node_name: "מדור א", resolved_hierarchy_node_id: "node-1",
+      range_type: "live", date: "2024-06-15",
+      range_location_name: "מטווח דרומי", resolved_range_location_id: "loc-1",
+      required_count: 10, reserve_count: 2, start_time: null, end_time: null,
+      arrival_instructions: null, contact_name: null, contact_phone: null,
+      notes: null, status: "planned",
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("מטווחים (1)"));
+
+    const countInput = await screen.findByDisplayValue("10");
+    fireEvent.blur(countInput, { target: { value: "12" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_events: expect.objectContaining({ "2": expect.objectContaining({ required_count: 12 }) }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("shows an unresolved range_events hierarchy_node_name in red", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_events = [{
+      row: 2, action: "error", errors: ["יחידה לא מזוהה 'לא קיים'"],
+      hierarchy_node_name: "לא קיים", resolved_hierarchy_node_id: null,
+      range_type: "live", date: "2024-06-15",
+      range_location_name: "מטווח דרומי", resolved_range_location_id: "loc-1",
+      required_count: 10, reserve_count: 0, start_time: null, end_time: null,
+      arrival_instructions: null, contact_name: null, contact_phone: null,
+      notes: null, status: "planned",
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("מטווחים (1)"));
+
+    await screen.findByText("שגיאה");
+    expect(screen.getByText("לא קיים")).toHaveClass("text-red-600");
+  });
+
+  it("renders a range_assignments row with an editable attendance_status", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_assignments = [{
+      row: 2, action: "new", errors: [], warnings: [],
+      personal_number: "12345", full_name: "ישראל ישראלי",
+      hierarchy_node_name: "מדור א", resolved_hierarchy_node_id: "node-1",
+      range_type: "live", date: "2024-06-15", range_location_name: "מטווח דרומי",
+      is_reserve: false, is_draft: false, attendance_status: "pending", note: null,
+      resolved_soldier_id: "soldier-1", resolved_range_event_id: "event-1", matched_session_row: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("שיבוצי מטווח (1)"));
+
+    await screen.findByText("ישראל ישראלי");
+    const select = screen.getByText("ישראל ישראלי").closest("tr")!.querySelectorAll("select")[1];
+    fireEvent.change(select, { target: { value: "present" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_assignments: expect.objectContaining({ "2": expect.objectContaining({ attendance_status: "present" }) }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("renders a range_assignments row with an editable date and range_type, and shows the unit", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_assignments = [{
+      row: 2, action: "new", errors: [], warnings: [],
+      personal_number: "12345", full_name: "ישראל ישראלי",
+      hierarchy_node_name: "מדור לא תואם", resolved_hierarchy_node_id: null,
+      range_type: "live", date: "2024-06-15", range_location_name: "מטווח דרומי",
+      is_reserve: false, is_draft: false, attendance_status: "pending", note: null,
+      resolved_soldier_id: "soldier-1", resolved_range_event_id: null, matched_session_row: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("שיבוצי מטווח (1)"));
+
+    await screen.findByText("ישראל ישראלי");
+    expect(screen.getByText("מדור לא תואם")).toHaveClass("text-red-600");
+
+    const dateInput = screen.getByDisplayValue("15/06/2024");
+    fireEvent.change(dateInput, { target: { value: "16/06/2024" } });
+    fireEvent.blur(dateInput);
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_assignments: expect.objectContaining({ "2": expect.objectContaining({ date: "2024-06-16" }) }),
+          }),
+        }),
+      );
+    });
   });
 
   it("renders the system_settings and bug_reports tabs with row counts", async () => {
@@ -778,5 +926,85 @@ describe("ImportSessionReviewPage", () => {
 
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByText("אשר וייבא")).not.toBeInTheDocument();
+  });
+
+  it("shows tab counts for the new range sheets", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_locations = [
+      { row: 2, action: "new", errors: [], name: "מטווח דרומי", active: true, existing_id: null },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+
+    expect(screen.getByText("מיקומי מטווח (1)")).toBeInTheDocument();
+    expect(screen.getByText("מטווחים (0)")).toBeInTheDocument();
+    expect(screen.getByText("שיבוצי מטווח (0)")).toBeInTheDocument();
+    expect(screen.getByText("כשירויות מטווח (0)")).toBeInTheDocument();
+    expect(screen.getByText("בקשות פטור ממטווח (0)")).toBeInTheDocument();
+  });
+
+  it("renders a soldier_range_qualifications row with an editable valid_until", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.soldier_range_qualifications = [{
+      row: 2, action: "new", errors: [], id: null,
+      soldier_personal_number: "12345", resolved_soldier_id: "soldier-1",
+      range_type: "live", valid_until: "2025-01-01", existing_id: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("כשירויות מטווח (1)"));
+
+    const dateInput = await screen.findByDisplayValue("01/01/2025");
+    fireEvent.change(dateInput, { target: { value: "01/01/2026" } });
+    fireEvent.blur(dateInput);
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            soldier_range_qualifications: expect.objectContaining({ "2": expect.objectContaining({ valid_until: "2026-01-01" }) }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("renders a range_excusal_requests row with an editable status", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_excusal_requests = [{
+      row: 2, action: "new", errors: [], id: null,
+      soldier_personal_number: "12345", resolved_soldier_id: "soldier-1",
+      requested_by_personal_number: "12345", resolved_requested_by_id: "soldier-1",
+      hierarchy_node_name: "מדור א", range_type: "live", date: "2024-06-15",
+      range_location_name: "מטווח דרומי", resolved_range_event_id: "event-1",
+      resolved_range_assignment_id: "assignment-1", reason: "חופשה", status: "pending",
+      decided_by_personal_number: null, resolved_decided_by_id: null,
+      decision_note: null, existing_id: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("בקשות פטור ממטווח (1)"));
+
+    await screen.findByText("12345");
+    const select = screen.getByText("12345").closest("tr")!.querySelector("select")!;
+    fireEvent.change(select, { target: { value: "approved" } });
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_excusal_requests: expect.objectContaining({ "2": expect.objectContaining({ status: "approved" }) }),
+          }),
+        }),
+      );
+    });
   });
 });

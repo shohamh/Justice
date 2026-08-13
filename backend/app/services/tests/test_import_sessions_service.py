@@ -9,7 +9,17 @@ import openpyxl
 import pytest
 from sqlalchemy import select
 
-from app.db.models import DutyManagerScope, DutyLocation, DutyShiftNodeQuota, Soldier
+from app.db.models import (
+    DutyManagerScope,
+    DutyLocation,
+    DutyShiftNodeQuota,
+    RangeAssignment,
+    RangeEvent,
+    RangeExcusalRequest,
+    RangeLocation,
+    Soldier,
+    SoldierRangeQualification,
+)
 from app.services.duty_config import create_duty_type
 import app.services.import_parsers.v1_standard  # noqa: F401  (registers "v1_standard" parser)
 from app.services.import_sessions import (
@@ -21,7 +31,9 @@ from app.services.import_sessions import (
     reparse_session,
     set_selections,
 )
-from tests.helpers import create_node, create_soldier
+from tests.helpers import (
+    create_node, create_range_assignment, create_range_event, create_range_location, create_soldier,
+)
 
 
 def _uid() -> str:
@@ -2054,3 +2066,86 @@ def test_system_settings_import_hidden_key_is_row_error(admin_session):
     from app.db.models import SystemSetting
     setting = admin_session.get(SystemSetting, "system.holding_node_id")
     assert setting is None
+
+
+def test_create_session_resolves_range_sheets(admin_session):
+    admin = create_soldier(admin_session, personal_number="admin-7", role="admin")
+    node = create_node(admin_session, name="מדור א", level="group")
+    create_range_location(admin_session, name="מטווח דרומי")
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws_loc = wb.create_sheet("range_locations")
+    ws_loc.append(["name", "active"])
+    ws_loc.append(["מטווח חדש", "true"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    sess = create_session(admin_session, filename="ranges.xlsx", content=buf.getvalue(), actor=admin)
+    assert len(sess.parsed_state["range_locations"]) == 1
+    assert sess.parsed_state["range_locations"][0]["action"] == "new"
+    assert sess.parsed_state["range_events"] == []
+    assert sess.parsed_state["range_assignments"] == []
+
+
+def test_confirm_session_creates_range_event_and_assignment(app_session):
+    admin = create_soldier(app_session, personal_number="admin-8", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    soldier = create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    create_range_location(app_session, name="מטווח דרומי")
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws_ev = wb.create_sheet("range_events")
+    ws_ev.append([
+        "hierarchy_node_name", "range_type", "date", "range_location_name", "required_count",
+    ])
+    ws_ev.append(["מדור א", "live", "15.06.2024", "מטווח דרומי", "10"])
+    ws_as = wb.create_sheet("range_assignments")
+    ws_as.append(["personal_number", "full_name", "hierarchy_node_name", "range_type", "date", "range_location_name"])
+    ws_as.append(["12345", "ישראל ישראלי", "מדור א", "live", "15.06.2024", "מטווח דרומי"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    sess = create_session(app_session, filename="ranges.xlsx", content=buf.getvalue(), actor=admin)
+    result = confirm_session(app_session, session_id=sess.id, actor=admin)
+
+    assert result["errors"] == []
+    events = app_session.execute(select(RangeEvent)).scalars().all()
+    assert len(events) == 1
+    assert events[0].required_count == 10
+    assignments = app_session.execute(select(RangeAssignment)).scalars().all()
+    assert len(assignments) == 1
+    assert assignments[0].soldier_id == soldier.id
+    assert assignments[0].range_event_id == events[0].id
+
+
+def test_confirm_session_creates_range_qualification_and_excusal(app_session):
+    admin = create_soldier(app_session, personal_number="admin-9", role="admin")
+    node = create_node(app_session, name="מדור א", level="group")
+    soldier = create_soldier(app_session, personal_number="12345", full_name="ישראל ישראלי", hierarchy_node_id=node.id)
+    loc = create_range_location(app_session, name="מטווח דרומי")
+    event = create_range_event(app_session, hierarchy_node=node, range_location=loc)
+    create_range_assignment(app_session, range_event=event, soldier=soldier)
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws_q = wb.create_sheet("soldier_range_qualifications")
+    ws_q.append(["soldier_personal_number", "range_type", "valid_until"])
+    ws_q.append(["12345", "live", "01.01.2025"])
+    ws_ex = wb.create_sheet("range_excusal_requests")
+    ws_ex.append(["soldier_personal_number", "hierarchy_node_name", "range_type", "date", "range_location_name", "reason", "status"])
+    ws_ex.append(["12345", "מדור א", "live", "15.06.2024", "מטווח דרומי", "חופשה", "pending"])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    sess = create_session(app_session, filename="ranges.xlsx", content=buf.getvalue(), actor=admin)
+    result = confirm_session(app_session, session_id=sess.id, actor=admin)
+
+    assert result["errors"] == []
+    quals = app_session.execute(select(SoldierRangeQualification)).scalars().all()
+    assert len(quals) == 1
+    assert quals[0].valid_until.isoformat() == "2025-01-01"
+    excusals = app_session.execute(select(RangeExcusalRequest)).scalars().all()
+    assert len(excusals) == 1
+    assert excusals[0].range_assignment_id is not None

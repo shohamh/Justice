@@ -17,6 +17,7 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    RangeExcusalRequest,
     Soldier,
     SoldierEnrollmentRequest,
     SoldierExemption,
@@ -27,7 +28,7 @@ from app.db.models import (
 )
 from app.services.hierarchy import create_node
 from app.services.import_sessions import confirm_session, create_session
-from tests.helpers import auth_headers, create_soldier
+from tests.helpers import auth_headers, create_range_event, create_range_location, create_soldier
 
 
 def _uid() -> str:
@@ -397,3 +398,58 @@ def test_swap_request_export_import_round_trip_preserves_approval_log(admin_sess
     assert candidate.soldier_side_approved is True
     assert candidate.soldier_id == covering.id
     assert candidate.status == "accepted"
+
+
+def test_range_excusal_request_export_import_round_trip(admin_session, client):
+    """Round-trip test for approvals_export's range_excusal_requests sheet
+    (Task 10). Uses an *approved* excusal whose linked RangeAssignment has
+    already been deleted (matching what range_excusal.py's approval flow
+    actually does, and what a real approvals export of already-approved data
+    looks like) — this is the exact scenario Finding 3 fixed: without that
+    fix, re-importing this row would error out on "soldier not found"
+    (soldier_personal_number is necessarily blank once the assignment is
+    gone) instead of resolving as a clean update."""
+    node = create_node(admin_session, level="group", name=f"n_{_uid()}", parent_id=None)
+    loc = create_range_location(admin_session, name=f"loc_{_uid()}")
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
+    event = create_range_event(
+        admin_session, hierarchy_node=node, range_location=loc, event_date=date_type(2024, 6, 20),
+    )
+    original = RangeExcusalRequest(
+        range_assignment_id=None,  # deleted by the approval flow, per Finding 3
+        range_event_id=event.id,
+        requested_by=soldier.id,
+        reason="פציעה",
+        status="approved",
+        decided_by=decider.id,
+        decided_at=datetime.now(UTC),
+        decision_note="אושר",
+    )
+    admin_session.add(original)
+    admin_session.commit()
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    xlsx_bytes = _export(client, admin, "range_excusal_requests")
+
+    sess = create_session(admin_session, filename="roundtrip.xlsx", content=xlsx_bytes, actor=admin, parser_id="v1_standard")
+    # The export contains every range_excusal_request in the DB (not just this
+    # test's), so match by existing_id rather than assuming index 0 — other
+    # tests sharing this worker's DB may have already created their own rows.
+    row = next(r for r in sess.parsed_state["range_excusal_requests"] if r["existing_id"] == str(original.id))
+    assert row["errors"] == []
+    assert row["action"] == "update"
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    admin_session.refresh(original)
+
+    assert original.status.value == "approved"
+    assert original.decided_by == decider.id
+    assert original.decision_note == "אושר"
+
+    # No duplicate of this specific row was created by the round trip.
+    matches = admin_session.execute(
+        select(RangeExcusalRequest).where(RangeExcusalRequest.id == original.id)
+    ).scalars().all()
+    assert len(matches) == 1

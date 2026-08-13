@@ -135,6 +135,16 @@ describe("RangesPage", () => {
       .toHaveClass("border", "rounded", "p-1", "text-sm", "w-full", "sm:w-64");
   });
 
+  it("shows export/import links for a manager", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+
+    renderWithQuery(<RangesPage />);
+
+    await screen.findByTestId("ranges-page");
+    expect(screen.getByRole("link", { name: "ייצוא" })).toHaveAttribute("href", "/planning/export");
+    expect(screen.getByRole("link", { name: "ייבוא" })).toHaveAttribute("href", "/import");
+  });
+
   it("filters visible ranges and keeps row actions separate from location selection", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {
@@ -276,6 +286,11 @@ describe("RangesPage", () => {
     fireEvent.click(await screen.findByText("מטווח עריכה"));
     expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("edit-range-event-edit"));
+    // The edit button fetches fresh event data before opening the form
+    // (unlike the cancel dialog below, which opens synchronously) — press
+    // Escape only once the form has actually mounted, otherwise it's still
+    // caught by the still-open detail modal's own Escape handler instead.
+    await screen.findByTestId("range-form");
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(screen.queryByTestId("range-form")).not.toBeInTheDocument());

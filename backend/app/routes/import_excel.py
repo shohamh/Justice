@@ -24,6 +24,9 @@ from app.db.models import (
     DutyType,
     HierarchyNode,
     NotificationType,
+    RangeAssignment,
+    RangeEvent,
+    RangeLocation,
     ShiftTemplate,
     Soldier,
 )
@@ -478,6 +481,39 @@ def download_template():
         "20:00", "06:00", 2, "false", "", 1, "", "מדור א",
     ])
 
+    ws_rl = wb.create_sheet("range_locations")
+    ws_rl.append(["name", "active"])
+    ws_rl.append(["מטווח דרומי", "true"])
+
+    ws_re = wb.create_sheet("range_events")
+    ws_re.append([
+        "hierarchy_node_name", "range_type", "date", "range_location_name",
+        "required_count", "reserve_count", "start_time", "end_time",
+        "arrival_instructions", "contact_name", "contact_phone", "notes", "status",
+    ])
+    ws_re.append([
+        "מדור א", "live", "20.06.2024", "מטווח דרומי", "10", "2",
+        "08:00", "12:00", "התייצבות בשער הראשי", "דני", "050-1234567", "", "planned",
+    ])
+
+    ws_ra = wb.create_sheet("range_assignments")
+    ws_ra.append([
+        "personal_number", "full_name", "hierarchy_node_name", "range_type", "date",
+        "range_location_name", "is_reserve", "is_draft", "attendance_status", "note",
+    ])
+    ws_ra.append(["12345", "ישראל ישראלי", "מדור א", "live", "20.06.2024", "מטווח דרומי", "false", "false", "pending", ""])
+
+    ws_srq = wb.create_sheet("soldier_range_qualifications")
+    ws_srq.append(["soldier_personal_number", "range_type", "valid_until"])
+    ws_srq.append(["12345", "live", "20.06.2025"])
+
+    ws_rer = wb.create_sheet("range_excusal_requests")
+    ws_rer.append([
+        "soldier_personal_number", "requested_by_personal_number", "hierarchy_node_name",
+        "range_type", "date", "range_location_name", "reason", "status",
+    ])
+    ws_rer.append(["12345", "12345", "מדור א", "live", "20.06.2024", "מטווח דרומי", "חופשה", "pending"])
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -490,7 +526,7 @@ def download_template():
 
 # ── Export current data ─────────────────────────────────────────────────────────
 
-EXPORT_DATA_SHEETS = ["soldiers", "duty_shifts", "assignments", "shift_templates"]
+EXPORT_DATA_SHEETS = ["soldiers", "duty_shifts", "assignments", "shift_templates", "range_events", "range_assignments"]
 
 
 @router.get("/export")
@@ -516,6 +552,7 @@ def export_current_data(
     nodes_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars()}
     duty_types_by_id = {dt.id: dt for dt in session.execute(select(DutyType)).scalars()}
     locations_by_id = {loc.id: loc for loc in session.execute(select(DutyLocation)).scalars()}
+    range_locations_by_id = {loc.id: loc for loc in session.execute(select(RangeLocation)).scalars()}
 
     if "soldiers" in requested:
         ws_s = wb.create_sheet("soldiers")
@@ -583,6 +620,50 @@ def export_current_data(
                 shift.start_time, shift.end_time,
                 "true" if a.is_reserve else "false",
                 a.notes or "",
+            ])
+
+    if "range_events" in requested or "range_assignments" in requested:
+        range_events = session.execute(select(RangeEvent)).scalars().all()
+    else:
+        range_events = []
+
+    if "range_events" in requested:
+        ws_re = wb.create_sheet("range_events")
+        ws_re.append([
+            "hierarchy_node_name", "range_type", "date", "range_location_name",
+            "required_count", "reserve_count", "start_time", "end_time",
+            "arrival_instructions", "contact_name", "contact_phone", "notes", "status",
+        ])
+        for ev in range_events:
+            node = nodes_by_id.get(ev.hierarchy_node_id)
+            loc = range_locations_by_id.get(ev.range_location_id)
+            ws_re.append([
+                node.name if node else "", ev.range_type.value, ev.date.strftime("%d.%m.%Y"),
+                loc.name if loc else "", ev.required_count, ev.reserve_count,
+                ev.start_time or "", ev.end_time or "", ev.arrival_instructions or "",
+                ev.contact_name or "", ev.contact_phone or "", ev.notes or "", ev.status.value,
+            ])
+
+    if "range_assignments" in requested:
+        range_events_by_id = {ev.id: ev for ev in range_events}
+        soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
+        ws_ra = wb.create_sheet("range_assignments")
+        ws_ra.append([
+            "personal_number", "full_name", "hierarchy_node_name", "range_type", "date",
+            "range_location_name", "is_reserve", "is_draft", "attendance_status", "note",
+        ])
+        for a in session.execute(select(RangeAssignment)).scalars():
+            ev = range_events_by_id.get(a.range_event_id)
+            if ev is None:
+                continue
+            soldier = soldiers_by_id.get(a.soldier_id)
+            node = nodes_by_id.get(ev.hierarchy_node_id)
+            loc = range_locations_by_id.get(ev.range_location_id)
+            ws_ra.append([
+                soldier.personal_number if soldier else "", soldier.full_name if soldier else "",
+                node.name if node else "", ev.range_type.value, ev.date.strftime("%d.%m.%Y"),
+                loc.name if loc else "", "true" if a.is_reserve else "false",
+                "true" if a.is_draft else "false", a.attendance_status.value, a.note or "",
             ])
 
     if "shift_templates" in requested:
