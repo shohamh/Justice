@@ -242,6 +242,7 @@ def _write_range_excusal_requests(wb: openpyxl.Workbook, session: Session, actor
     locations_by_id = {loc.id: loc for loc in session.execute(select(RangeLocation)).scalars()}
     events_by_id = {ev.id: ev for ev in session.execute(select(RangeEvent)).scalars()}
     assignments_by_id = {a.id: a for a in session.execute(select(RangeAssignment)).scalars()}
+    visibility_cache: dict = {}
     for r in session.execute(select(RangeExcusalRequest)).scalars():
         assignment = assignments_by_id.get(r.range_assignment_id) if r.range_assignment_id else None
         soldier_id = assignment.soldier_id if assignment else None
@@ -251,11 +252,25 @@ def _write_range_excusal_requests(wb: openpyxl.Workbook, session: Session, actor
         event = events_by_id.get(r.range_event_id) if r.range_event_id else None
         node = nodes_by_id.get(event.hierarchy_node_id) if event else None
         loc = locations_by_id.get(event.range_location_id) if event else None
+        # Same can_see_private + per-soldier cache pattern as
+        # _write_personal_constraints / _write_exemption_requests. Approved
+        # excusals have their linked RangeAssignment deleted (SET NULL), so
+        # soldier_id can't be resolved for those rows — no soldier to check
+        # permission against, so reason is just omitted (not an error).
+        soldier = soldiers_by_id.get(soldier_id) if soldier_id else None
+        if soldier is None:
+            include_reason = False
+        elif soldier_id in visibility_cache:
+            include_reason = visibility_cache[soldier_id]
+        else:
+            include_reason = can_see_private(session, actor, soldier)
+            visibility_cache[soldier_id] = include_reason
+        reason = r.reason if include_reason else None
         ws.append([
             str(r.id), pn, "", requested_pn,
             node.name if node else "", event.range_type.value if event else "",
             event.date.isoformat() if event else "", loc.name if loc else "",
-            r.reason, r.status.value, decided_pn, r.decision_note, r.requested_at.isoformat(),
+            reason, r.status.value, decided_pn, r.decision_note, r.requested_at.isoformat(),
         ])
 
 
