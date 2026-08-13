@@ -11,6 +11,7 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import Combobox from "../components/Combobox";
 import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
+import PasswordInput from "../components/PasswordInput";
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
@@ -363,12 +364,12 @@ export default function RegisterPage() {
               )}
             </div>
             <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
-              <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
+              <PasswordInput dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
               <PasswordStrengthHint password={form.password} />
               {step2Attempted && !form.password && <p className="text-red-600 text-xs mt-1">{t("register.password_required")}</p>}
             </label>
             <label className="block text-sm">אימות סיסמה <span className="text-red-500">*</span>
-              <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
+              <PasswordInput dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
               {step2Attempted && !form.confirm_password && <p className="text-red-600 text-xs mt-1">{t("register.confirm_password_required")}</p>}
             </label>
             {form.confirm_password && form.password !== form.confirm_password && (
