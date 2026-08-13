@@ -491,6 +491,7 @@ describe("ImportSessionReviewPage", () => {
     detail.parsed_state.range_assignments = [{
       row: 2, action: "new", errors: [], warnings: [],
       personal_number: "12345", full_name: "ישראל ישראלי",
+      hierarchy_node_name: "מדור א", resolved_hierarchy_node_id: "node-1",
       range_type: "live", date: "2024-06-15", range_location_name: "מטווח דרומי",
       is_reserve: false, is_draft: false, attendance_status: "pending", note: null,
       resolved_soldier_id: "soldier-1", resolved_range_event_id: "event-1", matched_session_row: null,
@@ -502,7 +503,7 @@ describe("ImportSessionReviewPage", () => {
     fireEvent.click(screen.getByText("שיבוצי מטווח (1)"));
 
     await screen.findByText("ישראל ישראלי");
-    const select = screen.getByText("ישראל ישראלי").closest("tr")!.querySelectorAll("select")[0];
+    const select = screen.getByText("ישראל ישראלי").closest("tr")!.querySelectorAll("select")[1];
     fireEvent.change(select, { target: { value: "present" } });
 
     await waitFor(() => {
@@ -511,6 +512,41 @@ describe("ImportSessionReviewPage", () => {
         expect.objectContaining({
           _field_overrides: expect.objectContaining({
             range_assignments: expect.objectContaining({ "2": expect.objectContaining({ attendance_status: "present" }) }),
+          }),
+        }),
+      );
+    });
+  });
+
+  it("renders a range_assignments row with an editable date and range_type, and shows the unit", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.range_assignments = [{
+      row: 2, action: "new", errors: [], warnings: [],
+      personal_number: "12345", full_name: "ישראל ישראלי",
+      hierarchy_node_name: "מדור לא תואם", resolved_hierarchy_node_id: null,
+      range_type: "live", date: "2024-06-15", range_location_name: "מטווח דרומי",
+      is_reserve: false, is_draft: false, attendance_status: "pending", note: null,
+      resolved_soldier_id: "soldier-1", resolved_range_event_id: null, matched_session_row: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("שיבוצי מטווח (1)"));
+
+    await screen.findByText("ישראל ישראלי");
+    expect(screen.getByText("מדור לא תואם")).toHaveClass("text-red-600");
+
+    const dateInput = screen.getByDisplayValue("15/06/2024");
+    fireEvent.change(dateInput, { target: { value: "16/06/2024" } });
+    fireEvent.blur(dateInput);
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            range_assignments: expect.objectContaining({ "2": expect.objectContaining({ date: "2024-06-16" }) }),
           }),
         }),
       );

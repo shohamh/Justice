@@ -132,6 +132,8 @@ export interface RangeEventImportRow extends RowBase {
 export interface RangeAssignmentImportRow extends RowBase {
   personal_number: string;
   full_name: string;
+  hierarchy_node_name: string | null;
+  resolved_hierarchy_node_id: string | null;
   range_type: string;
   date: string;
   range_location_name: string;

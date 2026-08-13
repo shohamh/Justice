@@ -1793,6 +1793,7 @@ export default function ImportSessionReviewPage() {
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
                   <th className="text-right p-3">מ&quot;א</th>
+                  <th className="text-right p-3">יחידה</th>
                   <th className="text-right p-3">סוג</th>
                   <th className="text-right p-3">תאריך</th>
                   <th className="text-right p-3">מיקום</th>
@@ -1813,8 +1814,31 @@ export default function ImportSessionReviewPage() {
                         <span className={row.resolved_soldier_id ? "" : "text-red-600"}>{row.full_name}</span>
                       </td>
                       <td className="p-3">{row.personal_number}</td>
-                      <td className="p-3">{row.range_type}</td>
-                      <td className="p-3">{row.date}</td>
+                      <td className="p-3">
+                        <span className={row.resolved_hierarchy_node_id ? "" : "text-red-600"}>{row.hierarchy_node_name}</span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.range_type : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.range_type}
+                            onChange={(e) => setFieldOverride("range_assignments", row.row, "range_type", e.target.value)}
+                          >
+                            <option value="laser">לייזר</option>
+                            <option value="live">חי</option>
+                            <option value="alal">אלל</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.date : (
+                          <DateInput
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.date}
+                            onBlur={(iso) => setFieldOverride("range_assignments", row.row, "date", iso)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">
                         <span className={row.resolved_range_event_id || row.matched_session_row !== null ? "" : "text-red-600"}>
                           {row.range_location_name}
@@ -1861,8 +1885,10 @@ export default function ImportSessionReviewPage() {
                               fields: [
                                 { key: "personal_number", label: "מ\"א", value: row.personal_number },
                                 { key: "full_name", label: "שם", value: row.full_name },
+                                { key: "hierarchy_node_name", label: "יחידה", value: row.hierarchy_node_name },
+                                { key: "resolved_hierarchy_node_id", label: "מזהה יחידה", value: row.resolved_hierarchy_node_id },
                                 { key: "range_type", label: "סוג", value: row.range_type },
-                                { key: "date", label: "תאריך", value: row.date },
+                                { key: "date", label: "תאריך", value: row.date, editable: { type: "date", onChange: (v) => setFieldOverride("range_assignments", row.row, "date", v) } },
                                 { key: "range_location_name", label: "מיקום", value: row.range_location_name },
                                 { key: "is_reserve", label: "רזרבה", value: row.is_reserve, editable: { type: "checkbox", onChange: (v) => setFieldOverride("range_assignments", row.row, "is_reserve", v) } },
                                 { key: "is_draft", label: "טיוטה", value: row.is_draft, editable: { type: "checkbox", onChange: (v) => setFieldOverride("range_assignments", row.row, "is_draft", v) } },
