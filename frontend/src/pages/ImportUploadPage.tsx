@@ -61,7 +61,8 @@ export default function ImportUploadPage() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4 text-center">
           <p className="text-gray-600 dark:text-gray-400 text-sm">
             העלה קובץ Excel עם גיליונות:{" "}
-            <code>soldiers</code>, <code>duty_shifts</code>, <code>assignments</code>
+            <code>soldiers</code>, <code>duty_shifts</code>, <code>assignments</code>,{" "}
+            <code>range_locations</code>, <code>range_events</code>, <code>range_assignments</code>
           </p>
           <p>
             <a

@@ -135,6 +135,16 @@ describe("RangesPage", () => {
       .toHaveClass("border", "rounded", "p-1", "text-sm", "w-full", "sm:w-64");
   });
 
+  it("shows export/import links for a manager", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+
+    renderWithQuery(<RangesPage />);
+
+    await screen.findByTestId("ranges-page");
+    expect(screen.getByRole("link", { name: "ייצוא" })).toHaveAttribute("href", "/planning/export");
+    expect(screen.getByRole("link", { name: "ייבוא" })).toHaveAttribute("href", "/import");
+  });
+
   it("filters visible ranges and keeps row actions separate from location selection", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {
