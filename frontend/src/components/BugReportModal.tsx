@@ -160,7 +160,8 @@ export default function BugReportModal({
                   placeholder="מה קרה?"
                   data-testid="bug-report-description"
                 />
-                <div className="flex gap-2 mt-3" data-testid="bug-report-severity-picker">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">חומרת הבעיה</p>
+                <div className="flex gap-2 mt-1" data-testid="bug-report-severity-picker">
                   {SEVERITIES.map((s) => (
                     <button
                       key={s.value}
