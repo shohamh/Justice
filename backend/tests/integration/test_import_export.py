@@ -9,7 +9,14 @@ import pytest
 
 from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyShiftNodeQuota
 from app.services.duty_config import create_duty_type
-from tests.helpers import auth_headers, create_node, create_soldier
+from tests.helpers import (
+    auth_headers,
+    create_node,
+    create_range_assignment,
+    create_range_event,
+    create_range_location,
+    create_soldier,
+)
 
 
 def _uid() -> str:
@@ -45,7 +52,10 @@ def test_export_round_trips_soldiers_duty_shifts_and_assignments(client, admin_s
     assert "spreadsheetml" in resp.headers["content-type"]
 
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert set(wb.sheetnames) == {"soldiers", "duty_shifts", "assignments", "shift_templates"}
+    assert set(wb.sheetnames) == {
+        "soldiers", "duty_shifts", "assignments", "shift_templates",
+        "range_events", "range_assignments",
+    }
 
     soldier_rows = list(wb["soldiers"].iter_rows(min_row=2, values_only=True))
     assert any(r[0] == soldier.personal_number for r in soldier_rows)
@@ -82,3 +92,31 @@ def test_export_omits_assignments_without_linked_shift(client, admin_session):
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assignment_rows = list(wb["assignments"].iter_rows(min_row=2, values_only=True))
     assert not any(r[0] == soldier.personal_number for r in assignment_rows)
+
+
+def test_import_export_includes_range_events_and_assignments(client, admin_session):
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    loc = create_range_location(admin_session, name=f"מטווח_{_uid()}")
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}", hierarchy_node_id=node.id)
+    event = create_range_event(
+        admin_session, hierarchy_node=node, range_location=loc,
+        range_type="live", event_date=date(2024, 6, 20),
+    )
+    create_range_assignment(admin_session, range_event=event, soldier=soldier)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.commit()
+
+    token = auth_headers(admin)["Authorization"].split(" ", 1)[1]
+    resp = client.get(
+        "/api/import/export?sheets=range_events,range_assignments",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert set(wb.sheetnames) == {"range_events", "range_assignments"}
+
+    event_rows = list(wb["range_events"].iter_rows(min_row=2, values_only=True))
+    assert any(r[0] == node.name and r[3] == loc.name for r in event_rows)
+
+    assignment_rows = list(wb["range_assignments"].iter_rows(min_row=2, values_only=True))
+    assert any(r[0] == soldier.personal_number for r in assignment_rows)
