@@ -652,6 +652,24 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 time(15, 30),
                 'עבודות בינוי ושיפוץ בבסיס. יש להגיע עם ציוד עבודה מתאים. לדווח לרס"ר הבינוי על התקדמות.',
             ),
+            (
+                "נהג תורן",
+                Decimal("1.00"),
+                "נהיגה בכלי רכב צבאיים לפי צרכי הבסיס — הסעות, אספקה ומטלות שוטפות",
+                {
+                    "officers_allowed": False,
+                    "allowed_service_types": ["חובה", "קבע"],
+                    "requires_military_driving_license": True,
+                },
+                Decimal("0.200"),
+                1,
+                False,
+                'רס"ר תחבורה',
+                "050-1123456",
+                time(8, 0),
+                time(17, 0),
+                'להתייצב אצל רס"ר התחבורה ב-08:00 עם רישיון נהיגה צבאי בתוקף. לקבל שיבוץ רכב יומי. לדווח על כל תקלה ברכב מיידית.',
+            ),
         ]
         # Range level required for the calendar's qualification badge — kept in sync
         # with the requires_mitvahim/requires_alal flags in each duty type's `reqs` above.
@@ -1232,6 +1250,27 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                     end_time=end_time,
                     required_count=2,
                     notes="משמרת לילה יומית",
+                    created_by=s_admin.id,
+                )
+                session.add(s)
+                session.flush()
+                shifts_created.append(s)
+
+        # 12. נהג תורן — Sun-Thu single days, 2 weeks (a few instances)
+        dt = dt_by_name["נהג תורן"]
+        for w in range(2):
+            for d in range(5):
+                day = next_sun + timedelta(weeks=w, days=d)
+                start_date, end_date, start_time, end_time = _single_day_shift_span(day, dt)
+                s = DutyShift(
+                    duty_type_id=dt.id,
+                    duty_location_id=next(loc_cycle).id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    start_time=start_time,
+                    end_time=end_time,
+                    required_count=1,
+                    notes="נהג תורן יומי",
                     created_by=s_admin.id,
                 )
                 session.add(s)
