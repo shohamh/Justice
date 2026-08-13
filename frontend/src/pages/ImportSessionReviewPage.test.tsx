@@ -908,4 +908,33 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByText("כשירויות מטווח (0)")).toBeInTheDocument();
     expect(screen.getByText("בקשות פטור ממטווח (0)")).toBeInTheDocument();
   });
+
+  it("renders a soldier_range_qualifications row with an editable valid_until", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.soldier_range_qualifications = [{
+      row: 2, action: "new", errors: [], id: null,
+      soldier_personal_number: "12345", resolved_soldier_id: "soldier-1",
+      range_type: "live", valid_until: "2025-01-01", existing_id: null,
+    }];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    fireEvent.click(screen.getByText("כשירויות מטווח (1)"));
+
+    const dateInput = await screen.findByDisplayValue("01/01/2025");
+    fireEvent.change(dateInput, { target: { value: "01/01/2026" } });
+    fireEvent.blur(dateInput);
+
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _field_overrides: expect.objectContaining({
+            soldier_range_qualifications: expect.objectContaining({ "2": expect.objectContaining({ valid_until: "2026-01-01" }) }),
+          }),
+        }),
+      );
+    });
+  });
 });
