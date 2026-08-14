@@ -1,5 +1,6 @@
-import { StrictMode } from "react";
-import { render, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode, useState } from "react";
+import { render, renderHook, waitFor, screen, fireEvent } from "@testing-library/react";
+import { BrowserRouter, Link, Routes, Route } from "react-router-dom";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { useModalBackClose } from "./useModalBackClose";
 
@@ -168,6 +169,42 @@ describe("useModalBackClose", () => {
     expect(isOnModalEntry()).toBe(true);
   });
 
+  test("the returned consumeForNavigation() neutralizes the entry synchronously, before any deferred cleanup can race a navigation", () => {
+    // NavSheet's items are react-router <Link>s that both close the sheet
+    // (onClose) and navigate (Link's own handler) from the same click. The
+    // hook's cleanup-time "is this still my entry" check is a best-effort
+    // heuristic that can lose a real-world timing race against the Link's
+    // own history.pushState (confirmed live: a tap on a nav-sheet item
+    // occasionally lands back on the page under the sheet instead of the
+    // target route) — a race jsdom's synchronous `act()` flushing can't
+    // reproduce, so this asserts the deterministic fix directly: callers
+    // that are about to navigate call the returned function *first*, which
+    // must strip this hook's own history marker immediately, synchronously,
+    // leaving nothing for a later cleanup to mistakenly pop.
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useModalBackClose(onClose));
+    expect(isOnModalEntry()).toBe(true);
+
+    result.current();
+
+    expect(isOnModalEntry()).toBe(false);
+  });
+
+  test("after consumeForNavigation(), unmounting never calls history.back() or onClose again", async () => {
+    const onClose = vi.fn();
+    const { result, unmount } = renderHook(() => useModalBackClose(onClose));
+    const lengthAfterConsume = (() => {
+      result.current();
+      return window.history.length;
+    })();
+
+    unmount();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(window.history.length).toBe(lengthAfterConsume);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   test("enabled=false keeps the hook inert, for always-mounted components gated on their own `open` prop", () => {
     const onClose = vi.fn();
     renderHook(() => useModalBackClose(onClose, false));
@@ -187,5 +224,84 @@ describe("useModalBackClose", () => {
     rerender({ open: false });
     await waitFor(() => expect(isOnModalEntry()).toBe(false));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // NavSheet's real items are react-router <Link>s whose onClick prop IS the
+  // modal's onClose — a single click both flips `open` to false (this hook's
+  // `enabled`) and lets react-router's own Link handler push the target
+  // route, in that order, in the same synthetic event. The tests above only
+  // exercise the hook via renderHook/unmount or by calling
+  // window.history.pushState directly — never through a real <Link> click
+  // composed with onClose the way NavSheet actually wires it, under the same
+  // StrictMode wrapper production renders under (main.tsx).
+  function Sheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+    useModalBackClose(onClose, open);
+    if (!open) return null;
+    return (
+      <>
+        <button onClick={onClose}>backdrop</button>
+        <Link to="/target" onClick={onClose}>go</Link>
+      </>
+    );
+  }
+
+  function Harness() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button onClick={() => setOpen(true)}>open</button>
+        <Sheet open={open} onClose={() => setOpen(false)} />
+        <Routes>
+          <Route path="/" element={<div>home</div>} />
+          <Route path="/target" element={<div>target</div>} />
+        </Routes>
+      </>
+    );
+  }
+
+  test("clicking a Link item navigates to its target instead of bouncing back to the page under the sheet", async () => {
+    render(
+      <StrictMode>
+        <BrowserRouter>
+          <Harness />
+        </BrowserRouter>
+      </StrictMode>,
+    );
+
+    fireEvent.click(screen.getByText("open"));
+    fireEvent.click(screen.getByText("go"));
+
+    await waitFor(() => expect(screen.getByText("target")).toBeInTheDocument());
+    // Give any deferred/mistaken history.back() from the sheet's own cleanup
+    // every chance to fire and undo the navigation before asserting it holds.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(screen.getByText("target")).toBeInTheDocument();
+    expect(location.pathname).toBe("/target");
+  });
+
+  test("still navigates correctly after an earlier open/close-via-backdrop cycle", async () => {
+    // Mirrors a real user opening the nav sheet, dismissing it without
+    // navigating (tap outside, X button), then reopening it and picking an
+    // item — a very ordinary sequence on a phone. Residual state left behind
+    // by the first (non-navigating) close cycle must not corrupt the second.
+    render(
+      <StrictMode>
+        <BrowserRouter>
+          <Harness />
+        </BrowserRouter>
+      </StrictMode>,
+    );
+
+    fireEvent.click(screen.getByText("open"));
+    fireEvent.click(screen.getByText("backdrop"));
+    await waitFor(() => expect(screen.queryByText("go")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("open"));
+    fireEvent.click(screen.getByText("go"));
+
+    await waitFor(() => expect(screen.getByText("target")).toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(screen.getByText("target")).toBeInTheDocument();
+    expect(location.pathname).toBe("/target");
   });
 });

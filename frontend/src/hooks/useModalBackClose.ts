@@ -44,14 +44,29 @@ let pendingBack: PendingBack | null = null;
  * duplicate one; a macrotask would also work for that, but would resolve at
  * an arbitrary point relative to a caller's own fake-timer usage instead of
  * within the same microtask-flush every `await` already performs.
+ *
+ * Returns `consumeForNavigation()` — call it synchronously, *before*
+ * triggering a navigation that will also close the modal (e.g. a nav-sheet
+ * `<Link>` whose `onClick` both closes the sheet and routes elsewhere).
+ * It strips this hook's marker off the current history entry immediately,
+ * so there's nothing left for the close-triggered cleanup above to
+ * mistakenly `history.back()` later, whenever it happens to run relative to
+ * the navigation's own `pushState`. Confirmed live (not reproducible in
+ * jsdom, where Testing Library's `act()` flushes effects synchronously
+ * around each event and closes the timing gap a real browser leaves open):
+ * tapping a nav-sheet item occasionally landed back on the page under the
+ * sheet instead of the tapped destination, because the cleanup's
+ * "is my entry still on top" check raced the `<Link>`'s own history push.
  */
-export function useModalBackClose(onClose: () => void, enabled = true): void {
+export function useModalBackClose(onClose: () => void, enabled = true): () => void {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const entryIdRef = useRef<number | null>(null);
+  const consumedRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
+    consumedRef.current = false;
 
     let ownEntryOnTop = true;
     const currentState = window.history.state as ModalHistoryState | null;
@@ -83,6 +98,9 @@ export function useModalBackClose(onClose: () => void, enabled = true): void {
 
     return () => {
       window.removeEventListener("popstate", handlePopState);
+      // consumeForNavigation() already neutralized our entry synchronously —
+      // nothing left to do, and no timing-sensitive check needed.
+      if (consumedRef.current) return;
       // Only consume our own entry if it's still the current one. If
       // something else pushed a new entry while we were open (e.g. a search
       // result's navigate() call, closing the panel in the same handler),
@@ -101,4 +119,13 @@ export function useModalBackClose(onClose: () => void, enabled = true): void {
       }
     };
   }, [enabled]);
+
+  return function consumeForNavigation() {
+    if (entryIdRef.current === null || consumedRef.current) return;
+    consumedRef.current = true;
+    const current = window.history.state as ModalHistoryState | null;
+    if (current?.__modalId === entryIdRef.current) {
+      window.history.replaceState(null, "");
+    }
+  };
 }
