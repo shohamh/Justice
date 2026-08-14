@@ -1,14 +1,22 @@
+import { useQuery } from "@tanstack/react-query";
+import { getRankLadder } from "../api/rankAdvancement";
+import { queryKeys } from "../queryKeys";
+
 // Mirrors backend/app/services/eligibility.py ENLISTED_RANKS / OFFICER_RANKS.
+// Kept as an internal, unexported list: it backs the static rank/track-
+// compatibility table and the officer-rank/bahad1 helpers below, which are
+// business rules out of scope for the rank-advancement API work — NOT the
+// admin-editable rank *order*, which now lives server-side. Anything that
+// needs the ordered ladder (e.g. to populate a rank picker) should use
+// useRankLadder() below instead of hardcoding another copy of these lists.
 // Keep these two lists in sync with the backend if ranks are ever added/removed.
-export const ENLISTED_RANKS = [
+const ENLISTED_RANKS = [
   "טוראי", "רבט", "סמל", "סמר", "רסל", "רסר", "רסמ", "רסב", "רנג",
 ];
 
-export const OFFICER_RANKS = [
+const OFFICER_RANKS = [
   "קמא", "סגמ", "סגן", "קאב", "סרן", "קאם", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף",
 ];
-
-export const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS];
 
 const OFFICER_RANK_SET = new Set(OFFICER_RANKS);
 
@@ -64,4 +72,24 @@ export function deriveIsCareer(
   if (!mandatoryEndDate) return false;
   if (todayIso <= mandatoryEndDate) return false;
   return !dischargeDate || dischargeDate > mandatoryEndDate;
+}
+
+// ── Rank ladder (API-backed) ────────────────────────────────────────────────
+// The ordered rank-advancement ladder — including each rank's admin-configured
+// months_to_next — lives server-side (backend/app/services/rank_advancement.py)
+// so it can be edited without a frontend deploy. This hook is the sole
+// frontend source of rank order; consumers that previously read the
+// ENLISTED_RANKS/OFFICER_RANKS constants (e.g. to build a rank picker) should
+// use enlistedRanks/officerRanks/allRanks from this hook instead.
+export function useRankLadder() {
+  const query = useQuery({ queryKey: queryKeys.rankLadder(), queryFn: getRankLadder });
+  const enlistedRanks = query.data?.enlisted.map((e) => e.rank) ?? [];
+  const officerRanks = query.data?.officer.map((e) => e.rank) ?? [];
+  return {
+    ...query,
+    ladder: query.data,
+    enlistedRanks,
+    officerRanks,
+    allRanks: [...enlistedRanks, ...officerRanks],
+  };
 }

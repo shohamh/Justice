@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Upload } from "lucide-react";
 import Layout from "../components/Layout";
 import { getSystemSettings, updateSystemSettings, exportSystemSettings, importSystemSettings, SettingsMap } from "../api/systemSettings";
+import { getRankLadder, updateRankAdvancementIntervals, RankIntervalUpdate, RankTrack } from "../api/rankAdvancement";
 import ReactMarkdown from "react-markdown";
 import changelogRaw from "../../CHANGELOG.md?raw";
 import { queryKeys } from "../queryKeys";
@@ -151,6 +152,18 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     settings: [
       { key: "eligibility.mitvahim_months", label: "חודשים מאז מטווח אחרון", description: "מספר חודשים מרבי מאז מטווח אחרון לצורך כשירות", type: "number", defaultValue: 6 },
       { key: "eligibility.alal_months", label: 'חודשים מאז אל"ל אחרון', description: 'מספר חודשים מרבי מאז אל"ל אחרון לצורך כשירות', type: "number", defaultValue: 3 },
+    ],
+  },
+  {
+    label: "עליית דרגה",
+    settings: [
+      {
+        key: "rank_advancement.warning_days",
+        label: "ימי אזהרה לפני עליית דרגה",
+        description: "כמה ימים לפני עליית דרגה צפויה תישלח לחייל התראה מקדימה",
+        type: "number" as const,
+        defaultValue: 7,
+      },
     ],
   },
   {
@@ -595,6 +608,138 @@ export function SystemSettingsContent() {
         </div>
       ))}
 
+      <RankAdvancementIntervalsSection />
+    </div>
+  );
+}
+
+// ── Rank advancement intervals ──────────────────────────────────────────────
+// months_to_next per rank/track is a list of rows, not a single value, so it
+// doesn't fit the flat SettingDef shape above — it gets its own small table UI
+// with its own draft/isDirty/save-mutation state, following the same pattern
+// as the generic settings draft but keyed by "track:rank" instead of a
+// settings key.
+const TRACK_LABELS: Record<RankTrack, string> = { enlisted: "חיילים", officer: "קצינים" };
+
+function draftKey(track: RankTrack, rank: string): string {
+  return `${track}:${rank}`;
+}
+
+function RankAdvancementIntervalsSection() {
+  const queryClient = useQueryClient();
+  const ladderQuery = useQuery({ queryKey: queryKeys.rankLadder(), queryFn: getRankLadder });
+
+  const [draft, setDraft] = useState<Record<string, number | "">>({});
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!ladderQuery.data) return;
+    const next: Record<string, number | ""> = {};
+    for (const track of ["enlisted", "officer"] as const) {
+      for (const entry of ladderQuery.data[track]) {
+        next[draftKey(track, entry.rank)] = entry.months_to_next ?? "";
+      }
+    }
+    setDraft(next);
+  }, [ladderQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: updateRankAdvancementIntervals,
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKeys.rankLadder(), updated);
+      setSaved(true);
+    },
+  });
+
+  function setValue(track: RankTrack, rank: string, raw: string) {
+    setDraft(prev => ({ ...prev, [draftKey(track, rank)]: raw === "" ? "" : Number(raw) }));
+    setSaved(false);
+  }
+
+  function handleSave() {
+    if (!ladderQuery.data) return;
+    const intervals: RankIntervalUpdate[] = (["enlisted", "officer"] as const).flatMap(track =>
+      ladderQuery.data![track].map(entry => {
+        const draftValue = draft[draftKey(track, entry.rank)];
+        return {
+          track,
+          rank: entry.rank,
+          months_to_next: draftValue === "" || draftValue === undefined ? null : Number(draftValue),
+        };
+      }),
+    );
+    saveMutation.mutate(intervals);
+  }
+
+  const serverDraft: Record<string, number | ""> = {};
+  if (ladderQuery.data) {
+    for (const track of ["enlisted", "officer"] as const) {
+      for (const entry of ladderQuery.data[track]) {
+        serverDraft[draftKey(track, entry.rank)] = entry.months_to_next ?? "";
+      }
+    }
+  }
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(serverDraft);
+  const saving = saveMutation.isPending;
+  const error = saveMutation.isError
+    ? "שגיאה בשמירת מרווחי עליית דרגה"
+    : ladderQuery.isError
+      ? "שגיאה בטעינת סולם הדרגות"
+      : null;
+
+  return (
+    <div className="bg-white rounded-lg shadow p-5 space-y-4 dark:bg-gray-800">
+      <div className="flex items-center justify-between border-b pb-2 dark:border-gray-600">
+        <h2 className="font-semibold text-gray-700 dark:text-gray-200">מרווחי עליית דרגה</h2>
+        <div className="flex items-center gap-3">
+          {saved && !isDirty && <span className="text-sm text-green-600">נשמר ✓</span>}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !isDirty || !ladderQuery.data}
+            className="bg-indigo-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+          >
+            {saving ? "שומר..." : "שמור"}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-400 dark:text-gray-300">
+        מספר החודשים הנדרש בכל דרגה לפני קידום אוטומטי לדרגה הבאה. השאירו ריק כדי שדרגה לא תקודם אוטומטית.
+      </p>
+
+      {error && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{error}</div>}
+
+      {(["enlisted", "officer"] as const).map(track => (
+        <div key={track}>
+          <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">{TRACK_LABELS[track]}</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-gray-500 dark:text-gray-400 text-xs">
+                <th className="text-right py-1 font-normal">דרגה</th>
+                <th className="text-right py-1 font-normal">חודשים לדרגה הבאה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(ladderQuery.data?.[track] ?? []).map(entry => (
+                <tr key={entry.rank} className="border-t dark:border-gray-700">
+                  <td className="py-1 text-gray-800 dark:text-gray-100">{entry.rank}</td>
+                  <td className="py-1">
+                    <input
+                      type="number"
+                      min="0"
+                      value={String(draft[draftKey(track, entry.rank)] ?? "")}
+                      onChange={e => setValue(track, entry.rank, e.target.value)}
+                      className="w-28 border rounded px-2 py-1 text-sm text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                      dir="ltr"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }

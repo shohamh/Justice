@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "../i18n";
 import { SystemSettingsContent } from "./SystemSettingsPage";
 import * as systemSettingsApi from "../api/systemSettings";
+import * as rankAdvancementApi from "../api/rankAdvancement";
 
 vi.mock("../api/systemSettings", async () => {
   const actual = await vi.importActual<typeof import("../api/systemSettings")>("../api/systemSettings");
@@ -13,6 +14,15 @@ vi.mock("../api/systemSettings", async () => {
     updateSystemSettings: vi.fn(),
     exportSystemSettings: vi.fn(),
     importSystemSettings: vi.fn(),
+  };
+});
+
+vi.mock("../api/rankAdvancement", async () => {
+  const actual = await vi.importActual<typeof import("../api/rankAdvancement")>("../api/rankAdvancement");
+  return {
+    ...actual,
+    getRankLadder: vi.fn(),
+    updateRankAdvancementIntervals: vi.fn(),
   };
 });
 
@@ -43,6 +53,15 @@ describe("SystemSettingsContent export/import", () => {
     vi.clearAllMocks();
     vi.mocked(systemSettingsApi.getSystemSettings).mockResolvedValue({
       "eligibility.mitvahim_months": 6,
+    });
+    vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue({
+      enlisted: [
+        { rank: "טוראי", months_to_next: 4 },
+        { rank: "רבט", months_to_next: null },
+      ],
+      officer: [
+        { rank: "סגן", months_to_next: 12 },
+      ],
     });
   });
 
@@ -186,5 +205,55 @@ describe("SystemSettingsContent export/import", () => {
 
     expect(await screen.findByText("קובץ לא תקין")).toBeInTheDocument();
     expect(systemSettingsApi.importSystemSettings).not.toHaveBeenCalled();
+  });
+
+  it("renders the rank advancement warning-days setting in its own group", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+    await waitFor(() => expect(systemSettingsApi.getSystemSettings).toHaveBeenCalled());
+
+    expect(screen.getByText("עליית דרגה")).toBeInTheDocument();
+    expect(screen.getByText("ימי אזהרה לפני עליית דרגה")).toBeInTheDocument();
+  });
+
+  it("renders the rank interval table with all ranks from both tracks, empty for unconfigured ranks", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+    await waitFor(() => expect(rankAdvancementApi.getRankLadder).toHaveBeenCalled());
+
+    expect(await screen.findByText("מרווחי עליית דרגה")).toBeInTheDocument();
+    const rows = screen.getAllByRole("row");
+    const turaiRow = rows.find(r => r.textContent?.includes("טוראי"));
+    expect(turaiRow?.querySelector("input")?.value).toBe("4");
+    const seganRow = rows.find(r => r.textContent?.includes("סגן"));
+    expect(seganRow?.querySelector("input")?.value).toBe("12");
+    // רבט has no configured interval (months_to_next: null) so its input is empty.
+    const rabatRow = rows.find(r => r.textContent?.includes("רבט"));
+    expect(rabatRow?.querySelector("input")?.value).toBe("");
+  });
+
+  it("saves edited rank intervals for all rows", async () => {
+    vi.mocked(rankAdvancementApi.updateRankAdvancementIntervals).mockResolvedValue({
+      enlisted: [
+        { rank: "טוראי", months_to_next: 4 },
+        { rank: "רבט", months_to_next: 5 },
+      ],
+      officer: [{ rank: "סגן", months_to_next: 12 }],
+    });
+    renderWithProviders(<SystemSettingsContent />);
+    await waitFor(() => expect(rankAdvancementApi.getRankLadder).toHaveBeenCalled());
+    await screen.findByText("מרווחי עליית דרגה");
+
+    const rows = screen.getAllByRole("row");
+    const rabatRow = rows.find(r => r.textContent?.includes("רבט"));
+    const rabatInput = rabatRow!.querySelector("input") as HTMLInputElement;
+    fireEvent.change(rabatInput, { target: { value: "5" } });
+
+    fireEvent.click(screen.getByText("שמור"));
+
+    await waitFor(() => expect(rankAdvancementApi.updateRankAdvancementIntervals).toHaveBeenCalled());
+    expect(vi.mocked(rankAdvancementApi.updateRankAdvancementIntervals).mock.calls[0][0]).toEqual([
+      { track: "enlisted", rank: "טוראי", months_to_next: 4 },
+      { track: "enlisted", rank: "רבט", months_to_next: 5 },
+      { track: "officer", rank: "סגן", months_to_next: 12 },
+    ]);
   });
 });

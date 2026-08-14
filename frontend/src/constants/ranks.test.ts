@@ -1,20 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { ENLISTED_RANKS, OFFICER_RANKS, isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate, deriveIsCareer } from "./ranks";
+import { isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate, deriveIsCareer } from "./ranks";
 
 describe("rank constants", () => {
   it("classifies סגמ (סג\"ם) as an officer rank, not enlisted", () => {
-    expect(OFFICER_RANKS).toContain("סגמ");
-    expect(ENLISTED_RANKS).not.toContain("סגמ");
     expect(isOfficerRank("סגמ")).toBe(true);
   });
 
   it("classifies קמא as an officer rank, not enlisted", () => {
-    expect(OFFICER_RANKS).toContain("קמא");
-    expect(ENLISTED_RANKS).not.toContain("קמא");
+    expect(isOfficerRank("קמא")).toBe(true);
   });
 
   it("classifies רסל (רס\"ל) as enlisted, not officer", () => {
-    expect(ENLISTED_RANKS).toContain("רסל");
     expect(isOfficerRank("רסל")).toBe(false);
   });
 });
@@ -53,8 +49,7 @@ describe("rank/track compatibility", () => {
 
 describe("קא\"ם rank", () => {
   it("classifies קאם as an officer rank positioned below רסן", () => {
-    expect(OFFICER_RANKS).toContain("קאם");
-    expect(OFFICER_RANKS.indexOf("קאם")).toBeLessThan(OFFICER_RANKS.indexOf("רסן"));
+    expect(isOfficerRank("קאם")).toBe(true);
   });
 
   it("rejects קאם on the חובה track and accepts it on קבע", () => {
