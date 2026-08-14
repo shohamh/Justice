@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from app.algorithm.types import DutyBlock
 from app.db.models import RankAdvancementInterval, Soldier
 from app.services.eligibility import derive_is_career
-from app.services.rank_advancement import compute_next_rank_date, get_next_rank, get_track
+from app.services.rank_advancement import (
+    _career_entry_date,
+    advances_on_career_entry,
+    compute_next_rank_date,
+    get_next_rank,
+    get_track,
+)
 
 
 @dataclass(frozen=True)
@@ -20,6 +26,11 @@ class ProjectedSoldierState:
     rank: str | None
     is_career: bool
     departed: bool
+
+
+# (months_to_next, advance_on_career_entry) -- one RankAdvancementInterval row's
+# two advancement-relevant fields, as cached by _load_interval_cache.
+IntervalCacheEntry = tuple[int | None, bool]
 
 
 _MAX_CHAIN_STEPS = 24  # safety bound; a soldier cannot realistically advance
@@ -33,28 +44,44 @@ def project_soldier_state(
     *,
     soldier: Soldier,
     as_of: date,
-    interval_cache: dict[tuple[str, str], int | None] | None = None,
+    interval_cache: dict[tuple[str, str], IntervalCacheEntry] | None = None,
 ) -> ProjectedSoldierState:
     """Project a soldier's rank/career/departure state to `as_of`.
 
-    `interval_cache` is an optional pre-loaded {(track, rank): months_to_next}
-    map. When given, the rank chain-walk reads its advancement intervals from
-    it instead of issuing one single-row SELECT per chain step — the whole
-    RankAdvancementInterval table is at most ~21 rows, and bulk callers walk
+    `interval_cache` is an optional pre-loaded
+    {(track, rank): (months_to_next, advance_on_career_entry)} map. When given,
+    the rank chain-walk reads its advancement intervals from it instead of
+    issuing one single-row SELECT per chain step — the whole
+    RankAdvancementInterval table is at most ~30 rows, and bulk callers walk
     the chain for hundreds of (soldier, date) pairs. When omitted the behaviour
     is unchanged (each step queries the DB), so single-shot callers such as
     eligibility.check_soldier_for_assignment need not care.
+
+    Each step advances on the EARLIER of the scheduled next-rank date and — for
+    ranks flagged `advance_on_career_entry` — the soldier's קבע-entry date. A
+    flagged rank can therefore advance even with no scheduled date at all
+    (`months_to_next` NULL / `next_rank_date` NULL), which is why the effective
+    date is computed before the loop decides to stop.
     """
     rank = soldier.rank
     next_date = soldier.next_rank_date
     for _ in range(_MAX_CHAIN_STEPS):
-        if rank is None or next_date is None or next_date > as_of:
+        if rank is None:
             break
         next_rank = get_next_rank(rank)
         if next_rank is None:
             break
+        effective_date = next_date
+        if _advances_on_career_entry(session, rank=rank, interval_cache=interval_cache):
+            entry_date = _career_entry_date(soldier.mandatory_end_date, soldier.discharge_date)
+            if entry_date is not None and (effective_date is None or entry_date < effective_date):
+                effective_date = entry_date
+        if effective_date is None or effective_date > as_of:
+            break
         rank = next_rank
-        next_date = _next_rank_date(session, rank=rank, since=next_date, interval_cache=interval_cache)
+        next_date = _next_rank_date(
+            session, rank=rank, since=effective_date, interval_cache=interval_cache
+        )
 
     is_career = derive_is_career(rank, soldier.mandatory_end_date, soldier.discharge_date, today=as_of)
 
@@ -72,7 +99,7 @@ def _next_rank_date(
     *,
     rank: str,
     since: date,
-    interval_cache: dict[tuple[str, str], int | None] | None,
+    interval_cache: dict[tuple[str, str], IntervalCacheEntry] | None,
 ) -> date | None:
     """compute_next_rank_date, but served from `interval_cache` when provided."""
     if interval_cache is None:
@@ -80,16 +107,36 @@ def _next_rank_date(
     track = get_track(rank)
     if track is None:
         return None
-    months = interval_cache.get((track, rank))
+    entry = interval_cache.get((track, rank))
+    if entry is None:
+        return None
+    months, _advance_on_career_entry = entry
     if months is None:
         return None
     return since + relativedelta(months=months)
 
 
-def _load_interval_cache(session: Session) -> dict[tuple[str, str], int | None]:
-    """The whole RankAdvancementInterval table (at most ~21 rows) as a dict."""
+def _advances_on_career_entry(
+    session: Session,
+    *,
+    rank: str,
+    interval_cache: dict[tuple[str, str], IntervalCacheEntry] | None,
+) -> bool:
+    """rank_advancement.advances_on_career_entry, served from `interval_cache`
+    when provided (same cached/uncached split as _next_rank_date)."""
+    track = get_track(rank)
+    if track is None:
+        return False
+    if interval_cache is not None:
+        entry = interval_cache.get((track, rank))
+        return entry[1] if entry is not None else False
+    return advances_on_career_entry(session, track=track, rank=rank)
+
+
+def _load_interval_cache(session: Session) -> dict[tuple[str, str], IntervalCacheEntry]:
+    """The whole RankAdvancementInterval table (at most ~30 rows) as a dict."""
     rows = session.execute(select(RankAdvancementInterval)).scalars().all()
-    return {(r.track, r.rank): r.months_to_next for r in rows}
+    return {(r.track, r.rank): (r.months_to_next, r.advance_on_career_entry) for r in rows}
 
 
 def _bulk_exempt_duty_blocks(
@@ -236,8 +283,10 @@ def bulk_future_ineligible_duty_blocks(
     # since the rank/service-type check runs at start_date as well as end_date
     # (see docstring) -- so the (soldier, date) projection is only computed once
     # per date, not once per block. The advancement intervals the chain-walk
-    # needs are loaded once here and threaded through: without the cache each
-    # chain step of each (soldier, date) pair costs its own single-row SELECT.
+    # needs are loaded once here and threaded through as
+    # {(track, rank): (months_to_next, advance_on_career_entry)}: without the
+    # cache each chain step of each (soldier, date) pair costs its own
+    # single-row SELECT (one for the interval, one for the career-entry flag).
     interval_cache = _load_interval_cache(session)
     dates = sorted({d.end_date for d in duties} | {d.start_date for d in duties})
     projections: dict[tuple[uuid.UUID, date], ProjectedSoldierState] = {}

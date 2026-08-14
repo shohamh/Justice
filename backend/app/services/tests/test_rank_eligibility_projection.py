@@ -119,6 +119,117 @@ def test_project_uses_interval_cache_instead_of_querying(app_session):
     assert cached.rank == "סמר"
 
 
+def test_project_soldier_state_advances_early_via_career_entry(app_session):
+    s = create_soldier(app_session, personal_number="1234601")
+    s.rank = "קאב"
+    s.mandatory_end_date = date(2026, 6, 1)  # career starts 6/2
+    s.next_rank_date = date(2099, 1, 1)  # scheduled date is far in the future
+    upsert_interval(
+        app_session, track="officer_academic", rank="קאב", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2))
+
+    assert state.rank == "קאם"
+
+
+def test_project_soldier_state_advances_on_career_entry_without_scheduled_date(app_session):
+    """The flagged rank has no scheduled next_rank_date at all -- the old
+    chain-walk broke out on `next_date is None` before ever looking at the
+    career-entry trigger."""
+    s = create_soldier(app_session, personal_number="1234602")
+    s.rank = "קאב"
+    s.mandatory_end_date = date(2026, 6, 1)
+    s.next_rank_date = None
+    upsert_interval(
+        app_session, track="officer_academic", rank="קאב", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    assert project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 1)).rank == "קאב"
+    assert project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2)).rank == "קאם"
+
+
+def test_project_soldier_state_uses_scheduled_date_when_earlier_than_career_entry(app_session):
+    s = create_soldier(app_session, personal_number="1234603")
+    s.rank = "קאב"
+    s.mandatory_end_date = date(2026, 12, 1)  # career starts much later
+    s.next_rank_date = date(2026, 3, 1)  # scheduled promotion comes first
+    upsert_interval(
+        app_session, track="officer_academic", rank="קאב", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 4, 1))
+
+    assert state.rank == "קאם"  # advanced via the scheduled date, well before career-entry
+
+
+def test_project_soldier_state_no_early_trigger_when_flag_unset(app_session):
+    s = create_soldier(app_session, personal_number="1234604")
+    s.rank = "קאב"
+    s.mandatory_end_date = date(2026, 6, 1)
+    s.next_rank_date = date(2099, 1, 1)
+    app_session.flush()
+    # no upsert_interval call -- advance_on_career_entry defaults False
+
+    state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2))
+
+    assert state.rank == "קאב"  # unchanged -- no trigger configured, scheduled date not reached
+
+
+def test_project_soldier_state_no_career_entry_when_discharged_before_mandatory_end(app_session):
+    """_career_entry_date returns None when a discharge closes out חובה service
+    -- such a soldier never enters קבע, so the trigger must not fire."""
+    s = create_soldier(app_session, personal_number="1234605")
+    s.rank = "קאב"
+    s.mandatory_end_date = date(2026, 6, 1)
+    s.discharge_date = date(2026, 5, 1)
+    s.next_rank_date = date(2099, 1, 1)
+    upsert_interval(
+        app_session, track="officer_academic", rank="קאב", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2))
+
+    assert state.rank == "קאב"
+
+
+def test_project_career_entry_uses_interval_cache_instead_of_querying(app_session):
+    """Cached/uncached parity for the career-entry trigger: with an
+    interval_cache the chain-walk must not call advances_on_career_entry (its
+    per-step single-row SELECT) at all, and must reach the same result."""
+    s = create_soldier(app_session, personal_number="1234606")
+    s.rank = "קאב"
+    s.mandatory_end_date = date(2026, 6, 1)
+    s.next_rank_date = date(2099, 1, 1)
+    upsert_interval(
+        app_session, track="officer_academic", rank="קאב", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2))
+    cache = _load_interval_cache(app_session)
+    with patch(
+        "app.services.rank_eligibility_projection.advances_on_career_entry",
+        side_effect=AssertionError("interval_cache should have prevented this query"),
+    ):
+        cached = project_soldier_state(
+            app_session, soldier=s, as_of=date(2026, 6, 2), interval_cache=cache,
+        )
+
+    assert cache[("officer_academic", "קאב")] == (None, True)
+    assert cached == uncached
+    assert cached.rank == "קאם"
+
+
 def _duty_block(duty_type_id, day, duty_location_id=None, end_day=None):
     return DutyBlock(
         id=uuid.uuid4(),
