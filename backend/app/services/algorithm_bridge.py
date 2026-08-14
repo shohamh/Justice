@@ -1192,6 +1192,23 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     for s in soldiers:
                         s.weapon_ineligible_duty_block_ids = weapon_ineligible.get(s.id, set())
                 _phase("weapon_eligibility: done")
+
+                # Per-duty-block eligibility as of each block's own date —
+                # projected rank, recency, license expiry, exemptions,
+                # departure. Complements (does NOT replace) the single-as_of
+                # exempted_duty_type_ids snapshot computed in
+                # load_soldier_inputs, which other consumers still rely on.
+                _phase("future_eligibility: start")
+                from app.services.rank_eligibility_projection import (
+                    bulk_future_ineligible_duty_blocks,
+                )
+                future_ineligible = bulk_future_ineligible_duty_blocks(
+                    session, soldier_ids=[s.id for s in soldiers], duties=duties,
+                )
+                for s in soldiers:
+                    s.future_ineligible_duty_block_ids = future_ineligible.get(s.id, set())
+                _phase("future_eligibility: done")
+
                 # Compute and inject quarterly effort scores
                 try:
                     _reset_raw = get_setting(session, "fairness.reset_date")

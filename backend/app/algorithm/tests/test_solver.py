@@ -170,6 +170,26 @@ def test_soldier_exempt_from_duty_location_gets_no_assignments_there() -> None:
     assert loc_a not in assigned_locations
 
 
+def test_solver_excludes_soldier_from_future_ineligible_block() -> None:
+    """A block listed in SoldierInput.future_ineligible_duty_block_ids is a hard
+    exclusion for that soldier — no settings toggle relaxes it, unlike weapon
+    qualification (see types.py)."""
+    duty_type = uuid4()
+    blocked = DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
+                        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+                        score_per_day=Decimal("1.00"))
+    allowed = DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
+                        start_date=date(2026, 7, 1), end_date=date(2026, 7, 2),
+                        score_per_day=Decimal("1.00"))
+    soldier = SoldierInput(id=uuid4(), enrolled_at=date(2026, 1, 1),
+                           cumulative_score=Decimal("0"), active_days=100,
+                           future_ineligible_duty_block_ids={blocked.id})
+    result = solve([soldier], [blocked, allowed], [], SolverSettings(time_limit_seconds=5))
+    assigned_duty_ids = {a.duty_id for a in result.assignments if a.soldier_id == soldier.id}
+    assert blocked.id not in assigned_duty_ids
+    assert allowed.id in assigned_duty_ids
+
+
 def test_infeasibility_relaxation() -> None:
     soldier_a = uuid4()
     duty_type = uuid4()

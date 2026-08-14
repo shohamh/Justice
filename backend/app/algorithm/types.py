@@ -44,6 +44,15 @@ class SoldierInput:
     # that block's start_date. Populated by algorithm_bridge via bulk_ineligible_duty_blocks
     # after both soldiers and duties are loaded; empty by default for existing callers.
     weapon_ineligible_duty_block_ids: set[uuid.UUID] = field(default_factory=set)
+    # Duty-block ids this soldier will NOT be eligible for as of that
+    # block's own start_date — covers projected rank, service-type/career,
+    # mitvahim/alal recency, driving-license expiry, active exemptions, and
+    # departure. Populated by algorithm_bridge via
+    # bulk_future_ineligible_duty_blocks, mirroring
+    # weapon_ineligible_duty_block_ids above. Empty by default for existing
+    # callers/tests/fixtures. Unlike weapon qualification there is no
+    # enforcement toggle — none of these factors are optional.
+    future_ineligible_duty_block_ids: set[uuid.UUID] = field(default_factory=set)
     # Effort-based fairness fields (set by algorithm_bridge after loading duty blocks)
     effort_offset: int = 0      # int(effort_score × EFFORT_SCALE) — historical quarterly share
     effort_per_milli: int = 0   # int(C_over_D / unit_score_milli × EFFORT_SCALE) — per-milli contribution

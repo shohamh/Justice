@@ -336,6 +336,8 @@ def build_model(
                 continue
             if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
                 continue
+            if d.id in s.future_ineligible_duty_block_ids:
+                continue
             eligible.append((di, si))
             soldier_duties[si].append(di)
 

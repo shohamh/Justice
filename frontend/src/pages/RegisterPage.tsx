@@ -16,7 +16,7 @@ import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
-import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
+import { usePublicRankLadder, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -100,6 +100,10 @@ export default function RegisterPage() {
   });
   const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
   const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : undefined;
+
+  // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
+  // come from the unauthenticated endpoint — see usePublicRankLadder.
+  const { enlistedRanks, officerRanks } = usePublicRankLadder();
 
   useEffect(() => {
     listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
@@ -320,8 +324,8 @@ export default function RegisterPage() {
             <label className="block text-sm">דרגה <span className="text-red-500">*</span>
               <Combobox
                 items={[
-                  ...ENLISTED_RANKS.map(r => ({ id: r, name: r, group: "חיילים" })),
-                  ...OFFICER_RANKS_LIST.map(r => ({ id: r, name: r, group: "קצינים" })),
+                  ...enlistedRanks.map(r => ({ id: r, name: r, group: "חיילים" })),
+                  ...officerRanks.map(r => ({ id: r, name: r, group: "קצינים" })),
                 ]}
                 value={form.rank}
                 onChange={v => {

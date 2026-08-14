@@ -356,3 +356,82 @@ def test_resolve_solver_settings_per_run_override_wins(admin_session):
     admin_session.commit()
     settings = resolve_solver_settings(admin_session, {"enforce_weapon_qualification": False})
     assert settings.enforce_weapon_qualification is False
+
+
+def _future_ineligible_for(session, *, soldiers, duties):
+    """Reproduces exactly what run_algorithm_job does after load_soldier_inputs:
+    populate SoldierInput.future_ineligible_duty_block_ids from
+    bulk_future_ineligible_duty_blocks. run_algorithm_job itself opens its own
+    session_scope() and needs a persisted AlgorithmJob, so it isn't directly
+    drivable from a test session — this composes the same two calls the job
+    makes, over real DB rows."""
+    from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
+
+    future_ineligible = bulk_future_ineligible_duty_blocks(
+        session, soldier_ids=[s.id for s in soldiers], duties=duties,
+    )
+    for s in soldiers:
+        s.future_ineligible_duty_block_ids = future_ineligible.get(s.id, set())
+    return soldiers
+
+
+def test_bridge_populates_future_ineligible_block_ids_for_projected_rank(admin_session):
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_soldier
+
+    dt = create_duty_type(
+        admin_session, name=f"dt_future_rank_{uuid.uuid4().hex[:6]}",
+        score_per_day=Decimal("1.00"), requirements={"allowed_ranks": ["רבט"]},
+    )
+    loc = DutyLocation(name=f"loc_future_rank_{uuid.uuid4().hex[:6]}")
+    admin_session.add(loc)
+    soldier = create_soldier(admin_session, personal_number=f"fut_r_{uuid.uuid4().hex[:6]}")
+    soldier.rank = "טוראי"          # never advances — no next_rank_date
+    admin_session.commit()
+
+    block = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1), score_per_day=Decimal("1.00"),
+    )
+    soldiers = load_soldier_inputs(admin_session, as_of=date(2026, 6, 1))
+    _future_ineligible_for(admin_session, soldiers=soldiers, duties=[block])
+
+    soldier_input = next(s for s in soldiers if s.id == soldier.id)
+    assert block.id in soldier_input.future_ineligible_duty_block_ids
+
+
+def test_bridge_populates_future_ineligible_block_ids_for_future_exemption(admin_session):
+    from app.db.models import ExemptionDutyTypeMap, ExemptionType, SoldierExemption
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_soldier
+
+    dt = create_duty_type(
+        admin_session, name=f"dt_future_ex_{uuid.uuid4().hex[:6]}", score_per_day=Decimal("1.00"),
+    )
+    loc = DutyLocation(name=f"loc_future_ex_{uuid.uuid4().hex[:6]}")
+    et = ExemptionType(name=f"et_future_ex_{uuid.uuid4().hex[:6]}")
+    admin_session.add_all([loc, et])
+    admin_session.flush()
+    admin_session.add(ExemptionDutyTypeMap(exemption_type_id=et.id, duty_type_id=dt.id))
+    soldier = create_soldier(admin_session, personal_number=f"fut_e_{uuid.uuid4().hex[:6]}")
+    # Exemption is NOT active at the planning start — only over the block's date.
+    admin_session.add(SoldierExemption(
+        soldier_id=soldier.id, exemption_type_id=et.id,
+        start_date=date(2026, 5, 1), end_date=date(2026, 7, 1),
+    ))
+    admin_session.commit()
+
+    early_block = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 1, 1), end_date=date(2026, 1, 1), score_per_day=Decimal("1.00"),
+    )
+    exempt_block = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1), score_per_day=Decimal("1.00"),
+    )
+    soldiers = load_soldier_inputs(admin_session, as_of=date(2026, 1, 1))
+    _future_ineligible_for(admin_session, soldiers=soldiers, duties=[early_block, exempt_block])
+
+    soldier_input = next(s for s in soldiers if s.id == soldier.id)
+    assert exempt_block.id in soldier_input.future_ineligible_duty_block_ids
+    assert early_block.id not in soldier_input.future_ineligible_duty_block_ids

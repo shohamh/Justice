@@ -6,6 +6,7 @@ import RegisterPage from "./RegisterPage";
 import * as authApi from "../api/auth";
 import * as registrationSettingsApi from "../api/registrationSettings";
 import * as publicSettingsApi from "../api/publicSettings";
+import * as rankAdvancementApi from "../api/rankAdvancement";
 import { useAuth } from "../auth/AuthContext";
 
 vi.mock("react-i18next", () => ({
@@ -14,6 +15,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("../api/auth");
 vi.mock("../api/registrationSettings");
 vi.mock("../api/publicSettings");
+vi.mock("../api/rankAdvancement");
 vi.mock("../auth/AuthContext");
 
 beforeEach(() => {
@@ -29,6 +31,34 @@ beforeEach(() => {
     { id: "et-medical", name: "פטור רפואי", description: null, is_medical: true },
     { id: "et-regular", name: "פטור רגיל", description: null, is_medical: false },
   ]);
+  // /register is public, so the page must use the unauthenticated ladder read.
+  vi.mocked(rankAdvancementApi.getPublicRankLadder).mockResolvedValue({
+    enlisted: [
+      { rank: "טוראי", months_to_next: 4 },
+      { rank: "רבט", months_to_next: null },
+      { rank: "סמל", months_to_next: null },
+      { rank: "סמר", months_to_next: null },
+      { rank: "רסל", months_to_next: null },
+      { rank: "רסר", months_to_next: null },
+      { rank: "רסמ", months_to_next: null },
+      { rank: "רסב", months_to_next: null },
+      { rank: "רנג", months_to_next: null },
+    ],
+    officer: [
+      { rank: "קמא", months_to_next: null },
+      { rank: "סגמ", months_to_next: null },
+      { rank: "סגן", months_to_next: null },
+      { rank: "קאב", months_to_next: null },
+      { rank: "סרן", months_to_next: null },
+      { rank: "קאם", months_to_next: null },
+      { rank: "רסן", months_to_next: null },
+      { rank: "סאל", months_to_next: null },
+      { rank: "אלמ", months_to_next: null },
+      { rank: "תאל", months_to_next: null },
+      { rank: "אלוף", months_to_next: null },
+      { rank: "רב אלוף", months_to_next: null },
+    ],
+  });
 });
 
 // getByRole("combobox") also matches native <select> elements, so pick the
@@ -72,7 +102,7 @@ async function goToExemptionsStep() {
   // label doesn't reach the nested input) followed by pointerDown/pointerUp
   // on the visible option button — a plain click doesn't trigger selection.
   fireEvent.focus(getComboboxInput());
-  const rankOption = screen.getByRole("button", { name: "טוראי" });
+  const rankOption = await screen.findByRole("button", { name: "טוראי" });
   fireEvent.pointerDown(rankOption);
   fireEvent.pointerUp(rankOption);
 
@@ -80,6 +110,15 @@ async function goToExemptionsStep() {
   fireEvent.click(screen.getByText("register.next"));
   await screen.findByText("register.step_exemptions");
 }
+
+describe("RegisterPage - rank ladder source", () => {
+  it("fetches the ladder from the public endpoint, never the authenticated one", async () => {
+    await goToExemptionsStep();
+
+    expect(rankAdvancementApi.getPublicRankLadder).toHaveBeenCalled();
+    expect(rankAdvancementApi.getRankLadder).not.toHaveBeenCalled();
+  });
+});
 
 describe("RegisterPage - exemption rows", () => {
   it("permanent checkbox on a row disables its date fields", async () => {

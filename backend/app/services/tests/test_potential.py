@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from app.db.models import DutyType, ExemptionDutyTypeMap, ExemptionType, Soldier, SoldierExemption, PotentialModifier
 from app.services.hierarchy import create_node
-from app.services.potential import PotentialModifierError, compute_potential, create_modifier, delete_modifier, list_modifiers
+from app.services.potential import PotentialModifierError, _rank_as_of, compute_potential, create_modifier, delete_modifier, list_modifiers
 
 
 def _make_soldier(session, *, node_id, rank="טוראי", left_at=None, gender="m"):
@@ -105,6 +105,23 @@ def test_soldier_detail_rank_reflects_next_rank_date_rollover(app_session):
 
     result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
     assert result.soldiers[0].rank == "רבט"
+
+
+def test_soldier_detail_rank_reflects_chained_rollover(app_session):
+    from app.services.rank_advancement import upsert_interval
+
+    node = create_node(app_session, level="team", name="Test Co Rank 3", parent_id=None)
+    app_session.flush()
+
+    s = _make_soldier(app_session, node_id=node.id, rank="טוראי")
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, actor_id=None)
+    app_session.commit()
+
+    # reference_date is 3 months past the first rollover -- should have
+    # chained one further step (רבט -> סמל) too, not stopped at רבט.
+    result = _rank_as_of(app_session, s, date(2026, 4, 1))
+    assert result == "סמל"
 
 
 def test_regular_exemption_excludes_soldier_and_names_it(app_session):

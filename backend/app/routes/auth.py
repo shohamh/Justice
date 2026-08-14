@@ -526,3 +526,25 @@ def list_public_exemption_types(
         .order_by(ExemptionType.name)
     ).scalars().all()
     return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_medical=et.is_medical) for et in types]
+
+
+@router.get("/rank-ladder")
+@limiter.limit("60/minute")
+def public_rank_ladder(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Unauthenticated read of the ordered rank ladder.
+
+    The registration page (a public route) needs the rank list to populate its
+    mandatory rank picker, so it cannot use the authenticated admin-facing
+    GET /soldiers/rank-ladder. The ladder is non-sensitive ordering data — it
+    was a hardcoded, fully public frontend constant before it moved
+    server-side — so it is exposed here alongside the other public,
+    registration-facing reads (/auth/register/nodes, /auth/exemption-types),
+    rate-limited the same way. Writing the intervals stays admin-only.
+    """
+    from app.services.rank_advancement import get_rank_ladder
+
+    return get_rank_ladder(session)

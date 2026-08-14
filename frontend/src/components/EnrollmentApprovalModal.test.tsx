@@ -1,13 +1,30 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import "../i18n";
 import EnrollmentApprovalModal from "./EnrollmentApprovalModal";
+import * as rankAdvancementApi from "../api/rankAdvancement";
 
 vi.mock("../api/enrollment", () => ({
   patchEnrollment: vi.fn(),
   approveEnrollment: vi.fn(),
   rejectEnrollment: vi.fn(),
 }));
+
+vi.mock("../api/rankAdvancement", async () => {
+  const actual = await vi.importActual<typeof import("../api/rankAdvancement")>("../api/rankAdvancement");
+  return { ...actual, getRankLadder: vi.fn() };
+});
+
+vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue({
+  enlisted: [{ rank: "טוראי", months_to_next: null }],
+  officer: [{ rank: "סגן", months_to_next: null }],
+});
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const request = {
   id: "enroll-1",
@@ -38,7 +55,7 @@ const request = {
 describe("EnrollmentApprovalModal", () => {
   it("stays open when selecting a requested unit", () => {
     const onClose = vi.fn();
-    render(
+    renderWithProviders(
       <EnrollmentApprovalModal
         req={request}
         nodes={[{ id: "node-2", name: "Other Unit" }]}
@@ -56,7 +73,7 @@ describe("EnrollmentApprovalModal", () => {
   });
 
   it("labels a still-pending linked exemption request correctly, not as rejected", () => {
-    render(
+    renderWithProviders(
       <EnrollmentApprovalModal
         req={{
           ...request,
