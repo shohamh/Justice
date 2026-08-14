@@ -4,8 +4,11 @@ import json
 import uuid
 from datetime import date, timedelta
 
+from dateutil.relativedelta import relativedelta
+
 from app.db.models import HierarchyNode, SoldierEnrollmentRequest, SystemSetting
 from app.services.invite_codes import create_invite_code
+from app.services.rank_advancement import upsert_interval
 from tests.helpers import create_node
 
 
@@ -322,6 +325,49 @@ def test_register_accepts_medical_exemption_row_with_file(client, admin_session)
     from app.db.models import ExemptionRequest, ExemptionRequestFile
     req = admin_session.query(ExemptionRequest).filter_by(exemption_type_id=et.id).one()
     assert admin_session.query(ExemptionRequestFile).filter_by(exemption_request_id=req.id).count() == 1
+
+
+def test_register_initializes_next_rank_date_from_enlistment_date(client, admin_session):
+    """Task 13: register() is one of the writers of Soldier.rank — it must
+    initialize next_rank_date/current_rank_since the same way
+    update_soldier_profile does, using enlistment_date as the since-anchor
+    when one was supplied at registration."""
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, actor_id=None)
+    admin_session.commit()
+
+    enlistment = date.today() - timedelta(days=600)
+    payload = _payload(invite.code, node.id, enlistment_date=enlistment.isoformat())
+    resp = _post_register(client, payload)
+    assert resp.status_code == 200, resp.text
+
+    from app.db.models import Soldier
+    soldier = admin_session.query(Soldier).filter_by(personal_number=payload["personal_number"]).one()
+    assert soldier.current_rank_since == enlistment
+    assert soldier.next_rank_date == enlistment + relativedelta(months=8)
+    assert soldier.next_rank_date_overridden is False
+
+
+def test_register_without_interval_configured_leaves_next_rank_date_none(client, admin_session):
+    """A rank with no configured RankAdvancementInterval must not crash
+    registration — next_rank_date simply stays None, matching
+    compute_next_rank_date's existing contract."""
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id)
+    resp = _post_register(client, payload)
+    assert resp.status_code == 200, resp.text
+
+    from app.db.models import Soldier
+    soldier = admin_session.query(Soldier).filter_by(personal_number=payload["personal_number"]).one()
+    assert soldier.next_rank_date is None
+    assert soldier.current_rank_since is not None
+    assert soldier.next_rank_date_overridden is False
 
 
 def test_register_matches_files_to_correct_row_with_multiple_exemption_rows(client, admin_session):

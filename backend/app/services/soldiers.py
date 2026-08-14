@@ -284,6 +284,16 @@ PROFILE_FIELDS = {
 _RANK_TRACK_AFFECTING_FIELDS = {"rank", "mandatory_end_date", "discharge_date"}
 
 
+def _reset_rank_advancement(session: Session, soldier: Soldier, *, since: date) -> None:
+    """Re-derive next_rank_date from the rank ladder as of `since` and clear
+    any manual override — used whenever a soldier's rank is set directly
+    (not via an explicit next_rank_date edit)."""
+    from app.services.rank_advancement import compute_next_rank_date
+    soldier.current_rank_since = since
+    soldier.next_rank_date = compute_next_rank_date(session, rank=soldier.rank, since=since)
+    soldier.next_rank_date_overridden = False
+
+
 def update_soldier_profile(
     session: Session,
     *,
@@ -410,6 +420,7 @@ def approve_field_update(
         soldier.gender = raw
     elif field == "rank":
         soldier.rank = raw
+        _reset_rank_advancement(session, soldier, since=date.today())
     elif field == "phone":
         soldier.phone = raw
     elif field == "military_driving_license":

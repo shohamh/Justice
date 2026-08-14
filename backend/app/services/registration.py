@@ -17,6 +17,7 @@ from app.db.models import (
 )
 from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
+from app.services.rank_advancement import compute_next_rank_date
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import SoldierError, _check_soldier_dates
 
@@ -108,6 +109,10 @@ def register(
         has_military_driving_license=has_military_driving_license,
         military_driving_license_expiry=military_driving_license_expiry,
     )
+    if rank is not None:
+        soldier.current_rank_since = enlistment_date or date.today()
+        soldier.next_rank_date = compute_next_rank_date(session, rank=rank, since=soldier.current_rank_since)
+        soldier.next_rank_date_overridden = False
     session.add(soldier)
     session.flush()
 
