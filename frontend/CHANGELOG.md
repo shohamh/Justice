@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-14
+
+### Features
+- Rank advancement is now configurable from the admin UI, with a rank ladder, per-track intervals, warning notifications, manual-date override tracking, daily promotion processing, and as-of-date eligibility projections for future duties.
+- Added the academic-officer advancement track and configurable immediate promotion on קבע entry, including live calendar/eligibility projection and admin controls.
+- Added filtered agentic bug-report export as linked Markdown and image files in a downloadable ZIP, with CORS support for the download response.
+- Added נהג תורן as a duty type requiring a military driving license, plus password show/hide controls.
+
+### Fixes
+- Rank advancement now validates track/rank configuration, initializes and recomputes dates consistently, respects discharge boundaries, and avoids reusing a קבע-entry promotion event across runs.
+- Future-duty eligibility now evaluates every duty-block date and excludes soldiers who become ineligible during the block.
+- Registration and soldier editing now enforce mandatory-end/enlistment date consistency; the public registration page can load the rank ladder and its mobile form scrolls correctly.
+- Fixed bug-report import for reports whose reporter was deleted, scoped unit-calendar shifts to the selected sub-framework, and prevented navigation-history races in the mobile nav sheet.
+- Stabilized authenticated-session polling and corrected missing bug-report severity labels.
+
+### Chores
+- Added the rank-advancement and academic-officer design/specification documentation, migrations, API contracts, and comprehensive backend/frontend test coverage.
+
 ## 2026-08-13 (3)
 
 ### Features
