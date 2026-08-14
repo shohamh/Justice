@@ -55,6 +55,10 @@ class Soldier(Base):
     is_career: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     next_rank_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    next_rank_date_overridden: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    current_rank_since: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     bahad1_graduate: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
@@ -998,6 +1002,24 @@ class SoldierRangeQualification(Base):
     )
 
 
+class RankAdvancementInterval(Base):
+    __tablename__ = "rank_advancement_intervals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    track: Mapped[str] = mapped_column(Text, nullable=False)
+    rank: Mapped[str] = mapped_column(Text, nullable=False)
+    months_to_next: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    advance_on_career_entry: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("track", "rank", name="uq_rank_advancement_interval_track_rank"),
+    )
+
+
 class PotentialModifier(Base):
     __tablename__ = "potential_modifiers"
 
@@ -1232,6 +1254,8 @@ class NotificationType(str, _enum.Enum):
     bug_report_comment = "bug_report_comment"
     weapon_ineligible_detected = "weapon_ineligible_detected"
     range_covers_duty_info = "range_covers_duty_info"
+    rank_advanced = "rank_advanced"
+    rank_advancement_soon = "rank_advancement_soon"
 
 
 class Notification(Base):
@@ -1476,8 +1500,8 @@ class BugReport(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
-    reporter_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    reporter_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, kw_only=True, default=None
     )
     description: Mapped[str] = mapped_column(Text)
     severity: Mapped[str] = mapped_column(

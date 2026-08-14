@@ -4,7 +4,7 @@ import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollm
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
 import { useModalBackClose } from "../hooks/useModalBackClose";
-import { ENLISTED_RANKS as RANKS_ENLISTED, OFFICER_RANKS as RANKS_OFFICER } from "../constants/ranks";
+import { useRankLadder } from "../constants/ranks";
 
 interface NodeItem {
   id: string;
@@ -51,6 +51,8 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
   const [rejectNote, setRejectNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { enlistedRanks: RANKS_ENLISTED, officerRanks: RANKS_OFFICER } = useRankLadder();
 
   const typeById = Object.fromEntries(exemptionTypes.map(et => [et.id, et.name]));
 

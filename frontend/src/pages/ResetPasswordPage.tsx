@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { isAxiosError } from "axios";
 import { resetPassword } from "../api/auth";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
+import PasswordInput from "../components/PasswordInput";
 
 export default function ResetPasswordPage() {
   const { t } = useTranslation();
@@ -62,8 +63,7 @@ export default function ResetPasswordPage() {
 
         <label className="block text-sm">
           {t("reset_password.new_password")}
-          <input
-            type="password"
+          <PasswordInput
             dir="ltr"
             className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             value={password}
@@ -74,8 +74,7 @@ export default function ResetPasswordPage() {
 
         <label className="block text-sm">
           {t("reset_password.confirm")}
-          <input
-            type="password"
+          <PasswordInput
             dir="ltr"
             className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             value={confirm}

@@ -11,11 +11,12 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import Combobox from "../components/Combobox";
 import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
+import PasswordInput from "../components/PasswordInput";
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
-import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
+import { usePublicRankLadder, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -99,6 +100,10 @@ export default function RegisterPage() {
   });
   const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
   const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : undefined;
+
+  // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
+  // come from the unauthenticated endpoint — see usePublicRankLadder.
+  const { enlistedRanks, officerRanks } = usePublicRankLadder();
 
   useEffect(() => {
     listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
@@ -235,8 +240,8 @@ export default function RegisterPage() {
     !passwordValid(form.password) || form.password !== form.confirm_password;
 
   return (
-    <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
-      <div className="w-full max-w-lg bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
+    <main className="h-[100dvh] overflow-y-auto flex items-start justify-center p-6" dir="rtl">
+      <div className="w-full max-w-lg my-auto bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
         <h1 className="text-2xl font-bold text-center">{t("register.title")}</h1>
         <div className="flex gap-1 justify-center">
           {[1,2,3,4,5,6].map(s => (
@@ -319,8 +324,8 @@ export default function RegisterPage() {
             <label className="block text-sm">דרגה <span className="text-red-500">*</span>
               <Combobox
                 items={[
-                  ...ENLISTED_RANKS.map(r => ({ id: r, name: r, group: "חיילים" })),
-                  ...OFFICER_RANKS_LIST.map(r => ({ id: r, name: r, group: "קצינים" })),
+                  ...enlistedRanks.map(r => ({ id: r, name: r, group: "חיילים" })),
+                  ...officerRanks.map(r => ({ id: r, name: r, group: "קצינים" })),
                 ]}
                 value={form.rank}
                 onChange={v => {
@@ -363,12 +368,12 @@ export default function RegisterPage() {
               )}
             </div>
             <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
-              <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
+              <PasswordInput dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
               <PasswordStrengthHint password={form.password} />
               {step2Attempted && !form.password && <p className="text-red-600 text-xs mt-1">{t("register.password_required")}</p>}
             </label>
             <label className="block text-sm">אימות סיסמה <span className="text-red-500">*</span>
-              <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
+              <PasswordInput dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
               {step2Attempted && !form.confirm_password && <p className="text-red-600 text-xs mt-1">{t("register.confirm_password_required")}</p>}
             </label>
             {form.confirm_password && form.password !== form.confirm_password && (

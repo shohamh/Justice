@@ -128,3 +128,110 @@ def test_create_notification_defaults_metadata_to_none(app_session):
         app_session, soldier_id=soldier.id, type=NotificationType.announcement, title="test",
     )
     assert notif.metadata_json is None
+
+
+def test_notify_rank_advanced_creates_notification_for_soldier(app_session):
+    from app.services.notifications import notify_rank_advanced
+    from app.db.models import Notification, NotificationType
+
+    s = create_soldier(app_session, personal_number=f"rank_adv_1_{_uid()}")
+    notify_rank_advanced(app_session, soldier_id=s.id, new_rank="רבט")
+    app_session.flush()
+    notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == s.id, Notification.type == NotificationType.rank_advanced
+        )
+    ).scalar_one()
+    assert "רבט" in notif.title
+
+
+def test_notify_rank_advanced_creates_notification_for_commander(app_session):
+    from app.services.notifications import notify_rank_advanced
+    from app.db.models import Notification, NotificationType, CommanderNotificationScope
+
+    node = create_node(app_session, level="unit", name=f"rank_adv_node_{_uid()}")
+    commander = create_soldier(
+        app_session, personal_number=f"rank_adv_cmd_{_uid()}", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(
+        app_session, personal_number=f"rank_adv_sol_{_uid()}", hierarchy_node_id=node.id
+    )
+    app_session.add(CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=node.id))
+    app_session.commit()
+
+    notify_rank_advanced(app_session, soldier_id=soldier.id, new_rank="רבט")
+    app_session.flush()
+
+    # Verify soldier received notification
+    soldier_notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == soldier.id, Notification.type == NotificationType.rank_advanced
+        )
+    ).scalar_one()
+    assert "רבט" in soldier_notif.title
+
+    # Verify commander received notification with soldier's name
+    commander_notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == commander.id, Notification.type == NotificationType.rank_advanced
+        )
+    ).scalar_one()
+    assert soldier.full_name in commander_notif.title
+    assert "רבט" in commander_notif.title
+
+
+def test_notify_rank_advancement_soon_creates_notification_for_soldier(app_session):
+    from datetime import date
+    from app.services.notifications import notify_rank_advancement_soon
+    from app.db.models import Notification, NotificationType
+
+    s = create_soldier(app_session, personal_number=f"rank_soon_1_{_uid()}")
+    effective_date = date(2026, 8, 20)
+    notify_rank_advancement_soon(app_session, soldier_id=s.id, new_rank="רבט", effective_date=effective_date)
+    app_session.flush()
+    notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == s.id, Notification.type == NotificationType.rank_advancement_soon
+        )
+    ).scalar_one()
+    assert "רבט" in notif.title
+    assert "20.08.2026" in notif.title
+
+
+def test_notify_rank_advancement_soon_creates_notification_for_commander(app_session):
+    from datetime import date
+    from app.services.notifications import notify_rank_advancement_soon
+    from app.db.models import Notification, NotificationType, CommanderNotificationScope
+
+    node = create_node(app_session, level="unit", name=f"rank_soon_node_{_uid()}")
+    commander = create_soldier(
+        app_session, personal_number=f"rank_soon_cmd_{_uid()}", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(
+        app_session, personal_number=f"rank_soon_sol_{_uid()}", hierarchy_node_id=node.id
+    )
+    app_session.add(CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=node.id))
+    app_session.commit()
+
+    effective_date = date(2026, 8, 20)
+    notify_rank_advancement_soon(app_session, soldier_id=soldier.id, new_rank="רבט", effective_date=effective_date)
+    app_session.flush()
+
+    # Verify soldier received notification
+    soldier_notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == soldier.id, Notification.type == NotificationType.rank_advancement_soon
+        )
+    ).scalar_one()
+    assert "רבט" in soldier_notif.title
+    assert "20.08.2026" in soldier_notif.title
+
+    # Verify commander received notification with soldier's name
+    commander_notif = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == commander.id, Notification.type == NotificationType.rank_advancement_soon
+        )
+    ).scalar_one()
+    assert soldier.full_name in commander_notif.title
+    assert "רבט" in commander_notif.title
+    assert "20.08.2026" in commander_notif.title

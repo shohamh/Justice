@@ -12,6 +12,7 @@ vi.mock("../../api/bugReports", async () => {
   return {
     ...actual,
     listBugReports: vi.fn(),
+    downloadBugReportExport: vi.fn(),
     updateBugReportStatus: vi.fn(),
     getBugReportJson: vi.fn(),
     fetchBugReportScreenshot: vi.fn(),
@@ -50,7 +51,12 @@ const SAMPLE_REPORT: BugReportSummary = {
 describe("BugReportsContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [SAMPLE_REPORT], total: 1 });
+    vi.mocked(bugReportsApi.downloadBugReportExport).mockResolvedValue({
+      blob: new Blob(["zip"]),
+      filename: "bug-reports-2026-08-14-1015.zip",
+    });
     vi.mocked(bugReportsApi.listComments).mockResolvedValue([]);
   });
 
@@ -228,6 +234,123 @@ describe("BugReportsContent", () => {
     expect(bugReportsApi.listBugReports).toHaveBeenCalledTimes(2);
   });
 
+  it("downloads all active bug reports by default using a temporary object URL", async () => {
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:bug-report-export");
+    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const appendChildSpy = vi.spyOn(document.body, "appendChild");
+    const removeChildSpy = vi.spyOn(document.body, "removeChild");
+
+    renderWithProviders(<BugReportsContent />);
+    const exportButton = await screen.findByRole("button", { name: "ייצוא לMarkdown לטובת טיפול אייג'נטי" });
+
+    fireEvent.click(exportButton);
+
+    await waitFor(() =>
+      expect(bugReportsApi.downloadBugReportExport).toHaveBeenCalledWith({ scope: "all_active" }),
+    );
+    await waitFor(() => expect(createObjectURLSpy).toHaveBeenCalled());
+
+    const anchor = appendChildSpy.mock.calls.at(-1)?.[0] as HTMLAnchorElement | undefined;
+    expect(anchor).toBeDefined();
+    expect(anchor?.getAttribute("href")).toBe("blob:bug-report-export");
+    expect(anchor?.getAttribute("download")).toBe("bug-reports-2026-08-14-1015.zip");
+    expect(removeChildSpy).toHaveBeenCalledWith(anchor);
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:bug-report-export");
+
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
+    appendChildSpy.mockRestore();
+    removeChildSpy.mockRestore();
+  });
+
+  it("downloads the filtered export with the current active filters only", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-filter-severity")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("bug-report-filter-severity"), { target: { value: "high" } });
+    fireEvent.change(screen.getByTestId("bug-report-filter-status"), { target: { value: "open" } });
+    fireEvent.change(screen.getByTestId("bug-report-export-scope"), { target: { value: "filtered" } });
+    fireEvent.click(screen.getByRole("button", { name: "ייצוא לMarkdown לטובת טיפול אייג'נטי" }));
+
+    await waitFor(() =>
+      expect(bugReportsApi.downloadBugReportExport).toHaveBeenCalledWith({
+        scope: "filtered",
+        severity: "high",
+        status: "open",
+      }),
+    );
+  });
+
+  it("omits inactive status filters from the filtered export request", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-filter-status")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("bug-report-filter-status"), { target: { value: "resolved" } });
+    fireEvent.change(screen.getByTestId("bug-report-export-scope"), { target: { value: "filtered" } });
+    fireEvent.click(screen.getByRole("button", { name: "ייצוא לMarkdown לטובת טיפול אייג'נטי" }));
+
+    await waitFor(() =>
+      expect(bugReportsApi.downloadBugReportExport).toHaveBeenCalledWith({
+        scope: "filtered",
+        severity: undefined,
+        status: undefined,
+      }),
+    );
+  });
+
+  it("keeps export selection independent from pagination", async () => {
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [SAMPLE_REPORT], total: 21 });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "2" })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("bug-report-filter-severity"), { target: { value: "medium" } });
+    fireEvent.change(screen.getByTestId("bug-report-filter-status"), { target: { value: "in_progress" } });
+    fireEvent.change(screen.getByTestId("bug-report-export-scope"), { target: { value: "filtered" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "2" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+    await waitFor(() =>
+      expect(bugReportsApi.listBugReports).toHaveBeenLastCalledWith(
+        expect.objectContaining({ severity: "medium", status: "in_progress", offset: 20, limit: 20 }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "ייצוא לMarkdown לטובת טיפול אייג'נטי" }));
+
+    await waitFor(() =>
+      expect(bugReportsApi.downloadBugReportExport).toHaveBeenCalledWith({
+        scope: "filtered",
+        severity: "medium",
+        status: "in_progress",
+      }),
+    );
+  });
+
+  it("disables the export controls while the download is in progress", async () => {
+    vi.mocked(bugReportsApi.downloadBugReportExport).mockImplementation(
+      () => new Promise(() => {}),
+    );
+    renderWithProviders(<BugReportsContent />);
+    const exportButton = await screen.findByRole("button", { name: "ייצוא לMarkdown לטובת טיפול אייג'נטי" });
+    const exportScope = screen.getByTestId("bug-report-export-scope");
+
+    fireEvent.click(exportButton);
+
+    await waitFor(() => expect(exportButton).toBeDisabled());
+    expect(exportScope).toBeDisabled();
+  });
+
+  it("shows a translated inline error when the export download fails", async () => {
+    vi.mocked(bugReportsApi.downloadBugReportExport).mockRejectedValue(new Error("network error"));
+    renderWithProviders(<BugReportsContent />);
+    const exportButton = await screen.findByRole("button", { name: "ייצוא לMarkdown לטובת טיפול אייג'נטי" });
+
+    fireEvent.click(exportButton);
+
+    await waitFor(() => expect(screen.getByTestId("bug-report-export-error")).toBeInTheDocument());
+    expect(screen.getByTestId("bug-report-export-error")).toHaveTextContent("שגיאה בייצוא הדיווחים");
+  });
+
   it("expands the row via the dedicated expand toggle button", async () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
@@ -247,11 +370,13 @@ describe("BugReportsContent", () => {
   });
 
   it("clicking a status icon button does not also expand the row", async () => {
+    vi.mocked(bugReportsApi.updateBugReportStatus).mockResolvedValue({ ...SAMPLE_REPORT, status: "resolved" });
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
 
+    await waitFor(() => expect(bugReportsApi.updateBugReportStatus).toHaveBeenCalledWith("r1", "resolved"));
     expect(screen.queryByText("/calendar")).not.toBeInTheDocument();
   });
 

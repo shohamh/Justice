@@ -3,6 +3,7 @@ import type { NavHistoryEntry } from "../hooks/useNavigationHistory";
 
 export type BugReportSeverity = "low" | "medium" | "high";
 export type BugReportStatus = "open" | "in_progress" | "resolved" | "wont_fix";
+export type ActiveBugReportStatus = Extract<BugReportStatus, "open" | "in_progress">;
 
 export interface BugReportSubmitPayload {
   description: string;
@@ -18,7 +19,7 @@ export async function submitBugReport(payload: BugReportSubmitPayload): Promise<
 
 export interface BugReportSummary {
   id: string;
-  reporter_id: string;
+  reporter_id: string | null;
   description: string;
   severity: BugReportSeverity;
   status: BugReportStatus;
@@ -48,6 +49,56 @@ export interface BugReportFilters {
 
 export async function listBugReports(filters: BugReportFilters): Promise<PaginatedBugReports> {
   return (await api.get<PaginatedBugReports>("/admin/bug-reports", { params: filters })).data;
+}
+
+export interface DownloadBugReportExportOptions {
+  scope?: "all_active" | "filtered";
+  severity?: BugReportSeverity;
+  status?: BugReportStatus;
+}
+
+export interface BugReportExportDownload {
+  blob: Blob;
+  filename: string | null;
+}
+
+function isActiveBugReportStatus(status: BugReportStatus | undefined): status is ActiveBugReportStatus {
+  return status === "open" || status === "in_progress";
+}
+
+function parseDownloadFilename(contentDisposition: string | undefined): string | null {
+  if (!contentDisposition) return null;
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+
+  const quotedMatch = contentDisposition.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+
+  const plainMatch = contentDisposition.match(/filename=([^;]+)/i);
+  return plainMatch?.[1]?.trim() ?? null;
+}
+
+export async function downloadBugReportExport(
+  options: DownloadBugReportExportOptions = {},
+): Promise<BugReportExportDownload> {
+  const scope = options.scope ?? "all_active";
+  const params: Record<string, string> = { scope };
+
+  if (scope === "filtered") {
+    if (options.severity) params.severity = options.severity;
+    if (isActiveBugReportStatus(options.status)) params.status = options.status;
+  }
+
+  const response = await api.get<Blob>("/admin/bug-reports/export", {
+    params,
+    responseType: "blob",
+  });
+
+  return {
+    blob: response.data,
+    filename: parseDownloadFilename(response.headers["content-disposition"] as string | undefined),
+  };
 }
 
 export async function getBugReportJson(id: string): Promise<unknown> {

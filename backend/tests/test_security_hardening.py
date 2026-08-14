@@ -99,6 +99,15 @@ def test_cors_disallows_put_method():
     assert "PUT" not in allowed
 
 
+def test_cors_exposes_retry_after_and_content_disposition():
+    from fastapi.middleware.cors import CORSMiddleware
+    from app.main import create_app
+
+    app = create_app()
+    cors = next(mw for mw in app.user_middleware if mw.cls is CORSMiddleware)
+    assert cors.kwargs["expose_headers"] == ["Retry-After", "Content-Disposition"]
+
+
 def test_score_adjustment_delta_bounds():
     from pydantic import ValidationError
     from app.routes.score_adjustments import CreateAdjustmentRequest
