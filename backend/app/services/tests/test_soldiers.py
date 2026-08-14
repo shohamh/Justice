@@ -274,6 +274,43 @@ def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admi
     assert candidate.status == "cancelled"
 
 
+def test_update_soldier_profile_manual_next_rank_date_sets_overridden(admin_session):
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920030")
+    soldier.rank = "טוראי"
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"next_rank_date": date(2030, 1, 1)}, actor_id=None,
+    )
+    assert soldier.next_rank_date == date(2030, 1, 1)
+    assert soldier.next_rank_date_overridden is True
+
+
+def test_update_soldier_profile_rank_change_without_explicit_date_auto_computes(admin_session):
+    from dateutil.relativedelta import relativedelta
+
+    from app.services.rank_advancement import upsert_interval
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    soldier = create_soldier(admin_session, personal_number="7920031")
+    soldier.rank = "טוראי"
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"rank": "רבט"}, actor_id=None,
+    )
+    assert soldier.current_rank_since == date.today()
+    assert soldier.next_rank_date == date.today() + relativedelta(months=8)
+    assert soldier.next_rank_date_overridden is False
+
+
 def test_approve_field_update_rejects_discharge_before_enlistment(admin_session):
     from app.services.soldiers import submit_field_update, approve_field_update, SoldierValidationError
     from tests.helpers import create_soldier
