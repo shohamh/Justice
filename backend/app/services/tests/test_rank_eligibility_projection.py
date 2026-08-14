@@ -201,6 +201,44 @@ def test_project_soldier_state_no_career_entry_when_discharged_before_mandatory_
     assert state.rank == "קאב"
 
 
+def test_project_skips_career_entry_lookup_when_not_near_the_boundary(app_session):
+    """Uncached path (check_soldier_for_assignment / potential), which several
+    callers run once per candidate in a loop: a soldier whose קבע entry is not
+    yet reached as of the projection date must cost ZERO advance_on_career_entry
+    queries. The flag could only ever lower the effective date to something also
+    beyond `as_of`, so the walk breaks identically without ever asking."""
+    s = create_soldier(app_session, personal_number="1234607")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 6, 1)
+    s.mandatory_end_date = date(2030, 1, 1)  # קבע entry far beyond the projection date
+    app_session.flush()
+
+    with patch(
+        "app.services.rank_eligibility_projection.advances_on_career_entry",
+        side_effect=AssertionError("flag lookup should have been skipped"),
+    ):
+        state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 3, 1))
+
+    assert state.rank == "טוראי"
+
+
+def test_project_skips_career_entry_lookup_when_no_mandatory_end_date(app_session):
+    """Same skip, via _career_entry_date returning None (no mandatory_end_date)."""
+    s = create_soldier(app_session, personal_number="1234608")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    s.mandatory_end_date = None
+    app_session.flush()
+
+    with patch(
+        "app.services.rank_eligibility_projection.advances_on_career_entry",
+        side_effect=AssertionError("flag lookup should have been skipped"),
+    ):
+        state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 1))
+
+    assert state.rank == "רבט"  # still walks the scheduled chain normally
+
+
 def test_project_career_entry_uses_interval_cache_instead_of_querying(app_session):
     """Cached/uncached parity for the career-entry trigger: with an
     interval_cache the chain-walk must not call advances_on_career_entry (its

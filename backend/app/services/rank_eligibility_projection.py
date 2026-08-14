@@ -62,9 +62,21 @@ def project_soldier_state(
     flagged rank can therefore advance even with no scheduled date at all
     (`months_to_next` NULL / `next_rank_date` NULL), which is why the effective
     date is computed before the loop decides to stop.
+
+    Note that the קבע-entry date is a single instant, so if two CONSECUTIVE
+    ranks of one ladder were both flagged the walk would advance through both
+    of them on that same day (each step re-tests the same entry_date against
+    the newly-current rank's flag). That is the intended reading — entering
+    קבע grants every advancement it is configured to grant — but no such
+    configuration exists today (קא"ם, the only flagged rank's successor, is
+    top-of-ladder), so it is untested in practice.
     """
     rank = soldier.rank
     next_date = soldier.next_rank_date
+    # Invariant across the whole walk: it depends only on mandatory_end_date /
+    # discharge_date, neither of which the loop mutates. Hoisted out so the
+    # common case costs nothing per step.
+    entry_date = _career_entry_date(soldier.mandatory_end_date, soldier.discharge_date)
     for _ in range(_MAX_CHAIN_STEPS):
         if rank is None:
             break
@@ -72,10 +84,22 @@ def project_soldier_state(
         if next_rank is None:
             break
         effective_date = next_date
-        if _advances_on_career_entry(session, rank=rank, interval_cache=interval_cache):
-            entry_date = _career_entry_date(soldier.mandatory_end_date, soldier.discharge_date)
-            if entry_date is not None and (effective_date is None or entry_date < effective_date):
-                effective_date = entry_date
+        # The flag lookup is deliberately LAST: it is the only clause here that
+        # can cost a query (a single-row SELECT on the uncached path, taken once
+        # per candidate by the swap/manual-assign loops), and the three pure
+        # tests in front of it short-circuit it away for every soldier whose קבע
+        # entry cannot matter at this step. That reordering is behaviour-free —
+        # the whole conjunction is `and`, and none of the clauses has a side
+        # effect. `entry_date <= as_of` in particular is safe to demand: an
+        # entry date beyond `as_of` could only ever lower effective_date to
+        # something ALSO beyond `as_of`, so the date test below breaks either way.
+        if (
+            entry_date is not None
+            and entry_date <= as_of
+            and (effective_date is None or entry_date < effective_date)
+            and _advances_on_career_entry(session, rank=rank, interval_cache=interval_cache)
+        ):
+            effective_date = entry_date
         if effective_date is None or effective_date > as_of:
             break
         rank = next_rank
@@ -129,7 +153,10 @@ def _advances_on_career_entry(
         return False
     if interval_cache is not None:
         entry = interval_cache.get((track, rank))
-        return entry[1] if entry is not None else False
+        if entry is None:
+            return False
+        _months, advance_on_entry = entry
+        return advance_on_entry
     return advances_on_career_entry(session, track=track, rank=rank)
 
 
