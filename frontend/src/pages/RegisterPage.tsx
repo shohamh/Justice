@@ -240,8 +240,8 @@ export default function RegisterPage() {
     !passwordValid(form.password) || form.password !== form.confirm_password;
 
   return (
-    <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
-      <div className="w-full max-w-lg bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
+    <main className="h-[100dvh] overflow-y-auto flex items-start justify-center p-6" dir="rtl">
+      <div className="w-full max-w-lg my-auto bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
         <h1 className="text-2xl font-bold text-center">{t("register.title")}</h1>
         <div className="flex gap-1 justify-center">
           {[1,2,3,4,5,6].map(s => (
