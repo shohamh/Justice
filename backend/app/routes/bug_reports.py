@@ -23,6 +23,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services import bug_reports as svc
+from app.services.bug_report_export import build_bug_report_export_zip
 from app.services.notifications import create_notification
 
 router = APIRouter(tags=["bug_reports"])
@@ -273,6 +274,28 @@ def import_bug_reports(
         results.append(BugReportImportFileResult(filename=name, status="imported"))
     session.commit()
     return BugReportImportSummary(results=results)
+
+
+@router.get("/admin/bug-reports/export")
+def export_bug_reports(
+    session: Session = Depends(get_session),
+    _admin: Soldier = Depends(require_roles("admin")),
+    scope: Literal["all_active", "filtered"] = "all_active",
+    severity: Literal["low", "medium", "high"] | None = None,
+    status_filter: Literal["open", "in_progress"] | None = Query(default=None, alias="status"),
+) -> Response:
+    archive_bytes = build_bug_report_export_zip(
+        session,
+        scope=scope,
+        severity=severity,
+        status=status_filter,
+    )
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return Response(
+        content=archive_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="bug_report_export_{timestamp}.zip"'},
+    )
 
 
 @router.get("/admin/bug-reports/{report_id}/json")
