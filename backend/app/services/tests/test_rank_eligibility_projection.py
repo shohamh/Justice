@@ -34,7 +34,7 @@ def test_project_single_advancement_reached(app_session):
     s = create_soldier(app_session, personal_number="1234571")
     s.rank = "טוראי"
     s.next_rank_date = date(2026, 3, 1)
-    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     app_session.flush()
     state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 1))
     assert state.rank == "רבט"
@@ -44,8 +44,8 @@ def test_project_chained_advancement_across_multiple_steps(app_session):
     s = create_soldier(app_session, personal_number="1234572")
     s.rank = "טוראי"
     s.next_rank_date = date(2026, 1, 1)
-    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, actor_id=None)
-    upsert_interval(app_session, track="enlisted", rank="סמל", months_to_next=1, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, advance_on_career_entry=False, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="סמל", months_to_next=1, advance_on_career_entry=False, actor_id=None)
     app_session.flush()
     # Jan 1 -> רבט, +1mo (Feb 1) -> סמל, +1mo (Mar 1) -> סמר -- projecting to Apr 1
     # should have walked two full steps past רבט (through סמל and on to סמר,
@@ -101,8 +101,8 @@ def test_project_uses_interval_cache_instead_of_querying(app_session):
     s = create_soldier(app_session, personal_number="1234576")
     s.rank = "טוראי"
     s.next_rank_date = date(2026, 1, 1)
-    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, actor_id=None)
-    upsert_interval(app_session, track="enlisted", rank="סמל", months_to_next=1, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, advance_on_career_entry=False, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="סמל", months_to_next=1, advance_on_career_entry=False, actor_id=None)
     app_session.flush()
 
     uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 4, 1))

@@ -10,11 +10,28 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import RankAdvancementInterval, Soldier
-from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
+from app.services.eligibility import ENLISTED_RANKS
 
-Track = Literal["enlisted", "officer"]
+# eligibility.py's ENLISTED_RANKS/OFFICER_RANKS are rank-VALIDITY lists (used
+# for gender/service-type checks, בה"ד 1 inference, RANK_TRACK_COMPATIBILITY)
+# and are deliberately left untouched -- a soldier can still hold, and be
+# validated as holding, any of those ranks. These ladders below are only the
+# ADVANCEMENT chain, which is a different (and narrower) concept: קמא sits
+# outside every automated ladder (promoting off it is a manual action), and
+# קאב/קאם belong exclusively to the academic officer track now, not the
+# regular one -- the same rank name chains to a different "next rank"
+# depending on which track the officer is actually on.
+ENLISTED_LADDER = ENLISTED_RANKS
+OFFICER_LADDER = ["סגמ", "סגן", "סרן", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף"]
+OFFICER_ACADEMIC_LADDER = ["קאב", "קאם"]
 
-_LADDERS: dict[Track, list[str]] = {"enlisted": ENLISTED_RANKS, "officer": OFFICER_RANKS}
+Track = Literal["enlisted", "officer", "officer_academic"]
+
+_LADDERS: dict[Track, list[str]] = {
+    "enlisted": ENLISTED_LADDER,
+    "officer": OFFICER_LADDER,
+    "officer_academic": OFFICER_ACADEMIC_LADDER,
+}
 
 
 def get_track(rank: str) -> Track | None:
@@ -55,19 +72,26 @@ def compute_next_rank_date(session: Session, *, rank: str, since: date) -> date 
 
 
 def upsert_interval(
-    session: Session, *, track: str, rank: str, months_to_next: int | None, actor_id: uuid.UUID | None
+    session: Session, *, track: str, rank: str, months_to_next: int | None,
+    advance_on_career_entry: bool, actor_id: uuid.UUID | None,
 ) -> RankAdvancementInterval:
     row = session.execute(
         select(RankAdvancementInterval).where(
             RankAdvancementInterval.track == track, RankAdvancementInterval.rank == rank
         )
     ).scalar_one_or_none()
-    before = None if row is None else row.months_to_next
+    before = None if row is None else {
+        "months_to_next": row.months_to_next, "advance_on_career_entry": row.advance_on_career_entry,
+    }
     if row is None:
-        row = RankAdvancementInterval(track=track, rank=rank, months_to_next=months_to_next)
+        row = RankAdvancementInterval(
+            track=track, rank=rank, months_to_next=months_to_next,
+            advance_on_career_entry=advance_on_career_entry,
+        )
         session.add(row)
     else:
         row.months_to_next = months_to_next
+        row.advance_on_career_entry = advance_on_career_entry
     session.flush()
     write_audit(
         session,
@@ -75,8 +99,8 @@ def upsert_interval(
         action="rank_advancement_interval.upsert",
         entity_type="rank_advancement_interval",
         entity_id=row.id,
-        before={"months_to_next": before},
-        after={"months_to_next": months_to_next},
+        before=before,
+        after={"months_to_next": months_to_next, "advance_on_career_entry": advance_on_career_entry},
     )
     return row
 
@@ -96,16 +120,36 @@ def recompute_affected_soldiers(session: Session, *, track: str, rank: str) -> i
 
 
 def set_interval_and_recompute(
-    session: Session, *, track: str, rank: str, months_to_next: int | None, actor_id: uuid.UUID | None
+    session: Session, *, track: str, rank: str, months_to_next: int | None,
+    advance_on_career_entry: bool, actor_id: uuid.UUID | None,
 ) -> int:
-    upsert_interval(session, track=track, rank=rank, months_to_next=months_to_next, actor_id=actor_id)
+    upsert_interval(
+        session, track=track, rank=rank, months_to_next=months_to_next,
+        advance_on_career_entry=advance_on_career_entry, actor_id=actor_id,
+    )
     return recompute_affected_soldiers(session, track=track, rank=rank)
+
+
+def advances_on_career_entry(session: Session, *, track: str, rank: str) -> bool:
+    row = session.execute(
+        select(RankAdvancementInterval).where(
+            RankAdvancementInterval.track == track, RankAdvancementInterval.rank == rank
+        )
+    ).scalar_one_or_none()
+    return row.advance_on_career_entry if row is not None else False
 
 
 def get_rank_ladder(session: Session) -> dict[str, list[dict]]:
     rows = session.execute(select(RankAdvancementInterval)).scalars().all()
-    months_by = {(r.track, r.rank): r.months_to_next for r in rows}
+    by_key = {(r.track, r.rank): r for r in rows}
     return {
-        track: [{"rank": rank, "months_to_next": months_by.get((track, rank))} for rank in ladder]
+        track: [
+            {
+                "rank": rank,
+                "months_to_next": row.months_to_next if (row := by_key.get((track, rank))) is not None else None,
+                "advance_on_career_entry": bool(row and row.advance_on_career_entry),
+            }
+            for rank in ladder
+        ]
         for track, ladder in _LADDERS.items()
     }

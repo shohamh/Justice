@@ -34,7 +34,7 @@ def test_promote_due_soldiers_advances_rank_and_chains_next_date(app_session) ->
     s = create_soldier(app_session, personal_number="1000001")
     s.rank = "טוראי"
     s.next_rank_date = date(2026, 1, 1)
-    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     app_session.flush()
 
     _promote_soldier(app_session, s, today=date(2026, 1, 1))
@@ -89,7 +89,7 @@ def test_promote_due_soldiers_promotes_eligible_soldier(app_session) -> None:
     s = create_soldier(app_session, personal_number="1000005")
     s.rank = "טוראי"
     s.next_rank_date = date(2026, 1, 1)
-    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     app_session.flush()
 
     with patch("app.rank_advancement_worker.session_scope") as mock_scope:
@@ -203,7 +203,7 @@ def test_promote_due_soldiers_commits_and_persists_after_session_close(app_sessi
     s = create_soldier(app_session, personal_number="1000008")
     s.rank = "טוראי"
     s.next_rank_date = date.today()
-    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     app_session.commit()
     soldier_id = s.id
 

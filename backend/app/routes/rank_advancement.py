@@ -30,6 +30,7 @@ class RankIntervalIn(BaseModel):
     track: Track
     rank: str
     months_to_next: Annotated[int, Field(ge=1)] | None
+    advance_on_career_entry: bool = False
 
     @model_validator(mode="after")
     def _validate_rank_in_track(self) -> "RankIntervalIn":
@@ -58,6 +59,7 @@ def update_rank_advancement_intervals(
             track=item.track,
             rank=item.rank,
             months_to_next=item.months_to_next,
+            advance_on_career_entry=item.advance_on_career_entry,
             actor_id=admin.id,
         )
     session.commit()
