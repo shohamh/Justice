@@ -1012,7 +1012,7 @@ class RankAdvancementInterval(Base):
     rank: Mapped[str] = mapped_column(Text, nullable=False)
     months_to_next: Mapped[int | None] = mapped_column(Integer, nullable=True)
     advance_on_career_entry: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
+        Boolean, nullable=False, server_default=text("false"), default=False
     )
 
     __table_args__ = (
