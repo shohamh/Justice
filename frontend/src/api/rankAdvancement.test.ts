@@ -34,6 +34,14 @@ describe("rank advancement api", () => {
     expect(mockGet).toHaveBeenCalledWith("/soldiers/rank-ladder");
   });
 
+  it("gets the public rank ladder from the unauthenticated auth endpoint", async () => {
+    mockGet.mockResolvedValueOnce({ data: ladder });
+    const { getPublicRankLadder } = await import("./rankAdvancement");
+
+    await expect(getPublicRankLadder()).resolves.toEqual(ladder);
+    expect(mockGet).toHaveBeenCalledWith("/auth/rank-ladder");
+  });
+
   it("puts the interval updates and returns the updated ladder", async () => {
     mockPut.mockResolvedValueOnce({ data: ladder });
     const { updateRankAdvancementIntervals } = await import("./rankAdvancement");

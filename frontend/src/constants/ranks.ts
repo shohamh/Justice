@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getRankLadder } from "../api/rankAdvancement";
+import { getPublicRankLadder, getRankLadder, RankLadder } from "../api/rankAdvancement";
 import { queryKeys } from "../queryKeys";
 
 // Mirrors backend/app/services/eligibility.py ENLISTED_RANKS / OFFICER_RANKS.
@@ -82,7 +82,23 @@ export function deriveIsCareer(
 // ENLISTED_RANKS/OFFICER_RANKS constants (e.g. to build a rank picker) should
 // use enlistedRanks/officerRanks/allRanks from this hook instead.
 export function useRankLadder() {
-  const query = useQuery({ queryKey: queryKeys.rankLadder(), queryFn: getRankLadder });
+  return withLadderFields(
+    useQuery({ queryKey: queryKeys.rankLadder(), queryFn: getRankLadder }),
+  );
+}
+
+// Same ladder, fetched from the unauthenticated /auth/rank-ladder endpoint —
+// for PUBLIC routes (currently /register) where there is no access token, and
+// the authenticated /soldiers/rank-ladder read would 401 and leave the rank
+// picker empty. Kept under its own query key so the two never share a cache
+// entry populated by the wrong fetcher.
+export function usePublicRankLadder() {
+  return withLadderFields(
+    useQuery({ queryKey: queryKeys.publicRankLadder(), queryFn: getPublicRankLadder }),
+  );
+}
+
+function withLadderFields<T extends { data?: RankLadder }>(query: T) {
   const enlistedRanks = query.data?.enlisted.map((e) => e.rank) ?? [];
   const officerRanks = query.data?.officer.map((e) => e.rank) ?? [];
   return {

@@ -94,4 +94,5 @@ export const queryKeys = {
     ["ranges", "ineligibleSoldiers", audience] as const,
   ineligibleSoldierCount: () => ["ranges", "ineligibleSoldiers", "count"] as const,
   rankLadder: () => ["rankAdvancement", "ladder"] as const,
+  publicRankLadder: () => ["rankAdvancement", "ladder", "public"] as const,
 };

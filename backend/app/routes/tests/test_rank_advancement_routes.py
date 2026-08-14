@@ -17,6 +17,17 @@ def test_get_rank_ladder_returns_both_tracks(client: TestClient, admin_session: 
     assert body["officer"][0]["rank"] == "קמא"
 
 
+def test_public_rank_ladder_readable_without_auth(client: TestClient):
+    """The public /register page (an unauthenticated route) populates its
+    mandatory rank picker from this endpoint, so it must work with no token."""
+    resp = client.get("/api/auth/rank-ladder")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["enlisted"][0]["rank"] == "טוראי"
+    assert body["officer"][0]["rank"] == "קמא"
+
+
 def test_put_rank_advancement_intervals_requires_admin(client: TestClient, admin_session: Session):
     soldier = create_soldier(admin_session, personal_number="rank_ladder_002")
 

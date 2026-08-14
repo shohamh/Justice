@@ -31,7 +31,8 @@ beforeEach(() => {
     { id: "et-medical", name: "פטור רפואי", description: null, is_medical: true },
     { id: "et-regular", name: "פטור רגיל", description: null, is_medical: false },
   ]);
-  vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue({
+  // /register is public, so the page must use the unauthenticated ladder read.
+  vi.mocked(rankAdvancementApi.getPublicRankLadder).mockResolvedValue({
     enlisted: [
       { rank: "טוראי", months_to_next: 4 },
       { rank: "רבט", months_to_next: null },
@@ -109,6 +110,15 @@ async function goToExemptionsStep() {
   fireEvent.click(screen.getByText("register.next"));
   await screen.findByText("register.step_exemptions");
 }
+
+describe("RegisterPage - rank ladder source", () => {
+  it("fetches the ladder from the public endpoint, never the authenticated one", async () => {
+    await goToExemptionsStep();
+
+    expect(rankAdvancementApi.getPublicRankLadder).toHaveBeenCalled();
+    expect(rankAdvancementApi.getRankLadder).not.toHaveBeenCalled();
+  });
+});
 
 describe("RegisterPage - exemption rows", () => {
   it("permanent checkbox on a row disables its date fields", async () => {

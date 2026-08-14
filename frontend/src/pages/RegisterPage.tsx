@@ -16,7 +16,7 @@ import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
-import { useRankLadder, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
+import { usePublicRankLadder, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -101,7 +101,9 @@ export default function RegisterPage() {
   const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
   const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : undefined;
 
-  const { enlistedRanks, officerRanks } = useRankLadder();
+  // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
+  // come from the unauthenticated endpoint — see usePublicRankLadder.
+  const { enlistedRanks, officerRanks } = usePublicRankLadder();
 
   useEffect(() => {
     listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
