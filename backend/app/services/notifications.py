@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -64,6 +64,8 @@ _FRONTEND_PATHS: dict[str, str] = {
     "gimelim_reserve_called_up": "/schedule",
     "gimelim_demoted_to_reserve": "/schedule",
     "gimelim_reassigned": "/schedule",
+    "rank_advanced": "/profile",
+    "rank_advancement_soon": "/profile",
     "bug_report_comment": "/",
 }
 
@@ -844,3 +846,27 @@ def get_announcement_recipients(session: Session, *, announcement_id: uuid.UUID,
     ).scalars().all())
     rows = session.execute(base_q.offset(offset).limit(limit)).all()
     return [(soldier, notif.is_read, notif.read_at) for notif, soldier in rows], total
+
+
+def notify_rank_advanced(
+    session: Session, *, soldier_id: uuid.UUID, new_rank: str, actor_id: uuid.UUID | None = None
+) -> None:
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.rank_advanced,
+        title=f"קודמת לדרגת {new_rank}",
+        actor_id=actor_id,
+    )
+
+
+def notify_rank_advancement_soon(
+    session: Session, *, soldier_id: uuid.UUID, new_rank: str, effective_date: date, actor_id: uuid.UUID | None = None
+) -> None:
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.rank_advancement_soon,
+        title=f"קידום צפוי לדרגת {new_rank} בתאריך {effective_date.strftime('%d.%m.%Y')}",
+        actor_id=actor_id,
+    )
