@@ -290,11 +290,11 @@ def export_bug_reports(
         severity=severity,
         status=status_filter,
     )
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M")
     return Response(
         content=archive_bytes,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="bug_report_export_{timestamp}.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="bug-reports-{timestamp}.zip"'},
     )
 
 

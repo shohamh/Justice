@@ -37,7 +37,7 @@ describe("bugReports api", () => {
     mockGet.mockResolvedValue({
       data: blob,
       headers: {
-        "content-disposition": 'attachment; filename="bug_report_export_20260814T101500Z.zip"',
+        "content-disposition": 'attachment; filename="bug-reports-2026-08-14-1015.zip"',
       },
     });
 
@@ -57,7 +57,7 @@ describe("bugReports api", () => {
     });
     expect(result).toEqual({
       blob,
-      filename: "bug_report_export_20260814T101500Z.zip",
+      filename: "bug-reports-2026-08-14-1015.zip",
     });
   });
 });

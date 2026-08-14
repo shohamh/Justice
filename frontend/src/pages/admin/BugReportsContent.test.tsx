@@ -55,7 +55,7 @@ describe("BugReportsContent", () => {
     vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [SAMPLE_REPORT], total: 1 });
     vi.mocked(bugReportsApi.downloadBugReportExport).mockResolvedValue({
       blob: new Blob(["zip"]),
-      filename: "bug_report_export_20260814T101500Z.zip",
+      filename: "bug-reports-2026-08-14-1015.zip",
     });
     vi.mocked(bugReportsApi.listComments).mockResolvedValue([]);
   });
@@ -253,7 +253,7 @@ describe("BugReportsContent", () => {
     const anchor = appendChildSpy.mock.calls.at(-1)?.[0] as HTMLAnchorElement | undefined;
     expect(anchor).toBeDefined();
     expect(anchor?.getAttribute("href")).toBe("blob:bug-report-export");
-    expect(anchor?.getAttribute("download")).toBe("bug_report_export_20260814T101500Z.zip");
+    expect(anchor?.getAttribute("download")).toBe("bug-reports-2026-08-14-1015.zip");
     expect(removeChildSpy).toHaveBeenCalledWith(anchor);
     expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:bug-report-export");
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from io import BytesIO
@@ -213,8 +214,7 @@ def test_export_bug_reports_returns_zip_headers_and_content_for_admin(
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/zip"
     disposition = resp.headers["content-disposition"]
-    assert disposition.startswith('attachment; filename="bug_report_export_')
-    assert disposition.endswith('.zip"')
+    assert re.fullmatch(r'attachment; filename="bug-reports-\d{4}-\d{2}-\d{2}-\d{4}\.zip"', disposition)
     text_entries = _read_zip_text_entries(resp.content)
     assert "index.md" in text_entries
     assert "Count: 1" in text_entries["index.md"]
