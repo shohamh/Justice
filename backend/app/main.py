@@ -160,7 +160,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["Retry-After"],
+        expose_headers=["Retry-After", "Content-Disposition"],
     )
     app.include_router(health_routes.router, prefix="/api")
     app.include_router(auth_routes.router, prefix="/api")
