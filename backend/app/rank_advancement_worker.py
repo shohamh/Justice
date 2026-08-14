@@ -43,6 +43,9 @@ def _promote_on_career_entry(*, today: date | None = None) -> None:
         ).all()
         if not flagged:
             return
+        # rank strings are unique across all three ladders -- see get_track --
+        # so dropping track here is safe; a future collision would silently
+        # misattribute soldiers.
         flagged_ranks = {rank for _track, rank in flagged}
         soldiers = session.execute(
             select(Soldier).where(
