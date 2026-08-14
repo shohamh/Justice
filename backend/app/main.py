@@ -61,6 +61,7 @@ from app.routes import no_show as no_show_routes
 from app.routes import ranges as ranges_routes
 from app.routes import range_qualification_visibility as range_qualification_visibility_routes
 from app.routes import range_locations as range_locations_routes
+from app.routes import rank_advancement as rank_advancement_routes
 from app.settings import get_settings
 
 # Importing v1_standard registers it in the import-parser registry as a
@@ -166,6 +167,11 @@ def create_app() -> FastAPI:
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(hierarchy_routes.router, prefix="/api")
     app.include_router(hierarchy_transfer_routes.router, prefix="/api")
+    # Registered before soldier_routes: soldier_routes has GET /soldiers/{soldier_id}
+    # (a uuid-typed path param) which would otherwise shadow our literal
+    # /soldiers/rank-ladder path and fail pydantic UUID validation (422) instead
+    # of falling through to this router.
+    app.include_router(rank_advancement_routes.router, prefix="/api")
     app.include_router(soldier_routes.router, prefix="/api")
     app.include_router(assignment_routes.router, prefix="/api")
     app.include_router(constraint_routes.router, prefix="/api")
