@@ -59,12 +59,12 @@ def project_soldier_state(
     eligibility.check_soldier_for_assignment need not care.
 
     Each step advances on the earlier of the scheduled next-rank date and — for
-    a rank already held by the soldier on career entry and flagged
+    a rank held strictly before career entry and flagged
     `advance_on_career_entry` — that single career-entry event. A flagged rank
     can therefore advance even with no scheduled date at all, but the event is
     consumed by that transition and cannot cascade through a flagged successor.
     A scheduled promotion strictly before career entry leaves the event
-    available for the newly current rank.
+    available for the newly current rank; a rank attained on entry does not.
     """
     rank = soldier.rank
     next_date = soldier.next_rank_date

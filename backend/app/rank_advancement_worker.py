@@ -35,11 +35,11 @@ def _promote_soldier(session, soldier: Soldier, *, today: date) -> None:
 
 
 def _promote_on_career_entry(*, today: date | None = None) -> None:
-    """Promote at most once for a career-entry event on a rank held by then.
+    """Promote at most once for an event on a rank held before career entry.
 
     The crossing is always recomputed live from mandatory_end_date and
     discharge_date -- never from the stale stored Soldier.is_career cache.
-    A historical event cannot promote a rank attained after that event.
+    A rank attained on or after entry cannot reuse the event.
     """
     today = today or date.today()
     with session_scope() as session:

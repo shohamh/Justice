@@ -157,15 +157,19 @@ def _career_entry_applies_to_current_rank(
     current_rank_since: date | None,
     enlistment_date: date | None,
 ) -> bool:
-    """Whether the current rank was already held when career entry occurred.
+    """Whether the current rank was held strictly before career entry.
 
     Legacy rows can lack current_rank_since; rank advancement already treats
     enlistment_date as their rank-attainment fallback when recomputing
     schedules, so the career-entry trigger follows the same model semantics.
     If neither date is known, the historical event cannot safely be applied.
+
+    Equality is deliberately excluded: a career-entry promotion stamps its
+    successor's current_rank_since to entry_date, so equality means that event
+    has already been consumed and cannot promote the successor on a later run.
     """
     rank_since = current_rank_since or enlistment_date
-    return entry_date is not None and rank_since is not None and rank_since <= entry_date
+    return entry_date is not None and rank_since is not None and rank_since < entry_date
 
 
 def get_rank_ladder(session: Session) -> dict[str, list[dict]]:

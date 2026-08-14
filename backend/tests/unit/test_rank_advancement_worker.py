@@ -353,7 +353,7 @@ def test_promote_on_career_entry_does_not_retroactively_promote_newer_rank(app_s
     assert s.rank == "רבט"
 
 
-def test_promote_on_career_entry_consumes_event_after_one_promotion(app_session) -> None:
+def test_promote_on_career_entry_is_consumed_across_entry_date_boundary(app_session) -> None:
     upsert_interval(
         app_session, track="enlisted", rank="רבט", months_to_next=None,
         advance_on_career_entry=True, actor_id=None,
@@ -366,14 +366,17 @@ def test_promote_on_career_entry_consumes_event_after_one_promotion(app_session)
     s.rank = "רבט"
     s.current_rank_since = date(2026, 1, 1)
     s.enlistment_date = date(2025, 1, 1)
-    s.mandatory_end_date = date(2026, 5, 31)  # career entry was 6/1
+    s.mandatory_end_date = date(2026, 5, 31)  # career entry is 6/1
     s.next_rank_date = None
     app_session.flush()
 
     with patch("app.rank_advancement_worker.session_scope") as mock_scope:
         mock_scope.return_value.__enter__.return_value = app_session
-        _promote_on_career_entry(today=date(2026, 6, 10))
-        _promote_on_career_entry(today=date(2026, 6, 11))
+        _promote_on_career_entry(today=date(2026, 6, 1))
+        assert s.rank == "סמל"
+        assert s.current_rank_since == date(2026, 6, 1)
+
+        _promote_on_career_entry(today=date(2026, 6, 2))
 
     assert s.rank == "סמל"
 

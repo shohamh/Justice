@@ -335,6 +335,33 @@ def test_project_consumes_career_entry_after_one_flagged_transition(app_session)
     assert cached == uncached
 
 
+def test_project_does_not_reuse_career_entry_for_rank_attained_on_entry(app_session):
+    """Persisted state after a worker promotion uses the entry date as the
+    successor's rank-attainment date; equality therefore means consumed."""
+    s = create_soldier(app_session, personal_number="1234613")
+    s.rank = "סמל"
+    s.current_rank_since = date(2026, 6, 1)
+    s.enlistment_date = date(2025, 1, 1)
+    s.mandatory_end_date = date(2026, 5, 31)  # career entry is 6/1
+    s.next_rank_date = None
+    upsert_interval(
+        app_session, track="enlisted", rank="סמל", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2))
+    cached = project_soldier_state(
+        app_session,
+        soldier=s,
+        as_of=date(2026, 6, 2),
+        interval_cache=_load_interval_cache(app_session),
+    )
+
+    assert uncached.rank == "סמל"
+    assert cached == uncached
+
+
 def test_project_preserves_career_entry_after_earlier_scheduled_promotion(app_session):
     """A scheduled transition before career entry changes the current rank but
     does not consume the later career-entry event for that newly held rank."""
