@@ -143,6 +143,54 @@ def test_warn_upcoming_soldiers_ignores_soldiers_outside_exact_day(app_session) 
     assert notif is None
 
 
+def test_warn_upcoming_soldiers_skips_discharged_soldiers(app_session) -> None:
+    """A soldier who has already left must not be told a promotion is coming —
+    _promote_due_soldiers filters them out, and the warning query must match."""
+    from app.db.models import Notification, NotificationType
+
+    s = create_soldier(app_session, personal_number="1000010")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 8)  # today + 7 days
+    s.discharge_date = date(2025, 12, 1)
+    app_session.flush()
+
+    with patch("app.rank_advancement_worker.session_scope") as mock_scope, \
+         patch("app.rank_advancement_worker.date") as mock_date:
+        mock_scope.return_value.__enter__.return_value = app_session
+        mock_date.today.return_value = date(2026, 1, 1)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        _warn_upcoming_soldiers()
+
+    notif = app_session.query(Notification).filter(
+        Notification.soldier_id == s.id,
+        Notification.type == NotificationType.rank_advancement_soon,
+    ).one_or_none()
+    assert notif is None
+
+
+def test_warn_upcoming_soldiers_skips_departed_soldiers(app_session) -> None:
+    from app.db.models import Notification, NotificationType
+
+    s = create_soldier(app_session, personal_number="1000011")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 8)
+    s.left_at = date(2025, 12, 1)
+    app_session.flush()
+
+    with patch("app.rank_advancement_worker.session_scope") as mock_scope, \
+         patch("app.rank_advancement_worker.date") as mock_date:
+        mock_scope.return_value.__enter__.return_value = app_session
+        mock_date.today.return_value = date(2026, 1, 1)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        _warn_upcoming_soldiers()
+
+    notif = app_session.query(Notification).filter(
+        Notification.soldier_id == s.id,
+        Notification.type == NotificationType.rank_advancement_soon,
+    ).one_or_none()
+    assert notif is None
+
+
 def test_promote_due_soldiers_commits_and_persists_after_session_close(app_session, app_engine) -> None:
     """Regression test for a missing session.commit(): calls the REAL (unmocked)
     _promote_due_soldiers -- which opens its own session via the real

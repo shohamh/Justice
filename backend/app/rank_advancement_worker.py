@@ -51,7 +51,14 @@ def _warn_upcoming_soldiers() -> None:
         warning_days = get_setting_int(session, "rank_advancement.warning_days", 7)
         target = today + timedelta(days=warning_days)
         soldiers = session.execute(
-            select(Soldier).where(Soldier.next_rank_date == target)
+            select(Soldier).where(
+                Soldier.next_rank_date == target,
+                # Same discharge/departure filter as _promote_due_soldiers: a
+                # soldier who has already left must not get a "promotion coming
+                # soon" notification for a promotion that will never happen.
+                Soldier.discharge_date.is_(None) | (Soldier.discharge_date > today),
+                Soldier.left_at.is_(None) | (Soldier.left_at > today),
+            )
         ).scalars().all()
         for s in soldiers:
             next_rank = get_next_rank(s.rank) if s.rank else None
