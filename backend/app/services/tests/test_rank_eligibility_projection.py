@@ -122,6 +122,7 @@ def test_project_uses_interval_cache_instead_of_querying(app_session):
 def test_project_soldier_state_advances_early_via_career_entry(app_session):
     s = create_soldier(app_session, personal_number="1234601")
     s.rank = "קאב"
+    s.current_rank_since = date(2026, 1, 1)
     s.mandatory_end_date = date(2026, 6, 1)  # career starts 6/2
     s.next_rank_date = date(2099, 1, 1)  # scheduled date is far in the future
     upsert_interval(
@@ -141,6 +142,7 @@ def test_project_soldier_state_advances_on_career_entry_without_scheduled_date(a
     career-entry trigger."""
     s = create_soldier(app_session, personal_number="1234602")
     s.rank = "קאב"
+    s.current_rank_since = date(2026, 1, 1)
     s.mandatory_end_date = date(2026, 6, 1)
     s.next_rank_date = None
     upsert_interval(
@@ -245,6 +247,7 @@ def test_project_career_entry_uses_interval_cache_instead_of_querying(app_sessio
     per-step single-row SELECT) at all, and must reach the same result."""
     s = create_soldier(app_session, personal_number="1234606")
     s.rank = "קאב"
+    s.current_rank_since = date(2026, 1, 1)
     s.mandatory_end_date = date(2026, 6, 1)
     s.next_rank_date = date(2099, 1, 1)
     upsert_interval(
@@ -266,6 +269,122 @@ def test_project_career_entry_uses_interval_cache_instead_of_querying(app_sessio
     assert cache[("officer_academic", "קאב")] == (None, True)
     assert cached == uncached
     assert cached.rank == "קאם"
+
+
+def test_project_ignores_career_entry_that_predates_current_rank(app_session):
+    """A historical career-entry event cannot promote a rank attained later,
+    even when the successor has a short configured interval that would amplify
+    the bad backdated transition into a multi-rank cascade."""
+    s = create_soldier(app_session, personal_number="1234609")
+    s.rank = "רבט"
+    s.current_rank_since = date(2026, 9, 1)
+    s.enlistment_date = date(2025, 1, 1)
+    s.mandatory_end_date = date(2026, 5, 31)  # career entry was 6/1
+    s.next_rank_date = date(2027, 9, 1)
+    upsert_interval(
+        app_session, track="enlisted", rank="רבט", months_to_next=12,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    upsert_interval(
+        app_session, track="enlisted", rank="סמל", months_to_next=1,
+        advance_on_career_entry=False, actor_id=None,
+    )
+    app_session.flush()
+
+    uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 10, 1))
+    cached = project_soldier_state(
+        app_session,
+        soldier=s,
+        as_of=date(2026, 10, 1),
+        interval_cache=_load_interval_cache(app_session),
+    )
+
+    assert uncached.rank == "רבט"
+    assert cached == uncached
+
+
+def test_project_consumes_career_entry_after_one_flagged_transition(app_session):
+    """One career-entry event promotes at most one rank, even when the current
+    rank and its immediate successor are both flagged. Cached and uncached
+    projections must enforce the same event-consumption rule."""
+    s = create_soldier(app_session, personal_number="1234610")
+    s.rank = "רבט"
+    s.current_rank_since = date(2026, 1, 1)
+    s.enlistment_date = date(2025, 1, 1)
+    s.mandatory_end_date = date(2026, 5, 31)  # career entry is 6/1
+    s.next_rank_date = None
+    upsert_interval(
+        app_session, track="enlisted", rank="רבט", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    upsert_interval(
+        app_session, track="enlisted", rank="סמל", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 1))
+    cached = project_soldier_state(
+        app_session,
+        soldier=s,
+        as_of=date(2026, 6, 1),
+        interval_cache=_load_interval_cache(app_session),
+    )
+
+    assert uncached.rank == "סמל"
+    assert cached == uncached
+
+
+def test_project_preserves_career_entry_after_earlier_scheduled_promotion(app_session):
+    """A scheduled transition before career entry changes the current rank but
+    does not consume the later career-entry event for that newly held rank."""
+    s = create_soldier(app_session, personal_number="1234611")
+    s.rank = "רבט"
+    s.current_rank_since = date(2026, 1, 1)
+    s.enlistment_date = date(2025, 1, 1)
+    s.mandatory_end_date = date(2026, 5, 31)  # career entry is 6/1
+    s.next_rank_date = date(2026, 5, 1)
+    upsert_interval(
+        app_session, track="enlisted", rank="סמל", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 1))
+    cached = project_soldier_state(
+        app_session,
+        soldier=s,
+        as_of=date(2026, 6, 1),
+        interval_cache=_load_interval_cache(app_session),
+    )
+
+    assert uncached.rank == "סמר"
+    assert cached == uncached
+
+
+def test_project_uses_enlistment_when_rank_since_is_unknown(app_session):
+    s = create_soldier(app_session, personal_number="1234612")
+    s.rank = "רבט"
+    s.current_rank_since = None
+    s.enlistment_date = date(2025, 1, 1)
+    s.mandatory_end_date = date(2026, 5, 31)
+    s.next_rank_date = None
+    upsert_interval(
+        app_session, track="enlisted", rank="רבט", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    app_session.flush()
+
+    uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 1))
+    cached = project_soldier_state(
+        app_session,
+        soldier=s,
+        as_of=date(2026, 6, 1),
+        interval_cache=_load_interval_cache(app_session),
+    )
+
+    assert uncached.rank == "סמל"
+    assert cached == uncached
 
 
 def _duty_block(duty_type_id, day, duty_location_id=None, end_day=None):

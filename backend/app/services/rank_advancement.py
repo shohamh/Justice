@@ -151,6 +151,23 @@ def _career_entry_date(mandatory_end_date: date | None, discharge_date: date | N
     return mandatory_end_date + timedelta(days=1)
 
 
+def _career_entry_applies_to_current_rank(
+    *,
+    entry_date: date | None,
+    current_rank_since: date | None,
+    enlistment_date: date | None,
+) -> bool:
+    """Whether the current rank was already held when career entry occurred.
+
+    Legacy rows can lack current_rank_since; rank advancement already treats
+    enlistment_date as their rank-attainment fallback when recomputing
+    schedules, so the career-entry trigger follows the same model semantics.
+    If neither date is known, the historical event cannot safely be applied.
+    """
+    rank_since = current_rank_since or enlistment_date
+    return entry_date is not None and rank_since is not None and rank_since <= entry_date
+
+
 def get_rank_ladder(session: Session) -> dict[str, list[dict]]:
     rows = session.execute(select(RankAdvancementInterval)).scalars().all()
     by_key = {(r.track, r.rank): r for r in rows}

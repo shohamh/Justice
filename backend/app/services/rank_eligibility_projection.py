@@ -13,6 +13,7 @@ from app.algorithm.types import DutyBlock
 from app.db.models import RankAdvancementInterval, Soldier
 from app.services.eligibility import derive_is_career
 from app.services.rank_advancement import (
+    _career_entry_applies_to_current_rank,
     _career_entry_date,
     advances_on_career_entry,
     compute_next_rank_date,
@@ -57,19 +58,13 @@ def project_soldier_state(
     is unchanged (each step queries the DB), so single-shot callers such as
     eligibility.check_soldier_for_assignment need not care.
 
-    Each step advances on the EARLIER of the scheduled next-rank date and — for
-    ranks flagged `advance_on_career_entry` — the soldier's קבע-entry date. A
-    flagged rank can therefore advance even with no scheduled date at all
-    (`months_to_next` NULL / `next_rank_date` NULL), which is why the effective
-    date is computed before the loop decides to stop.
-
-    Note that the קבע-entry date is a single instant, so if two CONSECUTIVE
-    ranks of one ladder were both flagged the walk would advance through both
-    of them on that same day (each step re-tests the same entry_date against
-    the newly-current rank's flag). That is the intended reading — entering
-    קבע grants every advancement it is configured to grant — but no such
-    configuration exists today (קא"ם, the only flagged rank's successor, is
-    top-of-ladder), so it is untested in practice.
+    Each step advances on the earlier of the scheduled next-rank date and — for
+    a rank already held by the soldier on career entry and flagged
+    `advance_on_career_entry` — that single career-entry event. A flagged rank
+    can therefore advance even with no scheduled date at all, but the event is
+    consumed by that transition and cannot cascade through a flagged successor.
+    A scheduled promotion strictly before career entry leaves the event
+    available for the newly current rank.
     """
     rank = soldier.rank
     next_date = soldier.next_rank_date
@@ -77,6 +72,8 @@ def project_soldier_state(
     # discharge_date, neither of which the loop mutates. Hoisted out so the
     # common case costs nothing per step.
     entry_date = _career_entry_date(soldier.mandatory_end_date, soldier.discharge_date)
+    rank_since = soldier.current_rank_since
+    career_entry_consumed = False
     for _ in range(_MAX_CHAIN_STEPS):
         if rank is None:
             break
@@ -88,21 +85,31 @@ def project_soldier_state(
         # can cost a query (a single-row SELECT on the uncached path, taken once
         # per candidate by the swap/manual-assign loops), and the three pure
         # tests in front of it short-circuit it away for every soldier whose קבע
-        # entry cannot matter at this step. That reordering is behaviour-free —
-        # the whole conjunction is `and`, and none of the clauses has a side
-        # effect. `entry_date <= as_of` in particular is safe to demand: an
-        # entry date beyond `as_of` could only ever lower effective_date to
-        # something ALSO beyond `as_of`, so the date test below breaks either way.
-        if (
-            entry_date is not None
+        # entry cannot matter at this step. `entry_date <= as_of` is safe to
+        # demand: an entry date beyond `as_of` could only lower effective_date
+        # to something also beyond `as_of`, so the date test below breaks either
+        # way. A tie consumes the event too; otherwise the successor could reuse
+        # an event that was effective on the same transition date.
+        career_entry_transition = (
+            not career_entry_consumed
+            and entry_date is not None
             and entry_date <= as_of
-            and (effective_date is None or entry_date < effective_date)
+            and _career_entry_applies_to_current_rank(
+                entry_date=entry_date,
+                current_rank_since=rank_since,
+                enlistment_date=soldier.enlistment_date,
+            )
+            and (effective_date is None or entry_date <= effective_date)
             and _advances_on_career_entry(session, rank=rank, interval_cache=interval_cache)
-        ):
+        )
+        if career_entry_transition:
             effective_date = entry_date
         if effective_date is None or effective_date > as_of:
             break
         rank = next_rank
+        rank_since = effective_date
+        if career_entry_transition:
+            career_entry_consumed = True
         next_date = _next_rank_date(
             session, rank=rank, since=effective_date, interval_cache=interval_cache
         )

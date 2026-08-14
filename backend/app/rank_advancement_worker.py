@@ -9,7 +9,12 @@ from sqlalchemy import select
 from app.db.models import RankAdvancementInterval, Soldier
 from app.db.session import session_scope
 from app.services.notifications import notify_rank_advanced, notify_rank_advancement_soon
-from app.services.rank_advancement import _career_entry_date, compute_next_rank_date, get_next_rank
+from app.services.rank_advancement import (
+    _career_entry_applies_to_current_rank,
+    _career_entry_date,
+    compute_next_rank_date,
+    get_next_rank,
+)
 from app.services.settings_loader import get_setting_int
 
 logger = logging.getLogger(__name__)
@@ -30,10 +35,12 @@ def _promote_soldier(session, soldier: Soldier, *, today: date) -> None:
 
 
 def _promote_on_career_entry(*, today: date | None = None) -> None:
-    """Promotes soldiers who cross into קבע today, on ranks flagged
-    advance_on_career_entry=True. The crossing is always recomputed live from
-    mandatory_end_date/discharge_date -- never read from the stale stored
-    Soldier.is_career column, which is only a periodically-refreshed cache."""
+    """Promote at most once for a career-entry event on a rank held by then.
+
+    The crossing is always recomputed live from mandatory_end_date and
+    discharge_date -- never from the stale stored Soldier.is_career cache.
+    A historical event cannot promote a rank attained after that event.
+    """
     today = today or date.today()
     with session_scope() as session:
         flagged = session.execute(
@@ -56,7 +63,15 @@ def _promote_on_career_entry(*, today: date | None = None) -> None:
         ).scalars().all()
         for s in soldiers:
             entry_date = _career_entry_date(s.mandatory_end_date, s.discharge_date)
-            if entry_date is not None and entry_date <= today:
+            if (
+                entry_date is not None
+                and entry_date <= today
+                and _career_entry_applies_to_current_rank(
+                    entry_date=entry_date,
+                    current_rank_since=s.current_rank_since,
+                    enlistment_date=s.enlistment_date,
+                )
+            ):
                 _promote_soldier(session, s, today=today)
         session.commit()
 
