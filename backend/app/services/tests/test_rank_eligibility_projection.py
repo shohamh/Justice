@@ -92,13 +92,13 @@ def test_project_not_departed_if_as_of_before_discharge(app_session):
     assert state.departed is False
 
 
-def _duty_block(duty_type_id, day, duty_location_id=None):
+def _duty_block(duty_type_id, day, duty_location_id=None, end_day=None):
     return DutyBlock(
         id=uuid.uuid4(),
         duty_type_id=duty_type_id,
         duty_location_id=duty_location_id or uuid.uuid4(),
         start_date=day,
-        end_date=day,
+        end_date=end_day or day,
         score_per_day=Decimal("1.00"),
     )
 
@@ -291,3 +291,96 @@ def test_bulk_future_ineligible_excludes_block_by_location_exemption(app_session
 
     assert exempt_block.id in result.get(s.id, set())
     assert other_block.id not in result.get(s.id, set())
+
+
+# --- multi-day blocks: every check spans the block's full date range ---------
+
+
+def test_bulk_future_ineligible_excludes_multiday_block_when_exemption_starts_midblock(app_session):
+    s = create_soldier(app_session, personal_number="1234590")
+    s.rank = "טוראי"
+    app_session.flush()
+    dt = _duty_type(app_session)
+    et = ExemptionType(name="mid", is_global=False)
+    app_session.add(et)
+    app_session.flush()
+    app_session.add(ExemptionDutyTypeMap(exemption_type_id=et.id, duty_type_id=dt.id))
+    # Exemption starts on day 2 of a 6/1--6/4 block: not active on start_date,
+    # but it covers part of the block, so the block must be excluded.
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date(2026, 6, 2), end_date=date(2026, 6, 10),
+    ))
+    app_session.flush()
+
+    block = _duty_block(dt.id, date(2026, 6, 1), end_day=date(2026, 6, 4))
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_excludes_multiday_block_when_exemption_ends_midblock(app_session):
+    s = create_soldier(app_session, personal_number="1234591")
+    s.rank = "טוראי"
+    app_session.flush()
+    dt = _duty_type(app_session)
+    et = ExemptionType(name="tail", is_global=False)
+    app_session.add(et)
+    app_session.flush()
+    app_session.add(ExemptionDutyTypeMap(exemption_type_id=et.id, duty_type_id=dt.id))
+    # Exemption ends on day 2 of the block -- still overlaps it.
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date(2026, 5, 1), end_date=date(2026, 6, 2),
+    ))
+    app_session.flush()
+
+    overlapping = _duty_block(dt.id, date(2026, 6, 1), end_day=date(2026, 6, 4))
+    after = _duty_block(dt.id, date(2026, 6, 5), end_day=date(2026, 6, 8))
+    result = bulk_future_ineligible_duty_blocks(
+        app_session, soldier_ids=[s.id], duties=[overlapping, after]
+    )
+
+    assert overlapping.id in result.get(s.id, set())
+    assert after.id not in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_excludes_multiday_block_when_license_expires_midblock(app_session):
+    s = create_soldier(app_session, personal_number="1234592")
+    s.rank = "טוראי"
+    s.has_military_driving_license = True
+    s.military_driving_license_expiry = date(2026, 6, 2)
+    app_session.flush()
+    dt = _duty_type(app_session, requirements={"requires_military_driving_license": True})
+    # License is valid on 6/1 but expired by 6/4 -- the block spans the expiry.
+    block = _duty_block(dt.id, date(2026, 6, 1), end_day=date(2026, 6, 4))
+
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_excludes_multiday_block_when_rank_changes_midblock(app_session):
+    s = create_soldier(app_session, personal_number="1234593")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 6, 2)  # advances to רבט on day 2 of the block
+    app_session.flush()
+    dt = _duty_type(app_session, requirements={"allowed_ranks": ["טוראי"]})
+    block = _duty_block(dt.id, date(2026, 6, 1), end_day=date(2026, 6, 4))
+
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_excludes_multiday_block_when_departure_falls_midblock(app_session):
+    s = create_soldier(app_session, personal_number="1234594")
+    s.rank = "טוראי"
+    s.discharge_date = date(2026, 6, 2)
+    app_session.flush()
+    dt = _duty_type(app_session)
+    block = _duty_block(dt.id, date(2026, 6, 1), end_day=date(2026, 6, 4))
+
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id in result.get(s.id, set())

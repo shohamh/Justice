@@ -53,14 +53,18 @@ def project_soldier_state(session: Session, *, soldier: Soldier, as_of: date) ->
 def _bulk_exempt_duty_blocks(
     session: Session, *, soldier_ids: Sequence[uuid.UUID], duties: Sequence[DutyBlock]
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
-    """For each soldier, duty-block ids covered by an active exemption as of
-    that block's own start_date (global, or mapped to the block's duty type
-    or location).
+    """For each soldier, duty-block ids covered by an active exemption at any
+    point in that block's own [start_date, end_date] span (global, or mapped
+    to the block's duty type or location).
 
     Adapts the exemption resolution eligibility.check_soldier_for_assignment
     does for one soldier/one assignment to many soldiers/many blocks, using
-    the same boundary convention (start_date <= day <= end_date, with a NULL
-    end_date meaning open-ended).
+    the same range-overlap convention: an exemption blocks the block if its
+    active range overlaps the block's span at all, with a NULL exemption
+    end_date meaning open-ended. A DutyBlock can genuinely span several days
+    (algorithm_bridge builds blocks straight from a shift's start/end dates,
+    and hakpaza's remaining_block spans pull_date..original end), so an
+    exemption starting mid-block must still exclude it.
     """
     from app.db.models import (
         ExemptionDutyLocationMap,
@@ -109,7 +113,9 @@ def _bulk_exempt_duty_blocks(
         excluded: set[uuid.UUID] = set()
         for block in duties:
             for e in soldier_exemptions:
-                if e.start_date > block.start_date:
+                # Range overlap against the block's FULL span, not just its
+                # first day -- see the docstring.
+                if e.start_date > block.end_date:
                     continue
                 if e.end_date is not None and e.end_date < block.start_date:
                     continue
@@ -131,15 +137,29 @@ def bulk_future_ineligible_duty_blocks(
     session: Session, *, soldier_ids: Sequence[uuid.UUID], duties: Sequence[DutyBlock]
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
     """For each soldier, the set of duty-block ids (among `duties`) they will
-    NOT be eligible for as of that block's own start_date -- covering
-    projected rank, service-type/career, mitvahim/alal recency,
-    driving-license expiry, active exemptions, and departure.
+    NOT be eligible for over that block's own date span -- covering projected
+    rank, service-type/career, mitvahim/alal recency, driving-license expiry,
+    active exemptions, and departure.
 
-    Mirrors app.services.weapon_eligibility.bulk_ineligible_duty_blocks's
-    shape/contract exactly -- see that function's docstring for why this is a
-    hard per-block exclusion rather than a single soldier-level set. Unlike
-    weapon qualification there is no enforcement toggle: none of the factors
-    folded in here are optional.
+    A DutyBlock can span several days, so every check here is evaluated over
+    the block's whole [start_date, end_date] range rather than its first day:
+
+    - rank / career / recency / license / departure are projected to
+      `block.end_date`, the LAST day the soldier must still be eligible for
+      the block to be safe to assign. end_date subsumes start_date for all of
+      these: rank and career advance monotonically forward, and recency and
+      license expiry only ever degrade with time, so a soldier ineligible at
+      start_date is still ineligible at end_date.
+    - exemptions use a true range overlap (see _bulk_exempt_duty_blocks), so
+      one starting mid-block still excludes it.
+
+    This matches eligibility.check_soldier_for_assignment's range semantics
+    for the manual-assign path. It is deliberately stricter than
+    app.services.weapon_eligibility.bulk_ineligible_duty_blocks, whose
+    shape/contract this otherwise mirrors -- see that function's docstring for
+    why this is a hard per-block exclusion rather than a single soldier-level
+    set. Unlike weapon qualification there is no enforcement toggle: none of
+    the factors folded in here are optional.
     """
     from app.db.models import DutyType
     from app.services.eligibility import DutyTypeRequirements, _is_eligible
@@ -161,9 +181,10 @@ def bulk_future_ineligible_duty_blocks(
     mitvahim_months = get_setting_int(session, "eligibility.mitvahim_months", 6)
     alal_months = get_setting_int(session, "eligibility.alal_months", 3)
 
-    # Group blocks by distinct start_date so the (soldier, date) projection
-    # is only computed once per date, not once per block.
-    dates = sorted({d.start_date for d in duties})
+    # Group blocks by distinct end_date (the evaluation date -- see docstring)
+    # so the (soldier, date) projection is only computed once per date, not
+    # once per block.
+    dates = sorted({d.end_date for d in duties})
     projections: dict[tuple[uuid.UUID, date], ProjectedSoldierState] = {}
     for s in soldiers:
         for d in dates:
@@ -183,7 +204,7 @@ def bulk_future_ineligible_duty_blocks(
     for s in soldiers:
         excluded: set[uuid.UUID] = set(exempt_blocks.get(s.id, set()))
         for block in duties:
-            projected = projections[(s.id, block.start_date)]
+            projected = projections[(s.id, block.end_date)]
             if projected.departed:
                 excluded.add(block.id)
                 continue
@@ -192,7 +213,7 @@ def bulk_future_ineligible_duty_blocks(
                 continue
             if not _is_eligible(
                 s, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months,
-                today=block.start_date, rank_override=projected.rank,
+                today=block.end_date, rank_override=projected.rank,
             ):
                 excluded.add(block.id)
         if excluded:
