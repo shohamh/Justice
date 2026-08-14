@@ -12,11 +12,14 @@ vi.mock("./client", () => ({
 
 const ladder = {
   enlisted: [
-    { rank: "טוראי", months_to_next: 4 },
-    { rank: "רבט", months_to_next: null },
+    { rank: "טוראי", months_to_next: 4, advance_on_career_entry: false },
+    { rank: "רבט", months_to_next: null, advance_on_career_entry: false },
   ],
   officer: [
-    { rank: "סגן", months_to_next: 12 },
+    { rank: "סגן", months_to_next: 12, advance_on_career_entry: false },
+  ],
+  officer_academic: [
+    { rank: "קאב", months_to_next: 12, advance_on_career_entry: true },
   ],
 };
 
@@ -47,9 +50,18 @@ describe("rank advancement api", () => {
     const { updateRankAdvancementIntervals } = await import("./rankAdvancement");
 
     const intervals = [
-      { track: "enlisted" as const, rank: "רבט", months_to_next: 5 },
+      { track: "enlisted" as const, rank: "רבט", months_to_next: 5, advance_on_career_entry: false },
     ];
     await expect(updateRankAdvancementIntervals(intervals)).resolves.toEqual(ladder);
     expect(mockPut).toHaveBeenCalledWith("/soldiers/rank-advancement-intervals", intervals);
+  });
+
+  it("getRankLadder response includes officer_academic and advance_on_career_entry", async () => {
+    mockGet.mockResolvedValueOnce({ data: ladder });
+    const { getRankLadder } = await import("./rankAdvancement");
+
+    const result = await getRankLadder();
+    expect(result.officer_academic).toBeDefined();
+    expect(result.officer_academic[0].advance_on_career_entry).toBe(true);
   });
 });

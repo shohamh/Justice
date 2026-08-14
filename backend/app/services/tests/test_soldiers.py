@@ -297,7 +297,7 @@ def test_update_soldier_profile_rank_change_without_explicit_date_auto_computes(
     from app.services.soldiers import update_soldier_profile
     from tests.helpers import create_soldier
 
-    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     soldier = create_soldier(admin_session, personal_number="7920031")
     soldier.rank = "טוראי"
     admin_session.commit()

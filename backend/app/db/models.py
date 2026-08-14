@@ -1011,6 +1011,9 @@ class RankAdvancementInterval(Base):
     track: Mapped[str] = mapped_column(Text, nullable=False)
     rank: Mapped[str] = mapped_column(Text, nullable=False)
     months_to_next: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    advance_on_career_entry: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
+    )
 
     __table_args__ = (
         sa.UniqueConstraint("track", "rank", name="uq_rank_advancement_interval_track_rank"),

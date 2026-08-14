@@ -1,21 +1,24 @@
 import { api } from "./client";
 
-export type RankTrack = "enlisted" | "officer";
+export type RankTrack = "enlisted" | "officer" | "officer_academic";
 
 export interface RankLadderEntry {
   rank: string;
   months_to_next: number | null;
+  advance_on_career_entry: boolean;
 }
 
 export interface RankLadder {
   enlisted: RankLadderEntry[];
   officer: RankLadderEntry[];
+  officer_academic: RankLadderEntry[];
 }
 
 export interface RankIntervalUpdate {
   track: RankTrack;
   rank: string;
   months_to_next: number | null;
+  advance_on_career_entry: boolean;
 }
 
 export async function getRankLadder(): Promise<RankLadder> {

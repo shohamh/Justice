@@ -115,7 +115,7 @@ def test_soldier_detail_rank_reflects_chained_rollover(app_session):
 
     s = _make_soldier(app_session, node_id=node.id, rank="טוראי")
     s.next_rank_date = date(2026, 1, 1)
-    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, advance_on_career_entry=False, actor_id=None)
     app_session.commit()
 
     # reference_date is 3 months past the first rollover -- should have

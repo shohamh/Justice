@@ -335,7 +335,7 @@ def test_register_initializes_next_rank_date_from_enlistment_date(client, admin_
     holding = _setup_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
-    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, actor_id=None)
+    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     admin_session.commit()
 
     enlistment = date.today() - timedelta(days=600)

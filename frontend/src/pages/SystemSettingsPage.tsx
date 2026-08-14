@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Upload } from "lucide-react";
+import { Download, HelpCircle, Upload } from "lucide-react";
 import Layout from "../components/Layout";
 import { getSystemSettings, updateSystemSettings, exportSystemSettings, importSystemSettings, SettingsMap } from "../api/systemSettings";
 import { getRankLadder, updateRankAdvancementIntervals, RankIntervalUpdate, RankTrack } from "../api/rankAdvancement";
@@ -619,7 +619,17 @@ export function SystemSettingsContent() {
 // with its own draft/isDirty/save-mutation state, following the same pattern
 // as the generic settings draft but keyed by "track:rank" instead of a
 // settings key.
-const TRACK_LABELS: Record<RankTrack, string> = { enlisted: "חיילים", officer: "קצינים" };
+const TRACK_LABELS: Record<RankTrack, string> = {
+  enlisted: "חיילים",
+  officer: "קצינים",
+  officer_academic: "קצינים אקדמאים",
+};
+const TRACKS = ["enlisted", "officer", "officer_academic"] as const;
+
+interface DraftEntry {
+  months_to_next: number | "";
+  advance_on_career_entry: boolean;
+}
 
 function draftKey(track: RankTrack, rank: string): string {
   return `${track}:${rank}`;
@@ -629,15 +639,18 @@ function RankAdvancementIntervalsSection() {
   const queryClient = useQueryClient();
   const ladderQuery = useQuery({ queryKey: queryKeys.rankLadder(), queryFn: getRankLadder });
 
-  const [draft, setDraft] = useState<Record<string, number | "">>({});
+  const [draft, setDraft] = useState<Record<string, DraftEntry>>({});
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!ladderQuery.data) return;
-    const next: Record<string, number | ""> = {};
-    for (const track of ["enlisted", "officer"] as const) {
+    const next: Record<string, DraftEntry> = {};
+    for (const track of TRACKS) {
       for (const entry of ladderQuery.data[track]) {
-        next[draftKey(track, entry.rank)] = entry.months_to_next ?? "";
+        next[draftKey(track, entry.rank)] = {
+          months_to_next: entry.months_to_next ?? "",
+          advance_on_career_entry: entry.advance_on_career_entry,
+        };
       }
     }
     setDraft(next);
@@ -651,31 +664,52 @@ function RankAdvancementIntervalsSection() {
     },
   });
 
-  function setValue(track: RankTrack, rank: string, raw: string) {
-    setDraft(prev => ({ ...prev, [draftKey(track, rank)]: raw === "" ? "" : Number(raw) }));
+  function setMonthsValue(track: RankTrack, rank: string, raw: string) {
+    setDraft(prev => ({
+      ...prev,
+      [draftKey(track, rank)]: {
+        ...prev[draftKey(track, rank)],
+        months_to_next: raw === "" ? "" : Number(raw),
+      },
+    }));
+    setSaved(false);
+  }
+
+  function setCareerEntryValue(track: RankTrack, rank: string, checked: boolean) {
+    setDraft(prev => ({
+      ...prev,
+      [draftKey(track, rank)]: {
+        ...prev[draftKey(track, rank)],
+        advance_on_career_entry: checked,
+      },
+    }));
     setSaved(false);
   }
 
   function handleSave() {
     if (!ladderQuery.data) return;
-    const intervals: RankIntervalUpdate[] = (["enlisted", "officer"] as const).flatMap(track =>
+    const intervals: RankIntervalUpdate[] = TRACKS.flatMap(track =>
       ladderQuery.data![track].map(entry => {
-        const draftValue = draft[draftKey(track, entry.rank)];
+        const draftEntry = draft[draftKey(track, entry.rank)];
         return {
           track,
           rank: entry.rank,
-          months_to_next: draftValue === "" || draftValue === undefined ? null : Number(draftValue),
+          months_to_next: !draftEntry || draftEntry.months_to_next === "" ? null : Number(draftEntry.months_to_next),
+          advance_on_career_entry: draftEntry?.advance_on_career_entry ?? false,
         };
       }),
     );
     saveMutation.mutate(intervals);
   }
 
-  const serverDraft: Record<string, number | ""> = {};
+  const serverDraft: Record<string, DraftEntry> = {};
   if (ladderQuery.data) {
-    for (const track of ["enlisted", "officer"] as const) {
+    for (const track of TRACKS) {
       for (const entry of ladderQuery.data[track]) {
-        serverDraft[draftKey(track, entry.rank)] = entry.months_to_next ?? "";
+        serverDraft[draftKey(track, entry.rank)] = {
+          months_to_next: entry.months_to_next ?? "",
+          advance_on_career_entry: entry.advance_on_career_entry,
+        };
       }
     }
   }
@@ -710,7 +744,7 @@ function RankAdvancementIntervalsSection() {
 
       {error && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{error}</div>}
 
-      {(["enlisted", "officer"] as const).map(track => (
+      {TRACKS.map(track => (
         <div key={track}>
           <h3 className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">{TRACK_LABELS[track]}</h3>
           <table className="w-full text-sm">
@@ -718,6 +752,14 @@ function RankAdvancementIntervalsSection() {
               <tr className="text-gray-500 dark:text-gray-400 text-xs">
                 <th className="text-right py-1 font-normal">דרגה</th>
                 <th className="text-right py-1 font-normal">חודשים לדרגה הבאה</th>
+                <th className="text-right py-1 font-normal">
+                  <span className="inline-flex items-center gap-1">
+                    קידום עם כניסה לקבע
+                    <span title="אם מסומן, החייל יקודם אוטומטית לדרגה הבאה ברגע שהוא נכנס לשירות קבע, גם אם התאריך המתוכנן לקידום לדרגה זו עדיין לא הגיע.">
+                      <HelpCircle size={14} className="text-gray-400" />
+                    </span>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -727,11 +769,18 @@ function RankAdvancementIntervalsSection() {
                   <td className="py-1">
                     <input
                       type="number"
-                      min="0"
-                      value={String(draft[draftKey(track, entry.rank)] ?? "")}
-                      onChange={e => setValue(track, entry.rank, e.target.value)}
+                      min="1"
+                      value={String(draft[draftKey(track, entry.rank)]?.months_to_next ?? "")}
+                      onChange={e => setMonthsValue(track, entry.rank, e.target.value)}
                       className="w-28 border rounded px-2 py-1 text-sm text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       dir="ltr"
+                    />
+                  </td>
+                  <td className="py-1">
+                    <input
+                      type="checkbox"
+                      checked={draft[draftKey(track, entry.rank)]?.advance_on_career_entry ?? false}
+                      onChange={e => setCareerEntryValue(track, entry.rank, e.target.checked)}
                     />
                   </td>
                 </tr>

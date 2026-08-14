@@ -1,5 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate, deriveIsCareer } from "./ranks";
+import { createElement } from "react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate, deriveIsCareer, useRankLadder } from "./ranks";
+import * as rankAdvancementApi from "../api/rankAdvancement";
+
+vi.mock("../api/rankAdvancement", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/rankAdvancement")>();
+  return { ...actual, getRankLadder: vi.fn() };
+});
 
 describe("rank constants", () => {
   it("classifies סגמ (סג\"ם) as an officer rank, not enlisted", () => {
@@ -91,5 +100,41 @@ describe("deriveIsCareer", () => {
 
   it("is never true for a חובה-only rank regardless of dates", () => {
     expect(deriveIsCareer("טוראי", "2020-01-01", "", "2026-07-19")).toBe(false);
+  });
+});
+
+describe("useRankLadder's picker completeness", () => {
+  afterEach(() => {
+    vi.mocked(rankAdvancementApi.getRankLadder).mockReset();
+  });
+
+  function wrapper({ children }: { children: React.ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return createElement(QueryClientProvider, { client: queryClient }, children);
+  }
+
+  const ladder = {
+    enlisted: [{ rank: "טוראי", months_to_next: 4, advance_on_career_entry: false }],
+    officer: [{ rank: "סגמ", months_to_next: null, advance_on_career_entry: false }],
+    officer_academic: [
+      { rank: "קאב", months_to_next: null, advance_on_career_entry: true },
+      { rank: "קאם", months_to_next: null, advance_on_career_entry: true },
+    ],
+  };
+
+  it("includes קמא even though it's absent from the ladder response", async () => {
+    vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue(ladder);
+
+    const { result } = renderHook(() => useRankLadder(), { wrapper });
+    await waitFor(() => expect(result.current.officerRanks).toContain("קמא"));
+    expect(result.current.allRanks).toContain("קמא");
+  });
+
+  it("includes both officer and officer_academic ranks", async () => {
+    vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue(ladder);
+
+    const { result } = renderHook(() => useRankLadder(), { wrapper });
+    await waitFor(() => expect(result.current.officerRanks).toContain("סגמ"));
+    expect(result.current.officerRanks).toContain("קאב");
   });
 });

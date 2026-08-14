@@ -316,7 +316,7 @@ def test_session_row_summary_includes_range_sheets(client, admin_session):
 
 def test_confirm_new_soldier_with_rank_computes_next_rank_date_from_enlistment(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
-    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, actor_id=None)
+    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     admin_session.commit()
 
     pn = f"imp_{_uid()}"
@@ -344,7 +344,7 @@ def test_confirm_new_soldier_with_rank_computes_next_rank_date_from_enlistment(c
 
 def test_confirm_new_soldier_with_explicit_next_rank_date_marks_overridden(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
-    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, actor_id=None)
+    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     admin_session.commit()
 
     pn = f"imp_{_uid()}"
@@ -433,7 +433,7 @@ def test_confirm_new_soldier_without_rank_leaves_rank_advancement_fields_untouch
 def test_confirm_updates_existing_soldier_rank_initializes_next_rank_date(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     existing = create_soldier(admin_session, personal_number=f"exist_{_uid()}")
-    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=6, actor_id=None)
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=6, advance_on_career_entry=False, actor_id=None)
     admin_session.commit()
 
     xlsx = _wb({

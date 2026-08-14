@@ -18,7 +18,8 @@ def test_get_rank_ladder_returns_both_tracks(client: TestClient, admin_session: 
     assert resp.status_code == 200
     body = resp.json()
     assert body["enlisted"][0]["rank"] == "טוראי"
-    assert body["officer"][0]["rank"] == "קמא"
+    assert body["officer"][0]["rank"] == "סגמ"
+    assert body["officer_academic"][0]["rank"] == "קאב"
 
 
 def test_public_rank_ladder_readable_without_auth(client: TestClient):
@@ -29,7 +30,8 @@ def test_public_rank_ladder_readable_without_auth(client: TestClient):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["enlisted"][0]["rank"] == "טוראי"
-    assert body["officer"][0]["rank"] == "קמא"
+    assert body["officer"][0]["rank"] == "סגמ"
+    assert body["officer_academic"][0]["rank"] == "קאב"
 
 
 def test_put_rank_advancement_intervals_requires_admin(client: TestClient, admin_session: Session):
@@ -94,3 +96,34 @@ def test_put_rank_advancement_intervals_rejects_invalid_payloads(
 
     assert resp.status_code == 422, resp.text
     mock_set.assert_not_called()
+
+
+def test_put_rank_advancement_intervals_persists_academic_track_and_flag(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="rank_ladder_004", role="admin")
+
+    resp = client.put(
+        "/api/soldiers/rank-advancement-intervals",
+        json=[{"track": "officer_academic", "rank": "קאב", "months_to_next": None, "advance_on_career_entry": True}],
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 200
+    entry = next(e for e in resp.json()["officer_academic"] if e["rank"] == "קאב")
+    assert entry["advance_on_career_entry"] is True
+
+
+def test_put_rank_advancement_intervals_rejects_kab_under_officer_track(
+    client: TestClient, admin_session: Session
+):
+    # קאב no longer belongs to the regular officer ladder
+    admin = create_soldier(admin_session, personal_number="rank_ladder_005", role="admin")
+
+    resp = client.put(
+        "/api/soldiers/rank-advancement-intervals",
+        json=[{"track": "officer", "rank": "קאב", "months_to_next": 6, "advance_on_career_entry": False}],
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 422

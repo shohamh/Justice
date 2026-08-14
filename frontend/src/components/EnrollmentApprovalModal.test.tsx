@@ -17,8 +17,9 @@ vi.mock("../api/rankAdvancement", async () => {
 });
 
 vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue({
-  enlisted: [{ rank: "טוראי", months_to_next: null }],
-  officer: [{ rank: "סגן", months_to_next: null }],
+  enlisted: [{ rank: "טוראי", months_to_next: null, advance_on_career_entry: false }],
+  officer: [{ rank: "סגן", months_to_next: null, advance_on_career_entry: false }],
+  officer_academic: [{ rank: "קאב", months_to_next: null, advance_on_career_entry: false }],
 });
 
 function renderWithProviders(ui: React.ReactElement) {

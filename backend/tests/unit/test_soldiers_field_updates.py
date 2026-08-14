@@ -112,7 +112,7 @@ def test_approve_field_update_rank_initializes_next_rank_date(admin_session):
     )
     admin_session.add(soldier)
     admin_session.flush()
-    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     admin_session.flush()
 
     req = submit_field_update(
