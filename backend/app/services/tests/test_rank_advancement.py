@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import RankAdvancementInterval
 from app.services.rank_advancement import (
-    advances_on_career_entry, compute_next_rank_date, get_interval_months, get_next_rank, get_track,
-    upsert_interval, set_interval_and_recompute, get_rank_ladder,
+    _career_entry_date, advances_on_career_entry, compute_next_rank_date, get_interval_months, get_next_rank,
+    get_track, upsert_interval, set_interval_and_recompute, get_rank_ladder,
 )
 from tests.helpers import create_soldier
 
@@ -224,3 +224,19 @@ def test_get_rank_ladder_has_three_tracks_and_flag(app_session):
     kab_entry = next(e for e in ladder["officer_academic"] if e["rank"] == "קאב")
     assert kab_entry == {"rank": "קאב", "months_to_next": None, "advance_on_career_entry": True}
     assert "קמא" not in [e["rank"] for e in ladder["officer"]]
+
+
+def test_career_entry_date_day_after_mandatory_end():
+    assert _career_entry_date(date(2026, 6, 1), None) == date(2026, 6, 2)
+
+
+def test_career_entry_date_none_when_no_mandatory_end_date():
+    assert _career_entry_date(None, None) is None
+
+
+def test_career_entry_date_none_when_discharged_before_mandatory_end():
+    assert _career_entry_date(date(2026, 6, 1), date(2026, 5, 1)) is None
+
+
+def test_career_entry_date_present_when_discharge_after_mandatory_end():
+    assert _career_entry_date(date(2026, 6, 1), date(2026, 12, 1)) == date(2026, 6, 2)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 
 from dateutil.relativedelta import relativedelta
@@ -137,6 +137,18 @@ def advances_on_career_entry(session: Session, *, track: str, rank: str) -> bool
         )
     ).scalar_one_or_none()
     return row.advance_on_career_entry if row is not None else False
+
+
+def _career_entry_date(mandatory_end_date: date | None, discharge_date: date | None) -> date | None:
+    """The first calendar day this soldier is career (קבע), or None if they
+    never reach it -- mirrors derive_is_career's exact True/False boundary
+    (eligibility.py) as a single date instead of a per-call boolean, so it
+    can be compared against other candidate advancement dates."""
+    if mandatory_end_date is None:
+        return None
+    if discharge_date is not None and discharge_date <= mandatory_end_date:
+        return None
+    return mandatory_end_date + timedelta(days=1)
 
 
 def get_rank_ladder(session: Session) -> dict[str, list[dict]]:
