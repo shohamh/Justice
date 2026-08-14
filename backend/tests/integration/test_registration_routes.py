@@ -16,6 +16,10 @@ def _uid():
     return uuid.uuid4().hex[:8]
 
 
+def _personal_number():
+    return str(uuid.uuid4().int % 90_000_000 + 10_000_000)
+
+
 def _post_register(client, payload, files=None):
     return client.post(
         "/api/auth/register",
@@ -38,7 +42,7 @@ def _setup_holding(session):
 def _payload(invite_code, node_id, **overrides):
     return {
         "invite_code": invite_code,
-        "personal_number": f"pn_{_uid()}",
+        "personal_number": _personal_number(),
         "full_name": "Test Soldier",
         "password": "secure-password-1",
         "phone": "050-1234567",
@@ -70,6 +74,19 @@ def test_register_rejects_missing_phone(client, admin_session):
     del payload["phone"]
     resp = _post_register(client, payload)
     assert resp.status_code == 422
+
+
+def test_register_reports_short_password_as_password_policy(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id, password="short7")
+    resp = _post_register(client, payload)
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "password_policy"
 
 
 def test_register_rejects_invalid_phone_format(client, admin_session):
