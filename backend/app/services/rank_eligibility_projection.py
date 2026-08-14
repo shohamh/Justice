@@ -5,13 +5,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
+from dateutil.relativedelta import relativedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import DutyBlock
-from app.db.models import Soldier
+from app.db.models import RankAdvancementInterval, Soldier
 from app.services.eligibility import derive_is_career
-from app.services.rank_advancement import compute_next_rank_date, get_next_rank
+from app.services.rank_advancement import compute_next_rank_date, get_next_rank, get_track
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,23 @@ _MAX_CHAIN_STEPS = 24  # safety bound; a soldier cannot realistically advance
                         # on misconfigured (e.g. zero-month) intervals.
 
 
-def project_soldier_state(session: Session, *, soldier: Soldier, as_of: date) -> ProjectedSoldierState:
+def project_soldier_state(
+    session: Session,
+    *,
+    soldier: Soldier,
+    as_of: date,
+    interval_cache: dict[tuple[str, str], int | None] | None = None,
+) -> ProjectedSoldierState:
+    """Project a soldier's rank/career/departure state to `as_of`.
+
+    `interval_cache` is an optional pre-loaded {(track, rank): months_to_next}
+    map. When given, the rank chain-walk reads its advancement intervals from
+    it instead of issuing one single-row SELECT per chain step — the whole
+    RankAdvancementInterval table is at most ~21 rows, and bulk callers walk
+    the chain for hundreds of (soldier, date) pairs. When omitted the behaviour
+    is unchanged (each step queries the DB), so single-shot callers such as
+    eligibility.check_soldier_for_assignment need not care.
+    """
     rank = soldier.rank
     next_date = soldier.next_rank_date
     for _ in range(_MAX_CHAIN_STEPS):
@@ -37,7 +54,7 @@ def project_soldier_state(session: Session, *, soldier: Soldier, as_of: date) ->
         if next_rank is None:
             break
         rank = next_rank
-        next_date = compute_next_rank_date(session, rank=rank, since=next_date)
+        next_date = _next_rank_date(session, rank=rank, since=next_date, interval_cache=interval_cache)
 
     is_career = derive_is_career(rank, soldier.mandatory_end_date, soldier.discharge_date, today=as_of)
 
@@ -48,6 +65,31 @@ def project_soldier_state(session: Session, *, soldier: Soldier, as_of: date) ->
         departed = True
 
     return ProjectedSoldierState(rank=rank, is_career=is_career, departed=departed)
+
+
+def _next_rank_date(
+    session: Session,
+    *,
+    rank: str,
+    since: date,
+    interval_cache: dict[tuple[str, str], int | None] | None,
+) -> date | None:
+    """compute_next_rank_date, but served from `interval_cache` when provided."""
+    if interval_cache is None:
+        return compute_next_rank_date(session, rank=rank, since=since)
+    track = get_track(rank)
+    if track is None:
+        return None
+    months = interval_cache.get((track, rank))
+    if months is None:
+        return None
+    return since + relativedelta(months=months)
+
+
+def _load_interval_cache(session: Session) -> dict[tuple[str, str], int | None]:
+    """The whole RankAdvancementInterval table (at most ~21 rows) as a dict."""
+    rows = session.execute(select(RankAdvancementInterval)).scalars().all()
+    return {(r.track, r.rank): r.months_to_next for r in rows}
 
 
 def _bulk_exempt_duty_blocks(
@@ -142,14 +184,23 @@ def bulk_future_ineligible_duty_blocks(
     active exemptions, and departure.
 
     A DutyBlock can span several days, so every check here is evaluated over
-    the block's whole [start_date, end_date] range rather than its first day:
+    the block's whole [start_date, end_date] range rather than its first day.
+    A soldier must be eligible for the FULL span to be assignable to it:
 
-    - rank / career / recency / license / departure are projected to
-      `block.end_date`, the LAST day the soldier must still be eligible for
-      the block to be safe to assign. end_date subsumes start_date for all of
-      these: rank and career advance monotonically forward, and recency and
-      license expiry only ever degrade with time, so a soldier ineligible at
-      start_date is still ineligible at end_date.
+    - the rank / service-type portion is evaluated at BOTH `block.start_date`
+      and `block.end_date`, and the block is excluded if EITHER fails. These
+      two factors are NOT monotonic: moving forward in time a soldier can
+      newly LOSE eligibility (promoted past an allowed rank, or their קבע
+      transition happens) but can equally newly GAIN it. Checking only
+      end_date would let a soldier who is promoted into the required rank on
+      day 2 take the whole block including day 1, when they did not yet hold
+      it — and would disagree with eligibility.check_soldier_for_assignment,
+      which evaluates at the assignment's start_date.
+    - recency (mitvahim/alal), driving-license expiry and departure are
+      projected to `block.end_date` only. Those are genuinely monotonic —
+      they can only ever degrade with time — so a soldier ineligible at
+      start_date is necessarily still ineligible at end_date, and end_date
+      alone is provably sufficient.
     - exemptions use a true range overlap (see _bulk_exempt_duty_blocks), so
       one starting mid-block still excludes it.
 
@@ -181,22 +232,42 @@ def bulk_future_ineligible_duty_blocks(
     mitvahim_months = get_setting_int(session, "eligibility.mitvahim_months", 6)
     alal_months = get_setting_int(session, "eligibility.alal_months", 3)
 
-    # Group blocks by distinct end_date (the evaluation date -- see docstring)
-    # so the (soldier, date) projection is only computed once per date, not
-    # once per block.
-    dates = sorted({d.end_date for d in duties})
+    # Group blocks by distinct evaluation date -- BOTH endpoints of every block,
+    # since the rank/service-type check runs at start_date as well as end_date
+    # (see docstring) -- so the (soldier, date) projection is only computed once
+    # per date, not once per block. The advancement intervals the chain-walk
+    # needs are loaded once here and threaded through: without the cache each
+    # chain step of each (soldier, date) pair costs its own single-row SELECT.
+    interval_cache = _load_interval_cache(session)
+    dates = sorted({d.end_date for d in duties} | {d.start_date for d in duties})
     projections: dict[tuple[uuid.UUID, date], ProjectedSoldierState] = {}
     for s in soldiers:
         for d in dates:
-            projections[(s.id, d)] = project_soldier_state(session, soldier=s, as_of=d)
+            projections[(s.id, d)] = project_soldier_state(
+                session, soldier=s, as_of=d, interval_cache=interval_cache
+            )
 
     # Cache parsed requirements per duty type -- duties usually reuse a handful.
+    # `rank_reqs_by_duty_type` is the same requirements narrowed to just the
+    # non-monotonic rank/service-type clauses, for the extra start_date pass.
     reqs_by_duty_type: dict[uuid.UUID, DutyTypeRequirements | None] = {}
+    rank_reqs_by_duty_type: dict[uuid.UUID, DutyTypeRequirements | None] = {}
     for dt_id, dt in duty_types.items():
         try:
-            reqs_by_duty_type[dt_id] = DutyTypeRequirements.model_validate(dt.requirements or {})
+            reqs = DutyTypeRequirements.model_validate(dt.requirements or {})
         except Exception:
             reqs_by_duty_type[dt_id] = None
+            rank_reqs_by_duty_type[dt_id] = None
+            continue
+        reqs_by_duty_type[dt_id] = reqs
+        rank_reqs_by_duty_type[dt_id] = (
+            DutyTypeRequirements(
+                allowed_ranks=reqs.allowed_ranks,
+                allowed_service_types=reqs.allowed_service_types,
+            )
+            if (reqs.allowed_ranks or reqs.allowed_service_types)
+            else None
+        )
 
     exempt_blocks = _bulk_exempt_duty_blocks(session, soldier_ids=soldier_ids, duties=duties)
 
@@ -214,6 +285,19 @@ def bulk_future_ineligible_duty_blocks(
             if not _is_eligible(
                 s, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months,
                 today=block.end_date, rank_override=projected.rank,
+            ):
+                excluded.add(block.id)
+                continue
+            # Second pass at start_date over the non-monotonic clauses only:
+            # the soldier must hold an allowed rank/service type on the block's
+            # FIRST day too, not just its last (see docstring).
+            rank_reqs = rank_reqs_by_duty_type.get(block.duty_type_id)
+            if rank_reqs is None or block.start_date == block.end_date:
+                continue
+            projected_start = projections[(s.id, block.start_date)]
+            if not _is_eligible(
+                s, rank_reqs, mitvahim_months=mitvahim_months, alal_months=alal_months,
+                today=block.start_date, rank_override=projected_start.rank,
             ):
                 excluded.add(block.id)
         if excluded:

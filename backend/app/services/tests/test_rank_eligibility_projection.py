@@ -1,6 +1,7 @@
 import uuid
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from app.algorithm.types import DutyBlock
 from app.db.models import (
@@ -13,6 +14,7 @@ from app.db.models import (
 )
 from app.services.rank_advancement import upsert_interval
 from app.services.rank_eligibility_projection import (
+    _load_interval_cache,
     bulk_future_ineligible_duty_blocks,
     project_soldier_state,
 )
@@ -90,6 +92,31 @@ def test_project_not_departed_if_as_of_before_discharge(app_session):
     app_session.flush()
     state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 4, 1))
     assert state.departed is False
+
+
+def test_project_uses_interval_cache_instead_of_querying(app_session):
+    """With an interval_cache the chain-walk must not hit get_interval_months
+    at all -- that per-step single-row SELECT is what the cache exists to
+    avoid on the solver's hot path."""
+    s = create_soldier(app_session, personal_number="1234576")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=1, actor_id=None)
+    upsert_interval(app_session, track="enlisted", rank="סמל", months_to_next=1, actor_id=None)
+    app_session.flush()
+
+    uncached = project_soldier_state(app_session, soldier=s, as_of=date(2026, 4, 1))
+    with patch(
+        "app.services.rank_advancement.get_interval_months",
+        side_effect=AssertionError("interval_cache should have prevented this query"),
+    ):
+        cached = project_soldier_state(
+            app_session, soldier=s, as_of=date(2026, 4, 1),
+            interval_cache=_load_interval_cache(app_session),
+        )
+
+    assert cached == uncached
+    assert cached.rank == "סמר"
 
 
 def _duty_block(duty_type_id, day, duty_location_id=None, end_day=None):
@@ -371,6 +398,81 @@ def test_bulk_future_ineligible_excludes_multiday_block_when_rank_changes_midblo
     result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
 
     assert block.id in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_excludes_multiday_block_when_rank_qualifies_only_midblock(app_session):
+    """The reverse direction of ..._when_rank_changes_midblock: the soldier is
+    NOT of the required rank on the block's first day and only gets promoted
+    into it on day 2. Evaluating end_date alone would wrongly let them take the
+    whole block, day 1 included — so both endpoints are checked."""
+    s = create_soldier(app_session, personal_number="1234595")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 6, 2)  # becomes רבט on day 2 of the block
+    app_session.flush()
+    dt = _duty_type(app_session, requirements={"allowed_ranks": ["רבט"]})
+    block = _duty_block(dt.id, date(2026, 6, 1), end_day=date(2026, 6, 4))
+
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_keeps_multiday_block_when_rank_qualifies_throughout(app_session):
+    """Guard for the both-endpoints check: a soldier already holding the
+    required rank on day 1 and still holding it on the last day stays eligible."""
+    s = create_soldier(app_session, personal_number="1234596")
+    s.rank = "רבט"
+    app_session.flush()
+    dt = _duty_type(app_session, requirements={"allowed_ranks": ["רבט"]})
+    block = _duty_block(dt.id, date(2026, 6, 1), end_day=date(2026, 6, 4))
+
+    result = bulk_future_ineligible_duty_blocks(app_session, soldier_ids=[s.id], duties=[block])
+
+    assert block.id not in result.get(s.id, set())
+
+
+def test_bulk_future_ineligible_agrees_with_check_soldier_for_assignment(app_session):
+    """Cross-path consistency: for the same soldier/rank requirement, a
+    single-day DutyBlock here and the equivalent single-day DutyAssignment run
+    through eligibility.check_soldier_for_assignment must reach the same
+    verdict — both project rank as of the day the duty actually starts."""
+    from app.db.models import DutyAssignment
+    from app.services.eligibility import check_soldier_for_assignment
+
+    dt = _duty_type(app_session, name="shared", requirements={"allowed_ranks": ["רבט"]})
+    loc = DutyLocation(name="עמדה משותפת")
+    app_session.add(loc)
+    # The assignment must belong to someone (soldier_id is NOT NULL); the
+    # candidate being checked is a different soldier, as in the real
+    # swap/manual-assign flow.
+    owner = create_soldier(app_session, personal_number="1234599")
+    app_session.flush()
+    day = date(2026, 6, 1)
+
+    for personal_number, next_rank_date, expected_eligible in [
+        ("1234597", date(2026, 1, 1), True),   # promoted to רבט well before the duty
+        ("1234598", date(2026, 12, 1), False),  # still טוראי on the duty's day
+    ]:
+        s = create_soldier(app_session, personal_number=personal_number)
+        s.rank = "טוראי"
+        s.next_rank_date = next_rank_date
+        app_session.flush()
+
+        block = _duty_block(dt.id, day, duty_location_id=loc.id)
+        bulk_excluded = block.id in bulk_future_ineligible_duty_blocks(
+            app_session, soldier_ids=[s.id], duties=[block]
+        ).get(s.id, set())
+
+        assignment = DutyAssignment(
+            duty_type_id=dt.id, duty_location_id=loc.id, soldier_id=owner.id,
+            start_date=day, end_date=day,
+        )
+        app_session.add(assignment)
+        app_session.flush()
+        manual_ok, _reason = check_soldier_for_assignment(app_session, s.id, assignment.id)
+
+        assert manual_ok is expected_eligible, personal_number
+        assert bulk_excluded is not expected_eligible, personal_number
 
 
 def test_bulk_future_ineligible_excludes_multiday_block_when_departure_falls_midblock(app_session):
