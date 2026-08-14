@@ -20,6 +20,12 @@ const OFFICER_RANKS = [
 
 const OFFICER_RANK_SET = new Set(OFFICER_RANKS);
 
+// קמא sits outside every advancement ladder (see rank_advancement.py) --
+// promoting off it is a manual action, not automated -- so it never appears
+// in the /rank-ladder response. It's still a fully valid, assignable rank,
+// so pickers built from the ladder response need it added back explicitly.
+const UNLADDERED_OFFICER_RANKS = ["קמא"];
+
 export function isOfficerRank(rank: string): boolean {
   return OFFICER_RANK_SET.has(rank);
 }
@@ -100,7 +106,13 @@ export function usePublicRankLadder() {
 
 function withLadderFields<T extends { data?: RankLadder }>(query: T) {
   const enlistedRanks = query.data?.enlisted.map((e) => e.rank) ?? [];
-  const officerRanks = query.data?.officer.map((e) => e.rank) ?? [];
+  const officerRanks = query.data
+    ? [
+        ...UNLADDERED_OFFICER_RANKS,
+        ...query.data.officer.map((e) => e.rank),
+        ...query.data.officer_academic.map((e) => e.rank),
+      ]
+    : [];
   return {
     ...query,
     ladder: query.data,
