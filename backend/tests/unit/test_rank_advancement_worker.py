@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch
 
+from dateutil.relativedelta import relativedelta
+from sqlalchemy.orm import sessionmaker
+
+from app.db.models import Soldier
 from app.rank_advancement_worker import (
     _promote_due_soldiers,
     _promote_soldier,
@@ -137,3 +141,50 @@ def test_warn_upcoming_soldiers_ignores_soldiers_outside_exact_day(app_session) 
         Notification.type == NotificationType.rank_advancement_soon,
     ).one_or_none()
     assert notif is None
+
+
+def test_promote_due_soldiers_commits_and_persists_after_session_close(app_session, app_engine) -> None:
+    """Regression test for a missing session.commit(): calls the REAL (unmocked)
+    _promote_due_soldiers -- which opens its own session via the real
+    session_scope() and must commit before returning -- then reads the result
+    back through a brand new, independent session/connection. If the worker
+    only flushed (never committed), that fresh session would see the
+    soldier's original rank, since session_scope's underlying SessionLocal
+    rolls back on close instead of committing.
+    """
+    s = create_soldier(app_session, personal_number="1000008")
+    s.rank = "טוראי"
+    s.next_rank_date = date.today()
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, actor_id=None)
+    app_session.commit()
+    soldier_id = s.id
+
+    _promote_due_soldiers()  # real session_scope() -- not mocked/patched
+
+    FreshSession = sessionmaker(bind=app_engine, expire_on_commit=False)
+    with FreshSession() as fresh:
+        fresh_soldier = fresh.get(Soldier, soldier_id)
+        assert fresh_soldier.rank == "רבט"
+        assert fresh_soldier.next_rank_date == date.today() + relativedelta(months=8)
+
+
+def test_warn_upcoming_soldiers_commits_and_persists_after_session_close(app_session, app_engine) -> None:
+    """Same regression coverage as above, for _warn_upcoming_soldiers: the
+    Notification row it creates must survive the worker's session closing."""
+    from app.db.models import Notification, NotificationType
+
+    s = create_soldier(app_session, personal_number="1000009")
+    s.rank = "טוראי"
+    s.next_rank_date = date.today() + timedelta(days=7)
+    app_session.commit()
+    soldier_id = s.id
+
+    _warn_upcoming_soldiers()  # real session_scope() -- not mocked/patched
+
+    FreshSession = sessionmaker(bind=app_engine, expire_on_commit=False)
+    with FreshSession() as fresh:
+        notif = fresh.query(Notification).filter(
+            Notification.soldier_id == soldier_id,
+            Notification.type == NotificationType.rank_advancement_soon,
+        ).one_or_none()
+        assert notif is not None

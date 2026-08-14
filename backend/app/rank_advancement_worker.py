@@ -42,6 +42,7 @@ def _promote_due_soldiers() -> None:
         ).scalars().all()
         for s in soldiers:
             _promote_soldier(session, s, today=today)
+        session.commit()
 
 
 def _warn_upcoming_soldiers() -> None:
@@ -59,6 +60,7 @@ def _warn_upcoming_soldiers() -> None:
             notify_rank_advancement_soon(
                 session, soldier_id=s.id, new_rank=next_rank, effective_date=target
             )
+        session.commit()
 
 
 async def run_rank_advancement_worker() -> None:
