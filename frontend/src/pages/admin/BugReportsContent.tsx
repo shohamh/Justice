@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Circle, Clock, CheckCircle2, XCircle, LucideIcon } from "lucide-react";
 import {
   listBugReports,
+  downloadBugReportExport,
   updateBugReportStatus,
   getBugReportJson,
   fetchBugReportScreenshot,
@@ -56,6 +57,9 @@ export function BugReportsContent() {
   const [jsonErrorById, setJsonErrorById] = useState<Record<string, string>>({});
   const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [exportScope, setExportScope] = useState<"all_active" | "filtered">("all_active");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<BugReportImportSummary | null>(null);
   const [importError, setImportError] = useState("");
@@ -141,6 +145,41 @@ export function BugReportsContent() {
     } finally {
       setImporting(false);
       if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
+  async function handleExportDownload() {
+    setExporting(true);
+    setExportError("");
+    try {
+      const activeStatusFilter =
+        statusFilter === "open" || statusFilter === "in_progress" ? statusFilter : undefined;
+      const exportData =
+        exportScope === "filtered"
+          ? await downloadBugReportExport({
+              scope: "filtered",
+              severity: severityFilter || undefined,
+              status: activeStatusFilter,
+            })
+          : await downloadBugReportExport({ scope: "all_active" });
+
+      const objectUrl = URL.createObjectURL(exportData.blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = exportData.filename ?? "bug_report_export.zip";
+      link.style.display = "none";
+
+      try {
+        document.body.appendChild(link);
+        link.click();
+      } finally {
+        if (link.parentNode) link.parentNode.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (err: unknown) {
+      setExportError(translateApiError(err, t, t("bug_reports.export_error")));
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -279,6 +318,29 @@ export function BugReportsContent() {
               </>
             )}
           </span>
+        )}
+        <button
+          type="button"
+          onClick={() => { void handleExportDownload(); }}
+          disabled={exporting}
+          className={`text-sm px-3 py-1.5 rounded border dark:border-gray-600 ${
+            exporting ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50 dark:hover:bg-gray-700"
+          }`}
+        >
+          {t("bug_reports.export_button")}
+        </button>
+        <select
+          value={exportScope}
+          onChange={(e) => setExportScope(e.target.value as "all_active" | "filtered")}
+          disabled={exporting}
+          className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+          data-testid="bug-report-export-scope"
+        >
+          <option value="all_active">{t("bug_reports.export_scope_all_active")}</option>
+          <option value="filtered">{t("bug_reports.export_scope_filtered")}</option>
+        </select>
+        {exportError && (
+          <span className="text-xs text-red-500" data-testid="bug-report-export-error">{exportError}</span>
         )}
       </div>
       <div className="flex gap-2 mb-4">
