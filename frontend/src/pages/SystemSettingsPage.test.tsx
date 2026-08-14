@@ -56,11 +56,14 @@ describe("SystemSettingsContent export/import", () => {
     });
     vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue({
       enlisted: [
-        { rank: "טוראי", months_to_next: 4 },
-        { rank: "רבט", months_to_next: null },
+        { rank: "טוראי", months_to_next: 4, advance_on_career_entry: false },
+        { rank: "רבט", months_to_next: null, advance_on_career_entry: false },
       ],
       officer: [
-        { rank: "סגן", months_to_next: 12 },
+        { rank: "סגן", months_to_next: 12, advance_on_career_entry: false },
+      ],
+      officer_academic: [
+        { rank: "קאב", months_to_next: null, advance_on_career_entry: false },
       ],
     });
   });
@@ -233,10 +236,11 @@ describe("SystemSettingsContent export/import", () => {
   it("saves edited rank intervals for all rows", async () => {
     vi.mocked(rankAdvancementApi.updateRankAdvancementIntervals).mockResolvedValue({
       enlisted: [
-        { rank: "טוראי", months_to_next: 4 },
-        { rank: "רבט", months_to_next: 5 },
+        { rank: "טוראי", months_to_next: 4, advance_on_career_entry: false },
+        { rank: "רבט", months_to_next: 5, advance_on_career_entry: false },
       ],
-      officer: [{ rank: "סגן", months_to_next: 12 }],
+      officer: [{ rank: "סגן", months_to_next: 12, advance_on_career_entry: false }],
+      officer_academic: [{ rank: "קאב", months_to_next: null, advance_on_career_entry: false }],
     });
     renderWithProviders(<SystemSettingsContent />);
     await waitFor(() => expect(rankAdvancementApi.getRankLadder).toHaveBeenCalled());
@@ -251,9 +255,46 @@ describe("SystemSettingsContent export/import", () => {
 
     await waitFor(() => expect(rankAdvancementApi.updateRankAdvancementIntervals).toHaveBeenCalled());
     expect(vi.mocked(rankAdvancementApi.updateRankAdvancementIntervals).mock.calls[0][0]).toEqual([
-      { track: "enlisted", rank: "טוראי", months_to_next: 4 },
-      { track: "enlisted", rank: "רבט", months_to_next: 5 },
-      { track: "officer", rank: "סגן", months_to_next: 12 },
+      { track: "enlisted", rank: "טוראי", months_to_next: 4, advance_on_career_entry: false },
+      { track: "enlisted", rank: "רבט", months_to_next: 5, advance_on_career_entry: false },
+      { track: "officer", rank: "סגן", months_to_next: 12, advance_on_career_entry: false },
+      { track: "officer_academic", rank: "קאב", months_to_next: null, advance_on_career_entry: false },
     ]);
+  });
+
+  it("renders a group for the academic officer track", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+
+    expect(await screen.findByText("קאב")).toBeInTheDocument();
+  });
+
+  it("toggling the career-entry checkbox and saving includes it in the PUT payload", async () => {
+    vi.mocked(rankAdvancementApi.updateRankAdvancementIntervals).mockResolvedValue({
+      enlisted: [
+        { rank: "טוראי", months_to_next: 4, advance_on_career_entry: false },
+        { rank: "רבט", months_to_next: null, advance_on_career_entry: false },
+      ],
+      officer: [{ rank: "סגן", months_to_next: 12, advance_on_career_entry: false }],
+      officer_academic: [{ rank: "קאב", months_to_next: null, advance_on_career_entry: true }],
+    });
+    renderWithProviders(<SystemSettingsContent />);
+
+    const kabRow = (await screen.findByText("קאב")).closest("tr")!;
+    fireEvent.click(kabRow.querySelector('input[type="checkbox"]')!);
+    fireEvent.click(screen.getByText("שמור"));
+
+    await waitFor(() => expect(rankAdvancementApi.updateRankAdvancementIntervals).toHaveBeenCalled());
+    expect(vi.mocked(rankAdvancementApi.updateRankAdvancementIntervals).mock.calls[0][0]).toContainEqual({
+      track: "officer_academic",
+      rank: "קאב",
+      months_to_next: null,
+      advance_on_career_entry: true,
+    });
+  });
+
+  it("career-entry tooltip icon is present with explanatory text", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+
+    expect((await screen.findAllByTitle("אם מסומן, החייל יקודם אוטומטית לדרגה הבאה ברגע שהוא נכנס לשירות קבע, גם אם התאריך המתוכנן לקידום לדרגה זו עדיין לא הגיע.")).length).toBeGreaterThan(0);
   });
 });
