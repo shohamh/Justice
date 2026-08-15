@@ -11,6 +11,7 @@ export function AdminInviteCodesContent() {
   const codesQuery = useQuery({ queryKey: queryKeys.inviteCodes(), queryFn: listInviteCodes });
   const codes = codesQuery.data ?? [];
   const [usesLeft, setUsesLeft] = useState(5);
+  const [copyState, setCopyState] = useState<Record<string, "copied" | "error">>({});
 
   const createMutation = useMutation({
     mutationFn: createInviteCode,
@@ -25,6 +26,24 @@ export function AdminInviteCodesContent() {
 
   function handleCreate() {
     createMutation.mutate(usesLeft);
+  }
+
+  async function handleCopy(codeId: string, code: string) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(code);
+      setCopyState(state => ({ ...state, [codeId]: "copied" }));
+      window.setTimeout(() => {
+        setCopyState(state => {
+          if (state[codeId] !== "copied") return state;
+          const next = { ...state };
+          delete next[codeId];
+          return next;
+        });
+      }, 2000);
+    } catch {
+      setCopyState(state => ({ ...state, [codeId]: "error" }));
+    }
   }
 
   return (
@@ -51,7 +70,22 @@ export function AdminInviteCodesContent() {
         <tbody>
           {codes.map(c => (
             <tr key={c.id} className={`border-b dark:border-gray-700 ${c.uses_left === 0 ? "opacity-40" : ""}`}>
-              <td className="py-2 font-mono">{c.code}</td>
+              <td className="py-2 font-mono">
+                <span className="inline-flex items-center gap-2">
+                  <span>{c.code}</span>
+                  <button
+                    type="button"
+                    className="text-indigo-600 text-xs hover:underline"
+                    aria-label={`העתקת קוד ${c.code}`}
+                    title={`העתקת קוד ${c.code}`}
+                    onClick={() => handleCopy(c.id, c.code)}
+                  >
+                    העתק
+                  </button>
+                  {copyState[c.id] === "copied" && <span className="text-green-600 text-xs">הועתק</span>}
+                  {copyState[c.id] === "error" && <span className="text-red-600 text-xs">לא ניתן להעתיק — נסה שוב</span>}
+                </span>
+              </td>
               <td className="py-2">{c.uses_left}</td>
               <td className="py-2">
                 <button className="text-red-600 text-xs hover:underline"
