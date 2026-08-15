@@ -5,7 +5,7 @@ export function formatDutyRequirements(
   dutyType: DutyType | undefined,
   requiredRangeType: string | null
 ): string[] {
-  const requirements = dutyType?.requirements;
+  const requirements = dutyType?.requirements ?? {};
   const labels: string[] = [];
 
   if (requiredRangeType) labels.push(RANGE_TYPE_LABELS[requiredRangeType] ?? requiredRangeType);
