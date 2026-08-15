@@ -34,7 +34,7 @@ class RankIntervalIn(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rank_in_track(self) -> "RankIntervalIn":
-        if get_track(self.rank) != self.track:
+        if get_track(self.rank, track=self.track) != self.track:
             raise ValueError(f"rank {self.rank!r} is not part of the {self.track!r} ladder")
         return self
 

@@ -14,6 +14,7 @@ from app.services.rank_advancement import (
     _career_entry_date,
     compute_next_rank_date,
     get_next_rank,
+    resolve_track,
 )
 from app.services.settings_loader import get_setting_int
 
@@ -23,14 +24,18 @@ _POLL_SECONDS = 86400
 
 
 def _promote_soldier(session, soldier: Soldier, *, today: date) -> None:
-    next_rank = get_next_rank(soldier.rank) if soldier.rank else None
+    track = resolve_track(soldier.rank, soldier.rank_track)
+    soldier.rank_track = track
+    next_rank = get_next_rank(soldier.rank, track=track) if soldier.rank else None
     if next_rank is None:
         soldier.next_rank_date = None
         return
     soldier.rank = next_rank
     soldier.current_rank_since = today
     soldier.next_rank_date_overridden = False
-    soldier.next_rank_date = compute_next_rank_date(session, rank=next_rank, since=today)
+    soldier.next_rank_date = compute_next_rank_date(
+        session, rank=next_rank, since=today, track=track
+    )
     notify_rank_advanced(session, soldier_id=soldier.id, new_rank=next_rank)
 
 
@@ -50,10 +55,8 @@ def _promote_on_career_entry(*, today: date | None = None) -> None:
         ).all()
         if not flagged:
             return
-        # rank strings are unique across all three ladders -- see get_track --
-        # so dropping track here is safe; a future collision would silently
-        # misattribute soldiers.
-        flagged_ranks = {rank for _track, rank in flagged}
+        flagged_pairs = set(flagged)
+        flagged_ranks = {rank for _track, rank in flagged_pairs}
         soldiers = session.execute(
             select(Soldier).where(
                 Soldier.rank.in_(flagged_ranks),
@@ -62,6 +65,8 @@ def _promote_on_career_entry(*, today: date | None = None) -> None:
             )
         ).scalars().all()
         for s in soldiers:
+            if (resolve_track(s.rank, s.rank_track), s.rank) not in flagged_pairs:
+                continue
             entry_date = _career_entry_date(s.mandatory_end_date, s.discharge_date)
             if (
                 entry_date is not None
@@ -108,7 +113,8 @@ def _warn_upcoming_soldiers() -> None:
             )
         ).scalars().all()
         for s in soldiers:
-            next_rank = get_next_rank(s.rank) if s.rank else None
+            track = resolve_track(s.rank, s.rank_track)
+            next_rank = get_next_rank(s.rank, track=track) if s.rank else None
             if next_rank is None:
                 continue
             notify_rank_advancement_soon(

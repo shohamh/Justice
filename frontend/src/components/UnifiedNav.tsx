@@ -71,6 +71,7 @@ export default function UnifiedNav() {
   const queryClient = useQueryClient();
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
   const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
+  const canViewTransparency = user?.can_view_transparency !== false;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
   const [pendingCount, setPendingCount] = useState(0);
@@ -165,7 +166,9 @@ export default function UnifiedNav() {
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
     { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", badge: swapIncomingCount, testId: "nav-swaps" },
     { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
-    { label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" },
+    ...(canViewTransparency
+      ? [{ label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" }]
+      : []),
   ];
 
   const commanderTab: NavTab = {

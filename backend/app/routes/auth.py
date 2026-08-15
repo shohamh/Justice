@@ -5,8 +5,8 @@ import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
-from typing import Annotated
-from pydantic import BaseModel, Field, field_validator
+from typing import Annotated, Literal
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from slowapi.util import get_remote_address
 from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
@@ -37,7 +37,7 @@ _LOCKOUT_MINUTES = 15
 
 
 class LoginRequest(BaseModel):
-    personal_number: str = Field(min_length=1, max_length=20)
+    personal_number: str = Field(pattern=r"^[0-9]{7,8}$")
     password: str = Field(min_length=1, max_length=200)
     remember_me: bool = False
 
@@ -56,13 +56,14 @@ class ChangePasswordRequest(BaseModel):
 class RegisterRequest(BaseModel):
     invite_code: str = Field(min_length=1, max_length=20)
     personal_number: str = Field(min_length=1, max_length=20)
-    full_name: str = Field(min_length=1, max_length=200)
-    password: str = Field(min_length=10, max_length=200)
+    full_name: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=8, max_length=200)
     phone: str = Field(max_length=40)
     email: str = Field(max_length=200)
     gender: str
     is_officer: bool | None = None
     rank: str
+    rank_track: Literal["enlisted", "officer", "officer_academic"] | None = None
     enlistment_date: date
     mandatory_end_date: date
     discharge_date: date
@@ -79,6 +80,12 @@ class RegisterRequest(BaseModel):
     def _validate_phone(cls, v: str) -> str:
         if not is_valid_israeli_phone(v):
             raise ValueError("invalid_israeli_phone")
+        return v
+
+    @field_validator("personal_number")
+    @classmethod
+    def _validate_personal_number(cls, v: str) -> str:
+        reg_svc.validate_personal_number(v)
         return v
 
 
@@ -324,8 +331,19 @@ async def register(
     settings = get_settings()
     try:
         body = RegisterRequest.model_validate_json(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except ValidationError as exc:
+        if any(
+            error.get("loc") == ("password",)
+            and error.get("type") == "string_too_short"
+            for error in exc.errors()
+        ):
+            detail = "password_policy"
+        else:
+            detail = "registration_invalid"
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=detail,
+        ) from exc
 
     form = await request.form()
     exemption_files: dict[int, list[tuple[str, str, bytes]]] = {}
@@ -362,6 +380,7 @@ async def register(
             gender=body.gender,
             is_officer=body.is_officer,
             rank=body.rank,
+            rank_track=body.rank_track,
             enlistment_date=body.enlistment_date,
             mandatory_end_date=body.mandatory_end_date,
             discharge_date=body.discharge_date,

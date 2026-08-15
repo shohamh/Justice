@@ -16,6 +16,7 @@ import { formatDate } from "../utils/formatDate";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
+import { parseRankSelectionId, rankSelectionId, RankTrack } from "../constants/ranks";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -90,6 +91,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   // Profile fields
   const [profileGender, setProfileGender] = useState(soldier.gender ?? "");
   const [profileRank, setProfileRank] = useState(soldier.rank ?? "");
+  const [profileRankTrack, setProfileRankTrack] = useState<RankTrack>(soldier.rank_track ?? (soldier.is_officer ? "officer" : "enlisted"));
   const [profileEnlistment, setProfileEnlistment] = useState(soldier.enlistment_date ?? "");
   const [profileMandEnd, setProfileMandEnd] = useState(soldier.mandatory_end_date ?? "");
   const [profileDischarge, setProfileDischarge] = useState(soldier.discharge_date ?? "");
@@ -99,7 +101,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profilePictureUrl, setProfilePictureUrl] = useState(soldier.profile_picture_url ?? "");
   const [profileHasLicense, setProfileHasLicense] = useState(soldier.has_military_driving_license ?? false);
   const [profileLicenseExpiry, setProfileLicenseExpiry] = useState(soldier.military_driving_license_expiry ?? "");
-  const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
+  const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[]; officer_academic: string[] }>({ enlisted: [], officers: [], officer_academic: [] });
 
   const mandatoryEndBeforeEnlistmentError = profileMandEnd && profileEnlistment && profileMandEnd < profileEnlistment
     ? t("register.mandatory_end_before_enlistment")
@@ -110,6 +112,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     setPhone(soldierData.phone ?? "");
     setHierarchyNodeId(soldierData.hierarchy_node_id ?? "");
     setEnrolledAt(soldierData.enrolled_at ?? "");
+    setProfileRank(soldierData.rank ?? "");
+    setProfileRankTrack(soldierData.rank_track ?? (soldierData.is_officer ? "officer" : "enlisted"));
   }, [soldierData]);
 
   useEffect(() => {
@@ -154,6 +158,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       await updateSoldierProfile(soldierData.id, {
         gender: profileGender || null,
         rank: profileRank || null,
+        rank_track: profileRank ? profileRankTrack : null,
+        is_officer: profileRank ? profileRankTrack !== "enlisted" : null,
         enlistment_date: profileEnlistment || null,
         mandatory_end_date: profileMandEnd || null,
         discharge_date: profileDischarge || null,
@@ -438,11 +444,17 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <span className="text-xs">{t("soldier_profile.rank")}</span>
                 <Combobox
                   items={[
-                    ...rankOptions.enlisted.map(r => ({ id: r, name: r, group: t("soldier_profile.enlisted") })),
-                    ...rankOptions.officers.map(r => ({ id: r, name: r, group: t("soldier_profile.officers") })),
+                    ...rankOptions.enlisted.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: t("soldier_profile.enlisted") })),
+                    ...rankOptions.officers.map(r => ({ id: rankSelectionId("officer", r), name: r, group: t("soldier_profile.officers") })),
+                    ...rankOptions.officer_academic.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
                   ]}
-                  value={profileRank}
-                  onChange={setProfileRank}
+                  value={profileRank ? rankSelectionId(profileRankTrack, profileRank) : ""}
+                  onChange={v => {
+                    const selection = parseRankSelectionId(v);
+                    if (!selection) return;
+                    setProfileRank(selection.rank);
+                    setProfileRankTrack(selection.rankTrack);
+                  }}
                   placeholder="—"
                 />
               </label>

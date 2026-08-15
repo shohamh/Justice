@@ -23,6 +23,7 @@ import { getPreferences, updatePreferences, listCommanderScopes, addCommanderSco
 import { fetchTree, NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
+import { parseRankSelectionId, rankSelectionId } from "../constants/ranks";
 import DateInput from "../components/DateInput";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
@@ -73,7 +74,7 @@ export default function ProfilePage() {
   const fieldUpdates = fieldUpdatesQuery.data ?? [];
 
   const ranksQuery = useQuery({ queryKey: queryKeys.ranks(), queryFn: getRanks });
-  const ranks = ranksQuery.data ?? { enlisted: [], officers: [] };
+  const ranks = ranksQuery.data ?? { enlisted: [], officers: [], officer_academic: [] };
 
   // Poll while tgPolling is true (i.e. while waiting for the user to confirm
   // the link code via the Telegram bot); stop once verified.
@@ -311,15 +312,19 @@ export default function ProfilePage() {
             <div className="flex-1">
               <Combobox
                 items={[
-                  ...ranks.enlisted.map(r => ({ id: r, name: r, group: t("soldier_profile.enlisted") })),
-                  ...ranks.officers.map(r => ({ id: r, name: r, group: t("soldier_profile.officers") })),
-                ]}
-                value={rankReq}
-                onChange={setRankReq}
+                ...ranks.enlisted.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: t("soldier_profile.enlisted") })),
+                ...ranks.officers.map(r => ({ id: rankSelectionId("officer", r), name: r, group: t("soldier_profile.officers") })),
+                ...ranks.officer_academic.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
+              ]}
+              value={rankReq}
+              onChange={setRankReq}
                 placeholder="—"
               />
             </div>
-            <button type="button" onClick={() => requestUpdate("rank", rankReq)} disabled={!rankReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => {
+              const selection = parseRankSelectionId(rankReq);
+              if (selection) void requestUpdate("rank", JSON.stringify({ rank: selection.rank, rank_track: selection.rankTrack }));
+            }} disabled={!rankReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>

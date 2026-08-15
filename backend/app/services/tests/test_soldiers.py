@@ -157,6 +157,24 @@ def test_update_soldier_profile_derives_is_career_from_dates(admin_session):
     assert soldier.is_career is True
 
 
+def test_update_soldier_profile_persists_academic_track_for_shared_rank(admin_session):
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920012")
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={
+            "rank": "סרן",
+            "rank_track": "officer_academic",
+            "mandatory_end_date": date(2020, 1, 1),
+            "discharge_date": date(2030, 1, 1),
+        }, actor_id=None,
+    )
+
+    assert soldier.rank_track == "officer_academic"
+
+
 def test_update_soldier_profile_allows_unrelated_edit_on_grandfathered_bad_rank_track(admin_session):
     """A pre-existing soldier row with an incompatible rank/track combo (e.g.
     created before validate_rank_track_compatibility existed) must not be

@@ -1,6 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
-import { getPublicRankLadder, getRankLadder, RankLadder } from "../api/rankAdvancement";
+import { getPublicRankLadder, getRankLadder, RankLadder, RankTrack } from "../api/rankAdvancement";
 import { queryKeys } from "../queryKeys";
+
+export type { RankTrack } from "../api/rankAdvancement";
+
+export function rankSelectionId(track: RankTrack, rank: string): string {
+  return `${track}:${rank}`;
+}
+
+export function parseRankSelectionId(value: string): { rank: string; rankTrack: RankTrack } | null {
+  const separator = value.indexOf(":");
+  if (separator < 1) return null;
+  const rankTrack = value.slice(0, separator);
+  if (rankTrack !== "enlisted" && rankTrack !== "officer" && rankTrack !== "officer_academic") return null;
+  return { rank: value.slice(separator + 1), rankTrack };
+}
 
 // Mirrors backend/app/services/eligibility.py ENLISTED_RANKS / OFFICER_RANKS.
 // Kept as an internal, unexported list: it backs the static rank/track-
@@ -19,12 +33,6 @@ const OFFICER_RANKS = [
 ];
 
 const OFFICER_RANK_SET = new Set(OFFICER_RANKS);
-
-// קמא sits outside every advancement ladder (see rank_advancement.py) --
-// promoting off it is a manual action, not automated -- so it never appears
-// in the /rank-ladder response. It's still a fully valid, assignable rank,
-// so pickers built from the ladder response need it added back explicitly.
-const UNLADDERED_OFFICER_RANKS = ["קמא"];
 
 export function isOfficerRank(rank: string): boolean {
   return OFFICER_RANK_SET.has(rank);
@@ -71,13 +79,13 @@ export function deriveBahad1Graduate(rank: string): boolean {
 export function deriveIsCareer(
   rank: string,
   mandatoryEndDate: string,
-  dischargeDate: string,
+  _dischargeDate: string,
   todayIso: string = new Date().toISOString().slice(0, 10),
 ): boolean {
   if (CHOVAH_ONLY_RANKS.includes(rank)) return false;
   if (!mandatoryEndDate) return false;
   if (todayIso <= mandatoryEndDate) return false;
-  return !dischargeDate || dischargeDate > mandatoryEndDate;
+  return true;
 }
 
 // ── Rank ladder (API-backed) ────────────────────────────────────────────────
@@ -86,7 +94,7 @@ export function deriveIsCareer(
 // so it can be edited without a frontend deploy. This hook is the sole
 // frontend source of rank order; consumers that previously read the
 // ENLISTED_RANKS/OFFICER_RANKS constants (e.g. to build a rank picker) should
-// use enlistedRanks/officerRanks/allRanks from this hook instead.
+// use enlistedRanks/officerRanks/officerAcademicRanks/allRanks from this hook instead.
 export function useRankLadder() {
   return withLadderFields(
     useQuery({ queryKey: queryKeys.rankLadder(), queryFn: getRankLadder }),
@@ -106,18 +114,15 @@ export function usePublicRankLadder() {
 
 function withLadderFields<T extends { data?: RankLadder }>(query: T) {
   const enlistedRanks = query.data?.enlisted.map((e) => e.rank) ?? [];
-  const officerRanks = query.data
-    ? [
-        ...UNLADDERED_OFFICER_RANKS,
-        ...query.data.officer.map((e) => e.rank),
-        ...query.data.officer_academic.map((e) => e.rank),
-      ]
-    : [];
+  const officerRanks = query.data?.officer.map((e) => e.rank) ?? [];
+  const officerAcademicRanks = query.data?.officer_academic.map((e) => e.rank) ?? [];
+  const allOfficerRanks = Array.from(new Set([...officerRanks, ...officerAcademicRanks]));
   return {
     ...query,
     ladder: query.data,
     enlistedRanks,
     officerRanks,
-    allRanks: [...enlistedRanks, ...officerRanks],
+    officerAcademicRanks,
+    allRanks: [...enlistedRanks, ...allOfficerRanks],
   };
 }

@@ -61,11 +61,15 @@ def test_single_shift_with_missing_duty_type_gets_hash_color_not_black(admin_ses
 
 def test_calendar_shifts_with_missing_duty_type_gets_hash_color_not_black(admin_session):
     node = create_node(admin_session, level="division", name="div_calshift2")
-    create_soldier(admin_session, personal_number="calshift2-1", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="calshift2-1", hierarchy_node_id=node.id)
     dt, loc = _make_duty_type_and_location(admin_session, "2")
     shift = create_shift(
         admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
         start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+    )
+    create_assignment(
+        admin_session, soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2), duty_shift_id=shift.id,
     )
     admin_session.commit()
 

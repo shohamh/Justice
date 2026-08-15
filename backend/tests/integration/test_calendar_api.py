@@ -16,6 +16,7 @@ from app.db.models import (
     RangeEvent,
     RangeType,
     SoldierRangeQualification,
+    SystemSetting,
 )
 from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_range_location, create_soldier
@@ -508,6 +509,122 @@ def test_calendar_shifts_excludes_shift_with_no_assignees_in_node(
     )
     assert r.status_code == 200
     assert len(r.json()["shifts"]) == 0
+
+
+def test_calendar_shifts_only_includes_duties_assigned_to_selected_subtree(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="7100011", role="admin")
+    mars = create_node(admin_session, level="team", name="צוות מארס")
+    other = create_node(admin_session, level="team", name="צוות אחר")
+    mars_soldier = create_soldier(
+        admin_session, personal_number="7100012", hierarchy_node_id=mars.id
+    )
+    other_soldier = create_soldier(
+        admin_session, personal_number="7100013", hierarchy_node_id=other.id
+    )
+    duty_type = DutyType(name="calendar-node-filter", score_per_day=Decimal("1.00"))
+    location = DutyLocation(name="calendar-node-filter-location")
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+
+    def add_shift(soldier_id=None):
+        shift = DutyShift(
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            start_date=date(2026, 11, 7),
+            end_date=date(2026, 11, 8),
+            required_count=1,
+            status="active",
+        )
+        admin_session.add(shift)
+        admin_session.flush()
+        if soldier_id is not None:
+            admin_session.add(
+                DutyAssignment(
+                    soldier_id=soldier_id,
+                    duty_type_id=duty_type.id,
+                    duty_location_id=location.id,
+                    duty_shift_id=shift.id,
+                    start_date=date(2026, 11, 7),
+                    end_date=date(2026, 11, 8),
+                    status="published",
+                )
+            )
+        return shift
+
+    mars_shift = add_shift(mars_soldier.id)
+    add_shift(other_soldier.id)
+    add_shift()
+    admin_session.commit()
+
+    response = client.get(
+        f"/api/calendar/shifts?node_id={mars.id}&date_from=2026-11-07&date_to=2026-11-07",
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200, response.text
+    assert {shift["id"] for shift in response.json()["shifts"]} == {str(mars_shift.id)}
+
+
+def test_framework_calendar_includes_open_duties(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="7100014", role="admin")
+    root = create_node(admin_session, level="corps", name="כלל המסגרת")
+    admin_session.add(
+        SystemSetting(key="system.root_node_id", value=str(root.id), updated_by=None)
+    )
+    unit = create_node(admin_session, level="team", name="צוות עם חיילים", parent=root)
+    soldier = create_soldier(
+        admin_session, personal_number="7100015", hierarchy_node_id=unit.id
+    )
+    duty_type = DutyType(name="framework-calendar-filter", score_per_day=Decimal("1.00"))
+    location = DutyLocation(name="framework-calendar-filter-location")
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+
+    assigned_shift = DutyShift(
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 11, 9),
+        end_date=date(2026, 11, 10),
+        required_count=1,
+        status="active",
+    )
+    open_shift = DutyShift(
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 11, 9),
+        end_date=date(2026, 11, 10),
+        required_count=1,
+        status="active",
+    )
+    admin_session.add_all([assigned_shift, open_shift])
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id,
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            duty_shift_id=assigned_shift.id,
+            start_date=date(2026, 11, 9),
+            end_date=date(2026, 11, 10),
+            status="published",
+        )
+    )
+    admin_session.commit()
+
+    response = client.get(
+        f"/api/calendar/shifts?node_id={root.id}&date_from=2026-11-09&date_to=2026-11-09",
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200, response.text
+    assert {shift["id"] for shift in response.json()["shifts"]} == {
+        str(assigned_shift.id),
+        str(open_shift.id),
+    }
 
 
 def _create_dismissal(session, assignment_id, reason="בעיה רפואית"):

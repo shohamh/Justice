@@ -17,6 +17,10 @@ vi.mock("./pages/HakpazaPage", () => ({
   default: () => <div data-testid="hakpaza-page" />,
 }));
 
+vi.mock("./pages/RangesPage", () => ({
+  default: () => <div data-testid="ranges-page" />,
+}));
+
 // HomePage pulls in a deep tree (Layout/UnifiedNav -> AlgorithmSeenContext,
 // plus several data-fetching widgets) that isn't relevant to routing/gating
 // behavior — stub it so the TelegramGate tests below can render "/" without
@@ -89,6 +93,15 @@ describe("App - forced callup gating", () => {
       </MemoryRouter>
     );
     expect(screen.queryByTestId("hakpaza-page")).not.toBeInTheDocument();
+  });
+});
+
+describe("App - ranges routing", () => {
+  it("keeps the ranges route available while public settings are loading", () => {
+    mockUsePublicSettings.mockReturnValue(null);
+    renderApp("/ranges");
+
+    expect(screen.getByTestId("ranges-page")).toBeInTheDocument();
   });
 });
 

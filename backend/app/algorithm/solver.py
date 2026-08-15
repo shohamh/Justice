@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from ortools.sat.python.cp_model import CpModel, CpSolver, CpSolverSolutionCallback, IntVar
 
+from app.algorithm.availability import analyze_duty_availability, eligibility_blockers
 from app.algorithm.model import (
     _block_score,
     _duty_dates,
@@ -26,7 +27,6 @@ from app.algorithm.types import (
     SoldierInput,
     SolverResult,
     SolverSettings,
-    node_in_scope,
 )
 
 # Default CP-SAT random seed used whenever a caller doesn't specify one, so
@@ -299,27 +299,15 @@ def _eligible_pairs(
     hierarchy node).
     """
     pairs: list[tuple[int, int]] = []
-    constraint_dates: list[set] = []
-    for s in soldiers:
-        dates: set = set()
-        for cs, ce in s.approved_constraint_dates:
-            d = cs
-            while d <= ce:
-                dates.add(d)
-                d += timedelta(days=1)
-        constraint_dates.append(dates)
     for di, d in enumerate(duties):
-        ddates = _duty_dates(d)
+        ddates = set(_duty_dates(d))
         for si, s in enumerate(soldiers):
-            if d.duty_type_id in s.exempted_duty_type_ids:
-                continue
-            if any(t in constraint_dates[si] for t in ddates):
-                continue
-            if not node_in_scope(d.eligible_node_ids, s.path_ids):
-                continue
-            if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
-                continue
-            if d.id in s.future_ineligible_duty_block_ids:
+            if eligibility_blockers(
+                s,
+                d,
+                enforce_weapon_qualification=settings.enforce_weapon_qualification,
+                duty_dates=ddates,
+            ):
                 continue
             pairs.append((di, si))
     return pairs
@@ -510,6 +498,14 @@ def _interleaved_solve(
                     shift_id=duties[di].id,
                     required_count=1,
                     assigned_count=1 if duties[di].id in assigned_duty_ids else 0,
+                    eligible_count=(availability := analyze_duty_availability(
+                        sub_soldiers,
+                        duties[di],
+                        existing=carry_existing,
+                        enforce_weapon_qualification=batch_settings.enforce_weapon_qualification,
+                    )).eligible_count,
+                    available_count=availability.available_count,
+                    blocker_counts=availability.blocker_counts,
                 )
                 for di in batch
             ],
@@ -661,6 +657,14 @@ def _decomposed_solve(
                 shift_id=duties[di].id,
                 required_count=1,
                 assigned_count=1 if duties[di].id in assigned_duty_ids else 0,
+                eligible_count=(availability := analyze_duty_availability(
+                    sub_soldiers,
+                    duties[di],
+                    existing=carry_existing,
+                    enforce_weapon_qualification=batch_settings.enforce_weapon_qualification,
+                )).eligible_count,
+                available_count=availability.available_count,
+                blocker_counts=availability.blocker_counts,
             )
             for di in batch
         ]
@@ -1144,7 +1148,22 @@ def _effort_round_solve(
                     outcome="INFEASIBLE",
                     relaxations=[],
                     wall_time_seconds=0.0,
-                    shifts=[BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=0) for d in component_duties],
+                    shifts=[
+                        BatchShiftFill(
+                            shift_id=d.id,
+                            required_count=1,
+                            assigned_count=0,
+                            eligible_count=(availability := analyze_duty_availability(
+                                work,
+                                d,
+                                existing=carry,
+                                enforce_weapon_qualification=settings.enforce_weapon_qualification,
+                            )).eligible_count,
+                            available_count=availability.available_count,
+                            blocker_counts=availability.blocker_counts,
+                        )
+                        for d in component_duties
+                    ],
                 ))
             duties_done += len(duty_idxs)
             if progress_cb:
@@ -1203,7 +1222,19 @@ def _effort_round_solve(
             relaxations=component_relaxed,
             wall_time_seconds=round(time.monotonic() - t0, 3),
             shifts=[
-                BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=1 if d.id in assigned_ids_here else 0)
+                BatchShiftFill(
+                    shift_id=d.id,
+                    required_count=1,
+                    assigned_count=1 if d.id in assigned_ids_here else 0,
+                    eligible_count=(availability := analyze_duty_availability(
+                        full_pool,
+                        d,
+                        existing=carry,
+                        enforce_weapon_qualification=settings.enforce_weapon_qualification,
+                    )).eligible_count,
+                    available_count=availability.available_count,
+                    blocker_counts=availability.blocker_counts,
+                )
                 for d in component_duties
             ],
             saturation_clusters=saturation_clusters,

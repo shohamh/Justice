@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { RankTrack } from "./rankAdvancement";
 
 export interface EnrollmentExemptionDTO {
   id: string;
@@ -22,6 +23,7 @@ export interface EnrollmentRequestDTO {
   phone: string | null;
   email: string | null;
   rank: string | null;
+  rank_track: RankTrack | null;
   is_officer: boolean | null;
   is_career: boolean;
   gender: string | null;
@@ -57,6 +59,7 @@ export async function patchEnrollment(
     phone?: string | null;
     email?: string | null;
     rank?: string | null;
+    rank_track?: RankTrack | null;
     is_officer?: boolean | null;
     gender?: string | null;
     enlistment_date?: string | null;

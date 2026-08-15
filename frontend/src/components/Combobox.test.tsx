@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import Combobox, { type ComboboxItem } from "./Combobox";
 
 const items: ComboboxItem[] = [
@@ -27,6 +27,29 @@ test("typing filters the list via fuzzy search", () => {
   fireEvent.change(input, { target: { value: "gam" } });
   expect(screen.getByText("Gamma")).toBeInTheDocument();
   expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
+});
+
+test("typing an exact item name selects it on blur", async () => {
+  const onChange = vi.fn();
+  render(<Combobox items={items} value="" onChange={onChange} />);
+  const input = screen.getByRole("combobox");
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: "Beta" } });
+  fireEvent.blur(input);
+
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith("2"));
+});
+
+test("typing a non-exact item name does not select it on blur", async () => {
+  const onChange = vi.fn();
+  render(<Combobox items={items} value="" onChange={onChange} />);
+  const input = screen.getByRole("combobox");
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: "Bet" } });
+  fireEvent.blur(input);
+
+  await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+  expect(onChange).not.toHaveBeenCalled();
 });
 
 test("clicking an item calls onChange with its id and closes the list", () => {

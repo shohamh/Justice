@@ -28,10 +28,24 @@ function isoToDisplay(iso: string | undefined): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+function isoToDigits(iso: string | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+  return m ? `${m[3]}${m[2]}${m[1]}` : "";
+}
+
+function expandTwoDigitYear(yearDigits: string): string {
+  const year = Number(yearDigits) < 50 ? 2000 + Number(yearDigits) : 1900 + Number(yearDigits);
+  return String(year);
+}
+
 function displayToIso(display: string): string | null {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(display);
+  const m = /^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/.exec(display);
   if (!m) return null;
-  const [, dd, mm, yyyy] = m;
+  const [, dd, mm, yearDigits] = m;
+  const year = yearDigits.length === 2
+    ? Number(expandTwoDigitYear(yearDigits))
+    : Number(yearDigits);
+  const yyyy = String(year).padStart(4, "0");
   const d = Number(dd), mo = Number(mm), y = Number(yyyy);
   const dt = new Date(y, mo - 1, d);
   if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
@@ -44,15 +58,27 @@ function formatAsTyped(digits: string): string {
   return digits;
 }
 
+function formatDateDigits(digits: string, expandShortYear = true): string {
+  if (digits.length === 6 && expandShortYear) {
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${expandTwoDigitYear(digits.slice(4))}`;
+  }
+  return formatAsTyped(digits);
+}
+
 export default function DateInput({
   value, defaultValue, onChange, onBlur, className, disabled, required, autoFocus, min, max, id, ...rest
 }: DateInputProps) {
   const isControlled = value !== undefined;
   const [text, setText] = useState(() => isoToDisplay(value ?? defaultValue));
+  const rawDigitsRef = useRef(isoToDigits(value ?? defaultValue));
+  const isTypingRef = useRef(false);
   const nativeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isControlled) setText(isoToDisplay(value));
+    if (isControlled && !isTypingRef.current) {
+      setText(isoToDisplay(value));
+      rawDigitsRef.current = isoToDigits(value);
+    }
   }, [isControlled, value]);
 
   function commit(iso: string) {
@@ -60,15 +86,28 @@ export default function DateInput({
     else onBlur?.(iso);
   }
 
-  function handleTextChange(raw: string) {
-    const digits = raw.replace(/\D/g, "").slice(0, 8);
-    const formatted = formatAsTyped(digits);
+  function handleTextChange(raw: string, deleting = false) {
+    const typedDigits = raw.replace(/\D/g, "");
+    const previousDigits = rawDigitsRef.current;
+    // A six-digit date is displayed with an implied four-digit year (e.g.
+    // 010320 -> 01/03/2020). If the user types another digit, the browser
+    // reports the already-expanded display plus that new digit. Recover the
+    // user's raw buffer so the implied zero does not consume their keystroke.
+    const impliedDisplayDigits = previousDigits.length === 6
+      ? `${previousDigits.slice(0, 4)}${expandTwoDigitYear(previousDigits.slice(4))}`
+      : "";
+    const digits = impliedDisplayDigits && typedDigits.startsWith(impliedDisplayDigits)
+      ? `${previousDigits}${typedDigits.slice(impliedDisplayDigits.length)}`.slice(0, 8)
+      : typedDigits.slice(0, 8);
+    const formatted = formatDateDigits(digits, !deleting);
+    rawDigitsRef.current = digits;
+    isTypingRef.current = true;
     setText(formatted);
     if (formatted === "") {
       commit("");
       return;
     }
-    if (formatted.length === 10) {
+    if (digits.length === 6 || digits.length === 8) {
       const iso = displayToIso(formatted);
       if (iso) commit(iso);
     }
@@ -76,11 +115,14 @@ export default function DateInput({
 
   function handleTextBlur() {
     const iso = displayToIso(text);
+    isTypingRef.current = false;
     onBlur?.(iso ?? "");
   }
 
   function handleNativePick(raw: string) {
     setText(isoToDisplay(raw));
+    rawDigitsRef.current = isoToDigits(raw);
+    isTypingRef.current = false;
     commit(raw);
   }
 
@@ -102,7 +144,7 @@ export default function DateInput({
         autoFocus={autoFocus}
         id={id}
         data-testid={rest["data-testid"]}
-        onChange={e => handleTextChange(e.target.value)}
+        onChange={e => handleTextChange(e.target.value, (e.nativeEvent as InputEvent).inputType?.startsWith("delete"))}
         onBlur={handleTextBlur}
         className={className}
       />

@@ -4,14 +4,14 @@
     Start the full dev stack in one window (DB only in Docker).
     All services stream logs here with colored prefixes.
 
-.PARAMETER NoBot
-    Skip the Telegram bot.
+.PARAMETER TelegramBot
+    Include the Telegram bot.
 
 .EXAMPLE
-    .\dev.ps1
-    .\dev.ps1 -NoBot
+    .\dev.ps1                 # backend + frontend (default)
+    .\dev.ps1 -TelegramBot   # include the Telegram bot
 #>
-param([switch]$NoBot)
+param([switch]$TelegramBot)
 
 $root = $PSScriptRoot
 
@@ -154,13 +154,13 @@ $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" run_dev_server.py")
 $names.Add("frontend"); $colors.Add("yellow")
 $cmds.Add("cd /d `"$root\frontend`" && npm run dev")
 
-if (-not $NoBot) {
+if ($TelegramBot) {
     $names.Add("bot");  $colors.Add("magenta")
     $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
 }
 
 # ── Kill any stale bot processes ─────────────────────────────────────────────
-if (-not $NoBot) {
+if ($TelegramBot) {
     $botProcs = Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
         Where-Object { $_.CommandLine -match 'bot\.main|run_dev_bot\.py' }
     if ($botProcs) {

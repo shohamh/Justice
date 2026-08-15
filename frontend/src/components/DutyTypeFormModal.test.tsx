@@ -33,7 +33,7 @@ vi.mock("../api/dutyConfig", () => ({
 }));
 
 vi.mock("../api/soldiers", () => ({
-  getRanks: vi.fn(() => Promise.resolve({ enlisted: [], officers: [] })),
+  getRanks: vi.fn(() => Promise.resolve({ enlisted: [], officers: [], officer_academic: [] })),
 }));
 
 vi.mock("../api/hierarchy", () => ({

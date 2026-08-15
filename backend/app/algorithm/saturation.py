@@ -9,26 +9,19 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import date
 
+from app.algorithm.availability import is_eligible
 from app.algorithm.types import (
     Assignment,
     DutyBlock,
     ExistingAssignment,
     SaturationCluster,
     SoldierInput,
-    node_in_scope,
 )
 
 
 def _eligible(soldier: SoldierInput, duty: DutyBlock) -> bool:
     """Mirrors solver._eligible_pairs' filter for a single (soldier, duty) pair."""
-    if duty.duty_type_id in soldier.exempted_duty_type_ids:
-        return False
-    for cs, ce in soldier.approved_constraint_dates:
-        if cs < duty.end_date and ce >= duty.start_date:
-            return False
-    if not node_in_scope(duty.eligible_node_ids, soldier.path_ids):
-        return False
-    return True
+    return is_eligible(soldier, duty)
 
 
 def _date_ranges_overlap(a_start: date, a_end: date, b_start: date, b_end: date) -> bool:

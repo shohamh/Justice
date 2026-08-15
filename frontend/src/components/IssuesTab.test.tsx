@@ -102,3 +102,28 @@ test("still recommends raising relax ceiling for non-saturated relaxation shortf
   );
   expect(screen.getByText(/relax_r_ceiling/)).toBeInTheDocument();
 });
+
+test("explains hard eligibility shortfalls using solver blocker counts", () => {
+  const batch: BatchResult = {
+    ...SATURATED_BATCH,
+    relaxations: [],
+    saturation_clusters: [],
+    shifts: [{
+      shift_id: "shift-1",
+      required_count: 1,
+      assigned_count: 0,
+      eligible_count: 0,
+      available_count: 0,
+      blocker_counts: { range_qualification: 1 },
+    }],
+  };
+  render(
+    <IssuesTab
+      job={makeJob([batch])}
+      dutyTypes={dutyTypes}
+      shiftNames={{ "shift-1": "שמירת שער" }}
+      shiftsById={{}}
+    />
+  );
+  expect(screen.getByText(/מטווח/)).toBeInTheDocument();
+});

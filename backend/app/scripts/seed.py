@@ -25,7 +25,7 @@ for _i, _a in enumerate(_sys.argv):
         break
 
 import uuid
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 import math
 
@@ -64,6 +64,15 @@ from app.db.models import (
 from app.db.session import SessionLocal
 from app.services.invite_codes import create_invite_code
 from app.services.ranges import mark_attendance
+from app.services.rank_advancement import resolve_track
+
+SEED_RANGE_REQUIRED_COUNT = 25
+SEED_RANGE_RESERVE_COUNT = 5
+
+
+def _alal_dates_before_ganash(ganash_dates: list[date]) -> list[date]:
+    """Return one אל"ל date immediately before every הגנ"ש date."""
+    return [ganash_date - timedelta(days=1) for ganash_date in ganash_dates]
 
 
 def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = False):
@@ -198,8 +207,6 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 return s
             raise RuntimeError(f"Soldier {pn} not created yet — ordering bug")
 
-        from datetime import timedelta
-
         seed_today = date.today()
 
         # Mandatory service: men 32 months (2 yrs 8 mo), women 24 months (2 yrs)
@@ -239,6 +246,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 enrolled_at=date(2026, 1, 15),
                 must_change_password=False,
                 **extra,
+                rank_track=resolve_track(extra.get("rank"), None),
             )
             session.add(s)
             session.flush()
@@ -677,6 +685,9 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             "שמירות": "laser",
             'אבט"ש': "laser",
             'הגנ"ש': "alal",
+            "קצין תורן": "laser",
+            "מפקד תורן": "laser",
+            'קצין מלווה אבט"ש': "laser",
         }
         duty_types = []
         for name, spd, desc, reqs, rr, rmin, is_ext, cname, cphone, stime, etime, instrs in dt_defs:
@@ -753,7 +764,6 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                     )
                 )
 
-        from datetime import timedelta
         from random import choice, randint
 
         today = date.today()
@@ -996,7 +1006,6 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             fu_count += 1
 
         # ── Duty shifts ──────────────────────────────────────────────
-        from datetime import timedelta
         import itertools
 
         today = date.today()
@@ -1649,8 +1658,8 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 range_type=RangeType.laser,
                 date=today - timedelta(days=14),
                 range_location_id=range_locations["מטווח דרום"].id,
-                required_count=3,
-                reserve_count=1,
+                required_count=SEED_RANGE_REQUIRED_COUNT,
+                reserve_count=SEED_RANGE_RESERVE_COUNT,
                 status=RangeEventStatus.planned,
                 arrival_instructions="התייצבות בשער הראשי בשעה 06:30, ציוד אישי מלא.",
                 contact_name="סמל מטווחים",
@@ -1687,8 +1696,8 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 range_type=RangeType.live,
                 date=today + timedelta(days=10),
                 range_location_id=range_locations["מטווח חי - שדה האש הצפוני"].id,
-                required_count=4,
-                reserve_count=2,
+                required_count=SEED_RANGE_REQUIRED_COUNT,
+                reserve_count=SEED_RANGE_RESERVE_COUNT,
                 status=RangeEventStatus.planned,
                 arrival_instructions="התייצבות ליד מוסך הרכבים בשעה 05:30. חובה קסדה ואפוד.",
                 contact_name="קצין מטווחים",
@@ -1709,13 +1718,50 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 range_type=RangeType.alal,
                 date=today + timedelta(days=30),
                 range_location_id=range_locations["שטח אימונים - אלל"].id,
-                required_count=6,
-                reserve_count=2,
+                required_count=SEED_RANGE_REQUIRED_COUNT,
+                reserve_count=SEED_RANGE_RESERVE_COUNT,
                 status=RangeEventStatus.planned,
                 created_by=s_admin.id,
                 notes='אימון לפני לחימה - שיבוץ יבוצע בהמשך',
             )
             session.add(far_event)
+
+            # Additional events of both weapon-qualified types keep the demo
+            # calendar useful beyond the first live-fire event.
+            for range_type, event_date, location_name, notes in [
+                (RangeType.laser, today + timedelta(days=5), "מטווח דרום", "מטווח לייזר נוסף"),
+                (RangeType.live, today + timedelta(days=17), "מטווח חי - שדה האש הצפוני", "מטווח חי נוסף"),
+                (RangeType.laser, today + timedelta(days=24), "מטווח דרום", "מטווח לייזר רענון"),
+                (RangeType.live, today + timedelta(days=38), "מטווח חי - שדה האש הצפוני", "מטווח חי רבעוני"),
+            ]:
+                session.add(RangeEvent(
+                    hierarchy_node_id=range_node.id,
+                    range_type=range_type,
+                    date=event_date,
+                    range_location_id=range_locations[location_name].id,
+                    required_count=SEED_RANGE_REQUIRED_COUNT,
+                    reserve_count=SEED_RANGE_RESERVE_COUNT,
+                    status=RangeEventStatus.planned,
+                    created_by=s_admin.id,
+                    notes=notes,
+                ))
+
+            # Every seeded הגנ"ש shift gets an אל"ל event the day before it.
+            # This deliberately exercises planned-range projection for the
+            # duty's required range type across the full eight-week schedule.
+            ganash_dates = [next_thu + timedelta(weeks=week) for week in range(8)]
+            for event_date in _alal_dates_before_ganash(ganash_dates):
+                session.add(RangeEvent(
+                    hierarchy_node_id=range_node.id,
+                    range_type=RangeType.alal,
+                    date=event_date,
+                    range_location_id=range_locations["שטח אימונים - אלל"].id,
+                    required_count=SEED_RANGE_REQUIRED_COUNT,
+                    reserve_count=SEED_RANGE_RESERVE_COUNT,
+                    status=RangeEventStatus.planned,
+                    created_by=s_admin.id,
+                    notes='אל"ל יום לפני הגנ"ש',
+                ))
 
         session.commit()
         import sys

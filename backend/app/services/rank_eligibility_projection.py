@@ -18,7 +18,7 @@ from app.services.rank_advancement import (
     advances_on_career_entry,
     compute_next_rank_date,
     get_next_rank,
-    get_track,
+    resolve_track,
 )
 
 
@@ -67,6 +67,7 @@ def project_soldier_state(
     available for the newly current rank; a rank attained on entry does not.
     """
     rank = soldier.rank
+    track = resolve_track(rank, soldier.rank_track)
     next_date = soldier.next_rank_date
     # Invariant across the whole walk: it depends only on mandatory_end_date /
     # discharge_date, neither of which the loop mutates. Hoisted out so the
@@ -77,7 +78,7 @@ def project_soldier_state(
     for _ in range(_MAX_CHAIN_STEPS):
         if rank is None:
             break
-        next_rank = get_next_rank(rank)
+        next_rank = get_next_rank(rank, track=track)
         if next_rank is None:
             break
         effective_date = next_date
@@ -100,7 +101,9 @@ def project_soldier_state(
                 enlistment_date=soldier.enlistment_date,
             )
             and (effective_date is None or entry_date <= effective_date)
-            and _advances_on_career_entry(session, rank=rank, interval_cache=interval_cache)
+            and _advances_on_career_entry(
+                session, rank=rank, track=track, interval_cache=interval_cache
+            )
         )
         if career_entry_transition:
             effective_date = entry_date
@@ -111,7 +114,7 @@ def project_soldier_state(
         if career_entry_transition:
             career_entry_consumed = True
         next_date = _next_rank_date(
-            session, rank=rank, since=effective_date, interval_cache=interval_cache
+            session, rank=rank, track=track, since=effective_date, interval_cache=interval_cache
         )
 
     is_career = derive_is_career(rank, soldier.mandatory_end_date, soldier.discharge_date, today=as_of)
@@ -129,13 +132,14 @@ def _next_rank_date(
     session: Session,
     *,
     rank: str,
+    track: str | None,
     since: date,
     interval_cache: dict[tuple[str, str], IntervalCacheEntry] | None,
 ) -> date | None:
     """compute_next_rank_date, but served from `interval_cache` when provided."""
     if interval_cache is None:
-        return compute_next_rank_date(session, rank=rank, since=since)
-    track = get_track(rank)
+        return compute_next_rank_date(session, rank=rank, since=since, track=track)
+    track = resolve_track(rank, track)
     if track is None:
         return None
     entry = interval_cache.get((track, rank))
@@ -151,11 +155,12 @@ def _advances_on_career_entry(
     session: Session,
     *,
     rank: str,
+    track: str | None,
     interval_cache: dict[tuple[str, str], IntervalCacheEntry] | None,
 ) -> bool:
     """rank_advancement.advances_on_career_entry, served from `interval_cache`
     when provided (same cached/uncached split as _next_rank_date)."""
-    track = get_track(rank)
+    track = resolve_track(rank, track)
     if track is None:
         return False
     if interval_cache is not None:

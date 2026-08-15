@@ -15,8 +15,11 @@ import PasswordInput from "../components/PasswordInput";
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
+import { fullNameValid } from "../utils/nameValidation";
+import { personalNumberValid } from "../utils/personalNumberValidation";
+import { personalConstraintComplete } from "../utils/constraintValidation";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
-import { usePublicRankLadder, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
+import { usePublicRankLadder, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate, rankSelectionId, parseRankSelectionId, RankTrack } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -53,7 +56,7 @@ interface ConstraintRow { start_date: string; end_date: string; reason: string; 
 interface FormData {
   invite_code: string; personal_number: string; full_name: string;
   password: string; confirm_password: string; phone: string; email: string;
-  gender: string; is_officer: boolean; rank: string;
+  gender: string; is_officer: boolean; rank: string; rank_track: RankTrack;
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
   has_military_driving_license: boolean; military_driving_license_expiry: string;
@@ -64,7 +67,7 @@ interface FormData {
 
 const INITIAL: FormData = {
   invite_code: "", personal_number: "", full_name: "", password: "",
-  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "",
+  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "", rank_track: "enlisted",
   enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   has_military_driving_license: false, military_driving_license_expiry: "",
@@ -103,7 +106,7 @@ export default function RegisterPage() {
 
   // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
   // come from the unauthenticated endpoint — see usePublicRankLadder.
-  const { enlistedRanks, officerRanks } = usePublicRankLadder();
+  const { enlistedRanks, officerRanks, officerAcademicRanks } = usePublicRankLadder();
 
   useEffect(() => {
     listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
@@ -153,6 +156,7 @@ export default function RegisterPage() {
         gender: form.gender || null,
         is_officer: form.is_officer,
         rank: form.rank || null,
+        rank_track: form.rank ? form.rank_track : null,
         enlistment_date: form.enlistment_date || null,
         mandatory_end_date: form.mandatory_end_date || null,
         discharge_date: form.discharge_date || null,
@@ -167,7 +171,7 @@ export default function RegisterPage() {
           end_date: er.permanent ? null : (er.end_date || null),
           reason: er.reason,
         })),
-        personal_constraints: form.personal_constraints.filter(pc => pc.start_date && pc.end_date),
+        personal_constraints: form.personal_constraints.filter(pc => personalConstraintComplete(pc.start_date, pc.end_date, pc.reason)),
       }, validRows.map(er => er.files));
       await loginWithToken(resp.access_token);
       // telegramRequired from useAuth() here would reflect this component's
@@ -189,6 +193,8 @@ export default function RegisterPage() {
         "constraint_missing_fields": t("register.errors.constraint_missing_fields"),
         "medical_exemption_requires_file": t("register.errors.medical_exemption_requires_file"),
         "start_date_required": t("register.errors.start_date_required"),
+        "password_policy": t("register.errors.password_policy"),
+        "registration_invalid": t("register.errors.registration_invalid"),
       };
       const mappedDetail = detail && detail.startsWith("rank_track_incompatible")
         ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
@@ -233,8 +239,14 @@ export default function RegisterPage() {
   const emailError = form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
     ? t("register.email_invalid")
     : null;
+  const fullNameError = form.full_name && !fullNameValid(form.full_name)
+    ? t("register.full_name_invalid")
+    : null;
+  const personalNumberError = form.personal_number && !personalNumberValid(form.personal_number)
+    ? t("register.personal_number_invalid")
+    : null;
   const step2Invalid =
-    !form.personal_number || !form.full_name || !isValidIsraeliPhone(form.phone) || !form.email || !!emailError ||
+    !form.personal_number || !!personalNumberError || !form.full_name || !!fullNameError || !isValidIsraeliPhone(form.phone) || !form.email || !!emailError ||
     !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
     !!mandatoryEndBeforeEnlistmentError || !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
     !passwordValid(form.password) || form.password !== form.confirm_password;
@@ -276,14 +288,16 @@ export default function RegisterPage() {
             <h2 className="font-semibold">{t("register.step_personal")}</h2>
             <p className="text-xs text-gray-400">שדות עם <span className="text-red-500">*</span> הם חובה</p>
             <label className="block text-sm">מספר אישי <span className="text-red-500">*</span>
-              <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              <input type="text" inputMode="numeric" maxLength={8} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.personal_number} onChange={e => set("personal_number", e.target.value)} />
-              {step2Attempted && !form.personal_number && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
+              {personalNumberError && <p className="text-red-600 text-xs mt-1">{personalNumberError}</p>}
+              {step2Attempted && !form.personal_number && !personalNumberError && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             <label className="block text-sm">שם מלא <span className="text-red-500">*</span>
               <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                value={form.full_name} onChange={e => set("full_name", e.target.value)} />
-              {step2Attempted && !form.full_name && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
+                maxLength={100} value={form.full_name} onChange={e => set("full_name", e.target.value)} />
+              {fullNameError && <p className="text-red-600 text-xs mt-1">{fullNameError}</p>}
+              {step2Attempted && !form.full_name && !fullNameError && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             <label className="block text-sm">טלפון <span className="text-red-500">*</span>
               <input type="tel" dir="ltr" placeholder="05X-XXXXXXX" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -305,7 +319,7 @@ export default function RegisterPage() {
               </select>
               {step2Attempted && !form.gender && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
-            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
+            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","תאריך שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
               <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={iso => set(key, iso)} />
@@ -315,26 +329,23 @@ export default function RegisterPage() {
                 {step2Attempted && !form[key] && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
               </label>
             ))}
-            <label className="block text-sm">שחרור <span className="text-red-500">*</span>
-              <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                value={form.discharge_date} onChange={iso => set("discharge_date", iso)} />
-              {dischargeDateError && <p className="text-red-600 text-xs mt-1">{dischargeDateError}</p>}
-              {step2Attempted && !form.discharge_date && !dischargeDateError && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
-            </label>
             <label className="block text-sm">דרגה <span className="text-red-500">*</span>
               <Combobox
                 items={[
-                  ...enlistedRanks.map(r => ({ id: r, name: r, group: "חיילים" })),
-                  ...officerRanks.map(r => ({ id: r, name: r, group: "קצינים" })),
+                  ...enlistedRanks.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: "חיילים" })),
+                  ...officerRanks.map(r => ({ id: rankSelectionId("officer", r), name: r, group: "קצינים" })),
+                  ...officerAcademicRanks.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
                 ]}
-                value={form.rank}
+                value={form.rank ? rankSelectionId(form.rank_track, form.rank) : ""}
                 onChange={v => {
-                  const isOfficer = isOfficerRank(v);
+                  const selection = parseRankSelectionId(v);
+                  if (!selection) return;
                   setForm(prev => ({
                     ...prev,
-                    rank: v,
-                    is_officer: isOfficer,
-                    last_alal_date: isOfficer ? prev.last_alal_date : "",
+                    rank: selection.rank,
+                    rank_track: selection.rankTrack,
+                    is_officer: selection.rankTrack !== "enlisted",
+                    last_alal_date: selection.rankTrack !== "enlisted" ? prev.last_alal_date : "",
                   }));
                 }}
                 placeholder="בחר"
@@ -522,6 +533,7 @@ export default function RegisterPage() {
                   onChange={iso => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], end_date: iso}; set("personal_constraints", rows); }} />
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.reason}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], reason: e.target.value}; set("personal_constraints", rows); }} />
+                {!pc.reason.trim() && <p className="text-red-600 text-xs">{t("register.errors.constraint_reason_required")}</p>}
                 <button className="text-red-600 text-xs" onClick={() => set("personal_constraints", form.personal_constraints.filter((_,j) => j !== i))}>{t("register.remove")}</button>
               </div>
             ))}
@@ -533,7 +545,7 @@ export default function RegisterPage() {
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(3)}>{t("register.back")}</button>
               <button
                 className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={form.personal_constraints.some(pc => !pc.start_date || !pc.end_date || !isDateRangeValid(pc.start_date, pc.end_date))}
+                disabled={form.personal_constraints.some(pc => !personalConstraintComplete(pc.start_date, pc.end_date, pc.reason) || !isDateRangeValid(pc.start_date, pc.end_date))}
                 onClick={() => setStep(5)}
               >
                 {t("register.next")}

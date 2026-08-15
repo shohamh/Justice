@@ -19,7 +19,10 @@ def test_get_rank_ladder_returns_both_tracks(client: TestClient, admin_session: 
     body = resp.json()
     assert body["enlisted"][0]["rank"] == "טוראי"
     assert body["officer"][0]["rank"] == "סגמ"
-    assert body["officer_academic"][0]["rank"] == "קאב"
+    assert body["officer_academic"][0]["rank"] == "קמא"
+    assert [e["rank"] for e in body["officer_academic"]] == [
+        "קמא", "קאב", "סגן", "סרן", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף", "קאם",
+    ]
 
 
 def test_public_rank_ladder_readable_without_auth(client: TestClient):
@@ -31,7 +34,7 @@ def test_public_rank_ladder_readable_without_auth(client: TestClient):
     body = resp.json()
     assert body["enlisted"][0]["rank"] == "טוראי"
     assert body["officer"][0]["rank"] == "סגמ"
-    assert body["officer_academic"][0]["rank"] == "קאב"
+    assert body["officer_academic"][0]["rank"] == "קמא"
 
 
 def test_put_rank_advancement_intervals_requires_admin(client: TestClient, admin_session: Session):
@@ -112,6 +115,27 @@ def test_put_rank_advancement_intervals_persists_academic_track_and_flag(
     assert resp.status_code == 200
     entry = next(e for e in resp.json()["officer_academic"] if e["rank"] == "קאב")
     assert entry["advance_on_career_entry"] is True
+
+
+def test_put_rank_advancement_intervals_accepts_shared_sgan_on_both_tracks(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="rank_ladder_006", role="admin")
+
+    resp = client.put(
+        "/api/soldiers/rank-advancement-intervals",
+        json=[
+            {"track": "officer", "rank": "סגן", "months_to_next": 12, "advance_on_career_entry": False},
+            {"track": "officer_academic", "rank": "סגן", "months_to_next": 6, "advance_on_career_entry": False},
+        ],
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 200
+    regular = next(e for e in resp.json()["officer"] if e["rank"] == "סגן")
+    academic = next(e for e in resp.json()["officer_academic"] if e["rank"] == "סגן")
+    assert regular["months_to_next"] == 12
+    assert academic["months_to_next"] == 6
 
 
 def test_put_rank_advancement_intervals_rejects_kab_under_officer_track(

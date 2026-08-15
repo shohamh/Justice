@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.algorithm.availability import analyze_duty_availability
 from app.algorithm.duration import score_days
 from app.algorithm.types import (
     AssignmentExplanation as AlgoExplanation,
@@ -301,6 +302,7 @@ def load_duty_blocks(
         .all()
     )
     blocks: list[DutyBlock] = []
+    requirements_map = {dt.id: dt.requirements or {} for dt in types}
     day = planning_start
     while day <= planning_end:
         for dt in types:
@@ -313,6 +315,7 @@ def load_duty_blocks(
                     end_date=day,
                     score_per_day=dt.score_per_day,
                     required_range_type=dt.required_range_type,
+                    requirements=requirements_map.get(dt.id, {}),
                 )
             )
         day += timedelta(days=1)
@@ -351,6 +354,7 @@ def load_duty_blocks_from_shifts(
     types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
     score_map = {dt.id: dt.score_per_day for dt in types_q}
     required_range_type_map = {dt.id: dt.required_range_type for dt in types_q}
+    requirements_map = {dt.id: dt.requirements or {} for dt in types_q}
     default_rest_hours = get_setting_int(session, "duty.default_rest_hours", 12)
     rest_hours_map = {dt.id: resolve_rest_hours(dt, default_rest_hours) for dt in types_q}
 
@@ -419,6 +423,7 @@ def load_duty_blocks_from_shifts(
                 node_quotas=expanded_quotas[i] if i < len(expanded_quotas) else None,
                 rest_hours=rest_hours_map.get(shift.duty_type_id, default_rest_hours),
                 required_range_type=required_range_type_map.get(shift.duty_type_id),
+                requirements=requirements_map.get(shift.duty_type_id, {}),
             ))
             block_to_shift[block_id] = shift.id
         r_count = reserve_count_for_shift(session, shift=shift)
@@ -439,6 +444,7 @@ def load_duty_blocks_from_shifts(
                 eligible_node_ids=shift.eligible_node_ids,
                 rest_hours=rest_hours_map.get(shift.duty_type_id, default_rest_hours),
                 required_range_type=required_range_type_map.get(shift.duty_type_id),
+                requirements=requirements_map.get(shift.duty_type_id, {}),
             ))
             block_to_shift[block_id] = shift.id
 
@@ -561,6 +567,106 @@ def load_existing_assignments(
                 rest_effective_end_time=end_dt.strftime("%H:%M"),
             )
         )
+    return result
+
+
+def populate_eligibility_data(
+    session: Session,
+    *,
+    soldiers: list[SoldierInput],
+    duties: list[DutyBlock],
+    settings: SolverSettings,
+) -> None:
+    """Populate the same hard-eligibility facts used by solving and preflight."""
+    if settings.enforce_weapon_qualification:
+        from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
+
+        weapon_ineligible = bulk_ineligible_duty_blocks(
+            session,
+            soldier_ids=[s.id for s in soldiers],
+            duties=duties,
+            respect_system_toggle=False,
+            include_alal=False,
+        )
+        for soldier in soldiers:
+            soldier.weapon_ineligible_duty_block_ids = weapon_ineligible.get(soldier.id, set())
+
+    from app.services.rank_eligibility_projection import bulk_future_ineligible_duty_blocks
+
+    future_ineligible = bulk_future_ineligible_duty_blocks(
+        session, soldier_ids=[s.id for s in soldiers], duties=duties,
+    )
+    for soldier in soldiers:
+        soldier.future_ineligible_duty_block_ids = future_ineligible.get(soldier.id, set())
+
+
+def analyze_shift_availability(
+    session: Session,
+    *,
+    shift_ids: list[uuid.UUID],
+    settings_json: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Return pre-run candidate availability for selected unfilled shifts."""
+    duties, block_to_shift = load_duty_blocks_from_shifts(session, shift_ids=shift_ids)
+    if not duties:
+        return []
+    settings = resolve_solver_settings(session, settings_json)
+    planning_start = min(duty.start_date for duty in duties)
+    planning_end = max(duty.end_date for duty in duties)
+    soldiers = load_soldier_inputs(
+        session,
+        as_of=planning_start,
+        eligible_node_ids=settings_json.get("eligible_node_ids"),
+    )
+    populate_eligibility_data(session, soldiers=soldiers, duties=duties, settings=settings)
+    existing = load_existing_assignments(
+        session, planning_start=planning_start, planning_end=planning_end, W=settings.Wr,
+    )
+    duty_types = {
+        dt.id: dt.name
+        for dt in session.execute(
+            select(DutyType).where(DutyType.id.in_({d.duty_type_id for d in duties}))
+        ).scalars()
+    }
+    grouped: dict[uuid.UUID, list[DutyBlock]] = {}
+    for duty in duties:
+        grouped.setdefault(block_to_shift[duty.id], []).append(duty)
+
+    result: list[dict[str, Any]] = []
+    for shift_id, shift_duties in grouped.items():
+        per_block = [
+            analyze_duty_availability(
+                soldiers,
+                duty,
+                existing=existing,
+                enforce_weapon_qualification=settings.enforce_weapon_qualification,
+            )
+            for duty in shift_duties
+        ]
+        representative = shift_duties[0]
+        blocker_counts = {
+            key: max(availability.blocker_counts.get(key, 0) for availability in per_block)
+            for key in {
+                key
+                for availability in per_block
+                for key in availability.blocker_counts
+            }
+        }
+        eligible_count = max(availability.eligible_count for availability in per_block)
+        available_count = max(availability.available_count for availability in per_block)
+        required_count = len(shift_duties)
+        result.append({
+            "shift_id": str(shift_id),
+            "duty_type_id": str(representative.duty_type_id),
+            "duty_type_name": duty_types.get(representative.duty_type_id, ""),
+            "start_date": representative.start_date.isoformat(),
+            "end_date": representative.end_date.isoformat(),
+            "required_count": required_count,
+            "eligible_count": eligible_count,
+            "available_count": available_count,
+            "shortfall": max(0, required_count - available_count),
+            "blocker_counts": blocker_counts,
+        })
     return result
 
 
@@ -893,6 +999,7 @@ def _postprocess_batch_results(
     for br in batch_results:
         shift_required: dict[uuid.UUID, int] = {}
         shift_assigned: dict[uuid.UUID, int] = {}
+        shift_fills: dict[uuid.UUID, list[BatchShiftFill]] = {}
         for sf in br.shifts:
             if sf.shift_id is None:
                 continue
@@ -900,12 +1007,19 @@ def _postprocess_batch_results(
             real_shift_id = block_to_shift.get(sf.shift_id, sf.shift_id)
             shift_required[real_shift_id] = shift_required.get(real_shift_id, 0) + sf.required_count
             shift_assigned[real_shift_id] = shift_assigned.get(real_shift_id, 0) + sf.assigned_count
+            shift_fills.setdefault(real_shift_id, []).append(sf)
 
         aggregated_shifts = [
             BatchShiftFill(
                 shift_id=sid,
                 required_count=req,
                 assigned_count=shift_assigned.get(sid, 0),
+                eligible_count=max(sf.eligible_count for sf in shift_fills[sid]),
+                available_count=max(sf.available_count for sf in shift_fills[sid]),
+                blocker_counts={
+                    key: max(sf.blocker_counts.get(key, 0) for sf in shift_fills[sid])
+                    for key in {key for sf in shift_fills[sid] for key in sf.blocker_counts}
+                },
             )
             for sid, req in shift_required.items()
         ]
@@ -940,6 +1054,9 @@ def _br_to_dict(br) -> dict:
                 "shift_id": str(sf.shift_id) if sf.shift_id else None,
                 "required_count": sf.required_count,
                 "assigned_count": sf.assigned_count,
+                "eligible_count": sf.eligible_count,
+                "available_count": sf.available_count,
+                "blocker_counts": sf.blocker_counts,
             }
             for sf in br.shifts
         ],
@@ -1179,34 +1296,8 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 _phase(f"load_soldier_inputs: done ({len(soldiers)} soldiers)")
 
                 _phase("weapon_eligibility: start")
-                if settings.enforce_weapon_qualification:
-                    from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
-                    # Enforcement intent is already fully resolved into `settings`
-                    # (per-run override > system setting > default) -- don't let
-                    # bulk_ineligible_duty_blocks re-read the raw system setting
-                    # and potentially discard an explicit per-run override.
-                    weapon_ineligible = bulk_ineligible_duty_blocks(
-                        session, soldier_ids=[s.id for s in soldiers], duties=duties,
-                        respect_system_toggle=False, include_alal=False,
-                    )
-                    for s in soldiers:
-                        s.weapon_ineligible_duty_block_ids = weapon_ineligible.get(s.id, set())
+                populate_eligibility_data(session, soldiers=soldiers, duties=duties, settings=settings)
                 _phase("weapon_eligibility: done")
-
-                # Per-duty-block eligibility as of each block's own date —
-                # projected rank, recency, license expiry, exemptions,
-                # departure. Complements (does NOT replace) the single-as_of
-                # exempted_duty_type_ids snapshot computed in
-                # load_soldier_inputs, which other consumers still rely on.
-                _phase("future_eligibility: start")
-                from app.services.rank_eligibility_projection import (
-                    bulk_future_ineligible_duty_blocks,
-                )
-                future_ineligible = bulk_future_ineligible_duty_blocks(
-                    session, soldier_ids=[s.id for s in soldiers], duties=duties,
-                )
-                for s in soldiers:
-                    s.future_ineligible_duty_block_ids = future_ineligible.get(s.id, set())
                 _phase("future_eligibility: done")
 
                 # Compute and inject quarterly effort scores

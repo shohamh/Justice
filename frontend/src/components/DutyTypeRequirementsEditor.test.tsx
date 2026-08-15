@@ -13,7 +13,7 @@ vi.mock("../api/dutyConfig", () => ({
 }));
 
 vi.mock("../api/soldiers", () => ({
-  getRanks: vi.fn(() => Promise.resolve({ enlisted: ["רב\"ט"], officers: ["סג\"ם"] })),
+  getRanks: vi.fn(() => Promise.resolve({ enlisted: ["רב\"ט"], officers: ["סג\"ם"], officer_academic: [] })),
 }));
 
 const dutyType = {

@@ -17,13 +17,30 @@ from app.db.models import (
 )
 from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
-from app.services.rank_advancement import compute_next_rank_date
+from app.services.rank_advancement import compute_next_rank_date, resolve_track
 from app.services.settings_loader import SettingNotFound, get_setting
-from app.services.soldiers import SoldierError, _check_soldier_dates
+from app.services.soldiers import PasswordPolicyError, SoldierError, _check_soldier_dates, validate_password
 
 
 class RegistrationError(Exception):
     pass
+
+
+def validate_full_name(full_name: str) -> None:
+    if len(full_name) > 100:
+        raise ValueError("full_name_too_long")
+    if len(full_name.strip().split()) < 2:
+        raise ValueError("full_name_requires_two_words")
+
+
+def validate_personal_number(personal_number: str) -> None:
+    if not personal_number.isascii() or not personal_number.isdigit() or not 7 <= len(personal_number) <= 8:
+        raise ValueError("personal_number_invalid")
+
+
+def validate_personal_constraint(constraint: dict) -> None:
+    if not constraint.get("start_date") or not constraint.get("end_date") or not (constraint.get("reason") or "").strip():
+        raise ValueError("constraint_missing_fields")
 
 
 def register(
@@ -48,7 +65,18 @@ def register(
     personal_constraints: list[dict],
     has_military_driving_license: bool = False,
     military_driving_license_expiry: date | None = None,
+    rank_track: str | None = None,
 ) -> tuple[Soldier, list[ExemptionRequest]]:
+    try:
+        validate_full_name(full_name)
+    except ValueError as exc:
+        raise RegistrationError(str(exc)) from exc
+
+    try:
+        validate_password(password)
+    except PasswordPolicyError as exc:
+        raise RegistrationError("password_policy") from exc
+
     consume_invite_code(session, code=invite_code)
 
     if session.execute(
@@ -86,6 +114,9 @@ def register(
         raise RegistrationError(str(exc)) from exc
 
     bahad1_graduate = derive_bahad1_graduate(rank)
+    resolved_rank_track = resolve_track(rank, rank_track)
+    if rank is not None and rank_track is not None and resolved_rank_track != rank_track:
+        raise RegistrationError("rank_track_invalid")
 
     soldier = Soldier(
         personal_number=personal_number,
@@ -99,6 +130,7 @@ def register(
         gender=gender,
         is_officer=is_officer,
         rank=rank,
+        rank_track=resolved_rank_track,
         is_career=is_career,
         bahad1_graduate=bahad1_graduate,
         enlistment_date=enlistment_date,
@@ -111,7 +143,9 @@ def register(
     )
     if rank is not None:
         soldier.current_rank_since = enlistment_date or date.today()
-        soldier.next_rank_date = compute_next_rank_date(session, rank=rank, since=soldier.current_rank_since)
+        soldier.next_rank_date = compute_next_rank_date(
+            session, rank=rank, since=soldier.current_rank_since, track=resolved_rank_track
+        )
         soldier.next_rank_date_overridden = False
     session.add(soldier)
     session.flush()
@@ -157,8 +191,10 @@ def register(
         created_exemption_requests.append(exemption_request)
 
     for pc in personal_constraints:
-        if not pc.get("start_date") or not pc.get("end_date"):
-            raise RegistrationError("constraint_missing_fields")
+        try:
+            validate_personal_constraint(pc)
+        except ValueError as exc:
+            raise RegistrationError(str(exc)) from exc
         session.add(PersonalConstraint(
             soldier_id=soldier.id,
             start_date=pc["start_date"],

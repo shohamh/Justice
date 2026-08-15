@@ -345,7 +345,7 @@ def test_build_bug_report_export_zip_renders_markdown_zip_and_relative_links(
     assert all(".." not in name for name in names)
 
     index_md = text_entries["index.md"]
-    assert "Exported at: 2026-08-14T12:00:00+00:00" in index_md
+    assert "Exported at: 2026-08-14T15:00:00+03:00" in index_md
     assert "Scope: all_active" in index_md
     assert "Count: 2" in index_md
     assert index_md.index(f"(reports/{newer_report_id}.md)") < index_md.index(f"(reports/{older_report_id}.md)")
@@ -357,7 +357,8 @@ def test_build_bug_report_export_zip_renders_markdown_zip_and_relative_links(
     assert '"/calendar"' in report_md
     assert "Reporter One" in report_md
     assert '"action": "login"' in report_md
-    assert f"../images/{older_report_id}/original-screenshot.png" in report_md
+    assert f"![Original screenshot](../images/{older_report_id}/original-screenshot.png)" in report_md
+    assert f"\n[Original screenshot](../images/{older_report_id}/original-screenshot.png)" not in report_md
     assert f"../images/{older_report_id}/comment-{first_comment_id}-1.gif" in report_md
     assert report_md.index("בודק את זה עכשיו") < report_md.index("עדיין קורה גם אחרי רענון")
 

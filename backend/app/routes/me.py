@@ -35,6 +35,7 @@ class MeResponse(BaseModel):
     gender: str | None = None
     is_officer: bool | None = None
     rank: str | None = None
+    rank_track: str | None = None
     bahad1_graduate: bool = False
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: str | None = None
@@ -128,6 +129,7 @@ def me(
         gender=user.gender,
         is_officer=user.is_officer,
         rank=user.rank,
+        rank_track=user.rank_track,
         bahad1_graduate=user.bahad1_graduate or False,
         has_military_driving_license=user.has_military_driving_license,
         military_driving_license_expiry=_date(user.military_driving_license_expiry),

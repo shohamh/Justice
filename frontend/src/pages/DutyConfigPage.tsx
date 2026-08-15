@@ -13,7 +13,7 @@ import { type DutyType as DutyTypeT } from "../api/dutyConfig";
 import { translateApiError } from "../utils/translateApiError";
 
 type Reqs = NonNullable<DutyTypeT["requirements"]>;
-type RankLists = { enlisted: string[]; officers: string[] };
+type RankLists = { enlisted: string[]; officers: string[]; officer_academic: string[] };
 
 function rankRange(selected: string[], ordered: string[]): string | null {
   const indexed = selected
@@ -87,7 +87,7 @@ export function DutyConfigContent() {
   const [etDeleteError, setEtDeleteError] = useState<string | null>(null);
 
   const rankListsQuery = useQuery({ queryKey: queryKeys.ranks(), queryFn: getRanks });
-  const rankLists: RankLists = rankListsQuery.data ?? { enlisted: [], officers: [] };
+  const rankLists: RankLists = rankListsQuery.data ?? { enlisted: [], officers: [], officer_academic: [] };
 
   const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
   const dutyTypes = dutyTypesQuery.data ?? [];

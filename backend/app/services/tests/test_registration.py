@@ -304,6 +304,28 @@ def test_register_allows_keva_only_rank_once_mandatory_service_has_ended(admin_s
     assert soldier.rank == "רסן"
 
 
+def test_register_persists_academic_officer_track_for_shared_rank(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    soldier, _ = register(
+        admin_session, invite_code=invite.code, requested_node_id=node.id,
+        exemption_requests=[], personal_constraints=[],
+        **_base(
+            rank="סרן", is_officer=True, rank_track="officer_academic",
+            mandatory_end_date=date.today() - timedelta(days=30),
+            discharge_date=date.today() + timedelta(days=365 * 3),
+        ),
+    )
+
+    assert soldier.rank == "סרן"
+    assert soldier.rank_track == "officer_academic"
+
+
 def test_register_rejects_discharge_date_in_past(admin_session):
     from app.services.registration import register, RegistrationError
     from app.services.invite_codes import create_invite_code

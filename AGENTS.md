@@ -5,8 +5,8 @@ Army duty management system. Hebrew UI, English code. See README.md for full con
 ## Starting the dev stack
 
 ```powershell
-.\dev.ps1        # backend + frontend + Telegram bot (default)
-.\dev.ps1 -NoBot # skip the bot
+.\dev.ps1                 # backend + frontend (default)
+.\dev.ps1 -TelegramBot   # include the Telegram bot
 ```
 
 This script:

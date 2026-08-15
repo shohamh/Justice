@@ -29,7 +29,7 @@ RANKS_RASAN_AND_ABOVE = OFFICER_RANKS[OFFICER_RANKS.index("רסן"):]
 # ["רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף"]
 
 SOLDIER_EDITABLE_FIELDS = {
-    "last_mitvahim_date", "last_alal_date", "gender", "rank", "phone",
+    "last_mitvahim_date", "last_alal_date", "gender", "rank", "rank_track", "phone",
     "military_driving_license", "mandatory_end_date", "discharge_date",
 }
 
@@ -81,15 +81,13 @@ class DutyTypeRequirements(BaseModel):
 
 
 def inferred_service_type(soldier: Soldier, today: date | None = None) -> str | None:
-    """Return 'חובה', 'קבע', or None (unknown)."""
+    """Return 'חובה', 'קבע', or None (unknown), based on mandatory end date."""
     if soldier.mandatory_end_date is None:
         return None
     ref = today or date.today()
     if ref <= soldier.mandatory_end_date:
         return "חובה"
-    if soldier.discharge_date is None or soldier.discharge_date > soldier.mandatory_end_date:
-        return "קבע"
-    return "חובה"
+    return "קבע"
 
 
 def derive_is_career(
@@ -98,8 +96,7 @@ def derive_is_career(
     discharge_date: date | None,
     today: date | None = None,
 ) -> bool:
-    """A soldier is קבע once their mandatory (חובה) service has ended and no
-    discharge closed it out first — mirrors inferred_service_type's rule.
+    """A soldier is קבע once their mandatory (חובה) service has ended.
     Never true while holding a חובה-only rank, regardless of dates."""
     if rank in CHOVAH_ONLY_RANKS:
         return False
@@ -108,7 +105,7 @@ def derive_is_career(
     ref = today or date.today()
     if ref <= mandatory_end_date:
         return False
-    return discharge_date is None or discharge_date > mandatory_end_date
+    return True
 
 
 BAHAD1_EXCLUDED_OFFICER_RANKS = ["קמא", "קאב", "קאם"]

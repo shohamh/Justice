@@ -58,6 +58,52 @@ def test_create_job_returns_202(client, admin_session):
     assert data["status"] == "pending"
 
 
+def test_availability_endpoint_reports_range_and_license_shortages(client, admin_session):
+    dm, _node = _setup_dm(admin_session, "route_alg_availability")
+    range_dt = DutyType(
+        name="שמירות_availability",
+        score_per_day=Decimal("1.00"),
+        required_range_type="laser",
+    )
+    license_dt = DutyType(
+        name="נהג_availability",
+        score_per_day=Decimal("1.00"),
+        requirements={"requires_military_driving_license": True},
+    )
+    loc = DutyLocation(name="שער_availability")
+    admin_session.add_all([range_dt, license_dt, loc])
+    admin_session.flush()
+    from app.services.settings_loader import set_setting
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+    range_shift = DutyShift(
+        duty_type_id=range_dt.id, duty_location_id=loc.id,
+        start_date="2027-07-10", end_date="2027-07-11", required_count=1,
+    )
+    license_shift = DutyShift(
+        duty_type_id=license_dt.id, duty_location_id=loc.id,
+        start_date="2027-07-10", end_date="2027-07-11", required_count=1,
+    )
+    admin_session.add_all([range_shift, license_shift])
+    create_soldier(admin_session, personal_number="route_soldier_availability", role="soldier")
+    admin_session.commit()
+
+    response = client.post(
+        "/api/algorithm/availability",
+        json={
+            "shift_ids": [str(range_shift.id), str(license_shift.id)],
+            "settings": {"time_limit_seconds": 15},
+        },
+        headers=auth_headers(dm),
+    )
+
+    assert response.status_code == 200, response.text
+    items = {item["duty_type_name"]: item for item in response.json()["items"]}
+    assert items[range_dt.name]["shortfall"] == 1
+    assert items[range_dt.name]["blocker_counts"]["range_qualification"] > 0
+    assert items[license_dt.name]["shortfall"] == 1
+    assert items[license_dt.name]["blocker_counts"]["military_driving_license"] > 0
+
+
 def test_create_job_accepts_auto_relax_node_quotas(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_arnq")
     shift, _dt, _loc = _make_shift(admin_session, "route_arnq", "2027-07-03")

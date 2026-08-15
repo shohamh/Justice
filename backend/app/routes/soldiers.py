@@ -33,7 +33,8 @@ from app.services.soldiers import (
     update_soldier_profile,
 )
 from app.services.authority import can_view_soldier_scope
-from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
+from app.services.eligibility import ENLISTED_RANKS
+from app.services.rank_advancement import OFFICER_ACADEMIC_LADDER, OFFICER_LADDER
 from app.services.duty_history import get_duty_history
 from app.services.reserves import get_current_reserve_stats
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -56,6 +57,7 @@ class SoldierOut(BaseModel):
     is_officer: bool | None = None
     is_career: bool = False
     rank: str | None = None
+    rank_track: str | None = None
     bahad1_graduate: bool = False
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: date_type | None = None
@@ -94,6 +96,7 @@ class UpdateProfileRequest(BaseModel):
     gender: str | None = None
     is_officer: bool | None = None
     rank: str | None = None
+    rank_track: str | None = None
     bahad1_graduate: bool | None = None
     enlistment_date: date_type | None = None
     mandatory_end_date: date_type | None = None
@@ -210,6 +213,7 @@ def _out(
         is_officer=s.is_officer,
         is_career=s.is_career,
         rank=s.rank,
+        rank_track=s.rank_track,
         bahad1_graduate=s.bahad1_graduate,
         has_military_driving_license=s.has_military_driving_license,
         military_driving_license_expiry=s.military_driving_license_expiry,
@@ -356,7 +360,7 @@ def list_soldiers(
 # NOTE: /ranks, /field-updates/pending, and /{soldier_id}/duty-history MUST come before /{soldier_id} routes
 @router.get("/ranks")
 def get_ranks(_user: Soldier = Depends(require_password_changed)) -> dict[str, list[str]]:
-    return {"enlisted": ENLISTED_RANKS, "officers": OFFICER_RANKS}
+    return {"enlisted": ENLISTED_RANKS, "officers": OFFICER_LADDER, "officer_academic": OFFICER_ACADEMIC_LADDER}
 
 
 @router.get("/field-updates/pending", response_model=list[FieldUpdateOut])

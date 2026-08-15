@@ -84,6 +84,9 @@ class DutyBlock:
     # from DutyType.required_range_type; consumed by services/weapon_eligibility.py and
     # the solver's eligibility pre-filter (see solver.py _eligible_pairs / build_model).
     required_range_type: str | None = None
+    # Raw duty-type requirements used by shared eligibility diagnostics. Kept
+    # optional so existing pure solver fixtures remain backward-compatible.
+    requirements: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -195,6 +198,9 @@ class BatchShiftFill:
     shift_id: uuid.UUID | None  # None until bridge fills it from block_to_shift
     required_count: int
     assigned_count: int
+    eligible_count: int = 0
+    available_count: int = 0
+    blocker_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

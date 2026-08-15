@@ -12,15 +12,14 @@ from typing import Literal, overload
 
 from ortools.sat.python.cp_model import CpModel, IntVar, LinearExpr
 
+from app.algorithm.availability import eligibility_blockers
 from app.algorithm.duration import combine_date_time, score_days
 from app.algorithm.rest import last_duty_day, rest_violated
 from app.algorithm.types import (
-    EFFORT_SCALE,
     DutyBlock,
     ExistingAssignment,
     SoldierInput,
     SolverSettings,
-    node_in_scope,
 )
 
 
@@ -285,25 +284,6 @@ def build_model(
     T = settings.T
     R = settings.R
 
-    # Build lookup maps
-    exempt_map: dict[uuid.UUID, set[uuid.UUID]] = {}
-    for s in soldier_list:
-        exempt_map[s.id] = s.exempted_duty_type_ids
-
-    location_exempt_map: dict[uuid.UUID, set[uuid.UUID]] = {}
-    for s in soldier_list:
-        location_exempt_map[s.id] = s.exempted_duty_location_ids
-
-    constraint_map: dict[uuid.UUID, set[date]] = {}
-    for s in soldier_list:
-        dates: set[date] = set()
-        for cs, ce in s.approved_constraint_dates:
-            dt = cs
-            while dt <= ce:
-                dates.add(dt)
-                dt += timedelta(days=1)
-        constraint_map[s.id] = dates
-
     # Pre-build duty date sets once so the eligible-filter and no-overlap loops
     # don't re-expand the same date range O(S) and O(S×W) times respectively.
     duty_dates_cache: dict[int, frozenset[date]] = {
@@ -325,18 +305,12 @@ def build_model(
     soldier_duties: dict[int, list[int]] = defaultdict(list)
     for di, d in enumerate(duty_list):
         for si, s in enumerate(soldier_list):
-            if d.duty_type_id in exempt_map.get(s.id, set()):
-                continue
-            if d.duty_location_id in location_exempt_map.get(s.id, set()):
-                continue
-            constrained_dates = constraint_map.get(s.id, set())
-            if duty_dates_cache[di] & constrained_dates:
-                continue
-            if not node_in_scope(d.eligible_node_ids, s.path_ids):
-                continue
-            if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
-                continue
-            if d.id in s.future_ineligible_duty_block_ids:
+            if eligibility_blockers(
+                s,
+                d,
+                enforce_weapon_qualification=settings.enforce_weapon_qualification,
+                duty_dates=set(duty_dates_cache[di]),
+            ):
                 continue
             eligible.append((di, si))
             soldier_duties[si].append(di)
