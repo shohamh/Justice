@@ -57,6 +57,47 @@ def dm_scope_covers_target(
     return False
 
 
+def rank_advancement_edit_authorized(
+    session: Session, *, user: Soldier, target_node: HierarchyNode | None,
+) -> bool:
+    """Whether ``user`` may correct a soldier's rank-advancement data.
+
+    Administrators bypass the hierarchy check. Commanders derive scope only
+    from nodes they command; duty managers derive it only from their explicit
+    duty-manager scopes. In both cases the covering root must be at ``מדור``
+    level or higher and contain the target node.
+    """
+    if user.role == "admin":
+        return True
+    if target_node is None:
+        return False
+    commander_root_ids = set(
+        session.execute(
+            select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
+        ).scalars().all()
+    )
+    if dm_scope_covers_target(
+        session,
+        scope_root_ids=commander_root_ids,
+        target_node=target_node,
+        required_level_key="מדור",
+    ):
+        return True
+    duty_manager_root_ids = set(
+        session.execute(
+            select(DutyManagerScope.hierarchy_node_id).where(
+                DutyManagerScope.duty_manager_id == user.id
+            )
+        ).scalars().all()
+    )
+    return dm_scope_covers_target(
+        session,
+        scope_root_ids=duty_manager_root_ids,
+        target_node=target_node,
+        required_level_key="מדור",
+    )
+
+
 def _range_attendance_edit_min_level(session: Session) -> str:
     try:
         value = get_setting(session, "mitvachim.attendance_edit_min_level")

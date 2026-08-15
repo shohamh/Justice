@@ -312,7 +312,7 @@ def update_soldier_profile(
     """DM/admin direct update of profile fields."""
     from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
     for k, v in fields.items():
-        if k in PROFILE_FIELDS:
+        if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
             setattr(soldier, k, v)
     rank_or_track_changed = bool({"rank", "rank_track"} & fields.keys())
     if rank_or_track_changed:
@@ -322,13 +322,16 @@ def update_soldier_profile(
         if soldier.rank is not None and requested_track is not None and resolved_track != requested_track:
             raise SoldierValidationError("rank_track_invalid")
         soldier.rank_track = resolved_track
-    if rank_or_track_changed and "next_rank_date" in fields:
+    if rank_or_track_changed and fields.get("next_rank_date") is not None:
         soldier.current_rank_since = soldier.enlistment_date or date.today()
         soldier.next_rank_date_overridden = True
     elif rank_or_track_changed:
         _reset_rank_advancement(session, soldier, since=date.today())
     elif "next_rank_date" in fields:
-        soldier.next_rank_date_overridden = True
+        if fields["next_rank_date"] is None:
+            _reset_rank_advancement(session, soldier, since=date.today())
+        else:
+            soldier.next_rank_date_overridden = True
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     # Only validate rank/track compatibility when this PATCH actually touches
     # a field that affects it (rank itself, or a date that feeds is_career).

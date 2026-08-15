@@ -2,13 +2,140 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.db.models import HierarchyLevelType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
 def _setup_dm(session, pn: str):
-    node = create_node(session, level="branch", name=f"branch_{pn}")
+    node = _mador_root(session, name=f"mador_{pn}")
     dm = create_soldier(session, personal_number=pn, role="duty_manager", hierarchy_node_id=node.id)
     return dm, node
+
+
+def _mador_root(session, *, name: str, commander_id=None):
+    level = session.query(HierarchyLevelType).filter_by(key="group").one()
+    level.key = "מדור"
+    level.label = "מדור"
+    session.flush()
+    return create_node(session, level="מדור", name=name, commander_id=commander_id)
+
+
+def test_senior_commander_can_override_rank_date_and_receives_capability(client, admin_session):
+    commander = create_soldier(admin_session, personal_number="rank_cmd_001", role="commander")
+    root = _mador_root(admin_session, name="rank_cmd_root", commander_id=commander.id)
+    target_node = create_node(admin_session, level="team", name="rank_cmd_target", parent=root)
+    soldier = create_soldier(admin_session, personal_number="rank_cmd_target_s", hierarchy_node_id=target_node.id)
+    soldier.enlistment_date = date(2021, 1, 15)
+    admin_session.commit()
+
+    response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile",
+        json={"rank": "סמר", "next_rank_date": "2030-02-03"},
+        headers=auth_headers(commander),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["next_rank_date"] == "2030-02-03"
+    assert response.json()["next_rank_date_overridden"] is True
+    assert response.json()["can_edit_rank_advancement"] is True
+
+
+def test_senior_duty_manager_can_correct_rank(client, admin_session):
+    root = _mador_root(admin_session, name="rank_dm_root")
+    duty_manager = create_soldier(
+        admin_session, personal_number="rank_dm_001", role="duty_manager", hierarchy_node_id=root.id,
+    )
+    target_node = create_node(admin_session, level="team", name="rank_dm_target", parent=root)
+    soldier = create_soldier(admin_session, personal_number="rank_dm_target_s", hierarchy_node_id=target_node.id)
+
+    response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile",
+        json={"rank": "סמר"},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["rank"] == "סמר"
+    assert response.json()["can_edit_rank_advancement"] is True
+
+
+def test_lower_level_commander_cannot_correct_rank_or_edit_ordinary_profile(client, admin_session):
+    commander = create_soldier(admin_session, personal_number="rank_junior_cmd", role="commander")
+    root = create_node(admin_session, level="branch", name="rank_junior_root", commander_id=commander.id)
+    soldier = create_soldier(admin_session, personal_number="rank_junior_target", hierarchy_node_id=root.id)
+    admin_session.commit()
+
+    rank_response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile", json={"rank": "סמר"}, headers=auth_headers(commander),
+    )
+    ordinary_response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile", json={"gender": "male"}, headers=auth_headers(commander),
+    )
+    profile_response = client.get(f"/api/soldiers/{soldier.id}", headers=auth_headers(commander))
+
+    assert rank_response.status_code == 403
+    assert ordinary_response.status_code == 403
+    assert profile_response.json()["can_edit_rank_advancement"] is False
+
+
+def test_lower_level_duty_manager_cannot_correct_rank(client, admin_session):
+    root = create_node(admin_session, level="branch", name="rank_junior_dm_root")
+    duty_manager = create_soldier(
+        admin_session, personal_number="rank_junior_dm", role="duty_manager", hierarchy_node_id=root.id,
+    )
+    soldier = create_soldier(admin_session, personal_number="rank_junior_dm_target", hierarchy_node_id=root.id)
+
+    response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile", json={"rank_track": "enlisted"}, headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 403
+
+
+def test_senior_commander_cannot_correct_rank_outside_their_scope(client, admin_session):
+    commander = create_soldier(admin_session, personal_number="rank_out_scope_cmd", role="commander")
+    _mador_root(admin_session, name="rank_out_scope_root", commander_id=commander.id)
+    other_node = create_node(admin_session, level="team", name="rank_out_scope_target")
+    soldier = create_soldier(admin_session, personal_number="rank_out_scope_s", hierarchy_node_id=other_node.id)
+    admin_session.commit()
+
+    response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile", json={"is_officer": False}, headers=auth_headers(commander),
+    )
+
+    assert response.status_code == 403
+
+
+def test_admin_can_correct_rank_without_hierarchy_node(client, admin_session):
+    admin = create_soldier(admin_session, personal_number="rank_admin_001", role="admin")
+    soldier = create_soldier(admin_session, personal_number="rank_admin_target")
+
+    response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile", json={"rank": "סמר"}, headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200, response.text
+
+
+def test_explicit_null_next_rank_date_restores_automatic_schedule(client, admin_session):
+    admin = create_soldier(admin_session, personal_number="rank_reset_admin", role="admin")
+    soldier = create_soldier(admin_session, personal_number="rank_reset_target")
+    soldier.enlistment_date = date(2021, 1, 15)
+    admin_session.commit()
+
+    override_response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile",
+        json={"rank": "סמר", "next_rank_date": "2030-02-03"},
+        headers=auth_headers(admin),
+    )
+    reset_response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile", json={"next_rank_date": None}, headers=auth_headers(admin),
+    )
+
+    assert override_response.json()["next_rank_date_overridden"] is True
+    assert reset_response.status_code == 200, reset_response.text
+    assert reset_response.json()["next_rank_date"] == "2025-09-15"
+    assert reset_response.json()["next_rank_date_overridden"] is False
 
 
 def test_dm_can_patch_profile(client, admin_session):

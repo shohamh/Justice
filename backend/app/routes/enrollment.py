@@ -16,6 +16,7 @@ from app.services import enrollment as svc
 from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
 from app.services.notifications import create_notification
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
+from app.services.authority import rank_advancement_edit_authorized
 from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
@@ -278,6 +279,10 @@ def patch_enrollment(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="already decided")
     target_node = session.get(HierarchyNode, req.requested_node_id)
     authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=target_node)
+    rank_advancement_fields = {"rank", "rank_track", "is_officer"}
+    if rank_advancement_fields & body.model_fields_set:
+        if not rank_advancement_edit_authorized(session, user=user, target_node=target_node):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     s = session.get(Soldier, req.soldier_id)
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier not found")

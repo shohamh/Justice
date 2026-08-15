@@ -103,6 +103,22 @@ def test_admin_can_approve(client, admin_session):
     assert soldier.hierarchy_node_id == node.id
 
 
+def test_junior_commander_cannot_change_rank_on_in_scope_enrollment(client, admin_session):
+    holding = _make_holding(admin_session)
+    commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    requested_node = create_node(
+        admin_session, level="branch", name=f"junior_{_uid()}", parent=holding, commander_id=commander.id,
+    )
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, requested_node)
+
+    response = client.patch(
+        f"/api/enrollment-requests/{req.id}", json={"rank": "סמר"}, headers=auth_headers(commander),
+    )
+
+    assert response.status_code == 403
+
+
 def test_admin_can_reject(client, admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)

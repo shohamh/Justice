@@ -12,6 +12,7 @@ from app.services.authority import (
     commander_can_grant_commander_exemption,
     dm_scope_covers_level,
     has_any_visibility,
+    rank_advancement_edit_authorized,
 )
 
 
@@ -137,6 +138,64 @@ def _soldier(session, personal_number, role="soldier"):
     session.add(s)
     session.flush()
     return s
+
+
+@pytest.mark.parametrize(
+    ("role", "root_level", "expected_inside"),
+    [
+        ("commander", "מדור", True),
+        ("commander", "אגף", True),
+        ("commander", "ענף", False),
+        ("duty_manager", "מדור", True),
+        ("duty_manager", "אגף", True),
+        ("duty_manager", "ענף", False),
+    ],
+)
+def test_rank_advancement_authority_requires_senior_in_scope_root(
+    app_session, role, root_level, expected_inside,
+):
+    _level(app_session, "אגף", 1)
+    _level(app_session, "מדור", 2)
+    _level(app_session, "ענף", 3)
+    actor = _soldier(app_session, f"rank_{role}_{root_level}", role=role)
+    root = _node(app_session, root_level, name="Root")
+    inside = _child(app_session, root, "ענף", name="Inside")
+    outside = _node(app_session, "ענף", name="Outside")
+    if role == "commander":
+        root.commander_id = actor.id
+    else:
+        app_session.add(DutyManagerScope(duty_manager_id=actor.id, hierarchy_node_id=root.id))
+    app_session.flush()
+
+    assert rank_advancement_edit_authorized(app_session, user=actor, target_node=inside) is expected_inside
+    assert rank_advancement_edit_authorized(app_session, user=actor, target_node=outside) is False
+
+
+def test_rank_advancement_authority_admin_bypasses_scope_checks(app_session):
+    _level(app_session, "מדור", 1)
+    target = _node(app_session, "מדור")
+    admin = _soldier(app_session, "rank_admin", role="admin")
+
+    assert rank_advancement_edit_authorized(app_session, user=admin, target_node=target) is True
+
+
+def test_rank_advancement_authority_ignores_lower_level_scope_when_user_commands_elsewhere(app_session):
+    _level(app_session, "מדור", 1)
+    _level(app_session, "ענף", 2)
+    commander = _soldier(app_session, "rank_lower_scope", role="commander")
+    junior_root = _node(app_session, "ענף", name="Junior", commander_id=commander.id)
+    target = _child(app_session, junior_root, "ענף", name="Target")
+
+    assert rank_advancement_edit_authorized(app_session, user=commander, target_node=target) is False
+
+
+def test_rank_advancement_authority_uses_actual_commander_assignment_not_display_role(app_session):
+    _level(app_session, "מדור", 1)
+    actor = _soldier(app_session, "rank_actual_commander")
+    root = _node(app_session, "מדור", commander_id=actor.id)
+    target = _child(app_session, root, "מדור")
+
+    assert rank_advancement_edit_authorized(app_session, user=actor, target_node=target) is True
 
 
 def test_admin_sees_everything(app_session):

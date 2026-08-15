@@ -42,6 +42,31 @@ def test_pending_field_update_flags_commander_as_unable_to_approve(client, admin
     assert items[0]["can_approve"] is False
 
 
+def test_junior_duty_manager_cannot_approve_rank_field_update(client, admin_session):
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="fu_rank_junior")
+    duty_manager = create_soldier(
+        admin_session, personal_number="fu_rank_junior_dm", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    soldier = create_soldier(
+        admin_session, personal_number="fu_rank_junior_soldier", hierarchy_node_id=node.id,
+    )
+    admin_session.commit()
+    submitted = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates",
+        json={"field_name": "rank", "new_value": "סמר"},
+        headers=auth_headers(soldier),
+    )
+
+    response = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates/{submitted.json()['id']}/approve",
+        json={}, headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 403
+
+
 def test_approve_field_update_writes_mandatory_end_date(admin_session):
     from tests.helpers import create_node
 
