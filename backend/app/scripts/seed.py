@@ -51,6 +51,7 @@ from app.db.models import (
     RangeEventStatus,
     RangeType,
     RegistrationInviteCode,
+    RankAdvancementInterval,
     ScoreAdjustment,
     ShiftTemplate,
     Soldier,
@@ -64,10 +65,31 @@ from app.db.models import (
 from app.db.session import SessionLocal
 from app.services.invite_codes import create_invite_code
 from app.services.ranges import mark_attendance
-from app.services.rank_advancement import resolve_track
+from app.services.rank_advancement import DEFAULT_RANK_ADVANCEMENT_INTERVALS, resolve_track
 
 SEED_RANGE_REQUIRED_COUNT = 25
 SEED_RANGE_RESERVE_COUNT = 5
+
+# Existing rows are intentionally preserved so running the seed does not
+# overwrite administrator customizations.
+SEED_RANK_ADVANCEMENT_DEFAULTS = DEFAULT_RANK_ADVANCEMENT_INTERVALS
+
+
+def _ensure_rank_advancement_defaults(session) -> None:
+    existing = {
+        (row.track, row.rank): row
+        for row in session.query(RankAdvancementInterval).all()
+    }
+    for track, rank, months_to_next, advance_on_career_entry in SEED_RANK_ADVANCEMENT_DEFAULTS:
+        if (track, rank) not in existing:
+            session.add(
+                RankAdvancementInterval(
+                    track=track,
+                    rank=rank,
+                    months_to_next=months_to_next,
+                    advance_on_career_entry=advance_on_career_entry,
+                )
+            )
 
 
 def _alal_dates_before_ganash(ganash_dates: list[date]) -> list[date]:
@@ -121,6 +143,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         for key, value in (("mitvachim.enabled", False), ("mitvachim.reminder_days_before", 3)):
             if session.get(SystemSetting, key) is None:
                 session.add(SystemSetting(key=key, value=value, updated_by=None))
+        _ensure_rank_advancement_defaults(session)
         session.flush()
 
         admin = session.query(Soldier).filter(Soldier.personal_number == "1000001").first()
