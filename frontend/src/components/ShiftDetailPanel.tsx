@@ -18,7 +18,7 @@ import { canApprove } from "../auth/permissions";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
 import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
-import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
+import { formatDutyRequirements } from "../utils/dutyRequirements";
 import { EventDetailModal, RosterSection } from "./planning";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
@@ -217,6 +217,10 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const dismissed = shift.assignees.filter((a) => (!a.is_reserve || a.called_up_from) && a.dismissals.length > 0);
   const primaries = shift.assignees.filter((a) => (!a.is_reserve || a.called_up_from) && a.dismissals.length === 0);
   const reserves = shift.assignees.filter((a) => a.is_reserve && !a.called_up_from);
+  const dutyRequirements = formatDutyRequirements(
+    shiftDutyTypes[shift.duty_type_id],
+    shift.required_range_type
+  );
 
   const assigneeById = Object.fromEntries(
     shift.assignees.map((a) => [a.assignment_id, { soldierId: a.soldier_id, name: a.soldier_name }])
@@ -268,19 +272,14 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
       subtitle={formatDutyRange(shift.start_date, shift.end_date)}
       onClose={onClose}
     >
-        <div
-          className={`mb-4 rounded border px-3 py-2 text-sm font-medium ${
-            shift.required_range_type
-              ? "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
-              : "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
-          }`}
-        >
-          {shift.required_range_type
-            ? t("range_qualification.shiftDetail.requiredRange", {
-                rangeType: RANGE_TYPE_LABELS[shift.required_range_type] ?? shift.required_range_type,
-              })
-            : t("range_qualification.shiftDetail.noRequiredRange")}
-        </div>
+        {dutyRequirements.length > 0 && (
+          <div className="mb-4 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700">
+            <p className="font-medium text-gray-700 dark:text-gray-200">דרישות תפקיד</p>
+            <ul className="mt-1 space-y-1 text-gray-600 dark:text-gray-300">
+              {dutyRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}
+            </ul>
+          </div>
+        )}
         {(() => {
           const dt = shiftDutyTypes[shift.duty_type_id];
           if (!dt) return null;

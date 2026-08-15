@@ -5,8 +5,10 @@ import ShiftDetailPanel from "./ShiftDetailPanel";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import * as assignmentsApi from "../api/assignments";
 import * as shiftsApi from "../api/shifts";
+import * as dutyConfigApi from "../api/dutyConfig";
 import type { DutyShift } from "../api/shifts";
 import type { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
+import type { DutyType } from "../api/dutyConfig";
 
 const mockUseAuth = vi.fn(() => ({ user: null }));
 vi.mock("../auth/AuthContext", () => ({
@@ -91,7 +93,7 @@ function makeAssignee(overrides: Partial<CalendarShiftAssignee>): CalendarShiftA
   };
 }
 
-function makeShift(assignees: CalendarShiftAssignee[]): CalendarShift {
+function makeShift(assignees: CalendarShiftAssignee[], overrides: Partial<CalendarShift> = {}): CalendarShift {
   return {
     id: "shift-1",
     duty_type_id: "dt-1",
@@ -110,6 +112,7 @@ function makeShift(assignees: CalendarShiftAssignee[]): CalendarShift {
     reserve_count: 1,
     required_range_type: "laser",
     assignees,
+    ...overrides,
   };
 }
 
@@ -214,7 +217,7 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
       ])
     );
 
-    expect(screen.getByText(/range_qualification\.shiftDetail\.requiredRange/)).toHaveTextContent("מטווח לייזר");
+    expect(screen.getByText("מטווח לייזר")).toBeInTheDocument();
     expect(within(nameRow("חייל ללא מטווח")).getByLabelText("range_qualification.shiftDetail.warning")).toHaveAttribute(
       "title",
       expect.stringContaining("range_qualification.explanation.uncoveredDuty")
@@ -314,6 +317,44 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
     );
 
     expect(screen.getByLabelText("range_qualification.shiftDetail.warning")).toBeInTheDocument();
+  });
+});
+
+describe("ShiftDetailPanel duty requirements", () => {
+  beforeEach(() => {
+    vi.mocked(dutyConfigApi.listDutyTypes).mockReset().mockResolvedValue([]);
+  });
+
+  it("does not render the no-required-range copy for a duty without requirements", async () => {
+    renderPanel(makeShift([], { required_range_type: null }));
+
+    await waitFor(() => expect(dutyConfigApi.listDutyTypes).toHaveBeenCalled());
+    expect(screen.queryByText("range_qualification.shiftDetail.noRequiredRange")).toBeNull();
+  });
+
+  it("shows both a laser range and military license requirement", async () => {
+    const requirements: DutyType = {
+      id: "dt-1",
+      name: "שמירה",
+      score_per_day: "1",
+      description: null,
+      active: true,
+      requirements: { requires_military_driving_license: true },
+      contact_name: null,
+      contact_phone: null,
+      start_time: null,
+      end_time: null,
+      instructions: null,
+      is_external: false,
+      required_range_type: "laser",
+      eligible_node_ids: null,
+    };
+    vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([requirements]);
+
+    renderPanel(makeShift([]));
+
+    expect(await screen.findByText("מטווח לייזר")).toBeInTheDocument();
+    expect(screen.getByText('נדרש רשנ"צ')).toBeInTheDocument();
   });
 });
 
