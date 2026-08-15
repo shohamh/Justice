@@ -198,6 +198,32 @@ def test_set_interval_and_recompute_uses_cumulative_enlistment_schedule_for_init
     assert s.next_rank_date == date(2026, 3, 15)
 
 
+def test_set_predecessor_interval_recomputes_initial_rank_but_preserves_override(app_session):
+    initial = create_soldier(app_session, personal_number="1234572")
+    initial.rank = "סמר"
+    initial.enlistment_date = date(2021, 1, 15)
+    initial.current_rank_since = initial.enlistment_date
+    initial.next_rank_date = date(2025, 9, 15)
+    initial.next_rank_date_overridden = False
+
+    overridden = create_soldier(app_session, personal_number="1234573")
+    overridden.rank = "סמר"
+    overridden.enlistment_date = date(2021, 1, 15)
+    overridden.current_rank_since = overridden.enlistment_date
+    overridden.next_rank_date = date(2099, 1, 1)
+    overridden.next_rank_date_overridden = True
+    app_session.flush()
+
+    count = set_interval_and_recompute(
+        app_session, track="enlisted", rank="טוראי", months_to_next=12,
+        advance_on_career_entry=False, actor_id=None,
+    )
+
+    assert count == 1
+    assert initial.next_rank_date == date(2025, 11, 15)
+    assert overridden.next_rank_date == date(2099, 1, 1)
+
+
 def test_set_interval_and_recompute_skips_overridden_soldiers(app_session):
     s = create_soldier(app_session, personal_number="1234568")
     s.rank = "טוראי"

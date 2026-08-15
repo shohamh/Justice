@@ -214,13 +214,26 @@ def upsert_interval(
 
 
 def recompute_affected_soldiers(session: Session, *, track: str, rank: str) -> int:
+    ladder = _LADDERS.get(track)
+    if ladder is None or rank not in ladder:
+        return 0
+    affected_initial_ranks = ladder[ladder.index(rank):]
     soldiers = session.execute(
-        select(Soldier).where(Soldier.rank == rank, Soldier.next_rank_date_overridden.is_(False))
+        select(Soldier).where(
+            Soldier.rank.in_(affected_initial_ranks),
+            Soldier.next_rank_date_overridden.is_(False),
+        )
     ).scalars().all()
     updated = 0
     for s in soldiers:
         soldier_track = resolve_track(s.rank, s.rank_track)
         if soldier_track != track:
+            continue
+        uses_cumulative_enlistment = (
+            s.enlistment_date is not None
+            and (s.current_rank_since is None or s.current_rank_since == s.enlistment_date)
+        )
+        if not uses_cumulative_enlistment and s.rank != rank:
             continue
         s.next_rank_date = compute_next_rank_date_for_soldier(session, soldier=s)
         updated += 1

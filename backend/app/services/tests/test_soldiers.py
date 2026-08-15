@@ -308,6 +308,28 @@ def test_update_soldier_profile_manual_next_rank_date_sets_overridden(admin_sess
     assert soldier.next_rank_date_overridden is True
 
 
+def test_update_soldier_profile_rank_change_with_explicit_date_updates_initial_anchor(admin_session):
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920032")
+    soldier.rank = "טוראי"
+    soldier.enlistment_date = date(2021, 1, 15)
+    soldier.current_rank_since = date(2025, 1, 1)
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session,
+        soldier=soldier,
+        fields={"rank": "סמר", "next_rank_date": date(2030, 1, 1)},
+        actor_id=None,
+    )
+
+    assert soldier.current_rank_since == date(2021, 1, 15)
+    assert soldier.next_rank_date == date(2030, 1, 1)
+    assert soldier.next_rank_date_overridden is True
+
+
 def test_update_soldier_profile_rank_change_without_explicit_date_auto_computes(admin_session):
     from dateutil.relativedelta import relativedelta
 

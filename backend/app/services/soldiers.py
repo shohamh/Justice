@@ -314,17 +314,21 @@ def update_soldier_profile(
     for k, v in fields.items():
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
-    if {"rank", "rank_track"} & fields.keys():
+    rank_or_track_changed = bool({"rank", "rank_track"} & fields.keys())
+    if rank_or_track_changed:
         from app.services.rank_advancement import resolve_track
         requested_track = soldier.rank_track
         resolved_track = resolve_track(soldier.rank, requested_track)
         if soldier.rank is not None and requested_track is not None and resolved_track != requested_track:
             raise SoldierValidationError("rank_track_invalid")
         soldier.rank_track = resolved_track
-    if "next_rank_date" in fields:
+    if rank_or_track_changed and "next_rank_date" in fields:
+        soldier.current_rank_since = soldier.enlistment_date or date.today()
         soldier.next_rank_date_overridden = True
-    elif {"rank", "rank_track"} & fields.keys():
+    elif rank_or_track_changed:
         _reset_rank_advancement(session, soldier, since=date.today())
+    elif "next_rank_date" in fields:
+        soldier.next_rank_date_overridden = True
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     # Only validate rank/track compatibility when this PATCH actually touches
     # a field that affects it (rank itself, or a date that feeds is_career).
