@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any, Literal
 from zipfile import ZIP_DEFLATED, ZipFile
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,10 +22,15 @@ _ATTACHMENT_EXTENSION_BY_CONTENT_TYPE = {
 }
 _MISSING_SCREENSHOT_NOTICE = "תמונת המסך המקורית אינה זמינה בייצוא זה."
 _MISSING_ATTACHMENT_NOTICE = "קובץ המצורף אינו זמין בייצוא זה."
+_EXPORT_TIMEZONE = ZoneInfo("Asia/Jerusalem")
 
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def get_bug_report_export_timestamp() -> datetime:
+    return _utc_now().astimezone(_EXPORT_TIMEZONE)
 
 
 def _select_bug_reports_for_export(
@@ -294,6 +300,7 @@ def build_bug_report_export_zip(
     scope: Literal["all_active", "filtered"],
     severity: str | None,
     status: str | None,
+    exported_at: datetime | None = None,
 ) -> bytes:
     reports = _select_bug_reports_for_export(
         session,
@@ -310,7 +317,7 @@ def build_bug_report_export_zip(
     return _render_bug_report_export_zip(
         reports,
         scope=scope,
-        exported_at=_utc_now(),
+        exported_at=exported_at if exported_at is not None else get_bug_report_export_timestamp(),
         comments_by_report=comments_by_report,
         attachments_by_comment=attachments_by_comment,
         author_names=author_names,

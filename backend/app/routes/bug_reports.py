@@ -23,7 +23,10 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services import bug_reports as svc
-from app.services.bug_report_export import build_bug_report_export_zip
+from app.services.bug_report_export import (
+    build_bug_report_export_zip,
+    get_bug_report_export_timestamp,
+)
 from app.services.notifications import create_notification
 
 router = APIRouter(tags=["bug_reports"])
@@ -284,13 +287,15 @@ def export_bug_reports(
     severity: Literal["low", "medium", "high"] | None = None,
     status_filter: Literal["open", "in_progress"] | None = Query(default=None, alias="status"),
 ) -> Response:
+    exported_at = get_bug_report_export_timestamp()
     archive_bytes = build_bug_report_export_zip(
         session,
         scope=scope,
         severity=severity,
         status=status_filter,
+        exported_at=exported_at,
     )
-    timestamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M")
+    timestamp = exported_at.strftime("%Y-%m-%d-%H%M")
     return Response(
         content=archive_bytes,
         media_type="application/zip",

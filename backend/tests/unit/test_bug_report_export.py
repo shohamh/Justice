@@ -345,7 +345,7 @@ def test_build_bug_report_export_zip_renders_markdown_zip_and_relative_links(
     assert all(".." not in name for name in names)
 
     index_md = text_entries["index.md"]
-    assert "Exported at: 2026-08-14T12:00:00+00:00" in index_md
+    assert "Exported at: 2026-08-14T15:00:00+03:00" in index_md
     assert "Scope: all_active" in index_md
     assert "Count: 2" in index_md
     assert index_md.index(f"(reports/{newer_report_id}.md)") < index_md.index(f"(reports/{older_report_id}.md)")

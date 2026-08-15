@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -197,6 +196,7 @@ def test_export_bug_reports_requires_admin(client: TestClient, admin_session: Se
 def test_export_bug_reports_returns_zip_headers_and_content_for_admin(
     client: TestClient,
     admin_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     admin = create_soldier(admin_session, personal_number="bugapi011a", role="admin")
     reporter = create_soldier(admin_session, personal_number="bugapi012a")
@@ -209,14 +209,18 @@ def test_export_bug_reports_returns_zip_headers_and_content_for_admin(
         route="/calendar",
     )
 
+    exported_at = datetime(2026, 8, 14, 18, 4, tzinfo=timezone(timedelta(hours=3)))
+    monkeypatch.setattr("app.routes.bug_reports.get_bug_report_export_timestamp", lambda: exported_at)
+
     resp = client.get("/api/admin/bug-reports/export", headers=auth_headers(admin))
 
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/zip"
     disposition = resp.headers["content-disposition"]
-    assert re.fullmatch(r'attachment; filename="bug-reports-\d{4}-\d{2}-\d{2}-\d{4}\.zip"', disposition)
+    assert disposition == 'attachment; filename="bug-reports-2026-08-14-1804.zip"'
     text_entries = _read_zip_text_entries(resp.content)
     assert "index.md" in text_entries
+    assert "Exported at: 2026-08-14T18:04:00+03:00" in text_entries["index.md"]
     assert "Count: 1" in text_entries["index.md"]
     assert "calendar export regression" in "\n".join(text_entries.values())
 
