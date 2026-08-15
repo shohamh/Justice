@@ -33,6 +33,45 @@ _LADDERS: dict[Track, list[str]] = {
     "officer_academic": OFFICER_ACADEMIC_LADDER,
 }
 
+# Runtime defaults mirror the values shown in the admin system-settings page.
+# A database row still wins, including an explicit NULL interval, so an admin
+# can disable automatic advancement for a rank after the seed has run.
+DEFAULT_RANK_ADVANCEMENT_INTERVALS: tuple[tuple[Track, str, int | None, bool], ...] = (
+    ("enlisted", "טוראי", 10, False),
+    ("enlisted", "רבט", 11, False),
+    ("enlisted", "סמל", 11, True),
+    ("enlisted", "סמר", 24, False),
+    ("enlisted", "רסל", None, False),
+    ("enlisted", "רסר", None, False),
+    ("enlisted", "רסמ", None, False),
+    ("enlisted", "רסב", None, False),
+    ("enlisted", "רנג", None, False),
+    ("officer", "סגמ", 12, True),
+    ("officer", "סגן", 36, False),
+    ("officer", "סרן", 48, False),
+    ("officer", "רסן", None, False),
+    ("officer", "סאל", None, False),
+    ("officer", "אלמ", None, False),
+    ("officer", "תאל", None, False),
+    ("officer", "אלוף", None, False),
+    ("officer", "רב אלוף", None, False),
+    ("officer_academic", "קמא", 32, True),
+    ("officer_academic", "קאב", None, False),
+    ("officer_academic", "סגן", 12, True),
+    ("officer_academic", "סרן", 36, False),
+    ("officer_academic", "רסן", None, False),
+    ("officer_academic", "סאל", None, False),
+    ("officer_academic", "אלמ", None, False),
+    ("officer_academic", "תאל", None, False),
+    ("officer_academic", "אלוף", None, False),
+    ("officer_academic", "רב אלוף", None, False),
+    ("officer_academic", "קאם", None, False),
+)
+_DEFAULT_INTERVALS_BY_KEY = {
+    (track, rank): (months_to_next, advance_on_career_entry)
+    for track, rank, months_to_next, advance_on_career_entry in DEFAULT_RANK_ADVANCEMENT_INTERVALS
+}
+
 
 def get_track(rank: str, *, track: Track | None = None) -> Track | None:
     """Return the advancement track for a rank.
@@ -76,7 +115,9 @@ def get_interval_months(session: Session, *, track: str, rank: str) -> int | Non
             RankAdvancementInterval.track == track, RankAdvancementInterval.rank == rank
         )
     ).scalar_one_or_none()
-    return row.months_to_next if row is not None else None
+    if row is not None:
+        return row.months_to_next
+    return _DEFAULT_INTERVALS_BY_KEY.get((track, rank), (None, False))[0]
 
 
 def compute_next_rank_date(
@@ -159,7 +200,9 @@ def advances_on_career_entry(session: Session, *, track: str, rank: str) -> bool
             RankAdvancementInterval.track == track, RankAdvancementInterval.rank == rank
         )
     ).scalar_one_or_none()
-    return row.advance_on_career_entry if row is not None else False
+    if row is not None:
+        return row.advance_on_career_entry
+    return _DEFAULT_INTERVALS_BY_KEY.get((track, rank), (None, False))[1]
 
 
 def _career_entry_date(mandatory_end_date: date | None, discharge_date: date | None) -> date | None:
@@ -202,8 +245,16 @@ def get_rank_ladder(session: Session) -> dict[str, list[dict]]:
         track: [
             {
                 "rank": rank,
-                "months_to_next": row.months_to_next if (row := by_key.get((track, rank))) is not None else None,
-                "advance_on_career_entry": bool(row and row.advance_on_career_entry),
+                "months_to_next": (
+                    row.months_to_next
+                    if (row := by_key.get((track, rank))) is not None
+                    else _DEFAULT_INTERVALS_BY_KEY.get((track, rank), (None, False))[0]
+                ),
+                "advance_on_career_entry": (
+                    row.advance_on_career_entry
+                    if row is not None
+                    else _DEFAULT_INTERVALS_BY_KEY.get((track, rank), (None, False))[1]
+                ),
             }
             for rank in ladder
         ]

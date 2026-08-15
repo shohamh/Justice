@@ -107,3 +107,69 @@ def test_seed_duty_types_require_at_least_a_laser_range(db_admin_url: str):
         "קצין מלווה אבט\"ש": RangeType.laser,
         "מפקד תורן": RangeType.laser,
     }
+
+
+def test_seed_creates_rank_advancement_defaults(db_admin_url: str):
+    from app.db.models import RankAdvancementInterval
+    from app.db.session import SessionLocal
+    from app.scripts import seed as seed_module
+
+    seed_module.seed(force=True)
+
+    with SessionLocal() as s:
+        rows = s.query(RankAdvancementInterval).all()
+
+    actual = {
+        (row.track, row.rank): (row.months_to_next, row.advance_on_career_entry)
+        for row in rows
+    }
+    assert actual == {
+        ("enlisted", "טוראי"): (10, False),
+        ("enlisted", "רבט"): (11, False),
+        ("enlisted", "סמל"): (11, True),
+        ("enlisted", "סמר"): (24, False),
+        ("enlisted", "רסל"): (None, False),
+        ("enlisted", "רסר"): (None, False),
+        ("enlisted", "רסמ"): (None, False),
+        ("enlisted", "רסב"): (None, False),
+        ("enlisted", "רנג"): (None, False),
+        ("officer", "סגמ"): (12, True),
+        ("officer", "סגן"): (36, False),
+        ("officer", "סרן"): (48, False),
+        ("officer", "רסן"): (None, False),
+        ("officer", "סאל"): (None, False),
+        ("officer", "אלמ"): (None, False),
+        ("officer", "תאל"): (None, False),
+        ("officer", "אלוף"): (None, False),
+        ("officer", "רב אלוף"): (None, False),
+        ("officer_academic", "קמא"): (32, True),
+        ("officer_academic", "קאב"): (None, False),
+        ("officer_academic", "סגן"): (12, True),
+        ("officer_academic", "סרן"): (36, False),
+        ("officer_academic", "רסן"): (None, False),
+        ("officer_academic", "סאל"): (None, False),
+        ("officer_academic", "אלמ"): (None, False),
+        ("officer_academic", "תאל"): (None, False),
+        ("officer_academic", "אלוף"): (None, False),
+        ("officer_academic", "רב אלוף"): (None, False),
+        ("officer_academic", "קאם"): (None, False),
+    }
+
+
+def test_seed_preserves_custom_rank_advancement_intervals(db_admin_url: str):
+    from app.db.models import RankAdvancementInterval
+    from app.db.session import SessionLocal
+    from app.scripts import seed as seed_module
+
+    seed_module.seed(force=True)
+    with SessionLocal() as s:
+        row = s.query(RankAdvancementInterval).filter_by(track="enlisted", rank="טוראי").one()
+        row.months_to_next = 99
+        row.advance_on_career_entry = True
+        s.commit()
+
+    seed_module.seed()
+
+    with SessionLocal() as s:
+        row = s.query(RankAdvancementInterval).filter_by(track="enlisted", rank="טוראי").one()
+        assert (row.months_to_next, row.advance_on_career_entry) == (99, True)

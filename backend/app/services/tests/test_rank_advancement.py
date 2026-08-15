@@ -47,8 +47,8 @@ def test_get_interval_months_returns_configured_value(app_session):
     assert get_interval_months(app_session, track="enlisted", rank="טוראי") == 4
 
 
-def test_get_interval_months_returns_none_when_unconfigured(app_session):
-    assert get_interval_months(app_session, track="enlisted", rank="טוראי") is None
+def test_get_interval_months_uses_code_default_when_unconfigured(app_session):
+    assert get_interval_months(app_session, track="enlisted", rank="טוראי") == 10
 
 
 def test_compute_next_rank_date_adds_months(app_session):
@@ -58,9 +58,15 @@ def test_compute_next_rank_date_adds_months(app_session):
     assert result == date(2026, 5, 1)
 
 
-def test_compute_next_rank_date_none_when_unconfigured(app_session):
+def test_compute_next_rank_date_uses_code_default_when_unconfigured(app_session):
     result = compute_next_rank_date(app_session, rank="טוראי", since=date(2026, 1, 1))
-    assert result is None
+    assert result == date(2026, 11, 1)
+
+
+def test_explicit_blank_interval_overrides_code_default(app_session):
+    app_session.add(RankAdvancementInterval(track="enlisted", rank="טוראי", months_to_next=None))
+    app_session.flush()
+    assert get_interval_months(app_session, track="enlisted", rank="טוראי") is None
 
 
 def test_upsert_interval_creates_row(app_session):
@@ -230,6 +236,10 @@ def test_advances_on_career_entry_false_when_unconfigured(app_session):
     assert advances_on_career_entry(app_session, track="officer_academic", rank="קאב") is False
 
 
+def test_advances_on_career_entry_uses_code_default_when_unconfigured(app_session):
+    assert advances_on_career_entry(app_session, track="officer_academic", rank="קמא") is True
+
+
 def test_get_rank_ladder_has_three_tracks_and_flag(app_session):
     upsert_interval(
         app_session, track="officer_academic", rank="קאב", months_to_next=None,
@@ -240,6 +250,20 @@ def test_get_rank_ladder_has_three_tracks_and_flag(app_session):
     kab_entry = next(e for e in ladder["officer_academic"] if e["rank"] == "קאב")
     assert kab_entry == {"rank": "קאב", "months_to_next": None, "advance_on_career_entry": True}
     assert "קמא" not in [e["rank"] for e in ladder["officer"]]
+
+
+def test_get_rank_ladder_includes_code_defaults_when_rows_are_missing(app_session):
+    ladder = get_rank_ladder(app_session)
+
+    assert ladder["enlisted"][0] == {
+        "rank": "טוראי", "months_to_next": 10, "advance_on_career_entry": False,
+    }
+    assert next(e for e in ladder["officer"] if e["rank"] == "סגמ") == {
+        "rank": "סגמ", "months_to_next": 12, "advance_on_career_entry": True,
+    }
+    assert next(e for e in ladder["officer_academic"] if e["rank"] == "סגן") == {
+        "rank": "סגן", "months_to_next": 12, "advance_on_career_entry": True,
+    }
 
 
 def test_career_entry_date_day_after_mandatory_end():
