@@ -47,11 +47,23 @@ describe("RangeFormModal",()=>{
 
     expect(screen.queryByText("+ הוסף מיקום")).not.toBeInTheDocument();
   });
+  it("defaults a new range event to a live range", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[{ id: "loc1", name: "מטווח דרום", active: true }]} onClose={vi.fn()} onSubmit={submit} />);
+
+    fireEvent.focus(screen.getByTestId("new-range-location"));
+    const locationOption = await screen.findByText("מטווח דרום");
+    fireEvent.pointerDown(locationOption);
+    fireEvent.pointerUp(locationOption);
+    fireEvent.click(screen.getByRole("button", { name: "שמור" }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ range_type: "live" })));
+  });
   it("shows readable range type choices", () => {
     render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={vi.fn()} />);
 
     const rangeType = screen.getByTestId("new-range-type");
-    expect(rangeType).toHaveValue("מטווח לייזר");
+    expect(rangeType).toHaveValue("מטווח חי");
     fireEvent.focus(rangeType);
 
     const listbox = screen.getByRole("listbox");
