@@ -108,6 +108,15 @@ def test_null_rank_blocked_if_restriction():
     assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
 
 
+def test_is_eligible_uses_rank_override_when_provided():
+    s = _soldier(rank="טוראי")
+    reqs = DutyTypeRequirements(allowed_ranks=["רבט"])
+    assert _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY) is False
+    assert _is_eligible(
+        s, reqs, mitvahim_months=6, alal_months=3, today=TODAY, rank_override="רבט"
+    ) is True
+
+
 def test_officers_not_allowed():
     s = _soldier(is_officer=True)
     reqs = DutyTypeRequirements(officers_allowed=False)

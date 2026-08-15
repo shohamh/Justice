@@ -2,11 +2,14 @@ import { Check, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export function passwordValid(password: string): boolean {
-  return password.length >= 10 && /[A-Za-z]/.test(password) && /[0-9]/.test(password);
+  return password.length >= 8
+    && /[A-Za-z]/.test(password)
+    && /[0-9]/.test(password)
+    && /[^A-Za-z0-9\s]/.test(password);
 }
 
 interface Rule {
-  key: "length" | "letter" | "digit";
+  key: "length" | "letter" | "digit" | "symbol";
   met: boolean;
   label: string;
 }
@@ -19,9 +22,10 @@ export default function PasswordStrengthHint({ password }: { password: string })
   }
 
   const rules: Rule[] = [
-    { key: "length", met: password.length >= 10, label: t("change_password.hint_length") },
+    { key: "length", met: password.length >= 8, label: t("change_password.hint_length") },
     { key: "letter", met: /[A-Za-z]/.test(password), label: t("change_password.hint_letter") },
     { key: "digit", met: /[0-9]/.test(password), label: t("change_password.hint_digit") },
+    { key: "symbol", met: /[^A-Za-z0-9\s]/.test(password), label: t("change_password.hint_symbol") },
   ];
 
   return (

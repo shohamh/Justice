@@ -1,16 +1,30 @@
+import { useQuery } from "@tanstack/react-query";
+import { getPublicRankLadder, getRankLadder, RankLadder } from "../api/rankAdvancement";
+import { queryKeys } from "../queryKeys";
+
 // Mirrors backend/app/services/eligibility.py ENLISTED_RANKS / OFFICER_RANKS.
+// Kept as an internal, unexported list: it backs the static rank/track-
+// compatibility table and the officer-rank/bahad1 helpers below, which are
+// business rules out of scope for the rank-advancement API work — NOT the
+// admin-editable rank *order*, which now lives server-side. Anything that
+// needs the ordered ladder (e.g. to populate a rank picker) should use
+// useRankLadder() below instead of hardcoding another copy of these lists.
 // Keep these two lists in sync with the backend if ranks are ever added/removed.
-export const ENLISTED_RANKS = [
+const ENLISTED_RANKS = [
   "טוראי", "רבט", "סמל", "סמר", "רסל", "רסר", "רסמ", "רסב", "רנג",
 ];
 
-export const OFFICER_RANKS = [
+const OFFICER_RANKS = [
   "קמא", "סגמ", "סגן", "קאב", "סרן", "קאם", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף",
 ];
 
-export const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS];
-
 const OFFICER_RANK_SET = new Set(OFFICER_RANKS);
+
+// קמא sits outside every advancement ladder (see rank_advancement.py) --
+// promoting off it is a manual action, not automated -- so it never appears
+// in the /rank-ladder response. It's still a fully valid, assignable rank,
+// so pickers built from the ladder response need it added back explicitly.
+const UNLADDERED_OFFICER_RANKS = ["קמא"];
 
 export function isOfficerRank(rank: string): boolean {
   return OFFICER_RANK_SET.has(rank);
@@ -57,11 +71,53 @@ export function deriveBahad1Graduate(rank: string): boolean {
 export function deriveIsCareer(
   rank: string,
   mandatoryEndDate: string,
-  dischargeDate: string,
+  _dischargeDate: string,
   todayIso: string = new Date().toISOString().slice(0, 10),
 ): boolean {
   if (CHOVAH_ONLY_RANKS.includes(rank)) return false;
   if (!mandatoryEndDate) return false;
   if (todayIso <= mandatoryEndDate) return false;
-  return !dischargeDate || dischargeDate > mandatoryEndDate;
+  return true;
+}
+
+// ── Rank ladder (API-backed) ────────────────────────────────────────────────
+// The ordered rank-advancement ladder — including each rank's admin-configured
+// months_to_next — lives server-side (backend/app/services/rank_advancement.py)
+// so it can be edited without a frontend deploy. This hook is the sole
+// frontend source of rank order; consumers that previously read the
+// ENLISTED_RANKS/OFFICER_RANKS constants (e.g. to build a rank picker) should
+// use enlistedRanks/officerRanks/allRanks from this hook instead.
+export function useRankLadder() {
+  return withLadderFields(
+    useQuery({ queryKey: queryKeys.rankLadder(), queryFn: getRankLadder }),
+  );
+}
+
+// Same ladder, fetched from the unauthenticated /auth/rank-ladder endpoint —
+// for PUBLIC routes (currently /register) where there is no access token, and
+// the authenticated /soldiers/rank-ladder read would 401 and leave the rank
+// picker empty. Kept under its own query key so the two never share a cache
+// entry populated by the wrong fetcher.
+export function usePublicRankLadder() {
+  return withLadderFields(
+    useQuery({ queryKey: queryKeys.publicRankLadder(), queryFn: getPublicRankLadder }),
+  );
+}
+
+function withLadderFields<T extends { data?: RankLadder }>(query: T) {
+  const enlistedRanks = query.data?.enlisted.map((e) => e.rank) ?? [];
+  const officerRanks = query.data
+    ? [
+        ...UNLADDERED_OFFICER_RANKS,
+        ...query.data.officer.map((e) => e.rank),
+        ...query.data.officer_academic.map((e) => e.rank),
+      ]
+    : [];
+  return {
+    ...query,
+    ladder: query.data,
+    enlistedRanks,
+    officerRanks,
+    allRanks: [...enlistedRanks, ...officerRanks],
+  };
 }

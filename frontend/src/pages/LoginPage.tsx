@@ -5,6 +5,7 @@ import { AxiosError } from "axios";
 
 import { useAuth } from "../auth/AuthContext";
 import JusticeLogo from "../components/JusticeLogo";
+import PasswordInput from "../components/PasswordInput";
 
 type ErrKey = "invalid_credentials" | "network" | "rate_limited" | null;
 
@@ -80,8 +81,7 @@ export default function LoginPage() {
 
         <label className="block">
           <span className="text-sm font-medium dark:text-gray-100">{t("login.password_label")}</span>
-          <input
-            type="password"
+          <PasswordInput
             autoComplete="current-password"
             required
             dir="ltr"

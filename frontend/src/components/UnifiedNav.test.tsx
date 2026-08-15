@@ -116,7 +116,7 @@ beforeEach(() => {
 
 describe("UnifiedNav — soldier role", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false } });
+    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false, can_view_transparency: true } });
   });
 
   test("renders 5 base tabs: my-requests, swaps, home, unit-calendar, transparency", () => {
@@ -126,6 +126,12 @@ describe("UnifiedNav — soldier role", () => {
     expect(screen.getAllByTestId("nav-home").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-unit-calendar").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-transparency").length).toBeGreaterThan(0);
+  });
+
+  test("does not render transparency when the soldier lacks permission", () => {
+    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false, can_view_transparency: false } });
+    render(<UnifiedNav />);
+    expect(screen.queryByTestId("nav-transparency")).not.toBeInTheDocument();
   });
 
   test("does not render commander or planning tabs", () => {

@@ -319,6 +319,8 @@ def _eligible_pairs(
                 continue
             if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
                 continue
+            if d.id in s.future_ineligible_duty_block_ids:
+                continue
             pairs.append((di, si))
     return pairs
 
@@ -1363,6 +1365,8 @@ def _swap_pass(
                 if s.hierarchy_node_id not in d.eligible_node_ids:
                     continue
             if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
+                continue
+            if d.id in s.future_ineligible_duty_block_ids:
                 continue
             elig.add(s.id)
         eligible_for[d.id] = elig

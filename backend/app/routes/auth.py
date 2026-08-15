@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from typing import Annotated
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from slowapi.util import get_remote_address
 from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
@@ -37,7 +37,7 @@ _LOCKOUT_MINUTES = 15
 
 
 class LoginRequest(BaseModel):
-    personal_number: str = Field(min_length=1, max_length=20)
+    personal_number: str = Field(pattern=r"^[0-9]{7,8}$")
     password: str = Field(min_length=1, max_length=200)
     remember_me: bool = False
 
@@ -56,8 +56,8 @@ class ChangePasswordRequest(BaseModel):
 class RegisterRequest(BaseModel):
     invite_code: str = Field(min_length=1, max_length=20)
     personal_number: str = Field(min_length=1, max_length=20)
-    full_name: str = Field(min_length=1, max_length=200)
-    password: str = Field(min_length=10, max_length=200)
+    full_name: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=8, max_length=200)
     phone: str = Field(max_length=40)
     email: str = Field(max_length=200)
     gender: str
@@ -79,6 +79,12 @@ class RegisterRequest(BaseModel):
     def _validate_phone(cls, v: str) -> str:
         if not is_valid_israeli_phone(v):
             raise ValueError("invalid_israeli_phone")
+        return v
+
+    @field_validator("personal_number")
+    @classmethod
+    def _validate_personal_number(cls, v: str) -> str:
+        reg_svc.validate_personal_number(v)
         return v
 
 
@@ -324,8 +330,19 @@ async def register(
     settings = get_settings()
     try:
         body = RegisterRequest.model_validate_json(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except ValidationError as exc:
+        if any(
+            error.get("loc") == ("password",)
+            and error.get("type") == "string_too_short"
+            for error in exc.errors()
+        ):
+            detail = "password_policy"
+        else:
+            detail = "registration_invalid"
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=detail,
+        ) from exc
 
     form = await request.form()
     exemption_files: dict[int, list[tuple[str, str, bytes]]] = {}
@@ -526,3 +543,25 @@ def list_public_exemption_types(
         .order_by(ExemptionType.name)
     ).scalars().all()
     return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_medical=et.is_medical) for et in types]
+
+
+@router.get("/rank-ladder")
+@limiter.limit("60/minute")
+def public_rank_ladder(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Unauthenticated read of the ordered rank ladder.
+
+    The registration page (a public route) needs the rank list to populate its
+    mandatory rank picker, so it cannot use the authenticated admin-facing
+    GET /soldiers/rank-ladder. The ladder is non-sensitive ordering data — it
+    was a hardcoded, fully public frontend constant before it moved
+    server-side — so it is exposed here alongside the other public,
+    registration-facing reads (/auth/register/nodes, /auth/exemption-types),
+    rate-limited the same way. Writing the intervals stays admin-only.
+    """
+    from app.services.rank_advancement import get_rank_ladder
+
+    return get_rank_ladder(session)

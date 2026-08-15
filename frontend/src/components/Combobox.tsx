@@ -66,6 +66,15 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
     setOpen(false);
   };
 
+  const selectExactMatch = () => {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) return false;
+    const match = allItems.find(item => item.name === normalizedQuery && !item.disabled);
+    if (!match) return false;
+    selectItem(match);
+    return true;
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open) return;
     if (e.key === "ArrowDown") {
@@ -91,6 +100,8 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
           e.preventDefault();
           selectItem(item);
         }
+      } else if (selectExactMatch()) {
+        e.preventDefault();
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
@@ -113,7 +124,9 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
         aria-controls={listboxId}
         onChange={e => { setQuery(e.target.value); setFilterQuery(e.target.value); setOpen(true); }}
         onFocus={() => { setOpen(true); setFilterQuery(""); if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => setTimeout(() => {
+          if (!selectExactMatch()) setOpen(false);
+        }, 150)}
         onKeyDown={handleKeyDown}
         className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
       />

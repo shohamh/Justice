@@ -16,7 +16,7 @@ from app.audit.writer import write_audit
 from app.auth.password import hash_password
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate
 
-MIN_PASSWORD_LENGTH = 10
+MIN_PASSWORD_LENGTH = 8
 
 
 class SoldierError(Exception):
@@ -24,7 +24,7 @@ class SoldierError(Exception):
 
 
 class PasswordPolicyError(SoldierError):
-    """Raised when a password fails policy (length-over-complexity, >= 10 chars)."""
+    """Raised when a password fails the length and complexity policy."""
 
 
 class SoldierValidationError(SoldierError):
@@ -83,19 +83,20 @@ def validate_password(password: str) -> None:
         raise PasswordPolicyError("password must contain at least one letter")
     if not re.search(r"[0-9]", password):
         raise PasswordPolicyError("password must contain at least one digit")
+    if not re.search(r"[^A-Za-z0-9\s]", password):
+        raise PasswordPolicyError("password must contain at least one symbol")
 
 
 def generate_temp_password(length: int = 14) -> str:
-    alphabet = string.ascii_letters + string.digits
-    # The password policy requires at least one letter and one digit; a fully
-    # random draw over letters+digits omits digits ~15% of the time, and the
-    # resulting temp password would be rejected by validate_password. Force
-    # one of each class into a random slot.
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    # Force one character from each required class into the random password.
     chars = [secrets.choice(alphabet) for _ in range(length)]
     if not any(c.isdigit() for c in chars):
         chars[secrets.randbelow(length)] = secrets.choice(string.digits)
     if not any(c.isalpha() for c in chars):
         chars[secrets.randbelow(length)] = secrets.choice(string.ascii_letters)
+    if not any(c in string.punctuation for c in chars):
+        chars[secrets.randbelow(length)] = secrets.choice(string.punctuation)
     return "".join(chars)
 
 
@@ -274,7 +275,7 @@ PROFILE_FIELDS = {
     "gender", "is_officer", "rank", "bahad1_graduate",
     "enlistment_date", "mandatory_end_date", "discharge_date",
     "last_mitvahim_date", "last_alal_date", "email", "phone",
-    "profile_picture_url",
+    "profile_picture_url", "next_rank_date",
 }
 
 # Fields that feed rank/track compatibility (directly, or via is_career's
@@ -282,6 +283,16 @@ PROFILE_FIELDS = {
 # into a new incompatible combination, so it shouldn't be blocked by one that
 # already existed before this validation was introduced.
 _RANK_TRACK_AFFECTING_FIELDS = {"rank", "mandatory_end_date", "discharge_date"}
+
+
+def _reset_rank_advancement(session: Session, soldier: Soldier, *, since: date) -> None:
+    """Re-derive next_rank_date from the rank ladder as of `since` and clear
+    any manual override — used whenever a soldier's rank is set directly
+    (not via an explicit next_rank_date edit)."""
+    from app.services.rank_advancement import compute_next_rank_date
+    soldier.current_rank_since = since
+    soldier.next_rank_date = compute_next_rank_date(session, rank=soldier.rank, since=since)
+    soldier.next_rank_date_overridden = False
 
 
 def update_soldier_profile(
@@ -296,6 +307,13 @@ def update_soldier_profile(
     for k, v in fields.items():
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
+    if "next_rank_date" in fields:
+        soldier.next_rank_date_overridden = True
+    elif "rank" in fields:
+        from app.services.rank_advancement import compute_next_rank_date
+        soldier.current_rank_since = date.today()
+        soldier.next_rank_date = compute_next_rank_date(session, rank=soldier.rank, since=date.today())
+        soldier.next_rank_date_overridden = False
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     # Only validate rank/track compatibility when this PATCH actually touches
     # a field that affects it (rank itself, or a date that feeds is_career).
@@ -403,6 +421,7 @@ def approve_field_update(
         soldier.gender = raw
     elif field == "rank":
         soldier.rank = raw
+        _reset_rank_advancement(session, soldier, since=date.today())
     elif field == "phone":
         soldier.phone = raw
     elif field == "military_driving_license":

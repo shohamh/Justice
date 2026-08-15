@@ -3,7 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+from dateutil.relativedelta import relativedelta
+
 from app.services.eligibility import SOLDIER_EDITABLE_FIELDS
+from app.services.rank_advancement import upsert_interval
 from app.services.soldiers import approve_field_update, submit_field_update
 from app.db.models import Soldier
 
@@ -91,3 +94,69 @@ def test_approve_field_update_writes_discharge_date(admin_session):
     approve_field_update(admin_session, update=req, actor_id=soldier.id)
 
     assert soldier.discharge_date == date(2028, 1, 15)
+
+
+def test_approve_field_update_rank_initializes_next_rank_date(admin_session):
+    """Task 13: approve_field_update()'s `elif field == "rank":` branch is one
+    of the writers of Soldier.rank — it must initialize next_rank_date the
+    same way update_soldier_profile does."""
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name=f"unit_{uuid.uuid4().hex[:8]}")
+    soldier = Soldier(
+        personal_number=f"pn_{uuid.uuid4().hex[:8]}",
+        full_name="Test Soldier",
+        password_hash="x",
+        hierarchy_node_id=node.id,
+        rank="טוראי",
+    )
+    admin_session.add(soldier)
+    admin_session.flush()
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    admin_session.flush()
+
+    req = submit_field_update(
+        admin_session,
+        soldier_id=soldier.id,
+        field_name="rank",
+        new_value="רבט",
+        actor_id=soldier.id,
+    )
+    admin_session.flush()
+
+    approve_field_update(admin_session, update=req, actor_id=soldier.id)
+
+    assert soldier.rank == "רבט"
+    assert soldier.current_rank_since == date.today()
+    assert soldier.next_rank_date == date.today() + relativedelta(months=8)
+    assert soldier.next_rank_date_overridden is False
+
+
+def test_approve_field_update_rank_without_interval_leaves_next_rank_date_none(admin_session):
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name=f"unit_{uuid.uuid4().hex[:8]}")
+    soldier = Soldier(
+        personal_number=f"pn_{uuid.uuid4().hex[:8]}",
+        full_name="Test Soldier",
+        password_hash="x",
+        hierarchy_node_id=node.id,
+        rank="טוראי",
+    )
+    admin_session.add(soldier)
+    admin_session.flush()
+
+    req = submit_field_update(
+        admin_session,
+        soldier_id=soldier.id,
+        field_name="rank",
+        new_value="רבט",
+        actor_id=soldier.id,
+    )
+    admin_session.flush()
+
+    approve_field_update(admin_session, update=req, actor_id=soldier.id)
+
+    assert soldier.rank == "רבט"
+    assert soldier.next_rank_date is None
+    assert soldier.next_rank_date_overridden is False

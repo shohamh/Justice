@@ -17,6 +17,7 @@ from app.db.models import (
     DutyLocation,
     HierarchyNode,
     Soldier,
+    SystemSetting,
 )
 from app.services.range_eligibility_projection import (
     count_ineligible_soldiers_for_duties,
@@ -108,6 +109,8 @@ def get_calendar_shifts(
         node = session.get(HierarchyNode, node_id)
         if node is None:
             return []
+        root_setting = session.get(SystemSetting, "system.root_node_id")
+        is_framework_wide = root_setting is not None and str(node_id) == str(root_setting.value)
 
         subtree_node_ids = set(
             session.execute(select(HierarchyNode.id).where(HierarchyNode.path_ids.any(node_id)))
@@ -126,7 +129,7 @@ def get_calendar_shifts(
             .scalars()
             .all()
         }
-        if not soldiers_in_subtree:
+        if not soldiers_in_subtree and not is_framework_wide:
             return []
 
     soldier_id_set = set(soldiers_in_subtree.keys())
@@ -323,9 +326,14 @@ def get_calendar_shifts(
     result = []
     for shift in shifts:
         assignees = assignees_by_shift.get(shift.id, [])
-        # Personal view: skip shifts this soldier isn't actually assigned to
-        # (the base query above pulls every active shift in range, unfiltered).
-        if soldier_id is not None and not assignees:
+        # The base query above pulls every active shift in range, unfiltered.
+        if soldier_id is not None:
+            # Personal view: skip shifts this soldier isn't actually assigned to.
+            if not assignees:
+                continue
+        elif not assignees and not is_framework_wide:
+            # A hierarchy-scoped view only shows duties with an assignee in the
+            # selected subtree. Open duties have no unit membership to match.
             continue
         dt_name, dt_color, required_range_type = dt_map.get(
             shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id), None)

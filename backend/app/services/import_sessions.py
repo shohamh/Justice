@@ -1327,6 +1327,39 @@ def _effective_action(selections: dict, group: str, row: dict) -> str:
     return selections.get(group, {}).get(str(row["row"]), row["action"])
 
 
+def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dict) -> None:
+    """Initialize next_rank_date/current_rank_since/next_rank_date_overridden
+    for an imported soldier row that sets a rank — mirroring the
+    initialization the other rank-setting writers (registration, profile
+    edit, field-update approval) perform, which a bulk import must not
+    silently skip.
+
+    An explicit `next_rank_date` on the row (already applied to `soldier` by
+    the caller) is treated as a manual override, same as a direct profile
+    edit of next_rank_date — so it's marked overridden and left untouched
+    here. `current_rank_since` is still (re)derived in that case: it tracks
+    when the soldier's *current rank* took effect, a separate concern from
+    whether the next-rank *date* itself was manually overridden.
+
+    No-ops when the row doesn't set a rank at all — nothing to initialize.
+    """
+    if row.get("rank") is None:
+        return
+    from app.services.rank_advancement import compute_next_rank_date
+    if row.get("enlistment_date"):
+        since = date_type.fromisoformat(row["enlistment_date"])
+    elif row.get("enrolled_at"):
+        since = date_type.fromisoformat(row["enrolled_at"])
+    else:
+        since = date_type.today()
+    soldier.current_rank_since = since
+    if row.get("next_rank_date"):
+        soldier.next_rank_date_overridden = True
+    else:
+        soldier.next_rank_date = compute_next_rank_date(session, rank=soldier.rank, since=since)
+        soldier.next_rank_date_overridden = False
+
+
 def confirm_session(
     session: Session, *, session_id: uuid.UUID, actor: Soldier
 ) -> dict:
@@ -1400,6 +1433,7 @@ def confirm_session(
                     new_soldier.last_alal_date = date_type.fromisoformat(row["last_alal_date"])
                 if row.get("left_at"):
                     new_soldier.left_at = date_type.fromisoformat(row["left_at"])
+                _init_rank_advancement_from_row(session, new_soldier, row)
                 session.add(new_soldier)
                 session.flush()
                 created += 1
@@ -1447,6 +1481,7 @@ def confirm_session(
                         s.last_alal_date = date_type.fromisoformat(row["last_alal_date"])
                     if row.get("left_at"):
                         s.left_at = date_type.fromisoformat(row["left_at"])
+                    _init_rank_advancement_from_row(session, s, row)
                     session.flush()
                     updated += 1
                     created_soldiers.append(str(s.id))

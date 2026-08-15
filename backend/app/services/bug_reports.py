@@ -158,11 +158,15 @@ def import_bug_report_json(session: Session, payload: dict[str, Any]) -> uuid.UU
     (the same shape `write_bug_report` produces — see `_write_json_mirror`).
 
     Used to recover reports that only ever reached disk because the DB insert
-    failed at submission time (e.g. during a DB outage). Raises
-    BugReportImportError if the payload is malformed, the report already
-    exists in the DB, or the insert itself fails (e.g. the reporter no longer
-    exists). Runs in a SAVEPOINT so a failure here does not roll back other
-    reports already imported in the same request.
+    failed at submission time (e.g. during a DB outage), or to move reports
+    between environments (e.g. staging to prod) where the original reporter's
+    soldier row doesn't exist. If `reporter_id` doesn't resolve to a soldier
+    in this DB, the report is imported anyway with reporter_id=None — the
+    original reporter's details already live in `user_snapshot`, captured at
+    submission time. Raises BugReportImportError if the payload is malformed,
+    the report already exists in the DB, or the insert itself fails for some
+    other reason. Runs in a SAVEPOINT so a failure here does not roll back
+    other reports already imported in the same request.
     """
     missing = [f for f in _REQUIRED_IMPORT_FIELDS if not payload.get(f)]
     if missing:
@@ -178,6 +182,9 @@ def import_bug_report_json(session: Session, payload: dict[str, Any]) -> uuid.UU
 
     if session.get(BugReport, report_id) is not None:
         raise BugReportImportError("already_exists")
+
+    if session.get(Soldier, reporter_id) is None:
+        reporter_id = None
 
     try:
         with session.begin_nested():

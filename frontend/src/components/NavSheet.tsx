@@ -26,7 +26,7 @@ interface NavSheetProps {
 }
 
 export default function NavSheet({ open, onClose, items, testId }: NavSheetProps) {
-  useModalBackClose(onClose, open);
+  const consumeForNavigation = useModalBackClose(onClose, open);
   if (!open) return null;
 
   return (
@@ -58,7 +58,7 @@ export default function NavSheet({ open, onClose, items, testId }: NavSheetProps
           <Link
             key={item.to}
             to={item.to}
-            onClick={onClose}
+            onClick={() => { consumeForNavigation(); onClose(); }}
             className="flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg"
             data-testid={item.testId}
           >

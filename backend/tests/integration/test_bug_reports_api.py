@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
+from datetime import datetime, timezone
+from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import BugReport
+from app.db.models import BugReport, BugReportComment
 from app.services import bug_reports as svc
 from tests.helpers import auth_headers, create_soldier
 
@@ -133,6 +137,32 @@ def _submit(client: TestClient, reporter, **overrides):
     return resp
 
 
+def _read_zip_text_entries(data: bytes) -> dict[str, str]:
+    with ZipFile(BytesIO(data)) as archive:
+        return {
+            name: archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.endswith(".md")
+        }
+
+
+def _create_comment(
+    session: Session,
+    *,
+    report_id: uuid.UUID,
+    author_id: uuid.UUID,
+    body: str,
+) -> BugReportComment:
+    comment = BugReportComment(
+        bug_report_id=report_id,
+        author_id=author_id,
+        body=body,
+    )
+    session.add(comment)
+    session.flush()
+    return comment
+
+
 def test_list_bug_reports_requires_admin(client: TestClient, admin_session: Session):
     soldier = create_soldier(admin_session, personal_number="bugapi010")
     resp = client.get("/api/admin/bug-reports", headers=auth_headers(soldier))
@@ -154,6 +184,151 @@ def test_list_bug_reports_filters_by_severity_and_paginates(client: TestClient, 
     resp = client.get("/api/admin/bug-reports", params={"limit": 1, "offset": 0}, headers=auth_headers(admin))
     assert len(resp.json()["items"]) == 1
     assert resp.json()["total"] == 3
+
+
+def test_export_bug_reports_requires_admin(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number="bugapi010a")
+
+    resp = client.get("/api/admin/bug-reports/export", headers=auth_headers(soldier))
+
+    assert resp.status_code == 403
+
+
+def test_export_bug_reports_returns_zip_headers_and_content_for_admin(
+    client: TestClient,
+    admin_session: Session,
+):
+    admin = create_soldier(admin_session, personal_number="bugapi011a", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi012a")
+    _submit(
+        client,
+        reporter,
+        description="calendar export regression",
+        severity="high",
+        screenshot=_TINY_PNG_B64,
+        route="/calendar",
+    )
+
+    resp = client.get("/api/admin/bug-reports/export", headers=auth_headers(admin))
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/zip"
+    disposition = resp.headers["content-disposition"]
+    assert re.fullmatch(r'attachment; filename="bug-reports-\d{4}-\d{2}-\d{2}-\d{4}\.zip"', disposition)
+    text_entries = _read_zip_text_entries(resp.content)
+    assert "index.md" in text_entries
+    assert "Count: 1" in text_entries["index.md"]
+    assert "calendar export regression" in "\n".join(text_entries.values())
+
+
+def test_export_bug_reports_all_active_scope_excludes_resolved_and_wont_fix(
+    client: TestClient,
+    admin_session: Session,
+):
+    admin = create_soldier(admin_session, personal_number="bugapi011b", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi012b")
+    _submit(client, reporter, description="open export item", severity="low")
+    _submit(client, reporter, description="in progress export item", severity="medium")
+    _submit(client, reporter, description="resolved export item", severity="high")
+    _submit(client, reporter, description="wont-fix export item", severity="low")
+
+    reports = admin_session.query(BugReport).order_by(BugReport.created_at).all()
+    report_ids_by_description = {report.description: report.id for report in reports}
+    admin_session.get(BugReport, report_ids_by_description["in progress export item"]).status = "in_progress"
+    admin_session.get(BugReport, report_ids_by_description["resolved export item"]).status = "resolved"
+    admin_session.get(BugReport, report_ids_by_description["wont-fix export item"]).status = "wont_fix"
+    admin_session.commit()
+
+    resp = client.get("/api/admin/bug-reports/export", headers=auth_headers(admin))
+
+    assert resp.status_code == 200
+    text_entries = _read_zip_text_entries(resp.content)
+    joined_text = "\n".join(text_entries.values())
+    assert "open export item" in joined_text
+    assert "in progress export item" in joined_text
+    assert "resolved export item" not in joined_text
+    assert "wont-fix export item" not in joined_text
+
+
+def test_export_bug_reports_filtered_scope_applies_severity_and_status(
+    client: TestClient,
+    admin_session: Session,
+):
+    admin = create_soldier(admin_session, personal_number="bugapi011c", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi012c")
+    _submit(client, reporter, description="target filtered item", severity="high")
+    _submit(client, reporter, description="wrong severity item", severity="low")
+    _submit(client, reporter, description="wrong status item", severity="high")
+
+    reports = admin_session.query(BugReport).order_by(BugReport.created_at).all()
+    report_ids_by_description = {report.description: report.id for report in reports}
+    admin_session.get(BugReport, report_ids_by_description["target filtered item"]).status = "in_progress"
+    admin_session.get(BugReport, report_ids_by_description["wrong severity item"]).status = "in_progress"
+    admin_session.get(BugReport, report_ids_by_description["wrong status item"]).status = "open"
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/admin/bug-reports/export",
+        params={"scope": "filtered", "severity": "high", "status": "in_progress"},
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 200
+    text_entries = _read_zip_text_entries(resp.content)
+    joined_text = "\n".join(text_entries.values())
+    assert "target filtered item" in joined_text
+    assert "wrong severity item" not in joined_text
+    assert "wrong status item" not in joined_text
+
+
+def test_export_bug_reports_rejects_inactive_status_filter(
+    client: TestClient,
+    admin_session: Session,
+):
+    admin = create_soldier(admin_session, personal_number="bugapi011d", role="admin")
+
+    resp = client.get(
+        "/api/admin/bug-reports/export",
+        params={"scope": "filtered", "status": "resolved"},
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 422
+
+
+def test_export_bug_reports_does_not_change_report_state(
+    client: TestClient,
+    admin_session: Session,
+):
+    admin = create_soldier(admin_session, personal_number="bugapi011e", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi012e")
+    _submit(client, reporter, description="read only export item", severity="medium")
+    report = admin_session.query(BugReport).filter_by(description="read only export item").one()
+    report.status = "in_progress"
+    report.updated_at = datetime(2026, 8, 14, 9, 15, tzinfo=timezone.utc)
+    report.reporter_last_seen_at = datetime(2026, 8, 14, 9, 10, tzinfo=timezone.utc)
+    report.audit_snapshot = [{"action": "submit", "entity_type": "bug_report"}]
+    admin_session.flush()
+    _create_comment(
+        admin_session,
+        report_id=report.id,
+        author_id=admin.id,
+        body="Existing triage note",
+    )
+    admin_session.commit()
+    original_comment_count = admin_session.query(BugReportComment).filter_by(bug_report_id=report.id).count()
+
+    resp = client.get("/api/admin/bug-reports/export", headers=auth_headers(admin))
+
+    assert resp.status_code == 200
+    admin_session.expire_all()
+    refreshed = admin_session.get(BugReport, report.id)
+    assert refreshed is not None
+    assert refreshed.status == "in_progress"
+    assert refreshed.updated_at == datetime(2026, 8, 14, 9, 15, tzinfo=timezone.utc)
+    assert refreshed.reporter_last_seen_at == datetime(2026, 8, 14, 9, 10, tzinfo=timezone.utc)
+    assert refreshed.audit_snapshot == [{"action": "submit", "entity_type": "bug_report"}]
+    assert admin_session.query(BugReportComment).filter_by(bug_report_id=report.id).count() == original_comment_count
 
 
 def test_update_bug_report_status_persists(client: TestClient, admin_session: Session):
@@ -303,7 +478,7 @@ def test_import_bug_reports_rejects_invalid_json_but_continues(client: TestClien
     assert admin_session.get(BugReport, uuid.UUID(good["id"])) is not None
 
 
-def test_import_bug_reports_reports_error_for_unknown_reporter(client: TestClient, admin_session: Session):
+def test_import_bug_reports_imports_with_null_reporter_for_unknown_reporter(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="bugapi030", role="admin")
     reporter = create_soldier(admin_session, personal_number="bugapi031")
     payload = _mirror_payload(reporter, reporter_id=str(uuid.uuid4()))
@@ -315,8 +490,10 @@ def test_import_bug_reports_reports_error_for_unknown_reporter(client: TestClien
     )
     assert resp.status_code == 200
     result = resp.json()["results"][0]
-    assert result["status"] == "error"
-    assert admin_session.get(BugReport, uuid.UUID(payload["id"])) is None
+    assert result["status"] == "imported"
+    imported = admin_session.get(BugReport, uuid.UUID(payload["id"]))
+    assert imported is not None
+    assert imported.reporter_id is None
 
 
 def test_submit_bug_report_returns_429_after_daily_cap(client: TestClient, admin_session: Session):

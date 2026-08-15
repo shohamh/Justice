@@ -81,15 +81,13 @@ class DutyTypeRequirements(BaseModel):
 
 
 def inferred_service_type(soldier: Soldier, today: date | None = None) -> str | None:
-    """Return 'חובה', 'קבע', or None (unknown)."""
+    """Return 'חובה', 'קבע', or None (unknown), based on mandatory end date."""
     if soldier.mandatory_end_date is None:
         return None
     ref = today or date.today()
     if ref <= soldier.mandatory_end_date:
         return "חובה"
-    if soldier.discharge_date is None or soldier.discharge_date > soldier.mandatory_end_date:
-        return "קבע"
-    return "חובה"
+    return "קבע"
 
 
 def derive_is_career(
@@ -98,8 +96,7 @@ def derive_is_career(
     discharge_date: date | None,
     today: date | None = None,
 ) -> bool:
-    """A soldier is קבע once their mandatory (חובה) service has ended and no
-    discharge closed it out first — mirrors inferred_service_type's rule.
+    """A soldier is קבע once their mandatory (חובה) service has ended.
     Never true while holding a חובה-only rank, regardless of dates."""
     if rank in CHOVAH_ONLY_RANKS:
         return False
@@ -108,7 +105,7 @@ def derive_is_career(
     ref = today or date.today()
     if ref <= mandatory_end_date:
         return False
-    return discharge_date is None or discharge_date > mandatory_end_date
+    return True
 
 
 BAHAD1_EXCLUDED_OFFICER_RANKS = ["קמא", "קאב", "קאם"]
@@ -121,7 +118,10 @@ def derive_bahad1_graduate(rank: str | None) -> bool:
     return rank not in BAHAD1_EXCLUDED_OFFICER_RANKS
 
 
-def _is_eligible(soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date) -> bool:
+def _is_eligible(
+    soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date,
+    rank_override: str | None = None,
+) -> bool:
     """Return False if soldier fails any requirement (fail-safe: null field = blocked if restriction exists)."""
     if reqs.allowed_genders:
         if not soldier.gender or soldier.gender not in reqs.allowed_genders:
@@ -140,7 +140,8 @@ def _is_eligible(soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_month
             return False
 
     if reqs.allowed_ranks:
-        if not soldier.rank or soldier.rank not in reqs.allowed_ranks:
+        effective_rank = rank_override if rank_override is not None else soldier.rank
+        if not effective_rank or effective_rank not in reqs.allowed_ranks:
             return False
 
     if reqs.allowed_service_types:
@@ -218,7 +219,11 @@ def check_soldier_for_assignment(
     if soldier is None:
         return False, "חייל לא נמצא"
 
-    today = date.today()
+    from app.services.rank_eligibility_projection import project_soldier_state
+    projected = project_soldier_state(session, soldier=soldier, as_of=assignment.start_date)
+    if projected.departed:
+        return False, "החייל סיים שירות עד תאריך זה"
+    today = assignment.start_date
 
     def _setting_int(key: str, default: int) -> int:
         try:
@@ -236,7 +241,7 @@ def check_soldier_for_assignment(
                 mitvahim_months = _setting_int("eligibility.mitvahim_months", 6)
                 alal_months = _setting_int("eligibility.alal_months", 3)
                 if not _is_eligible(soldier, reqs, mitvahim_months=mitvahim_months,
-                                    alal_months=alal_months, today=today):
+                                    alal_months=alal_months, today=today, rank_override=projected.rank):
                     return False, "אי-כשירות לסוג תורנות זה"
             except Exception:
                 pass

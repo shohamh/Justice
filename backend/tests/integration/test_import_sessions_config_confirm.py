@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import io
 import uuid
+from datetime import date, timedelta
 from decimal import Decimal
 
 import openpyxl
+from dateutil.relativedelta import relativedelta
 
 import app.services.import_parsers.v1_standard  # noqa: F401
 from app.db.models import (
@@ -14,8 +16,10 @@ from app.db.models import (
     ExemptionDutyTypeMap,
     ExemptionType,
     HierarchyNode,
+    Soldier,
 )
 from app.services.duty_config import create_duty_type
+from app.services.rank_advancement import recompute_affected_soldiers, upsert_interval
 from tests.helpers import auth_headers, create_soldier
 
 
@@ -305,3 +309,182 @@ def test_session_row_summary_includes_range_sheets(client, admin_session):
     assert entry["row_summary"]["range_assignments"] == 0
     assert entry["row_summary"]["soldier_range_qualifications"] == 0
     assert entry["row_summary"]["range_excusal_requests"] == 0
+
+
+# ── Task 13: rank-advancement initialization on import ──────────────────────
+
+
+def test_confirm_new_soldier_with_rank_computes_next_rank_date_from_enlistment(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    admin_session.commit()
+
+    pn = f"imp_{_uid()}"
+    enlistment = date.today() - timedelta(days=100)
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank", "enlistment_date"],
+            [pn, "חייל בדיקה", "טוראי", enlistment.isoformat()],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["created"] == 1
+
+    soldier = admin_session.query(Soldier).filter_by(personal_number=pn).one()
+    assert soldier.current_rank_since == enlistment
+    assert soldier.next_rank_date == enlistment + relativedelta(months=8)
+    assert soldier.next_rank_date_overridden is False
+
+
+def test_confirm_new_soldier_with_explicit_next_rank_date_marks_overridden(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    admin_session.commit()
+
+    pn = f"imp_{_uid()}"
+    explicit_date = date.today() + timedelta(days=365)
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank", "next_rank_date"],
+            [pn, "חייל בדיקה", "טוראי", explicit_date.isoformat()],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["created"] == 1
+
+    soldier = admin_session.query(Soldier).filter_by(personal_number=pn).one()
+    assert soldier.next_rank_date == explicit_date
+    assert soldier.next_rank_date_overridden is True
+    # current_rank_since still gets derived — it tracks a separate concern
+    # (when the current rank took effect) from whether next_rank_date itself
+    # was manually overridden.
+    assert soldier.current_rank_since is not None
+
+    # A subsequent config-driven recompute must not clobber the manual override.
+    recompute_affected_soldiers(admin_session, track="enlisted", rank="טוראי")
+    admin_session.commit()
+    admin_session.refresh(soldier)
+    assert soldier.next_rank_date == explicit_date
+
+
+def test_confirm_new_soldier_with_rank_but_no_interval_leaves_next_rank_date_none(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.commit()
+
+    pn = f"imp_{_uid()}"
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank"],
+            [pn, "חייל בדיקה", "טוראי"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    soldier = admin_session.query(Soldier).filter_by(personal_number=pn).one()
+    assert soldier.current_rank_since is not None
+    assert soldier.next_rank_date is None
+    assert soldier.next_rank_date_overridden is False
+
+
+def test_confirm_new_soldier_without_rank_leaves_rank_advancement_fields_untouched(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.commit()
+
+    pn = f"imp_{_uid()}"
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name"],
+            [pn, "חייל בדיקה"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    soldier = admin_session.query(Soldier).filter_by(personal_number=pn).one()
+    assert soldier.rank is None
+    assert soldier.current_rank_since is None
+    assert soldier.next_rank_date is None
+    assert soldier.next_rank_date_overridden is False
+
+
+def test_confirm_updates_existing_soldier_rank_initializes_next_rank_date(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"exist_{_uid()}")
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=6, advance_on_career_entry=False, actor_id=None)
+    admin_session.commit()
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank"],
+            [existing.personal_number, existing.full_name, "רבט"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["updated"] == 1
+
+    admin_session.refresh(existing)
+    assert existing.rank == "רבט"
+    assert existing.current_rank_since == date.today()
+    assert existing.next_rank_date == date.today() + relativedelta(months=6)
+    assert existing.next_rank_date_overridden is False
+
+
+def test_confirm_updates_existing_soldier_without_rank_column_leaves_rank_advancement_untouched(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"exist_{_uid()}")
+    existing.rank = "טוראי"
+    existing.next_rank_date = date(2030, 1, 1)
+    existing.current_rank_since = date(2020, 1, 1)
+    existing.next_rank_date_overridden = True
+    admin_session.commit()
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name"],
+            [existing.personal_number, "שם חדש"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["updated"] == 1
+
+    admin_session.refresh(existing)
+    assert existing.full_name == "שם חדש"
+    assert existing.rank == "טוראי"
+    assert existing.next_rank_date == date(2030, 1, 1)
+    assert existing.current_rank_since == date(2020, 1, 1)
+    assert existing.next_rank_date_overridden is True

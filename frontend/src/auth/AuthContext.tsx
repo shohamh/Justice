@@ -23,6 +23,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const hasUser = user !== null;
 
   useEffect(() => {
     api.post<{ access_token: string }>("/auth/refresh")
@@ -45,10 +46,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // periodically so pages reading `user` (enrollment gates, last-range-date
   // banners, profile display) reflect approvals without requiring a re-login.
   useEffect(() => {
-    if (!user) return;
+    if (!hasUser) return;
     const interval = setInterval(() => { fetchMe().then(setUser).catch(() => {}); }, 60000);
     return () => clearInterval(interval);
-  }, [user === null]);
+  }, [hasUser]);
 
   const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
     const r = await apiLogin(personal_number, password, remember_me);
