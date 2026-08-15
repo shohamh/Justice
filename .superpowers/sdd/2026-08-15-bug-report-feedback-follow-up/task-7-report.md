@@ -54,3 +54,40 @@ Output: 3 files passed; 34 tests passed. `tsc --noEmit` passed.
 The passing focused suites emit pre-existing React `act(...)` warnings from
 `ShiftDetailPanel` tests and jsdom `AggregateError` network warnings from
 `UnitCalendar` tests. No Task 7 scope was broadened to address them.
+
+## Fix round 1: default absent duty requirements
+
+Reviewer feedback identified a possible TS18048 at
+`frontend/src/utils/dutyRequirements.ts:16`: `DutyType.requirements` is
+optional. The formatter now normalizes an absent duty type or requirements
+object to `{}` before reading its flags. This preserves every existing
+formatter output while removing the optional value from later accesses.
+
+The local pre-fix typecheck did not reproduce TS18048; its verbatim output was:
+
+```text
+> justice-frontend@0.1.0 typecheck
+> tsc --noEmit
+```
+
+Final Task 7 Vitest command (verbatim command and verdict):
+
+```powershell
+npx vitest run src/utils/rangeEligibilityExplanation.test.ts src/components/ShiftDetailPanel.test.tsx src/components/UnitCalendar.test.tsx
+```
+
+```text
+Test Files  3 passed (3)
+     Tests  34 passed (34)
+```
+
+The command also emitted the previously recorded React `act(...)` warnings
+from `ShiftDetailPanel` and jsdom `AggregateError` network warnings from
+`UnitCalendar`; its exit code was 0.
+
+Final typecheck (verbatim output):
+
+```text
+> justice-frontend@0.1.0 typecheck
+> tsc --noEmit
+```
