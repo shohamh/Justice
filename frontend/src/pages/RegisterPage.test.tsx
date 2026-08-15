@@ -93,8 +93,8 @@ async function goToExemptionsStep() {
   fireEvent.change(screen.getByLabelText(/מגדר/), { target: { value: "male" } });
   fireEvent.change(screen.getByLabelText(/תאריך גיוס/), { target: { value: "01012024" } });
   fireEvent.change(screen.getByLabelText(/סיום חובה/), { target: { value: "01012026" } });
+  fireEvent.change(screen.getByLabelText(/תאריך שחרור/), { target: { value: "01012027" } });
   fireEvent.change(screen.getByLabelText(/מטווח אחרון/), { target: { value: "01012025" } });
-  fireEvent.change(screen.getByLabelText(/שחרור/), { target: { value: "01012027" } });
   fireEvent.change(screen.getByLabelText(/^סיסמה/), { target: { value: "a-long-enough-pass1" } });
   fireEvent.change(screen.getByLabelText(/^אימות סיסמה/), { target: { value: "a-long-enough-pass1" } });
 

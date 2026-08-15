@@ -71,13 +71,13 @@ export function deriveBahad1Graduate(rank: string): boolean {
 export function deriveIsCareer(
   rank: string,
   mandatoryEndDate: string,
-  dischargeDate: string,
+  _dischargeDate: string,
   todayIso: string = new Date().toISOString().slice(0, 10),
 ): boolean {
   if (CHOVAH_ONLY_RANKS.includes(rank)) return false;
   if (!mandatoryEndDate) return false;
   if (todayIso <= mandatoryEndDate) return false;
-  return !dischargeDate || dischargeDate > mandatoryEndDate;
+  return true;
 }
 
 // ── Rank ladder (API-backed) ────────────────────────────────────────────────

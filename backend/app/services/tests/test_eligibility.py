@@ -18,6 +18,14 @@ def test_derive_is_career_true_after_mandatory_end_no_discharge():
     ) is True
 
 
+def test_derive_is_career_true_when_mandatory_end_equals_discharge_date():
+    from app.services.eligibility import derive_is_career
+    assert derive_is_career(
+        rank="רסן", mandatory_end_date=date(2020, 8, 14), discharge_date=date(2020, 8, 14),
+        today=date(2026, 8, 14),
+    ) is True
+
+
 def test_derive_is_career_false_when_discharged_before_mandatory_end():
     from app.services.eligibility import derive_is_career
     assert derive_is_career(

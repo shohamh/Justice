@@ -16,7 +16,7 @@ from app.audit.writer import write_audit
 from app.auth.password import hash_password
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate
 
-MIN_PASSWORD_LENGTH = 10
+MIN_PASSWORD_LENGTH = 8
 
 
 class SoldierError(Exception):
@@ -24,7 +24,7 @@ class SoldierError(Exception):
 
 
 class PasswordPolicyError(SoldierError):
-    """Raised when a password fails policy (length-over-complexity, >= 10 chars)."""
+    """Raised when a password fails the length and complexity policy."""
 
 
 class SoldierValidationError(SoldierError):
@@ -83,19 +83,20 @@ def validate_password(password: str) -> None:
         raise PasswordPolicyError("password must contain at least one letter")
     if not re.search(r"[0-9]", password):
         raise PasswordPolicyError("password must contain at least one digit")
+    if not re.search(r"[^A-Za-z0-9\s]", password):
+        raise PasswordPolicyError("password must contain at least one symbol")
 
 
 def generate_temp_password(length: int = 14) -> str:
-    alphabet = string.ascii_letters + string.digits
-    # The password policy requires at least one letter and one digit; a fully
-    # random draw over letters+digits omits digits ~15% of the time, and the
-    # resulting temp password would be rejected by validate_password. Force
-    # one of each class into a random slot.
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    # Force one character from each required class into the random password.
     chars = [secrets.choice(alphabet) for _ in range(length)]
     if not any(c.isdigit() for c in chars):
         chars[secrets.randbelow(length)] = secrets.choice(string.digits)
     if not any(c.isalpha() for c in chars):
         chars[secrets.randbelow(length)] = secrets.choice(string.ascii_letters)
+    if not any(c in string.punctuation for c in chars):
+        chars[secrets.randbelow(length)] = secrets.choice(string.punctuation)
     return "".join(chars)
 
 

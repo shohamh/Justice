@@ -190,7 +190,7 @@ def _render_report_markdown(
     if report.screenshot:
         lines.extend(
             [
-                f"[Original screenshot](../{_report_screenshot_path(report)})",
+                f"![Original screenshot](../{_report_screenshot_path(report)})",
                 "",
             ]
         )

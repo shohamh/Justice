@@ -76,7 +76,6 @@ export default function App() {
   // Like TelegramGate above: if settings fetch fails, this becomes false and the
   // route conditionally renders (fails OPEN), which is safer than blocking it.
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
-  const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
 
   return (
     <ErrorBoundary>
@@ -118,9 +117,12 @@ export default function App() {
                   {hakpazaEnabled && (
                     <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
                   )}
-                  {mitvachimEnabled && (
-                    <Route path="/ranges" element={<AppGate><RangesPage /></AppGate>} />
-                  )}
+                  {/* Keep the route registered while public settings load. The
+                      planning menu can become available before the settings
+                      hook in this component resolves; a conditional route in
+                      that window falls through to the authenticated catch-all
+                      and sends the user home. */}
+                  <Route path="/ranges" element={<AppGate><RangesPage /></AppGate>} />
                   <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
                   <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />
                   <Route path="/import/sessions/:id" element={<AppGate><ImportSessionReviewPage /></AppGate>} />

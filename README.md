@@ -154,8 +154,8 @@ Prerequisites: **Docker**, **Python 3.12 + [uv](https://docs.astral.sh/uv/)**,
 **Node 20 + [pnpm](https://pnpm.io/) 9**.
 
 ```powershell
-.\dev.ps1        # backend + frontend + Telegram bot
-.\dev.ps1 -NoBot # skip the bot
+.\dev.ps1                 # backend + frontend (default)
+.\dev.ps1 -TelegramBot   # include the Telegram bot
 ```
 
 That's it. The script handles everything in one terminal window:
@@ -195,8 +195,8 @@ account list. **Seed data is for development only.**
 
 ```powershell
 # Dev stack (recommended — runs natively for reliable hot reload)
-.\dev.ps1        # backend + frontend + bot, all in one terminal
-.\dev.ps1 -NoBot # skip the bot
+.\dev.ps1                 # backend + frontend, all in one terminal
+.\dev.ps1 -TelegramBot   # include the bot
 ```
 
 ```bash

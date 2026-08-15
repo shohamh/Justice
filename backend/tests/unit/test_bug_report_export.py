@@ -357,7 +357,8 @@ def test_build_bug_report_export_zip_renders_markdown_zip_and_relative_links(
     assert '"/calendar"' in report_md
     assert "Reporter One" in report_md
     assert '"action": "login"' in report_md
-    assert f"../images/{older_report_id}/original-screenshot.png" in report_md
+    assert f"![Original screenshot](../images/{older_report_id}/original-screenshot.png)" in report_md
+    assert f"\n[Original screenshot](../images/{older_report_id}/original-screenshot.png)" not in report_md
     assert f"../images/{older_report_id}/comment-{first_comment_id}-1.gif" in report_md
     assert report_md.index("בודק את זה עכשיו") < report_md.index("עדיין קורה גם אחרי רענון")
 

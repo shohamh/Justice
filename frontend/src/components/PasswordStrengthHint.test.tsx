@@ -11,8 +11,8 @@ describe("passwordValid", () => {
     expect(passwordValid("abcdefg1a".slice(0, 9))).toBe(false);
   });
 
-  test("accepts exactly 10 characters with letter and digit", () => {
-    expect(passwordValid("abcdefgh1a")).toBe(true);
+  test("accepts exactly 8 characters with letter, digit, and symbol", () => {
+    expect(passwordValid("abcde1!x")).toBe(true);
   });
 
   test("rejects letters only, 10+ chars", () => {
@@ -23,8 +23,16 @@ describe("passwordValid", () => {
     expect(passwordValid("1234567890")).toBe(false);
   });
 
-  test("accepts mixed letters and digits, 10+ chars", () => {
-    expect(passwordValid("password123")).toBe(true);
+  test("rejects passwords without a symbol", () => {
+    expect(passwordValid("password123")).toBe(false);
+  });
+
+  test("rejects passwords without a letter", () => {
+    expect(passwordValid("1234567!")).toBe(false);
+  });
+
+  test("rejects passwords without a digit", () => {
+    expect(passwordValid("abcdefg!")).toBe(false);
   });
 });
 
@@ -41,8 +49,8 @@ describe("PasswordStrengthHint", () => {
     expect(screen.getByTestId("password-hint-digit")).toBeInTheDocument();
   });
 
-  test("marks length rule as met once 10+ chars are entered", () => {
-    render(<PasswordStrengthHint password="abcdefghij" />);
+  test("marks length rule as met once 8+ chars are entered", () => {
+    render(<PasswordStrengthHint password="abcdefgh" />);
     expect(screen.getByTestId("password-hint-length")).toHaveAttribute("data-met", "true");
   });
 
@@ -59,5 +67,10 @@ describe("PasswordStrengthHint", () => {
   test("marks letter rule as unmet when password is digits only", () => {
     render(<PasswordStrengthHint password="123456" />);
     expect(screen.getByTestId("password-hint-letter")).toHaveAttribute("data-met", "false");
+  });
+
+  test("marks symbol rule as met when a symbol is present", () => {
+    render(<PasswordStrengthHint password="abc!" />);
+    expect(screen.getByTestId("password-hint-symbol")).toHaveAttribute("data-met", "true");
   });
 });

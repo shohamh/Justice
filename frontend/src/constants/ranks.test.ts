@@ -94,6 +94,10 @@ describe("deriveIsCareer", () => {
     expect(deriveIsCareer("רסן", "2025-01-01", "", "2026-07-19")).toBe(true);
   });
 
+  it("is true when mandatory service ended on the recorded discharge date", () => {
+    expect(deriveIsCareer("רסן", "2020-08-14", "2020-08-14", "2026-08-14")).toBe(true);
+  });
+
   it("is false if discharged before mandatory end date", () => {
     expect(deriveIsCareer("רסן", "2027-01-01", "2026-06-01", "2026-07-19")).toBe(false);
   });
