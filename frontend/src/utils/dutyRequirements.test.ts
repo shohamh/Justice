@@ -36,6 +36,25 @@ describe("formatDutyRequirements", () => {
     ).toEqual(['נדרש רשנ"צ']);
   });
 
+  it("deduplicates equivalent specific-range and requirement labels", () => {
+    expect(
+      formatDutyRequirements(dutyType({ requires_alal: true }), "alal")
+    ).toEqual(['אל"ל']);
+  });
+
+  it("shows both active officer and enlisted exclusions", () => {
+    expect(
+      formatDutyRequirements(
+        dutyType({ officers_allowed: false, enlisted_allowed: false }),
+        null
+      )
+    ).toEqual(["חוגרים", "קצינים"]);
+  });
+
+  it("shows the active minimum rest requirement", () => {
+    expect(formatDutyRequirements(dutyType({ rest_hours: 8 }), null)).toEqual(["8 שעות מנוחה"]);
+  });
+
   it("keeps combined requirements ordered without duplicating a generic range", () => {
     expect(
       formatDutyRequirements(
