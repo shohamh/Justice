@@ -3,6 +3,17 @@
 ## 2026-08-15
 
 ### Features
+- Added code-backed default rank-advancement intervals and קידום עם כניסה לקבע settings for enlisted, officer, and academic-officer ladders.
+
+### Fixes
+- The seed now creates missing rank-advancement settings without overwriting administrator customizations, while runtime defaults remain available before seeding.
+
+### Chores
+- Added regression coverage for seeded defaults, runtime fallback behavior, and preservation of customized intervals.
+
+## 2026-08-15
+
+### Features
 - Rank selectors now include the academic-officer ladder, and the selected rank track is persisted for promotion rules across registration, enrollment, profiles, and soldier administration.
 - Algorithm runs now report unfilled duties caused by shortages of required qualifications such as range qualifications or military driving licenses, with actionable shortage details.
 - Seeded demo range data now covers multiple range types, with 25 primary places and 5 reserves per range, plus an אל"ל event one day before each seeded הגנ"ש.
