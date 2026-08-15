@@ -78,6 +78,24 @@ describe("RangesPage", () => {
     expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledWith("planning");
   });
 
+  it("selects the locations view from the tab query parameter without fetching planning rows", async () => {
+    vi.mocked(rangeLocationsApi.listRangeLocations).mockResolvedValue([
+      { id: "loc-1", name: "מטווח דרום", active: true },
+    ]);
+    vi.mocked(rangeLocationsApi.createRangeLocation).mockResolvedValue({ id: "loc-2", name: "מטווח מזרח", active: true });
+
+    renderWithQuery(<RangesPage />, ["/ranges?tab=locations"]);
+
+    expect(await screen.findByRole("tab", { name: "מיקומי מטווחים" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("מטווח דרום")).toBeInTheDocument();
+    expect(rangesApi.getRanges).not.toHaveBeenCalled();
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("שם המיקום"), { target: { value: "מטווח מזרח" } });
+    fireEvent.click(screen.getByRole("button", { name: "הוסף מיקום" }));
+    await waitFor(() => expect(rangeLocationsApi.createRangeLocation).toHaveBeenCalledWith({ name: "מטווח מזרח" }));
+  });
+
   it("renders the list of range events", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {
