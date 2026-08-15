@@ -15,7 +15,7 @@ from app.db.session import get_session
 from app.services import enrollment as svc
 from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
 from app.services.notifications import create_notification
-from app.services.rank_advancement import compute_next_rank_date, resolve_track
+from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
 from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
@@ -328,9 +328,13 @@ def patch_enrollment(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         if s.rank is not None:
-            s.current_rank_since = s.current_rank_since or date.today()
-            s.next_rank_date = compute_next_rank_date(
-                session, rank=s.rank, since=s.current_rank_since, track=s.rank_track
+            s.current_rank_since = s.enlistment_date or date.today()
+            s.next_rank_date = compute_initial_next_rank_date(
+                session,
+                rank=s.rank,
+                enlistment_date=s.enlistment_date,
+                fallback_since=s.current_rank_since,
+                track=s.rank_track,
             )
             s.next_rank_date_overridden = False
 

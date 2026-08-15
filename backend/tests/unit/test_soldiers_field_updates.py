@@ -109,26 +109,24 @@ def test_approve_field_update_rank_initializes_next_rank_date(admin_session):
         password_hash="x",
         hierarchy_node_id=node.id,
         rank="טוראי",
+        enlistment_date=date(2021, 1, 15),
     )
     admin_session.add(soldier)
     admin_session.flush()
-    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
-    admin_session.flush()
-
     req = submit_field_update(
         admin_session,
         soldier_id=soldier.id,
         field_name="rank",
-        new_value="רבט",
+        new_value="סמר",
         actor_id=soldier.id,
     )
     admin_session.flush()
 
     approve_field_update(admin_session, update=req, actor_id=soldier.id)
 
-    assert soldier.rank == "רבט"
-    assert soldier.current_rank_since == date.today()
-    assert soldier.next_rank_date == date.today() + relativedelta(months=8)
+    assert soldier.rank == "סמר"
+    assert soldier.current_rank_since == date(2021, 1, 15)
+    assert soldier.next_rank_date == date(2025, 9, 15)
     assert soldier.next_rank_date_overridden is False
 
 
@@ -144,6 +142,10 @@ def test_approve_field_update_rank_without_interval_leaves_next_rank_date_none(a
         rank="טוראי",
     )
     admin_session.add(soldier)
+    upsert_interval(
+        admin_session, track="enlisted", rank="רבט", months_to_next=None,
+        advance_on_career_entry=False, actor_id=None,
+    )
     admin_session.flush()
 
     req = submit_field_update(

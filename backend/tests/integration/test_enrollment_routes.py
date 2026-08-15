@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from app.db.models import (
     ExemptionRequest,
@@ -183,6 +184,27 @@ def test_patch_notifies_soldier_when_fields_actually_changed(client, admin_sessi
     assert "דרגה" in notif.body
     assert notif.reference_type == "soldier_enrollment_request"
     assert notif.reference_id == req.id
+
+
+def test_enrollment_rank_change_uses_cumulative_enlistment_schedule(client, admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    soldier.enlistment_date = date(2021, 1, 15)
+    admin_session.commit()
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+
+    resp = client.patch(
+        f"/api/enrollment-requests/{req.id}",
+        json={"rank": "סמר"},
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 200, resp.text
+    admin_session.refresh(soldier)
+    assert soldier.current_rank_since == date(2021, 1, 15)
+    assert soldier.next_rank_date == date(2025, 9, 15)
 
 
 def test_patch_does_not_notify_when_nothing_actually_changed(client, admin_session):

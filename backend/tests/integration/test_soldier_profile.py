@@ -14,17 +14,22 @@ def _setup_dm(session, pn: str):
 def test_dm_can_patch_profile(client, admin_session):
     dm, node = _setup_dm(admin_session, "prof_dm_001")
     s = create_soldier(admin_session, personal_number="prof_s_001", hierarchy_node_id=node.id)
+    s.enlistment_date = date(2021, 1, 15)
+    admin_session.commit()
 
     resp = client.patch(
         f"/api/soldiers/{s.id}/profile",
-        json={"rank": "סמל", "is_officer": False, "gender": "male"},
+        json={"rank": "סמר", "is_officer": False, "gender": "male"},
         headers=auth_headers(dm),
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["rank"] == "סמל"
+    assert data["rank"] == "סמר"
     assert data["is_officer"] is False
     assert data["gender"] == "male"  # DM can see gender
+    admin_session.refresh(s)
+    assert s.current_rank_since == date(2021, 1, 15)
+    assert s.next_rank_date == date(2025, 9, 15)
 
 
 def test_profile_update_rank_track_incompatible_returns_400(client, admin_session):

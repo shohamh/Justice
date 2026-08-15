@@ -344,7 +344,7 @@ def test_register_accepts_medical_exemption_row_with_file(client, admin_session)
     assert admin_session.query(ExemptionRequestFile).filter_by(exemption_request_id=req.id).count() == 1
 
 
-def test_register_initializes_next_rank_date_from_enlistment_date(client, admin_session):
+def test_register_initializes_cumulative_next_rank_date_from_enlistment_date(client, admin_session):
     """Task 13: register() is one of the writers of Soldier.rank — it must
     initialize next_rank_date/current_rank_since the same way
     update_soldier_profile does, using enlistment_date as the since-anchor
@@ -352,28 +352,29 @@ def test_register_initializes_next_rank_date_from_enlistment_date(client, admin_
     holding = _setup_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
-    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     admin_session.commit()
 
-    enlistment = date.today() - timedelta(days=600)
-    payload = _payload(invite.code, node.id, enlistment_date=enlistment.isoformat())
+    enlistment = date(2021, 1, 15)
+    payload = _payload(invite.code, node.id, rank="סמר", enlistment_date=enlistment.isoformat())
     resp = _post_register(client, payload)
     assert resp.status_code == 200, resp.text
 
     from app.db.models import Soldier
     soldier = admin_session.query(Soldier).filter_by(personal_number=payload["personal_number"]).one()
     assert soldier.current_rank_since == enlistment
-    assert soldier.next_rank_date == enlistment + relativedelta(months=8)
+    assert soldier.next_rank_date == date(2025, 9, 15)
     assert soldier.next_rank_date_overridden is False
 
 
-def test_register_without_interval_configured_leaves_next_rank_date_none(client, admin_session):
-    """A rank with no configured RankAdvancementInterval must not crash
-    registration — next_rank_date simply stays None, matching
-    compute_next_rank_date's existing contract."""
+def test_register_with_disabled_interval_leaves_next_rank_date_none(client, admin_session):
+    """An explicitly disabled interval leaves registration unscheduled."""
     holding = _setup_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    upsert_interval(
+        admin_session, track="enlisted", rank="טוראי", months_to_next=None,
+        advance_on_career_entry=False, actor_id=None,
+    )
     admin_session.commit()
 
     payload = _payload(invite.code, node.id)

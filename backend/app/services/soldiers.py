@@ -289,11 +289,15 @@ def _reset_rank_advancement(session: Session, soldier: Soldier, *, since: date) 
     """Re-derive next_rank_date from the rank ladder as of `since` and clear
     any manual override — used whenever a soldier's rank is set directly
     (not via an explicit next_rank_date edit)."""
-    from app.services.rank_advancement import compute_next_rank_date, resolve_track
+    from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
     soldier.rank_track = resolve_track(soldier.rank, soldier.rank_track)
-    soldier.current_rank_since = since
-    soldier.next_rank_date = compute_next_rank_date(
-        session, rank=soldier.rank, since=since, track=soldier.rank_track
+    soldier.current_rank_since = soldier.enlistment_date or since
+    soldier.next_rank_date = compute_initial_next_rank_date(
+        session,
+        rank=soldier.rank,
+        enlistment_date=soldier.enlistment_date,
+        fallback_since=soldier.current_rank_since,
+        track=soldier.rank_track,
     )
     soldier.next_rank_date_overridden = False
 

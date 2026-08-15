@@ -17,7 +17,7 @@ from app.db.models import (
 )
 from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
-from app.services.rank_advancement import compute_next_rank_date, resolve_track
+from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import PasswordPolicyError, SoldierError, _check_soldier_dates, validate_password
 
@@ -143,8 +143,12 @@ def register(
     )
     if rank is not None:
         soldier.current_rank_since = enlistment_date or date.today()
-        soldier.next_rank_date = compute_next_rank_date(
-            session, rank=rank, since=soldier.current_rank_since, track=resolved_rank_track
+        soldier.next_rank_date = compute_initial_next_rank_date(
+            session,
+            rank=rank,
+            enlistment_date=enlistment_date,
+            fallback_since=soldier.current_rank_since,
+            track=resolved_rank_track,
         )
         soldier.next_rank_date_overridden = False
     session.add(soldier)
