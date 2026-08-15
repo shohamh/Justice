@@ -345,13 +345,19 @@ def update_soldier_profile(
         except ValueError as exc:
             raise SoldierValidationError(str(exc)) from exc
     validate_soldier_dates(soldier)
+    audit_after = {k: str(v) for k, v in fields.items() if v is not None}
+    if "next_rank_date" in fields and fields["next_rank_date"] is None:
+        audit_after["next_rank_date"] = (
+            soldier.next_rank_date.isoformat() if soldier.next_rank_date else None
+        )
+        audit_after["next_rank_date_overridden"] = soldier.next_rank_date_overridden
     write_audit(
         session,
         actor_id=actor_id,
         action="soldier.profile.update",
         entity_type="soldier",
         entity_id=soldier.id,
-        after={k: str(v) for k, v in fields.items() if v is not None},
+        after=audit_after,
     )
     return soldier
 

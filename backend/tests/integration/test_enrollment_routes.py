@@ -6,6 +6,8 @@ from datetime import date
 from app.db.models import (
     ExemptionRequest,
     ExemptionType,
+    DutyManagerScope,
+    HierarchyLevelType,
     HierarchyNode,
     Notification,
     NotificationType,
@@ -114,6 +116,31 @@ def test_junior_commander_cannot_change_rank_on_in_scope_enrollment(client, admi
 
     response = client.patch(
         f"/api/enrollment-requests/{req.id}", json={"rank": "סמר"}, headers=auth_headers(commander),
+    )
+
+    assert response.status_code == 403
+
+
+def test_rank_change_requires_authority_over_enrollment_destination(client, admin_session):
+    holding = _make_holding(admin_session)
+    mador = admin_session.query(HierarchyLevelType).filter_by(key="group").one()
+    mador.key = "מדור"
+    mador.label = "מדור"
+    senior_root = create_node(admin_session, level="מדור", name=f"senior_{_uid()}", parent=holding)
+    junior_destination = create_node(admin_session, level="team", name=f"junior_{_uid()}", parent=holding)
+    duty_manager = create_soldier(
+        admin_session, personal_number=f"dm_{_uid()}", role="duty_manager", hierarchy_node_id=senior_root.id,
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=junior_destination.id)
+    )
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    request = _make_req(admin_session, soldier, senior_root)
+
+    response = client.patch(
+        f"/api/enrollment-requests/{request.id}",
+        json={"rank": "סמר", "requested_node_id": str(junior_destination.id)},
+        headers=auth_headers(duty_manager),
     )
 
     assert response.status_code == 403

@@ -58,12 +58,15 @@ def test_junior_duty_manager_cannot_approve_rank_field_update(client, admin_sess
         json={"field_name": "rank", "new_value": "סמר"},
         headers=auth_headers(soldier),
     )
+    pending = client.get("/api/soldiers/field-updates/pending", headers=auth_headers(duty_manager))
 
     response = client.post(
         f"/api/soldiers/{soldier.id}/field-updates/{submitted.json()['id']}/approve",
         json={}, headers=auth_headers(duty_manager),
     )
 
+    item = next(item for item in pending.json() if item["id"] == submitted.json()["id"])
+    assert item["can_approve"] is False
     assert response.status_code == 403
 
 

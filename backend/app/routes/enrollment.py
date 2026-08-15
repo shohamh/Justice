@@ -283,6 +283,12 @@ def patch_enrollment(
     if rank_advancement_fields & body.model_fields_set:
         if not rank_advancement_edit_authorized(session, user=user, target_node=target_node):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        if body.requested_node_id is not None:
+            destination_node = session.get(HierarchyNode, body.requested_node_id)
+            if destination_node is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="node_not_found")
+            if not rank_advancement_edit_authorized(session, user=user, target_node=destination_node):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     s = session.get(Soldier, req.soldier_id)
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier not found")

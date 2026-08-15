@@ -308,6 +308,38 @@ def test_update_soldier_profile_manual_next_rank_date_sets_overridden(admin_sess
     assert soldier.next_rank_date_overridden is True
 
 
+def test_clearing_next_rank_date_audits_resulting_automatic_state(admin_session):
+    from app.db.models import AuditLog
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920033")
+    soldier.rank = "סמר"
+    soldier.enlistment_date = date(2021, 1, 15)
+    admin_session.commit()
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"next_rank_date": date(2030, 1, 1)}, actor_id=None,
+    )
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session, soldier=soldier, fields={"next_rank_date": None}, actor_id=None,
+    )
+    admin_session.flush()
+
+    audit = next(
+        entry for entry in admin_session.query(AuditLog).filter_by(
+            action="soldier.profile.update", entity_id=soldier.id,
+        ).all()
+        if entry.after.get("next_rank_date_overridden") is False
+    )
+    assert audit.after == {
+        "next_rank_date": "2025-09-15",
+        "next_rank_date_overridden": False,
+    }
+
+
 def test_update_soldier_profile_rank_change_with_explicit_date_updates_initial_anchor(admin_session):
     from app.services.soldiers import update_soldier_profile
     from tests.helpers import create_soldier

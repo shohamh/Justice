@@ -440,13 +440,18 @@ def list_all_pending_field_updates(
                 node_name = node.name if node else None
                 include_values = can_see_private(session, user, s)
                 nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
-                decide_action = (
-                    Action.MILITARY_LICENSE_DECIDE if upd.field_name == "military_driving_license" else Action.SOLDIER_UPDATE
-                )
-                can_approve = can(
-                    user, decide_action, target_node=node, roots=roots,
-                    is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
-                )
+                if upd.field_name in {"rank", "rank_track", "is_officer", "next_rank_date"}:
+                    can_approve = rank_advancement_edit_authorized(
+                        session, user=user, target_node=node
+                    )
+                else:
+                    decide_action = (
+                        Action.MILITARY_LICENSE_DECIDE if upd.field_name == "military_driving_license" else Action.SOLDIER_UPDATE
+                    )
+                    can_approve = can(
+                        user, decide_action, target_node=node, roots=roots,
+                        is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+                    )
                 result.append(
                     _fu_out(
                         upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
