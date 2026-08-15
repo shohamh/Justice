@@ -411,6 +411,8 @@ def get_range_event(
     user: Soldier = Depends(require_password_changed),
 ) -> RangeEventOut:
     _require_enabled(session)
+    if svc.mark_past_range_events_completed(session):
+        session.commit()
     event = _load_event(session, event_id)
     node = _event_node(session, event)
     can_manage = True
@@ -443,6 +445,8 @@ def list_range_events(
     user: Soldier = Depends(require_password_changed),
 ) -> list[RangeEventOut]:
     _require_enabled(session)
+    if svc.mark_past_range_events_completed(session):
+        session.commit()
     if soldier_id is not None:
         # Personal view: only this soldier's own range events, regardless of
         # hierarchy — a range can be created at a node outside the soldier's

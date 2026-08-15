@@ -281,6 +281,30 @@ def cancel_range_event(
     return event
 
 
+def mark_past_range_events_completed(session: Session, *, today: date | None = None) -> int:
+    today = today or date.today()
+    events = session.execute(
+        select(RangeEvent).where(
+            RangeEvent.status == RangeEventStatus.planned,
+            RangeEvent.date < today,
+        )
+    ).scalars().all()
+    for event in events:
+        previous_status = event.status
+        event.status = RangeEventStatus.completed
+        write_audit(
+            session,
+            actor_id=None,
+            action="range_event.complete",
+            entity_type="range_event",
+            entity_id=event.id,
+            before={"status": previous_status},
+            after={"status": event.status},
+        )
+    session.flush()
+    return len(events)
+
+
 def delete_range_event(session: Session, *, event: RangeEvent) -> None:
     if event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
