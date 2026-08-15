@@ -86,6 +86,8 @@ describe("RangesPage", () => {
 
     renderWithQuery(<RangesPage />, ["/ranges?tab=locations"]);
 
+    expect(screen.getByRole("tab", { name: "range_qualification.tabs.schedule" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: "range_qualification.tabs.qualification" })).toHaveAttribute("aria-selected", "false");
     expect(await screen.findByRole("tab", { name: "מיקומי מטווחים" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByText("מטווח דרום")).toBeInTheDocument();
     expect(rangesApi.getRanges).not.toHaveBeenCalled();

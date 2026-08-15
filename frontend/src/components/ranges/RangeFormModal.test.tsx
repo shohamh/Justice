@@ -36,6 +36,12 @@ describe("RangeFormModal",()=>{
   });
   it("rejects an end time before the start time",async()=>{ const submit=vi.fn(); render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[{id:"loc1",name:"מטווח דרום",active:true}]} onClose={vi.fn()} onSubmit={submit}/>); fireEvent.focus(screen.getByTestId("new-range-location")); const locationOption = await screen.findByText("מטווח דרום"); fireEvent.pointerDown(locationOption); fireEvent.pointerUp(locationOption); fireEvent.change(screen.getByTestId("new-date"),{target:{value:"2026-09-02"}}); fireEvent.change(screen.getByTestId("new-start-time"),{target:{value:"12:00"}}); fireEvent.change(screen.getByTestId("new-end-time"),{target:{value:"11:00"}}); fireEvent.click(screen.getByRole("button",{name:"שמור"})); expect(screen.getByRole("alert")).toBeInTheDocument(); expect(submit).not.toHaveBeenCalled(); });
   it("shows a specific error when no location is selected",()=>{ const submit=vi.fn(); render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={submit}/>); fireEvent.change(screen.getByTestId("new-date"),{target:{value:"2026-09-02"}}); fireEvent.click(screen.getByRole("button",{name:"שמור"})); expect(screen.getByRole("alert")).toHaveTextContent("יש לבחור מיקום"); expect(submit).not.toHaveBeenCalled(); });
+  it("does not expose inactive configured locations in the selector", () => {
+    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[{ id: "loc-inactive", name: "מטווח סגור", active: false }]} onClose={vi.fn()} onSubmit={vi.fn()} />);
+
+    fireEvent.focus(screen.getByTestId("new-range-location"));
+    expect(screen.queryByText("מטווח סגור")).not.toBeInTheDocument();
+  });
   it("does not offer inline range-location creation", () => {
     render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={vi.fn()} />);
 
