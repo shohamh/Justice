@@ -24,6 +24,20 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function captureCssText(scrollX: number, scrollY: number): string {
+  // html-to-image applies `style` by assigning each key to the cloned node's
+  // CSSStyleDeclaration. `cssText` is the supported key that can carry custom
+  // properties, but assigning it replaces the clone's computed style, so copy
+  // that style first and retain the capture viewport dimensions it would set.
+  const computedStyle = window.getComputedStyle(document.body);
+  let cssText = "";
+  for (let index = 0; index < computedStyle.length; index += 1) {
+    const property = computedStyle.item(index);
+    cssText += `${property}: ${computedStyle.getPropertyValue(property)};`;
+  }
+  return `${cssText}width: ${window.innerWidth}px; height: ${window.innerHeight}px; --bug-report-scroll-left: ${-scrollX}px; --bug-report-scroll-top: ${-scrollY}px;`;
+}
+
 export default function BugReportTrigger() {
   const { openBugReportModal } = useBugReportModal();
   const [capturing, setCapturing] = useState(false);
@@ -72,10 +86,7 @@ export default function BugReportTrigger() {
           width: window.innerWidth,
           height: window.innerHeight,
           style: appScrollContainer
-            ? {
-                "--bug-report-scroll-left": `${-scrollX}px`,
-                "--bug-report-scroll-top": `${-scrollY}px`,
-              }
+            ? { cssText: captureCssText(scrollX, scrollY) }
             : { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
         }),
         CAPTURE_TIMEOUT_MS,

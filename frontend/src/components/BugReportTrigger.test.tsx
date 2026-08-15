@@ -134,22 +134,24 @@ describe("BugReportTrigger", () => {
     });
     document.body.append(appScrollContainer);
 
-    renderTrigger();
+    try {
+      renderTrigger();
 
-    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+      fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-    await waitFor(() => expect(toPng).toHaveBeenCalled());
-    expect(toPng).toHaveBeenCalledWith(
-      document.body,
-      expect.objectContaining({
-        style: expect.objectContaining({
-          "--bug-report-scroll-top": "-300px",
-          "--bug-report-scroll-left": "-40px",
+      await waitFor(() => expect(toPng).toHaveBeenCalled());
+      expect(toPng).toHaveBeenCalledWith(
+        document.body,
+        expect.objectContaining({
+          style: expect.objectContaining({
+            cssText: expect.stringContaining("--bug-report-scroll-left: -40px"),
+          }),
         }),
-      }),
-    );
-
-    appScrollContainer.remove();
+      );
+      expect(vi.mocked(toPng).mock.calls.at(-1)?.[1]?.style?.cssText).toContain("--bug-report-scroll-top: -300px");
+    } finally {
+      appScrollContainer.remove();
+    }
   });
 
   test("falls back to window scroll when the app shell is absent", async () => {
