@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from datetime import date, timedelta
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.models import RangeEvent, RangeEventStatus, RangeType
@@ -91,3 +92,25 @@ def test_worker_commits_completed_range_event(app_session: Session, monkeypatch:
 
     app_session.expire(event)
     assert event.status == RangeEventStatus.completed
+
+
+@pytest.mark.parametrize("route", ["list", "detail"])
+def test_forbidden_range_route_does_not_transition_elapsed_events(
+    app_session: Session, route: str
+) -> None:
+    apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
+    unauthorized_user = create_soldier(app_session, personal_number=f"range-status-forbidden-{route}")
+    event = _event(app_session, event_date=date.today() - timedelta(days=1))
+
+    with pytest.raises(HTTPException) as exc_info:
+        if route == "list":
+            list_range_events(
+                session=app_session,
+                user=unauthorized_user,
+                node_id=str(event.hierarchy_node_id),
+            )
+        else:
+            get_range_event(session=app_session, user=unauthorized_user, event_id=event.id)
+
+    assert exc_info.value.status_code == 403
+    assert event.status == RangeEventStatus.planned
