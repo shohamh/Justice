@@ -11,9 +11,9 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.authz import Action, authorize, is_duty_manager
 from app.auth.deps import require_password_changed
-from app.rate_limit import limiter
 from app.db.models import (
     AlgorithmJob,
     AlgorithmJobSeen,
@@ -26,9 +26,9 @@ from app.db.models import (
     Soldier,
 )
 from app.db.session import get_session
-from app.services.algorithm_bridge import run_algorithm_job
+from app.rate_limit import limiter
+from app.services.algorithm_bridge import analyze_shift_availability, run_algorithm_job
 from app.services.duty_eligibility_watch import recheck_assignments
-from app.audit.writer import write_audit
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
 
@@ -75,12 +75,18 @@ class SolverSettingsIn(BaseModel):
     alpha: float = 1.0
     time_limit_seconds: int = Field(default=30, ge=5, le=120)
     auto_relax_node_quotas: bool = False
+    enforce_weapon_qualification: bool = True
     eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class CreateJobRequest(BaseModel):
     shift_ids: list[uuid.UUID] = Field(min_length=1)
     mode: str = "shadow"
+    settings: SolverSettingsIn = Field(default_factory=SolverSettingsIn)
+
+
+class AvailabilityRequest(BaseModel):
+    shift_ids: list[uuid.UUID] = Field(min_length=1)
     settings: SolverSettingsIn = Field(default_factory=SolverSettingsIn)
 
 
@@ -545,6 +551,31 @@ def create_job(
         actor_id=user.id,
     )
     return {"id": str(job.id), "status": job.status}
+
+
+@router.post("/availability")
+def check_availability(
+    body: AvailabilityRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, Any]:
+    """Report hard-eligibility shortages before starting an algorithm job."""
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    found_ids = set(
+        session.execute(select(DutyShift.id).where(DutyShift.id.in_(body.shift_ids))).scalars()
+    )
+    if len(found_ids) != len(set(body.shift_ids)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="shift_not_found")
+
+    items = analyze_shift_availability(
+        session,
+        shift_ids=body.shift_ids,
+        settings_json=body.settings.model_dump(mode="json"),
+    )
+    return {
+        "has_shortage": any(item["shortfall"] > 0 for item in items),
+        "items": items,
+    }
 
 
 @router.post("/jobs/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)

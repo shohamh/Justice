@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SolverSettings, submitJob, getAlgorithmDefaults } from "../api/algorithm";
+import { AvailabilityResponse, CreateJobRequest, SolverSettings, checkAvailability, submitJob, getAlgorithmDefaults } from "../api/algorithm";
 import { DutyShift, listShifts } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import SubHierarchySelector from "./SubHierarchySelector";
@@ -51,6 +51,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
   const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [availabilityWarning, setAvailabilityWarning] = useState<AvailabilityResponse | null>(null);
   const [search, setSearch] = useState("");
   const [filterDutyTypeId, setFilterDutyTypeId] = useState("");
 
@@ -89,7 +90,13 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
     );
   }
 
-  async function handleSubmit() {
+  function effectiveSettings(): SolverSettings {
+    return eligibleNodeIds.length > 0
+      ? { ...settings, eligible_node_ids: eligibleNodeIds }
+      : settings;
+  }
+
+  async function handleSubmit(force = false) {
     setError(null);
     if (selectedShiftIds.length === 0) {
       setError("נא לבחור לפחות משמרת אחת");
@@ -97,11 +104,17 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
     }
     setSubmitting(true);
     try {
-      const apiMode = mode === "draft" ? "shadow" : "dm_reviewed";
-      const effectiveSettings = eligibleNodeIds.length > 0
-        ? { ...settings, eligible_node_ids: eligibleNodeIds }
-        : settings;
-      const resp = await submitJob({ shift_ids: selectedShiftIds, mode: apiMode, settings: effectiveSettings });
+      const apiMode: CreateJobRequest["mode"] = mode === "draft" ? "shadow" : "dm_reviewed";
+      const request = { shift_ids: selectedShiftIds, mode: apiMode, settings: effectiveSettings() };
+      if (!force) {
+        const availability = await checkAvailability(request);
+        if (availability.has_shortage) {
+          setAvailabilityWarning(availability);
+          return;
+        }
+      }
+      setAvailabilityWarning(null);
+      const resp = await submitJob(request);
       onJobSubmitted(resp.id);
     } catch (e: unknown) {
       setError(translateApiError(e, t, "שגיאה בשליחת הבקשה"));
@@ -289,8 +302,38 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
 
       {error && <p className="text-red-500">{error}</p>}
 
+      {availabilityWarning && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" role="alert">
+          <p className="font-semibold">נמצאו משמרות שאין להן מספיק חיילים כשירים</p>
+          <p className="mt-1 text-xs">אפשר לתקן את הכשירויות או להריץ בכל זאת כדי לראות את התוצאה החלקית.</p>
+          <ul className="mt-2 space-y-1 text-xs">
+            {availabilityWarning.items.filter(item => item.shortfall > 0).map(item => {
+              const blockers = Object.entries(item.blocker_counts)
+                .filter(([, count]) => count > 0)
+                .map(([key, count]) => `${key === "range_qualification" ? "מטווח" : key === "military_driving_license" ? "רשנ״צ" : key} (${count})`)
+                .join(", ");
+              return (
+                <li key={item.shift_id}>
+                  <span className="font-medium">{item.duty_type_name}</span>{" "}
+                  ({item.start_date} – {item.end_date}): {item.available_count}/{item.required_count} זמינים, חסר {item.shortfall}
+                  {blockers && ` — ${blockers}`}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-3 flex gap-2">
+            <button type="button" onClick={() => setAvailabilityWarning(null)} className="rounded border px-3 py-1 text-xs">
+              ביטול
+            </button>
+            <button type="button" onClick={() => void handleSubmit(true)} className="rounded bg-amber-600 px-3 py-1 text-xs text-white hover:bg-amber-700" disabled={submitting}>
+              הרץ בכל זאת
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
-        onClick={handleSubmit}
+        onClick={() => void handleSubmit()}
         disabled={submitting || selectedShiftIds.length === 0}
         type="button"
         className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"

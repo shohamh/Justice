@@ -32,6 +32,27 @@ export interface BatchShiftFill {
   shift_id: string | null;
   required_count: number;
   assigned_count: number;
+  eligible_count?: number;
+  available_count?: number;
+  blocker_counts?: Record<string, number>;
+}
+
+export interface AvailabilityItem {
+  shift_id: string;
+  duty_type_id: string;
+  duty_type_name: string;
+  start_date: string;
+  end_date: string;
+  required_count: number;
+  eligible_count: number;
+  available_count: number;
+  shortfall: number;
+  blocker_counts: Record<string, number>;
+}
+
+export interface AvailabilityResponse {
+  has_shortage: boolean;
+  items: AvailabilityItem[];
 }
 
 export interface SaturationClusterCompeting {
@@ -196,6 +217,10 @@ export interface DmExplanation {
 
 export async function submitJob(req: CreateJobRequest): Promise<{ id: string; status: string }> {
   return (await api.post<{ id: string; status: string }>("/algorithm/jobs", req)).data;
+}
+
+export async function checkAvailability(req: CreateJobRequest): Promise<AvailabilityResponse> {
+  return (await api.post<AvailabilityResponse>("/algorithm/availability", req)).data;
 }
 
 export async function pollJob(jobId: string): Promise<AlgorithmJob> {

@@ -677,6 +677,9 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             "שמירות": "laser",
             'אבט"ש': "laser",
             'הגנ"ש': "alal",
+            "קצין תורן": "laser",
+            "מפקד תורן": "laser",
+            'קצין מלווה אבט"ש': "laser",
         }
         duty_types = []
         for name, spd, desc, reqs, rr, rmin, is_ext, cname, cphone, stime, etime, instrs in dt_defs:

@@ -105,3 +105,17 @@ def test_eligible_subtree_match():
                       score_per_day=Decimal("1"), eligible_node_ids=[root])
 
     assert _eligible(soldier, duty) is True
+
+
+def test_eligible_excludes_range_ineligible_soldier_from_saturation_pool():
+    duty = DutyBlock(
+        id=uuid4(), duty_type_id=uuid4(), duty_location_id=uuid4(),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        score_per_day=Decimal("1"), required_range_type="laser",
+    )
+    soldier = SoldierInput(
+        id=uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=100,
+        weapon_ineligible_duty_block_ids={duty.id},
+    )
+
+    assert _eligible(soldier, duty) is False

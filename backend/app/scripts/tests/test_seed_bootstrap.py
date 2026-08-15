@@ -82,3 +82,28 @@ def test_seed_creates_stable_range_scenarios_without_duplicates(db_admin_url: st
         assert len(past_no_show) == 1
         assert len(upcoming_staffed) == 1
         assert len(upcoming_empty) == 1
+
+
+def test_seed_duty_types_require_at_least_a_laser_range(db_admin_url: str):
+    from app.db.models import DutyType, RangeType
+    from app.db.session import SessionLocal
+    from app.scripts import seed as seed_module
+
+    seed_module.seed(force=True)
+
+    with SessionLocal() as s:
+        required_range_types = {
+            duty_type.name: duty_type.required_range_type
+            for duty_type in s.query(DutyType).filter(
+                DutyType.name.in_(
+                    ["שמירות", "קצין תורן", "קצין מלווה אבט\"ש", "מפקד תורן"]
+                )
+            ).all()
+        }
+
+    assert required_range_types == {
+        "שמירות": RangeType.laser,
+        "קצין תורן": RangeType.laser,
+        "קצין מלווה אבט\"ש": RangeType.laser,
+        "מפקד תורן": RangeType.laser,
+    }

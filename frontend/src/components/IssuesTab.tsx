@@ -49,6 +49,28 @@ function describeCluster(cluster: SaturationCluster, dutyTypeNames: Record<strin
     : `${base} — שקול לשנות את תאריכי המשמרת או להרחיב את הכשירות`;
 }
 
+const BLOCKER_LABELS: Record<string, string> = {
+  range_qualification: "מטווח",
+  weapon_qualification: "כשירות נשק",
+  military_driving_license: "רשנ״צ",
+  duty_requirements: "דרישות התורנות",
+  duty_type_exemption: "פטור מסוג תורנות",
+  duty_location_exemption: "פטור ממיקום",
+  personal_constraint: "אילוץ אישי",
+  hierarchy_scope: "כשירות יחידתית",
+  schedule_conflict: "שיבוץ קיים",
+};
+
+function describeEligibilityShortage(sf: BatchResult["shifts"][number]): string | null {
+  if ((sf.eligible_count ?? 0) > 0 || !sf.blocker_counts) return null;
+  const blockers = Object.entries(sf.blocker_counts)
+    .filter(([, count]) => count > 0)
+    .sort(([, a], [, b]) => b - a)
+    .map(([key, count]) => `${BLOCKER_LABELS[key] ?? key} (${count})`)
+    .join(", ");
+  return blockers ? `אין חיילים כשירים: ${blockers}` : null;
+}
+
 function collectUnfilledShifts(
   batchResults: BatchResult[],
   shiftNames: Record<string, string>,
@@ -63,7 +85,9 @@ function collectUnfilledShifts(
       if (missing <= 0) continue;
       const cluster = sf.shift_id ? clusterMap.get(sf.shift_id) : undefined;
       let reason = "לא ידוע";
-      if (cluster) reason = describeCluster(cluster, dutyTypeNames);
+      const eligibilityShortage = describeEligibilityShortage(sf);
+      if (eligibilityShortage) reason = eligibilityShortage;
+      else if (cluster) reason = describeCluster(cluster, dutyTypeNames);
       else if (br.outcome === "INFEASIBLE") reason = "אין פתרון אפשרי — חסרים חיילים כשירים או קיימים אילוצים מנוגדים";
       else if (br.relaxations.length > 0) reason = `מגבלות הוגמשו (${br.relaxations.join(", ")}) אך לא נמצאו מספיק חיילים`;
       else reason = "אין מספיק חיילים כשירים לאותה תקופה";

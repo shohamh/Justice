@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from datetime import date, timedelta
 
+from app.algorithm.availability import analyze_duty_availability, eligibility_blockers
 from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput
 
 
@@ -17,11 +18,9 @@ def _duty_days(d: DutyBlock) -> list[date]:
     return days
 
 
+
 def _soldier_blocked_on(s: SoldierInput, day: date) -> bool:
-    for cs, ce in s.approved_constraint_dates:
-        if cs <= day <= ce:
-            return True
-    return False
+    return any(cs <= day <= ce for cs, ce in s.approved_constraint_dates)
 
 
 def diagnose_infeasibility(
@@ -42,21 +41,23 @@ def diagnose_infeasibility(
             d += timedelta(days=1)
 
     def _eligible_for_block(s: SoldierInput, d: DutyBlock) -> bool:
-        if d.duty_type_id in s.exempted_duty_type_ids:
+        if eligibility_blockers(s, d):
             return False
         days = _duty_days(d)
         if any(_soldier_blocked_on(s, day) for day in days):
             return False
-        if any(day in existing_dates[s.id] for day in days):
-            return False
-        return True
+        return not any(day in existing_dates[s.id] for day in days)
 
     # ── Check 1: any duty block with zero eligible soldiers ──────────
     zero_eligible_types: dict[uuid.UUID, list[date]] = defaultdict(list)
+    blocker_counts_by_type: dict[uuid.UUID, Counter[str]] = defaultdict(Counter)
+    representative_duty_by_type: dict[uuid.UUID, DutyBlock] = {}
     for d in duties:
-        eligible_count = sum(1 for s in soldiers if _eligible_for_block(s, d))
-        if eligible_count == 0:
+        representative_duty_by_type.setdefault(d.duty_type_id, d)
+        availability = analyze_duty_availability(soldiers, d, existing=existing)
+        if availability.available_count == 0:
             zero_eligible_types[d.duty_type_id].append(d.start_date)
+            blocker_counts_by_type[d.duty_type_id].update(availability.blocker_counts)
 
     for dt_id, bad_dates in zero_eligible_types.items():
         dt_name = duty_type_names.get(dt_id, str(dt_id))
@@ -70,6 +71,24 @@ def diagnose_infeasibility(
             reasons.append(
                 f"אין חיילים כשירים לסוג תורנות '{dt_name}' ב-{len(bad_dates)} תאריכים ({dates_str}{suffix})"
             )
+        blockers = blocker_counts_by_type.get(dt_id)
+        representative = representative_duty_by_type.get(dt_id)
+        if blockers and representative:
+            labels = {
+                "range_qualification": f"מטווח {representative.required_range_type}",
+                "military_driving_license": "רשנ\"צ",
+                "duty_requirements": "דרישות התורנות",
+                "duty_type_exemption": "פטור מסוג תורנות",
+                "duty_location_exemption": "פטור ממיקום",
+                "personal_constraint": "אילוץ אישי",
+                "hierarchy_scope": "היררכיה",
+                "schedule_conflict": "שיבוץ חופף",
+            }
+            details = ", ".join(
+                f"{labels.get(key, key)} ({count})"
+                for key, count in blockers.most_common()
+            )
+            reasons.append(f"חסמים מרכזיים לסוג תורנות '{dt_name}': {details}")
 
     # ── Check 2: per duty-type, max concurrent demand > eligible pool ─
     type_duties: dict[uuid.UUID, list[DutyBlock]] = defaultdict(list)
@@ -84,7 +103,7 @@ def diagnose_infeasibility(
         # Eligible pool for this type (ignoring date-specific constraints for the pool count)
         eligible_pool = [
             s for s in soldiers
-            if dt_id not in s.exempted_duty_type_ids
+            if any(_eligible_for_block(s, d) for d in dt_blocks)
         ]
         pool_size = len(eligible_pool)
 
