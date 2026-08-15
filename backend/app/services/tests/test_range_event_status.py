@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
+from threading import Barrier
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import event as sqlalchemy_event, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import sessionmaker
 
-from app.db.models import RangeEvent, RangeEventStatus, RangeType
+from app.db.models import AuditLog, RangeEvent, RangeEventStatus, RangeType
 from app.range_attendance_worker import _auto_mark_present_for_elapsed_events
 from app.routes.ranges import get_range_event, list_range_events
 from app.services.ranges import (
@@ -53,6 +57,46 @@ def test_mark_past_range_events_completed_only_transitions_past_planned_events(a
     assert today_planned.status == RangeEventStatus.planned
     assert future_planned.status == RangeEventStatus.planned
     assert cancelled_past.status == RangeEventStatus.cancelled
+
+
+def test_concurrent_elapsed_transitions_change_and_audit_each_event_once(
+    app_engine, app_session: Session
+) -> None:
+    today = date(2026, 8, 15)
+    event = _event(app_session, event_date=today - timedelta(days=1))
+    readers = Barrier(2)
+
+    def synchronize_candidate_reads(
+        _conn, _cursor, statement: str, _parameters, _context, _executemany
+    ) -> None:
+        if statement.lstrip().upper().startswith("SELECT") and "FROM range_events" in statement:
+            readers.wait(timeout=5)
+
+    sqlalchemy_event.listen(app_engine, "before_cursor_execute", synchronize_candidate_reads)
+    try:
+        SessionLocal = sessionmaker(bind=app_engine, expire_on_commit=False)
+
+        def transition() -> int:
+            with SessionLocal() as session:
+                changed = mark_past_range_events_completed(session, today=today)
+                session.commit()
+                return changed
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _index: transition(), range(2)))
+    finally:
+        sqlalchemy_event.remove(app_engine, "before_cursor_execute", synchronize_candidate_reads)
+
+    app_session.expire_all()
+    assert sorted(results) == [0, 1]
+    assert app_session.get(RangeEvent, event.id).status == RangeEventStatus.completed
+    audits = app_session.execute(
+        select(AuditLog).where(
+            AuditLog.action == "range_event.complete",
+            AuditLog.entity_id == event.id,
+        )
+    ).scalars().all()
+    assert len(audits) == 1
 
 
 def test_range_routes_return_past_event_as_completed_and_second_transition_is_a_no_op(

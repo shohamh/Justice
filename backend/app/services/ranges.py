@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.audit.writer import write_audit
@@ -283,26 +283,28 @@ def cancel_range_event(
 
 def mark_past_range_events_completed(session: Session, *, today: date | None = None) -> int:
     today = today or date.today()
-    events = session.execute(
-        select(RangeEvent).where(
+    event_ids = session.execute(
+        update(RangeEvent)
+        .where(
             RangeEvent.status == RangeEventStatus.planned,
             RangeEvent.date < today,
         )
+        .values(status=RangeEventStatus.completed)
+        .returning(RangeEvent.id)
+        .execution_options(synchronize_session="fetch")
     ).scalars().all()
-    for event in events:
-        previous_status = event.status
-        event.status = RangeEventStatus.completed
+    for event_id in event_ids:
         write_audit(
             session,
             actor_id=None,
             action="range_event.complete",
             entity_type="range_event",
-            entity_id=event.id,
-            before={"status": previous_status},
-            after={"status": event.status},
+            entity_id=event_id,
+            before={"status": RangeEventStatus.planned},
+            after={"status": RangeEventStatus.completed},
         )
     session.flush()
-    return len(events)
+    return len(event_ids)
 
 
 def delete_range_event(session: Session, *, event: RangeEvent) -> None:
