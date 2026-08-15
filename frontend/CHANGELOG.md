@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-15
+
+### Features
+- Rank selectors now include the academic-officer ladder, and the selected rank track is persisted for promotion rules across registration, enrollment, profiles, and soldier administration.
+- Algorithm runs now report unfilled duties caused by shortages of required qualifications such as range qualifications or military driving licenses, with actionable shortage details.
+- Seeded demo range data now covers multiple range types, with 25 primary places and 5 reserves per range, plus an אל"ל event one day before each seeded הגנ"ש.
+
+### Fixes
+- Rank-ladder settings are visible again in system settings, and rank-track selections remain consistent between frontend forms and backend validation.
+- Eligibility diagnostics now account for all configured duty requirements instead of silently leaving impossible duties unfilled.
+
+### Chores
+- Added the rank-track migration and regression coverage for academic-officer selection, eligibility shortages, and seeded range scenarios.
+
 ## 2026-08-14
 
 ### Features
