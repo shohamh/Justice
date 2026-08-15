@@ -115,7 +115,7 @@ function RangeEligibilityBadge({
           role="tooltip"
           onClick={(e) => e.stopPropagation()}
           style={popoverStyle}
-          className="z-[70] w-56 max-w-[calc(100vw-1rem)] rounded border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          className="z-[70] w-56 max-w-[calc(100vw-1rem)] whitespace-pre-line rounded border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
         >
           {explanation}
         </div>

@@ -218,10 +218,13 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
     );
 
     expect(screen.getByText("מטווח לייזר")).toBeInTheDocument();
-    expect(within(nameRow("חייל ללא מטווח")).getByLabelText("range_qualification.shiftDetail.warning")).toHaveAttribute(
+    const warningBadge = within(nameRow("חייל ללא מטווח")).getByLabelText("range_qualification.shiftDetail.warning");
+    expect(warningBadge).toHaveAttribute(
       "title",
       expect.stringContaining("range_qualification.explanation.uncoveredDuty")
     );
+    fireEvent.click(warningBadge);
+    expect(screen.getByRole("tooltip")).toHaveClass("whitespace-pre-line");
     expect(within(nameRow("חייל עם מטווח")).queryByLabelText("range_qualification.shiftDetail.warning")).toBeNull();
   });
 
