@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate, deriveIsCareer, useRankLadder } from "./ranks";
+import { isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate, deriveIsCareer, parseRankSelectionId, rankSelectionId, useRankLadder } from "./ranks";
 import * as rankAdvancementApi from "../api/rankAdvancement";
 
 vi.mock("../api/rankAdvancement", async (importOriginal) => {
@@ -121,16 +121,18 @@ describe("useRankLadder's picker completeness", () => {
     enlisted: [{ rank: "טוראי", months_to_next: 4, advance_on_career_entry: false }],
     officer: [{ rank: "סגמ", months_to_next: null, advance_on_career_entry: false }],
     officer_academic: [
+      { rank: "קמא", months_to_next: null, advance_on_career_entry: false },
       { rank: "קאב", months_to_next: null, advance_on_career_entry: true },
       { rank: "קאם", months_to_next: null, advance_on_career_entry: true },
     ],
   };
 
-  it("includes קמא even though it's absent from the ladder response", async () => {
+  it("exposes the academic ladder as its own picker category", async () => {
     vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue(ladder);
 
     const { result } = renderHook(() => useRankLadder(), { wrapper });
-    await waitFor(() => expect(result.current.officerRanks).toContain("קמא"));
+    await waitFor(() => expect(result.current.officerAcademicRanks).toContain("קמא"));
+    expect(result.current.officerRanks).not.toContain("קמא");
     expect(result.current.allRanks).toContain("קמא");
   });
 
@@ -139,6 +141,16 @@ describe("useRankLadder's picker completeness", () => {
 
     const { result } = renderHook(() => useRankLadder(), { wrapper });
     await waitFor(() => expect(result.current.officerRanks).toContain("סגמ"));
-    expect(result.current.officerRanks).toContain("קאב");
+    expect(result.current.officerAcademicRanks).toContain("קאב");
+  });
+});
+
+describe("rank picker selection identity", () => {
+  it("keeps the same rank distinct across officer ladders", () => {
+    expect(rankSelectionId("officer", "סרן")).not.toBe(rankSelectionId("officer_academic", "סרן"));
+    expect(parseRankSelectionId(rankSelectionId("officer_academic", "סרן"))).toEqual({
+      rank: "סרן",
+      rankTrack: "officer_academic",
+    });
   });
 });

@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from slowapi.util import get_remote_address
 from sqlalchemy import select, update as sa_update, case as sa_case
@@ -63,6 +63,7 @@ class RegisterRequest(BaseModel):
     gender: str
     is_officer: bool | None = None
     rank: str
+    rank_track: Literal["enlisted", "officer", "officer_academic"] | None = None
     enlistment_date: date
     mandatory_end_date: date
     discharge_date: date
@@ -379,6 +380,7 @@ async def register(
             gender=body.gender,
             is_officer=body.is_officer,
             rank=body.rank,
+            rank_track=body.rank_track,
             enlistment_date=body.enlistment_date,
             mandatory_end_date=body.mandatory_end_date,
             discharge_date=body.discharge_date,

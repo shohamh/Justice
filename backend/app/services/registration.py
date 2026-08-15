@@ -17,7 +17,7 @@ from app.db.models import (
 )
 from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
-from app.services.rank_advancement import compute_next_rank_date
+from app.services.rank_advancement import compute_next_rank_date, resolve_track
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import PasswordPolicyError, SoldierError, _check_soldier_dates, validate_password
 
@@ -65,6 +65,7 @@ def register(
     personal_constraints: list[dict],
     has_military_driving_license: bool = False,
     military_driving_license_expiry: date | None = None,
+    rank_track: str | None = None,
 ) -> tuple[Soldier, list[ExemptionRequest]]:
     try:
         validate_full_name(full_name)
@@ -113,6 +114,9 @@ def register(
         raise RegistrationError(str(exc)) from exc
 
     bahad1_graduate = derive_bahad1_graduate(rank)
+    resolved_rank_track = resolve_track(rank, rank_track)
+    if rank is not None and rank_track is not None and resolved_rank_track != rank_track:
+        raise RegistrationError("rank_track_invalid")
 
     soldier = Soldier(
         personal_number=personal_number,
@@ -126,6 +130,7 @@ def register(
         gender=gender,
         is_officer=is_officer,
         rank=rank,
+        rank_track=resolved_rank_track,
         is_career=is_career,
         bahad1_graduate=bahad1_graduate,
         enlistment_date=enlistment_date,
@@ -138,7 +143,9 @@ def register(
     )
     if rank is not None:
         soldier.current_rank_since = enlistment_date or date.today()
-        soldier.next_rank_date = compute_next_rank_date(session, rank=rank, since=soldier.current_rank_since)
+        soldier.next_rank_date = compute_next_rank_date(
+            session, rank=rank, since=soldier.current_rank_since, track=resolved_rank_track
+        )
         soldier.next_rank_date_overridden = False
     session.add(soldier)
     session.flush()

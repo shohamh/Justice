@@ -233,6 +233,20 @@ describe("SystemSettingsContent export/import", () => {
     expect(rabatRow?.querySelector("input")?.value).toBe("");
   });
 
+  it("places the rank interval table directly after the rank advancement settings group", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+    await waitFor(() => expect(rankAdvancementApi.getRankLadder).toHaveBeenCalled());
+
+    const headings = Array.from(document.querySelectorAll("h2"));
+    const rankSettingsIndex = headings.findIndex(h => h.textContent === "עליית דרגה");
+    const rankIntervalsIndex = headings.findIndex(h => h.textContent === "מרווחי עליית דרגה");
+    const scoringIndex = headings.findIndex(h => h.textContent === "ניקוד");
+
+    expect(rankSettingsIndex).toBeGreaterThanOrEqual(0);
+    expect(rankIntervalsIndex).toBe(rankSettingsIndex + 1);
+    expect(rankIntervalsIndex).toBeLessThan(scoringIndex);
+  });
+
   it("saves edited rank intervals for all rows", async () => {
     vi.mocked(rankAdvancementApi.updateRankAdvancementIntervals).mockResolvedValue({
       enlisted: [

@@ -16,14 +16,14 @@ from app.services.eligibility import ENLISTED_RANKS
 # for gender/service-type checks, בה"ד 1 inference, RANK_TRACK_COMPATIBILITY)
 # and are deliberately left untouched -- a soldier can still hold, and be
 # validated as holding, any of those ranks. These ladders below are only the
-# ADVANCEMENT chain, which is a different (and narrower) concept: קמא sits
-# outside every automated ladder (promoting off it is a manual action), and
-# קאב/קאם belong exclusively to the academic officer track now, not the
-# regular one -- the same rank name chains to a different "next rank"
-# depending on which track the officer is actually on.
+# ADVANCEMENT chain, which is a different (and narrower) concept. Academic
+# officers start at קמא, advance through קאב, then enter the regular officer
+# ranks at סגן. קאם is retained as the final academic-only rank for ordering.
 ENLISTED_LADDER = ENLISTED_RANKS
 OFFICER_LADDER = ["סגמ", "סגן", "סרן", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף"]
-OFFICER_ACADEMIC_LADDER = ["קאב", "קאם"]
+OFFICER_ACADEMIC_LADDER = [
+    "קמא", "קאב", "סגן", "סרן", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף", "קאם",
+]
 
 Track = Literal["enlisted", "officer", "officer_academic"]
 
@@ -34,15 +34,33 @@ _LADDERS: dict[Track, list[str]] = {
 }
 
 
-def get_track(rank: str) -> Track | None:
-    for track, ladder in _LADDERS.items():
-        if rank in ladder:
-            return track
-    return None
+def get_track(rank: str, *, track: Track | None = None) -> Track | None:
+    """Return the advancement track for a rank.
+
+    Shared officer ranks default to the regular track for legacy callers.
+    Callers holding a soldier's persisted track must pass it explicitly so
+    academic-specific intervals continue to apply after קאב -> סגן.
+    """
+    if track is not None:
+        ladder = _LADDERS.get(track)
+        return track if ladder is not None and rank in ladder else None
+    matches = [candidate for candidate, ladder in _LADDERS.items() if rank in ladder]
+    if not matches:
+        return None
+    return "officer" if "officer" in matches else matches[0]
 
 
-def get_next_rank(rank: str) -> str | None:
-    track = get_track(rank)
+def resolve_track(rank: str | None, stored_track: str | None) -> Track | None:
+    """Resolve a soldier's track, retaining it across shared officer ranks."""
+    if rank is None:
+        return None
+    if stored_track in _LADDERS and rank in _LADDERS[stored_track]:
+        return stored_track
+    return get_track(rank)
+
+
+def get_next_rank(rank: str, *, track: Track | None = None) -> str | None:
+    track = get_track(rank, track=track)
     if track is None:
         return None
     ladder = _LADDERS[track]
@@ -61,8 +79,10 @@ def get_interval_months(session: Session, *, track: str, rank: str) -> int | Non
     return row.months_to_next if row is not None else None
 
 
-def compute_next_rank_date(session: Session, *, rank: str, since: date) -> date | None:
-    track = get_track(rank)
+def compute_next_rank_date(
+    session: Session, *, rank: str, since: date, track: Track | None = None
+) -> date | None:
+    track = get_track(rank, track=track)
     if track is None:
         return None
     months = get_interval_months(session, track=track, rank=rank)
@@ -111,10 +131,13 @@ def recompute_affected_soldiers(session: Session, *, track: str, rank: str) -> i
     ).scalars().all()
     updated = 0
     for s in soldiers:
+        soldier_track = resolve_track(s.rank, s.rank_track)
+        if soldier_track != track:
+            continue
         since = s.current_rank_since or s.enlistment_date
         if since is None:
             continue
-        s.next_rank_date = compute_next_rank_date(session, rank=rank, since=since)
+        s.next_rank_date = compute_next_rank_date(session, rank=rank, since=since, track=track)
         updated += 1
     return updated
 

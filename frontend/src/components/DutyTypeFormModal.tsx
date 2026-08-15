@@ -46,7 +46,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
   const [restHours, setRestHours] = useState<string>(
     initial?.requirements?.rest_hours != null ? String(initial.requirements.rest_hours) : ""
   );
-  const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
+  const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[]; officer_academic: string[] }>({ enlisted: [], officers: [], officer_academic: [] });
   const [eligOpen, setEligOpen] = useState(false);
   const [scopeNodeIds, setScopeNodeIds] = useState<string[]>(initial?.eligible_node_ids ?? []);
   const [showHelp, setShowHelp] = useState(false);
@@ -284,6 +284,21 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
                       <p className="text-xs text-gray-400 mb-0.5">{t("soldier_profile.officers")}</p>
                       <div className="flex flex-wrap gap-2">
                         {ranks.officers.map(r => (
+                          <label key={r} className="flex items-center gap-1 text-xs">
+                            <input type="checkbox"
+                              checked={(reqs.allowed_ranks ?? []).includes(r)}
+                              onChange={() => toggleArr("allowed_ranks", r)} />
+                            {r}
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {ranks.officer_academic.filter(r => !ranks.officers.includes(r)).length > 0 && (
+                    <>
+                      <p className="text-xs text-gray-400 mb-0.5">קצינים אקדמאים</p>
+                      <div className="flex flex-wrap gap-2">
+                        {ranks.officer_academic.filter(r => !ranks.officers.includes(r)).map(r => (
                           <label key={r} className="flex items-center gap-1 text-xs">
                             <input type="checkbox"
                               checked={(reqs.allowed_ranks ?? []).includes(r)}

@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { RankTrack } from "./rankAdvancement";
 
 export interface SoldierDTO {
   id: string;
@@ -14,6 +15,7 @@ export interface SoldierDTO {
   is_officer: boolean | null;
   is_career: boolean;
   rank: string | null;
+  rank_track: RankTrack | null;
   bahad1_graduate: boolean;
   has_military_driving_license: boolean | null;
   military_driving_license_expiry: string | null;
@@ -82,7 +84,7 @@ export async function updateSoldier(
 
 export async function updateSoldierProfile(
   soldierId: string,
-  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'bahad1_graduate' | 'has_military_driving_license' | 'military_driving_license_expiry' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date' | 'email' | 'profile_picture_url'>>
+  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'rank_track' | 'bahad1_graduate' | 'has_military_driving_license' | 'military_driving_license_expiry' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date' | 'email' | 'profile_picture_url'>>
 ): Promise<SoldierDTO> {
   return (await api.patch<SoldierDTO>(`/soldiers/${soldierId}/profile`, fields)).data;
 }
@@ -133,8 +135,8 @@ export async function rejectFieldUpdate(
   )).data;
 }
 
-export async function getRanks(): Promise<{ enlisted: string[]; officers: string[] }> {
-  return (await api.get<{ enlisted: string[]; officers: string[] }>("/soldiers/ranks")).data;
+export async function getRanks(): Promise<{ enlisted: string[]; officers: string[]; officer_academic: string[] }> {
+  return (await api.get<{ enlisted: string[]; officers: string[]; officer_academic: string[] }>("/soldiers/ranks")).data;
 }
 
 export interface SoldierScoreDTO {

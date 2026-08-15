@@ -35,6 +35,7 @@ from app.services.import_parsers._shared_parsing import parse_bool as _parse_boo
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
 from app.services.import_scope import is_node_in_actor_scope
 from app.services.notifications import create_notification
+from app.services.rank_advancement import resolve_track
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +310,7 @@ def apply(
                     rank=row.rank,
                     gender=row.gender,
                     is_officer=row.is_officer,
+                    rank_track=resolve_track(row.rank, None),
                     hierarchy_node_id=row.hierarchy_node_id,
                     phone=row.phone,
                     email=row.email,
@@ -325,6 +327,7 @@ def apply(
                     s.full_name = row.full_name
                     if row.rank is not None:
                         s.rank = row.rank
+                        s.rank_track = resolve_track(s.rank, s.rank_track)
                     if row.gender is not None:
                         s.gender = row.gender
                     if row.is_officer is not None:

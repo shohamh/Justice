@@ -48,6 +48,27 @@ def test_promote_due_soldiers_advances_rank_and_chains_next_date(app_session) ->
     assert s.current_rank_since == date(2026, 1, 1)
 
 
+def test_promote_academic_soldier_uses_academic_interval_at_shared_rank(app_session) -> None:
+    s = create_soldier(app_session, personal_number="1000008")
+    s.rank = "קאב"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(
+        app_session, track="officer_academic", rank="סגן", months_to_next=3,
+        advance_on_career_entry=False, actor_id=None,
+    )
+    upsert_interval(
+        app_session, track="officer", rank="סגן", months_to_next=12,
+        advance_on_career_entry=False, actor_id=None,
+    )
+    app_session.flush()
+
+    _promote_soldier(app_session, s, today=date(2026, 1, 1))
+
+    assert s.rank == "סגן"
+    assert s.rank_track == "officer_academic"
+    assert s.next_rank_date == date(2026, 4, 1)
+
+
 def test_promote_due_soldiers_stops_at_top_of_ladder(app_session) -> None:
     s = create_soldier(app_session, personal_number="1000002")
     s.rank = "רנג"  # top of enlisted ladder
@@ -258,7 +279,7 @@ def test_promote_on_career_entry_promotes_when_mandatory_end_was_yesterday(app_s
         mock_scope.return_value.__enter__.return_value = app_session
         _promote_on_career_entry(today=date(2026, 6, 2))
 
-    assert s.rank == "קאם"
+    assert s.rank == "סגן"
 
 
 def test_promote_on_career_entry_does_not_fire_before_mandatory_end(app_session) -> None:
@@ -330,7 +351,7 @@ def test_promote_on_career_entry_commits_and_persists_after_session_close(app_se
     FreshSession = sessionmaker(bind=app_engine, expire_on_commit=False)
     with FreshSession() as fresh:
         fresh_soldier = fresh.get(Soldier, soldier_id)
-        assert fresh_soldier.rank == "קאם"
+        assert fresh_soldier.rank == "סגן"
 
 
 def test_promote_on_career_entry_does_not_retroactively_promote_newer_rank(app_session) -> None:

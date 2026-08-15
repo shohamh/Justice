@@ -54,6 +54,7 @@ class Soldier(Base):
     is_officer: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     is_career: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    rank_track: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     next_rank_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     next_rank_date_overridden: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False

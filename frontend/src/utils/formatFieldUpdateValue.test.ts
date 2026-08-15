@@ -16,6 +16,11 @@ test("returns the raw string unchanged for non-JSON fields", () => {
   expect(formatFieldUpdateValue("phone", "050-1234567", t)).toBe("050-1234567");
 });
 
+test("formats a rank update with its selected ladder", () => {
+  const value = JSON.stringify({ rank: "סרן", rank_track: "officer_academic" });
+  expect(formatFieldUpdateValue("rank", value, t)).toBe("סרן (קצינים אקדמאים)");
+});
+
 test("falls back to null-dash for empty values", () => {
   expect(formatFieldUpdateValue("phone", null, t)).toBe("—");
 });

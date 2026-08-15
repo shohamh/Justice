@@ -5,7 +5,7 @@ import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import type { SoldierDTO } from "../api/soldiers";
 
 const mockUpdateSoldierProfile = vi.fn();
-const mockGetRanks = vi.fn().mockResolvedValue({ enlisted: ["טוראי"], officers: ["רסן"] });
+const mockGetRanks = vi.fn().mockResolvedValue({ enlisted: ["טוראי"], officers: ["רסן"], officer_academic: ["סרן"] });
 vi.mock("../api/soldiers", () => ({
   updateSoldier: vi.fn(),
   updateSoldierProfile: (...args: unknown[]) => mockUpdateSoldierProfile(...args),

@@ -272,7 +272,7 @@ def soft_delete(
 
 
 PROFILE_FIELDS = {
-    "gender", "is_officer", "rank", "bahad1_graduate",
+    "gender", "is_officer", "rank", "rank_track", "bahad1_graduate",
     "enlistment_date", "mandatory_end_date", "discharge_date",
     "last_mitvahim_date", "last_alal_date", "email", "phone",
     "profile_picture_url", "next_rank_date",
@@ -282,16 +282,19 @@ PROFILE_FIELDS = {
 # derivation). A PATCH that doesn't touch any of these can't move the soldier
 # into a new incompatible combination, so it shouldn't be blocked by one that
 # already existed before this validation was introduced.
-_RANK_TRACK_AFFECTING_FIELDS = {"rank", "mandatory_end_date", "discharge_date"}
+_RANK_TRACK_AFFECTING_FIELDS = {"rank", "rank_track", "mandatory_end_date", "discharge_date"}
 
 
 def _reset_rank_advancement(session: Session, soldier: Soldier, *, since: date) -> None:
     """Re-derive next_rank_date from the rank ladder as of `since` and clear
     any manual override — used whenever a soldier's rank is set directly
     (not via an explicit next_rank_date edit)."""
-    from app.services.rank_advancement import compute_next_rank_date
+    from app.services.rank_advancement import compute_next_rank_date, resolve_track
+    soldier.rank_track = resolve_track(soldier.rank, soldier.rank_track)
     soldier.current_rank_since = since
-    soldier.next_rank_date = compute_next_rank_date(session, rank=soldier.rank, since=since)
+    soldier.next_rank_date = compute_next_rank_date(
+        session, rank=soldier.rank, since=since, track=soldier.rank_track
+    )
     soldier.next_rank_date_overridden = False
 
 
@@ -307,13 +310,17 @@ def update_soldier_profile(
     for k, v in fields.items():
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
+    if {"rank", "rank_track"} & fields.keys():
+        from app.services.rank_advancement import resolve_track
+        requested_track = soldier.rank_track
+        resolved_track = resolve_track(soldier.rank, requested_track)
+        if soldier.rank is not None and requested_track is not None and resolved_track != requested_track:
+            raise SoldierValidationError("rank_track_invalid")
+        soldier.rank_track = resolved_track
     if "next_rank_date" in fields:
         soldier.next_rank_date_overridden = True
-    elif "rank" in fields:
-        from app.services.rank_advancement import compute_next_rank_date
-        soldier.current_rank_since = date.today()
-        soldier.next_rank_date = compute_next_rank_date(session, rank=soldier.rank, since=date.today())
-        soldier.next_rank_date_overridden = False
+    elif {"rank", "rank_track"} & fields.keys():
+        _reset_rank_advancement(session, soldier, since=date.today())
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     # Only validate rank/track compatibility when this PATCH actually touches
     # a field that affects it (rank itself, or a date that feeds is_career).
@@ -420,7 +427,28 @@ def approve_field_update(
     elif field == "gender":
         soldier.gender = raw
     elif field == "rank":
-        soldier.rank = raw
+        rank_value = raw
+        rank_track_value: str | None = soldier.rank_track
+        try:
+            payload = json.loads(raw)
+            if isinstance(payload, dict) and "rank" in payload:
+                rank_value = payload["rank"]
+                rank_track_value = payload.get("rank_track")
+        except json.JSONDecodeError:
+            pass
+        from app.services.rank_advancement import resolve_track
+        resolved_track = resolve_track(rank_value, rank_track_value)
+        if rank_value is not None and rank_track_value is not None and resolved_track != rank_track_value:
+            raise SoldierValidationError("rank_track_invalid")
+        soldier.rank = rank_value
+        soldier.rank_track = resolved_track
+        _reset_rank_advancement(session, soldier, since=date.today())
+    elif field == "rank_track":
+        from app.services.rank_advancement import resolve_track
+        resolved_track = resolve_track(soldier.rank, raw)
+        if soldier.rank is not None and resolved_track != raw:
+            raise SoldierValidationError("rank_track_invalid")
+        soldier.rank_track = raw
         _reset_rank_advancement(session, soldier, since=date.today())
     elif field == "phone":
         soldier.phone = raw

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models import RankAdvancementInterval
 from app.services.rank_advancement import (
     _career_entry_date, advances_on_career_entry, compute_next_rank_date, get_interval_months, get_next_rank,
-    get_track, upsert_interval, set_interval_and_recompute, get_rank_ladder,
+    get_track, resolve_track, upsert_interval, set_interval_and_recompute, get_rank_ladder,
 )
 from tests.helpers import create_soldier
 
@@ -155,12 +155,12 @@ def test_get_rank_ladder_shape(app_session):
     assert ladder["officer"][0]["rank"] == "סגמ"
 
 
-def test_get_track_kama_is_none():
-    assert get_track("קמא") is None
+def test_get_track_kama_is_academic():
+    assert get_track("קמא") == "officer_academic"
 
 
-def test_get_next_rank_kama_is_none():
-    assert get_next_rank("קמא") is None
+def test_academic_ladder_starts_with_kama_then_kab():
+    assert get_next_rank("קמא", track="officer_academic") == "קאב"
 
 
 def test_get_track_kab_is_officer_academic():
@@ -171,11 +171,11 @@ def test_get_track_kam_is_officer_academic():
     assert get_track("קאם") == "officer_academic"
 
 
-def test_get_next_rank_kab_goes_to_kam():
-    assert get_next_rank("קאב") == "קאם"
+def test_get_next_rank_kab_goes_to_sgan_on_academic_ladder():
+    assert get_next_rank("קאב", track="officer_academic") == "סגן"
 
 
-def test_get_next_rank_kam_is_top_of_academic_ladder():
+def test_get_next_rank_kam_is_after_regular_academic_ladder():
     assert get_next_rank("קאם") is None
 
 
@@ -185,8 +185,24 @@ def test_regular_officer_ladder_skips_kab_and_kam():
     assert get_next_rank("סרן") == "רסן"
 
 
+def test_academic_ladder_uses_regular_officer_ranks_after_sgan():
+    assert get_next_rank("סגן", track="officer_academic") == "סרן"
+    assert get_next_rank("רב אלוף", track="officer_academic") == "קאם"
+
+
+def test_academic_ladder_does_not_include_sagam():
+    from app.services.rank_advancement import OFFICER_ACADEMIC_LADDER
+
+    assert "סגמ" not in OFFICER_ACADEMIC_LADDER
+
+
 def test_get_track_sgan_is_officer_not_academic():
     assert get_track("סגן") == "officer"
+
+
+def test_resolve_track_preserves_academic_track_at_shared_rank():
+    assert resolve_track("סגן", "officer_academic") == "officer_academic"
+    assert resolve_track("סגן", None) == "officer"
 
 
 def test_upsert_interval_persists_advance_on_career_entry(app_session):

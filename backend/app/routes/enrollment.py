@@ -13,7 +13,9 @@ from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, HierarchyNode, NotificationType, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
 from app.services import enrollment as svc
+from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
 from app.services.notifications import create_notification
+from app.services.rank_advancement import compute_next_rank_date, resolve_track
 from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
@@ -26,6 +28,7 @@ _EDITABLE_FIELD_LABELS: dict[str, str] = {
     "phone": "טלפון",
     "email": "אימייל",
     "rank": "דרגה",
+    "rank_track": "מסלול דרגה",
     "is_officer": "קצין",
     "gender": "מגדר",
     "enlistment_date": "תאריך גיוס",
@@ -63,6 +66,7 @@ class EnrollmentRequestOut(BaseModel):
     phone: str | None = None
     email: str | None = None
     rank: str | None = None
+    rank_track: str | None = None
     is_officer: bool | None = None
     is_career: bool = False
     gender: str | None = None
@@ -87,6 +91,7 @@ class PatchEnrollmentBody(BaseModel):
     phone: str | None = None
     email: str | None = None
     rank: str | None = None
+    rank_track: str | None = None
     is_officer: bool | None = None
     gender: str | None = None
     enlistment_date: str | None = None
@@ -175,7 +180,7 @@ def _soldier_to_out(
         requested_node_name=node_name,
         status=r.status, decided_by=r.decided_by, decision_note=r.decision_note,
         phone=s.phone, email=s.email, rank=s.rank,
-        is_officer=s.is_officer, is_career=s.is_career,
+        is_officer=s.is_officer, rank_track=s.rank_track, is_career=s.is_career,
         gender=s.gender,
         enlistment_date=s.enlistment_date.isoformat() if s.enlistment_date else None,
         mandatory_end_date=s.mandatory_end_date.isoformat() if s.mandatory_end_date else None,
@@ -294,6 +299,8 @@ def patch_enrollment(
         _apply("email", body.email or None)
     if body.rank is not None:
         _apply("rank", body.rank or None)
+    if body.rank_track is not None:
+        _apply("rank_track", body.rank_track)
     if body.is_officer is not None:
         _apply("is_officer", body.is_officer)
     if body.gender is not None:
@@ -308,6 +315,24 @@ def patch_enrollment(
         _apply("last_mitvahim_date", date.fromisoformat(body.last_mitvahim_date) if body.last_mitvahim_date else None)
     if body.last_alal_date is not None:
         _apply("last_alal_date", date.fromisoformat(body.last_alal_date) if body.last_alal_date else None)
+
+    if {"rank", "rank_track"} & set(changed_fields):
+        resolved_track = resolve_track(s.rank, s.rank_track)
+        if s.rank is not None and s.rank_track is not None and resolved_track != s.rank_track:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="rank_track_invalid")
+        s.rank_track = resolved_track
+        s.is_officer = resolved_track != "enlisted" if resolved_track is not None else s.is_officer
+        s.is_career = derive_is_career(s.rank, s.mandatory_end_date, s.discharge_date)
+        try:
+            validate_rank_track_compatibility(s.rank, s.is_career)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if s.rank is not None:
+            s.current_rank_since = s.current_rank_since or date.today()
+            s.next_rank_date = compute_next_rank_date(
+                session, rank=s.rank, since=s.current_rank_since, track=s.rank_track
+            )
+            s.next_rank_date_overridden = False
 
     if changed_fields:
         labels = [_EDITABLE_FIELD_LABELS[f] for f in changed_fields]

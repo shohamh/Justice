@@ -19,7 +19,7 @@ import { fullNameValid } from "../utils/nameValidation";
 import { personalNumberValid } from "../utils/personalNumberValidation";
 import { personalConstraintComplete } from "../utils/constraintValidation";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
-import { usePublicRankLadder, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
+import { usePublicRankLadder, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate, rankSelectionId, parseRankSelectionId, RankTrack } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -56,7 +56,7 @@ interface ConstraintRow { start_date: string; end_date: string; reason: string; 
 interface FormData {
   invite_code: string; personal_number: string; full_name: string;
   password: string; confirm_password: string; phone: string; email: string;
-  gender: string; is_officer: boolean; rank: string;
+  gender: string; is_officer: boolean; rank: string; rank_track: RankTrack;
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
   has_military_driving_license: boolean; military_driving_license_expiry: string;
@@ -67,7 +67,7 @@ interface FormData {
 
 const INITIAL: FormData = {
   invite_code: "", personal_number: "", full_name: "", password: "",
-  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "",
+  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "", rank_track: "enlisted",
   enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   has_military_driving_license: false, military_driving_license_expiry: "",
@@ -106,7 +106,7 @@ export default function RegisterPage() {
 
   // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
   // come from the unauthenticated endpoint — see usePublicRankLadder.
-  const { enlistedRanks, officerRanks } = usePublicRankLadder();
+  const { enlistedRanks, officerRanks, officerAcademicRanks } = usePublicRankLadder();
 
   useEffect(() => {
     listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
@@ -156,6 +156,7 @@ export default function RegisterPage() {
         gender: form.gender || null,
         is_officer: form.is_officer,
         rank: form.rank || null,
+        rank_track: form.rank ? form.rank_track : null,
         enlistment_date: form.enlistment_date || null,
         mandatory_end_date: form.mandatory_end_date || null,
         discharge_date: form.discharge_date || null,
@@ -331,17 +332,20 @@ export default function RegisterPage() {
             <label className="block text-sm">דרגה <span className="text-red-500">*</span>
               <Combobox
                 items={[
-                  ...enlistedRanks.map(r => ({ id: r, name: r, group: "חיילים" })),
-                  ...officerRanks.map(r => ({ id: r, name: r, group: "קצינים" })),
+                  ...enlistedRanks.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: "חיילים" })),
+                  ...officerRanks.map(r => ({ id: rankSelectionId("officer", r), name: r, group: "קצינים" })),
+                  ...officerAcademicRanks.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
                 ]}
-                value={form.rank}
+                value={form.rank ? rankSelectionId(form.rank_track, form.rank) : ""}
                 onChange={v => {
-                  const isOfficer = isOfficerRank(v);
+                  const selection = parseRankSelectionId(v);
+                  if (!selection) return;
                   setForm(prev => ({
                     ...prev,
-                    rank: v,
-                    is_officer: isOfficer,
-                    last_alal_date: isOfficer ? prev.last_alal_date : "",
+                    rank: selection.rank,
+                    rank_track: selection.rankTrack,
+                    is_officer: selection.rankTrack !== "enlisted",
+                    last_alal_date: selection.rankTrack !== "enlisted" ? prev.last_alal_date : "",
                   }));
                 }}
                 placeholder="בחר"

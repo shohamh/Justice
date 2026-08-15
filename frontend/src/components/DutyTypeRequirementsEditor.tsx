@@ -28,7 +28,7 @@ export default function DutyTypeRequirementsEditor(props: Props) {
     isControlled ? props.value : (props.dutyType!.requirements ?? {})
   );
   const reqs = isControlled ? props.value : localReqs;
-  const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
+  const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[]; officer_academic: string[] }>({ enlisted: [], officers: [], officer_academic: [] });
 
   useEffect(() => {
     void getRanks().then(setRanks);
@@ -92,6 +92,23 @@ export default function DutyTypeRequirementsEditor(props: Props) {
               </label>
             ))}
           </div>
+          {ranks.officer_academic.filter(r => !ranks.officers.includes(r)).length > 0 && (
+            <>
+              <p className="text-xs text-gray-500">קצינים אקדמאים</p>
+              <div className="flex flex-wrap gap-2">
+                {ranks.officer_academic.filter(r => !ranks.officers.includes(r)).map(r => (
+                  <label key={r} className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={(reqs.allowed_ranks ?? []).includes(r)}
+                      onChange={() => toggleItem("allowed_ranks", r)}
+                    />
+                    {r}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
           <p className="text-xs text-gray-500">{t("soldier_profile.officers")}</p>
           <div className="flex flex-wrap gap-2">
             {ranks.officers.map(r => (

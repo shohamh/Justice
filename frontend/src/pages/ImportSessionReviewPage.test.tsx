@@ -179,7 +179,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.listDutyTypesForImport).mockResolvedValue([]);
     vi.mocked(importSessionsApi.listNodesForImport).mockResolvedValue([]);
     vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([]);
-    vi.mocked(soldiersApi.getRanks).mockResolvedValue({ enlisted: [], officers: [] });
+    vi.mocked(soldiersApi.getRanks).mockResolvedValue({ enlisted: [], officers: [], officer_academic: [] });
   });
 
   it("loads and renders session data with correct tab counts", async () => {

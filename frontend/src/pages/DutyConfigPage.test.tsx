@@ -13,7 +13,7 @@ vi.mock("react-i18next", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(soldiersApi.getRanks).mockResolvedValue({ enlisted: [], officers: [] });
+  vi.mocked(soldiersApi.getRanks).mockResolvedValue({ enlisted: [], officers: [], officer_academic: [] });
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
   vi.mocked(dutyConfigApi.listLocations).mockResolvedValue([
     { id: "loc1", name: "שער צפוני", base: null, active: true },

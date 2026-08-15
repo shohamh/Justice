@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, HelpCircle, Upload } from "lucide-react";
@@ -534,7 +534,8 @@ export function SystemSettingsContent() {
       {importError && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{importError}</div>}
 
       {SETTING_GROUPS.map(group => (
-        <div key={group.label} className="bg-white rounded-lg shadow p-5 space-y-4 dark:bg-gray-800">
+        <Fragment key={group.label}>
+        <div className="bg-white rounded-lg shadow p-5 space-y-4 dark:bg-gray-800">
           <h2 className="font-semibold text-gray-700 border-b pb-2 dark:text-gray-200 dark:border-gray-600">{group.label}</h2>
           {group.settings.map(def => {
             const value = resolveValue(draft, def);
@@ -606,9 +607,9 @@ export function SystemSettingsContent() {
             );
           })}
         </div>
+        {group.label === "עליית דרגה" && <RankAdvancementIntervalsSection />}
+        </Fragment>
       ))}
-
-      <RankAdvancementIntervalsSection />
     </div>
   );
 }

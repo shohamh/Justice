@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { RankTrack } from "./rankAdvancement";
 
 export interface LoginResponse {
   access_token: string;
@@ -23,6 +24,7 @@ export interface Me {
   gender?: string | null;
   is_officer?: boolean | null;
   rank?: string | null;
+  rank_track?: RankTrack | null;
   bahad1_graduate?: boolean;
   has_military_driving_license?: boolean | null;
   military_driving_license_expiry?: string | null;
@@ -67,6 +69,7 @@ export interface RegisterPayload {
   gender: string | null;
   is_officer: boolean | null;
   rank: string | null;
+  rank_track: RankTrack | null;
   enlistment_date: string | null;
   mandatory_end_date: string | null;
   discharge_date: string | null;

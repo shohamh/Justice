@@ -1345,18 +1345,21 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
     """
     if row.get("rank") is None:
         return
-    from app.services.rank_advancement import compute_next_rank_date
+    from app.services.rank_advancement import compute_next_rank_date, resolve_track
     if row.get("enlistment_date"):
         since = date_type.fromisoformat(row["enlistment_date"])
     elif row.get("enrolled_at"):
         since = date_type.fromisoformat(row["enrolled_at"])
     else:
         since = date_type.today()
+    soldier.rank_track = resolve_track(soldier.rank, soldier.rank_track)
     soldier.current_rank_since = since
     if row.get("next_rank_date"):
         soldier.next_rank_date_overridden = True
     else:
-        soldier.next_rank_date = compute_next_rank_date(session, rank=soldier.rank, since=since)
+        soldier.next_rank_date = compute_next_rank_date(
+            session, rank=soldier.rank, since=since, track=soldier.rank_track
+        )
         soldier.next_rank_date_overridden = False
 
 
@@ -1445,6 +1448,8 @@ def confirm_session(
                     s.full_name = row["full_name"]
                     if row.get("rank") is not None:
                         s.rank = row["rank"]
+                        from app.services.rank_advancement import resolve_track
+                        s.rank_track = resolve_track(s.rank, s.rank_track)
                     if row.get("gender") is not None:
                         s.gender = row["gender"]
                     if row.get("is_officer") is not None:

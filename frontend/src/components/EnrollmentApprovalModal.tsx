@@ -4,7 +4,7 @@ import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollm
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
 import { useModalBackClose } from "../hooks/useModalBackClose";
-import { useRankLadder } from "../constants/ranks";
+import { parseRankSelectionId, rankSelectionId, RankTrack, useRankLadder } from "../constants/ranks";
 
 interface NodeItem {
   id: string;
@@ -42,6 +42,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
   const [email, setEmail] = useState(req.email ?? "");
   const [rank, setRank] = useState(req.rank ?? "");
   const [isOfficer, setIsOfficer] = useState(req.is_officer ?? false);
+  const [rankTrack, setRankTrack] = useState<RankTrack>(req.rank_track ?? (req.is_officer ? "officer" : "enlisted"));
   const [gender, setGender] = useState(req.gender ?? "");
   const [enlistmentDate, setEnlistmentDate] = useState(req.enlistment_date ?? "");
   const [mandatoryEndDate, setMandatoryEndDate] = useState(req.mandatory_end_date ?? "");
@@ -52,7 +53,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { enlistedRanks: RANKS_ENLISTED, officerRanks: RANKS_OFFICER } = useRankLadder();
+  const { enlistedRanks: RANKS_ENLISTED, officerRanks: RANKS_OFFICER, officerAcademicRanks: RANKS_OFFICER_ACADEMIC } = useRankLadder();
 
   const typeById = Object.fromEntries(exemptionTypes.map(et => [et.id, et.name]));
 
@@ -69,6 +70,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
         email: email || null,
         rank: rank || null,
         is_officer: isOfficer,
+        rank_track: rank ? rankTrack : null,
         gender: gender || null,
         enlistment_date: enlistmentDate || null,
         mandatory_end_date: mandatoryEndDate || null,
@@ -148,13 +150,17 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
             <span className="text-xs text-gray-500">דרגה</span>
             <Combobox
               items={[
-                ...RANKS_ENLISTED.map(r => ({ id: r, name: r })),
-                ...RANKS_OFFICER.map(r => ({ id: r, name: r })),
+                ...RANKS_ENLISTED.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: "חיילים" })),
+                ...RANKS_OFFICER.map(r => ({ id: rankSelectionId("officer", r), name: r, group: "קצינים" })),
+                ...RANKS_OFFICER_ACADEMIC.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
               ]}
-              value={rank}
+              value={rank ? rankSelectionId(rankTrack, rank) : ""}
               onChange={v => {
-                setRank(v);
-                setIsOfficer(RANKS_OFFICER.includes(v));
+                const selection = parseRankSelectionId(v);
+                if (!selection) return;
+                setRank(selection.rank);
+                setRankTrack(selection.rankTrack);
+                setIsOfficer(selection.rankTrack !== "enlisted");
               }}
               placeholder="בחר"
             />

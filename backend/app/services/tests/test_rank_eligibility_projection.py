@@ -133,7 +133,7 @@ def test_project_soldier_state_advances_early_via_career_entry(app_session):
 
     state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2))
 
-    assert state.rank == "קאם"
+    assert state.rank == "סגן"
 
 
 def test_project_soldier_state_advances_on_career_entry_without_scheduled_date(app_session):
@@ -152,7 +152,7 @@ def test_project_soldier_state_advances_on_career_entry_without_scheduled_date(a
     app_session.flush()
 
     assert project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 1)).rank == "קאב"
-    assert project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2)).rank == "קאם"
+    assert project_soldier_state(app_session, soldier=s, as_of=date(2026, 6, 2)).rank == "סגן"
 
 
 def test_project_soldier_state_uses_scheduled_date_when_earlier_than_career_entry(app_session):
@@ -168,7 +168,7 @@ def test_project_soldier_state_uses_scheduled_date_when_earlier_than_career_entr
 
     state = project_soldier_state(app_session, soldier=s, as_of=date(2026, 4, 1))
 
-    assert state.rank == "קאם"  # advanced via the scheduled date, well before career-entry
+    assert state.rank == "סגן"  # advanced via the scheduled date, well before career-entry
 
 
 def test_project_soldier_state_no_early_trigger_when_flag_unset(app_session):
@@ -268,7 +268,7 @@ def test_project_career_entry_uses_interval_cache_instead_of_querying(app_sessio
 
     assert cache[("officer_academic", "קאב")] == (None, True)
     assert cached == uncached
-    assert cached.rank == "קאם"
+    assert cached.rank == "סגן"
 
 
 def test_project_ignores_career_entry_that_predates_current_rank(app_session):
