@@ -125,7 +125,34 @@ describe("BugReportTrigger", () => {
     document.removeEventListener("mousedown", outsideClickHandler);
   });
 
-  test("captures relative to the current scroll position, not the top of the document", async () => {
+  test("translates marked app scroll content by the app shell scroll position", async () => {
+    const appScrollContainer = document.createElement("main");
+    appScrollContainer.dataset.bugReportScrollContainer = "";
+    Object.defineProperties(appScrollContainer, {
+      scrollTop: { value: 300, configurable: true },
+      scrollLeft: { value: 40, configurable: true },
+    });
+    document.body.append(appScrollContainer);
+
+    renderTrigger();
+
+    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
+    expect(toPng).toHaveBeenCalledWith(
+      document.body,
+      expect.objectContaining({
+        style: expect.objectContaining({
+          "--bug-report-scroll-top": "-300px",
+          "--bug-report-scroll-left": "-40px",
+        }),
+      }),
+    );
+
+    appScrollContainer.remove();
+  });
+
+  test("falls back to window scroll when the app shell is absent", async () => {
     Object.defineProperty(window, "scrollX", { value: 40, configurable: true });
     Object.defineProperty(window, "scrollY", { value: 300, configurable: true });
 

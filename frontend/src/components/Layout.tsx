@@ -108,8 +108,13 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
           </div>
         </div>
       </header>
-      <main className="flex-1 overflow-y-auto px-4 py-6 pb-24 md:pb-6">
-        {typeof children === "function" ? children(openHelp) : children}
+      <main
+        className="flex-1 overflow-y-auto px-4 py-6 pb-24 md:pb-6"
+        data-bug-report-scroll-container
+      >
+        <div data-bug-report-scroll-content>
+          {typeof children === "function" ? children(openHelp) : children}
+        </div>
       </main>
     </div>
   );

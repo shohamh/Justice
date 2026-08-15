@@ -30,6 +30,17 @@ body {
   color: #0f172a;
 }
 
+/* html-to-image applies the capture-only variables to its cloned body. Moving
+   just this wrapper keeps the app shell's fixed header in its viewport position
+   while revealing the current portion of the main scroll container. The live
+   page never receives these inline variables, so it gets no transform at all. */
+body[style*="--bug-report-scroll-left"] [data-bug-report-scroll-content] {
+  transform: translate(
+    var(--bug-report-scroll-left, 0px),
+    var(--bug-report-scroll-top, 0px)
+  );
+}
+
 .dark body {
   background-color: #111827;
   color: #f9fafb;

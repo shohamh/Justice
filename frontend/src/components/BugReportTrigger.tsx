@@ -49,8 +49,9 @@ export default function BugReportTrigger() {
 
   async function handleClick() {
     // Freeze the current scroll position before any async work.
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
+    const appScrollContainer = document.querySelector<HTMLElement>("[data-bug-report-scroll-container]");
+    const scrollX = appScrollContainer?.scrollLeft ?? window.scrollX;
+    const scrollY = appScrollContainer?.scrollTop ?? window.scrollY;
     setCapturing(true);
     let screenshot: string | null = null;
     try {
@@ -59,9 +60,8 @@ export default function BugReportTrigger() {
       // displays. width/height clamp the capture to the viewport instead of the
       // full document — but clamping alone would always crop starting at the top
       // of the document (a previously-seen bug: scrolled pages showed only the
-      // header). The clone is shifted up by the current scroll offset via
-      // `style.transform` so the SVG foreignObject (which clips to width/height)
-      // reveals the section of the page actually on screen, not the top of it.
+      // header). Shell pages shift only their cloned scroll content, keeping the
+      // fixed header in place; non-shell pages retain the window-scroll fallback.
       // Capture happens BEFORE the modal opens/mounts, so the modal's own
       // dimming overlay and empty form are never present in document.body while
       // toPng reads it — otherwise the screenshot would show the modal itself
@@ -71,7 +71,12 @@ export default function BugReportTrigger() {
           pixelRatio: 1,
           width: window.innerWidth,
           height: window.innerHeight,
-          style: { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
+          style: appScrollContainer
+            ? {
+                "--bug-report-scroll-left": `${-scrollX}px`,
+                "--bug-report-scroll-top": `${-scrollY}px`,
+              }
+            : { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
         }),
         CAPTURE_TIMEOUT_MS,
       );
