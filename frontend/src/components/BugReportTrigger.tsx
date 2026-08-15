@@ -24,20 +24,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function captureCssText(scrollX: number, scrollY: number): string {
-  // html-to-image applies `style` by assigning each key to the cloned node's
-  // CSSStyleDeclaration. `cssText` is the supported key that can carry custom
-  // properties, but assigning it replaces the clone's computed style, so copy
-  // that style first and retain the capture viewport dimensions it would set.
-  const computedStyle = window.getComputedStyle(document.body);
-  let cssText = "";
-  for (let index = 0; index < computedStyle.length; index += 1) {
-    const property = computedStyle.item(index);
-    cssText += `${property}: ${computedStyle.getPropertyValue(property)};`;
-  }
-  return `${cssText}width: ${window.innerWidth}px; height: ${window.innerHeight}px; --bug-report-scroll-left: ${-scrollX}px; --bug-report-scroll-top: ${-scrollY}px;`;
-}
-
 export default function BugReportTrigger() {
   const { openBugReportModal } = useBugReportModal();
   const [capturing, setCapturing] = useState(false);
@@ -64,6 +50,7 @@ export default function BugReportTrigger() {
   async function handleClick() {
     // Freeze the current scroll position before any async work.
     const appScrollContainer = document.querySelector<HTMLElement>("[data-bug-report-scroll-container]");
+    const appScrollContent = appScrollContainer?.querySelector<HTMLElement>("[data-bug-report-scroll-content]") ?? null;
     const scrollX = appScrollContainer?.scrollLeft ?? window.scrollX;
     const scrollY = appScrollContainer?.scrollTop ?? window.scrollY;
     setCapturing(true);
@@ -74,23 +61,29 @@ export default function BugReportTrigger() {
       // displays. width/height clamp the capture to the viewport instead of the
       // full document — but clamping alone would always crop starting at the top
       // of the document (a previously-seen bug: scrolled pages showed only the
-      // header). Shell pages shift only their cloned scroll content, keeping the
-      // fixed header in place; non-shell pages retain the window-scroll fallback.
+      // header). Shell pages temporarily shift only the marked scroll content
+      // while html-to-image clones it, keeping the fixed header in place. The
+      // original inline transform is restored immediately after capture; non-
+      // shell pages retain the window-scroll fallback.
       // Capture happens BEFORE the modal opens/mounts, so the modal's own
       // dimming overlay and empty form are never present in document.body while
       // toPng reads it — otherwise the screenshot would show the modal itself
       // instead of the page the user is reporting a bug about.
-      screenshot = await withTimeout(
-        toPng(document.body, {
-          pixelRatio: 1,
-          width: window.innerWidth,
-          height: window.innerHeight,
-          style: appScrollContainer
-            ? { cssText: captureCssText(scrollX, scrollY) }
-            : { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
-        }),
-        CAPTURE_TIMEOUT_MS,
-      );
+      const previousTransform = appScrollContent?.style.transform;
+      if (appScrollContent) appScrollContent.style.transform = `translate(${-scrollX}px, ${-scrollY}px)`;
+      try {
+        screenshot = await withTimeout(
+          toPng(document.body, {
+            pixelRatio: 1,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            style: appScrollContent ? undefined : { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
+          }),
+          CAPTURE_TIMEOUT_MS,
+        );
+      } finally {
+        if (appScrollContent) appScrollContent.style.transform = previousTransform ?? "";
+      }
     } catch {
       // non-fatal (rejection or timeout): submission proceeds without a screenshot
       screenshot = null;

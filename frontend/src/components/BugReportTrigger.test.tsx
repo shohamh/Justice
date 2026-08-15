@@ -132,23 +132,25 @@ describe("BugReportTrigger", () => {
       scrollTop: { value: 300, configurable: true },
       scrollLeft: { value: 40, configurable: true },
     });
+    const appScrollContent = document.createElement("div");
+    appScrollContent.dataset.bugReportScrollContent = "";
+    appScrollContent.style.transform = "scale(1)";
+    appScrollContainer.append(appScrollContent);
     document.body.append(appScrollContainer);
 
     try {
+      let transformDuringCapture = "";
+      vi.mocked(toPng).mockImplementationOnce(async () => {
+        transformDuringCapture = appScrollContent.style.transform;
+        return "data:image/png;base64,AAA";
+      });
       renderTrigger();
 
       fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
       await waitFor(() => expect(toPng).toHaveBeenCalled());
-      expect(toPng).toHaveBeenCalledWith(
-        document.body,
-        expect.objectContaining({
-          style: expect.objectContaining({
-            cssText: expect.stringContaining("--bug-report-scroll-left: -40px"),
-          }),
-        }),
-      );
-      expect(vi.mocked(toPng).mock.calls.at(-1)?.[1]?.style?.cssText).toContain("--bug-report-scroll-top: -300px");
+      expect(transformDuringCapture).toBe("translate(-40px, -300px)");
+      expect(appScrollContent.style.transform).toBe("scale(1)");
     } finally {
       appScrollContainer.remove();
     }
