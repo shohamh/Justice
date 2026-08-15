@@ -2,11 +2,15 @@ import { FormEvent, useEffect, useState } from "react";
 import { EventDetailModal } from "../planning";
 import { CreateRangeEventBody, RangeEvent, RangeType, UpdateRangeEventBody } from "../../api/ranges";
 import { RangeLocation } from "../../api/rangeLocations";
-import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 import Combobox from "../Combobox";
 import TimeInput from "../TimeInput";
 
 interface Props { open: boolean; event?: RangeEvent | null; hierarchyNodeId: string; locations: RangeLocation[]; onClose: () => void; onSubmit: (body: CreateRangeEventBody | UpdateRangeEventBody) => Promise<void>; }
+const RANGE_TYPE_ITEMS = [
+  { id: "laser", name: "מטווח לייזר" },
+  { id: "live", name: "מטווח חי" },
+  { id: "alal", name: 'אל"ל' },
+];
 export default function RangeFormModal({ open, event, hierarchyNodeId, locations, onClose, onSubmit }: Props) {
   const [form, setForm] = useState({ range_type: "laser" as RangeType, date: "", start_time: "", end_time: "", range_location_id: "", arrival_instructions: "", contact_name: "", contact_phone: "", required_count: 0, reserve_count: 0, notes: "" });
   const [force, setForce] = useState(false); const [error, setError] = useState(""); const [pending, setPending] = useState(false);
@@ -38,7 +42,7 @@ export default function RangeFormModal({ open, event, hierarchyNodeId, locations
       <section data-testid="range-form-section-schedule" className="space-y-3">
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">פרטי זמן ומיקום</h4>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="block text-sm sm:col-span-2">סוג<select data-testid={event ? "edit-range-type" : "new-range-type"} value={form.range_type} onChange={e=>set("range_type",e.target.value)} className={inputClass}><option value="laser">{RANGE_TYPE_LABELS.laser}</option><option value="live">{RANGE_TYPE_LABELS.live}</option><option value="alal">{RANGE_TYPE_LABELS.alal}</option></select></label>
+          <div className="block text-sm sm:col-span-2"><span>סוג</span><Combobox testId={event ? "edit-range-type" : "new-range-type"} items={RANGE_TYPE_ITEMS} value={form.range_type} onChange={value => set("range_type", value as RangeType)} /></div>
           <div className="block text-sm sm:col-span-2"><span>מיקום</span><Combobox testId={event ? "edit-range-location" : "new-range-location"} items={locations.filter(location => location.active).map(location => ({ id: location.id, name: location.name }))} value={form.range_location_id} onChange={value => set("range_location_id", value)} placeholder="בחר מיקום" /></div>
           {fields.slice(0, 5).map(renderField)}
         </div>

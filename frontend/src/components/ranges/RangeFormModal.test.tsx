@@ -47,4 +47,18 @@ describe("RangeFormModal",()=>{
 
     expect(screen.queryByText("+ הוסף מיקום")).not.toBeInTheDocument();
   });
+  it("shows readable range type choices", () => {
+    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={vi.fn()} />);
+
+    const rangeType = screen.getByTestId("new-range-type");
+    expect(rangeType).toHaveValue("מטווח לייזר");
+    fireEvent.focus(rangeType);
+
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeInTheDocument();
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    expect(screen.getByText("מטווח לייזר")).toBeInTheDocument();
+    expect(screen.getByText("מטווח חי")).toBeInTheDocument();
+    expect(screen.getByText("אל\"ל")).toBeInTheDocument();
+  });
 });
