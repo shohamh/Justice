@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-15
+
+### Features
+- Added configurable rank advancement ladders, interval administration, next-rank overrides, daily promotion/warning processing, notifications, academic-officer tracks, and optional promotion on entry to קבע.
+- Added the admin agentic bug-report export as a backend-generated Markdown ZIP with active/all-filtered scopes, comments, attachments, snapshots, and offline image rendering.
+- Added military-driving-license requirements for the נהג תורן duty type and show/hide controls for password fields.
+
+### Fixes
+- Registration now validates personal numbers, names, dates, password policy, mandatory-end ordering, and field-level errors consistently across client and server, including mobile form scrolling.
+- Calendar shifts are scoped to the selected sub-framework, while the export and registration flows handle missing reporters, CORS download filenames, and career-entry promotion state correctly.
+- Algorithm, potential, assignment, and calendar eligibility now project rank, service type, and departure state across each duty block's dates; navigation and rank-track edge cases were corrected.
+
+### Chores
+- Added the associated architecture decisions, design specifications, implementation plans, regression coverage, and Windows development compatibility helper.
+
 ## 2026-08-13 (3)
 
 ### Features
