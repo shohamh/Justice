@@ -174,6 +174,8 @@ def test_phone_not_in_public_soldier_out():
     s.gender = None
     s.is_officer = None
     s.rank = None
+    s.rank_track = None
+    s.is_career = False
     s.bahad1_graduate = False
     s.has_military_driving_license = None
     s.military_driving_license_expiry = None
@@ -184,18 +186,24 @@ def test_phone_not_in_public_soldier_out():
     s.last_alal_date = None
     s.email = "test@example.com"
     s.profile_picture_url = None
+    s.next_rank_date = None
+    s.next_rank_date_overridden = False
+
+    session = MagicMock()
+    user = MagicMock()
+    user.role = "soldier"
 
     # soldiers.phone_public/email_public now default True (see
     # test_soldiers_api.py / test_private_fields.py for the API-level
     # coverage) — the redaction path is exercised by explicitly passing
     # phone_public=False, matching an admin turning that setting off.
-    out_redacted = _out(s, include_private=False, phone_public=False)
+    out_redacted = _out(s, session=session, user=user, include_private=False, phone_public=False)
     assert out_redacted.phone is None
 
-    out_public_default = _out(s, include_private=False)
+    out_public_default = _out(s, session=session, user=user, include_private=False)
     assert out_public_default.phone == "050-1234567"
 
-    out_private = _out(s, include_private=True)
+    out_private = _out(s, session=session, user=user, include_private=True)
     assert out_private.phone == "050-1234567"
 
 
