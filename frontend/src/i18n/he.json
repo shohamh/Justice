@@ -694,7 +694,11 @@
     "new_value": "ערך מבוקש",
     "field_updates_tab": "עדכוני פרופיל",
     "clear": "נקה",
-    "profile_picture_url": "תמונת פרופיל (קישור)"
+    "profile_picture_url": "תמונת פרופיל (קישור)",
+    "next_rank_date": "תאריך דרגה הבאה",
+    "next_rank_date_automatic": "חישוב אוטומטי",
+    "next_rank_date_manual": "נקבע ידנית",
+    "rank_correction": "תיקון דרגה ותאריך דרגה הבאה"
   },
   "eligibility": {
     "title": "דרישות כשירות",

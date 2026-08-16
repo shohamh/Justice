@@ -24,9 +24,14 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => (key === "errors.rank_track_incompatible" ? "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר" : key),
   }),
 }));
+const mockUseAuth = vi.fn();
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: { personal_number: "admin1", role: "admin", is_duty_manager: false, is_commander: false } }),
+  useAuth: () => mockUseAuth(),
 }));
+
+const ADMIN_USER = { personal_number: "admin1", role: "admin", is_duty_manager: false, is_commander: false };
+const ELIGIBLE_COMMANDER_USER = { personal_number: "cmdr1", role: "soldier", is_duty_manager: false, is_commander: true };
+const INELIGIBLE_COMMANDER_USER = { personal_number: "cmdr2", role: "soldier", is_duty_manager: false, is_commander: true };
 
 const soldier: SoldierDTO = {
   id: "s1",
@@ -42,6 +47,7 @@ const soldier: SoldierDTO = {
   is_officer: false,
   is_career: false,
   rank: null,
+  rank_track: null,
   bahad1_graduate: false,
   has_military_driving_license: false,
   military_driving_license_expiry: null,
@@ -51,19 +57,22 @@ const soldier: SoldierDTO = {
   last_mitvahim_date: null,
   last_alal_date: null,
   telegram_linked: false,
+  next_rank_date: null,
+  next_rank_date_overridden: false,
+  can_edit_rank_advancement: false,
 };
 
-function renderModal() {
+function renderModal(soldierOverrides: Partial<SoldierDTO> = {}, initialEditing = false) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <UnifiedSoldierModal
-        soldier={soldier}
+        soldier={{ ...soldier, ...soldierOverrides }}
         score={null}
         nodes={[]}
         onClose={vi.fn()}
         onRefresh={vi.fn()}
-        initialEditing
+        initialEditing={initialEditing}
       />
     </QueryClientProvider>,
   );
@@ -72,13 +81,15 @@ function renderModal() {
 describe("UnifiedSoldierModal profile save error handling", () => {
   beforeEach(() => {
     mockUpdateSoldierProfile.mockReset();
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
   });
 
   test("a rejected profile save surfaces a translated error and re-enables the save button", async () => {
     mockUpdateSoldierProfile.mockRejectedValueOnce({
       response: { data: { detail: "rank_track_incompatible: rank 'סרן' is not compatible with track 'חובה'" } },
     });
-    renderModal();
+    renderModal({}, true);
 
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
     fireEvent.click(screen.getByText("duty_config.save"));
@@ -86,5 +97,94 @@ describe("UnifiedSoldierModal profile save error handling", () => {
     expect(await screen.findByText("הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר")).toBeInTheDocument();
     // Button must not be stuck disabled/saving forever.
     await waitFor(() => expect(screen.getByText("duty_config.save")).not.toBeDisabled());
+  });
+});
+
+describe("UnifiedSoldierModal scoped rank/next-rank-date correction", () => {
+  beforeEach(() => {
+    mockUpdateSoldierProfile.mockReset();
+    mockUseAuth.mockReset();
+  });
+
+  test("the profile view shows the next-rank date with an automatic indication", async () => {
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    renderModal({ next_rank_date: "2027-01-15", next_rank_date_overridden: false });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(await screen.findByText("soldier_profile.next_rank_date_automatic")).toBeInTheDocument();
+  });
+
+  test("the profile view shows the next-rank date with a manual indication when overridden", async () => {
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    renderModal({ next_rank_date: "2027-01-15", next_rank_date_overridden: true });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(await screen.findByText("soldier_profile.next_rank_date_manual")).toBeInTheDocument();
+  });
+
+  test("an eligible commander without ordinary edit authority sees only the narrow rank/date editor", async () => {
+    mockUseAuth.mockReturnValue({ user: ELIGIBLE_COMMANDER_USER });
+    renderModal({ can_edit_rank_advancement: true, rank: "טוראי", rank_track: "enlisted" });
+
+    // No full-profile edit pencil for this user.
+    expect(screen.queryByTestId("modal-edit-toggle")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.getByTestId("rank-correction-toggle")).toBeInTheDocument();
+  });
+
+  test("submitting the narrow rank/date editor calls updateSoldierProfile with only rank/track/date fields", async () => {
+    mockUseAuth.mockReturnValue({ user: ELIGIBLE_COMMANDER_USER });
+    mockUpdateSoldierProfile.mockResolvedValueOnce({ ...soldier, can_edit_rank_advancement: true });
+    renderModal({ can_edit_rank_advancement: true, rank: "טוראי", rank_track: "enlisted", next_rank_date: "2027-01-15" });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+    fireEvent.click(screen.getByTestId("rank-correction-toggle"));
+
+    const dateInput = await screen.findByTestId("next-rank-date-input");
+    fireEvent.change(dateInput, { target: { value: "30/06/2027" } });
+    fireEvent.click(screen.getByTestId("rank-correction-submit"));
+
+    await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));
+    expect(mockUpdateSoldierProfile).toHaveBeenCalledWith("s1", {
+      rank: "טוראי",
+      rank_track: "enlisted",
+      is_officer: false,
+      next_rank_date: "2027-06-30",
+    });
+  });
+
+  test("clearing the next-rank date in the narrow editor sends an explicit null", async () => {
+    mockUseAuth.mockReturnValue({ user: ELIGIBLE_COMMANDER_USER });
+    mockUpdateSoldierProfile.mockResolvedValueOnce({ ...soldier, can_edit_rank_advancement: true });
+    renderModal({ can_edit_rank_advancement: true, rank: "טוראי", rank_track: "enlisted", next_rank_date: "2027-01-15" });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+    fireEvent.click(screen.getByTestId("rank-correction-toggle"));
+
+    fireEvent.click(await screen.findByText("soldier_profile.clear"));
+    fireEvent.click(screen.getByTestId("rank-correction-submit"));
+
+    await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));
+    expect(mockUpdateSoldierProfile).toHaveBeenCalledWith("s1", {
+      rank: "טוראי",
+      rank_track: "enlisted",
+      is_officer: false,
+      next_rank_date: null,
+    });
+  });
+
+  test("an ineligible commander has no rank/date edit control", async () => {
+    mockUseAuth.mockReturnValue({ user: INELIGIBLE_COMMANDER_USER });
+    renderModal({ can_edit_rank_advancement: false, rank: "טוראי", rank_track: "enlisted" });
+
+    expect(screen.queryByTestId("modal-edit-toggle")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.queryByTestId("rank-correction-toggle")).not.toBeInTheDocument();
   });
 });

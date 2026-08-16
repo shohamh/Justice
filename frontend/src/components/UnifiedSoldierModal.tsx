@@ -102,6 +102,13 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileHasLicense, setProfileHasLicense] = useState(soldier.has_military_driving_license ?? false);
   const [profileLicenseExpiry, setProfileLicenseExpiry] = useState(soldier.military_driving_license_expiry ?? "");
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[]; officer_academic: string[] }>({ enlisted: [], officers: [], officer_academic: [] });
+  // Narrow rank/next-rank-date correction flow, for commanders/duty managers who
+  // are authorized to edit rank advancement fields but lack ordinary full-profile
+  // edit authority (`canManage`). Kept separate from the full profile editor's
+  // `editing` state so opening one never implicitly opens the other.
+  const [rankEditing, setRankEditing] = useState(false);
+  const [nextRankDate, setNextRankDate] = useState(soldier.next_rank_date ?? "");
+  const canEditRankNarrow = soldierData.can_edit_rank_advancement && !canManage;
 
   const mandatoryEndBeforeEnlistmentError = profileMandEnd && profileEnlistment && profileMandEnd < profileEnlistment
     ? t("register.mandatory_end_before_enlistment")
@@ -114,6 +121,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     setEnrolledAt(soldierData.enrolled_at ?? "");
     setProfileRank(soldierData.rank ?? "");
     setProfileRankTrack(soldierData.rank_track ?? (soldierData.is_officer ? "officer" : "enlisted"));
+    setNextRankDate(soldierData.next_rank_date ?? "");
   }, [soldierData]);
 
   useEffect(() => {
@@ -157,9 +165,15 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     try {
       await updateSoldierProfile(soldierData.id, {
         gender: profileGender || null,
-        rank: profileRank || null,
-        rank_track: profileRank ? profileRankTrack : null,
-        is_officer: profileRank ? profileRankTrack !== "enlisted" : null,
+        // Rank-advancement fields are omitted entirely (not just left unchanged)
+        // when the user isn't authorized to edit them — the backend authorizes
+        // by which fields are present in the request body, so including them
+        // unchanged would still require rank-advancement authority.
+        ...(soldierData.can_edit_rank_advancement ? {
+          rank: profileRank || null,
+          rank_track: profileRank ? profileRankTrack : null,
+          is_officer: profileRank ? profileRankTrack !== "enlisted" : null,
+        } : {}),
         enlistment_date: profileEnlistment || null,
         mandatory_end_date: profileMandEnd || null,
         discharge_date: profileDischarge || null,
@@ -179,6 +193,29 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     }
   }
 
+  async function handleRankSave(e: FormEvent) {
+    e.preventDefault();
+    setSavingProfile(true);
+    setProfileError(null);
+    try {
+      // Only rank-advancement fields are sent — the backend authorizes this
+      // narrow flow by `rank_advancement_edit_authorized` alone, precisely
+      // because no ordinary (non-rank) field is present in the request.
+      await updateSoldierProfile(soldierData.id, {
+        rank: profileRank || null,
+        rank_track: profileRank ? profileRankTrack : null,
+        is_officer: profileRank ? profileRankTrack !== "enlisted" : null,
+        next_rank_date: nextRankDate || null,
+      });
+      onRefresh();
+      setRankEditing(false);
+    } catch (err: unknown) {
+      setProfileError(translateApiError(err, t));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
   async function handleApprove(id: string) {
     await approveConstraint(id);
     await refreshConstraints();
@@ -189,6 +226,11 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     await refreshConstraints();
   }
 
+  const rankComboItems = [
+    ...rankOptions.enlisted.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: t("soldier_profile.enlisted") })),
+    ...rankOptions.officers.map(r => ({ id: rankSelectionId("officer", r), name: r, group: t("soldier_profile.officers") })),
+    ...rankOptions.officer_academic.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
+  ];
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -201,7 +243,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <h3 className="font-semibold">{soldierData.full_name}</h3>
                 {(canManage || isSelf) && !editing && (
                   <button
-                    onClick={() => setEditing(true)}
+                    onClick={() => { setRankEditing(false); setEditing(true); }}
                     className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 text-sm leading-none"
                     title={t("team.edit")}
                     aria-label={t("team.edit")}
@@ -390,10 +432,21 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           )
         )}
 
-        {tab === "profile" && !editing && (
+        {tab === "profile" && !editing && !rankEditing && (
           <div className="space-y-2 text-sm">
             {soldierData.gender && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.gender")}</span><span>{t(`soldier_profile.gender_${soldierData.gender}`)}</span></div>}
             {soldierData.rank && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span><span>{soldierData.rank}</span></div>}
+            {soldierData.next_rank_date && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.next_rank_date")}</span>
+                <span className="flex flex-col items-end">
+                  <span>{formatDate(soldierData.next_rank_date)}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    {soldierData.next_rank_date_overridden ? t("soldier_profile.next_rank_date_manual") : t("soldier_profile.next_rank_date_automatic")}
+                  </span>
+                </span>
+              </div>
+            )}
             {soldierData.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span>{formatDate(soldierData.enlistment_date)}</span></div>}
             {soldierData.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span>{formatDate(soldierData.mandatory_end_date)}</span></div>}
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
@@ -425,7 +478,57 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <span>{formatDate(soldierData.military_driving_license_expiry)}</span>
               </div>
             )}
+            {canEditRankNarrow && (
+              <div className="pt-2 border-t dark:border-gray-600">
+                <button
+                  type="button"
+                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 text-xs"
+                  onClick={() => setRankEditing(true)}
+                  data-testid="rank-correction-toggle"
+                >
+                  {t("soldier_profile.rank_correction")}
+                </button>
+              </div>
+            )}
           </div>
+        )}
+
+        {tab === "profile" && !editing && rankEditing && (
+          <form onSubmit={handleRankSave} className="space-y-3" data-testid="rank-correction-form">
+            <label className="block">
+              <span className="text-xs">{t("soldier_profile.rank")}</span>
+              <Combobox
+                items={rankComboItems}
+                value={profileRank ? rankSelectionId(profileRankTrack, profileRank) : ""}
+                onChange={v => {
+                  const selection = parseRankSelectionId(v);
+                  if (!selection) return;
+                  setProfileRank(selection.rank);
+                  setProfileRankTrack(selection.rankTrack);
+                }}
+                placeholder="—"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs">{t("soldier_profile.next_rank_date")}</span>
+              <div className="flex gap-1 items-center">
+                <DateInput
+                  className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={nextRankDate}
+                  onChange={setNextRankDate}
+                  data-testid="next-rank-date-input"
+                />
+                {nextRankDate && (
+                  <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setNextRankDate("")}>{t("soldier_profile.clear")}</button>
+                )}
+              </div>
+            </label>
+            {profileError && <p className="text-red-500 text-xs">{profileError}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => { setProfileError(null); setRankEditing(false); }}>{t("team.cancel")}</button>
+              <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile} data-testid="rank-correction-submit">{t("duty_config.save")}</button>
+            </div>
+          </form>
         )}
 
         {tab === "profile" && editing && (
@@ -440,24 +543,22 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <option value="other">{t("soldier_profile.gender_other")}</option>
                 </select>
               </label>
-              <label className="block">
-                <span className="text-xs">{t("soldier_profile.rank")}</span>
-                <Combobox
-                  items={[
-                    ...rankOptions.enlisted.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: t("soldier_profile.enlisted") })),
-                    ...rankOptions.officers.map(r => ({ id: rankSelectionId("officer", r), name: r, group: t("soldier_profile.officers") })),
-                    ...rankOptions.officer_academic.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
-                  ]}
-                  value={profileRank ? rankSelectionId(profileRankTrack, profileRank) : ""}
-                  onChange={v => {
-                    const selection = parseRankSelectionId(v);
-                    if (!selection) return;
-                    setProfileRank(selection.rank);
-                    setProfileRankTrack(selection.rankTrack);
-                  }}
-                  placeholder="—"
-                />
-              </label>
+              {soldierData.can_edit_rank_advancement && (
+                <label className="block">
+                  <span className="text-xs">{t("soldier_profile.rank")}</span>
+                  <Combobox
+                    items={rankComboItems}
+                    value={profileRank ? rankSelectionId(profileRankTrack, profileRank) : ""}
+                    onChange={v => {
+                      const selection = parseRankSelectionId(v);
+                      if (!selection) return;
+                      setProfileRank(selection.rank);
+                      setProfileRankTrack(selection.rankTrack);
+                    }}
+                    placeholder="—"
+                  />
+                </label>
+              )}
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.enlistment_date")}</span>
                 <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEnlistment} onChange={setProfileEnlistment} />
