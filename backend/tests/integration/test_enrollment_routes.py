@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from app.db.models import (
     ExemptionRequest,
     ExemptionType,
+    DutyManagerScope,
+    HierarchyLevelType,
     HierarchyNode,
     Notification,
     NotificationType,
@@ -102,6 +105,47 @@ def test_admin_can_approve(client, admin_session):
     assert soldier.hierarchy_node_id == node.id
 
 
+def test_junior_commander_cannot_change_rank_on_in_scope_enrollment(client, admin_session):
+    holding = _make_holding(admin_session)
+    commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    requested_node = create_node(
+        admin_session, level="branch", name=f"junior_{_uid()}", parent=holding, commander_id=commander.id,
+    )
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, requested_node)
+
+    response = client.patch(
+        f"/api/enrollment-requests/{req.id}", json={"rank": "סמר"}, headers=auth_headers(commander),
+    )
+
+    assert response.status_code == 403
+
+
+def test_rank_change_requires_authority_over_enrollment_destination(client, admin_session):
+    holding = _make_holding(admin_session)
+    mador = admin_session.query(HierarchyLevelType).filter_by(key="group").one()
+    mador.key = "מדור"
+    mador.label = "מדור"
+    senior_root = create_node(admin_session, level="מדור", name=f"senior_{_uid()}", parent=holding)
+    junior_destination = create_node(admin_session, level="team", name=f"junior_{_uid()}", parent=holding)
+    duty_manager = create_soldier(
+        admin_session, personal_number=f"dm_{_uid()}", role="duty_manager", hierarchy_node_id=senior_root.id,
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=junior_destination.id)
+    )
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    request = _make_req(admin_session, soldier, senior_root)
+
+    response = client.patch(
+        f"/api/enrollment-requests/{request.id}",
+        json={"rank": "סמר", "requested_node_id": str(junior_destination.id)},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 403
+
+
 def test_admin_can_reject(client, admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
@@ -183,6 +227,27 @@ def test_patch_notifies_soldier_when_fields_actually_changed(client, admin_sessi
     assert "דרגה" in notif.body
     assert notif.reference_type == "soldier_enrollment_request"
     assert notif.reference_id == req.id
+
+
+def test_enrollment_rank_change_uses_cumulative_enlistment_schedule(client, admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    soldier.enlistment_date = date(2021, 1, 15)
+    admin_session.commit()
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+
+    resp = client.patch(
+        f"/api/enrollment-requests/{req.id}",
+        json={"rank": "סמר"},
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 200, resp.text
+    admin_session.refresh(soldier)
+    assert soldier.current_rank_since == date(2021, 1, 15)
+    assert soldier.next_rank_date == date(2025, 9, 15)
 
 
 def test_patch_does_not_notify_when_nothing_actually_changed(client, admin_session):

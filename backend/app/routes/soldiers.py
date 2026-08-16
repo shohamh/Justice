@@ -32,7 +32,11 @@ from app.services.soldiers import (
     submit_field_update,
     update_soldier_profile,
 )
-from app.services.authority import can_view_soldier_scope
+from app.services.authority import (
+    RankAdvancementEditScope,
+    can_view_soldier_scope,
+    rank_advancement_edit_authorized,
+)
 from app.services.eligibility import ENLISTED_RANKS
 from app.services.rank_advancement import OFFICER_ACADEMIC_LADDER, OFFICER_LADDER
 from app.services.duty_history import get_duty_history
@@ -58,6 +62,9 @@ class SoldierOut(BaseModel):
     is_career: bool = False
     rank: str | None = None
     rank_track: str | None = None
+    next_rank_date: date_type | None = None
+    next_rank_date_overridden: bool = False
+    can_edit_rank_advancement: bool = False
     bahad1_graduate: bool = False
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: date_type | None = None
@@ -105,6 +112,7 @@ class UpdateProfileRequest(BaseModel):
     last_alal_date: date_type | None = None
     email: str | None = None
     profile_picture_url: str | None = None
+    next_rank_date: date_type | None = None
 
 
 class FieldUpdateRequest(BaseModel):
@@ -193,12 +201,20 @@ def _contact_visibility(session: Session) -> tuple[bool, bool]:
 def _out(
     s: Soldier,
     *,
+    session: Session,
+    user: Soldier,
     include_private: bool = False,
     telegram_linked: bool = False,
     direct_commander: Soldier | None = None,
     phone_public: bool = True,
     email_public: bool = True,
+    rank_scope: RankAdvancementEditScope | None = None,
 ) -> SoldierOut:
+    can_edit_rank_advancement = (
+        rank_scope.authorized(_node_of(session, s))
+        if rank_scope is not None
+        else rank_advancement_edit_authorized(session, user=user, target_node=_node_of(session, s))
+    )
     return SoldierOut(
         id=s.id,
         personal_number=s.personal_number,
@@ -214,6 +230,9 @@ def _out(
         is_career=s.is_career,
         rank=s.rank,
         rank_track=s.rank_track,
+        next_rank_date=s.next_rank_date,
+        next_rank_date_overridden=s.next_rank_date_overridden,
+        can_edit_rank_advancement=can_edit_rank_advancement,
         bahad1_graduate=s.bahad1_graduate,
         has_military_driving_license=s.has_military_driving_license,
         military_driving_license_expiry=s.military_driving_license_expiry,
@@ -281,9 +300,26 @@ def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
 
 
-def _authorize_field_update_decision(session: Session, user: Soldier, s: Soldier, field_name: str) -> None:
+def _authorize_field_update_decision(
+    session: Session, user: Soldier, s: Soldier, field_name: str, *, is_approval: bool,
+) -> None:
+    """Guards approve/reject on a pending field update.
+
+    The rank-advancement authority requirement only applies to *approving* a
+    rank/track/next-rank-date change — the plan restricts editing those
+    fields to מדור-and-above actors, but rejecting a pending request isn't an
+    edit, it's a no-op refusal. A lower-level commander/duty-manager who is
+    otherwise authorized to manage the soldier must still be able to dismiss
+    a bogus rank-change request, so reject always falls through to the
+    generic field-update authorization below.
+    """
+    target_node = _node_of(session, s)
+    if is_approval and field_name in {"rank", "rank_track", "is_officer", "next_rank_date"}:
+        if not rank_advancement_edit_authorized(session, user=user, target_node=target_node):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        return
     action = Action.MILITARY_LICENSE_DECIDE if field_name == "military_driving_license" else Action.SOLDIER_UPDATE
-    authorize(session, user, action, target_node=_node_of(session, s))
+    authorize(session, user, action, target_node=target_node)
 
 
 @router.post("", response_model=OnboardResponse, status_code=status.HTTP_201_CREATED)
@@ -314,7 +350,7 @@ def onboard(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(result.soldier)
-    return OnboardResponse(**_out(result.soldier, include_private=True).model_dump(), temp_password=result.temp_password)
+    return OnboardResponse(**_out(result.soldier, session=session, user=user, include_private=True).model_dump(), temp_password=result.temp_password)
 
 
 @router.get("", response_model=list[SoldierOut])
@@ -327,17 +363,21 @@ def list_soldiers(
         ).all()
     }
     phone_public, email_public = _contact_visibility(session)
+    # Hoisted once per request (not per soldier) — rank_scope precomputes the
+    # actor's commander/DM scope roots and מדור level rank a single time
+    # instead of re-querying them for every soldier in the roster.
+    rank_scope = RankAdvancementEditScope(session, user=user)
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
         return [
-            _out(s, include_private=False, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public)
+            _out(s, session=session, user=user, include_private=False, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope)
             for s in rows
         ]
 
     roots = scope_root_ids(session, user)
     # Unassigned soldiers with no scope can only see themselves
     if not roots:
-        return [_out(user, include_private=True, telegram_linked=user.id in linked_ids)]
+        return [_out(user, session=session, user=user, include_private=True, telegram_linked=user.id in linked_ids, rank_scope=rank_scope)]
 
     rows = session.execute(select(Soldier)).scalars().all()
     node_ids = {s.hierarchy_node_id for s in rows if s.hierarchy_node_id}
@@ -353,7 +393,7 @@ def list_soldiers(
         node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         in_scope = node is not None and any(r in node.path_ids for r in roots)
         include_private = in_scope or s.id == user.id
-        out.append(_out(s, include_private=include_private, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public))
+        out.append(_out(s, session=session, user=user, include_private=include_private, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope))
     return out
 
 
@@ -424,13 +464,18 @@ def list_all_pending_field_updates(
                 node_name = node.name if node else None
                 include_values = can_see_private(session, user, s)
                 nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
-                decide_action = (
-                    Action.MILITARY_LICENSE_DECIDE if upd.field_name == "military_driving_license" else Action.SOLDIER_UPDATE
-                )
-                can_approve = can(
-                    user, decide_action, target_node=node, roots=roots,
-                    is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
-                )
+                if upd.field_name in {"rank", "rank_track", "is_officer", "next_rank_date"}:
+                    can_approve = rank_advancement_edit_authorized(
+                        session, user=user, target_node=node
+                    )
+                else:
+                    decide_action = (
+                        Action.MILITARY_LICENSE_DECIDE if upd.field_name == "military_driving_license" else Action.SOLDIER_UPDATE
+                    )
+                    can_approve = can(
+                        user, decide_action, target_node=node, roots=roots,
+                        is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+                    )
                 result.append(
                     _fu_out(
                         upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
@@ -586,6 +631,8 @@ def get_soldier(
     phone_public, email_public = _contact_visibility(session)
     return _out(
         s,
+        session=session,
+        user=user,
         include_private=can_see_private(session, user, s),
         telegram_linked=link is not None,
         direct_commander=commander,
@@ -627,7 +674,7 @@ def update(
     session.commit()
     session.refresh(s)
     phone_public, email_public = _contact_visibility(session)
-    return _out(s, include_private=can_see_private(session, user, s), phone_public=phone_public, email_public=email_public)
+    return _out(s, session=session, user=user, include_private=can_see_private(session, user, s), phone_public=phone_public, email_public=email_public)
 
 
 @router.patch("/{soldier_id}/profile", response_model=SoldierOut)
@@ -638,8 +685,21 @@ def update_profile(
     user: Soldier = Depends(require_password_changed),
 ) -> SoldierOut:
     s = _load(session, soldier_id)
-    authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
-    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    target_node = _node_of(session, s)
+    rank_advancement_fields = {"rank", "rank_track", "is_officer", "next_rank_date"}
+    supplied_fields = body.model_fields_set
+    supplied_rank_fields = rank_advancement_fields & supplied_fields
+    supplied_ordinary_fields = supplied_fields - rank_advancement_fields
+    if supplied_rank_fields and not rank_advancement_edit_authorized(
+        session, user=user, target_node=target_node
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if supplied_ordinary_fields or not supplied_rank_fields:
+        authorize(session, user, Action.SOLDIER_UPDATE, target_node=target_node)
+    fields = {
+        k: v for k, v in body.model_dump().items()
+        if v is not None or (k == "next_rank_date" and k in supplied_fields)
+    }
     try:
         update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
     except svc.SoldierError as exc:
@@ -647,7 +707,7 @@ def update_profile(
     session.commit()
     session.refresh(s)
     phone_public, email_public = _contact_visibility(session)
-    return _out(s, include_private=can_see_private(session, user, s), phone_public=phone_public, email_public=email_public)
+    return _out(s, session=session, user=user, include_private=can_see_private(session, user, s), phone_public=phone_public, email_public=email_public)
 
 
 @router.post("/{soldier_id}/field-updates", response_model=FieldUpdateOut, status_code=201)
@@ -706,7 +766,7 @@ def approve_update(
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
-    _authorize_field_update_decision(session, user, s, upd.field_name)
+    _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=True)
     try:
         approve_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
@@ -732,7 +792,7 @@ def reject_update(
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
-    _authorize_field_update_decision(session, user, s, upd.field_name)
+    _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=False)
     try:
         reject_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:

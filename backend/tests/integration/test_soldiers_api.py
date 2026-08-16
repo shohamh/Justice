@@ -363,3 +363,55 @@ def test_duty_history_200_for_commander_with_levels_above_sibling_branch(
 
     r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(cmd))
     assert r.status_code == 200
+
+
+def test_list_soldiers_query_count_does_not_scale_with_soldier_count(client: TestClient, admin_session: Session):
+    """Finding 3 (N+1 in GET /soldiers): rank_advancement_edit_authorized was
+    previously called once per soldier in list_soldiers, each call issuing
+    several uncached SELECTs. The fix hoists the actor's scope roots and
+    level rank once per request (RankAdvancementEditScope) — so growing the
+    roster shouldn't grow the query count by a fixed amount per soldier."""
+    from sqlalchemy import event
+
+    from app.db.session import _engine
+
+    node = create_node(admin_session, level="branch", name="n1_scale")
+    commander = create_soldier(admin_session, personal_number="scale_cmd_001", role="commander")
+    node.commander_id = commander.id
+    admin_session.commit()
+
+    for i in range(2):
+        create_soldier(admin_session, personal_number=f"scale_a_{i}", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    statements: list[str] = []
+
+    def _record(conn, cursor, statement, params, context, executemany):
+        statements.append(statement)
+
+    event.listen(_engine, "before_cursor_execute", _record)
+    try:
+        r1 = client.get("/api/soldiers", headers=auth_headers(commander))
+        assert r1.status_code == 200
+        assert len(r1.json()) == 3  # commander + 2 soldiers
+        count_small = len(statements)
+
+        statements.clear()
+        for i in range(2, 12):
+            create_soldier(admin_session, personal_number=f"scale_a_{i}", hierarchy_node_id=node.id)
+        admin_session.commit()
+
+        r2 = client.get("/api/soldiers", headers=auth_headers(commander))
+        assert r2.status_code == 200
+        assert len(r2.json()) == 13  # commander + 12 soldiers
+        count_large = len(statements)
+    finally:
+        event.remove(_engine, "before_cursor_execute", _record)
+
+    # 8 additional soldiers must not add anywhere near 8 * (2-6) extra
+    # queries — with the fix the delta should be small/flat (a handful of
+    # bulk queries at most), not proportional to soldier count.
+    assert count_large - count_small < 8, (
+        f"query count grew from {count_small} to {count_large} for +8 soldiers "
+        "-- looks like a per-soldier N+1 regression"
+    )

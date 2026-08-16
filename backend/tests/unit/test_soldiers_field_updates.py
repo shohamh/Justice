@@ -42,6 +42,69 @@ def test_pending_field_update_flags_commander_as_unable_to_approve(client, admin
     assert items[0]["can_approve"] is False
 
 
+def test_junior_duty_manager_cannot_approve_rank_field_update(client, admin_session):
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="fu_rank_junior")
+    duty_manager = create_soldier(
+        admin_session, personal_number="fu_rank_junior_dm", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    soldier = create_soldier(
+        admin_session, personal_number="fu_rank_junior_soldier", hierarchy_node_id=node.id,
+    )
+    admin_session.commit()
+    submitted = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates",
+        json={"field_name": "rank", "new_value": "סמר"},
+        headers=auth_headers(soldier),
+    )
+    pending = client.get("/api/soldiers/field-updates/pending", headers=auth_headers(duty_manager))
+
+    response = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates/{submitted.json()['id']}/approve",
+        json={}, headers=auth_headers(duty_manager),
+    )
+
+    item = next(item for item in pending.json() if item["id"] == submitted.json()["id"])
+    assert item["can_approve"] is False
+    assert response.status_code == 403
+
+
+def test_junior_duty_manager_can_still_reject_rank_field_update(client, admin_session):
+    """Finding 5: the plan restricts *editing* rank/track/next-rank-date to
+    מדור-and-above actors, not *rejecting* a pending request for one — a
+    lower-level DM/commander who could previously dismiss a bogus rank-change
+    request must still be able to, even though they can't approve it."""
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="fu_rank_junior_reject")
+    duty_manager = create_soldier(
+        admin_session, personal_number="fu_rank_junior_dm_reject", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    soldier = create_soldier(
+        admin_session, personal_number="fu_rank_junior_soldier_reject", hierarchy_node_id=node.id,
+    )
+    admin_session.commit()
+    submitted = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates",
+        json={"field_name": "rank", "new_value": "סמר"},
+        headers=auth_headers(soldier),
+    )
+
+    approve_response = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates/{submitted.json()['id']}/approve",
+        json={}, headers=auth_headers(duty_manager),
+    )
+    reject_response = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates/{submitted.json()['id']}/reject",
+        json={"decision_note": "typo"}, headers=auth_headers(duty_manager),
+    )
+
+    assert approve_response.status_code == 403
+    assert reject_response.status_code == 200, reject_response.text
+    assert reject_response.json()["status"] == "rejected"
+
+
 def test_approve_field_update_writes_mandatory_end_date(admin_session):
     from tests.helpers import create_node
 
@@ -109,26 +172,24 @@ def test_approve_field_update_rank_initializes_next_rank_date(admin_session):
         password_hash="x",
         hierarchy_node_id=node.id,
         rank="טוראי",
+        enlistment_date=date(2021, 1, 15),
     )
     admin_session.add(soldier)
     admin_session.flush()
-    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
-    admin_session.flush()
-
     req = submit_field_update(
         admin_session,
         soldier_id=soldier.id,
         field_name="rank",
-        new_value="רבט",
+        new_value="סמר",
         actor_id=soldier.id,
     )
     admin_session.flush()
 
     approve_field_update(admin_session, update=req, actor_id=soldier.id)
 
-    assert soldier.rank == "רבט"
-    assert soldier.current_rank_since == date.today()
-    assert soldier.next_rank_date == date.today() + relativedelta(months=8)
+    assert soldier.rank == "סמר"
+    assert soldier.current_rank_since == date(2021, 1, 15)
+    assert soldier.next_rank_date == date(2025, 9, 15)
     assert soldier.next_rank_date_overridden is False
 
 
@@ -144,6 +205,10 @@ def test_approve_field_update_rank_without_interval_leaves_next_rank_date_none(a
         rank="טוראי",
     )
     admin_session.add(soldier)
+    upsert_interval(
+        admin_session, track="enlisted", rank="רבט", months_to_next=None,
+        advance_on_career_entry=False, actor_id=None,
+    )
     admin_session.flush()
 
     req = submit_field_update(

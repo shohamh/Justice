@@ -1345,7 +1345,7 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
     """
     if row.get("rank") is None:
         return
-    from app.services.rank_advancement import compute_next_rank_date, resolve_track
+    from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
     if row.get("enlistment_date"):
         since = date_type.fromisoformat(row["enlistment_date"])
     elif row.get("enrolled_at"):
@@ -1357,8 +1357,12 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
     if row.get("next_rank_date"):
         soldier.next_rank_date_overridden = True
     else:
-        soldier.next_rank_date = compute_next_rank_date(
-            session, rank=soldier.rank, since=since, track=soldier.rank_track
+        soldier.next_rank_date = compute_initial_next_rank_date(
+            session,
+            rank=soldier.rank,
+            enlistment_date=soldier.enlistment_date,
+            fallback_since=since,
+            track=soldier.rank_track,
         )
         soldier.next_rank_date_overridden = False
 

@@ -16,6 +16,9 @@ export interface SoldierDTO {
   is_career: boolean;
   rank: string | null;
   rank_track: RankTrack | null;
+  next_rank_date: string | null;
+  next_rank_date_overridden: boolean;
+  can_edit_rank_advancement: boolean;
   bahad1_graduate: boolean;
   has_military_driving_license: boolean | null;
   military_driving_license_expiry: string | null;
@@ -84,7 +87,7 @@ export async function updateSoldier(
 
 export async function updateSoldierProfile(
   soldierId: string,
-  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'rank_track' | 'bahad1_graduate' | 'has_military_driving_license' | 'military_driving_license_expiry' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date' | 'email' | 'profile_picture_url'>>
+  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'rank_track' | 'bahad1_graduate' | 'has_military_driving_license' | 'military_driving_license_expiry' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date' | 'email' | 'profile_picture_url' | 'next_rank_date'>>
 ): Promise<SoldierDTO> {
   return (await api.patch<SoldierDTO>(`/soldiers/${soldierId}/profile`, fields)).data;
 }

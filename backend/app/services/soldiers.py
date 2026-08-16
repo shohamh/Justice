@@ -289,11 +289,15 @@ def _reset_rank_advancement(session: Session, soldier: Soldier, *, since: date) 
     """Re-derive next_rank_date from the rank ladder as of `since` and clear
     any manual override — used whenever a soldier's rank is set directly
     (not via an explicit next_rank_date edit)."""
-    from app.services.rank_advancement import compute_next_rank_date, resolve_track
+    from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
     soldier.rank_track = resolve_track(soldier.rank, soldier.rank_track)
-    soldier.current_rank_since = since
-    soldier.next_rank_date = compute_next_rank_date(
-        session, rank=soldier.rank, since=since, track=soldier.rank_track
+    soldier.current_rank_since = soldier.enlistment_date or since
+    soldier.next_rank_date = compute_initial_next_rank_date(
+        session,
+        rank=soldier.rank,
+        enlistment_date=soldier.enlistment_date,
+        fallback_since=soldier.current_rank_since,
+        track=soldier.rank_track,
     )
     soldier.next_rank_date_overridden = False
 
@@ -307,19 +311,47 @@ def update_soldier_profile(
 ) -> Soldier:
     """DM/admin direct update of profile fields."""
     from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
+    # Snapshot the pre-update values so a PATCH that merely re-sends the
+    # soldier's current rank/track (both frontend save paths always include
+    # them when the actor is authorized) isn't mistaken for an actual change
+    # — that would wrongly re-anchor a worker-promoted soldier's schedule
+    # back to enlistment (see finding 1 of the final-review fix wave).
+    old_rank = soldier.rank
+    old_rank_track = soldier.rank_track
+    old_enlistment_date = soldier.enlistment_date
     for k, v in fields.items():
-        if k in PROFILE_FIELDS:
+        if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
             setattr(soldier, k, v)
-    if {"rank", "rank_track"} & fields.keys():
+    rank_or_track_changed = (
+        ("rank" in fields and fields["rank"] != old_rank)
+        or ("rank_track" in fields and fields["rank_track"] != old_rank_track)
+    )
+    enlistment_date_changed = (
+        "enlistment_date" in fields and fields["enlistment_date"] != old_enlistment_date
+    )
+    if rank_or_track_changed:
         from app.services.rank_advancement import resolve_track
         requested_track = soldier.rank_track
         resolved_track = resolve_track(soldier.rank, requested_track)
         if soldier.rank is not None and requested_track is not None and resolved_track != requested_track:
             raise SoldierValidationError("rank_track_invalid")
         soldier.rank_track = resolved_track
-    if "next_rank_date" in fields:
+    if rank_or_track_changed and fields.get("next_rank_date") is not None:
+        soldier.current_rank_since = soldier.enlistment_date or date.today()
         soldier.next_rank_date_overridden = True
-    elif {"rank", "rank_track"} & fields.keys():
+    elif rank_or_track_changed:
+        _reset_rank_advancement(session, soldier, since=date.today())
+    elif "next_rank_date" in fields:
+        if fields["next_rank_date"] is None:
+            _reset_rank_advancement(session, soldier, since=date.today())
+        else:
+            soldier.next_rank_date_overridden = True
+    elif enlistment_date_changed and not soldier.next_rank_date_overridden:
+        # Re-anchor an initial/manual (non-overridden) soldier's schedule so a
+        # corrected enlistment_date typo doesn't leave current_rank_since
+        # pointing at the old date — that equality is exactly what
+        # compute_next_rank_date_for_soldier/recompute_affected_soldiers use
+        # to tell an initial schedule apart from a system-promoted one.
         _reset_rank_advancement(session, soldier, since=date.today())
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     # Only validate rank/track compatibility when this PATCH actually touches
@@ -334,13 +366,19 @@ def update_soldier_profile(
         except ValueError as exc:
             raise SoldierValidationError(str(exc)) from exc
     validate_soldier_dates(soldier)
+    audit_after = {k: str(v) for k, v in fields.items() if v is not None}
+    if "next_rank_date" in fields and fields["next_rank_date"] is None:
+        audit_after["next_rank_date"] = (
+            soldier.next_rank_date.isoformat() if soldier.next_rank_date else None
+        )
+        audit_after["next_rank_date_overridden"] = soldier.next_rank_date_overridden
     write_audit(
         session,
         actor_id=actor_id,
         action="soldier.profile.update",
         entity_type="soldier",
         entity_id=soldier.id,
-        after={k: str(v) for k, v in fields.items() if v is not None},
+        after=audit_after,
     )
     return soldier
 

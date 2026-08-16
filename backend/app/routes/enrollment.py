@@ -15,7 +15,8 @@ from app.db.session import get_session
 from app.services import enrollment as svc
 from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
 from app.services.notifications import create_notification
-from app.services.rank_advancement import compute_next_rank_date, resolve_track
+from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
+from app.services.authority import rank_advancement_edit_authorized
 from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
@@ -278,6 +279,16 @@ def patch_enrollment(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="already decided")
     target_node = session.get(HierarchyNode, req.requested_node_id)
     authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=target_node)
+    rank_advancement_fields = {"rank", "rank_track", "is_officer"}
+    if rank_advancement_fields & body.model_fields_set:
+        if not rank_advancement_edit_authorized(session, user=user, target_node=target_node):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        if body.requested_node_id is not None:
+            destination_node = session.get(HierarchyNode, body.requested_node_id)
+            if destination_node is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="node_not_found")
+            if not rank_advancement_edit_authorized(session, user=user, target_node=destination_node):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     s = session.get(Soldier, req.soldier_id)
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier not found")
@@ -328,9 +339,13 @@ def patch_enrollment(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         if s.rank is not None:
-            s.current_rank_since = s.current_rank_since or date.today()
-            s.next_rank_date = compute_next_rank_date(
-                session, rank=s.rank, since=s.current_rank_since, track=s.rank_track
+            s.current_rank_since = s.enlistment_date or date.today()
+            s.next_rank_date = compute_initial_next_rank_date(
+                session,
+                rank=s.rank,
+                enlistment_date=s.enlistment_date,
+                fallback_since=s.current_rank_since,
+                track=s.rank_track,
             )
             s.next_rank_date_overridden = False
 

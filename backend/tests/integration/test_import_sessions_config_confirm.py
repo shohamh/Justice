@@ -314,17 +314,16 @@ def test_session_row_summary_includes_range_sheets(client, admin_session):
 # ── Task 13: rank-advancement initialization on import ──────────────────────
 
 
-def test_confirm_new_soldier_with_rank_computes_next_rank_date_from_enlistment(client, admin_session):
+def test_confirm_new_soldier_with_rank_computes_cumulative_next_rank_date_from_enlistment(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
-    upsert_interval(admin_session, track="enlisted", rank="טוראי", months_to_next=8, advance_on_career_entry=False, actor_id=None)
     admin_session.commit()
 
     pn = f"imp_{_uid()}"
-    enlistment = date.today() - timedelta(days=100)
+    enlistment = date(2021, 1, 15)
     xlsx = _wb({
         "soldiers": [
             ["personal_number", "full_name", "rank", "enlistment_date"],
-            [pn, "חייל בדיקה", "טוראי", enlistment.isoformat()],
+            [pn, "חייל בדיקה", "סמר", enlistment.isoformat()],
         ],
     })
     resp = _upload(client, _token(admin), xlsx)
@@ -338,7 +337,7 @@ def test_confirm_new_soldier_with_rank_computes_next_rank_date_from_enlistment(c
 
     soldier = admin_session.query(Soldier).filter_by(personal_number=pn).one()
     assert soldier.current_rank_since == enlistment
-    assert soldier.next_rank_date == enlistment + relativedelta(months=8)
+    assert soldier.next_rank_date == date(2025, 9, 15)
     assert soldier.next_rank_date_overridden is False
 
 
@@ -379,8 +378,12 @@ def test_confirm_new_soldier_with_explicit_next_rank_date_marks_overridden(clien
     assert soldier.next_rank_date == explicit_date
 
 
-def test_confirm_new_soldier_with_rank_but_no_interval_leaves_next_rank_date_none(client, admin_session):
+def test_confirm_new_soldier_with_rank_but_disabled_interval_leaves_next_rank_date_none(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    upsert_interval(
+        admin_session, track="enlisted", rank="טוראי", months_to_next=None,
+        advance_on_career_entry=False, actor_id=None,
+    )
     admin_session.commit()
 
     pn = f"imp_{_uid()}"

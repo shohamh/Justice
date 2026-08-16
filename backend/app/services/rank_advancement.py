@@ -132,6 +132,53 @@ def compute_next_rank_date(
     return since + relativedelta(months=months)
 
 
+def compute_initial_next_rank_date(
+    session: Session,
+    *,
+    rank: str,
+    enlistment_date: date | None,
+    fallback_since: date,
+    track: Track | None = None,
+) -> date | None:
+    """Schedule an initially assigned rank from cumulative enlistment service."""
+    resolved_track = get_track(rank, track=track)
+    if resolved_track is None:
+        return None
+    if enlistment_date is None:
+        return compute_next_rank_date(
+            session, rank=rank, since=fallback_since, track=resolved_track
+        )
+
+    ladder = _LADDERS[resolved_track]
+    total_months = 0
+    for ladder_rank in ladder[:ladder.index(rank) + 1]:
+        months = get_interval_months(session, track=resolved_track, rank=ladder_rank)
+        if months is None:
+            return None
+        total_months += months
+    return enlistment_date + relativedelta(months=total_months)
+
+
+def compute_next_rank_date_for_soldier(session: Session, *, soldier: Soldier) -> date | None:
+    """Schedule a soldier from enlistment until a system promotion establishes a new anchor."""
+    if soldier.rank is None:
+        return None
+    track = resolve_track(soldier.rank, soldier.rank_track)
+    if track is None:
+        return None
+    if soldier.current_rank_since is None or soldier.current_rank_since == soldier.enlistment_date:
+        return compute_initial_next_rank_date(
+            session,
+            rank=soldier.rank,
+            enlistment_date=soldier.enlistment_date,
+            fallback_since=soldier.current_rank_since or date.today(),
+            track=track,
+        )
+    return compute_next_rank_date(
+        session, rank=soldier.rank, since=soldier.current_rank_since, track=track
+    )
+
+
 def upsert_interval(
     session: Session, *, track: str, rank: str, months_to_next: int | None,
     advance_on_career_entry: bool, actor_id: uuid.UUID | None,
@@ -167,18 +214,28 @@ def upsert_interval(
 
 
 def recompute_affected_soldiers(session: Session, *, track: str, rank: str) -> int:
+    ladder = _LADDERS.get(track)
+    if ladder is None or rank not in ladder:
+        return 0
+    affected_initial_ranks = ladder[ladder.index(rank):]
     soldiers = session.execute(
-        select(Soldier).where(Soldier.rank == rank, Soldier.next_rank_date_overridden.is_(False))
+        select(Soldier).where(
+            Soldier.rank.in_(affected_initial_ranks),
+            Soldier.next_rank_date_overridden.is_(False),
+        )
     ).scalars().all()
     updated = 0
     for s in soldiers:
         soldier_track = resolve_track(s.rank, s.rank_track)
         if soldier_track != track:
             continue
-        since = s.current_rank_since or s.enlistment_date
-        if since is None:
+        uses_cumulative_enlistment = (
+            s.enlistment_date is not None
+            and (s.current_rank_since is None or s.current_rank_since == s.enlistment_date)
+        )
+        if not uses_cumulative_enlistment and s.rank != rank:
             continue
-        s.next_rank_date = compute_next_rank_date(session, rank=rank, since=since, track=track)
+        s.next_rank_date = compute_next_rank_date_for_soldier(session, soldier=s)
         updated += 1
     return updated
 

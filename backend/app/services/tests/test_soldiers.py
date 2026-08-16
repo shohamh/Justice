@@ -308,6 +308,60 @@ def test_update_soldier_profile_manual_next_rank_date_sets_overridden(admin_sess
     assert soldier.next_rank_date_overridden is True
 
 
+def test_clearing_next_rank_date_audits_resulting_automatic_state(admin_session):
+    from app.db.models import AuditLog
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920033")
+    soldier.rank = "סמר"
+    soldier.enlistment_date = date(2021, 1, 15)
+    admin_session.commit()
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"next_rank_date": date(2030, 1, 1)}, actor_id=None,
+    )
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session, soldier=soldier, fields={"next_rank_date": None}, actor_id=None,
+    )
+    admin_session.flush()
+
+    audit = next(
+        entry for entry in admin_session.query(AuditLog).filter_by(
+            action="soldier.profile.update", entity_id=soldier.id,
+        ).all()
+        if entry.after.get("next_rank_date_overridden") is False
+    )
+    assert audit.after == {
+        "next_rank_date": "2025-09-15",
+        "next_rank_date_overridden": False,
+    }
+
+
+def test_update_soldier_profile_rank_change_with_explicit_date_updates_initial_anchor(admin_session):
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920032")
+    soldier.rank = "טוראי"
+    soldier.enlistment_date = date(2021, 1, 15)
+    soldier.current_rank_since = date(2025, 1, 1)
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session,
+        soldier=soldier,
+        fields={"rank": "סמר", "next_rank_date": date(2030, 1, 1)},
+        actor_id=None,
+    )
+
+    assert soldier.current_rank_since == date(2021, 1, 15)
+    assert soldier.next_rank_date == date(2030, 1, 1)
+    assert soldier.next_rank_date_overridden is True
+
+
 def test_update_soldier_profile_rank_change_without_explicit_date_auto_computes(admin_session):
     from dateutil.relativedelta import relativedelta
 
@@ -345,3 +399,83 @@ def test_approve_field_update_rejects_discharge_before_enlistment(admin_session)
 
     with pytest.raises(SoldierValidationError, match="discharge_date"):
         approve_field_update(admin_session, update=upd, actor_id=soldier.id)
+
+
+def test_update_soldier_profile_unchanged_rank_does_not_reset_schedule(admin_session):
+    """Finding 1: a PATCH that merely re-sends the soldier's current rank/track
+    (e.g. because the frontend always includes them when the actor is
+    authorized) must not be treated as a rank change — it must not re-anchor
+    a worker-promoted soldier's schedule back to enlistment."""
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920034")
+    soldier.enlistment_date = date(2021, 1, 15)
+    soldier.rank = "רבט"
+    soldier.rank_track = "enlisted"
+    soldier.current_rank_since = date(2026, 3, 1)
+    soldier.next_rank_date = date(2027, 2, 1)
+    soldier.next_rank_date_overridden = False
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"rank": "רבט", "rank_track": "enlisted", "phone": "0501234567"},
+        actor_id=None,
+    )
+
+    assert soldier.current_rank_since == date(2026, 3, 1)
+    assert soldier.next_rank_date == date(2027, 2, 1)
+    assert soldier.phone == "0501234567"
+
+
+def test_update_soldier_profile_enlistment_date_alone_reanchors_non_overridden_schedule(admin_session):
+    """Finding 2: correcting enlistment_date alone (no rank/track change) must
+    re-anchor current_rank_since and recompute next_rank_date, when the
+    soldier's schedule isn't manually overridden — otherwise
+    current_rank_since keeps pointing at the old (wrong) enlistment date and
+    the soldier is misclassified as system-promoted."""
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920035")
+    soldier.rank = "סמר"
+    soldier.enlistment_date = date(2021, 1, 15)
+    soldier.current_rank_since = date(2021, 1, 15)
+    soldier.next_rank_date = date(2025, 9, 15)
+    soldier.next_rank_date_overridden = False
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"enlistment_date": date(2021, 2, 15)},
+        actor_id=None,
+    )
+
+    assert soldier.current_rank_since == date(2021, 2, 15)
+    assert soldier.next_rank_date == date(2025, 10, 15)
+    assert soldier.next_rank_date_overridden is False
+
+
+def test_update_soldier_profile_enlistment_date_does_not_touch_overridden_schedule(admin_session):
+    """When next_rank_date_overridden is True, correcting enlistment_date must
+    not silently discard the manual override."""
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920036")
+    soldier.rank = "סמר"
+    soldier.enlistment_date = date(2021, 1, 15)
+    soldier.current_rank_since = date(2021, 1, 15)
+    soldier.next_rank_date = date(2030, 1, 1)
+    soldier.next_rank_date_overridden = True
+    admin_session.commit()
+
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"enlistment_date": date(2021, 2, 15)},
+        actor_id=None,
+    )
+
+    assert soldier.next_rank_date == date(2030, 1, 1)
+    assert soldier.next_rank_date_overridden is True

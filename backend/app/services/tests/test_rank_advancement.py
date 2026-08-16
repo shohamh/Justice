@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import RankAdvancementInterval
 from app.services.rank_advancement import (
-    _career_entry_date, advances_on_career_entry, compute_next_rank_date, get_interval_months, get_next_rank,
+    _career_entry_date, advances_on_career_entry, compute_initial_next_rank_date, compute_next_rank_date, compute_next_rank_date_for_soldier, get_interval_months, get_next_rank,
     get_track, resolve_track, upsert_interval, set_interval_and_recompute, get_rank_ladder,
 )
 from tests.helpers import create_soldier
@@ -63,6 +63,71 @@ def test_compute_next_rank_date_uses_code_default_when_unconfigured(app_session)
     assert result == date(2026, 11, 1)
 
 
+def test_compute_initial_next_rank_date_for_serenior_enlisted_uses_cumulative_defaults(app_session):
+    result = compute_initial_next_rank_date(
+        app_session,
+        rank="סמר",
+        enlistment_date=date(2021, 1, 15),
+        fallback_since=date(2026, 1, 1),
+    )
+
+    assert result == date(2025, 9, 15)
+
+
+def test_compute_initial_next_rank_date_sums_configured_intervals_through_current_rank(app_session):
+    for rank, months in (("טוראי", 3), ("רבט", 5), ("סמל", 7), ("סמר", 11)):
+        app_session.add(
+            RankAdvancementInterval(track="enlisted", rank=rank, months_to_next=months)
+        )
+    app_session.flush()
+
+    result = compute_initial_next_rank_date(
+        app_session,
+        rank="סמר",
+        enlistment_date=date(2021, 1, 15),
+        fallback_since=date(2026, 1, 1),
+    )
+
+    assert result == date(2023, 3, 15)
+
+
+def test_compute_initial_next_rank_date_without_enlistment_uses_fallback_interval(app_session):
+    result = compute_initial_next_rank_date(
+        app_session,
+        rank="טוראי",
+        enlistment_date=None,
+        fallback_since=date(2026, 1, 1),
+    )
+
+    assert result == date(2026, 11, 1)
+
+
+def test_compute_initial_next_rank_date_returns_none_when_cumulative_segment_is_disabled(app_session):
+    app_session.add(RankAdvancementInterval(track="enlisted", rank="רבט", months_to_next=None))
+    app_session.flush()
+
+    result = compute_initial_next_rank_date(
+        app_session,
+        rank="סמר",
+        enlistment_date=date(2021, 1, 15),
+        fallback_since=date(2026, 1, 1),
+    )
+
+    assert result is None
+
+
+def test_compute_next_rank_date_for_soldier_uses_enlistment_cumulative_schedule_for_initial_rank(app_session):
+    soldier = create_soldier(app_session, personal_number="1234570")
+    soldier.rank = "סמר"
+    soldier.enlistment_date = date(2021, 1, 15)
+    soldier.current_rank_since = soldier.enlistment_date
+    app_session.flush()
+
+    result = compute_next_rank_date_for_soldier(app_session, soldier=soldier)
+
+    assert result == date(2025, 9, 15)
+
+
 def test_explicit_blank_interval_overrides_code_default(app_session):
     app_session.add(RankAdvancementInterval(track="enlisted", rank="טוראי", months_to_next=None))
     app_session.flush()
@@ -114,6 +179,49 @@ def test_set_interval_and_recompute_updates_non_overridden_soldiers(app_session)
 
     assert count == 1
     assert s.next_rank_date == date(2026, 5, 1)
+
+
+def test_set_interval_and_recompute_uses_cumulative_enlistment_schedule_for_initial_rank(app_session):
+    s = create_soldier(app_session, personal_number="1234571")
+    s.rank = "סמר"
+    s.enlistment_date = date(2021, 1, 15)
+    s.current_rank_since = s.enlistment_date
+    s.next_rank_date_overridden = False
+    app_session.flush()
+
+    count = set_interval_and_recompute(
+        app_session, track="enlisted", rank="סמר", months_to_next=30,
+        advance_on_career_entry=False, actor_id=None,
+    )
+
+    assert count == 1
+    assert s.next_rank_date == date(2026, 3, 15)
+
+
+def test_set_predecessor_interval_recomputes_initial_rank_but_preserves_override(app_session):
+    initial = create_soldier(app_session, personal_number="1234572")
+    initial.rank = "סמר"
+    initial.enlistment_date = date(2021, 1, 15)
+    initial.current_rank_since = initial.enlistment_date
+    initial.next_rank_date = date(2025, 9, 15)
+    initial.next_rank_date_overridden = False
+
+    overridden = create_soldier(app_session, personal_number="1234573")
+    overridden.rank = "סמר"
+    overridden.enlistment_date = date(2021, 1, 15)
+    overridden.current_rank_since = overridden.enlistment_date
+    overridden.next_rank_date = date(2099, 1, 1)
+    overridden.next_rank_date_overridden = True
+    app_session.flush()
+
+    count = set_interval_and_recompute(
+        app_session, track="enlisted", rank="טוראי", months_to_next=12,
+        advance_on_career_entry=False, actor_id=None,
+    )
+
+    assert count == 1
+    assert initial.next_rank_date == date(2025, 11, 15)
+    assert overridden.next_rank_date == date(2099, 1, 1)
 
 
 def test_set_interval_and_recompute_skips_overridden_soldiers(app_session):
