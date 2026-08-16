@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-16
+
+### Features
+- Initial/manual rank-advancement dates are now calculated cumulatively from a soldier's enlistment date across every rank in their track, while system-driven promotions continue to chain from the actual promotion date.
+- Rank, rank-track, and next-rank-date corrections are now restricted to administrators or in-scope מדור-and-above commanders/duty managers, with a new narrow rank-correction modal for eligible supervisors who don't otherwise have full profile-edit access.
+
+### Fixes
+- Closed rank-correction authorization gaps covering enrollment destination changes, pending rank field-update approvals, and audit logging when a manual override is cleared.
+- Fixed a bug where an ordinary profile save with an unchanged rank could silently reset a promoted soldier's schedule to a stale enlistment-anchored date, which the daily promotion worker would then act on.
+- Rejecting a pending rank-related field-update request no longer requires the same elevated authority as approving one.
+- Fixed a query-count blowup on the soldier roster endpoint for commanders and duty managers.
+
+### Chores
+- Added regression coverage across rank-schedule calculation, authorization scoping, and the new correction modal.
+
 ## 2026-08-15
 
 ### Features
