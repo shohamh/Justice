@@ -70,6 +70,41 @@ def test_junior_duty_manager_cannot_approve_rank_field_update(client, admin_sess
     assert response.status_code == 403
 
 
+def test_junior_duty_manager_can_still_reject_rank_field_update(client, admin_session):
+    """Finding 5: the plan restricts *editing* rank/track/next-rank-date to
+    מדור-and-above actors, not *rejecting* a pending request for one — a
+    lower-level DM/commander who could previously dismiss a bogus rank-change
+    request must still be able to, even though they can't approve it."""
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="fu_rank_junior_reject")
+    duty_manager = create_soldier(
+        admin_session, personal_number="fu_rank_junior_dm_reject", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    soldier = create_soldier(
+        admin_session, personal_number="fu_rank_junior_soldier_reject", hierarchy_node_id=node.id,
+    )
+    admin_session.commit()
+    submitted = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates",
+        json={"field_name": "rank", "new_value": "סמר"},
+        headers=auth_headers(soldier),
+    )
+
+    approve_response = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates/{submitted.json()['id']}/approve",
+        json={}, headers=auth_headers(duty_manager),
+    )
+    reject_response = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates/{submitted.json()['id']}/reject",
+        json={"decision_note": "typo"}, headers=auth_headers(duty_manager),
+    )
+
+    assert approve_response.status_code == 403
+    assert reject_response.status_code == 200, reject_response.text
+    assert reject_response.json()["status"] == "rejected"
+
+
 def test_approve_field_update_writes_mandatory_end_date(admin_session):
     from tests.helpers import create_node
 

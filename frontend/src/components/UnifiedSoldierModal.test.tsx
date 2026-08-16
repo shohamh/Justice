@@ -188,3 +188,64 @@ describe("UnifiedSoldierModal scoped rank/next-rank-date correction", () => {
     expect(screen.queryByTestId("rank-correction-toggle")).not.toBeInTheDocument();
   });
 });
+
+describe("UnifiedSoldierModal full editor rank-field dirty gating and next-rank-date", () => {
+  beforeEach(() => {
+    mockUpdateSoldierProfile.mockReset();
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+  });
+
+  test("an ordinary full-editor save omits unchanged rank/rank_track/next_rank_date fields", async () => {
+    // Finding 1's second line of defense: an admin editing an unrelated field
+    // (gender) must not have the unchanged rank fields included in the
+    // request body, even though can_edit_rank_advancement is true.
+    mockUpdateSoldierProfile.mockResolvedValueOnce({
+      ...soldier, can_edit_rank_advancement: true, rank: "טוראי", rank_track: "enlisted", next_rank_date: "2027-01-15",
+    });
+    const { container } = renderModal(
+      { can_edit_rank_advancement: true, rank: "טוראי", rank_track: "enlisted", next_rank_date: "2027-01-15" },
+      true,
+    );
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+    const genderSelect = container.querySelector("select") as HTMLSelectElement;
+    fireEvent.change(genderSelect, { target: { value: "male" } });
+    fireEvent.click(screen.getByText("duty_config.save"));
+
+    await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));
+    const payload = mockUpdateSoldierProfile.mock.calls[0][1];
+    expect(payload).not.toHaveProperty("rank");
+    expect(payload).not.toHaveProperty("rank_track");
+    expect(payload).not.toHaveProperty("is_officer");
+    expect(payload).not.toHaveProperty("next_rank_date");
+  });
+
+  test("the full editor shows a next-rank-date field for an authorized actor and clearing it sends explicit null", async () => {
+    mockUpdateSoldierProfile.mockResolvedValueOnce({
+      ...soldier, can_edit_rank_advancement: true, rank: "טוראי", rank_track: "enlisted",
+    });
+    renderModal(
+      { can_edit_rank_advancement: true, rank: "טוראי", rank_track: "enlisted", next_rank_date: "2027-01-15" },
+      true,
+    );
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+    const dateInput = await screen.findByTestId("next-rank-date-input");
+    fireEvent.click(screen.getByText("soldier_profile.clear"));
+    fireEvent.click(screen.getByText("duty_config.save"));
+
+    await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));
+    const payload = mockUpdateSoldierProfile.mock.calls[0][1];
+    expect(payload).toHaveProperty("next_rank_date", null);
+    expect(dateInput).toBeInTheDocument();
+  });
+
+  test("the full editor's next-rank-date field is absent for an actor without rank-advancement authority", async () => {
+    renderModal({ can_edit_rank_advancement: false, next_rank_date: "2027-01-15" }, true);
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.queryByTestId("next-rank-date-input")).not.toBeInTheDocument();
+  });
+});

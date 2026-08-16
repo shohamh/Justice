@@ -8,6 +8,7 @@ from sqlalchemy import delete
 
 from app.db.models import DutyManagerScope, HierarchyLevelType, HierarchyNode, Soldier
 from app.services.authority import (
+    RankAdvancementEditScope,
     can_view_soldier_scope,
     commander_can_grant_commander_exemption,
     dm_scope_covers_level,
@@ -169,6 +170,63 @@ def test_rank_advancement_authority_requires_senior_in_scope_root(
 
     assert rank_advancement_edit_authorized(app_session, user=actor, target_node=inside) is expected_inside
     assert rank_advancement_edit_authorized(app_session, user=actor, target_node=outside) is False
+
+
+@pytest.mark.parametrize(
+    ("role", "root_level", "expected_inside"),
+    [
+        ("commander", "מדור", True),
+        ("commander", "אגף", True),
+        ("commander", "ענף", False),
+        ("duty_manager", "מדור", True),
+        ("duty_manager", "אגף", True),
+        ("duty_manager", "ענף", False),
+    ],
+)
+def test_rank_advancement_edit_scope_matches_per_call_authorization(
+    app_session, role, root_level, expected_inside,
+):
+    """RankAdvancementEditScope (finding 3's hoisted-per-request context) must
+    agree with rank_advancement_edit_authorized's per-call result exactly —
+    it's a caching layer, not a behavior change."""
+    _level(app_session, "אגף", 1)
+    _level(app_session, "מדור", 2)
+    _level(app_session, "ענף", 3)
+    actor = _soldier(app_session, f"rank_scope_{role}_{root_level}", role=role)
+    root = _node(app_session, root_level, name="Root")
+    inside = _child(app_session, root, "ענף", name="Inside")
+    outside = _node(app_session, "ענף", name="Outside")
+    if role == "commander":
+        root.commander_id = actor.id
+    else:
+        app_session.add(DutyManagerScope(duty_manager_id=actor.id, hierarchy_node_id=root.id))
+    app_session.flush()
+
+    scope = RankAdvancementEditScope(app_session, user=actor)
+
+    assert scope.authorized(inside) is expected_inside
+    assert scope.authorized(outside) is False
+
+
+def test_rank_advancement_edit_scope_admin_bypasses_scope_checks(app_session):
+    _level(app_session, "מדור", 1)
+    target = _node(app_session, "מדור")
+    admin = _soldier(app_session, "rank_scope_admin", role="admin")
+
+    scope = RankAdvancementEditScope(app_session, user=admin)
+
+    assert scope.authorized(target) is True
+    assert scope.authorized(None) is True
+
+
+def test_rank_advancement_edit_scope_none_target_node(app_session):
+    _level(app_session, "מדור", 1)
+    commander = _soldier(app_session, "rank_scope_none_target", role="commander")
+    _node(app_session, "מדור", commander_id=commander.id)
+
+    scope = RankAdvancementEditScope(app_session, user=commander)
+
+    assert scope.authorized(None) is False
 
 
 def test_rank_advancement_authority_admin_bypasses_scope_checks(app_session):

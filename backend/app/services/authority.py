@@ -98,6 +98,63 @@ def rank_advancement_edit_authorized(
     )
 
 
+class RankAdvancementEditScope:
+    """Precomputed per-request context for repeated
+    ``rank_advancement_edit_authorized`` checks against many target nodes.
+
+    ``rank_advancement_edit_authorized`` issues 2 uncached SELECTs (commander
+    root ids, DM scope root ids) plus up to 2 more per candidate root via
+    ``dm_scope_covers_target`` -> ``dm_scope_covers_level`` ->
+    ``get_level_rank`` on every call. Callers that need to authorize many
+    soldiers in one request (e.g. GET /soldiers) should build this once and
+    call ``.authorized(target_node)`` per soldier instead, to avoid
+    re-running the same actor-scoped queries once per soldier.
+    """
+
+    __slots__ = ("is_admin", "_covering_root_ids")
+
+    def __init__(self, session: Session, *, user: Soldier) -> None:
+        self.is_admin = user.role == "admin"
+        self._covering_root_ids: set[uuid.UUID] = set()
+        if self.is_admin:
+            return
+        commander_root_ids = set(
+            session.execute(
+                select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
+            ).scalars().all()
+        )
+        duty_manager_root_ids = set(
+            session.execute(
+                select(DutyManagerScope.hierarchy_node_id).where(
+                    DutyManagerScope.duty_manager_id == user.id
+                )
+            ).scalars().all()
+        )
+        all_root_ids = commander_root_ids | duty_manager_root_ids
+        if not all_root_ids:
+            return
+        mador_rank = get_level_rank(session, "מדור")
+        if mador_rank is None:
+            return
+        rows = session.execute(
+            select(HierarchyNode.id, HierarchyNode.level).where(HierarchyNode.id.in_(all_root_ids))
+        ).all()
+        level_keys = {level for _, level in rows}
+        rank_by_level = {key: get_level_rank(session, key) for key in level_keys}
+        self._covering_root_ids = {
+            node_id
+            for node_id, level in rows
+            if (level_rank := rank_by_level.get(level)) is not None and level_rank <= mador_rank
+        }
+
+    def authorized(self, target_node: HierarchyNode | None) -> bool:
+        if self.is_admin:
+            return True
+        if target_node is None or not self._covering_root_ids:
+            return False
+        return any(root_id in target_node.path_ids for root_id in self._covering_root_ids)
+
+
 def _range_attendance_edit_min_level(session: Session) -> str:
     try:
         value = get_setting(session, "mitvachim.attendance_edit_min_level")

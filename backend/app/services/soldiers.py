@@ -311,10 +311,24 @@ def update_soldier_profile(
 ) -> Soldier:
     """DM/admin direct update of profile fields."""
     from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
+    # Snapshot the pre-update values so a PATCH that merely re-sends the
+    # soldier's current rank/track (both frontend save paths always include
+    # them when the actor is authorized) isn't mistaken for an actual change
+    # — that would wrongly re-anchor a worker-promoted soldier's schedule
+    # back to enlistment (see finding 1 of the final-review fix wave).
+    old_rank = soldier.rank
+    old_rank_track = soldier.rank_track
+    old_enlistment_date = soldier.enlistment_date
     for k, v in fields.items():
         if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
             setattr(soldier, k, v)
-    rank_or_track_changed = bool({"rank", "rank_track"} & fields.keys())
+    rank_or_track_changed = (
+        ("rank" in fields and fields["rank"] != old_rank)
+        or ("rank_track" in fields and fields["rank_track"] != old_rank_track)
+    )
+    enlistment_date_changed = (
+        "enlistment_date" in fields and fields["enlistment_date"] != old_enlistment_date
+    )
     if rank_or_track_changed:
         from app.services.rank_advancement import resolve_track
         requested_track = soldier.rank_track
@@ -332,6 +346,13 @@ def update_soldier_profile(
             _reset_rank_advancement(session, soldier, since=date.today())
         else:
             soldier.next_rank_date_overridden = True
+    elif enlistment_date_changed and not soldier.next_rank_date_overridden:
+        # Re-anchor an initial/manual (non-overridden) soldier's schedule so a
+        # corrected enlistment_date typo doesn't leave current_rank_since
+        # pointing at the old date — that equality is exactly what
+        # compute_next_rank_date_for_soldier/recompute_affected_soldiers use
+        # to tell an initial schedule apart from a system-promoted one.
+        _reset_rank_advancement(session, soldier, since=date.today())
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     # Only validate rank/track compatibility when this PATCH actually touches
     # a field that affects it (rank itself, or a date that feeds is_career).

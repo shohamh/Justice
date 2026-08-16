@@ -109,6 +109,14 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [rankEditing, setRankEditing] = useState(false);
   const [nextRankDate, setNextRankDate] = useState(soldier.next_rank_date ?? "");
   const canEditRankNarrow = soldierData.can_edit_rank_advancement && !canManage;
+  // Second line of defense (finding 1 of the final-review fix wave): the
+  // backend now compares rank/rank_track values, not key presence, but the
+  // frontend still shouldn't send unchanged rank/next-rank-date fields on an
+  // ordinary profile save — it's unnecessary and adds audit noise.
+  const rankFieldsDirty =
+    profileRank !== (soldierData.rank ?? "") ||
+    profileRankTrack !== (soldierData.rank_track ?? (soldierData.is_officer ? "officer" : "enlisted"));
+  const nextRankDateDirty = nextRankDate !== (soldierData.next_rank_date ?? "");
 
   const mandatoryEndBeforeEnlistmentError = profileMandEnd && profileEnlistment && profileMandEnd < profileEnlistment
     ? t("register.mandatory_end_before_enlistment")
@@ -168,11 +176,17 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         // Rank-advancement fields are omitted entirely (not just left unchanged)
         // when the user isn't authorized to edit them — the backend authorizes
         // by which fields are present in the request body, so including them
-        // unchanged would still require rank-advancement authority.
-        ...(soldierData.can_edit_rank_advancement ? {
+        // unchanged would still require rank-advancement authority. They're
+        // also omitted when unchanged even for an authorized actor, so an
+        // ordinary edit (e.g. phone/email) never risks being mistaken for a
+        // rank change (see UnifiedSoldierModal's rankFieldsDirty comment).
+        ...(soldierData.can_edit_rank_advancement && rankFieldsDirty ? {
           rank: profileRank || null,
           rank_track: profileRank ? profileRankTrack : null,
           is_officer: profileRank ? profileRankTrack !== "enlisted" : null,
+        } : {}),
+        ...(soldierData.can_edit_rank_advancement && nextRankDateDirty ? {
+          next_rank_date: nextRankDate || null,
         } : {}),
         enlistment_date: profileEnlistment || null,
         mandatory_end_date: profileMandEnd || null,
@@ -557,6 +571,22 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     }}
                     placeholder="—"
                   />
+                </label>
+              )}
+              {soldierData.can_edit_rank_advancement && (
+                <label className="block">
+                  <span className="text-xs">{t("soldier_profile.next_rank_date")}</span>
+                  <div className="flex gap-1 items-center">
+                    <DateInput
+                      className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                      value={nextRankDate}
+                      onChange={setNextRankDate}
+                      data-testid="next-rank-date-input"
+                    />
+                    {nextRankDate && (
+                      <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setNextRankDate("")}>{t("soldier_profile.clear")}</button>
+                    )}
+                  </div>
                 </label>
               )}
               <label className="block">
