@@ -199,6 +199,54 @@ def commander_can_grant_commander_exemption(
     return False
 
 
+COMMANDER_ESCALATION_MIN_LEVEL_KEY = "מרכז"  # fallback default if no setting is configured
+
+
+def _commander_escalation_min_level(session: Session) -> str:
+    try:
+        value = get_setting(session, "exemptions.commander_escalation_min_level")
+        if value:
+            return str(value)
+    except SettingNotFound:
+        pass
+    return COMMANDER_ESCALATION_MIN_LEVEL_KEY
+
+
+def duty_manager_exemption_immediate_apply_authorized(
+    session: Session, *, user: Soldier, target_node: HierarchyNode | None,
+) -> bool:
+    """True iff `user` is a duty manager whose DM-scope covers `target_node`
+    at `exemptions.commander_escalation_min_level` (default מרכז) or above.
+    Commanders never qualify here, regardless of rank or scope — only DMs
+    (and, via the caller's separate admin bypass, admins) may apply a
+    commander-exemption grant immediately without DM approval."""
+    dm_root_ids = {
+        row.hierarchy_node_id
+        for row in session.execute(
+            select(DutyManagerScope).where(DutyManagerScope.duty_manager_id == user.id)
+        ).scalars().all()
+    }
+    required_level = _commander_escalation_min_level(session)
+    return dm_scope_covers_target(
+        session, scope_root_ids=dm_root_ids, target_node=target_node,
+        required_level_key=required_level,
+    )
+
+
+def has_any_exemption_immediate_apply_scope(session: Session, *, user: Soldier) -> bool:
+    """Cheap `/me`-level flag mirroring has_any_commander_delete_scope: True
+    iff `user` holds a DutyManagerScope at the configured minimum level or
+    above, independent of any specific target soldier."""
+    required_rank = get_level_rank(session, _commander_escalation_min_level(session))
+    if required_rank is None:
+        return False
+    for node in _dm_scope_nodes(session, user.id):
+        node_rank = get_level_rank(session, node.level)
+        if node_rank is not None and node_rank <= required_rank:
+            return True
+    return False
+
+
 COMMANDER_DELETE_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
 
 
