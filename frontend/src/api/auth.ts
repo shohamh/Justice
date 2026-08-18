@@ -42,6 +42,7 @@ export interface Me {
   can_view_transparency?: boolean;
   alal_relevant?: boolean;
   can_delete_soldier?: boolean;
+  can_apply_commander_exemption_immediately?: boolean;
 }
 
 export interface NodeOut {

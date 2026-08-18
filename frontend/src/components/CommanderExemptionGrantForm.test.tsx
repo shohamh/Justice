@@ -17,6 +17,7 @@ test("grant is blocked until the confirmation checkbox is ticked", () => {
       commanderExemptionTypes={commanderTypes}
       officialExemptionTypes={officialTypes}
       onGranted={() => {}}
+      canApplyImmediately={true}
     />
   );
   fireEvent.change(screen.getByTestId("commander-exemption-reason"), { target: { value: "סיבה" } });
@@ -35,6 +36,7 @@ test("plain grant calls grantCommanderExemption when escalate is off", async () 
       commanderExemptionTypes={commanderTypes}
       officialExemptionTypes={officialTypes}
       onGranted={() => {}}
+      canApplyImmediately={true}
     />
   );
   fireEvent.change(screen.getByTestId("commander-exemption-reason"), { target: { value: "סיבה" } });
@@ -53,6 +55,7 @@ test("escalate on with apply-immediately calls escalateCommanderExemption with a
       commanderExemptionTypes={commanderTypes}
       officialExemptionTypes={officialTypes}
       onGranted={() => {}}
+      canApplyImmediately={true}
     />
   );
   fireEvent.change(screen.getByTestId("commander-exemption-reason"), { target: { value: "סיבה" } });
@@ -77,6 +80,7 @@ test("escalate on without apply-immediately defaults apply_immediately to false"
       commanderExemptionTypes={commanderTypes}
       officialExemptionTypes={officialTypes}
       onGranted={() => {}}
+      canApplyImmediately={true}
     />
   );
   fireEvent.change(screen.getByTestId("commander-exemption-reason"), { target: { value: "סיבה" } });
@@ -100,6 +104,7 @@ test("date inputs render and accept Israeli dd/mm/yyyy format", () => {
       commanderExemptionTypes={commanderTypes}
       officialExemptionTypes={officialTypes}
       onGranted={() => {}}
+      canApplyImmediately={true}
     />
   );
   const startDateInput = screen.getByTestId("commander-exemption-start");
@@ -110,4 +115,15 @@ test("date inputs render and accept Israeli dd/mm/yyyy format", () => {
 
   expect(startDateInput).toHaveValue("05/03/2026");
   expect(endDateInput).toHaveValue("10/03/2026");
+});
+
+it("hides the non-escalate submit path and apply-immediately checkbox when canApplyImmediately is false", () => {
+  render(<CommanderExemptionGrantForm soldierId="s1" commanderExemptionTypes={[{ id: "c1", name: "פ1" }]} officialExemptionTypes={[{ id: "o1", name: "פ2" }]} onGranted={vi.fn()} canApplyImmediately={false} />);
+  expect(screen.queryByTestId("commander-exemption-apply-immediately-checkbox")).not.toBeInTheDocument();
+});
+
+it("shows the apply-immediately checkbox when canApplyImmediately is true", () => {
+  render(<CommanderExemptionGrantForm soldierId="s1" commanderExemptionTypes={[{ id: "c1", name: "פ1" }]} officialExemptionTypes={[{ id: "o1", name: "פ2" }]} onGranted={vi.fn()} canApplyImmediately={true} />);
+  fireEvent.click(screen.getByTestId("commander-exemption-escalate-checkbox"));
+  expect(screen.getByTestId("commander-exemption-apply-immediately-checkbox")).toBeInTheDocument();
 });
