@@ -317,3 +317,48 @@ def test_plain_soldier_cannot_approve(client, admin_session):
     resp = client.post(f"/api/enrollment-requests/{req.id}/approve",
                        json={"decision_note": None}, headers=auth_headers(other))
     assert resp.status_code == 403
+
+
+def test_below_mador_commander_can_approve_without_editing_rank(client, admin_session):
+    from app.db.models import SoldierEnrollmentRequest
+    node = create_node(admin_session, level="team", name=f"enroll_low_{_uid()}")
+    cmd = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    node.commander_id = cmd.id
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    req = SoldierEnrollmentRequest(soldier_id=soldier.id, requested_node_id=node.id, status="pending")
+    admin_session.add(req)
+    admin_session.commit()
+
+    list_resp = client.get("/api/enrollment-requests/pending", headers=auth_headers(cmd))
+    assert list_resp.status_code == 200
+    assert list_resp.json()[0]["can_edit_rank_advancement"] is False
+
+    approve_resp = client.post(
+        f"/api/enrollment-requests/{req.id}/approve", headers=auth_headers(cmd), json={},
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
+
+
+def test_mador_plus_commander_sees_rank_edit_flag_true(client, admin_session):
+    from app.db.models import SoldierEnrollmentRequest
+    # `rank_advancement_edit_authorized` compares against the hardcoded Hebrew
+    # level key "מדור" (not the English fixture key "group"), same as
+    # `test_rank_change_requires_authority_over_enrollment_destination` above —
+    # rename the "group" level type's key to match.
+    mador = admin_session.query(HierarchyLevelType).filter_by(key="group").one()
+    mador.key = "מדור"
+    mador.label = "מדור"
+    admin_session.commit()
+    node = create_node(admin_session, level="מדור", name=f"enroll_high_{_uid()}")
+    cmd = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    node.commander_id = cmd.id
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    req = SoldierEnrollmentRequest(soldier_id=soldier.id, requested_node_id=node.id, status="pending")
+    admin_session.add(req)
+    admin_session.commit()
+
+    list_resp = client.get("/api/enrollment-requests/pending", headers=auth_headers(cmd))
+    assert list_resp.status_code == 200
+    assert list_resp.json()[0]["can_edit_rank_advancement"] is True
