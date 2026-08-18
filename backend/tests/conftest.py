@@ -271,6 +271,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_logging_config": "misc",
     "test_bug_reports_service": "misc",
     "test_bug_reports_api": "misc",
+    "test_audit_logs_api": "misc",
 }
 
 
