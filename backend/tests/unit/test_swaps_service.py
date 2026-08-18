@@ -1016,3 +1016,96 @@ def test_publish_to_marketplace_rejects_when_request_not_open(admin_session):
 
     with pytest.raises(SwapError, match="not_open"):
         svc.publish_to_marketplace(admin_session, request_id=req.id)
+
+
+def _draft_assignment(session, *, soldier_id):
+    from app.db.models import DutyType, DutyLocation
+    dt = DutyType(name=f"dt_draft_{soldier_id}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_draft_{soldier_id}")
+    session.add_all([dt, loc])
+    session.flush()
+    a = DutyAssignment(
+        soldier_id=soldier_id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() + timedelta(days=10), end_date=date.today() + timedelta(days=11),
+        status="algorithm_draft",
+    )
+    session.add(a)
+    session.flush()
+    return a
+
+
+def test_create_request_allowed_on_draft_assignment(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-draft-1")
+    requester = create_soldier(admin_session, personal_number="7710010", hierarchy_node_id=node.id)
+    assignment = _draft_assignment(admin_session, soldier_id=requester.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+
+    assert req.status == "open"
+
+
+def test_create_request_allowed_for_soldier_who_received_duty_via_swap(admin_session):
+    from app.services import assignments as assignments_svc
+
+    node = create_node(admin_session, level="unit", name="swap-svc-received-1")
+    original_owner = create_soldier(admin_session, personal_number="7710011", hierarchy_node_id=node.id)
+    receiver = create_soldier(admin_session, personal_number="7710012", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=original_owner.id, node_id=node.id)
+
+    assignments_svc.set_day_override(
+        admin_session, assignment=assignment, date=assignment.start_date,
+        effective_soldier_id=receiver.id, reason="replacement",
+    )
+    admin_session.flush()
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=receiver.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    assert req.status == "open"
+
+    with pytest.raises(SwapError, match="not_your_duty"):
+        svc.create_request(
+            admin_session, requesting_soldier_id=original_owner.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+        )
+
+
+def test_create_request_still_rejects_unrelated_soldier(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-unrelated-1")
+    owner = create_soldier(admin_session, personal_number="7710013", hierarchy_node_id=node.id)
+    stranger = create_soldier(admin_session, personal_number="7710014", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=owner.id, node_id=node.id)
+
+    with pytest.raises(SwapError, match="not_your_duty"):
+        svc.create_request(
+            admin_session, requesting_soldier_id=stranger.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+        )
+
+
+def test_create_request_still_rejects_non_draft_non_published_assignment(admin_session):
+    from app.db.models import DutyType, DutyLocation
+
+    node = create_node(admin_session, level="unit", name="swap-svc-cancelled-1")
+    owner = create_soldier(admin_session, personal_number="7710015", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_cancelled_1", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="loc_cancelled_1")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    a = DutyAssignment(
+        soldier_id=owner.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() + timedelta(days=10), end_date=date.today() + timedelta(days=11),
+        status="cancelled",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="not_published"):
+        svc.create_request(
+            admin_session, requesting_soldier_id=owner.id, duty_assignment_id=a.id,
+            target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+        )
