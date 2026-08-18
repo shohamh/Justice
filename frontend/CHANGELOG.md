@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-18
+
+### Fixes
+- Fixed a bug where a commander or duty manager with valid approval authority over their own node (e.g. a מדור head approving enrollment into their own מדור) could get a spurious "forbidden" error just from clicking approve/save — the extra מדור-and-above rank-advancement authority check was wrongly triggered by an unchanged rank field being resubmitted, not just by an actual rank change. Applies to both enrollment approval and ordinary soldier-profile saves.
+
 ## 2026-08-16
 
 ### Features
