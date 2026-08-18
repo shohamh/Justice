@@ -7,12 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can_see_private, is_commander, is_duty_manager
+from app.auth.authz import Action, authorize, can_see_private, is_duty_manager
 from app.auth.deps import require_password_changed
 from app.db.models import ExemptionType, HierarchyNode, Soldier, SoldierExemption
 from app.db.session import get_session
 from app.services import exemptions as svc
-from app.services.authority import commander_can_grant_commander_exemption
 
 router = APIRouter(prefix="/soldiers/{soldier_id}/exemptions", tags=["exemptions"])
 
@@ -172,15 +171,12 @@ def grant_commander_exemption_route(
     s = _load_soldier(session, soldier_id)
     target_node = _node_of(session, s)
 
+    from app.services.authority import duty_manager_exemption_immediate_apply_authorized
+
     allowed = user.role == "admin"
     if not allowed and is_duty_manager(session, user.id):
-        from app.auth.authz import _node_in_scope, scope_root_ids
-        allowed = _node_in_scope(target_node, scope_root_ids(session, user))
-    if not allowed and is_commander(session, user.id):
-        from app.auth.authz import _node_in_scope, scope_root_ids
-        in_scope = _node_in_scope(target_node, scope_root_ids(session, user))
-        allowed = in_scope and commander_can_grant_commander_exemption(
-            session, commander_id=user.id,
+        allowed = duty_manager_exemption_immediate_apply_authorized(
+            session, user=user, target_node=target_node,
         )
     if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")

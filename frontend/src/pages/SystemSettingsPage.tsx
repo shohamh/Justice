@@ -100,6 +100,14 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         options: [],
       },
       {
+        key: "exemptions.commander_escalation_min_level",
+        label: "החל מאיזו רמת אחראי תורנויות ניתן להחיל פטור פיקודי מיידית",
+        description: "אחראי תורנויות ברמה זו ומעלה (או מנהל) יכול להחיל פטור פיקודי באופן מיידי, ללא המתנה לאישור",
+        type: "select" as const,
+        defaultValue: "מרכז",
+        options: [],
+      },
+      {
         key: "exemptions.medical_doc_min_commander_level",
         label: "צפייה במסמך רפואי — החל מאיזו רמת מפקד בשרשרת הפיקוד",
         description: "מפקדים ברמה זו ומעלה בשרשרת הפיקוד של החייל יכולים לצפות במסמך הרפואי עצמו (לא רק בפרטי הפטור)",
@@ -418,6 +426,7 @@ export function SystemSettingsContent() {
   ];
   const MIN_LEVEL_SETTING_KEYS = new Set([
     "exemptions.commander_exemption_min_level",
+    "exemptions.commander_escalation_min_level",
     "exemptions.medical_doc_min_commander_level",
     "exemptions.medical_doc_min_duty_manager_level",
     "soldiers.commander_delete_min_level",

@@ -645,6 +645,17 @@ def escalate_commander_exemption_route(
     if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
+    if body.apply_immediately:
+        from app.services.authority import duty_manager_exemption_immediate_apply_authorized
+        immediate_allowed = user.role == "admin" or (
+            is_duty_manager(session, user.id)
+            and duty_manager_exemption_immediate_apply_authorized(
+                session, user=user, target_node=target_node,
+            )
+        )
+        if not immediate_allowed:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
     try:
         req = submit_commander_escalation(
             session,
