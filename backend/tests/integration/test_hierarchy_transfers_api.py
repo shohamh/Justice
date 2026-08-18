@@ -174,7 +174,7 @@ def test_unrelated_commander_does_not_see_transfer(client: TestClient, admin_ses
     top = create_node(admin_session, level="unit", name="unrel_top")
     leaf = create_node(admin_session, level="branch", name="unrel_leaf", parent=top)
     unrelated_cmd = create_soldier(admin_session, personal_number="9990004", role="commander")
-    other_root = create_node(admin_session, level="unit", name="unrel_other", commander_id=unrelated_cmd.id)
+    create_node(admin_session, level="unit", name="unrel_other", commander_id=unrelated_cmd.id)
     src = create_node(admin_session, level="unit", name="unrel_src")
     soldier = create_soldier(admin_session, personal_number="9990005", hierarchy_node_id=src.id)
     requester = create_soldier(admin_session, personal_number="9990006", role="admin")
