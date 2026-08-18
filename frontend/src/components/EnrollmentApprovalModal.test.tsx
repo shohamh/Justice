@@ -1,13 +1,14 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import "../i18n";
 import EnrollmentApprovalModal from "./EnrollmentApprovalModal";
 import * as rankAdvancementApi from "../api/rankAdvancement";
+import * as enrollmentApi from "../api/enrollment";
 
 vi.mock("../api/enrollment", () => ({
-  patchEnrollment: vi.fn(),
-  approveEnrollment: vi.fn(),
+  patchEnrollment: vi.fn().mockResolvedValue({}),
+  approveEnrollment: vi.fn().mockResolvedValue(undefined),
   rejectEnrollment: vi.fn(),
 }));
 
@@ -42,6 +43,8 @@ const request = {
   rank: null,
   is_officer: false,
   is_career: false,
+  can_edit_rank_advancement: true,
+  rank_track: null,
   gender: null,
   enlistment_date: null,
   mandatory_end_date: null,
@@ -91,5 +94,42 @@ describe("EnrollmentApprovalModal", () => {
 
     expect(screen.getByText("ממתין לאישור מפקד")).toBeInTheDocument();
     expect(screen.queryByText("נדחה")).not.toBeInTheDocument();
+  });
+
+  it("does not send rank fields when can_edit_rank_advancement is false, but still approves", async () => {
+    const req = { ...request, can_edit_rank_advancement: false, rank: "רב\"ט" };
+    renderWithProviders(
+      <EnrollmentApprovalModal req={req} nodes={[]} exemptionTypes={[]} onClose={vi.fn()} onDone={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByText("שמור ואשר"));
+
+    await waitFor(() => {
+      expect(enrollmentApi.patchEnrollment).toHaveBeenCalled();
+      expect(enrollmentApi.approveEnrollment).toHaveBeenCalledWith(req.id);
+    });
+    // `req.rank` is non-null here, so a weaker `expect.anything()` check on the
+    // `rank` value would pass even if the field were still being sent — assert
+    // the keys are absent from the patch payload entirely.
+    const patchArg = vi.mocked(enrollmentApi.patchEnrollment).mock.calls[0][1];
+    expect(patchArg).not.toHaveProperty("rank");
+    expect(patchArg).not.toHaveProperty("is_officer");
+    expect(patchArg).not.toHaveProperty("rank_track");
+  });
+
+  it("sends rank fields when can_edit_rank_advancement is true", async () => {
+    const req = { ...request, can_edit_rank_advancement: true, rank: "רב\"ט" };
+    renderWithProviders(
+      <EnrollmentApprovalModal req={req} nodes={[]} exemptionTypes={[]} onClose={vi.fn()} onDone={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByText("שמור ואשר"));
+
+    await waitFor(() => {
+      expect(enrollmentApi.patchEnrollment).toHaveBeenCalledWith(
+        req.id,
+        expect.objectContaining({ rank: 'רב"ט' }),
+      );
+    });
   });
 });
