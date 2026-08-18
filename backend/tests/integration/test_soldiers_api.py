@@ -415,3 +415,59 @@ def test_list_soldiers_query_count_does_not_scale_with_soldier_count(client: Tes
         f"query count grew from {count_small} to {count_large} for +8 soldiers "
         "-- looks like a per-soldier N+1 regression"
     )
+
+
+def test_commander_at_mador_or_above_can_delete_in_scope(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+    # tests/conftest.py seeds English level keys (see _LEVEL_TYPE_DEFAULTS);
+    # "group" is rank 6, labeled "מדור" — use its key directly since
+    # commander_delete_soldier_authorized compares against the level KEY.
+    set_setting(admin_session, "soldiers.commander_delete_min_level", "group", actor_id=None)
+    admin_session.commit()
+    cmd = create_soldier(admin_session, personal_number="9600001", role="commander")
+    root = create_node(admin_session, level="group", name="del_root", commander_id=cmd.id)
+    target = create_soldier(admin_session, personal_number="9600002", hierarchy_node_id=root.id)
+    admin_session.commit()
+
+    resp = client.delete(f"/api/soldiers/{target.id}", headers=auth_headers(cmd))
+    assert resp.status_code == 204, resp.text
+
+
+def test_commander_below_min_level_cannot_delete(client: TestClient, admin_session: Session):
+    cmd = create_soldier(admin_session, personal_number="9600003", role="commander")
+    root = create_node(admin_session, level="team", name="del_root2", commander_id=cmd.id)
+    target = create_soldier(admin_session, personal_number="9600004", hierarchy_node_id=root.id)
+    admin_session.commit()
+
+    resp = client.delete(f"/api/soldiers/{target.id}", headers=auth_headers(cmd))
+    assert resp.status_code == 403
+
+
+def test_commander_out_of_scope_cannot_delete_via_api(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+    set_setting(admin_session, "soldiers.commander_delete_min_level", "group", actor_id=None)
+    admin_session.commit()
+    cmd = create_soldier(admin_session, personal_number="9600005", role="commander")
+    create_node(admin_session, level="group", name="del_own", commander_id=cmd.id)
+    other_root = create_node(admin_session, level="group", name="del_other")
+    target = create_soldier(admin_session, personal_number="9600006", hierarchy_node_id=other_root.id)
+    admin_session.commit()
+
+    resp = client.delete(f"/api/soldiers/{target.id}", headers=auth_headers(cmd))
+    assert resp.status_code == 403
+
+
+def test_me_exposes_can_delete_soldier_flag(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+    set_setting(admin_session, "soldiers.commander_delete_min_level", "group", actor_id=None)
+    admin_session.commit()
+    qualifying = create_soldier(admin_session, personal_number="9600007", role="commander")
+    create_node(admin_session, level="group", name="me_flag_root", commander_id=qualifying.id)
+    junior = create_soldier(admin_session, personal_number="9600008", role="commander")
+    create_node(admin_session, level="team", name="me_flag_root2", commander_id=junior.id)
+    admin_session.commit()
+
+    r1 = client.get("/api/me", headers=auth_headers(qualifying))
+    assert r1.json()["can_delete_soldier"] is True
+    r2 = client.get("/api/me", headers=auth_headers(junior))
+    assert r2.json()["can_delete_soldier"] is False

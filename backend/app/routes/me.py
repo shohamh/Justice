@@ -14,7 +14,7 @@ from app.db.models import HierarchyNode, Soldier, SoldierEnrollmentRequest, Tele
 from app.db.session import get_session
 from app.services import email_verification as ev_svc
 from app.services.alal_relevance import is_alal_relevant
-from app.services.authority import has_any_visibility
+from app.services.authority import has_any_commander_delete_scope, has_any_visibility
 from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -54,6 +54,7 @@ class MeResponse(BaseModel):
     theme_preference: str = "system"
     can_view_transparency: bool = False
     alal_relevant: bool = False
+    can_delete_soldier: bool = False
 
 
 class SetEmailRequest(BaseModel):
@@ -113,6 +114,11 @@ def me(
     ).first() is not None
 
     can_view_transparency = has_any_visibility(session, user)
+    can_delete_soldier = (
+        user.role == "admin"
+        or has_any_commander_delete_scope(session, user=user)
+        or is_duty_manager(session, user.id)
+    )
 
     return MeResponse(
         id=user.id,
@@ -148,6 +154,7 @@ def me(
         theme_preference=user.theme_preference,
         can_view_transparency=can_view_transparency,
         alal_relevant=is_alal_relevant(session, user),
+        can_delete_soldier=can_delete_soldier,
     )
 
 
