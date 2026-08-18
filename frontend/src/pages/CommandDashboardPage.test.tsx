@@ -1,5 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CommandDashboardPage from "./CommandDashboardPage";
 import SummaryCards from "../components/SummaryCards";
@@ -16,6 +17,8 @@ vi.mock("react-i18next", () => ({
       "command_dashboard.upcoming": "קרוב",
       "command_dashboard.calendar": "יומן",
       "command_dashboard.soldiers": "חיילים",
+      "command_dashboard.soldiers_count": "{{count}} חיילים בפיקוד",
+      "command_dashboard.go_to_team": "מעבר לניהול הצוות",
       "command_dashboard.entries_exits": "כניסות ויציאות",
       "command_dashboard.internal_fairness": "הוגנות פנימית",
       "command_dashboard.external_fairness": "הוגנות חיצונית",
@@ -47,7 +50,10 @@ vi.mock("../components/HierarchyTree", () => ({ default: () => <div data-testid=
 vi.mock("../hooks/useLevelTypes", () => ({ useLevelTypes: () => ({ levelTypes: [] }) }));
 
 vi.mock("../api/commanderDashboard", () => ({
-  getSummary: vi.fn().mockResolvedValue({}), getDashboardSoldiers: vi.fn().mockResolvedValue([]),
+  getSummary: vi.fn().mockResolvedValue({}),
+  getDashboardSoldiers: vi.fn().mockResolvedValue([
+    { id: "sol-1", personal_number: "1", full_name: "א", role: "soldier", hierarchy_node_id: "node-1", status: "active", cumulative_score: "0", normalised_score: "0", enrolled_at: "2026-01-01", left_at: null },
+  ]),
   getFairnessInternal: vi.fn().mockResolvedValue(null), getFairnessExternal: vi.fn().mockResolvedValue(null),
   getPotential: vi.fn().mockResolvedValue(null), getUpcoming: vi.fn().mockResolvedValue(null), getAlerts: vi.fn().mockResolvedValue([]),
 }));
@@ -64,7 +70,11 @@ import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queryClient}><CommandDashboardPage /></QueryClientProvider>);
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}><CommandDashboardPage /></QueryClientProvider>
+    </MemoryRouter>,
+  );
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -79,6 +89,16 @@ describe("CommandDashboardPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("טעינת החיילים ללא הסמכה נכשלה");
     expect(screen.getByTestId("alerts-panel")).toBeInTheDocument();
     expect(screen.getByTestId("pending-approvals")).toBeInTheDocument();
+  });
+
+  it("shows a read-only soldier-count summary and a link to /team instead of the full hierarchy tree", async () => {
+    renderPage();
+
+    const panel = await screen.findByTestId("panel-soldiers");
+    expect(within(panel).queryByTestId("hierarchy-tree")).not.toBeInTheDocument();
+    expect(within(panel).getByTestId("soldiers-summary")).toBeInTheDocument();
+    const link = within(panel).getByTestId("soldiers-panel-team-link");
+    expect(link).toHaveAttribute("href", "/team");
   });
 });
 

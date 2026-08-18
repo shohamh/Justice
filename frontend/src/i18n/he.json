@@ -978,6 +978,8 @@
     "title": "דף מפקד",
     "calendar": "יומן יחידה",
     "soldiers": "רשימת חיילים",
+    "soldiers_count": "{{count}} חיילים בפיקוד",
+    "go_to_team": "מעבר לניהול הצוות",
     "internal_fairness": "מדדי הוגנות פנימיים",
     "external_fairness": "מדדי הוגנות חיצוניים",
     "entries_exits": "ניהול כניסות ויציאות",

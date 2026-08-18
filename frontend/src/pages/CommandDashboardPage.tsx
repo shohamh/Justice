@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
@@ -13,10 +14,8 @@ import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidg
 import IneligibleSoldiersPanel from "../components/dashboard/IneligibleSoldiersPanel";
 import EntriesExitsPanel from "../components/EntriesExitsPanel";
 import UnitCalendar from "../components/UnitCalendar";
-import HierarchyTree from "../components/HierarchyTree";
 import { useAuth } from "../auth/AuthContext";
 import { fetchFullTree } from "../api/hierarchy";
-import { listSoldiers } from "../api/soldiers";
 import {
   getSummary, getDashboardSoldiers, getFairnessInternal,
   getFairnessExternal, getPotential, getUpcoming,
@@ -39,13 +38,10 @@ export default function CommandDashboardPage() {
   const summaryData = summaryQuery.data ?? null;
 
   const soldiersQuery = useQuery({ queryKey: queryKeys.commandDashboardSoldiers(), queryFn: getDashboardSoldiers });
-  const soldiers = soldiersQuery.data ?? [];
+  const soldiers = useMemo(() => soldiersQuery.data ?? [], [soldiersQuery.data]);
 
   const nodesQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const nodes = useMemo(() => nodesQuery.data ?? [], [nodesQuery.data]);
-
-  const soldierDTOsQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
-  const soldierDTOs = soldierDTOsQuery.data ?? [];
 
   const fairnessInternalQuery = useQuery({ queryKey: queryKeys.commandDashboardFairnessInternal(), queryFn: getFairnessInternal });
   const fairnessInternal = fairnessInternalQuery.data ?? null;
@@ -112,6 +108,16 @@ export default function CommandDashboardPage() {
     [nodes, user],
   );
 
+  const soldiersByNode = useMemo(() => {
+    const nodeNameById = new Map(nodes.map((n) => [n.id, n.name]));
+    const counts = new Map<string, number>();
+    for (const s of soldiers) {
+      const label = s.hierarchy_node_id ? (nodeNameById.get(s.hierarchy_node_id) ?? t("command_dashboard.node")) : t("command_dashboard.node");
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([nodeName, count]) => ({ nodeName, count }));
+  }, [nodes, soldiers, t]);
+
   const ownPotentialQueries = useQueries({
     queries: myNodes.map((n) => ({
       queryKey: queryKeys.commandDashboardOwnPotential(n.id),
@@ -171,10 +177,25 @@ export default function CommandDashboardPage() {
       id: "soldiers",
       title: t("command_dashboard.soldiers"),
       content: (
-        <div>
-          <div className="mb-4">
-            <HierarchyTree nodes={nodes} soldiers={soldierDTOs} canManageLevelTypes={false} onChanged={refresh} />
-          </div>
+        <div data-testid="soldiers-summary">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            {t("command_dashboard.soldiers_count", { count: soldiers.length })}
+          </p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {soldiersByNode.map(({ nodeName, count }) => (
+              <li key={nodeName} className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-1">
+                <span>{nodeName}</span>
+                <span className="text-gray-500 dark:text-gray-400">{count}</span>
+              </li>
+            ))}
+          </ul>
+          <Link
+            to="/team"
+            className="inline-block mt-3 text-indigo-600 dark:text-indigo-300 hover:underline"
+            data-testid="soldiers-panel-team-link"
+          >
+            {t("command_dashboard.go_to_team")}
+          </Link>
         </div>
       ),
     },
