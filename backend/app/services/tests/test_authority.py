@@ -11,7 +11,9 @@ from app.services.authority import (
     RankAdvancementEditScope,
     can_view_soldier_scope,
     commander_can_grant_commander_exemption,
+    commander_delete_soldier_authorized,
     dm_scope_covers_level,
+    has_any_commander_delete_scope,
     has_any_visibility,
     rank_advancement_edit_authorized,
 )
@@ -404,3 +406,60 @@ def test_has_any_visibility_true_when_every_soldier(app_session):
     set_setting(app_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
     app_session.flush()
     assert has_any_visibility(app_session, plain) is True
+
+
+def test_commander_at_mador_or_above_can_delete_in_subtree(app_session):
+    _level(app_session, "גדוד", 1)
+    _level(app_session, "מדור", 2)
+    _level(app_session, "כיתה", 3)
+    cmd = _soldier(app_session, "9500001", role="commander")
+    root = _node(app_session, "מדור", commander_id=cmd.id)
+    target = _child(app_session, root, "כיתה")
+    assert commander_delete_soldier_authorized(app_session, user=cmd, target_node=target) is True
+
+
+def test_commander_below_mador_cannot_delete(app_session):
+    _level(app_session, "מדור", 1)
+    _level(app_session, "כיתה", 2)
+    cmd = _soldier(app_session, "9500002", role="commander")
+    root = _node(app_session, "כיתה", commander_id=cmd.id)
+    target = _child(app_session, root, "כיתה")
+    assert commander_delete_soldier_authorized(app_session, user=cmd, target_node=target) is False
+
+
+def test_commander_out_of_scope_cannot_delete(app_session):
+    _level(app_session, "מדור", 1)
+    cmd = _soldier(app_session, "9500003", role="commander")
+    _node(app_session, "מדור", commander_id=cmd.id)
+    other_root = _node(app_session, "מדור", name="Other")
+    assert commander_delete_soldier_authorized(app_session, user=cmd, target_node=other_root) is False
+
+
+def test_commander_delete_min_level_configurable(app_session):
+    from app.services.settings_loader import set_setting
+
+    _level(app_session, "מדור", 1)
+    _level(app_session, "כיתה", 2)
+    cmd = _soldier(app_session, "9500004", role="commander")
+    root = _node(app_session, "כיתה", commander_id=cmd.id)
+
+    assert commander_delete_soldier_authorized(app_session, user=cmd, target_node=root) is False
+
+    set_setting(app_session, "soldiers.commander_delete_min_level", "כיתה", actor_id=None)
+    app_session.flush()
+    assert commander_delete_soldier_authorized(app_session, user=cmd, target_node=root) is True
+
+
+def test_has_any_commander_delete_scope_true_for_qualifying_commander(app_session):
+    _level(app_session, "מדור", 1)
+    cmd = _soldier(app_session, "9500005", role="commander")
+    _node(app_session, "מדור", commander_id=cmd.id)
+    assert has_any_commander_delete_scope(app_session, user=cmd) is True
+
+
+def test_has_any_commander_delete_scope_false_for_junior_commander(app_session):
+    _level(app_session, "מדור", 1)
+    _level(app_session, "כיתה", 2)
+    cmd = _soldier(app_session, "9500006", role="commander")
+    _node(app_session, "כיתה", commander_id=cmd.id)
+    assert has_any_commander_delete_scope(app_session, user=cmd) is False
