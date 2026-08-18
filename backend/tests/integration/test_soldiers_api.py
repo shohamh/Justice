@@ -434,6 +434,13 @@ def test_commander_at_mador_or_above_can_delete_in_scope(client: TestClient, adm
 
 
 def test_commander_below_min_level_cannot_delete(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+    # Pin the min-level setting explicitly to "group" (rather than relying on
+    # the hardcoded "מדור" fallback key, which cannot resolve against this
+    # test fixture's English level keys) so this test's commander at "team"
+    # (rank 7, genuinely below "group"'s rank 6) fails a real below-threshold
+    # comparison rather than an unresolvable level key.
+    set_setting(admin_session, "soldiers.commander_delete_min_level", "group", actor_id=None)
     cmd = create_soldier(admin_session, personal_number="9600003", role="commander")
     root = create_node(admin_session, level="team", name="del_root2", commander_id=cmd.id)
     target = create_soldier(admin_session, personal_number="9600004", hierarchy_node_id=root.id)

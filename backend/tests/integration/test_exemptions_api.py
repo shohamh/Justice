@@ -473,6 +473,15 @@ def test_pending_exemption_flags_dm_below_minimum_level_as_unable_to_approve(cli
 
 def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):
     from app.db.models import ExemptionType
+    from app.services.settings_loader import set_setting
+    # Pin the base commander-exemption-grant min-level setting to this test's
+    # own level ("group") so the commander would have passed the OLD
+    # commander_can_grant_commander_exemption gate — otherwise, with no
+    # setting row seeded, the hardcoded fallback key "מדור" cannot resolve
+    # against this test's "group" level and the 403 is unattributable to the
+    # removed commander branch (see comment in
+    # test_dm_at_merkaz_can_use_direct_commander_exemption_route below).
+    set_setting(admin_session, "exemptions.commander_exemption_min_level", "group", actor_id=None)
     et = ExemptionType(name="פטור-ישיר-1", is_commander_exemption=True)
     admin_session.add(et)
     admin_session.commit()
