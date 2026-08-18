@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CommandDashboardPage from "./CommandDashboardPage";
+import SummaryCards from "../components/SummaryCards";
 
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => ({ user: { id: "commander-1", is_commander: true, role: "commander" } }),
@@ -32,7 +33,6 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("../components/Layout", () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
-vi.mock("../components/SummaryCards", () => ({ default: () => <div data-testid="summary-cards" /> }));
 vi.mock("../components/UpcomingSnapshot", () => ({ default: () => <div data-testid="upcoming-snapshot" /> }));
 vi.mock("../components/AlertsPanel", () => ({ default: () => <div data-testid="alerts-panel" /> }));
 vi.mock("../components/FairnessChart", () => ({
@@ -79,5 +79,12 @@ describe("CommandDashboardPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("טעינת החיילים ללא הסמכה נכשלה");
     expect(screen.getByTestId("alerts-panel")).toBeInTheDocument();
     expect(screen.getByTestId("pending-approvals")).toBeInTheDocument();
+  });
+});
+
+describe("SummaryCards", () => {
+  it("renders without an onCardClick prop", () => {
+    render(<SummaryCards data={{ approvals_pending: 1, upcoming_duties_7d: 2, unfilled_gaps: 0, alerts_count: 0 }} />);
+    expect(screen.getByTestId("summary-cards")).toBeInTheDocument();
   });
 });

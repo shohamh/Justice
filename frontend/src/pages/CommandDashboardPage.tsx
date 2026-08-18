@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 
@@ -34,7 +34,6 @@ export default function CommandDashboardPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [_activePanel, setActivePanel] = useState<string>("summary");
 
   const summaryQuery = useQuery({ queryKey: queryKeys.commandDashboardSummary(), queryFn: getSummary });
   const summaryData = summaryQuery.data ?? null;
@@ -132,8 +131,6 @@ export default function CommandDashboardPage() {
     });
     return byId;
   }, [myNodes, ownPotentialQueries]);
-
-  const handleCardClick = (panel: string) => setActivePanel(panel);
 
   const panels: { id: string; title: string; content: React.ReactNode }[] = [
     {
@@ -238,7 +235,7 @@ export default function CommandDashboardPage() {
     <Layout>
       <section className="space-y-4" data-testid="command-dashboard-page">
         <h2 className="text-xl font-semibold">{t("command_dashboard.title")}</h2>
-        <SummaryCards data={summaryData} onCardClick={handleCardClick} />
+        <SummaryCards data={summaryData} />
         {panels.map((panel) => (
           <details key={panel.id} open className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" data-testid={`panel-${panel.id}`}>
             <summary className="cursor-pointer font-medium text-lg mb-2 dark:text-gray-100">{panel.title}</summary>
