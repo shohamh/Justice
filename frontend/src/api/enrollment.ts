@@ -26,6 +26,7 @@ export interface EnrollmentRequestDTO {
   rank_track: RankTrack | null;
   is_officer: boolean | null;
   is_career: boolean;
+  can_edit_rank_advancement: boolean;
   gender: string | null;
   enlistment_date: string | null;
   mandatory_end_date: string | null;

@@ -22,6 +22,19 @@ interface SettingDef {
 
 const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
+    label: "חיילים",
+    settings: [
+      {
+        key: "soldiers.commander_delete_min_level",
+        label: "החל מאיזו רמת פיקוד ניתן למחוק חייל",
+        description: "מפקד ברמה זו ומעלה (קרוב יותר לשורש) יכול למחוק (רישום היסטורי) חיילים בתת-העץ שלו",
+        type: "select" as const,
+        defaultValue: "מדור",
+        options: [],
+      },
+    ],
+  },
+  {
     label: "תורנויות ומשמרות",
     settings: [
       {
@@ -82,6 +95,14 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         key: "exemptions.commander_exemption_min_level",
         label: "החל מאיזו רמת פיקוד ניתן להעניק פטור פיקודי",
         description: "מפקד ברמה זו ומעלה (קרוב יותר לשורש) יכול להעניק פטור פיקודי, גם ללא דרגת קצונה מתאימה",
+        type: "select" as const,
+        defaultValue: "מרכז",
+        options: [],
+      },
+      {
+        key: "exemptions.commander_escalation_min_level",
+        label: "החל מאיזו רמת אחראי תורנויות ניתן להחיל פטור פיקודי מיידית",
+        description: "אחראי תורנויות ברמה זו ומעלה (או מנהל) יכול להחיל פטור פיקודי באופן מיידי, ללא המתנה לאישור",
         type: "select" as const,
         defaultValue: "מרכז",
         options: [],
@@ -405,8 +426,10 @@ export function SystemSettingsContent() {
   ];
   const MIN_LEVEL_SETTING_KEYS = new Set([
     "exemptions.commander_exemption_min_level",
+    "exemptions.commander_escalation_min_level",
     "exemptions.medical_doc_min_commander_level",
     "exemptions.medical_doc_min_duty_manager_level",
+    "soldiers.commander_delete_min_level",
   ]);
 
   // draft mirrors the query result but is then edited locally before saving,

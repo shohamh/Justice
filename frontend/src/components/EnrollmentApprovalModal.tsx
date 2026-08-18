@@ -62,22 +62,25 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
     setSaving(true);
     setError(null);
     try {
-      await patchEnrollment(req.id, {
+      const patch: Parameters<typeof patchEnrollment>[1] = {
         full_name: fullName,
         personal_number: personalNumber,
         requested_node_id: requestedNodeId,
         phone: phone || null,
         email: email || null,
-        rank: rank || null,
-        is_officer: isOfficer,
-        rank_track: rank ? rankTrack : null,
         gender: gender || null,
         enlistment_date: enlistmentDate || null,
         mandatory_end_date: mandatoryEndDate || null,
         discharge_date: dischargeDate || null,
         last_mitvahim_date: lastMitvahimDate || null,
         last_alal_date: lastAlalDate || null,
-      });
+      };
+      if (req.can_edit_rank_advancement) {
+        patch.rank = rank || null;
+        patch.is_officer = isOfficer;
+        patch.rank_track = rank ? rankTrack : null;
+      }
+      await patchEnrollment(req.id, patch);
       await approveEnrollment(req.id);
       onDone();
     } catch {
@@ -163,6 +166,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
                 setIsOfficer(selection.rankTrack !== "enlisted");
               }}
               placeholder="בחר"
+              disabled={!req.can_edit_rank_advancement}
             />
           </div>
           <div className="flex gap-4">
@@ -171,6 +175,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
                 type="checkbox"
                 checked={isOfficer}
                 onChange={e => setIsOfficer(e.target.checked)}
+                disabled={!req.can_edit_rank_advancement}
               />
               <span className="text-xs">קצין</span>
             </label>

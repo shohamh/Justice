@@ -20,11 +20,13 @@ interface ComboboxProps {
   /** When set, renders a selectable first row with this text that calls onChange(""). */
   placeholder?: string;
   testId?: string;
+  /** When true, the whole combobox is read-only: the input is disabled and the dropdown never opens. */
+  disabled?: boolean;
 }
 
 // Combobox with Fuse.js fuzzy search — dropdown rendered via portal so it
 // escapes overflow-y-auto containers (modals, panels).
-export default function Combobox({ label, items, value, onChange, placeholder, testId }: ComboboxProps) {
+export default function Combobox({ label, items, value, onChange, placeholder, testId, disabled }: ComboboxProps) {
   const allItems: ComboboxItem[] = useMemo(
     () => (placeholder !== undefined ? [{ id: "", name: placeholder }, ...items] : items),
     [items, placeholder]
@@ -122,15 +124,16 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-controls={listboxId}
+        disabled={disabled}
         onChange={e => { setQuery(e.target.value); setFilterQuery(e.target.value); setOpen(true); }}
         onFocus={() => { setOpen(true); setFilterQuery(""); if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); }}
         onBlur={() => setTimeout(() => {
           if (!selectExactMatch()) setOpen(false);
         }, 150)}
         onKeyDown={handleKeyDown}
-        className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+        className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed"
       />
-      {open && results.length > 0 && rect && createPortal(
+      {!disabled && open && results.length > 0 && rect && createPortal(
         <ul
           id={listboxId}
           role="listbox"

@@ -145,3 +145,56 @@ def test_soldier_cannot_read_others_exemption_request_history(client: TestClient
 
     r = client.get(f"/api/soldiers/{target.id}/exemption-requests", headers=auth_headers(other_soldier))
     assert r.status_code == 403
+
+
+def test_in_scope_commander_cannot_apply_immediately_via_escalation(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+    # See comment in test_dm_at_merkaz_can_use_direct_commander_exemption_route:
+    # pin the base commander-exemption-grant min-level setting to the actual key of
+    # the level below, so this test exercises the NEW apply_immediately gate rather
+    # than accidentally 403ing on the pre-existing (unrelated) base scope check.
+    set_setting(admin_session, "exemptions.commander_exemption_min_level", "group", actor_id=None)
+    d = create_node(admin_session, level="group", name="esc_no_immediate")
+    cmd = create_soldier(admin_session, personal_number="9900005", role="commander")
+    d.commander_id = cmd.id
+    admin_session.commit()
+    target = create_soldier(admin_session, personal_number="9900006", hierarchy_node_id=d.id)
+    official = _et(admin_session, "פטור-אסק-immediate-1")
+    commander_type = _et(admin_session, "פטור-פיקודי-אסק-immediate-1", is_commander_exemption=True)
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions/commander-escalate",
+        headers=auth_headers(cmd),
+        json={
+            "official_exemption_type_id": str(official.id),
+            "commander_exemption_type_id": str(commander_type.id),
+            "start_date": "2026-01-01",
+            "reason": "סיבה",
+            "apply_immediately": True,
+        },
+    )
+    assert r.status_code == 403
+
+
+def test_in_scope_commander_can_still_submit_escalation_without_immediate(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+    set_setting(admin_session, "exemptions.commander_exemption_min_level", "group", actor_id=None)
+    d = create_node(admin_session, level="group", name="esc_still_ok")
+    cmd = create_soldier(admin_session, personal_number="9900007", role="commander")
+    d.commander_id = cmd.id
+    admin_session.commit()
+    target = create_soldier(admin_session, personal_number="9900008", hierarchy_node_id=d.id)
+    official = _et(admin_session, "פטור-אסק-immediate-2")
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions/commander-escalate",
+        headers=auth_headers(cmd),
+        json={
+            "official_exemption_type_id": str(official.id),
+            "start_date": "2026-01-01",
+            "reason": "סיבה",
+            "apply_immediately": False,
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "pending_duty_manager"
