@@ -279,8 +279,30 @@ def patch_enrollment(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="already decided")
     target_node = session.get(HierarchyNode, req.requested_node_id)
     authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=target_node)
+    s = session.get(Soldier, req.soldier_id)
+    if s is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier not found")
+
+    # The "save and approve" UI flow always resubmits rank/rank_track/is_officer
+    # alongside the approval, even when the reviewer never touched them. Gating
+    # on mere presence in the body (rather than an actual value change) would
+    # wrongly demand the stricter rank_advancement_edit_authorized check on every
+    # approval, blocking commanders who have full ENROLLMENT_APPROVE scope over
+    # the node but sit below the "מדור"-or-above bar that check requires.
+    def _rank_field_value(field: str, raw: object) -> object:
+        if field == "rank":
+            return raw or None
+        if field == "is_officer":
+            return bool(raw)
+        return raw
+
     rank_advancement_fields = {"rank", "rank_track", "is_officer"}
-    if rank_advancement_fields & body.model_fields_set:
+    touched_rank_fields = rank_advancement_fields & body.model_fields_set
+    rank_fields_changed = any(
+        _rank_field_value(f, getattr(body, f)) != _rank_field_value(f, getattr(s, f))
+        for f in touched_rank_fields
+    )
+    if rank_fields_changed:
         if not rank_advancement_edit_authorized(session, user=user, target_node=target_node):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
         if body.requested_node_id is not None:
@@ -289,9 +311,6 @@ def patch_enrollment(
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="node_not_found")
             if not rank_advancement_edit_authorized(session, user=user, target_node=destination_node):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
-    s = session.get(Soldier, req.soldier_id)
-    if s is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier not found")
 
     changed_fields: list[str] = []
 

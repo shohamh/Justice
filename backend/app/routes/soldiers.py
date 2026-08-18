@@ -690,12 +690,40 @@ def update_profile(
     supplied_fields = body.model_fields_set
     supplied_rank_fields = rank_advancement_fields & supplied_fields
     supplied_ordinary_fields = supplied_fields - rank_advancement_fields
-    if supplied_rank_fields and not rank_advancement_edit_authorized(
-        session, user=user, target_node=target_node
-    ):
+
+    # An ordinary profile save always resubmits the rank fields it displays,
+    # even when the actor never touched them (the frontend's rankFieldsDirty
+    # omission is only a "second line of defense" per its own comment, not
+    # something this endpoint should rely on for authorization). Gate the
+    # extra rank-advancement authority requirement on an actual value change,
+    # not mere presence, so resubmitting unchanged rank data never wrongly
+    # demands מדור-or-above authority from an otherwise-authorized editor —
+    # mirrors the same fix applied to PATCH /enrollment-requests/{id}.
+    def _rank_field_changed(field: str, raw: object, current: object) -> bool:
+        if field == "rank":
+            return (raw or None) != current
+        if field == "is_officer":
+            return bool(raw) != bool(current)
+        return raw != current
+
+    rank_fields_changed = any(
+        _rank_field_changed(f, getattr(body, f), getattr(s, f)) for f in supplied_rank_fields
+    )
+    has_rank_authority = (
+        rank_advancement_edit_authorized(session, user=user, target_node=target_node)
+        if supplied_rank_fields else False
+    )
+    if rank_fields_changed and not has_rank_authority:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     if supplied_ordinary_fields or not supplied_rank_fields:
         authorize(session, user, Action.SOLDIER_UPDATE, target_node=target_node)
+    elif not has_rank_authority:
+        # Pure rank-only submission (no ordinary fields): even when nothing in
+        # it actually changed, the caller must still hold rank-advancement
+        # authority to use this narrow flow at all — it's the route's only
+        # gate in that case, so it can't be skipped just because the values
+        # happened to match what's already stored.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     fields = {
         k: v for k, v in body.model_dump().items()
         if v is not None or (k == "next_rank_date" and k in supplied_fields)

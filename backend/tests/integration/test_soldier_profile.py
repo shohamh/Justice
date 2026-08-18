@@ -78,6 +78,36 @@ def test_lower_level_commander_cannot_correct_rank_or_edit_ordinary_profile(clie
     assert profile_response.json()["can_edit_rank_advancement"] is False
 
 
+def test_junior_duty_manager_can_edit_profile_without_changing_rank(client, admin_session):
+    """Regression test: an ordinary profile save always resubmits the rank
+    fields it displays, even when the actor never touched them. A duty
+    manager who has SOLDIER_UPDATE authority over the soldier but sits below
+    the מדור-or-above bar rank_advancement_edit_authorized requires must
+    still be able to save an ordinary field (e.g. gender) as long as the
+    resubmitted rank fields match the soldier's current (unset) values."""
+    root = create_node(admin_session, level="branch", name="rank_junior_dm_edit_root")
+    duty_manager = create_soldier(
+        admin_session, personal_number="rank_junior_dm_edit", role="duty_manager", hierarchy_node_id=root.id,
+    )
+    soldier = create_soldier(admin_session, personal_number="rank_junior_dm_edit_target", hierarchy_node_id=root.id)
+
+    response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile",
+        json={"gender": "male", "rank": None, "rank_track": None, "is_officer": None},
+        headers=auth_headers(duty_manager),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["gender"] == "male"
+
+    # Actually changing rank on the same request is still correctly blocked.
+    rank_change_response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile",
+        json={"gender": "male", "rank": "סמר"},
+        headers=auth_headers(duty_manager),
+    )
+    assert rank_change_response.status_code == 403
+
+
 def test_lower_level_duty_manager_cannot_correct_rank(client, admin_session):
     root = create_node(admin_session, level="branch", name="rank_junior_dm_root")
     duty_manager = create_soldier(

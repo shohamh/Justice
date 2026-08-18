@@ -121,6 +121,38 @@ def test_junior_commander_cannot_change_rank_on_in_scope_enrollment(client, admi
     assert response.status_code == 403
 
 
+def test_junior_commander_can_approve_own_node_without_changing_rank(client, admin_session):
+    """Regression test: the "save and approve" UI flow always resubmits
+    rank/rank_track/is_officer (defaulting to None/None/False) even when the
+    reviewer never touched them. A commander with full ENROLLMENT_APPROVE
+    scope over the exact node the soldier is enrolling into — but who sits
+    below the "מדור"-or-above bar rank_advancement_edit_authorized requires —
+    must still be able to approve as long as the resubmitted values match the
+    soldier's current (unset) rank data."""
+    holding = _make_holding(admin_session)
+    commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    requested_node = create_node(
+        admin_session, level="branch", name=f"junior_{_uid()}", parent=holding, commander_id=commander.id,
+    )
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, requested_node)
+
+    response = client.patch(
+        f"/api/enrollment-requests/{req.id}",
+        json={"rank": None, "rank_track": None, "is_officer": False},
+        headers=auth_headers(commander),
+    )
+    assert response.status_code == 200, response.text
+
+    approve_resp = client.post(
+        f"/api/enrollment-requests/{req.id}/approve",
+        json={"decision_note": None}, headers=auth_headers(commander),
+    )
+    assert approve_resp.status_code == 200, approve_resp.text
+    admin_session.refresh(soldier)
+    assert soldier.hierarchy_node_id == requested_node.id
+
+
 def test_rank_change_requires_authority_over_enrollment_destination(client, admin_session):
     holding = _make_holding(admin_session)
     mador = admin_session.query(HierarchyLevelType).filter_by(key="group").one()
