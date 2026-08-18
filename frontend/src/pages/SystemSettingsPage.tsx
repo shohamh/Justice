@@ -22,6 +22,19 @@ interface SettingDef {
 
 const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
+    label: "חיילים",
+    settings: [
+      {
+        key: "soldiers.commander_delete_min_level",
+        label: "החל מאיזו רמת פיקוד ניתן למחוק חייל",
+        description: "מפקד ברמה זו ומעלה (קרוב יותר לשורש) יכול למחוק (רישום היסטורי) חיילים בתת-העץ שלו",
+        type: "select" as const,
+        defaultValue: "מדור",
+        options: [],
+      },
+    ],
+  },
+  {
     label: "תורנויות ומשמרות",
     settings: [
       {
@@ -407,6 +420,7 @@ export function SystemSettingsContent() {
     "exemptions.commander_exemption_min_level",
     "exemptions.medical_doc_min_commander_level",
     "exemptions.medical_doc_min_duty_manager_level",
+    "soldiers.commander_delete_min_level",
   ]);
 
   // draft mirrors the query result but is then edited locally before saving,
