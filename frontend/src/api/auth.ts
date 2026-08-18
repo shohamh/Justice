@@ -41,6 +41,7 @@ export interface Me {
   is_career?: boolean;
   can_view_transparency?: boolean;
   alal_relevant?: boolean;
+  can_delete_soldier?: boolean;
 }
 
 export interface NodeOut {

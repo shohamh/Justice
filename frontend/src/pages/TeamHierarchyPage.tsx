@@ -14,6 +14,7 @@ import Combobox from "../components/Combobox";
 import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
 import TelegramBadge from "../components/TelegramBadge";
 import { usePortfolioDialog } from "../hooks/usePortfolioDialog";
+import { translateApiError } from "../utils/translateApiError";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -24,8 +25,10 @@ export default function TeamHierarchyPage() {
   const [name, setName] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const isAdmin = user?.role === "admin";
   const canManageLevelTypes = user?.role === "admin" || (user?.is_duty_manager ?? false);
+  const canDeleteSoldier = user?.can_delete_soldier ?? false;
 
   const nodesQuery = useQuery({ queryKey: queryKeys.hierarchyTreeVisible(), queryFn: fetchTree });
   const nodes = nodesQuery.data ?? [];
@@ -71,8 +74,13 @@ export default function TeamHierarchyPage() {
       return;
     }
     if (!confirm(t("team.remove") + "?")) return;
-    await softDeleteSoldier(id, new Date().toISOString().slice(0, 10));
-    await refresh();
+    setRemoveError(null);
+    try {
+      await softDeleteSoldier(id, new Date().toISOString().slice(0, 10));
+      await refresh();
+    } catch (err) {
+      setRemoveError(translateApiError(err, t, "אין לך הרשאה למחוק חייל זה"));
+    }
   }
 
   return (
@@ -112,6 +120,7 @@ export default function TeamHierarchyPage() {
         )}
 
         {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
+        {removeError && <div className="text-sm text-red-600" data-testid="remove-error">{removeError}</div>}
 
         <div className="overflow-x-auto">
           {(() => {
@@ -182,7 +191,9 @@ export default function TeamHierarchyPage() {
                     )}
                     <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600 dark:text-indigo-300" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
                     <button onClick={() => onReset(s.id)} className="text-indigo-600 dark:text-indigo-300" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
-                    <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
+                    {canDeleteSoldier && (
+                      <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
+                    )}
                   </span>
                 ),
               },
