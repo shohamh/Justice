@@ -140,3 +140,52 @@ def test_other_commander_can_still_approve(client: TestClient, admin_session: Se
     r2 = client.post(f"/api/hierarchy-transfers/{request_id}/approve", headers=auth_headers(dept_cmd))
     assert r2.status_code == 200, r2.text
     assert r2.json()["status"] == "approved"
+
+
+def test_ancestor_commander_sees_and_approves_descendant_transfer(client: TestClient, admin_session: Session):
+    top = create_node(admin_session, level="unit", name="anc_top")
+    mid = create_node(admin_session, level="department", name="anc_mid", parent=top)
+    leaf = create_node(admin_session, level="branch", name="anc_leaf", parent=mid)
+    ancestor_cmd = create_soldier(admin_session, personal_number="9990001", role="commander")
+    top.commander_id = ancestor_cmd.id
+    admin_session.commit()
+    src = create_node(admin_session, level="unit", name="anc_src")
+    soldier = create_soldier(admin_session, personal_number="9990002", hierarchy_node_id=src.id)
+    requester = create_soldier(admin_session, personal_number="9990003", role="admin")
+    admin_session.commit()
+
+    resp = client.post(
+        "/api/hierarchy-transfers",
+        json={"soldier_id": str(soldier.id), "to_node_id": str(leaf.id)},
+        headers=auth_headers(requester),
+    )
+    assert resp.status_code == 200
+    req_id = resp.json()["id"]
+
+    list_resp = client.get("/api/hierarchy-transfers/pending", headers=auth_headers(ancestor_cmd))
+    assert list_resp.status_code == 200
+    assert any(r["id"] == req_id for r in list_resp.json())
+
+    approve_resp = client.post(f"/api/hierarchy-transfers/{req_id}/approve", headers=auth_headers(ancestor_cmd))
+    assert approve_resp.status_code == 200, approve_resp.text
+
+
+def test_unrelated_commander_does_not_see_transfer(client: TestClient, admin_session: Session):
+    top = create_node(admin_session, level="unit", name="unrel_top")
+    leaf = create_node(admin_session, level="branch", name="unrel_leaf", parent=top)
+    unrelated_cmd = create_soldier(admin_session, personal_number="9990004", role="commander")
+    other_root = create_node(admin_session, level="unit", name="unrel_other", commander_id=unrelated_cmd.id)
+    src = create_node(admin_session, level="unit", name="unrel_src")
+    soldier = create_soldier(admin_session, personal_number="9990005", hierarchy_node_id=src.id)
+    requester = create_soldier(admin_session, personal_number="9990006", role="admin")
+    admin_session.commit()
+
+    resp = client.post(
+        "/api/hierarchy-transfers",
+        json={"soldier_id": str(soldier.id), "to_node_id": str(leaf.id)},
+        headers=auth_headers(requester),
+    )
+    req_id = resp.json()["id"]
+
+    list_resp = client.get("/api/hierarchy-transfers/pending", headers=auth_headers(unrelated_cmd))
+    assert not any(r["id"] == req_id for r in list_resp.json())
