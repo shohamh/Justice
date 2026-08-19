@@ -64,3 +64,29 @@ test("shows attempt count against the lockout limit on invalid credentials", asy
     expect(screen.getByText(/login.errors.attempts_remaining/)).toHaveTextContent('"max":10');
   });
 });
+
+function makeValidationError() {
+  const err = new AxiosError("unprocessable");
+  err.response = {
+    status: 422,
+    headers: {},
+    data: { detail: [{ msg: "String should match pattern", loc: ["body", "personal_number"] }] },
+    statusText: "Unprocessable Entity",
+    // @ts-expect-error partial mock
+    config: {},
+  };
+  return err;
+}
+
+test("shows the invalid-credentials message, not a generic network error, for a malformed username", async () => {
+  mockLogin.mockRejectedValueOnce(makeValidationError());
+  render(<MemoryRouter><LoginPage /></MemoryRouter>);
+  fireEvent.change(screen.getByTestId("personal-number-input"), { target: { value: "abc" } });
+  fireEvent.change(screen.getByTestId("password-input"), { target: { value: "password" } });
+  const form = screen.getByTestId("login-form");
+  fireEvent.submit(form);
+  await waitFor(() => {
+    expect(screen.getByText("login.errors.invalid_credentials")).toBeInTheDocument();
+  });
+  expect(screen.queryByText("login.errors.network")).not.toBeInTheDocument();
+});
