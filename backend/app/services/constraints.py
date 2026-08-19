@@ -251,19 +251,15 @@ def cancel_constraint(
     c = session.get(PersonalConstraint, constraint_id)
     if c is None:
         raise ConstraintError("constraint_not_found")
-    # Only the first step (pending_commander) is cancelable. Reaching
-    # pending_duty_manager always means the request has moved past the first
-    # approval gate - either the commander step ran (via _approve_commander_step,
-    # regardless of whether actor_id was supplied - an internal/system caller
-    # passing actor_id=None must not make an already-approved request look
-    # uncancelable to detect), or the commander step was configured off entirely
-    # and the request started directly at pending_duty_manager. Either way the
-    # request is already in front of the duty manager and should no longer be
-    # withdrawable unilaterally. commander_approved_by is purely an attribution
-    # field (who approved it, if anyone) - it must not gate cancel eligibility,
-    # both because actor_id is optional and because the FK is ON DELETE SET NULL
-    # (a later soldier deletion would silently flip it back to None).
-    cancelable = c.status == "pending_commander"
+    # Either pending step (pending_commander or pending_duty_manager) is
+    # cancelable — a soldier can retract a request at any point before it's
+    # actually decided. commander_approved_by is purely an attribution field
+    # (who approved the commander step, if anyone) - it must not gate cancel
+    # eligibility, both because actor_id is optional on approve_constraint and
+    # because the FK is ON DELETE SET NULL (a later soldier deletion would
+    # silently flip it back to None). Once approved/rejected the request is
+    # final and no longer withdrawable unilaterally.
+    cancelable = c.status in ("pending_commander", "pending_duty_manager")
     if not cancelable:
         raise ConstraintError("not_pending")
     write_audit(
