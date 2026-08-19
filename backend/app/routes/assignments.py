@@ -70,6 +70,7 @@ class EffectiveDutyOut(BaseModel):
     called_up_to: date | None = None
     weapon_ineligible: bool = False
     weapon_ineligible_reason: str | None = None
+    status: str = "published"
 
 
 def _out(a: DutyAssignment) -> AssignmentOut:
@@ -133,15 +134,15 @@ def list_effective_duties(
     soldier_id: uuid.UUID,
     date_from: date | None = None,
     date_to: date | None = None,
+    include_drafts: bool = False,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[EffectiveDutyOut]:
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
-    spans = scoring_svc.effective_duty_spans(
-        session, soldier_ids={soldier_id}, date_from=date_from, date_to=date_to
-    )
+    span_fn = scoring_svc.effective_duty_spans_with_drafts if include_drafts else scoring_svc.effective_duty_spans
+    spans = span_fn(session, soldier_ids={soldier_id}, date_from=date_from, date_to=date_to)
     type_ids = {sp["duty_type_id"] for sp in spans}
     names = {
         dt.id: dt.name

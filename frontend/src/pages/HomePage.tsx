@@ -70,7 +70,7 @@ export default function HomePage() {
 
   const dutiesQuery = useQuery({
     queryKey: user ? queryKeys.effectiveDuties(user.id, { date_from: offsetDate(-365), date_to: offsetDate(60) }) : ["effectiveDuties", "anonymous"],
-    queryFn: () => listEffectiveDuties(user!.id, { date_from: offsetDate(-365), date_to: offsetDate(60) }),
+    queryFn: () => listEffectiveDuties(user!.id, { date_from: offsetDate(-365), date_to: offsetDate(60), include_drafts: true }),
     enabled: !!user,
   });
   const duties = useMemo(() => dutiesQuery.data ?? [], [dutiesQuery.data]);

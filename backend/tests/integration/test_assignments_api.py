@@ -340,3 +340,36 @@ def test_effective_duties_includes_called_up_window(client: TestClient, admin_se
     row = next(r for r in resp.json() if r["assignment_id"] == str(assignment.id))
     assert row["called_up_from"] == "2026-09-01"
     assert row["called_up_to"] == "2026-09-02"
+
+
+def test_effective_duties_excludes_drafts_by_default_but_includes_with_flag(client: TestClient, admin_session: Session):
+    from datetime import timedelta
+
+    soldier = create_soldier(admin_session, personal_number="7960001")
+    dt = DutyType(name="dt_eff_draft_flag", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_eff_draft_flag")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date.today(), end_date=date.today() + timedelta(days=1),
+            status="algorithm_draft",
+        )
+    )
+    admin_session.commit()
+
+    r_default = client.get(
+        "/api/assignments/effective", params={"soldier_id": str(soldier.id)}, headers=auth_headers(soldier),
+    )
+    assert r_default.status_code == 200
+    assert r_default.json() == []
+
+    r_with_drafts = client.get(
+        "/api/assignments/effective",
+        params={"soldier_id": str(soldier.id), "include_drafts": "true"},
+        headers=auth_headers(soldier),
+    )
+    assert r_with_drafts.status_code == 200
+    assert len(r_with_drafts.json()) == 1

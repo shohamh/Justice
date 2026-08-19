@@ -75,6 +75,7 @@ export default function UpcomingSnapshot({ data }: Props) {
       called_up_to: null,
       weapon_ineligible: false,
       weapon_ineligible_reason: null,
+      status: a.status,
     });
   }
   if (!data || data.length === 0) return <p className="text-gray-500">{t("command_dashboard.no_upcoming")}</p>;

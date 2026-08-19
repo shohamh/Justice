@@ -57,7 +57,14 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="font-medium text-sm">{typeNames[d.duty_type_id] ?? "—"}</div>
+                    <div className="font-medium text-sm">
+                      {d.status === "algorithm_draft" && (
+                        <span className="mr-1 text-[10px] px-1 rounded bg-blue-100 text-blue-800" data-testid={`draft-badge-${d.assignment_id}`}>
+                          {t("duty_history.draft_badge")}
+                        </span>
+                      )}
+                      {typeNames[d.duty_type_id] ?? "—"}
+                    </div>
                     <div className={`text-xs mt-0.5 ${status.calledUp ? "text-amber-700 dark:text-amber-400 font-medium" : "text-gray-500 dark:text-gray-400"}`}>
                       {status.text}
                     </div>

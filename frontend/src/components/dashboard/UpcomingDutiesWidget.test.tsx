@@ -13,6 +13,7 @@ vi.mock("react-i18next", () => ({
           "reserve_standby": "רזרבה",
           "reserve_called_up": "הוקפץ",
           "called_up_from_to": "הוקפץ {{from}}–{{to}}",
+          "duty_history.draft_badge": "טיוטה",
         }[key] ?? key,
       ),
   }),
@@ -26,6 +27,7 @@ function makeDuty(overrides: Partial<EffectiveDuty> = {}): EffectiveDuty {
     end_at: "2099-01-02T06:00:00", shift_id: null, is_reserve: false,
     called_up_from: null, called_up_to: null,
     weapon_ineligible: false, weapon_ineligible_reason: null,
+    status: "published",
     ...overrides,
   };
 }
@@ -61,5 +63,19 @@ describe("UpcomingDutiesWidget", () => {
       <UpcomingDutiesWidget duties={[makeDuty()]} typeNames={{ dt1: "שמירה" }} locationNames={{ loc1: "שער" }} onOpenDuty={vi.fn()} />,
     );
     expect(screen.queryByText(/\d\/\d/)).not.toBeInTheDocument();
+  });
+
+  it("shows a draft badge for an algorithm_draft duty", () => {
+    render(
+      <UpcomingDutiesWidget duties={[makeDuty({ status: "algorithm_draft" })]} typeNames={{ dt1: "שמירה" }} locationNames={{ loc1: "שער" }} onOpenDuty={vi.fn()} />,
+    );
+    expect(screen.getByTestId(/draft-badge-/)).toBeInTheDocument();
+  });
+
+  it("shows no draft badge for a published duty", () => {
+    render(
+      <UpcomingDutiesWidget duties={[makeDuty({ status: "published" })]} typeNames={{ dt1: "שמירה" }} locationNames={{ loc1: "שער" }} onOpenDuty={vi.fn()} />,
+    );
+    expect(screen.queryByTestId(/draft-badge-/)).not.toBeInTheDocument();
   });
 });
