@@ -662,10 +662,10 @@ def get_duty_history(
                 date=c.start_date.isoformat(),
                 end_date=_isodate(c.end_date),
                 title="אילוצים אישיים",
-                description=c.reason,
+                description=c.reason if include_sensitive else None,
                 status=c.status,
                 metadata={
-                    "decision_note": c.decision_note,
+                    "decision_note": c.decision_note if include_sensitive else None,
                 },
                 created_at=c.created_at.isoformat(),
             )

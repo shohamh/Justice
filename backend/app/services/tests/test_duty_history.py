@@ -218,6 +218,29 @@ def test_personal_constraint_appears(admin_session, soldier):
     assert ev.description == "אירוע משפחתי"
 
 
+def test_personal_constraint_reason_hidden_when_not_sensitive(admin_session, soldier):
+    """A viewer without private-info visibility must not see the constraint's
+    reason via duty history, even though the event itself (dates, status)
+    stays visible. Regression test: get_duty_history previously ignored
+    include_sensitive for personal_constraint events."""
+    c = PersonalConstraint(
+        soldier_id=soldier.id,
+        start_date=date(2026, 6, 20),
+        end_date=date(2026, 6, 21),
+        reason="אירוע משפחתי",
+    )
+    admin_session.add(c)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id, include_sensitive=False)
+
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.event_type == "personal_constraint"
+    assert ev.title == "אילוצים אישיים"
+    assert ev.description is None
+
+
 def test_sorted_descending(admin_session, soldier, duty_type, location):
     """Events are sorted newest date first."""
     a_early = DutyAssignment(
