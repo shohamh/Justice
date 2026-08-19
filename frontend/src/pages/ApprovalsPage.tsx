@@ -515,6 +515,11 @@ export default function ApprovalsPage() {
                     <strong className="text-sm"><SoldierLink id={c.soldier_id} name={c.soldier_name || c.soldier_id.slice(0, 8)} /></strong>
                     {c.node_name && <span className="text-xs text-gray-400">{c.node_name}</span>}
                   </div>
+                  {(c.status === "pending_commander" || c.status === "pending_duty_manager") && (
+                    <p className="text-xs text-gray-500 mb-1" data-testid={`constraint-stage-${c.id}`}>
+                      {c.status === "pending_commander" ? "שלב 1/2 — ממתין לאישור מפקד" : "שלב 2/2 — ממתין לאישור אג\"ם"}
+                    </p>
+                  )}
                   <p className="text-sm flex items-center gap-2" dir="ltr">
                     <span>{c.start_date} → {c.end_date ?? "—"}</span>
                     <DaysBadge start={c.start_date} end={c.end_date} />

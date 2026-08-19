@@ -770,3 +770,45 @@ describe("ApprovalsPage - in-flight approve button", () => {
     resolveApprove!(constraint);
   });
 });
+
+describe("ApprovalsPage - two-step indicator", () => {
+  it("shows a step indicator on a constraint still pending the commander step", async () => {
+    vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([
+      { ...constraint, status: "pending_commander" },
+    ]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const row = await screen.findByTestId("approval-row-c1");
+    expect(within(row).getByTestId("constraint-stage-c1")).toHaveTextContent("1/2");
+  });
+
+  it("shows step 2/2 on a constraint pending the duty-manager step", async () => {
+    vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([
+      { ...constraint, status: "pending_duty_manager" },
+    ]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const row = await screen.findByTestId("approval-row-c1");
+    expect(within(row).getByTestId("constraint-stage-c1")).toHaveTextContent("2/2");
+  });
+});
