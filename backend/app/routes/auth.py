@@ -1,11 +1,13 @@
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from typing import Annotated, Literal
+from limits import parse as parse_rate_limit
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from slowapi.util import get_remote_address
 from sqlalchemy import select, update as sa_update, case as sa_case
@@ -121,6 +123,29 @@ def _client_context(request: Request) -> dict[str, str]:
         "ip": request.client.host if request.client else "",
         "user_agent": request.headers.get("user-agent", ""),
     }
+
+
+def _enforce_invite_code_guess_limit(request: Request) -> None:
+    """Rate-limit *invalid* invite-code guesses, per IP.
+
+    Deliberately not a blanket @limiter.limit on these routes: soldiers on the
+    same base/office network share a NAT IP, and a unit rolling out
+    registration with one shared, valid code would exhaust a flat per-IP
+    budget on legitimate checks alone (each hitting both /register/nodes and
+    /register/validate-code), locking out the next colleague to try. Only
+    wrong guesses -- the actual brute-force surface -- count against the
+    budget, so a shared valid code never trips it for real registrants.
+    """
+    limit = parse_rate_limit(get_settings().invite_code_rate_limit)
+    identifier = get_remote_address(request)
+    if not limiter.limiter.hit(limit, "invite-code-guess", identifier):
+        reset_time, _ = limiter.limiter.get_window_stats(limit, "invite-code-guess", identifier)
+        retry_after = max(0, int(reset_time - time.time()))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="rate_limit_exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 def _login_account_key(request: Request) -> str:
@@ -423,7 +448,6 @@ async def register(
 
 
 @router.get("/register/nodes", response_model=list[NodeOut])
-@limiter.limit(lambda: get_settings().invite_code_rate_limit)
 def register_nodes(
     invite_code: str,
     request: Request,
@@ -432,6 +456,7 @@ def register_nodes(
 ) -> list[NodeOut]:
     from sqlalchemy import select as sa_select
     if not validate_code(session, code=invite_code):
+        _enforce_invite_code_guess_limit(request)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_invite_code")
     nodes = session.execute(sa_select(HierarchyNode)).scalars().all()
     commander_ids = {n.commander_id for n in nodes if n.commander_id}
@@ -455,14 +480,16 @@ def register_nodes(
 
 
 @router.get("/register/validate-code")
-@limiter.limit(lambda: get_settings().invite_code_rate_limit)
 def validate_invite_code(
     code: str,
     request: Request,
     response: Response,
     session: Session = Depends(get_session),
 ) -> dict:
-    return {"valid": validate_code(session, code=code)}
+    valid = validate_code(session, code=code)
+    if not valid:
+        _enforce_invite_code_guess_limit(request)
+    return {"valid": valid}
 
 
 @router.post("/forgot-password", response_model=ForgotPasswordChannelsResponse)

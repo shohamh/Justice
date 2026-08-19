@@ -471,6 +471,39 @@ def test_pending_exemption_flags_dm_below_minimum_level_as_unable_to_approve(cli
     assert items[0]["can_approve_duty_manager_step"] is False
 
 
+def test_pending_exemption_count_excludes_requests_dm_below_minimum_level_cannot_approve(client, admin_session):
+    """The count feeds the commander/approvals nav badge — it must match
+    can_approve_duty_manager_step, not mere read-visibility (see the sibling
+    can_approve_duty_manager_step test above using the same scenario)."""
+    from app.db.models import HierarchyLevelType
+    from sqlalchemy import delete
+    admin_session.execute(delete(HierarchyLevelType))
+    admin_session.flush()
+    admin_session.add_all([
+        HierarchyLevelType(key="מרכז", label="מרכז", rank=1),
+        HierarchyLevelType(key="מדור", label="מדור", rank=2),
+    ])
+    admin_session.commit()
+
+    mador = create_node(admin_session, level="מדור", name="ex_count_mador")
+    dm = create_soldier(admin_session, personal_number="ex_count_dm", role="duty_manager", hierarchy_node_id=mador.id)
+    soldier = create_soldier(admin_session, personal_number="ex_count_sol", hierarchy_node_id=mador.id)
+    admin_session.commit()
+
+    et = ExemptionType(name="ex-count-type", is_medical=False)
+    admin_session.add(et)
+    admin_session.flush()
+    req = ExemptionRequest(
+        soldier_id=soldier.id, exemption_type_id=et.id, status="pending_duty_manager", start_date=date(2026, 1, 1),
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    r = client.get("/api/exemption-requests/pending/count", headers=auth_headers(dm))
+    assert r.status_code == 200
+    assert r.json()["count"] == 0
+
+
 def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):
     from app.db.models import ExemptionType
     from app.services.settings_loader import set_setting

@@ -54,23 +54,15 @@ def test_lockout_threshold_constants():
     assert _LOCKOUT_MINUTES == 15
 
 
-def test_soldier_move_requires_dest_node_auth():
-    """authorize must be called twice when hierarchy_node_id changes."""
-    from app.auth.authz import Action
-    authorize_calls = []
+def test_soldier_update_request_has_no_hierarchy_node_id():
+    """PATCH /soldiers/{id} must not accept hierarchy_node_id: moving a soldier
+    between hierarchy nodes has to go through app.routes.hierarchy_transfers,
+    which requires destination-side approval (Action.HIERARCHY_TRANSFER).
+    Letting it ride along with an ordinary profile edit (Action.SOLDIER_UPDATE)
+    used to move the soldier immediately, bypassing that approval step."""
+    from app.routes.soldiers import UpdateRequest
 
-    def fake_authorize(session, user, action, *, target_node):
-        authorize_calls.append((action, target_node))
-
-    with patch("app.routes.soldiers.authorize", side_effect=fake_authorize):
-        # We can't easily call the full route without a DB, but we can verify
-        # the logic inline by inspecting the source for the double-authorize pattern.
-        # Integration test for this is in test_auth_integration.py if it exists.
-        pass
-
-    # The real guard: if body.hierarchy_node_id differs, authorize is called twice.
-    # Verified by code inspection above — this test documents the requirement.
-    assert True  # placeholder; full integration coverage via existing test_soldiers.py
+    assert "hierarchy_node_id" not in UpdateRequest.model_fields
 
 
 def test_security_headers_present():

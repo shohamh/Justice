@@ -173,7 +173,10 @@ def test_register_nodes_returns_list(client, admin_session):
     assert isinstance(resp.json(), list)
 
 
-def test_validate_code_is_rate_limited_per_ip(client, admin_session, monkeypatch):
+def test_validate_code_with_valid_code_is_never_rate_limited(client, admin_session, monkeypatch):
+    """A shared, valid invite code (e.g. many soldiers on the same base NAT IP
+    checking in during a unit-wide registration rollout) must never trip the
+    guess limiter -- only wrong guesses count against the per-IP budget."""
     from app.settings import get_settings
     from app.rate_limit import limiter
 
@@ -181,21 +184,39 @@ def test_validate_code_is_rate_limited_per_ip(client, admin_session, monkeypatch
     get_settings.cache_clear()
     limiter.reset()
     try:
-        invite = create_invite_code(admin_session, uses_left=3, actor_id=None)
+        invite = create_invite_code(admin_session, uses_left=20, actor_id=None)
         admin_session.commit()
 
-        for _ in range(2):
+        for _ in range(5):
             r = client.get(f"/api/auth/register/validate-code?code={invite.code}")
             assert r.status_code == 200
+            assert r.json() == {"valid": True}
+    finally:
+        get_settings.cache_clear()
+        limiter.reset()
 
-        r = client.get(f"/api/auth/register/validate-code?code={invite.code}")
+
+def test_validate_code_with_invalid_code_is_rate_limited_per_ip(client, admin_session, monkeypatch):
+    from app.settings import get_settings
+    from app.rate_limit import limiter
+
+    monkeypatch.setenv("INVITE_CODE_RATE_LIMIT", "2/minute")
+    get_settings.cache_clear()
+    limiter.reset()
+    try:
+        for _ in range(2):
+            r = client.get("/api/auth/register/validate-code?code=NOTAREALCODE")
+            assert r.status_code == 200
+            assert r.json() == {"valid": False}
+
+        r = client.get("/api/auth/register/validate-code?code=NOTAREALCODE")
         assert r.status_code == 429
     finally:
         get_settings.cache_clear()
         limiter.reset()
 
 
-def test_register_nodes_is_rate_limited_per_ip(client, admin_session, monkeypatch):
+def test_register_nodes_with_valid_code_is_never_rate_limited(client, admin_session, monkeypatch):
     from app.settings import get_settings
     from app.rate_limit import limiter
 
@@ -203,14 +224,30 @@ def test_register_nodes_is_rate_limited_per_ip(client, admin_session, monkeypatc
     get_settings.cache_clear()
     limiter.reset()
     try:
-        invite = create_invite_code(admin_session, uses_left=3, actor_id=None)
+        invite = create_invite_code(admin_session, uses_left=20, actor_id=None)
         admin_session.commit()
 
-        for _ in range(2):
+        for _ in range(5):
             r = client.get(f"/api/auth/register/nodes?invite_code={invite.code}")
             assert r.status_code == 200
+    finally:
+        get_settings.cache_clear()
+        limiter.reset()
 
-        r = client.get(f"/api/auth/register/nodes?invite_code={invite.code}")
+
+def test_register_nodes_with_invalid_code_is_rate_limited_per_ip(client, admin_session, monkeypatch):
+    from app.settings import get_settings
+    from app.rate_limit import limiter
+
+    monkeypatch.setenv("INVITE_CODE_RATE_LIMIT", "2/minute")
+    get_settings.cache_clear()
+    limiter.reset()
+    try:
+        for _ in range(2):
+            r = client.get("/api/auth/register/nodes?invite_code=NOTAREALCODE")
+            assert r.status_code == 403
+
+        r = client.get("/api/auth/register/nodes?invite_code=NOTAREALCODE")
         assert r.status_code == 429
     finally:
         get_settings.cache_clear()

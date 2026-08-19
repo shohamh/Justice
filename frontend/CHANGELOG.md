@@ -1,19 +1,82 @@
 # Changelog
 
+## 2026-08-19
+
+### Features
+- Added a configurable minimum hierarchy level for commander soldier-delete authority (default: מדור), exposed in the admin UI.
+
+### Fixes
+- Enrollment approval is no longer blocked for commanders without rank-edit authority — the backend skips the rank PATCH for them so the approval always succeeds.
+- Commander exemption grants now properly require duty-manager (or admin) approval at the configured minimum level instead of bypassing the DM gate.
+- Hierarchy transfer requests are now visible to every ancestor commander/duty manager for list/approve/notify, not just the direct commander.
+- The soldier-delete button on the team hierarchy page is now gated on actual commander delete scope, with a friendly error when a commander tries to delete out of scope.
+- Seeded English `hierarchy_level_types` keys are now used as min-level fallback defaults, and enrollment-request queries no longer N+1 when checking rank-advancement edit scope.
+
+### Chores
+- Added the Batch 2 (Permissions) implementation plan and expanded backend/frontend test coverage for the four permission fixes above.
+
+## 2026-08-18
+
+### Fixes
+- Fixed a bug where a commander or duty manager with valid approval authority over their own node (e.g. a מדור head approving enrollment into their own מדור) could get a spurious "forbidden" error just from clicking approve/save — the extra מדור-and-above rank-advancement authority check was wrongly triggered by an unchanged rank field being resubmitted, not just by an actual rank change. Applies to both enrollment approval and ordinary soldier-profile saves.
+
+## 2026-08-16
+
+### Features
+- Initial/manual rank-advancement dates are now calculated cumulatively from a soldier's enlistment date across every rank in their track, while system-driven promotions continue to chain from the actual promotion date.
+- Rank, rank-track, and next-rank-date corrections are now restricted to administrators or in-scope מדור-and-above commanders/duty managers, with a new narrow rank-correction modal for eligible supervisors who don't otherwise have full profile-edit access.
+
+### Fixes
+- Closed rank-correction authorization gaps covering enrollment destination changes, pending rank field-update approvals, and audit logging when a manual override is cleared.
+- Fixed a bug where an ordinary profile save with an unchanged rank could silently reset a promoted soldier's schedule to a stale enlistment-anchored date, which the daily promotion worker would then act on.
+- Rejecting a pending rank-related field-update request no longer requires the same elevated authority as approving one.
+- Fixed a query-count blowup on the soldier roster endpoint for commanders and duty managers.
+
+### Chores
+- Added regression coverage across rank-schedule calculation, authorization scoping, and the new correction modal.
+
 ## 2026-08-15
 
 ### Features
-- Added configurable rank advancement ladders, interval administration, next-rank overrides, daily promotion/warning processing, notifications, academic-officer tracks, and optional promotion on entry to קבע.
-- Added the admin agentic bug-report export as a backend-generated Markdown ZIP with active/all-filtered scopes, comments, attachments, snapshots, and offline image rendering.
-- Added military-driving-license requirements for the נהג תורן duty type and show/hide controls for password fields.
+- Added code-backed default rank-advancement intervals and קידום עם כניסה לקבע settings for enlisted, officer, and academic-officer ladders.
 
 ### Fixes
-- Registration now validates personal numbers, names, dates, password policy, mandatory-end ordering, and field-level errors consistently across client and server, including mobile form scrolling.
-- Calendar shifts are scoped to the selected sub-framework, while the export and registration flows handle missing reporters, CORS download filenames, and career-entry promotion state correctly.
-- Algorithm, potential, assignment, and calendar eligibility now project rank, service type, and departure state across each duty block's dates; navigation and rank-track edge cases were corrected.
+- The seed now creates missing rank-advancement settings without overwriting administrator customizations, while runtime defaults remain available before seeding.
 
 ### Chores
-- Added the associated architecture decisions, design specifications, implementation plans, regression coverage, and Windows development compatibility helper.
+- Added regression coverage for seeded defaults, runtime fallback behavior, and preservation of customized intervals.
+
+## 2026-08-15
+
+### Features
+- Rank selectors now include the academic-officer ladder, and the selected rank track is persisted for promotion rules across registration, enrollment, profiles, and soldier administration.
+- Algorithm runs now report unfilled duties caused by shortages of required qualifications such as range qualifications or military driving licenses, with actionable shortage details.
+- Seeded demo range data now covers multiple range types, with 25 primary places and 5 reserves per range, plus an אל"ל event one day before each seeded הגנ"ש.
+
+### Fixes
+- Rank-ladder settings are visible again in system settings, and rank-track selections remain consistent between frontend forms and backend validation.
+- Eligibility diagnostics now account for all configured duty requirements instead of silently leaving impossible duties unfilled.
+
+### Chores
+- Added the rank-track migration and regression coverage for academic-officer selection, eligibility shortages, and seeded range scenarios.
+
+## 2026-08-14
+
+### Features
+- Rank advancement is now configurable from the admin UI, with a rank ladder, per-track intervals, warning notifications, manual-date override tracking, daily promotion processing, and as-of-date eligibility projections for future duties.
+- Added the academic-officer advancement track and configurable immediate promotion on קבע entry, including live calendar/eligibility projection and admin controls.
+- Added filtered agentic bug-report export as linked Markdown and image files in a downloadable ZIP, with CORS support for the download response.
+- Added נהג תורן as a duty type requiring a military driving license, plus password show/hide controls.
+
+### Fixes
+- Rank advancement now validates track/rank configuration, initializes and recomputes dates consistently, respects discharge boundaries, and avoids reusing a קבע-entry promotion event across runs.
+- Future-duty eligibility now evaluates every duty-block date and excludes soldiers who become ineligible during the block.
+- Registration and soldier editing now enforce mandatory-end/enlistment date consistency; the public registration page can load the rank ladder and its mobile form scrolls correctly.
+- Fixed bug-report import for reports whose reporter was deleted, scoped unit-calendar shifts to the selected sub-framework, and prevented navigation-history races in the mobile nav sheet.
+- Stabilized authenticated-session polling and corrected missing bug-report severity labels.
+
+### Chores
+- Added the rank-advancement and academic-officer design/specification documentation, migrations, API contracts, and comprehensive backend/frontend test coverage.
 
 ## 2026-08-13 (3)
 

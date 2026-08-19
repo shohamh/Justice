@@ -11,7 +11,8 @@ import {
   useDraggable,
 } from "@dnd-kit/core";
 import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
-import { SoldierDTO, updateSoldier, onboardSoldier } from "../api/soldiers";
+import { SoldierDTO, onboardSoldier } from "../api/soldiers";
+import { createTransferRequest } from "../api/hierarchyTransfers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
 import AssignDutyManagersDialog from "./AssignDutyManagersDialog";
@@ -319,7 +320,11 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
   async function handleQuickAdd(nodeId: string, soldier: SoldierDTO | null, personalNumber: string, fullName: string) {
     try {
       if (soldier) {
-        await updateSoldier(soldier.id, { hierarchy_node_id: nodeId });
+        // Moving an existing soldier into this node goes through the
+        // hierarchy-transfer request flow (pending the destination's
+        // approval), not a direct PATCH — see app/routes/soldiers.py's
+        // update endpoint, which no longer accepts hierarchy_node_id.
+        await createTransferRequest(soldier.id, nodeId);
       } else {
         await onboardSoldier({ personal_number: personalNumber, full_name: fullName, hierarchy_node_id: nodeId });
       }
@@ -348,7 +353,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         return;
       }
       try {
-        await updateSoldier(dragData.id, { hierarchy_node_id: overNodeId });
+        await createTransferRequest(dragData.id, overNodeId);
         setExpanded((prev) => new Set(prev).add(overNodeId));
         onChanged();
       } catch {
