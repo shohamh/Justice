@@ -57,13 +57,13 @@ def _resolve_soldier_id(
     unreachable, which is the exact gap item 17 reports.
     """
     if entity_type == "soldier_exemption":
-        row = session.get(SoldierExemption, entity_id)
-        if row is not None:
-            return row.soldier_id
+        exemption = session.get(SoldierExemption, entity_id)
+        if exemption is not None:
+            return exemption.soldier_id
     elif entity_type == "personal_constraint":
-        row = session.get(PersonalConstraint, entity_id)
-        if row is not None:
-            return row.soldier_id
+        constraint = session.get(PersonalConstraint, entity_id)
+        if constraint is not None:
+            return constraint.soldier_id
     for entry in audit_rows:
         for snapshot in (entry.after, entry.before):
             raw = snapshot.get("soldier_id") if snapshot else None
