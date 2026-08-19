@@ -82,13 +82,14 @@ function describeError(err: unknown): string {
  * is actually eligible for this specific kind — a commander with no
  * authority over the duty-manager step (or vice versa) sees status only. */
 function SwapKindApproval({
-  approvals, label, canAct, onApprove, t,
+  approvals, label, canAct, onApprove, t, disabled,
 }: {
   approvals: DirectCommanderApprovalRow[];
   label: string;
   canAct: boolean;
   onApprove: () => void;
   t: (k: string) => string;
+  disabled: boolean;
 }) {
   if (approvals.length === 0) return null;
   const done = isSideSatisfied(approvals);
@@ -99,7 +100,8 @@ function SwapKindApproval({
       {!done && canAct && (
         <button
           onClick={onApprove}
-          className="bg-green-600 text-white px-2 py-0.5 rounded text-xs"
+          disabled={disabled}
+          className="bg-green-600 text-white px-2 py-0.5 rounded text-xs disabled:opacity-50"
         >
           {t("approvals.approve")}
         </button>
@@ -172,7 +174,19 @@ export default function ApprovalsPage() {
   const [transferRejectNotes, setTransferRejectNotes] = useState<Record<string, string>>({});
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentRequestDTO | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; contentType: string } | null>(null);
+
+  function withPending<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    setPendingIds((prev) => new Set(prev).add(key));
+    return fn().finally(() => {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    });
+  }
 
   const queryClient = useQueryClient();
 
@@ -257,7 +271,7 @@ export default function ApprovalsPage() {
 
   async function onApprove(id: string) {
     try {
-      await approveConstraint(id);
+      await withPending(`constraint-${id}`, () => approveConstraint(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() });
     } catch (err) {
@@ -281,7 +295,7 @@ export default function ApprovalsPage() {
 
   async function onErApproveCommander(id: string) {
     try {
-      await approveExemptionRequestCommanderStep(id);
+      await withPending(`er-commander-${id}`, () => approveExemptionRequestCommanderStep(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
@@ -290,7 +304,7 @@ export default function ApprovalsPage() {
   }
   async function onErApproveDutyManager(id: string) {
     try {
-      await approveExemptionRequestDutyManagerStep(id);
+      await withPending(`er-duty-manager-${id}`, () => approveExemptionRequestDutyManagerStep(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
@@ -325,7 +339,7 @@ export default function ApprovalsPage() {
 
   async function onFuApprove(item: FieldUpdateDTO) {
     try {
-      await approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]);
+      await withPending(`fu-${item.id}`, () => approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdates() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() });
     } catch (err) {
@@ -346,7 +360,7 @@ export default function ApprovalsPage() {
 
   async function onSwapManagerApprove(id: string, side: "requester" | "covering", candidateId?: string) {
     try {
-      await managerApproveSwap(id, side, candidateId);
+      await withPending(`swap-${id}-${side}-${candidateId ?? "none"}`, () => managerApproveSwap(id, side, candidateId));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
@@ -394,7 +408,7 @@ export default function ApprovalsPage() {
 
   async function onTransferApprove(id: string) {
     try {
-      await approveTransferRequest(id);
+      await withPending(`transfer-${id}`, () => approveTransferRequest(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() });
     } catch (err) {
       setActionError(describeError(err));
@@ -511,7 +525,12 @@ export default function ApprovalsPage() {
                     {grouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={grouped.duty_manager} /></span>}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onApprove(c.id)} data-testid={`approve-${c.id}`}>
+                    <button
+                      className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+                      onClick={() => onApprove(c.id)}
+                      disabled={pendingIds.has(`constraint-${c.id}`)}
+                      data-testid={`approve-${c.id}`}
+                    >
                       {t("approvals.approve")}
                     </button>
                     <input
@@ -587,12 +606,22 @@ export default function ApprovalsPage() {
                   )}
                   <div className="flex items-center gap-2">
                     {er.status === "pending_commander" && er.can_approve_commander_step && (
-                      <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApproveCommander(er.id)} data-testid={`er-approve-${er.id}`}>
+                      <button
+                        className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+                        onClick={() => onErApproveCommander(er.id)}
+                        disabled={pendingIds.has(`er-commander-${er.id}`)}
+                        data-testid={`er-approve-${er.id}`}
+                      >
                         אשר (שלב מפקד)
                       </button>
                     )}
                     {er.status === "pending_duty_manager" && er.can_approve_duty_manager_step && (
-                      <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApproveDutyManager(er.id)} data-testid={`er-approve-${er.id}`}>
+                      <button
+                        className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+                        onClick={() => onErApproveDutyManager(er.id)}
+                        disabled={pendingIds.has(`er-duty-manager-${er.id}`)}
+                        data-testid={`er-approve-${er.id}`}
+                      >
                         אשר (שלב סופי)
                       </button>
                     )}
@@ -649,7 +678,13 @@ export default function ApprovalsPage() {
                 </div>
                 <div className="flex gap-2 items-center">
                   {item.can_approve && (
-                    <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
+                    <button
+                      onClick={() => onFuApprove(item)}
+                      disabled={pendingIds.has(`fu-${item.id}`)}
+                      className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
+                    >
+                      {t("approvals.approve")}
+                    </button>
                   )}
                   <input
                     placeholder={t("approvals.decision_note")}
@@ -704,6 +739,7 @@ export default function ApprovalsPage() {
                       canAct={canActCommander(reqGroups.commander)}
                       onApprove={() => onSwapManagerApprove(swap.id, "requester")}
                       t={t}
+                      disabled={pendingIds.has(`swap-${swap.id}-requester-none`)}
                     />
                     <SwapKindApproval
                       approvals={reqGroups.duty_manager}
@@ -711,6 +747,7 @@ export default function ApprovalsPage() {
                       canAct={canActDutyManager(reqGroups.duty_manager)}
                       onApprove={() => onSwapManagerApprove(swap.id, "requester")}
                       t={t}
+                      disabled={pendingIds.has(`swap-${swap.id}-requester-none`)}
                     />
                   </div>
                   {/* Whole-request reject: a requester-side manager rejection kills the
@@ -753,6 +790,7 @@ export default function ApprovalsPage() {
                                 canAct={canActCommander(covGroups.commander)}
                                 onApprove={() => onSwapManagerApprove(swap.id, "covering", candidate.id)}
                                 t={t}
+                                disabled={pendingIds.has(`swap-${swap.id}-covering-${candidate.id}`)}
                               />
                               <SwapKindApproval
                                 approvals={covGroups.duty_manager}
@@ -760,6 +798,7 @@ export default function ApprovalsPage() {
                                 canAct={canActDutyManager(covGroups.duty_manager)}
                                 onApprove={() => onSwapManagerApprove(swap.id, "covering", candidate.id)}
                                 t={t}
+                                disabled={pendingIds.has(`swap-${swap.id}-covering-${candidate.id}`)}
                               />
                             </div>
                             {(canActCommander(covGroups.commander) || canActDutyManager(covGroups.duty_manager)) && (
@@ -847,7 +886,8 @@ export default function ApprovalsPage() {
                   <div className="flex gap-2 items-center flex-wrap">
                     <button
                       onClick={() => onTransferApprove(req.id)}
-                      className="bg-green-600 text-white px-2 py-1 rounded text-xs"
+                      disabled={pendingIds.has(`transfer-${req.id}`)}
+                      className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
                       data-testid={`transfer-approve-${req.id}`}
                     >
                       {t("approvals.approve")}

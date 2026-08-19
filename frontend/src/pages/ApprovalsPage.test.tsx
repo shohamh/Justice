@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -743,5 +743,30 @@ describe("ApprovalsPage - field update approver clarity", () => {
     expect(screen.getByText("swaps.approver_kind_duty_manager", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("אחראי רישיון")).toBeInTheDocument();
     expect(screen.getByText("approvals.field_update_either_approver_suffices", { exact: false })).toBeInTheDocument();
+  });
+});
+
+describe("ApprovalsPage - in-flight approve button", () => {
+  it("disables the constraint approve button while the request is in flight", async () => {
+    let resolveApprove: (v: constraintsApi.PersonalConstraint) => void;
+    vi.mocked(constraintsApi.approveConstraint).mockReturnValue(
+      new Promise((resolve) => { resolveApprove = resolve; })
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const approveBtn = await screen.findByTestId("approve-c1");
+    fireEvent.click(approveBtn);
+    await waitFor(() => expect(approveBtn).toBeDisabled());
+    resolveApprove!(constraint);
   });
 });
