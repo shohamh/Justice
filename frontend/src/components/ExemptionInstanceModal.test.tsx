@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import "../i18n";
 import ExemptionInstanceModal from "./ExemptionInstanceModal";
 import * as exemptionsApi from "../api/exemptions";
+import * as auditLogsApi from "../api/auditLogs";
 
 describe("ExemptionInstanceModal", () => {
   it("renders type name, category, dates, reason, and granted-by on success", async () => {
@@ -34,5 +35,17 @@ describe("ExemptionInstanceModal", () => {
     });
     render(<ExemptionInstanceModal soldierId="s1" exemptionId="ex-3" onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText("אין הרשאה לצפות בפרטים")).toBeInTheDocument());
+  });
+
+  it("renders an audit-history toggle for the exemption", async () => {
+    vi.spyOn(exemptionsApi, "getExemptionDetail").mockResolvedValue({
+      id: "ex-4", exemption_type_name: "פטור רפואי", is_global: true,
+      start_date: "2026-01-01", end_date: null, reason: null, granted_by_name: null,
+    });
+    const auditSpy = vi.spyOn(auditLogsApi, "listAuditLogs").mockResolvedValue([]);
+    render(<ExemptionInstanceModal soldierId="s1" exemptionId="ex-4" onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText("פטור רפואי")).toBeInTheDocument());
+    expect(screen.getByTestId("audit-history-toggle-ex-4")).toBeInTheDocument();
+    expect(auditSpy).not.toHaveBeenCalled();
   });
 });
