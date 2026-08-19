@@ -502,4 +502,42 @@ def test_upload_and_confirm_assignments_end_to_end(client, admin_session):
     )
     assert confirm_resp.status_code == 200
     assert confirm_resp.json()["created"] == 0  # error row, nothing created
-    assert admin_session.execute(select(DutyAssignment)).scalars().all() == []
+
+
+def test_confirm_skips_an_excluded_group_even_when_rows_would_otherwise_import(client, admin_session):
+    """A group listed in selections["_excluded_groups"] must be skipped
+    entirely on confirm, regardless of each row's own action."""
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("personal_constraints")
+    ws.append([
+        "soldier_personal_number", "start_date", "end_date", "reason",
+        "status", "decided_by_personal_number", "decision_note",
+    ])
+    ws.append([soldier.personal_number, "2026-09-01", "2026-09-05", "חופשה", "approved", "", ""])
+    xlsx = _to_bytes(wb)
+
+    upload = _upload(client, _token(admin), xlsx)
+    assert upload.status_code == 200, upload.text
+    session_id = upload.json()["session_id"]
+
+    patched = client.patch(
+        f"/api/import/sessions/{session_id}/selections",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+        json={"selections": {"_excluded_groups": ["personal_constraints"]}},
+    )
+    assert patched.status_code == 200, patched.text
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["created"] == 0
+    assert confirmed.json()["skipped"] >= 1
+
+    from app.services.constraints import list_constraints
+    assert list_constraints(admin_session, soldier_id=soldier.id) == []

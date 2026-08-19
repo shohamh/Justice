@@ -1324,6 +1324,8 @@ def set_selections(
 
 
 def _effective_action(selections: dict, group: str, row: dict) -> str:
+    if group in (selections.get("_excluded_groups") or []):
+        return "skip"
     return selections.get(group, {}).get(str(row["row"]), row["action"])
 
 
