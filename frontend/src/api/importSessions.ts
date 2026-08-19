@@ -14,7 +14,8 @@ export interface NameMappings {
 export interface Selections {
   _name_mappings?: NameMappings;
   _field_overrides?: Record<string, Record<string, Record<string, unknown>>>;
-  [group: string]: Record<string, string> | NameMappings | Record<string, Record<string, Record<string, unknown>>> | undefined;
+  _excluded_groups?: string[];
+  [group: string]: Record<string, string> | NameMappings | Record<string, Record<string, Record<string, unknown>>> | string[] | undefined;
 }
 
 export interface RowBase {

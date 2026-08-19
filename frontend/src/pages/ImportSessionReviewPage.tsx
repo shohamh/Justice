@@ -363,6 +363,20 @@ export default function ImportSessionReviewPage() {
     });
   }
 
+  function toggleGroupExcluded(group: GroupKey, excluded: boolean) {
+    if (!id) return;
+    setSelections((prev) => {
+      const current = new Set(prev._excluded_groups ?? []);
+      if (excluded) current.add(group); else current.delete(group);
+      const next: Selections = { ...prev, _excluded_groups: Array.from(current) };
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        void saveSelections(id, next);
+      }, 500);
+      return next;
+    });
+  }
+
   function setFieldOverride(
     group: string,
     row: number,
@@ -542,44 +556,77 @@ export default function ImportSessionReviewPage() {
           </div>
         )}
 
-        <div className="flex gap-2 border-b dark:border-gray-700">
-          {(
-            [
-              ["soldiers", `חיילים (${soldiers.length})`],
-              ["duty_shifts", `משמרות (${duty_shifts.length})`],
-              ["shift_templates", `תבניות (${shift_templates.length})`],
-              ["assignments", `שיבוצים (${assignments.length})`],
-              ["duty_locations", `מיקומי תורנות (${duty_locations.length})`],
-              ["hierarchy", `היררכיה (${hierarchy.length})`],
-              ["duty_types", `סוגי תורנות (${duty_types.length})`],
-              ["exemption_types", `פטורים (${exemption_types.length})`],
-              ["system_settings", `הגדרות מערכת (${system_settings.length})`],
-              ["bug_reports", `דוחות תקלות (${bug_reports.length})`],
-              ["personal_constraints", `אילוצים אישיים (${personal_constraints.length})`],
-              ["soldier_field_updates", `עדכוני שדות (${soldier_field_updates.length})`],
-              ["soldier_enrollment_requests", `בקשות שיבוץ (${soldier_enrollment_requests.length})`],
-              ["soldier_exemptions", `פטורי חיילים (${soldier_exemptions.length})`],
-              ["exemption_requests", `בקשות פטור (${exemption_requests.length})`],
-              ["swap_requests", `בקשות החלפה (${swap_requests.length})`],
-              ["range_locations", `מיקומי מטווח (${range_locations.length})`],
-              ["range_events", `מטווחים (${range_events.length})`],
-              ["range_assignments", `שיבוצי מטווח (${range_assignments.length})`],
-              ["soldier_range_qualifications", `כשירויות מטווח (${soldier_range_qualifications.length})`],
-              ["range_excusal_requests", `בקשות פטור ממטווח (${range_excusal_requests.length})`],
-            ] as [TabKey, string][]
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              className={`px-3 py-2 text-sm font-medium ${
-                tab === key
-                  ? "border-b-2 border-indigo-600 text-indigo-600"
-                  : "text-gray-500"
-              }`}
-              onClick={() => setTab(key)}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="space-y-2">
+          {(() => {
+            const sections: [TabKey, string, number][] = [
+              ["soldiers", "חיילים", soldiers.length],
+              ["duty_shifts", "משמרות", duty_shifts.length],
+              ["shift_templates", "תבניות", shift_templates.length],
+              ["assignments", "שיבוצים", assignments.length],
+              ["duty_locations", "מיקומי תורנות", duty_locations.length],
+              ["hierarchy", "היררכיה", hierarchy.length],
+              ["duty_types", "סוגי תורנות", duty_types.length],
+              ["exemption_types", "פטורים", exemption_types.length],
+              ["system_settings", "הגדרות מערכת", system_settings.length],
+              ["bug_reports", "דוחות תקלות", bug_reports.length],
+              ["personal_constraints", "אילוצים אישיים", personal_constraints.length],
+              ["soldier_field_updates", "עדכוני שדות", soldier_field_updates.length],
+              ["soldier_enrollment_requests", "בקשות שיבוץ", soldier_enrollment_requests.length],
+              ["soldier_exemptions", "פטורי חיילים", soldier_exemptions.length],
+              ["exemption_requests", "בקשות פטור", exemption_requests.length],
+              ["swap_requests", "בקשות החלפה", swap_requests.length],
+              ["range_locations", "מיקומי מטווח", range_locations.length],
+              ["range_events", "מטווחים", range_events.length],
+              ["range_assignments", "שיבוצי מטווח", range_assignments.length],
+              ["soldier_range_qualifications", "כשירויות מטווח", soldier_range_qualifications.length],
+              ["range_excusal_requests", "בקשות פטור ממטווח", range_excusal_requests.length],
+            ];
+            const excludedGroups = new Set(selections._excluded_groups ?? []);
+            const detected = sections.filter(([, , count]) => count > 0);
+            return (
+              <>
+                {detected.length > 0 && (
+                  <div className="flex flex-wrap gap-3 bg-gray-50 dark:bg-gray-900 rounded p-2 text-sm">
+                    {detected.map(([key, label]) => {
+                      const excluded = excludedGroups.has(key);
+                      return (
+                        <label key={key} className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!excluded}
+                            disabled={readOnly}
+                            onChange={(e) => toggleGroupExcluded(key, !e.target.checked)}
+                            data-testid={`section-toggle-${key}`}
+                          />
+                          <span className={excluded ? "text-gray-400 line-through" : ""}>{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex gap-2 border-b dark:border-gray-700 flex-wrap">
+                  {sections.map(([key, label, count]) => {
+                    const excluded = excludedGroups.has(key);
+                    return (
+                      <button
+                        key={key}
+                        className={`px-3 py-2 text-sm font-medium ${
+                          tab === key
+                            ? "border-b-2 border-indigo-600 text-indigo-600"
+                            : excluded
+                            ? "text-gray-300"
+                            : "text-gray-500"
+                        }`}
+                        onClick={() => setTab(key)}
+                      >
+                        {label} ({count}){excluded ? " — לא ייובא" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {tab === "soldiers" && (

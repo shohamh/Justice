@@ -1008,3 +1008,43 @@ describe("ImportSessionReviewPage", () => {
     });
   });
 });
+
+describe("ImportSessionReviewPage - section exclusion", () => {
+  it("excludes a section from confirm when its checkbox is unchecked", async () => {
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(
+      makeDraftDetail({
+        parsed_state: {
+          ...makeDraftDetail().parsed_state,
+          personal_constraints: [
+            {
+              row: 2,
+              action: "new",
+              errors: [],
+              id: null,
+              soldier_personal_number: "1234567",
+              resolved_soldier_id: "sol-1",
+              start_date: "2026-09-01",
+              end_date: "2026-09-05",
+              reason: "חופשה",
+              status: "approved",
+              decided_by_personal_number: null,
+              resolved_decided_by_id: null,
+              decision_note: null,
+              existing_id: null,
+            },
+          ],
+        },
+      }),
+    );
+    renderPage();
+    const checkbox = await screen.findByTestId("section-toggle-personal_constraints");
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    await waitFor(() => {
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({ _excluded_groups: ["personal_constraints"] }),
+      );
+    });
+  });
+});
