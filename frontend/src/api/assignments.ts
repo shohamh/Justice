@@ -37,7 +37,7 @@ export async function listAssignments(soldierId: string, params?: { date_from?: 
   return (await api.get<Assignment[]>(`/assignments`, { params: { soldier_id: soldierId, ...params } })).data;
 }
 
-export async function listEffectiveDuties(soldierId: string, params?: { date_from?: string; date_to?: string }): Promise<EffectiveDuty[]> {
+export async function listEffectiveDuties(soldierId: string, params?: { date_from?: string; date_to?: string; for_swap?: boolean }): Promise<EffectiveDuty[]> {
   return (await api.get<EffectiveDuty[]>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
 }
 export async function createAssignment(input: {
