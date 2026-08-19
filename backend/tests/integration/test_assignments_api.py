@@ -267,6 +267,35 @@ def test_effective_duties_default_weapon_ineligible_false(client: TestClient, ad
     assert row["weapon_ineligible_reason"] is None
 
 
+def test_effective_endpoint_includes_draft_only_when_for_swap(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number=f"eff_{_uid()}")
+    dtype = DutyType(name=f"שמירה_{_uid()}", score_per_day=1, active=True)
+    loc = DutyLocation(name=f"loc_{_uid()}", base="בסיס")
+    admin_session.add_all([dtype, loc])
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dtype.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 2),
+        start_time="08:00", end_time="20:00", status="algorithm_draft",
+    ))
+    admin_session.commit()
+
+    default_resp = client.get(
+        "/api/assignments/effective", params={"soldier_id": str(soldier.id)}, headers=auth_headers(soldier),
+    )
+    assert default_resp.status_code == 200
+    assert default_resp.json() == []
+
+    swap_resp = client.get(
+        "/api/assignments/effective",
+        params={"soldier_id": str(soldier.id), "for_swap": "true"},
+        headers=auth_headers(soldier),
+    )
+    assert swap_resp.status_code == 200
+    assert len(swap_resp.json()) == 1
+    assert swap_resp.json()[0]["duty_type_name"] == dtype.name
+
+
 def test_assignment_list_includes_weapon_ineligibility_fields(
     client: TestClient, admin_session: Session
 ):

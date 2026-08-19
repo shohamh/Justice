@@ -133,13 +133,18 @@ def list_effective_duties(
     soldier_id: uuid.UUID,
     date_from: date | None = None,
     date_to: date | None = None,
+    for_swap: bool = False,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[EffectiveDutyOut]:
+    """`for_swap=true` widens the listing to include algorithm_draft duties,
+    for the swap-ask/cover-trade UI only (see scoring.swap_surface_duty_spans).
+    Plain callers (transparency, calendar, etc.) must never pass this."""
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
-    spans = scoring_svc.effective_duty_spans(
+    span_fn = scoring_svc.swap_surface_duty_spans if for_swap else scoring_svc.effective_duty_spans
+    spans = span_fn(
         session, soldier_ids={soldier_id}, date_from=date_from, date_to=date_to
     )
     type_ids = {sp["duty_type_id"] for sp in spans}
