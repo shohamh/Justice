@@ -249,3 +249,25 @@ describe("UnifiedSoldierModal full editor rank-field dirty gating and next-rank-
     expect(screen.queryByTestId("next-rank-date-input")).not.toBeInTheDocument();
   });
 });
+
+describe("UnifiedSoldierModal duty-history tab visibility for a commander", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+  });
+
+  test("a commander (not admin/DM) still sees the duty_history tab for a soldier outside their direct-report list", async () => {
+    // Regression lock for item 16: the tab must render for any commander,
+    // not just admins/duty-managers — this soldier is not the commander's
+    // direct report, only somewhere in their commanded subtree, which is
+    // exactly the scenario the backend's can_view_soldier_scope already
+    // covers (see backend/app/services/tests/test_authority.py and
+    // backend/tests/integration/test_soldiers_api.py). The frontend TABS
+    // list must not additionally gate this.
+    mockUseAuth.mockReturnValue({
+      user: { personal_number: "cmdr-scope-1", role: "soldier", is_duty_manager: false, is_commander: true },
+    });
+    renderModal({ personal_number: "9999999" });
+
+    expect(await screen.findByTestId("modal-tab-duty_history")).toBeInTheDocument();
+  });
+});
