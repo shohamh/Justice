@@ -32,4 +32,25 @@ describe("CoverOfferModal", () => {
       expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument()
     );
   });
+
+  it("shows a clear empty-state message in trade mode when there are no offerable duties", async () => {
+    vi.spyOn(swapsApi, "checkCoverEligibility").mockResolvedValue({
+      eligible: true,
+      reason: null,
+    });
+
+    render(
+      <CoverOfferModal
+        swap={{ id: "1", duty_assignment_id: "a1" } as SwapRequest}
+        myDuties={[]}
+        dutyTypes={{}}
+        onDone={() => {}}
+        onClose={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText("הצע שיבוץ בתמורה"));
+
+    await waitFor(() => expect(screen.getByText("אין תורנויות להצגה")).toBeInTheDocument());
+  });
 });
