@@ -637,3 +637,60 @@ def test_active_exemptions_by_soldier_ignores_revoked(admin_session):
 
     by_soldier = _active_exemptions_by_soldier(admin_session)
     assert s.id not in by_soldier
+
+
+def test_effective_duty_spans_never_includes_algorithm_draft(admin_session):
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    from app.db.models import DutyAssignment, DutyLocation, DutyType
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name="eds_no_draft_test")
+    soldier = create_soldier(admin_session, personal_number="7950001", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_eds_no_draft", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_eds_no_draft")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date.today(), end_date=date.today() + timedelta(days=1),
+            status="algorithm_draft",
+        )
+    )
+    admin_session.commit()
+
+    spans = effective_duty_spans(admin_session, soldier_ids={soldier.id})
+    assert spans == []
+
+
+def test_effective_duty_spans_with_drafts_includes_algorithm_draft(admin_session):
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    from app.db.models import DutyAssignment, DutyLocation, DutyType
+    from app.services.scoring import effective_duty_spans_with_drafts
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name="eds_with_draft_test")
+    soldier = create_soldier(admin_session, personal_number="7950002", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_eds_with_draft", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_eds_with_draft")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date.today(), end_date=date.today() + timedelta(days=1),
+            status="algorithm_draft",
+        )
+    )
+    admin_session.commit()
+
+    spans = effective_duty_spans_with_drafts(admin_session, soldier_ids={soldier.id})
+    assert len(spans) == 1
+    assert spans[0]["status"] == "algorithm_draft"
+    assert spans[0]["soldier_id"] == soldier.id

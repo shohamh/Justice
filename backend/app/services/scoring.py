@@ -105,19 +105,25 @@ def effective_duty_days(
     return out
 
 
-def effective_duty_spans(
+def _effective_duty_spans_impl(
     session: Session,
     *,
+    statuses: list[str],
     soldier_ids: set[uuid.UUID] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[dict[str, Any]]:
-    """Published assignments expanded per day with overrides applied, then re-merged into
-    contiguous runs where the effective soldier is unchanged. Degrades to the original block
-    when there are no overrides; cancelled days (NULL effective) break runs and are dropped.
-    Optionally filtered to soldier_ids and to spans overlapping [date_from, date_to]."""
+    """Shared implementation behind `effective_duty_spans` (statuses=["published"],
+    the scoring/effort/fairness source of truth — never widen its caller-visible
+    contract to include drafts) and `effective_duty_spans_with_drafts`
+    (statuses=["published", "algorithm_draft"], display surfaces only).
+    Assignments matching `statuses` are expanded per day with overrides applied,
+    then re-merged into contiguous runs where the effective soldier is
+    unchanged. Degrades to the original block when there are no overrides;
+    cancelled days (NULL effective) break runs and are dropped. Optionally
+    filtered to soldier_ids and to spans overlapping [date_from, date_to]."""
     assignments = (
-        session.execute(select(DutyAssignment).where(DutyAssignment.status == "published"))
+        session.execute(select(DutyAssignment).where(DutyAssignment.status.in_(statuses)))
         .scalars()
         .all()
     )
@@ -136,19 +142,19 @@ def effective_duty_spans(
     for a in assignments:
         last_assignment_day = a.end_date - timedelta(days=1)
 
-        def _make_span(cur: Any, run_start: date, run_end: date) -> dict[str, Any]:
+        def _make_span(cur: Any, run_start: date, run_end: date, *, _a: DutyAssignment = a) -> dict[str, Any]:
             # A run only carries the assignment's real clock time on the edge
             # day(s) that match the assignment's own boundaries; a run that
             # was split off mid-assignment by an override has no wall-clock
             # time of its own, so it degrades to a full calendar day there.
-            start_time = a.start_time if run_start == a.start_date else "00:00"
-            end_time = a.end_time if run_end == last_assignment_day else "23:59"
-            original_owner = cur == a.soldier_id
+            start_time = _a.start_time if run_start == _a.start_date else "00:00"
+            end_time = _a.end_time if run_end == last_assignment_day else "23:59"
+            original_owner = cur == _a.soldier_id
             return {
-                "assignment_id": a.id,
+                "assignment_id": _a.id,
                 "soldier_id": cur,
-                "duty_type_id": a.duty_type_id,
-                "duty_location_id": a.duty_location_id,
+                "duty_type_id": _a.duty_type_id,
+                "duty_location_id": _a.duty_location_id,
                 "start_date": run_start,
                 # Exclusive, matching DutyAssignment/DutyShift's own convention
                 # (run_end above is the run's last INCLUSIVE day).
@@ -157,12 +163,13 @@ def effective_duty_spans(
                 "end_time": end_time,
                 "start_at": combine_date_time(run_start, start_time),
                 "end_at": combine_date_time(run_end, end_time),
-                "shift_id": a.duty_shift_id,
-                "is_reserve": a.is_reserve,
-                "called_up_from": a.called_up_from,
-                "called_up_to": a.called_up_to,
-                "weapon_ineligible": a.weapon_ineligible if original_owner else False,
-                "weapon_ineligible_reason": a.weapon_ineligible_reason if original_owner else None,
+                "shift_id": _a.duty_shift_id,
+                "is_reserve": _a.is_reserve,
+                "called_up_from": _a.called_up_from,
+                "called_up_to": _a.called_up_to,
+                "weapon_ineligible": _a.weapon_ineligible if original_owner else False,
+                "weapon_ineligible_reason": _a.weapon_ineligible_reason if original_owner else None,
+                "status": _a.status,
             }
 
         cur: object = _UNSET
@@ -199,6 +206,37 @@ def effective_duty_spans(
         result.append(sp)
     result.sort(key=lambda s: s["start_date"])
     return result
+
+
+def effective_duty_spans(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict[str, Any]]:
+    """Published assignments only — the scoring/effort/fairness source of
+    truth. Do not widen this function's status filter; add a new function
+    (see `effective_duty_spans_with_drafts`) for any display surface that
+    needs drafts."""
+    return _effective_duty_spans_impl(
+        session, statuses=["published"], soldier_ids=soldier_ids, date_from=date_from, date_to=date_to,
+    )
+
+
+def effective_duty_spans_with_drafts(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict[str, Any]]:
+    """Published + algorithm_draft assignments, for display surfaces only
+    (e.g. a soldier's own upcoming-duties widget). Never call this from
+    scoring, effort, or fairness code — use `effective_duty_spans` there."""
+    return _effective_duty_spans_impl(
+        session, statuses=["published", "algorithm_draft"], soldier_ids=soldier_ids, date_from=date_from, date_to=date_to,
+    )
 
 
 def shift_count_by_soldier(session: Session) -> dict[uuid.UUID, int]:
