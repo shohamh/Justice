@@ -128,6 +128,36 @@ def test_submit_cap_check_is_period_scoped_not_full_future_span(admin_session):
     assert c.status == "pending_commander"
 
 
+def test_submit_cap_checked_against_requests_own_quarter_not_submission_day(admin_session):
+    """Regression test: submit_constraint's cap check must anchor the period
+    on the REQUEST's own start_date, not on the real submission-day `today`.
+    Before the fix, a request submitted today for dates in a distant future
+    quarter had zero overlap with "today's" quarter, so the cap check always
+    computed requested_in_period=0 and passed regardless of how many days
+    were requested — the two submissions below (10 + 10 = 20 days, cap 15)
+    would both have succeeded under the old code.
+    """
+    s = create_soldier(admin_session, personal_number=_pn(21))
+    far_anchor = date.today() + timedelta(days=200)
+    period_start, _period_end = constraints.period_bounds("quarter", far_anchor)
+
+    first_start = period_start + timedelta(days=1)
+    first_end = first_start + timedelta(days=9)  # 10 days
+    submit_constraint(
+        admin_session, soldier_id=s.id,
+        start_date=first_start, end_date=first_end, reason="a", actor_id=None,
+    )
+    admin_session.commit()
+
+    second_start = first_end + timedelta(days=1)
+    second_end = second_start + timedelta(days=9)  # another 10 days, same quarter
+    with pytest.raises(ConstraintError, match="cap_exceeded"):
+        submit_constraint(
+            admin_session, soldier_id=s.id,
+            start_date=second_start, end_date=second_end, reason="b", actor_id=None,
+        )
+
+
 def test_submit_bad_date_range(admin_session):
     s = create_soldier(admin_session, personal_number=_pn(4))
     with pytest.raises(ConstraintError, match="bad_date_range"):

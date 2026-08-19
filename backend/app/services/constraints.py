@@ -41,7 +41,7 @@ def submit_constraint(
     if start_date < date.today():
         raise ConstraintError("start_date_in_past")
 
-    rd = remaining_days(session, soldier_id=soldier_id)
+    rd = remaining_days(session, soldier_id=soldier_id, today=start_date)
     cap_days = rd["cap_days"]
     used = rd["used_days"]
     period_start, period_end = rd["period_start"], rd["period_end"]
