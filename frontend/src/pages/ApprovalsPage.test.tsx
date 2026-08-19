@@ -317,7 +317,7 @@ describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
     });
   });
 
-  it("hides both reject buttons for a non-admin viewer with no authority on either side", async () => {
+  it("moves a swap the viewer has no authority on to the waiting tab instead of the swaps tab", async () => {
     mockUseAuth.mockReturnValue({ user: { id: "unrelated-viewer", role: "commander" } });
     const acceptedCandidate = makeCandidate({
       id: "cand-2",
@@ -360,11 +360,15 @@ describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
     const swapsTab = await screen.findByTestId("approvals-tab-swaps");
     fireEvent.click(swapsTab);
 
-    await screen.findAllByText("Accepted Candidate");
-    // Neither the whole-request reject nor the per-candidate reject should
-    // render for a viewer who isn't a chain match on either the requester
-    // side (m1) or this candidate's side (m2) — and isn't a duty manager.
-    expect(screen.queryByText("approvals.reject")).not.toBeInTheDocument();
+    // A viewer who isn't a chain match on either the requester side (m1) or
+    // this candidate's side (m2), and isn't a duty manager, has no action on
+    // this swap at all — it belongs in the waiting tab, not the swaps tab.
+    expect(screen.getByText("approvals.none")).toBeInTheDocument();
+    expect(screen.queryByText("Accepted Candidate")).not.toBeInTheDocument();
+
+    const waitingTab = await screen.findByTestId("approvals-tab-waiting");
+    fireEvent.click(waitingTab);
+    expect(await screen.findByText("swaps.requester: B")).toBeInTheDocument();
   });
 
   it("shows only the per-candidate reject for a commander authorized on the candidate's side only", async () => {
@@ -596,7 +600,7 @@ describe("ApprovalsPage - exemption file links", () => {
 });
 
 describe("ApprovalsPage - approve button authority", () => {
-  it("hides the duty-manager exemption approve button when the backend says the viewer can't approve it", async () => {
+  it("moves a duty-manager exemption the viewer can't approve to the waiting tab instead of the exemptions tab", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([
       { ...exemptionRequestWithFile, status: "pending_duty_manager", can_approve_duty_manager_step: false },
     ]);
@@ -612,11 +616,15 @@ describe("ApprovalsPage - approve button authority", () => {
     );
     const exemptionsTab = await screen.findByTestId("approvals-tab-exemptions");
     fireEvent.click(exemptionsTab);
-    await screen.findByTestId(`er-reject-note-${exemptionRequestWithFile.id}`);
+    expect(screen.queryByTestId(`er-reject-note-${exemptionRequestWithFile.id}`)).not.toBeInTheDocument();
     expect(screen.queryByTestId(`er-approve-${exemptionRequestWithFile.id}`)).not.toBeInTheDocument();
+
+    const waitingTab = await screen.findByTestId("approvals-tab-waiting");
+    fireEvent.click(waitingTab);
+    await screen.findByText("D");
   });
 
-  it("hides the field-update approve button when the backend says the viewer can't approve it", async () => {
+  it("moves a field update the viewer can't approve to the waiting tab instead of the field-updates tab", async () => {
     vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([
       {
         id: "fu1", soldier_id: "sol-5", soldier_name: "E", node_name: null, field_name: "discharge_date",
@@ -637,6 +645,10 @@ describe("ApprovalsPage - approve button authority", () => {
     );
     const fuTab = await screen.findByTestId("approvals-tab-field-updates");
     fireEvent.click(fuTab);
+    expect(screen.queryByText("soldier_profile.discharge_date")).not.toBeInTheDocument();
+
+    const waitingTab = await screen.findByTestId("approvals-tab-waiting");
+    fireEvent.click(waitingTab);
     await screen.findByText("soldier_profile.discharge_date");
     expect(screen.queryByText("approvals.approve")).not.toBeInTheDocument();
   });

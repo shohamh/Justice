@@ -169,17 +169,6 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
               disabled={!req.can_edit_rank_advancement}
             />
           </div>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={isOfficer}
-                onChange={e => setIsOfficer(e.target.checked)}
-                disabled={!req.can_edit_rank_advancement}
-              />
-              <span className="text-xs">קצין</span>
-            </label>
-          </div>
           <label className="block">
             <span className="text-xs text-gray-500">מגדר</span>
             <select
@@ -226,7 +215,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
               />
             </label>
           ))}
-          {isOfficer && (
+          {(isOfficer || req.is_career) && (
             <label className="block">
               <span className="text-xs text-gray-500">אל&quot;ל אחרון</span>
               <DateInput

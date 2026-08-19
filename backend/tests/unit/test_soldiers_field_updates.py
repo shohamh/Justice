@@ -42,6 +42,29 @@ def test_pending_field_update_flags_commander_as_unable_to_approve(client, admin
     assert items[0]["can_approve"] is False
 
 
+def test_pending_count_excludes_updates_the_commander_cannot_approve(client, admin_session):
+    """The count feeds the commander/approvals nav badge — it must match
+    can_approve, not mere read-visibility, or the badge shows a number the
+    commander can never actually clear (see the sibling can_approve test)."""
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="fu_count_node")
+    commander = create_soldier(admin_session, personal_number="fu_count_cmd", role="commander")
+    node.commander_id = commander.id
+    soldier = create_soldier(admin_session, personal_number="fu_count_sol", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    submit_field_update(
+        admin_session, soldier_id=soldier.id, field_name="discharge_date", new_value="2027-01-01",
+        actor_id=soldier.id,
+    )
+    admin_session.commit()
+
+    r = client.get("/api/soldiers/field-updates/pending/count", headers=auth_headers(commander))
+    assert r.status_code == 200
+    assert r.json()["count"] == 0
+
+
 def test_junior_duty_manager_cannot_approve_rank_field_update(client, admin_session):
     from tests.helpers import auth_headers, create_node, create_soldier
 

@@ -26,7 +26,6 @@ from app.services.exemption_requests import (
     ExemptionRequestError,
     approve_commander_step,
     approve_duty_manager_step,
-    count_pending_requests,
     list_own_requests,
     list_pending_requests,
     reject_request,
@@ -386,7 +385,37 @@ def get_pending_exemption_count(
         .all()
     )
     soldier_ids = list(enrolled_ids | pending_enrollment_ids)
-    return {"count": count_pending_requests(session, soldier_ids)}
+    reqs = list_pending_requests(session, soldier_ids)
+    if not reqs:
+        return {"count": 0}
+    req_soldier_ids = {r.soldier_id for r in reqs}
+    soldiers_by_id = {
+        s.id: s
+        for s in session.execute(select(Soldier).where(Soldier.id.in_(req_soldier_ids))).scalars().all()
+    }
+    node_ids = {s.hierarchy_node_id for s in soldiers_by_id.values() if s.hierarchy_node_id}
+    nodes_by_id = (
+        {
+            n.id: n
+            for n in session.execute(
+                select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+            ).scalars().all()
+        }
+        if node_ids
+        else {}
+    )
+    total = 0
+    for r in reqs:
+        if r.enrollment_request_id and not user_can_see_enrollment_exemptions:
+            continue
+        s = soldiers_by_id.get(r.soldier_id)
+        node = nodes_by_id.get(s.hierarchy_node_id) if s and s.hierarchy_node_id else None
+        can_commander_step, can_dm_step = _exemption_approval_flags(session, user, node)
+        if (r.status == "pending_commander" and can_commander_step) or (
+            r.status == "pending_duty_manager" and can_dm_step
+        ):
+            total += 1
+    return {"count": total}
 
 
 class PatchExemptionBody(BaseModel):

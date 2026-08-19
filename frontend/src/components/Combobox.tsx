@@ -32,7 +32,12 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
     [items, placeholder]
   );
 
-  const [query, setQuery] = useState(() => allItems.find(i => i.id === value)?.name ?? "");
+  // Looks up in `items`, not `allItems`: the placeholder's own synthetic row
+  // (id "") would otherwise match an unselected value and seed the input with
+  // literal placeholder text — indistinguishable from real content, so typing
+  // over it (e.g. "רסן") concatenated onto it instead of replacing it. The
+  // native `placeholder` attribute below shows the hint text instead.
+  const [query, setQuery] = useState(() => items.find(i => i.id === value)?.name ?? "");
   // Separate from `query` (the input's displayed text) so that opening the list while a value
   // is already selected shows the full list, rather than fuzzy-filtering by the selected name.
   const [filterQuery, setFilterQuery] = useState("");
@@ -51,9 +56,9 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
 
   // Sync displayed text when external value changes (e.g. after a quick-add selects a new item)
   useEffect(() => {
-    const match = allItems.find(i => i.id === value);
-    if (match) setQuery(match.name);
-  }, [value, allItems]);
+    const match = items.find(i => i.id === value);
+    setQuery(match ? match.name : "");
+  }, [value, items]);
 
   // Reset the highlight whenever the result list changes or the dropdown opens/closes,
   // so a stale index from a previous filter pass never lingers.
@@ -64,7 +69,10 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
   const selectItem = (item: ComboboxItem) => {
     if (item.disabled) return;
     onChange(item.id);
-    setQuery(item.name);
+    // The synthetic placeholder row (id "") clears the selection — show that
+    // as empty (native placeholder), not its literal label, for the same
+    // reason the initial/synced query never uses it (see `query` above).
+    setQuery(item.id === "" ? "" : item.name);
     setOpen(false);
   };
 
@@ -118,6 +126,7 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
         ref={inputRef}
         type="text"
         value={query}
+        placeholder={placeholder}
         autoComplete="off"
         data-testid={testId}
         role="combobox"

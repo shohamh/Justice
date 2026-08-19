@@ -92,6 +92,9 @@ describe("UnifiedSoldierModal profile save error handling", () => {
     renderModal({}, true);
 
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
+    // The save button is a no-op (and disabled) when nothing changed — this
+    // test exercises the rejection path, so it must actually dirty a field.
+    fireEvent.change(screen.getByLabelText("soldier_profile.gender"), { target: { value: "male" } });
     fireEvent.click(screen.getByText("duty_config.save"));
 
     expect(await screen.findByText("הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר")).toBeInTheDocument();

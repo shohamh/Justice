@@ -172,7 +172,11 @@
     "field_update_either_approver_suffices": "מספיק אישור אחד מהשניים",
     "transfers_none": "אין בקשות העברה ממתינות",
     "transfer_from": "מיחידה",
-    "transfer_to": "ליחידה"
+    "transfer_to": "ליחידה",
+    "tab_waiting": "בקשות שמחכות לאחרים",
+    "waiting_none": "אין בקשות שממתינות לאישור של מישהו אחר",
+    "waiting_for": "ממתין לאישור",
+    "waiting_for_rank_authority": "מוסמך/ת לעדכון דרגות"
   },
   "duty_config": {
     "title": "הגדרות תורנויות",
@@ -252,6 +256,7 @@
     "node_name": "שם יחידה",
     "node": "יחידה",
     "hierarchy": "היררכיה",
+    "move_requires_approval": "העברה למסגרת אחרת דורשת אישור המפקד/אחראי התורנויות של המסגרת החדשה",
     "add_child_node": "הוסף תת-יחידה",
     "edit_node": "עריכת יחידה",
     "level": "דרגה",

@@ -38,6 +38,7 @@ import {
   listPendingSwaps,
   managerRejectSwap,
   getSwapConfig,
+  SwapRequest,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, rejectEnrollment } from "../api/enrollment";
 import {
@@ -150,9 +151,9 @@ function nearestApproversToRows(
   return rows;
 }
 
-type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment" | "transfers";
+type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment" | "transfers" | "waiting";
 
-const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment", "transfers"];
+const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment", "transfers", "waiting"];
 
 export default function ApprovalsPage() {
   const { t } = useTranslation();
@@ -186,6 +187,42 @@ export default function ApprovalsPage() {
 
   const swapsQuery = useQuery({ queryKey: queryKeys.pendingSwaps(), queryFn: listPendingSwaps });
   const swapItems = swapsQuery.data ?? [];
+
+  const isAdmin = user?.role === "admin";
+  const canActCommander = (approvals: DirectCommanderApprovalRow[]) =>
+    isAdmin || approvals.some(a => a.commander_id === user?.id);
+  const canActDutyManager = (approvals: DirectCommanderApprovalRow[]) =>
+    isAdmin || approvals.some(a => a.commander_id === user?.id);
+
+  // A commander/duty-manager sees every card in their scope (broad read
+  // visibility) but structurally can't act on most of them — e.g. a plain
+  // commander has no authority over most field updates (duty-manager-only)
+  // or a two-step exemption's duty-manager stage. Showing those cards
+  // alongside ones the viewer can actually decide made the "for approval"
+  // tabs cluttered with dead ends; splitting them into actionable vs.
+  // waiting-for-someone-else keeps the main tabs to cards with a real action.
+  function exemptionIsActionable(er: { status: string; can_approve_commander_step: boolean; can_approve_duty_manager_step: boolean }): boolean {
+    return (
+      (er.status === "pending_commander" && er.can_approve_commander_step) ||
+      (er.status === "pending_duty_manager" && er.can_approve_duty_manager_step)
+    );
+  }
+  function swapIsActionable(swap: SwapRequest): boolean {
+    const reqGroups = groupByKind(swap.requester_manager_approvals);
+    if (canActCommander(reqGroups.commander) || canActDutyManager(reqGroups.duty_manager)) return true;
+    const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
+    return liveCandidates.some(candidate => {
+      const covGroups = groupByKind(candidate.manager_approvals);
+      return canActCommander(covGroups.commander) || canActDutyManager(covGroups.duty_manager);
+    });
+  }
+  const erActionable = erItems.filter(exemptionIsActionable);
+  const erWaiting = erItems.filter(er => !exemptionIsActionable(er));
+  const fuActionable = fuItems.filter(i => i.can_approve);
+  const fuWaiting = fuItems.filter(i => !i.can_approve);
+  const swapsActionable = swapItems.filter(swapIsActionable);
+  const swapsWaiting = swapItems.filter(s => !swapIsActionable(s));
+  const waitingCount = erWaiting.length + fuWaiting.length + swapsWaiting.length;
 
   const swapConfigQuery = useQuery({
     queryKey: queryKeys.swapConfig(),
@@ -377,7 +414,7 @@ export default function ApprovalsPage() {
     }
   }
 
-  const total = items.length + erItems.length + fuItems.length + swapItems.length + enrollItems.length + transferItems.length;
+  const total = items.length + erActionable.length + fuActionable.length + swapsActionable.length + enrollItems.length + transferItems.length;
 
   return (
     <Layout>
@@ -413,21 +450,21 @@ export default function ApprovalsPage() {
             onClick={() => setTab("exemptions")}
             data-testid="approvals-tab-exemptions"
           >
-            {t("approvals.tab_exemptions")}{erItems.length > 0 ? ` (${erItems.length})` : ""}
+            {t("approvals.tab_exemptions")}{erActionable.length > 0 ? ` (${erActionable.length})` : ""}
           </button>
           <button
             className={`pb-2 text-sm ${tab === "field_updates" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
             onClick={() => setTab("field_updates")}
             data-testid="approvals-tab-field-updates"
           >
-            {t("soldier_profile.field_updates_tab")}{fuItems.length > 0 ? ` (${fuItems.length})` : ""}
+            {t("soldier_profile.field_updates_tab")}{fuActionable.length > 0 ? ` (${fuActionable.length})` : ""}
           </button>
           <button
             className={`pb-2 text-sm ${tab === "swaps" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
             onClick={() => setTab("swaps")}
             data-testid="approvals-tab-swaps"
           >
-            {t("swaps.title")}{swapItems.length > 0 ? ` (${swapItems.length})` : ""}
+            {t("swaps.title")}{swapsActionable.length > 0 ? ` (${swapsActionable.length})` : ""}
           </button>
           <button
             className={`pb-2 text-sm ${tab === "enrollment" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
@@ -442,6 +479,13 @@ export default function ApprovalsPage() {
             data-testid="approvals-tab-transfers"
           >
             {t("approvals.tab_transfers")}{transferItems.length > 0 ? ` (${transferItems.length})` : ""}
+          </button>
+          <button
+            className={`pb-2 text-sm ${tab === "waiting" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
+            onClick={() => setTab("waiting")}
+            data-testid="approvals-tab-waiting"
+          >
+            {t("approvals.tab_waiting")}{waitingCount > 0 ? ` (${waitingCount})` : ""}
           </button>
         </div>
 
@@ -495,9 +539,9 @@ export default function ApprovalsPage() {
 
         {tab === "exemptions" && (
           <>
-            {erItems.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
+            {erActionable.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
             <ul className="space-y-3" data-testid="er-approvals-list">
-              {erItems.map((er) => {
+              {erActionable.map((er) => {
                 const erGrouped = groupByKind(nearestApproversToRows(
                   er.nearest_commander, er.nearest_duty_manager,
                   er.status === "approved" ? "approved" : er.status === "rejected" ? "rejected" : "pending",
@@ -577,8 +621,8 @@ export default function ApprovalsPage() {
 
         {tab === "field_updates" && (
           <div className="space-y-3" dir="rtl">
-            {fuItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
-            {fuItems.map(item => {
+            {fuActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
+            {fuActionable.map(item => {
               const fuGrouped = groupByKind(nearestApproversToRows(item.nearest_commander, item.nearest_duty_manager, item.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
               // A commander can never decide most field updates (see
               // fieldAllowsCommanderApproval) — showing their name as if they
@@ -623,14 +667,9 @@ export default function ApprovalsPage() {
 
         {tab === "swaps" && (
           <div className="space-y-3" dir="rtl">
-            {swapItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
-            {swapItems.map(swap => {
-              const isAdmin = user?.role === "admin";
+            {swapsActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
+            {swapsActionable.map(swap => {
               const reqGroups = groupByKind(swap.requester_manager_approvals);
-              const canActCommander = (commanderApprovals: DirectCommanderApprovalRow[]) =>
-                isAdmin || commanderApprovals.some(a => a.commander_id === user?.id);
-              const canActDutyManager = (dutyManagerApprovals: DirectCommanderApprovalRow[]) =>
-                isAdmin || dutyManagerApprovals.some(a => a.commander_id === user?.id);
               const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
               const statusColumns = [
                 requesterColumn(
@@ -829,6 +868,86 @@ export default function ApprovalsPage() {
                       {t("approvals.reject")}
                     </button>
                   </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {tab === "waiting" && (
+          <div className="space-y-3" dir="rtl">
+            {waitingCount === 0 && <p className="text-gray-500 text-sm">{t("approvals.waiting_none")}</p>}
+            {fuWaiting.map(item => {
+              const isRankField = ["rank", "rank_track", "is_officer", "next_rank_date"].includes(item.field_name);
+              const waitingForName = isRankField
+                ? t("approvals.waiting_for_rank_authority")
+                : fieldAllowsCommanderApproval(item.field_name)
+                ? (item.nearest_duty_manager?.name ?? item.nearest_commander?.name ?? "—")
+                : (item.nearest_duty_manager?.name ?? "—");
+              return (
+                <div key={item.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
+                  <div className="flex items-center gap-2">
+                    <strong><SoldierLink id={item.soldier_id} name={item.soldier_name || item.soldier_id.slice(0, 8)} /></strong>
+                    {item.node_name && <span className="text-xs text-gray-400">{item.node_name}</span>}
+                    <span className="text-gray-400">—</span>
+                    <span>{t(`soldier_profile.${item.field_name}`)}</span>
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.previous_value, t)}</span></div>
+                  <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.new_value, t)}</strong></div>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">{t("approvals.waiting_for")}: {waitingForName}</p>
+                </div>
+              );
+            })}
+            {erWaiting.map(er => {
+              const waitingForName = er.status === "pending_commander"
+                ? (er.nearest_commander?.name ?? "—")
+                : (er.nearest_duty_manager?.name ?? "—");
+              return (
+                <div key={er.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <strong><SoldierLink id={er.soldier_id} name={er.soldier_name || er.soldier_id.slice(0, 8)} /></strong>
+                    {er.node_name && <span className="text-xs text-gray-400">{er.node_name}</span>}
+                  </div>
+                  <p className="text-sm font-medium mb-1">
+                    {exemptionTypes.find(et => et.id === er.exemption_type_id)?.name ?? t("exemptions.unknown_type")}
+                  </p>
+                  <p className="text-xs text-gray-500" dir="ltr">
+                    {er.start_date ?? t("exemption_requests.start_date_pending_approval")} → {er.end_date ?? t("exemptions.forever")}
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    {t("approvals.waiting_for")}: {er.status === "pending_commander" ? t("swaps.approver_kind_commander") : t("swaps.approver_kind_duty_manager")} {waitingForName}
+                  </p>
+                </div>
+              );
+            })}
+            {swapsWaiting.map(swap => {
+              const reqGroups = groupByKind(swap.requester_manager_approvals);
+              const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
+              const statusColumns = [
+                requesterColumn(
+                  swap,
+                  requireDutyManagerApproval,
+                  `${t("swaps.requester")}: ${swap.requesting_soldier_name || swap.requesting_soldier_id.slice(0, 8)}`,
+                  t,
+                ),
+                ...liveCandidates.map(candidate =>
+                  candidateColumn(candidate, requireDutyManagerApproval, candidate.soldier_name || candidate.soldier_id.slice(0, 8), t),
+                ),
+              ];
+              return (
+                <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
+                  <div>
+                    {[swap.duty_type_name, swap.duty_location_name].filter(Boolean).join(" — ") && (
+                      <p className="font-medium">{[swap.duty_type_name, swap.duty_location_name].filter(Boolean).join(" — ")}</p>
+                    )}
+                    <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
+                  </div>
+                  <SwapApprovalColumns columns={statusColumns} />
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    {t("approvals.waiting_for")}: {[
+                      reqGroups.commander.length > 0 && !isSideSatisfied(reqGroups.commander) ? reqGroups.commander[0]?.commander_name : null,
+                      reqGroups.duty_manager.length > 0 && !isSideSatisfied(reqGroups.duty_manager) ? reqGroups.duty_manager[0]?.commander_name : null,
+                    ].filter(Boolean).join(", ") || t("swaps.requester")}
+                  </p>
                 </div>
               );
             })}
