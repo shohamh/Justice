@@ -420,6 +420,44 @@ def test_take_free_creates_one_applied_candidate(admin_session):
     assert cand.status == "applied"
 
 
+def test_take_free_allowed_on_draft_assignment(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-take-free-draft-1")
+    owner = create_soldier(admin_session, personal_number="7710025", hierarchy_node_id=node.id)
+    taker = create_soldier(admin_session, personal_number="7710026", hierarchy_node_id=node.id)
+    assignment = _draft_assignment(admin_session, soldier_id=owner.id)
+
+    req, _warnings = svc.take_free(
+        admin_session, assignment_id=assignment.id, covering_soldier_id=taker.id, actor_id=taker.id,
+    )
+    admin_session.flush()
+
+    assert req.status == "open"
+    cand = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id).one()
+    assert cand.soldier_id == taker.id
+
+
+def test_take_free_still_rejects_cancelled_assignment(admin_session):
+    from app.db.models import DutyType, DutyLocation
+
+    node = create_node(admin_session, level="unit", name="swap-svc-take-free-cancelled-1")
+    owner = create_soldier(admin_session, personal_number="7710027", hierarchy_node_id=node.id)
+    taker = create_soldier(admin_session, personal_number="7710028", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_take_free_cancelled_1", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="loc_take_free_cancelled_1")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    a = DutyAssignment(
+        soldier_id=owner.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() + timedelta(days=10), end_date=date.today() + timedelta(days=11),
+        status="cancelled",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="not_published"):
+        svc.take_free(admin_session, assignment_id=a.id, covering_soldier_id=taker.id, actor_id=taker.id)
+
+
 def test_reject_manager_row_raises_for_unauthorized_actor(admin_session):
     """reject_manager_row must raise (not silently no-op) when the actor
     doesn't qualify as a required approver for any (side, kind) on this

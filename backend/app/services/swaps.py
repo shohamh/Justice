@@ -1082,7 +1082,7 @@ def take_free(
         raise SwapError("assignment_not_found")
     if assignment.soldier_id == covering_soldier_id:
         raise SwapError("cannot_take_own_duty")
-    if assignment.status != "published":
+    if assignment.status not in ("published", "algorithm_draft"):
         raise SwapError("not_published")
     existing = session.execute(
         select(SwapRequest).where(
