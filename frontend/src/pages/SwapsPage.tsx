@@ -156,8 +156,8 @@ export default function SwapsPage() {
   const queryClient = useQueryClient();
 
   const dutiesQuery = useQuery({
-    queryKey: user ? queryKeys.effectiveDuties(user.id) : ["effectiveDuties", "anonymous"],
-    queryFn: () => listEffectiveDuties(user!.id).catch(() => [] as EffectiveDuty[]),
+    queryKey: user ? queryKeys.effectiveDuties(user.id, { include_drafts: true }) : ["effectiveDuties", "anonymous"],
+    queryFn: () => listEffectiveDuties(user!.id, { include_drafts: true }).catch(() => [] as EffectiveDuty[]),
     enabled: !!user,
   });
   const myDuties = dutiesQuery.data ?? [];

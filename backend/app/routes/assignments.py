@@ -138,6 +138,10 @@ def list_effective_duties(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[EffectiveDutyOut]:
+    """`include_drafts=true` widens the listing to include algorithm_draft
+    duties, for display surfaces only (swap-ask/cover-trade UI, upcoming-duty
+    widgets — see scoring.effective_duty_spans_with_drafts). Plain callers
+    (transparency, calendar, etc.) must never pass this."""
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))

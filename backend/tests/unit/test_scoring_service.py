@@ -694,3 +694,56 @@ def test_effective_duty_spans_with_drafts_includes_algorithm_draft(admin_session
     assert len(spans) == 1
     assert spans[0]["status"] == "algorithm_draft"
     assert spans[0]["soldier_id"] == soldier.id
+
+
+def test_effective_duty_spans_with_drafts_still_includes_published(admin_session):
+    from app.db.models import DutyAssignment
+    from app.services.scoring import effective_duty_spans_with_drafts
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name="eds_published_in_both_test")
+    soldier = create_soldier(admin_session, personal_number="7950003", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_eds_published_both", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_eds_published_both")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    a = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today(), end_date=date.today() + timedelta(days=1),
+        status="published",
+    )
+    admin_session.add(a)
+    admin_session.commit()
+
+    eff_spans = effective_duty_spans(admin_session, soldier_ids={soldier.id})
+    with_drafts_spans = effective_duty_spans_with_drafts(admin_session, soldier_ids={soldier.id})
+
+    assert len(eff_spans) == 1 and eff_spans[0]["assignment_id"] == a.id
+    assert len(with_drafts_spans) == 1 and with_drafts_spans[0]["assignment_id"] == a.id
+
+
+def test_shift_count_by_soldier_ignores_drafts(admin_session):
+    from app.db.models import DutyAssignment
+    from app.services.scoring import shift_count_by_soldier
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name="shift_count_no_draft_test")
+    soldier = create_soldier(admin_session, personal_number="7950004", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_shift_count_no_draft", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_shift_count_no_draft")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date.today(), end_date=date.today() + timedelta(days=1),
+            status="algorithm_draft",
+        )
+    )
+    admin_session.commit()
+
+    counts = shift_count_by_soldier(admin_session)
+
+    assert counts.get(soldier.id, 0) == 0

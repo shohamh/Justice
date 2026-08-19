@@ -138,3 +138,12 @@ describe("SwapsPage incoming tab approval columns", () => {
     expect(meLabel.compareDocumentPosition(requesterLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+describe("SwapsPage duties query", () => {
+  test("fetches effective duties with include_drafts so drafts and received duties are listed", async () => {
+    const { listEffectiveDuties } = await import("../api/assignments");
+    renderPage();
+    await screen.findAllByText("Yossi");
+    expect(listEffectiveDuties).toHaveBeenCalledWith("me", { include_drafts: true });
+  });
+});

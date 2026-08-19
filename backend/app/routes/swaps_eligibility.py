@@ -36,7 +36,7 @@ def eligible_duties(
     my_assignments = session.execute(
         select(DutyAssignment).where(
             DutyAssignment.soldier_id == actor.id,
-            DutyAssignment.status == "published",
+            DutyAssignment.status.in_(("published", "algorithm_draft")),
             DutyAssignment.end_date > today,
         )
     ).scalars().all()

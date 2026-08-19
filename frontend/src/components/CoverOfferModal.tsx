@@ -78,12 +78,14 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
             <input type="radio" name="cover_mode" checked={mode === "trade"} onChange={() => setMode("trade")} />
             {t("swaps.offer_trade")}
           </label>
-          {mode === "trade" && (
-            <div className="space-y-1 max-h-40 overflow-y-auto border rounded p-2 dark:border-gray-600">
-              <p className="text-xs text-gray-500 mb-1">{t("swaps.select_duties_to_offer")}:</p>
-              {myDuties
-                .filter((d) => d.assignment_id !== swap.duty_assignment_id)
-                .map((d) => (
+          {mode === "trade" && (() => {
+            const offerable = myDuties.filter((d) => d.assignment_id !== swap.duty_assignment_id);
+            return offerable.length === 0 ? (
+              <p className="text-xs text-gray-500">{t("swaps.no_duties")}</p>
+            ) : (
+              <div className="space-y-1 max-h-40 overflow-y-auto border rounded p-2 dark:border-gray-600">
+                <p className="text-xs text-gray-500 mb-1">{t("swaps.select_duties_to_offer")}:</p>
+                {offerable.map((d) => (
                   <label key={d.assignment_id} className="flex items-center gap-2 text-xs cursor-pointer dark:text-gray-300">
                     <input
                       type="checkbox"
@@ -93,8 +95,9 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
                     <span>{dutyTypes[d.duty_type_id] ?? d.duty_type_id} — {d.start_date}</span>
                   </label>
                 ))}
-            </div>
-          )}
+              </div>
+            );
+          })()}
           {ineligibleReason && (
             <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded p-2">
               {ineligibleReason}

@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import (
-    DutyAssignment, HierarchyNode, NotificationType, Soldier, SwapCandidate, SwapManagerApproval, SwapRequest,
+    DutyAssignment, DutyDayOverride, DutyDismissal, HierarchyNode, NotificationType, Soldier, SwapCandidate,
+    SwapManagerApproval, SwapRequest,
 )
 from app.services import assignments as assignments_svc
 from app.services.approval_scope import commander_chain_for_soldier, duty_manager_chain_for_soldier
@@ -58,6 +59,34 @@ def _max_specific_targets(session: Session) -> int:
     return get_setting_int(session, "swaps.max_specific_targets", 5)
 
 
+def _effective_soldier_on_date(
+    session: Session, *, assignment: DutyAssignment, day: date,
+) -> uuid.UUID | None:
+    """Who actually owns `assignment` on `day`. A prior swap only ever writes
+    a DutyDayOverride — it never mutates DutyAssignment.soldier_id — so a
+    soldier who received this duty via swap is only discoverable through the
+    override, not through the assignment's nominal owner. None means the day
+    is dismissed and unowned."""
+    ov = session.execute(
+        select(DutyDayOverride).where(
+            DutyDayOverride.duty_assignment_id == assignment.id,
+            DutyDayOverride.date == day,
+        )
+    ).scalar_one_or_none()
+    if ov is not None:
+        return ov.effective_soldier_id
+    dismissed = session.execute(
+        select(DutyDismissal).where(
+            DutyDismissal.duty_assignment_id == assignment.id,
+            DutyDismissal.dismissed_from <= day,
+            DutyDismissal.dismissed_to >= day,
+        )
+    ).first()
+    if dismissed is not None:
+        return None
+    return assignment.soldier_id
+
+
 def create_request(
     session: Session,
     *,
@@ -85,9 +114,9 @@ def create_request(
     assignment = session.get(DutyAssignment, duty_assignment_id)
     if assignment is None:
         raise SwapError("assignment_not_found")
-    if assignment.soldier_id != requesting_soldier_id:
+    if _effective_soldier_on_date(session, assignment=assignment, day=assignment.start_date) != requesting_soldier_id:
         raise SwapError("not_your_duty")
-    if assignment.status != "published":
+    if assignment.status not in ("published", "algorithm_draft"):
         raise SwapError("not_published")
 
     existing = session.execute(
@@ -251,11 +280,13 @@ def list_open_board(session: Session, *, for_soldier_id: uuid.UUID) -> list[Swap
     return list(
         session.execute(
             select(SwapRequest)
+            .join(DutyAssignment, SwapRequest.duty_assignment_id == DutyAssignment.id)
             .where(
                 SwapRequest.status == "open",
                 SwapRequest.requesting_soldier_id != for_soldier_id,
                 SwapRequest.open_to_marketplace.is_(True),
                 SwapRequest.id.notin_(already_candidate_on) if already_candidate_on else True,
+                DutyAssignment.status.in_(("published", "algorithm_draft")),
             )
             .order_by(SwapRequest.duty_date.asc())
         )
@@ -1053,7 +1084,7 @@ def take_free(
         raise SwapError("assignment_not_found")
     if assignment.soldier_id == covering_soldier_id:
         raise SwapError("cannot_take_own_duty")
-    if assignment.status != "published":
+    if assignment.status not in ("published", "algorithm_draft"):
         raise SwapError("not_published")
     existing = session.execute(
         select(SwapRequest).where(
