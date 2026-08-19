@@ -53,6 +53,7 @@ def test_summary_cards_counts_pending_approval_swaps(admin_session):
 
 def test_upcoming_duties_includes_algorithm_draft(admin_session):
     from datetime import date as _date
+
     from app.db.models import DutyAssignment
 
     node = create_node(admin_session, level="unit", name="upcoming_draft_test")
@@ -82,6 +83,7 @@ def test_upcoming_duties_includes_algorithm_draft(admin_session):
 
 def test_summary_cards_upcoming_count_includes_algorithm_draft(admin_session):
     from datetime import date as _date
+
     from app.db.models import DutyAssignment
 
     node = create_node(admin_session, level="unit", name="summary_draft_test")
