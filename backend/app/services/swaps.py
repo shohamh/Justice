@@ -280,11 +280,13 @@ def list_open_board(session: Session, *, for_soldier_id: uuid.UUID) -> list[Swap
     return list(
         session.execute(
             select(SwapRequest)
+            .join(DutyAssignment, SwapRequest.duty_assignment_id == DutyAssignment.id)
             .where(
                 SwapRequest.status == "open",
                 SwapRequest.requesting_soldier_id != for_soldier_id,
                 SwapRequest.open_to_marketplace.is_(True),
                 SwapRequest.id.notin_(already_candidate_on) if already_candidate_on else True,
+                DutyAssignment.status.in_(("published", "algorithm_draft")),
             )
             .order_by(SwapRequest.duty_date.asc())
         )

@@ -1147,3 +1147,50 @@ def test_create_request_still_rejects_non_draft_non_published_assignment(admin_s
             admin_session, requesting_soldier_id=owner.id, duty_assignment_id=a.id,
             target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
         )
+
+
+def test_list_open_board_includes_live_published_and_draft_marketplace_requests(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-board-live-1")
+    owner_published = create_soldier(admin_session, personal_number="7710050", hierarchy_node_id=node.id)
+    owner_draft = create_soldier(admin_session, personal_number="7710051", hierarchy_node_id=node.id)
+    viewer = create_soldier(admin_session, personal_number="7710052", hierarchy_node_id=node.id)
+    published_assignment = _published_assignment(admin_session, soldier_id=owner_published.id, node_id=node.id)
+    draft_assignment = _draft_assignment(admin_session, soldier_id=owner_draft.id)
+
+    req_published = svc.create_request(
+        admin_session, requesting_soldier_id=owner_published.id, duty_assignment_id=published_assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    req_draft = svc.create_request(
+        admin_session, requesting_soldier_id=owner_draft.id, duty_assignment_id=draft_assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    board = svc.list_open_board(admin_session, for_soldier_id=viewer.id)
+    board_ids = {r.id for r in board}
+    assert req_published.id in board_ids
+    assert req_draft.id in board_ids
+
+
+def test_list_open_board_excludes_request_whose_duty_was_rejected(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-board-rejected-1")
+    owner = create_soldier(admin_session, personal_number="7710053", hierarchy_node_id=node.id)
+    viewer = create_soldier(admin_session, personal_number="7710054", hierarchy_node_id=node.id)
+    draft_assignment = _draft_assignment(admin_session, soldier_id=owner.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=owner.id, duty_assignment_id=draft_assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    # Commander rejects the draft proposal — the assignment leaves the
+    # published/algorithm_draft lifecycle, but the SwapRequest itself is
+    # left dangling in status="open".
+    draft_assignment.status = "algorithm_rejected"
+    admin_session.flush()
+
+    board = svc.list_open_board(admin_session, for_soldier_id=viewer.id)
+    board_ids = {r.id for r in board}
+    assert req.id not in board_ids
