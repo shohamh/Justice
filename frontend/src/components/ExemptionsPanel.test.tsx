@@ -100,3 +100,9 @@ test("revoking an exemption requires a reason and calls revokeExemption with it"
     expect(exemptionsApi.revokeExemption).toHaveBeenCalledWith("abc", "ex1", "לא רלוונטי");
   });
 });
+
+test("renders the exemption-request date range in start-then-end order, not reversed", async () => {
+  render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+  const row = await screen.findByTestId("exemption-request-row-req-1");
+  expect(row.textContent).toMatch(/01\.01\.2026[\s\S]*05\.01\.2026/);
+});

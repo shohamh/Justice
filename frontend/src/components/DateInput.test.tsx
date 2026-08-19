@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import DateInput from "./DateInput";
 
@@ -54,5 +55,41 @@ describe("DateInput", () => {
     fireEvent.input(input, { target: { value: "14122017" }, inputType: "insertText" });
     expect(input).toHaveValue("14/12/2017");
     expect(onChange).toHaveBeenLastCalledWith("2017-12-14");
+  });
+
+  it("commits a typed 8-digit date when used in controlled mode (as in registration forms)", () => {
+    function ControlledWrapper() {
+      const [value, setValue] = useState("");
+      return (
+        <div>
+          <DateInput value={value} onChange={setValue} data-testid="date-input" />
+          <span data-testid="committed">{value}</span>
+        </div>
+      );
+    }
+    render(<ControlledWrapper />);
+    const input = screen.getByTestId("date-input");
+    for (const v of ["0", "01", "01/0", "01/03", "01/03/2", "01/03/20", "01/03/202", "01/03/2028"]) {
+      fireEvent.change(input, { target: { value: v } });
+    }
+    expect(screen.getByTestId("committed").textContent).toBe("2028-03-01");
+  });
+
+  it("commits a typed short-year date in controlled mode with a cross-field max prop set", () => {
+    function ControlledWrapper() {
+      const [value, setValue] = useState("");
+      return (
+        <div>
+          <DateInput value={value} onChange={setValue} max="2030-01-01" data-testid="date-input" />
+          <span data-testid="committed">{value}</span>
+        </div>
+      );
+    }
+    render(<ControlledWrapper />);
+    const input = screen.getByTestId("date-input");
+    for (const v of ["1", "14", "14/0", "14/08", "14/08/2", "14/08/20"]) {
+      fireEvent.change(input, { target: { value: v } });
+    }
+    expect(screen.getByTestId("committed").textContent).toBe("2020-08-14");
   });
 });

@@ -420,10 +420,10 @@ describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
 describe("ApprovalsPage - transfers tab", () => {
   it("shows pending transfer requests with approve/reject actions", async () => {
     vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([
-      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "pending" },
+      { id: "tr1", soldier_id: "sol-9", soldier_name: "דני לוי", from_node_id: "n1", to_node_id: "n2", status: "pending" },
     ]);
     vi.mocked(hierarchyTransfersApi.approveTransferRequest).mockResolvedValue(
-      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "approved" },
+      { id: "tr1", soldier_id: "sol-9", soldier_name: "דני לוי", from_node_id: "n1", to_node_id: "n2", status: "approved" },
     );
 
     const queryClient = new QueryClient({
@@ -452,10 +452,10 @@ describe("ApprovalsPage - transfers tab", () => {
 
   it("rejects a pending transfer request with a decision note", async () => {
     vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([
-      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "pending" },
+      { id: "tr1", soldier_id: "sol-9", soldier_name: "דני לוי", from_node_id: "n1", to_node_id: "n2", status: "pending" },
     ]);
     vi.mocked(hierarchyTransfersApi.rejectTransferRequest).mockResolvedValue(
-      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "rejected" },
+      { id: "tr1", soldier_id: "sol-9", soldier_name: "דני לוי", from_node_id: "n1", to_node_id: "n2", status: "rejected" },
     );
 
     const queryClient = new QueryClient({
@@ -482,6 +482,31 @@ describe("ApprovalsPage - transfers tab", () => {
     await waitFor(() => {
       expect(hierarchyTransfersApi.rejectTransferRequest).toHaveBeenCalledWith("tr1", "לא רלוונטי");
     });
+  });
+
+  it("renders the transferred soldier's real name, not a truncated id", async () => {
+    vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([
+      { id: "tr1", soldier_id: "sol-9", soldier_name: "דני לוי", from_node_id: "n1", to_node_id: "n2", status: "pending" },
+    ]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const transfersTab = await screen.findByTestId("approvals-tab-transfers");
+    fireEvent.click(transfersTab);
+
+    expect(await screen.findByText("דני לוי")).toBeInTheDocument();
+    expect(screen.queryByText("sol-9".slice(0, 8))).not.toBeInTheDocument();
   });
 });
 

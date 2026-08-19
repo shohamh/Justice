@@ -43,7 +43,11 @@ export default function LoginPage() {
         } else if (err.response?.status === 429) {
           setErrorKey("rate_limited");
           setRetryAfterSeconds(err.response.headers["retry-after"] ?? null);
-        } else setErrorKey("network");
+        } else if (err.response && err.response.status >= 400 && err.response.status < 500) {
+          setErrorKey("invalid_credentials");
+        } else {
+          setErrorKey("network");
+        }
       } else {
         setErrorKey("network");
       }
