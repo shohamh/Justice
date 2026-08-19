@@ -199,7 +199,12 @@ def commander_can_grant_commander_exemption(
     return False
 
 
-COMMANDER_ESCALATION_MIN_LEVEL_KEY = "מרכז"  # fallback default if no setting is configured
+COMMANDER_ESCALATION_MIN_LEVEL_KEY = "department"  # fallback default if no setting is configured
+# ^ get_level_rank matches HierarchyLevelType.key, not .label — the seed
+# migration (alembic/versions/0059_hierarchy_level_types.py) keys "department"
+# to the Hebrew label "מרכז" at rank 4. Use the seeded key here so this
+# setting resolves out of the box on a fresh deployment, without requiring an
+# admin to first customize hierarchy_level_types.
 
 
 def _commander_escalation_min_level(session: Session) -> str:
@@ -247,7 +252,12 @@ def has_any_exemption_immediate_apply_scope(session: Session, *, user: Soldier) 
     return False
 
 
-COMMANDER_DELETE_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
+COMMANDER_DELETE_MIN_LEVEL_KEY = "group"  # fallback default if no setting is configured
+# ^ get_level_rank matches HierarchyLevelType.key, not .label — the seed
+# migration (alembic/versions/0059_hierarchy_level_types.py) keys "group"
+# to the Hebrew label "מדור" at rank 6. Use the seeded key here so this
+# setting resolves out of the box on a fresh deployment, without requiring an
+# admin to first customize hierarchy_level_types.
 
 
 def _commander_delete_min_level(session: Session) -> str:
