@@ -14,6 +14,7 @@ import Combobox from "./Combobox";
 import SoldierLink from "./SoldierLink";
 import { translateApiError } from "../utils/translateApiError";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface Props {
   shift: CalendarShift;
@@ -489,7 +490,7 @@ export default function DismissalModal({
               <div>
                 <span className="text-gray-500">משוחרר:</span>{" "}
                 <SoldierLink id={preview.soldier_a.id} name={preview.soldier_a.name} />
-                {" "}({preview.current_shift.start_date} — {preview.current_shift.end_date})
+                {" "}({preview.current_shift.start_date} — {lastDutyDay(preview.current_shift.end_date)})
               </div>
               <div>
                 <span className="text-gray-500">מוקפץ לכיסוי:</span>{" "}
