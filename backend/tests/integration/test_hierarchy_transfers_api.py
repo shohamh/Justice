@@ -52,6 +52,48 @@ def test_reject_transfer_via_api(client: TestClient, admin_session: Session):
     assert resp2.json()["status"] == "rejected"
 
 
+def test_transfer_response_includes_soldier_name(client: TestClient, admin_session: Session):
+    src = create_node(admin_session, level="unit", name="api_src3")
+    admin = create_soldier(admin_session, personal_number="7991006", role="admin")
+    # dst must be commanded by admin so list_pending_for_approver (which is
+    # scoped by commanded/dm nodes, not by role) surfaces the request below.
+    dst = create_node(admin_session, level="unit", name="api_dst3", commander_id=admin.id)
+    soldier = create_soldier(
+        admin_session, personal_number="7991005", hierarchy_node_id=src.id,
+        full_name="ישראל ישראלי",
+    )
+    admin_session.commit()
+
+    resp = client.post(
+        "/api/hierarchy-transfers",
+        json={"soldier_id": str(soldier.id), "to_node_id": str(dst.id)},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["soldier_name"] == "ישראל ישראלי"
+    req_id = resp.json()["id"]
+
+    resp2 = client.post(f"/api/hierarchy-transfers/{req_id}/approve", headers=auth_headers(admin))
+    assert resp2.json()["soldier_name"] == "ישראל ישראלי"
+
+    resp3 = client.get("/api/hierarchy-transfers/pending", headers=auth_headers(admin))
+    assert resp3.status_code == 200
+    # the approved request above is no longer pending; create a second one to check the list path
+    soldier2 = create_soldier(
+        admin_session, personal_number="7991007", hierarchy_node_id=src.id,
+        full_name="משה כהן",
+    )
+    admin_session.commit()
+    client.post(
+        "/api/hierarchy-transfers",
+        json={"soldier_id": str(soldier2.id), "to_node_id": str(dst.id)},
+        headers=auth_headers(admin),
+    )
+    resp4 = client.get("/api/hierarchy-transfers/pending", headers=auth_headers(admin))
+    names = {item["soldier_name"] for item in resp4.json()}
+    assert "משה כהן" in names
+
+
 def test_commander_can_create_and_approve_hierarchy_transfer(client: TestClient, admin_session: Session):
     """A plain commander (not admin, not duty manager) who commands both the
     source and destination nodes must be able to create and approve a

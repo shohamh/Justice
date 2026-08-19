@@ -3,6 +3,7 @@ import { api } from "./client";
 export interface TransferRequest {
   id: string;
   soldier_id: string;
+  soldier_name: string;
   from_node_id: string | null;
   to_node_id: string;
   status: string;
