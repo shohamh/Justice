@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-19
+
+### Features
+- Added a configurable minimum hierarchy level for commander soldier-delete authority (default: מדור), exposed in the admin UI.
+
+### Fixes
+- Enrollment approval is no longer blocked for commanders without rank-edit authority — the backend skips the rank PATCH for them so the approval always succeeds.
+- Commander exemption grants now properly require duty-manager (or admin) approval at the configured minimum level instead of bypassing the DM gate.
+- Hierarchy transfer requests are now visible to every ancestor commander/duty manager for list/approve/notify, not just the direct commander.
+- The soldier-delete button on the team hierarchy page is now gated on actual commander delete scope, with a friendly error when a commander tries to delete out of scope.
+- Seeded English `hierarchy_level_types` keys are now used as min-level fallback defaults, and enrollment-request queries no longer N+1 when checking rank-advancement edit scope.
+
+### Chores
+- Added the Batch 2 (Permissions) implementation plan and expanded backend/frontend test coverage for the four permission fixes above.
+
 ## 2026-08-18
 
 ### Fixes
