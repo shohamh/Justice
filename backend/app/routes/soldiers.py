@@ -95,7 +95,6 @@ class OnboardResponse(SoldierOut):
 class UpdateRequest(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=200)
     phone: str | None = Field(default=None, max_length=40)
-    hierarchy_node_id: uuid.UUID | None = None
     enrolled_at: date_type | None = None
 
 
@@ -397,6 +396,19 @@ def list_soldiers(
     return out
 
 
+def _field_update_can_approve(
+    session: Session, *, user: Soldier, roots: set[uuid.UUID], is_cmd: bool, is_dm: bool,
+    node: HierarchyNode | None, field_name: str,
+) -> bool:
+    """Shared by list_all_pending_field_updates and count_pending_field_updates so
+    the nav badge's count always matches which cards actually show an approve
+    button — a stale duplicate here would silently drift the two out of sync."""
+    if field_name in {"rank", "rank_track", "is_officer", "next_rank_date"}:
+        return rank_advancement_edit_authorized(session, user=user, target_node=node)
+    decide_action = Action.MILITARY_LICENSE_DECIDE if field_name == "military_driving_license" else Action.SOLDIER_UPDATE
+    return can(user, decide_action, target_node=node, roots=roots, is_commander=is_cmd, is_duty_manager=is_dm)
+
+
 # NOTE: /ranks, /field-updates/pending, and /{soldier_id}/duty-history MUST come before /{soldier_id} routes
 @router.get("/ranks")
 def get_ranks(_user: Soldier = Depends(require_password_changed)) -> dict[str, list[str]]:
@@ -464,18 +476,10 @@ def list_all_pending_field_updates(
                 node_name = node.name if node else None
                 include_values = can_see_private(session, user, s)
                 nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
-                if upd.field_name in {"rank", "rank_track", "is_officer", "next_rank_date"}:
-                    can_approve = rank_advancement_edit_authorized(
-                        session, user=user, target_node=node
-                    )
-                else:
-                    decide_action = (
-                        Action.MILITARY_LICENSE_DECIDE if upd.field_name == "military_driving_license" else Action.SOLDIER_UPDATE
-                    )
-                    can_approve = can(
-                        user, decide_action, target_node=node, roots=roots,
-                        is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
-                    )
+                can_approve = _field_update_can_approve(
+                    session, user=user, roots=roots, is_cmd=user_is_commander, is_dm=user_is_duty_manager,
+                    node=node, field_name=upd.field_name,
+                )
                 result.append(
                     _fu_out(
                         upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
@@ -523,9 +527,14 @@ def count_pending_field_updates(
         s = soldiers_by_id.get(upd.soldier_id)
         if s:
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
-            if can(
-                user, Action.SOLDIER_READ, target_node=node, roots=roots,
-                is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+            # Counting mere read-visibility (as opposed to _field_update_can_approve)
+            # would overcount: a commander can see every field update in scope but
+            # structurally can't act on most of them (Action.SOLDIER_UPDATE is
+            # duty-manager-only) — that used to inflate this count, and the nav
+            # badge it feeds, with cards the viewer could never approve.
+            if _field_update_can_approve(
+                session, user=user, roots=roots, is_cmd=user_is_commander, is_dm=user_is_duty_manager,
+                node=node, field_name=upd.field_name,
             ):
                 total += 1
     return {"count": total}
@@ -650,14 +659,8 @@ def update(
 ) -> SoldierOut:
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
-    if body.hierarchy_node_id is not None and body.hierarchy_node_id != s.hierarchy_node_id:
-        dest_node = session.get(HierarchyNode, body.hierarchy_node_id)
-        if dest_node is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="destination_node_not_found")
-        authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
     svc.update_soldier(
-        session, soldier=s, full_name=body.full_name, phone=body.phone,
-        hierarchy_node_id=body.hierarchy_node_id, actor_id=user.id
+        session, soldier=s, full_name=body.full_name, phone=body.phone, actor_id=user.id
     )
     if body.enrolled_at is not None:
         old_enrolled_at = s.enrolled_at

@@ -80,7 +80,7 @@ export async function softDeleteSoldier(id: string, leftAt: string): Promise<voi
 
 export async function updateSoldier(
   id: string,
-  input: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null }
+  input: { full_name?: string; phone?: string | null; enrolled_at?: string | null }
 ): Promise<SoldierDTO> {
   return (await api.patch<SoldierDTO>(`/soldiers/${id}`, input)).data;
 }

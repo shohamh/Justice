@@ -11,7 +11,8 @@ import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { fetchTree } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
-import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
+import { SoldierDTO, listSoldiers, onboardSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
+import { createTransferRequest } from "../api/hierarchyTransfers";
 import TelegramBadge from "../components/TelegramBadge";
 import { usePortfolioDialog } from "../hooks/usePortfolioDialog";
 import { translateApiError } from "../utils/translateApiError";
@@ -47,7 +48,11 @@ export default function TeamHierarchyPage() {
     e.preventDefault();
     const existing = soldiers.find((s) => s.personal_number === pn && !s.left_at);
     if (existing) {
-      await updateSoldier(existing.id, { hierarchy_node_id: nodeId || null });
+      // Assigning an existing soldier to this node goes through the
+      // hierarchy-transfer request flow (pending the destination's
+      // approval), not a direct update — see HierarchyTree's handleQuickAdd
+      // for the same pattern. No node selected means nothing to request.
+      if (nodeId) await createTransferRequest(existing.id, nodeId);
       setPn(""); setName(""); setNodeId("");
     } else {
       try {

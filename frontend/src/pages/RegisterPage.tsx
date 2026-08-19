@@ -345,7 +345,7 @@ export default function RegisterPage() {
                     rank: selection.rank,
                     rank_track: selection.rankTrack,
                     is_officer: selection.rankTrack !== "enlisted",
-                    last_alal_date: selection.rankTrack !== "enlisted" ? prev.last_alal_date : "",
+                    last_alal_date: selection.rankTrack !== "enlisted" || isCareer ? prev.last_alal_date : "",
                   }));
                 }}
                 placeholder="בחר"
@@ -359,7 +359,7 @@ export default function RegisterPage() {
                 {deriveBahad1Graduate(form.rank) && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה&quot;ד 1</span>}
               </div>
             )}
-            {form.is_officer && (
+            {(form.is_officer || isCareer) && (
               <label className="block text-sm">אל&quot;ל אחרון
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form.last_alal_date} onChange={iso => set("last_alal_date", iso)} />

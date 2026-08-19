@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
+import { createTransferRequest } from "../api/hierarchyTransfers";
 import { translateApiError } from "../utils/translateApiError";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
 import Combobox from "./Combobox";
@@ -117,6 +118,26 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     profileRank !== (soldierData.rank ?? "") ||
     profileRankTrack !== (soldierData.rank_track ?? (soldierData.is_officer ? "officer" : "enlisted"));
   const nextRankDateDirty = nextRankDate !== (soldierData.next_rank_date ?? "");
+  const genderDirty = profileGender !== (soldierData.gender ?? "");
+  const enlistmentDirty = profileEnlistment !== (soldierData.enlistment_date ?? "");
+  const mandEndDirty = profileMandEnd !== (soldierData.mandatory_end_date ?? "");
+  const dischargeDirty = profileDischarge !== (soldierData.discharge_date ?? "");
+  const mitvahimDirty = profileMitvahim !== (soldierData.last_mitvahim_date ?? "");
+  const alalDirty = profileAlal !== (soldierData.last_alal_date ?? "");
+  const emailDirty = profileEmail !== (soldierData.email ?? "");
+  const pictureDirty = profilePictureUrl !== (soldierData.profile_picture_url ?? "");
+  const licenseDirty =
+    profileHasLicense !== (soldierData.has_military_driving_license ?? false) ||
+    (profileHasLicense && profileLicenseExpiry !== (soldierData.military_driving_license_expiry ?? ""));
+  // Gates both the Save button and handleProfileSave: a click that changed
+  // nothing (opened the editor and immediately saved, or edited a field then
+  // reverted it) must not fire a PATCH — the backend writes an audit entry
+  // unconditionally for whatever's in the payload, so a no-op save would
+  // otherwise log a misleading "changed" entry for every field it sent.
+  const profileDirty =
+    genderDirty || enlistmentDirty || mandEndDirty || dischargeDirty || mitvahimDirty || alalDirty ||
+    emailDirty || pictureDirty || licenseDirty ||
+    (soldierData.can_edit_rank_advancement && (rankFieldsDirty || nextRankDateDirty));
 
   const mandatoryEndBeforeEnlistmentError = profileMandEnd && profileEnlistment && profileMandEnd < profileEnlistment
     ? t("register.mandatory_end_before_enlistment")
@@ -148,14 +169,20 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     e.preventDefault();
     setSaving(true);
     try {
-      const data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null } = {};
+      const data: { full_name?: string; phone?: string | null; enrolled_at?: string | null } = {};
       if (fullName !== soldierData.full_name) data.full_name = fullName;
       if (phone !== (soldierData.phone ?? "")) data.phone = phone || null;
-      if (hierarchyNodeId !== (soldierData.hierarchy_node_id ?? "")) data.hierarchy_node_id = hierarchyNodeId || null;
       if (enrolledAt !== (soldierData.enrolled_at ?? "")) data.enrolled_at = enrolledAt || null;
       if (Object.keys(data).length > 0) {
         const updated = await updateSoldier(soldierData.id, data);
         setSoldierData(updated);
+      }
+      // Moving to a different hierarchy node goes through the transfer-request
+      // flow, not this ordinary profile PATCH: the destination commander/duty
+      // manager must approve it (Action.HIERARCHY_TRANSFER), unlike full_name/
+      // phone/enrolled_at which only need Action.SOLDIER_UPDATE on the source.
+      if (hierarchyNodeId && hierarchyNodeId !== (soldierData.hierarchy_node_id ?? "")) {
+        await createTransferRequest(soldierData.id, hierarchyNodeId);
       }
       setEditing(false);
       onRefresh();
@@ -168,11 +195,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     e.preventDefault();
     if (isCommander) return;  // UI hides button, but guard against keyboard submit
     if (mandatoryEndBeforeEnlistmentError) return;
+    if (!profileDirty) { setEditing(false); onClose(); return; }
     setSavingProfile(true);
     setProfileError(null);
     try {
       await updateSoldierProfile(soldierData.id, {
-        gender: profileGender || null,
+        ...(genderDirty ? { gender: profileGender || null } : {}),
         // Rank-advancement fields are omitted entirely (not just left unchanged)
         // when the user isn't authorized to edit them — the backend authorizes
         // by which fields are present in the request body, so including them
@@ -188,15 +216,17 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         ...(soldierData.can_edit_rank_advancement && nextRankDateDirty ? {
           next_rank_date: nextRankDate || null,
         } : {}),
-        enlistment_date: profileEnlistment || null,
-        mandatory_end_date: profileMandEnd || null,
-        discharge_date: profileDischarge || null,
-        last_mitvahim_date: profileMitvahim || null,
-        ...(soldierData.is_officer ? { last_alal_date: profileAlal || null } : {}),
-        ...(isAdmin ? { email: profileEmail || null } : {}),
-        profile_picture_url: profilePictureUrl || null,
-        has_military_driving_license: profileHasLicense,
-        military_driving_license_expiry: profileHasLicense ? (profileLicenseExpiry || null) : null,
+        ...(enlistmentDirty ? { enlistment_date: profileEnlistment || null } : {}),
+        ...(mandEndDirty ? { mandatory_end_date: profileMandEnd || null } : {}),
+        ...(dischargeDirty ? { discharge_date: profileDischarge || null } : {}),
+        ...(mitvahimDirty ? { last_mitvahim_date: profileMitvahim || null } : {}),
+        ...(soldierData.is_officer && alalDirty ? { last_alal_date: profileAlal || null } : {}),
+        ...(isAdmin && emailDirty ? { email: profileEmail || null } : {}),
+        ...(pictureDirty ? { profile_picture_url: profilePictureUrl || null } : {}),
+        ...(licenseDirty ? {
+          has_military_driving_license: profileHasLicense,
+          military_driving_license_expiry: profileHasLicense ? (profileLicenseExpiry || null) : null,
+        } : {}),
       });
       onRefresh();
       onClose();
@@ -209,6 +239,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
   async function handleRankSave(e: FormEvent) {
     e.preventDefault();
+    if (!rankFieldsDirty && !nextRankDateDirty) { setRankEditing(false); return; }
     setSavingProfile(true);
     setProfileError(null);
     try {
@@ -397,6 +428,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   placeholder="—"
                   testId="edit-soldier-node"
                 />
+                {hierarchyNodeId && hierarchyNodeId !== (soldierData.hierarchy_node_id ?? "") && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t("team.move_requires_approval")}</p>
+                )}
               </label>
               {(() => {
                 const nodeMap = new Map(nodes.map((n) => [n.id, n]));
@@ -540,7 +574,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {profileError && <p className="text-red-500 text-xs">{profileError}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => { setProfileError(null); setRankEditing(false); }}>{t("team.cancel")}</button>
-              <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile} data-testid="rank-correction-submit">{t("duty_config.save")}</button>
+              <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile || (!rankFieldsDirty && !nextRankDateDirty)} data-testid="rank-correction-submit">{t("duty_config.save")}</button>
             </div>
           </form>
         )}
@@ -643,7 +677,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {!isCommander && (
               <div className="flex justify-end gap-2">
                 <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => { setProfileError(null); setEditing(false); }}>{t("team.cancel")}</button>
-                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile || !!mandatoryEndBeforeEnlistmentError}>{t("duty_config.save")}</button>
+                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile || !profileDirty || !!mandatoryEndBeforeEnlistmentError}>{t("duty_config.save")}</button>
               </div>
             )}
           </form>

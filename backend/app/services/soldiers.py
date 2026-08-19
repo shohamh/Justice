@@ -165,22 +165,25 @@ def update_soldier(
     soldier: Soldier,
     full_name: str | None,
     phone: str | None,
-    hierarchy_node_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> Soldier:
+    """Update a soldier's basic profile fields.
+
+    Deliberately does not accept hierarchy_node_id: moving a soldier between
+    hierarchy nodes must go through app.services.hierarchy_transfers, which
+    requires destination-side approval (Action.HIERARCHY_TRANSFER) rather than
+    the broader Action.SOLDIER_UPDATE this route otherwise checks. A prior
+    version let hierarchy_node_id ride along with an ordinary profile edit,
+    silently moving the soldier without ever creating an approvable request.
+    """
     before: dict[str, Any] = {
         "full_name": soldier.full_name,
         "phone": soldier.phone,
-        "hierarchy_node_id": str(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None,
     }
     if full_name is not None:
         soldier.full_name = full_name
     if phone is not None:
         soldier.phone = phone
-    if hierarchy_node_id is not None:
-        if session.get(HierarchyNode, hierarchy_node_id) is None:
-            raise SoldierError("hierarchy_node_not_found")
-        soldier.hierarchy_node_id = hierarchy_node_id
     write_audit(
         session,
         actor_id=actor_id,
@@ -191,7 +194,6 @@ def update_soldier(
         after={
             "full_name": soldier.full_name,
             "phone": soldier.phone,
-            "hierarchy_node_id": str(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None,
         },
     )
     return soldier
