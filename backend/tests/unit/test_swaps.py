@@ -237,6 +237,36 @@ def test_cover_offer_no_approval_notifies_both_sides(admin_session):
         assert notif is not None
 
 
+def test_cover_offer_accepts_draft_duty_in_offered_assignment_ids(admin_session):
+    """The offeror's counter-offer duties are stored as-is with no ownership
+    or status validation today; a draft (algorithm_draft) duty in their own
+    schedule must still be offerable as a trade candidate."""
+    a, b, assignment = _seed(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=a.id, open_to_marketplace=True,
+    )
+    dt = DutyType(name="שמירה-swap-draft", score_per_day=1)
+    loc = DutyLocation(name="עמדה-swap-draft")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    draft_assignment = DutyAssignment(
+        soldier_id=b.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 20), end_date=date(2026, 6, 21), status="algorithm_draft",
+    )
+    admin_session.add(draft_assignment)
+    admin_session.flush()
+
+    updated = svc.cover_offer(
+        admin_session, swap_id=req.id, covering_soldier_id=b.id,
+        offered_assignment_ids=[draft_assignment.id],
+    )
+
+    candidate = _candidate(admin_session, updated.id, b.id)
+    assert candidate is not None
+    assert candidate.offered_assignment_ids == [str(draft_assignment.id)]
+
+
 def test_reject_request_notifies_covering_soldier(admin_session):
     # See test_reject_sets_status_and_no_override — needs a real commander
     # chain so the request is still "open" (rejectable) when reject_request
