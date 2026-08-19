@@ -250,3 +250,14 @@ describe("MyRequestsPage - inline audit history", () => {
     expect(auditLogsApi.listAuditLogs).toHaveBeenCalledWith("personal_constraint", "c1");
   });
 });
+
+describe("MyRequestsPage - retraction through pending_duty_manager", () => {
+  it("shows the cancel button for a constraint pending duty-manager approval", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      { ...constraint, status: "pending_duty_manager" },
+    ]);
+    renderPage();
+    const row = await screen.findByTestId("constraint-row-c1");
+    expect(within(row).getByTestId("cancel-c1")).toBeTruthy();
+  });
+});

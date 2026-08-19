@@ -230,12 +230,11 @@ export default function MyRequestsPage() {
                     <DaysBadge start={c.start_date} end={c.end_date} />
                     <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                     {statusBadge(c.status)}
-                    {/* Only the first approval step (pending_commander) is cancelable —
-                        see cancel_constraint in backend/app/services/constraints.py.
-                        Once it reaches pending_duty_manager it can no longer be
-                        withdrawn unilaterally, so hide the button to avoid a call
+                    {/* Either pending step is cancelable — see cancel_constraint
+                        in backend/app/services/constraints.py. Once approved or
+                        rejected it's final, so hide the button to avoid a call
                         that would 400. */}
-                    {(c.status === "pending" || c.status === "pending_commander") && (
+                    {(c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager") && (
                       <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
                         {t("my_requests.cancel")}
                       </button>
