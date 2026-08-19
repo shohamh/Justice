@@ -6,6 +6,10 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "u-manager", role: "duty_manager", can_apply_commander_exemption_immediately: true } }),
+}));
+
 vi.mock("../api/dutyConfig", () => ({
   listExemptionTypes: vi.fn(() => Promise.resolve([])),
   getAllExemptionDutyTypeMaps: vi.fn(() => Promise.resolve({})),

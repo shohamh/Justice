@@ -16,7 +16,7 @@ from app.services import enrollment as svc
 from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
 from app.services.notifications import create_notification
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
-from app.services.authority import rank_advancement_edit_authorized
+from app.services.authority import RankAdvancementEditScope, rank_advancement_edit_authorized
 from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
@@ -70,6 +70,7 @@ class EnrollmentRequestOut(BaseModel):
     rank_track: str | None = None
     is_officer: bool | None = None
     is_career: bool = False
+    can_edit_rank_advancement: bool = False
     gender: str | None = None
     enlistment_date: str | None = None
     mandatory_end_date: str | None = None
@@ -166,12 +167,15 @@ def _nearest_approvers_for_node(
 
 
 def _soldier_to_out(
+    session: Session,
     r: SoldierEnrollmentRequest,
     s: Soldier,
     node_name: str | None,
     exemptions: list[ExemptionRequest],
     nearest_commander: NearestApproverOut | None = None,
     nearest_duty_manager: NearestApproverOut | None = None,
+    *,
+    rank_scope: RankAdvancementEditScope,
 ) -> EnrollmentRequestOut:
     return EnrollmentRequestOut(
         id=r.id, soldier_id=r.soldier_id,
@@ -182,6 +186,9 @@ def _soldier_to_out(
         status=r.status, decided_by=r.decided_by, decision_note=r.decision_note,
         phone=s.phone, email=s.email, rank=s.rank,
         is_officer=s.is_officer, rank_track=s.rank_track, is_career=s.is_career,
+        can_edit_rank_advancement=rank_scope.authorized(
+            session.get(HierarchyNode, r.requested_node_id),
+        ),
         gender=s.gender,
         enlistment_date=s.enlistment_date.isoformat() if s.enlistment_date else None,
         mandatory_end_date=s.mandatory_end_date.isoformat() if s.mandatory_end_date else None,
@@ -205,7 +212,7 @@ def _soldier_to_out(
 
 
 def _load_reqs(
-    session: Session, reqs: list[SoldierEnrollmentRequest]
+    session: Session, reqs: list[SoldierEnrollmentRequest], *, user: Soldier
 ) -> list[EnrollmentRequestOut]:
     if not reqs:
         return []
@@ -232,6 +239,7 @@ def _load_reqs(
     ).scalars().all():
         exemptions_by_enrollment.setdefault(er.enrollment_request_id, []).append(er)
 
+    rank_scope = RankAdvancementEditScope(session, user=user)
     result = []
     for r in reqs:
         s = soldiers.get(r.soldier_id)
@@ -241,8 +249,9 @@ def _load_reqs(
         nearest_commander, nearest_duty_manager = _nearest_approvers_for_node(session, r.requested_node_id)
         result.append(
             _soldier_to_out(
-                r, s, node_name, exemptions_by_enrollment.get(r.id, []),
+                session, r, s, node_name, exemptions_by_enrollment.get(r.id, []),
                 nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+                rank_scope=rank_scope,
             )
         )
     return result
@@ -262,7 +271,7 @@ def list_pending(
     else:
         roots = scope_root_ids(session, user)
         reqs = svc.list_pending_for_node_ids(session, roots)
-    return _load_reqs(session, list(reqs))
+    return _load_reqs(session, list(reqs), user=user)
 
 
 @router.patch("/{request_id}", response_model=EnrollmentRequestOut)
@@ -393,9 +402,11 @@ def patch_enrollment(
     ).scalars().all()
     node = session.get(HierarchyNode, req.requested_node_id)
     nearest_commander, nearest_duty_manager = _nearest_approvers_for_node(session, req.requested_node_id)
+    rank_scope = RankAdvancementEditScope(session, user=user)
     return _soldier_to_out(
-        req, s, node.name if node else None, list(exemptions),
+        session, req, s, node.name if node else None, list(exemptions),
         nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+        rank_scope=rank_scope,
     )
 
 

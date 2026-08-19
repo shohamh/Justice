@@ -269,14 +269,23 @@ def authorize(
 ) -> None:
     """Raise 403 unless `user` may perform `action` against `target_node`'s subtree."""
     roots = scope_root_ids(session, user)
-    if not can(
+    allowed = can(
         user,
         action,
         target_node=target_node,
         roots=roots,
         is_commander=is_commander(session, user.id),
         is_duty_manager=is_duty_manager(session, user.id),
-    ):
+    )
+    if not allowed and action == Action.SOLDIER_DELETE and is_commander(session, user.id):
+        # SOLDIER_DELETE for commanders needs a system_settings lookup
+        # (minimum commanded level) that can()'s session-free signature can't
+        # perform, so it's authorized here via a bespoke helper instead of
+        # through _COMMANDER_ACTIONS — same pattern as
+        # commander_can_grant_commander_exemption.
+        from app.services.authority import commander_delete_soldier_authorized
+        allowed = commander_delete_soldier_authorized(session, user=user, target_node=target_node)
+    if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
 

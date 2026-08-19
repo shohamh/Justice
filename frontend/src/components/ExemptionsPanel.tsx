@@ -9,6 +9,7 @@ import {
   approveExemptionRequestDutyManagerStep, rejectExemptionRequest,
 } from "../api/exemptions";
 import { formatDate, isDateRangeValid } from "../utils/formatDate";
+import { useAuth } from "../auth/AuthContext";
 import Combobox from "./Combobox";
 import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
 import { DaysBadge } from "./DaysBadge";
@@ -17,6 +18,8 @@ import DateInput from "../components/DateInput";
 
 export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyManagerStep }: { soldierId: string; canManage: boolean; canApproveDutyManagerStep: boolean }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const canApplyImmediately = user?.role === "admin" || (user?.can_apply_commander_exemption_immediately ?? false);
   const [items, setItems] = useState<Exemption[]>([]);
   const [types, setTypes] = useState<ExemptionType[]>([]);
   const [dutyTypeMap, setDutyTypeMap] = useState<Record<string, string[]>>({});
@@ -356,6 +359,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
           commanderExemptionTypes={commanderExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
           officialExemptionTypes={officialExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
           onGranted={() => { void refresh(); void refreshRequests(); }}
+          canApplyImmediately={canApplyImmediately}
         />
       )}
 

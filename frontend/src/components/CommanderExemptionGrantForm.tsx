@@ -8,10 +8,11 @@ interface Props {
   commanderExemptionTypes: { id: string; name: string }[];
   officialExemptionTypes: { id: string; name: string }[];
   onGranted: () => void;
+  canApplyImmediately: boolean;
 }
 
 export default function CommanderExemptionGrantForm({
-  soldierId, commanderExemptionTypes, officialExemptionTypes, onGranted,
+  soldierId, commanderExemptionTypes, officialExemptionTypes, onGranted, canApplyImmediately,
 }: Props) {
   const [typeId, setTypeId] = useState(commanderExemptionTypes[0]?.id ?? "");
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
@@ -19,7 +20,10 @@ export default function CommanderExemptionGrantForm({
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [escalate, setEscalate] = useState(false);
+  // Only a qualifying DM/admin may skip escalation entirely (the plain direct
+  // grant is now restricted server-side to them); everyone else must always
+  // escalate, so default (and force, via the render gate below) accordingly.
+  const [escalate, setEscalate] = useState(!canApplyImmediately);
   const [officialTypeId, setOfficialTypeId] = useState(officialExemptionTypes[0]?.id ?? "");
   const [applyImmediately, setApplyImmediately] = useState(false);
 
@@ -55,7 +59,7 @@ export default function CommanderExemptionGrantForm({
           reason,
           apply_immediately: applyImmediately,
         });
-      } else {
+      } else if (canApplyImmediately) {
         await grantCommanderExemption(soldierId, {
           exemption_type_id: typeId,
           start_date: startDate,
@@ -87,15 +91,17 @@ export default function CommanderExemptionGrantForm({
       <DateInput value={endDate} onChange={v => setEndDate(v)} min={startDate || undefined} className="border rounded p-1 w-full" data-testid="commander-exemption-end" />
       <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="סיבה (חובה)" className="border rounded p-1 w-full" data-testid="commander-exemption-reason" />
 
-      <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={escalate}
-          onChange={(e) => setEscalate(e.target.checked)}
-          data-testid="commander-exemption-escalate-checkbox"
-        />
-        העלה לאישור מפקד תורנויות כפטור רשמי
-      </label>
+      {canApplyImmediately && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={escalate}
+            onChange={(e) => setEscalate(e.target.checked)}
+            data-testid="commander-exemption-escalate-checkbox"
+          />
+          העלה לאישור מפקד תורנויות כפטור רשמי
+        </label>
+      )}
 
       {escalate && (
         <div className="space-y-2 pr-4 border-r-2 border-indigo-200">
@@ -109,15 +115,17 @@ export default function CommanderExemptionGrantForm({
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={applyImmediately}
-              onChange={(e) => setApplyImmediately(e.target.checked)}
-              data-testid="commander-exemption-apply-immediately-checkbox"
-            />
-            החל את הפטור הפיקודי מיידית (בנוסף לבקשה)
-          </label>
+          {canApplyImmediately && (
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={applyImmediately}
+                onChange={(e) => setApplyImmediately(e.target.checked)}
+                data-testid="commander-exemption-apply-immediately-checkbox"
+              />
+              החל את הפטור הפיקודי מיידית (בנוסף לבקשה)
+            </label>
+          )}
         </div>
       )}
 

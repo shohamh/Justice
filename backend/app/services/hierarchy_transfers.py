@@ -58,11 +58,20 @@ def create_request(
 def _notify_destination_approvers(session: Session, req: HierarchyTransferRequest) -> None:
     from app.db.models import DutyManagerScope, HierarchyNode
     node = session.get(HierarchyNode, req.to_node_id)
+    if node is None or not node.path_ids:
+        return
+    ancestor_ids = node.path_ids
     approver_ids: set[uuid.UUID] = set()
-    if node and node.commander_id:
-        approver_ids.add(node.commander_id)
+    ancestor_nodes = session.execute(
+        select(HierarchyNode).where(HierarchyNode.id.in_(ancestor_ids))
+    ).scalars().all()
+    for n in ancestor_nodes:
+        if n.commander_id:
+            approver_ids.add(n.commander_id)
     dm_rows = session.execute(
-        select(DutyManagerScope.duty_manager_id).where(DutyManagerScope.hierarchy_node_id == req.to_node_id)
+        select(DutyManagerScope.duty_manager_id).where(
+            DutyManagerScope.hierarchy_node_id.in_(ancestor_ids)
+        )
     ).scalars().all()
     approver_ids.update(dm_rows)
     for approver_id in approver_ids:
@@ -125,12 +134,23 @@ def list_pending_for_approver(session: Session, *, approver_id: uuid.UUID) -> li
     dm_nodes = session.execute(
         select(DutyManagerScope.hierarchy_node_id).where(DutyManagerScope.duty_manager_id == approver_id)
     ).scalars().all()
-    node_ids = set(commanded_nodes) | set(dm_nodes)
-    if not node_ids:
+    root_ids = set(commanded_nodes) | set(dm_nodes)
+    if not root_ids:
         return []
-    return list(session.execute(
-        select(HierarchyTransferRequest).where(
-            HierarchyTransferRequest.to_node_id.in_(node_ids),
-            HierarchyTransferRequest.status == "pending",
-        )
+    pending = list(session.execute(
+        select(HierarchyTransferRequest).where(HierarchyTransferRequest.status == "pending")
     ).scalars())
+    if not pending:
+        return []
+    to_node_ids = {r.to_node_id for r in pending}
+    nodes_by_id = {
+        n.id: n
+        for n in session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(to_node_ids))
+        ).scalars().all()
+    }
+    return [
+        r for r in pending
+        if (node := nodes_by_id.get(r.to_node_id)) is not None
+        and any(root_id in node.path_ids for root_id in root_ids)
+    ]

@@ -469,3 +469,58 @@ def test_pending_exemption_flags_dm_below_minimum_level_as_unable_to_approve(cli
     items = [i for i in r.json() if i["id"] == str(req.id)]
     assert len(items) == 1
     assert items[0]["can_approve_duty_manager_step"] is False
+
+
+def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):
+    from app.db.models import ExemptionType
+    from app.services.settings_loader import set_setting
+    # Pin the base commander-exemption-grant min-level setting to this test's
+    # own level ("group") so the commander would have passed the OLD
+    # commander_can_grant_commander_exemption gate — otherwise, with no
+    # setting row seeded, the hardcoded fallback key "מדור" cannot resolve
+    # against this test's "group" level and the 403 is unattributable to the
+    # removed commander branch (see comment in
+    # test_dm_at_merkaz_can_use_direct_commander_exemption_route below).
+    set_setting(admin_session, "exemptions.commander_exemption_min_level", "group", actor_id=None)
+    et = ExemptionType(name="פטור-ישיר-1", is_commander_exemption=True)
+    admin_session.add(et)
+    admin_session.commit()
+    admin_session.refresh(et)
+    cmd = create_soldier(admin_session, personal_number="9900001", role="commander")
+    root = create_node(admin_session, level="group", name="direct_grant_root", commander_id=cmd.id)
+    target = create_soldier(admin_session, personal_number="9900002", hierarchy_node_id=root.id)
+    admin_session.commit()
+
+    resp = client.post(
+        f"/api/soldiers/{target.id}/exemptions/commander-exemption",
+        headers=auth_headers(cmd),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "x"},
+    )
+    assert resp.status_code == 403
+
+
+def test_dm_at_merkaz_can_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):
+    from app.db.models import DutyManagerScope, ExemptionType
+    from app.services.settings_loader import set_setting
+    et = ExemptionType(name="פטור-ישיר-2", is_commander_exemption=True)
+    admin_session.add(et)
+    admin_session.commit()
+    admin_session.refresh(et)
+    # The default hierarchy levels seeded for tests use English keys ("department")
+    # with Hebrew labels ("מרכז") — the fallback default of the min-level setting is
+    # the Hebrew label, which never matches a key, so pin the setting explicitly to
+    # the key that matches the level used below (mirrors the pattern established by
+    # the commander-delete-gate tests in test_soldiers_api.py).
+    set_setting(admin_session, "exemptions.commander_escalation_min_level", "department", actor_id=None)
+    dm = create_soldier(admin_session, personal_number="9900003", role="duty_manager")
+    root = create_node(admin_session, level="department", name="direct_grant_root2")
+    admin_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=root.id))
+    target = create_soldier(admin_session, personal_number="9900004", hierarchy_node_id=root.id)
+    admin_session.commit()
+
+    resp = client.post(
+        f"/api/soldiers/{target.id}/exemptions/commander-exemption",
+        headers=auth_headers(dm),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "x"},
+    )
+    assert resp.status_code == 201, resp.text
