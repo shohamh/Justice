@@ -56,6 +56,7 @@ export interface UpcomingAssignment {
   shift_id: string | null;
   node_name: string;
   is_reserve: boolean;
+  status: string;
 }
 
 export interface UpcomingDay {

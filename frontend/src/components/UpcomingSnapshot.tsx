@@ -19,7 +19,7 @@ function formatDate(dateStr: string) {
   return { weekday, dayMonth: `${day}.${month}` };
 }
 
-function Badge({ a, onSelect }: { a: UpcomingAssignment; onSelect: (a: UpcomingAssignment) => void }) {
+function Badge({ a, onSelect, t }: { a: UpcomingAssignment; onSelect: (a: UpcomingAssignment) => void; t: (key: string) => string }) {
   return (
     <button
       onClick={() => onSelect(a)}
@@ -27,6 +27,11 @@ function Badge({ a, onSelect }: { a: UpcomingAssignment; onSelect: (a: UpcomingA
         a.is_reserve ? "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800" : "bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600"
       }`}
     >
+      {a.status === "algorithm_draft" && (
+        <span className="mr-1 px-1 rounded bg-blue-100 text-blue-800" data-testid={`draft-badge-${a.assignment_id}`}>
+          {t("duty_history.draft_badge")}
+        </span>
+      )}
       {a.soldier_name || a.duty_type_id?.slice(0, 6) || "?"}
     </button>
   );
@@ -86,7 +91,7 @@ export default function UpcomingSnapshot({ data }: Props) {
               {day.assignments.length === 0 ? (
                 <span className="text-xs text-gray-400">{t("command_dashboard.none")}</span>
               ) : (
-                day.assignments.map((a) => <Badge key={a.assignment_id} a={a} onSelect={setSelected} />)
+                day.assignments.map((a) => <Badge key={a.assignment_id} a={a} onSelect={setSelected} t={t} />)
               )}
             </div>
             <span className="text-xs text-gray-500 dark:text-gray-400">{day.assignments.length}</span>

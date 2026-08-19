@@ -35,3 +35,37 @@ def test_potential_counts_no_soldiers():
     assert len(result) == 5
     for item in result:
         assert item["count"] == 0
+
+
+def test_upcoming_route_includes_status_field_for_draft(client, admin_session):
+    from datetime import date, timedelta
+    from decimal import Decimal
+    from app.db.models import DutyAssignment, DutyLocation, DutyType
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    node = create_node(admin_session, level="unit", name="upcoming_route_draft_test")
+    cmd = create_soldier(admin_session, personal_number="7940101", role="commander")
+    node.commander_id = cmd.id
+    soldier = create_soldier(admin_session, personal_number="7940102", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_upcoming_route_draft", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_upcoming_route_draft")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+            status="algorithm_draft",
+        )
+    )
+    admin_session.commit()
+
+    r = client.get("/api/command-dashboard/upcoming", headers=auth_headers(cmd))
+    assert r.status_code == 200
+    all_assignments = [a for day in r.json() for a in day["assignments"]]
+    assert len(all_assignments) == 1
+    assert all_assignments[0]["status"] == "algorithm_draft"

@@ -140,7 +140,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
     upcoming_assignments = (
         session.execute(
             select(DutyAssignment).where(
-                DutyAssignment.status == "published",
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
                 DutyAssignment.soldier_id.in_(soldier_ids),
                 DutyAssignment.start_date <= next_week,
                 DutyAssignment.end_date > today,
@@ -302,7 +302,7 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
     assignments = (
         session.execute(
             select(DutyAssignment).where(
-                DutyAssignment.status == "published",
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
                 DutyAssignment.soldier_id.in_(soldier_ids),
                 DutyAssignment.start_date <= end,
                 DutyAssignment.end_date >= today,
@@ -350,6 +350,7 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
                     "shift_id": str(a.duty_shift_id) if a.duty_shift_id else None,
                     "node_name": node.name if node else "",
                     "is_reserve": a.is_reserve,
+                    "status": a.status,
                 }
             )
             d += timedelta(days=1)

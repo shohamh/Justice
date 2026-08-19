@@ -84,10 +84,38 @@ const data: UpcomingDay[] = [
         shift_id: "shift-1",
         node_name: "ספקטרה",
         is_reserve: false,
+        status: "published",
       },
     ],
   },
 ];
+
+function makeDraftDay(status: string): UpcomingDay[] {
+  return [
+    {
+      date: "2026-08-20",
+      assignments: [
+        {
+          assignment_id: "a1",
+          soldier_id: "s1",
+          soldier_name: "חייל בדיקה",
+          duty_type_id: "dt1",
+          duty_type_name: "שמירה",
+          duty_location_id: "loc1",
+          duty_location_name: "שער",
+          start_date: "2026-08-20",
+          end_date: "2026-08-21",
+          start_time: "08:00",
+          end_time: "08:00",
+          shift_id: null,
+          node_name: "יחידה",
+          is_reserve: false,
+          status,
+        },
+      ],
+    },
+  ];
+}
 
 beforeEach(() => {
   mockNavigate.mockReset();
@@ -162,5 +190,25 @@ describe("UpcomingSnapshot soldier modal", () => {
     fireEvent.click(screen.getByText("דני כהן"));
     fireEvent.click(screen.getByText("שחרור פיקודי"));
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("UpcomingSnapshot draft badge", () => {
+  it("shows a draft badge for an algorithm_draft assignment", () => {
+    render(
+      <MemoryRouter>
+        <UpcomingSnapshot data={makeDraftDay("algorithm_draft")} />
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("draft-badge-a1")).toBeInTheDocument();
+  });
+
+  it("shows no draft badge for a published assignment", () => {
+    render(
+      <MemoryRouter>
+        <UpcomingSnapshot data={makeDraftDay("published")} />
+      </MemoryRouter>
+    );
+    expect(screen.queryByTestId("draft-badge-a1")).not.toBeInTheDocument();
   });
 });

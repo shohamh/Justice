@@ -74,6 +74,7 @@ class UpcomingAssignment(BaseModel):
     shift_id: uuid.UUID | None
     node_name: str
     is_reserve: bool
+    status: str
 
 
 class UpcomingDay(BaseModel):
