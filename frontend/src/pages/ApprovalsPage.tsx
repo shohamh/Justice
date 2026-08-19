@@ -802,7 +802,7 @@ export default function ApprovalsPage() {
               return (
                 <div key={req.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
-                    <strong><SoldierLink id={req.soldier_id} name={req.soldier_id.slice(0, 8)} /></strong>
+                    <strong><SoldierLink id={req.soldier_id} name={req.soldier_name || req.soldier_id.slice(0, 8)} /></strong>
                   </div>
                   <p className="text-gray-500">{t("approvals.transfer_from")}: <strong>{fromNodeName}</strong> ← {t("approvals.transfer_to")}: <strong>{toNodeName}</strong></p>
                   <div className="flex gap-2 items-center flex-wrap">

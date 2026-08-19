@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, forbid_self_target
@@ -27,15 +28,16 @@ class DecisionBody(BaseModel):
 class TransferOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
+    soldier_name: str
     from_node_id: uuid.UUID | None
     to_node_id: uuid.UUID
     status: str
 
 
-def _out(req: HierarchyTransferRequest) -> TransferOut:
+def _out(req: HierarchyTransferRequest, soldier_name: str) -> TransferOut:
     return TransferOut(
-        id=req.id, soldier_id=req.soldier_id, from_node_id=req.from_node_id,
-        to_node_id=req.to_node_id, status=req.status,
+        id=req.id, soldier_id=req.soldier_id, soldier_name=soldier_name,
+        from_node_id=req.from_node_id, to_node_id=req.to_node_id, status=req.status,
     )
 
 
@@ -55,7 +57,7 @@ def create_transfer(
     except svc.HierarchyTransferError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     session.commit()
-    return _out(req)
+    return _out(req, soldier.full_name)
 
 
 @router.post("/{request_id}/approve", response_model=TransferOut)
@@ -68,6 +70,7 @@ def approve_transfer(
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     forbid_self_target(user, req.soldier_id)
+    soldier = session.get(Soldier, req.soldier_id)
     dest_node = session.get(HierarchyNode, req.to_node_id)
     authorize(session, user, Action.HIERARCHY_TRANSFER, target_node=dest_node)
     try:
@@ -75,7 +78,7 @@ def approve_transfer(
     except svc.HierarchyTransferError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     session.commit()
-    return _out(req)
+    return _out(req, soldier.full_name if soldier else "")
 
 
 @router.post("/{request_id}/reject", response_model=TransferOut)
@@ -89,6 +92,7 @@ def reject_transfer(
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     forbid_self_target(user, req.soldier_id)
+    soldier = session.get(Soldier, req.soldier_id)
     dest_node = session.get(HierarchyNode, req.to_node_id)
     authorize(session, user, Action.HIERARCHY_TRANSFER, target_node=dest_node)
     try:
@@ -96,7 +100,7 @@ def reject_transfer(
     except svc.HierarchyTransferError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     session.commit()
-    return _out(req)
+    return _out(req, soldier.full_name if soldier else "")
 
 
 @router.get("/pending", response_model=list[TransferOut])
@@ -104,4 +108,10 @@ def list_pending(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[TransferOut]:
-    return [_out(r) for r in svc.list_pending_for_approver(session, approver_id=user.id)]
+    reqs = svc.list_pending_for_approver(session, approver_id=user.id)
+    soldier_ids = {r.soldier_id for r in reqs}
+    names = {
+        s.id: s.full_name
+        for s in session.execute(select(Soldier).where(Soldier.id.in_(soldier_ids))).scalars()
+    } if soldier_ids else {}
+    return [_out(r, names.get(r.soldier_id, "")) for r in reqs]

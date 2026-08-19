@@ -1,7 +1,9 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import DismissalModal from "./DismissalModal";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
+import { GimelimPreview, previewGimelim } from "../api/gimelim";
+import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
@@ -54,11 +56,13 @@ const primary: CalendarShiftAssignee = {
   weapon_ineligible_reason: null,
 };
 
-function renderModal() {
+function renderModal(canGimelim = false) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <DismissalModal shift={shift} primary={primary} canGimelim={false} defaultRestDays={0} onClose={() => {}} onDone={() => {}} />
+      <SoldierModalProvider>
+        <DismissalModal shift={shift} primary={primary} canGimelim={canGimelim} defaultRestDays={0} onClose={() => {}} onDone={() => {}} />
+      </SoldierModalProvider>
     </QueryClientProvider>
   );
 }
@@ -77,4 +81,38 @@ test("prompts for the end date after the start day is picked", () => {
   expect(dayButtons.length).toBeGreaterThan(0);
   fireEvent.click(dayButtons[0]);
   expect(screen.getByText("בחר תאריך סיום")).toBeInTheDocument();
+});
+
+test("shows the current shift's last inclusive duty day, not its raw exclusive end_date, in the gimelim preview", async () => {
+  const preview: GimelimPreview = {
+    preview_token: "tok1",
+    preview_token_expires_at: "2026-08-10T00:00:00Z",
+    current_shift: {
+      shift_id: "s1",
+      duty_type_name: "duty",
+      duty_location_name: "loc",
+      start_date: "2026-08-01",
+      end_date: "2026-08-05",
+    },
+    soldier_a: { id: "sol1", name: "Soldier One", rank: null },
+    primary_assignment_id: "a1",
+    reserve_assignment_id: "ra1",
+    reserve_soldier: { id: "sol2", name: "Soldier Two", rank: null },
+    future_assignment: null,
+    warnings: [],
+  };
+  vi.mocked(previewGimelim).mockResolvedValueOnce(preview);
+
+  renderModal(true);
+  fireEvent.click(screen.getByText("dismiss_modal.mode_gimelim"));
+  fireEvent.change(screen.getByPlaceholderText("פרטים רפואיים (לא מועברים לחיילים אחרים)"), {
+    target: { value: "reason" },
+  });
+  fireEvent.click(screen.getByText("חשב הצעה ⟶"));
+
+  await waitFor(() => {
+    expect(screen.getByText(/2026-08-01/)).toBeInTheDocument();
+  });
+  expect(screen.getByText(/2026-08-04/)).toBeInTheDocument();
+  expect(screen.queryByText(/2026-08-05/)).not.toBeInTheDocument();
 });

@@ -90,6 +90,14 @@ describe("MyRequestsPage - day-count badges", () => {
     expect(within(row).getByText("(5 ימים)")).toBeTruthy();
   });
 
+  it("renders the constraint date range in start-then-end order, not reversed", async () => {
+    renderPage();
+    const row = await screen.findByTestId("constraint-row-c1");
+    // This row renders raw ISO dates (unlike ExemptionsPanel's DD.MM.YYYY
+    // formatting), so assert on the ISO order instead.
+    expect(row.textContent).toMatch(/2026-01-01[\s\S]*2026-01-05/);
+  });
+
   it("shows a day-count badge next to an exemption-request row", async () => {
     renderPage();
     await screen.findByText("y");
