@@ -99,6 +99,35 @@ def test_eligible_duties_no_exemption(client, admin_session):
     assert match["eligible"] is True
 
 
+def test_eligible_duties_includes_draft_assignment(client, admin_session):
+    node = create_node(admin_session, level="branch", name="n_et_draft_001")
+    actor = create_soldier(admin_session, personal_number="et_draft_actor_001", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number="et_draft_target_001", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_et_draft_001", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="loc_et_draft_001")
+    admin_session.add(dt); admin_session.add(loc); admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=actor.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date="2030-03-10",
+        end_date="2030-03-10",
+        status="algorithm_draft",
+    )
+    admin_session.add(assignment); admin_session.flush()
+    admin_session.commit()
+
+    resp = client.get(
+        f"/api/swaps/eligible-duties?target_soldier_id={target.id}",
+        headers=auth_headers(actor),
+    )
+    assert resp.status_code == 200
+    results = resp.json()
+    match = next((r for r in results if r["assignment_id"] == str(assignment.id)), None)
+    assert match is not None
+    assert match["eligible"] is True
+
+
 def test_eligible_duties_exemption(client, admin_session):
     actor, target, dt, assignment = _setup(admin_session, "002")
 
