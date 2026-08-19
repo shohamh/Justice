@@ -17,6 +17,7 @@ vi.mock("react-i18next", () => ({
       "command_dashboard.upcoming": "קרוב",
       "command_dashboard.calendar": "יומן",
       "command_dashboard.soldiers": "חיילים",
+      "command_dashboard.soldiers_panel_title": "רשימת חיילים",
       "command_dashboard.soldiers_count": "{{count}} חיילים בפיקוד",
       "command_dashboard.go_to_team": "מעבר לניהול הצוות",
       "command_dashboard.entries_exits": "כניסות ויציאות",

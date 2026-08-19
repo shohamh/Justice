@@ -722,7 +722,7 @@
     "title": "ניהול משמרות",
     "create": "משמרת חדשה",
     "edit": "עריכת משמרת",
-    "delete": "מחיקת משמרת",
+    "delete": "מחק",
     "duty_type": "סוג תורנות",
     "location": "מיקום",
     "start_date": "תאריך התחלה",
@@ -767,7 +767,6 @@
     "cancelled": "מבוטל",
     "cancel": "ביטול",
     "activate": "הפעל מחדש",
-    "delete": "מחק",
     "delete_tooltip": "מחיקה קבועה — נדיר. לביטול בלבד יש להשתמש ב׳ביטול׳.",
     "actions": "פעולות",
     "save": "שמור",
@@ -977,7 +976,8 @@
   "command_dashboard": {
     "title": "דף מפקד",
     "calendar": "יומן יחידה",
-    "soldiers": "רשימת חיילים",
+    "soldiers": "חיילים",
+    "soldiers_panel_title": "רשימת חיילים",
     "soldiers_count": "{{count}} חיילים בפיקוד",
     "go_to_team": "מעבר לניהול הצוות",
     "internal_fairness": "מדדי הוגנות פנימיים",
@@ -1005,7 +1005,6 @@
     "stddev": "סטיית תקן",
     "min": "מינימום",
     "max": "מקסימום",
-    "soldiers": "חיילים",
     "unit": "יחידה",
     "no_peers": "אין יחידות מקבילות להשוואה",
     "no_potential_data": "אין נתוני פוטנציאל",
@@ -1531,5 +1530,19 @@
     "tabs": {
       "transparency_sub_units": "תתי יחידות"
     }
+  },
+  "audit_history": {
+    "show": "הצג היסטוריה",
+    "hide": "הסתר היסטוריה",
+    "none": "אין היסטוריה",
+    "system": "מערכת",
+    "action_exemption.grant": "פטור הוענק",
+    "action_exemption.grant_commander": "פטור מפקד הוענק",
+    "action_exemption.revoke": "פטור בוטל",
+    "action_constraint.submit": "בקשת אילוץ הוגשה",
+    "action_constraint.approve_commander_step": "אושר על ידי מפקד",
+    "action_constraint.approve_duty_manager_step": "אושר סופית",
+    "action_constraint.reject": "נדחה",
+    "action_constraint.cancel": "אילוץ בוטל"
   }
 }

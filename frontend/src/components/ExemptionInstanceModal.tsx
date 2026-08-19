@@ -4,6 +4,7 @@ import { ExemptionDetail, getExemptionDetail } from "../api/exemptions";
 import { formatDate } from "../utils/formatDate";
 import { DaysBadge } from "./DaysBadge";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import AuditHistoryBlock from "./AuditHistoryBlock";
 
 interface Props {
   soldierId: string;
@@ -71,6 +72,7 @@ export default function ExemptionInstanceModal({ soldierId, exemptionId, onClose
                 <span className="font-medium">{t("exemptions.granted_by")}:</span> {detail.granted_by_name}
               </p>
             )}
+            <AuditHistoryBlock entityType="soldier_exemption" entityId={exemptionId} />
           </div>
         )}
       </div>

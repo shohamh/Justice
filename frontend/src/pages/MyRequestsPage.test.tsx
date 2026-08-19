@@ -5,6 +5,7 @@ import MyRequestsPage from "./MyRequestsPage";
 import * as constraintsApi from "../api/constraints";
 import * as exemptionsApi from "../api/exemptions";
 import * as dutyConfigApi from "../api/dutyConfig";
+import * as auditLogsApi from "../api/auditLogs";
 import { useAuth } from "../auth/AuthContext";
 
 vi.mock("react-i18next", () => ({
@@ -14,6 +15,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("../api/constraints");
 vi.mock("../api/exemptions");
 vi.mock("../api/dutyConfig");
+vi.mock("../api/auditLogs");
 vi.mock("../auth/AuthContext");
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -67,6 +69,7 @@ beforeEach(() => {
   vi.mocked(dutyConfigApi.listExemptionTypes).mockResolvedValue([]);
   vi.mocked(dutyConfigApi.getAllExemptionDutyTypeMaps).mockResolvedValue({});
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
+  vi.mocked(auditLogsApi.listAuditLogs).mockResolvedValue([]);
 });
 
 function renderPage() {
@@ -210,5 +213,32 @@ describe("MyRequestsPage - permanent exemption checkbox", () => {
     expect(screen.getByTestId("er-start")).not.toBeDisabled();
     expect(screen.getByTestId("er-end")).not.toBeDisabled();
     expect(screen.getByTestId("er-end")).toBeRequired();
+  });
+});
+
+describe("MyRequestsPage - inline audit history", () => {
+  it("renders an audit-history toggle for the pending constraint row", async () => {
+    renderPage();
+    const row = await screen.findByTestId("constraint-row-c1");
+    expect(within(row).getByTestId("audit-history-toggle-c1")).toBeInTheDocument();
+    expect(auditLogsApi.listAuditLogs).not.toHaveBeenCalled();
+  });
+
+  it("fetches history for that constraint on expand", async () => {
+    vi.mocked(auditLogsApi.listAuditLogs).mockResolvedValue([
+      {
+        id: "log-9", action: "constraint.submit", actor_id: "sol-1", actor_name: "A",
+        entity_type: "personal_constraint", entity_id: "c1",
+        before: null, after: { soldier_id: "sol-1" }, context: null,
+        created_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    renderPage();
+    const row = await screen.findByTestId("constraint-row-c1");
+    fireEvent.click(within(row).getByTestId("audit-history-toggle-c1"));
+    await waitFor(() =>
+      expect(within(row).getByTestId("audit-history-entry-log-9")).toBeInTheDocument()
+    );
+    expect(auditLogsApi.listAuditLogs).toHaveBeenCalledWith("personal_constraint", "c1");
   });
 });

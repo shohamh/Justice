@@ -24,6 +24,7 @@ from app.routes import auth as auth_routes
 from app.routes import calendar as calendar_routes
 from app.routes import calendar_holidays as calendar_holidays_routes
 from app.routes import constraints as constraint_routes
+from app.routes import audit_logs as audit_log_routes
 from app.routes import duty_config as duty_config_routes
 from app.routes import exemption_requests as exemption_request_routes
 from app.routes import exemptions as exemption_routes
@@ -178,6 +179,7 @@ def create_app() -> FastAPI:
     app.include_router(duty_config_routes.router, prefix="/api")
     app.include_router(exemption_routes.router, prefix="/api")
     app.include_router(exemption_request_routes.router, prefix="/api")
+    app.include_router(audit_log_routes.router, prefix="/api")
     app.include_router(score_adjustment_routes.router, prefix="/api")
     app.include_router(scoring_routes.router, prefix="/api")
     app.include_router(calendar_routes.router, prefix="/api")

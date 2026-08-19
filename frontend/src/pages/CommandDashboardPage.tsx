@@ -175,7 +175,7 @@ export default function CommandDashboardPage() {
     },
     {
       id: "soldiers",
-      title: t("command_dashboard.soldiers"),
+      title: t("command_dashboard.soldiers_panel_title"),
       content: (
         <div data-testid="soldiers-summary">
           <p className="text-sm text-gray-600 dark:text-gray-300">
