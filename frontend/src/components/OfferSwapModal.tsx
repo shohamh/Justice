@@ -66,7 +66,7 @@ export default function OfferSwapModal({
     if (!user) return;
     const today = new Date().toISOString().slice(0, 10);
     Promise.all([
-      listEffectiveDuties(user.id, { date_from: today }),
+      listEffectiveDuties(user.id, { date_from: today, for_swap: true }),
       listDutyTypes().catch(() => [] as DutyType[]),
       listMySwaps().catch(() => [] as SwapRequest[]),
     ]).then(([duties, dts, mySwaps]) => {
