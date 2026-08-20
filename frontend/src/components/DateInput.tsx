@@ -87,6 +87,18 @@ export default function DateInput({
   }
 
   function handleTextChange(raw: string, deleting = false) {
+    // Programmatic value assignment (e.g. autofill or a test driving the
+    // field via a raw change event) may hand us an already-ISO value
+    // directly, rather than the dd/mm/yyyy digits a human would type.
+    // Detect that shape up front so it commits as-is instead of being
+    // misread as freeform digit entry.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      setText(isoToDisplay(raw));
+      rawDigitsRef.current = isoToDigits(raw);
+      isTypingRef.current = false;
+      commit(raw);
+      return;
+    }
     const typedDigits = raw.replace(/\D/g, "");
     const previousDigits = rawDigitsRef.current;
     // A six-digit date is displayed with an implied four-digit year (e.g.

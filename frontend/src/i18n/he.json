@@ -178,6 +178,22 @@
     "waiting_for": "ממתין לאישור",
     "waiting_for_rank_authority": "מוסמך/ת לעדכון דרגות"
   },
+  "deputies": {
+    "title": "ממלאי מקום",
+    "add": "הוסף ממלא מקום",
+    "search_soldier_placeholder": "חיפוש חייל...",
+    "role_commander": "מפקד",
+    "role_duty_manager": "אחראי תורנויות",
+    "start_date": "מתאריך",
+    "end_date": "עד תאריך",
+    "no_deputies": "אין ממלאי מקום מוגדרים",
+    "revoke": "הסר",
+    "revoke_confirm": "להסיר את ממלא המקום?",
+    "active_badge": "פעיל",
+    "future_badge": "עתידי",
+    "expired_badge": "פג תוקף",
+    "role_label": "תפקיד"
+  },
   "duty_config": {
     "title": "הגדרות תורנויות",
     "duty_types": "סוגי תורנויות",
