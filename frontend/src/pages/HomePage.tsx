@@ -316,6 +316,7 @@ export default function HomePage() {
           locationNames={locationNames}
           myRow={myRow}
           allRows={transparencyRows}
+          canViewTransparency={user?.can_view_transparency !== false}
         />
 
         {/* Reserve days this month */}
