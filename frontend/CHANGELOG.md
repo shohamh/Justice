@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-20 (2)
+
+### Features
+- A soldier's last-מטווח and last-אל"ל dates now update automatically from real range attendance (marking present advances the date; correcting a mismarked attendance recomputes it), so eligibility checks and the home-page expiry banner reflect actual attendance instead of only manually-entered dates.
+- Soldiers and their commander chain now get a proactive notification as a מטווחים/אל"ל qualification approaches or passes expiry, catching up correctly after a missed daily cycle and never duplicating.
+- Announcements now show the sender's name to recipients.
+
 ## 2026-08-20
 
 ### Features
