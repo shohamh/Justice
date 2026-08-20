@@ -870,3 +870,51 @@ def notify_rank_advancement_soon(
         title=f"קידום צפוי לדרגת {new_rank} בתאריך {effective_date.strftime('%d.%m.%Y')}",
         actor_id=actor_id,
     )
+
+
+def notify_mitvahim_expiring_soon(
+    session: Session, *, soldier_id: uuid.UUID, expiry_date: date, actor_id: uuid.UUID | None = None
+) -> None:
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.mitvahim_expiring_soon,
+        title=f"תוקף המטווחים פג בתאריך {expiry_date.strftime('%d.%m.%Y')}",
+        actor_id=actor_id,
+    )
+
+
+def notify_mitvahim_expired(
+    session: Session, *, soldier_id: uuid.UUID, actor_id: uuid.UUID | None = None
+) -> None:
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.mitvahim_expired,
+        title="תוקף המטווחים פג",
+        actor_id=actor_id,
+    )
+
+
+def notify_alal_expiring_soon(
+    session: Session, *, soldier_id: uuid.UUID, expiry_date: date, actor_id: uuid.UUID | None = None
+) -> None:
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.alal_expiring_soon,
+        title=f'תוקף האל"ל פג בתאריך {expiry_date.strftime("%d.%m.%Y")}',
+        actor_id=actor_id,
+    )
+
+
+def notify_alal_expired(
+    session: Session, *, soldier_id: uuid.UUID, actor_id: uuid.UUID | None = None
+) -> None:
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.alal_expired,
+        title='תוקף האל"ל פג',
+        actor_id=actor_id,
+    )
