@@ -22,14 +22,25 @@ from app.db.models import (
 _SUPPRESSION_MIN_REMAINING_DAYS = 90
 
 
-def _alal_duty_types(session: Session, *, node: HierarchyNode) -> list[DutyType]:
-    alal_duty_types = session.execute(
+def active_alal_duty_types(session: Session) -> list[DutyType]:
+    """All active DutyTypes requiring an אל"ל range qualification, regardless of
+    hierarchy scope. Callers checking many soldiers in one pass (e.g. a daily
+    worker scanning the whole roster) should fetch this once and pass it to
+    `is_alal_relevant` via `active_alal_duty_types=`, instead of letting each
+    call re-run this query."""
+    return session.execute(
         select(DutyType).where(
             DutyType.required_range_type == RangeType.alal, DutyType.active.is_(True),
         )
     ).scalars().all()
+
+
+def _alal_duty_types(
+    session: Session, *, node: HierarchyNode, all_active: list[DutyType] | None = None,
+) -> list[DutyType]:
+    duty_types = all_active if all_active is not None else active_alal_duty_types(session)
     return [
-        duty_type for duty_type in alal_duty_types
+        duty_type for duty_type in duty_types
         if node_in_scope(duty_type.eligible_node_ids, node.path_ids)
     ]
 
@@ -74,7 +85,9 @@ def _is_suppressed_by_exemption(
     return all(duty_type.id in covered_duty_type_ids for duty_type in alal_duty_types)
 
 
-def is_alal_relevant(session: Session, soldier: Soldier) -> bool:
+def is_alal_relevant(
+    session: Session, soldier: Soldier, *, active_alal_duty_types: list[DutyType] | None = None,
+) -> bool:
     """True iff soldier's hierarchy node is structurally in scope for any active
     DutyType requiring required_range_type == alal, AND the soldier isn't
     exempt from all of them for the foreseeable future (see
@@ -87,13 +100,19 @@ def is_alal_relevant(session: Session, soldier: Soldier) -> bool:
     The underlying queries are cheap and scoped to the soldier's single
     hierarchy node, and /me already performs several queries per request, so
     querying fresh here costs little.
+
+    `active_alal_duty_types` is an optional escape hatch for callers checking
+    many soldiers in one pass (e.g. a daily worker scanning the whole roster):
+    pass the result of `active_alal_duty_types(session)` fetched once up front
+    to skip re-running that query for every soldier. Single-soldier callers
+    (like /me) should omit it.
     """
     if soldier.hierarchy_node_id is None:
         return False
     node = session.get(HierarchyNode, soldier.hierarchy_node_id)
     if node is None:
         return False
-    alal_duty_types = _alal_duty_types(session, node=node)
+    alal_duty_types = _alal_duty_types(session, node=node, all_active=active_alal_duty_types)
     if not alal_duty_types:
         return False
     return not _is_suppressed_by_exemption(
