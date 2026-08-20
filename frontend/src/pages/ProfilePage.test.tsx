@@ -25,6 +25,14 @@ vi.mock("../api/soldiers", () => ({
   listFieldUpdates: vi.fn(() => Promise.resolve([])),
   getRanks: vi.fn(() => Promise.resolve({ enlisted: [], officers: [], officer_academic: [] })),
   submitFieldUpdate: vi.fn(),
+  // DeputiesPanel (rendered on ProfilePage for commanders/duty managers)
+  // fetches the soldier list for its deputy picker.
+  listSoldiers: vi.fn(() => Promise.resolve([])),
+}));
+vi.mock("../api/deputies", () => ({
+  listDeputies: vi.fn(() => Promise.resolve([])),
+  createDeputy: vi.fn(),
+  revokeDeputy: vi.fn(),
 }));
 vi.mock("../api/auth", () => ({
   setEmail: vi.fn(),

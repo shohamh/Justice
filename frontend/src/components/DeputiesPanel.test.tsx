@@ -1,8 +1,27 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import DeputiesPanel from "./DeputiesPanel";
 
+// A tiny stand-in dict for keys this suite needs resolved to their real
+// translated text (e.g. so translateApiError's error-code mapping is
+// actually exercised, not just its fallback path). Any key not present
+// here falls through to the fallback/defaultValue behaviour the other
+// tests in this file already rely on, matching real i18next's
+// t(key, defaultValueString) shorthand.
+const dict: Record<string, string> = {
+  "errors.principal_lacks_role": "החייל שנבחר אינו מפקד/אחראי תורנויות כרגע",
+};
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
+  useTranslation: () => ({
+    t: (key: string, fallbackOrOptions?: string | { defaultValue?: string }) => {
+      if (key in dict) return dict[key];
+      if (typeof fallbackOrOptions === "string") return fallbackOrOptions;
+      if (fallbackOrOptions && typeof fallbackOrOptions === "object") {
+        return fallbackOrOptions.defaultValue ?? key;
+      }
+      return key;
+    },
+  }),
 }));
 
 const mockListDeputies = vi.fn();
@@ -80,4 +99,21 @@ test("role select is shown when principal holds both roles", async () => {
   render(<DeputiesPanel principalId="p1" principalRoles={{ isCommander: true, isDutyManager: true }} />);
   await screen.findByText("יוסי כהן");
   expect(screen.getByLabelText("תפקיד")).toBeInTheDocument();
+});
+
+test("shows the specific backend error reason instead of a generic message", async () => {
+  mockCreateDeputy.mockRejectedValue({
+    response: { data: { detail: "principal_lacks_role" } },
+  });
+  render(<DeputiesPanel principalId="p1" principalRoles={{ isCommander: true, isDutyManager: false }} />);
+  await screen.findByText("יוסי כהן");
+
+  fireEvent.change(screen.getByPlaceholderText("חיפוש חייל..."), { target: { value: "יוסי" } });
+  fireEvent.click(await screen.findByText(/יוסי כהן/));
+  fireEvent.click(screen.getByText("הוסף ממלא מקום"));
+
+  await waitFor(() =>
+    expect(screen.getByText("החייל שנבחר אינו מפקד/אחראי תורנויות כרגע")).toBeInTheDocument()
+  );
+  expect(screen.queryByText("שגיאה")).not.toBeInTheDocument();
 });

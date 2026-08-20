@@ -4,6 +4,7 @@ import Fuse from "fuse.js";
 import { DeputyDTO, createDeputy, listDeputies, revokeDeputy } from "../api/deputies";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import DateInput from "./DateInput";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   principalId: string;
@@ -72,8 +73,8 @@ export default function DeputiesPanel({ principalId, principalRoles }: Props) {
       setSelectedDeputyId("");
       setSearchText("");
       await refresh();
-    } catch {
-      setError(t("errors.generic", "שגיאה"));
+    } catch (err) {
+      setError(translateApiError(err, t, t("errors.generic", "שגיאה")));
     }
   }
 
