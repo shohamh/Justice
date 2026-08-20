@@ -540,6 +540,37 @@ def _direct_commander_id(session: Session, soldier_id: uuid.UUID) -> uuid.UUID |
     return chain[0] if chain else None
 
 
+_MITVAHIM_RANGE_TYPES = (RangeType.laser, RangeType.live)
+
+
+def _profile_date_field_for_range_type(range_type: str) -> str:
+    return "last_alal_date" if range_type == RangeType.alal else "last_mitvahim_date"
+
+
+def _sync_profile_date_on_present(soldier: Soldier, *, range_type: str, event_date: date) -> None:
+    field = _profile_date_field_for_range_type(range_type)
+    current = getattr(soldier, field)
+    if current is None or event_date > current:
+        setattr(soldier, field, event_date)
+
+
+def _resync_profile_date_on_reversal(session: Session, *, soldier: Soldier, assignment: RangeAssignment, range_type: str) -> None:
+    field = _profile_date_field_for_range_type(range_type)
+    types = (RangeType.alal,) if range_type == RangeType.alal else _MITVAHIM_RANGE_TYPES
+    latest = session.execute(
+        select(func.max(RangeEvent.date))
+        .join(RangeAssignment, RangeAssignment.range_event_id == RangeEvent.id)
+        .where(
+            RangeAssignment.soldier_id == soldier.id,
+            RangeAssignment.attendance_status == RangeAttendanceStatus.present,
+            RangeEvent.range_type.in_(types),
+            RangeAssignment.id != assignment.id,
+        )
+    ).scalar_one_or_none()
+    if latest is not None:
+        setattr(soldier, field, latest)
+
+
 def mark_attendance(
     session: Session, *, assignment: RangeAssignment, status: RangeAttendanceStatus,
     marked_by: uuid.UUID | None = None, note: str | None = None,
@@ -554,6 +585,7 @@ def mark_attendance(
     if event.date > date.today():
         raise RangeValidationError("event_not_yet_occurred")
 
+    soldier = session.get(Soldier, assignment.soldier_id)
     previous_status = assignment.attendance_status
     note_required = status == RangeAttendanceStatus.no_show or (
         previous_status != RangeAttendanceStatus.pending and status != previous_status
@@ -591,6 +623,7 @@ def mark_attendance(
         assignment.score_adjustment_id = None
     if previous_status == RangeAttendanceStatus.present:
         _delete_qualification_from_this_assignment(session, assignment=assignment)
+        _resync_profile_date_on_reversal(session, soldier=soldier, assignment=assignment, range_type=event.range_type)
 
     # Apply the new side effect.
     if status == RangeAttendanceStatus.present:
@@ -599,6 +632,7 @@ def mark_attendance(
             session, soldier_id=assignment.soldier_id, range_type=event.range_type,
             valid_until=valid_until, source_range_assignment_id=assignment.id,
         )
+        _sync_profile_date_on_present(soldier, range_type=event.range_type, event_date=event.date)
         if present_correction:
             commander_id = _direct_commander_id(session, assignment.soldier_id)
             _range_notification(
