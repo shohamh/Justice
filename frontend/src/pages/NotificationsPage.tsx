@@ -109,6 +109,7 @@ export default function NotificationsPage() {
                     <p className={`${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`}>{n.title}</p>
                   )}
                   {n.body && <p className="text-sm text-gray-500 dark:text-gray-400">{n.body}</p>}
+                  {n.sender_name && <p className="text-xs text-gray-400 mt-0.5">{t("notifications.sent_by", { name: n.sender_name })}</p>}
                   <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleString("he-IL")}</p>
                 </div>
                 <div className="flex gap-1">

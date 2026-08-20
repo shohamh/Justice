@@ -11,6 +11,7 @@ export interface NotificationDTO {
   is_read: boolean;
   created_at: string;
   metadata: Record<string, unknown> | null;
+  sender_name?: string | null;
 }
 
 
