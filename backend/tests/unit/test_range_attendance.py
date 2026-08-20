@@ -430,3 +430,139 @@ def test_auto_mark_uses_none_marked_by(app_session: Session) -> None:
 
     assert updated.marked_by is None
     assert updated.attendance_status == RangeAttendanceStatus.present
+
+
+def test_mark_present_advances_last_mitvahim_date(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    event_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=event_date)
+    soldier.last_mitvahim_date = event_date - timedelta(days=200)
+    app_session.flush()
+
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == event_date
+
+
+def test_mark_present_does_not_move_last_mitvahim_date_backward(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    event_date = date.today() - timedelta(days=30)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=event_date)
+    newer_manual_date = date.today() - timedelta(days=1)
+    soldier.last_mitvahim_date = newer_manual_date
+    app_session.flush()
+
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == newer_manual_date
+
+
+def test_mark_present_advances_last_alal_date_for_alal_range_type(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.alal_validity_days": 365}, actor_id=None)
+    event_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=event_date, range_type=RangeType.alal)
+
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+    app_session.refresh(soldier)
+    assert soldier.last_alal_date == event_date
+    assert soldier.last_mitvahim_date is None
+
+
+def test_reversal_recomputes_last_mitvahim_date_from_remaining_present_attendance(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    earlier_date = date.today() - timedelta(days=30)
+    later_date = date.today() - timedelta(days=1)
+    node = create_node(app_session, level="פלוגה", name="פלוגה-reversal")
+    weapon_duty = DutyType(
+        name="שמירה עם נשק reversal", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+    soldier = create_soldier(app_session, personal_number="5900010", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="מטווח reversal")
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=earlier_date, range_location_id=location.id, required_count=1,
+    )
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=later_date, range_location_id=location.id, required_count=1,
+    )
+    earlier_assignment = add_range_assignment(app_session, event=earlier_event, soldier_id=soldier.id, is_reserve=False)
+    later_assignment = add_range_assignment(app_session, event=later_event, soldier_id=soldier.id, is_reserve=False)
+    mark_attendance(app_session, assignment=earlier_assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    mark_attendance(app_session, assignment=later_assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == later_date
+
+    mark_attendance(
+        app_session, assignment=later_assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=soldier.id, note="תיקון",
+    )
+
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == earlier_date
+
+
+def test_reversal_leaves_date_untouched_when_no_present_attendance_remains(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    event_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=event_date)
+    manual_date = date.today() - timedelta(days=500)
+    soldier.last_mitvahim_date = manual_date
+    app_session.flush()
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == event_date  # advanced past the manual value
+
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=soldier.id, note="תיקון",
+    )
+
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == event_date  # no remaining present attendance -> left untouched
+
+
+def test_synced_mitvahim_date_satisfies_legacy_eligibility_check(app_session: Session) -> None:
+    """Regression test for the actual point of this feature: a date synced from
+    real range attendance must be read by the existing legacy eligibility check
+    exactly like a manually-entered date would be."""
+    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    event_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=event_date)
+    reqs = DutyTypeRequirements(requires_mitvahim=True)
+
+    assert _is_eligible(soldier, reqs, mitvahim_months=6, alal_months=3, today=date.today()) is False
+
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    app_session.refresh(soldier)
+
+    assert _is_eligible(soldier, reqs, mitvahim_months=6, alal_months=3, today=date.today()) is True
+
+
+def test_reversal_does_not_overwrite_a_newer_manually_entered_date(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    event_date = date.today() - timedelta(days=30)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=event_date)
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == event_date
+
+    manual_newer_date = date.today() - timedelta(days=1)
+    soldier.last_mitvahim_date = manual_newer_date  # admin manually overrides with a newer date from an off-system range
+    app_session.flush()
+
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=soldier.id, note="תיקון",
+    )
+
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == manual_newer_date  # unrelated reversal must not drag this backward

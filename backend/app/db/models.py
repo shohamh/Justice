@@ -1257,6 +1257,10 @@ class NotificationType(str, _enum.Enum):
     range_covers_duty_info = "range_covers_duty_info"
     rank_advanced = "rank_advanced"
     rank_advancement_soon = "rank_advancement_soon"
+    mitvahim_expiring_soon = "mitvahim_expiring_soon"
+    mitvahim_expired = "mitvahim_expired"
+    alal_expiring_soon = "alal_expiring_soon"
+    alal_expired = "alal_expired"
 
 
 class Notification(Base):
