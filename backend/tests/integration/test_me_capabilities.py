@@ -86,3 +86,29 @@ def test_me_includes_alal_relevant_flag(client, admin_session) -> None:
 
     assert response.status_code == 200, response.text
     assert response.json()["alal_relevant"] is True
+
+
+def test_me_includes_active_deputy_grants(client: TestClient, admin_session: Session):
+    import uuid
+    from datetime import date, timedelta
+
+    principal = create_soldier(admin_session, personal_number=f"a_{uuid.uuid4().hex[:8]}", role="commander")
+    create_node(admin_session, level="team", name=f"n_{uuid.uuid4().hex[:8]}", commander_id=principal.id)
+    deputy = create_soldier(admin_session, personal_number=f"b_{uuid.uuid4().hex[:8]}")
+    admin_session.commit()
+
+    client.post(
+        "/api/deputies", headers=auth_headers(principal),
+        json={
+            "principal_id": str(principal.id), "deputy_id": str(deputy.id), "role": "commander",
+            "start_date": str(date.today()), "end_date": str(date.today() + timedelta(days=3)),
+        },
+    )
+
+    r = client.get("/api/me", headers=auth_headers(deputy))
+    assert r.status_code == 200
+    grants = r.json()["active_deputy_grants"]
+    assert len(grants) == 1
+    assert grants[0]["principal_id"] == str(principal.id)
+    assert grants[0]["role"] == "commander"
+    assert r.json()["is_commander"] is True
