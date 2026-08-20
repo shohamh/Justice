@@ -10,6 +10,7 @@ import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectCo
 import Combobox from "./Combobox";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
+import DeputiesPanel from "./DeputiesPanel";
 import SoldierLink from "./SoldierLink";
 import DateInput from "../components/DateInput";
 import { useAuth } from "../auth/AuthContext";
@@ -726,6 +727,18 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             canManage={canManage}
             isActive={tab === "duty_history"}
           />
+        )}
+
+        {user?.role === "admin" && (soldierData.role === "commander" || soldierData.role === "duty_manager") && (
+          <div className="mt-4 pt-4 border-t dark:border-gray-600">
+            <DeputiesPanel
+              principalId={soldierData.id}
+              principalRoles={{
+                isCommander: soldierData.role === "commander",
+                isDutyManager: soldierData.role === "duty_manager",
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

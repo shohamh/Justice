@@ -11,6 +11,7 @@ interface Props {
   locationNames: Record<string, string>;
   myRow: TransparencyRow | null;
   allRows: TransparencyRow[];
+  canViewTransparency: boolean;
 }
 
 function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
@@ -18,7 +19,7 @@ function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
   return rows.reduce((s, r) => s + Number(r[key]), 0) / rows.length;
 }
 
-export default function DutyHistoryWidget({ duties, typeNames, locationNames, myRow, allRows }: Props) {
+export default function DutyHistoryWidget({ duties, typeNames, locationNames, myRow, allRows, canViewTransparency }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const today = new Date().toISOString().split("T")[0];
   const past = duties
@@ -42,9 +43,11 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-4" dir="rtl">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">היסטוריית תורנויות</h2>
-        <Link to="/transparency" className="text-sm text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200">
-          לדף השקיפות →
-        </Link>
+        {canViewTransparency && (
+          <Link to="/transparency" className="text-sm text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200">
+            לדף השקיפות →
+          </Link>
+        )}
       </div>
 
       {/* Scoring metrics */}

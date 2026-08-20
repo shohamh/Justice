@@ -255,7 +255,7 @@ def get_pending_exemption_requests(
     if not root_ids:
         return []
 
-    from app.db.models import DutyManagerScope, HierarchyLevelType
+    from app.db.models import HierarchyLevelType
     from app.services.settings_loader import get_setting, SettingNotFound
 
     try:
@@ -264,11 +264,8 @@ def get_pending_exemption_requests(
         min_dm_rank = 0
 
     # Compute the maximum level rank of this user's DM scope nodes
-    user_dm_node_ids = session.execute(
-        select(DutyManagerScope.hierarchy_node_id).where(
-            DutyManagerScope.duty_manager_id == user.id
-        )
-    ).scalars().all()
+    from app.auth.authz import dm_scope_node_ids
+    user_dm_node_ids = dm_scope_node_ids(session, user.id)
     user_max_scope_rank = 0
     for nid in user_dm_node_ids:
         n = session.get(HierarchyNode, nid)

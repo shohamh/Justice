@@ -91,6 +91,19 @@ describe("BugReportCommentsPanel", () => {
     expect(bugReportsApi.listComments).toHaveBeenCalledTimes(2);
   });
 
+  it("sends the comment on Ctrl+Enter without inserting a newline", async () => {
+    vi.mocked(bugReportsApi.createComment).mockResolvedValue({ ...comment, id: "c2" });
+
+    renderPanel();
+
+    const textarea = await screen.findByPlaceholderText("bug_reports.comment_placeholder");
+    fireEvent.change(textarea, { target: { value: "a comment" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() => expect(bugReportsApi.createComment).toHaveBeenCalledWith("r1", "a comment"));
+    expect(textarea).toHaveValue("");
+  });
+
   it("opens an image attachment in a fullscreen preview modal when clicked", async () => {
     if (!URL.createObjectURL) URL.createObjectURL = vi.fn();
     if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();

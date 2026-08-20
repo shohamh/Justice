@@ -225,6 +225,12 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
           placeholder={t("bug_reports.comment_placeholder")}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              void handleSend();
+            }
+          }}
         />
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 dark:text-gray-400">{t("bug_reports.attachment_label")}</label>

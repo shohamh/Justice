@@ -222,6 +222,28 @@ test("rerun-algorithm button is hidden for a new (unsaved) shift", async () => {
   expect(screen.queryByText("shifts.rerun_algorithm")).not.toBeInTheDocument();
 });
 
+test("add-location opens a modal without submitting the shift form", async () => {
+  const { createLocation } = await import("../api/dutyConfig");
+  vi.mocked(createLocation).mockResolvedValueOnce({ id: "l2", name: "loc2" });
+  const onSaved = vi.fn();
+
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={onSaved} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.click(screen.getByText(/shifts\.add_location/));
+  const nameInput = await screen.findByLabelText("duty_config.name");
+  fireEvent.change(nameInput, { target: { value: "loc2" } });
+  fireEvent.click(screen.getByText("duty_config.add"));
+
+  await waitFor(() => expect(createLocation).toHaveBeenCalledWith({ name: "loc2" }));
+  expect(screen.queryByLabelText("duty_config.name")).not.toBeInTheDocument();
+  expect(onSaved).not.toHaveBeenCalled();
+  expect(mockCreateShift).not.toHaveBeenCalled();
+  expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument();
+});
+
 test("rerun-algorithm button submits a job scoped to the existing shift", async () => {
   const { submitJob } = await import("../api/algorithm");
   const existingShift = {

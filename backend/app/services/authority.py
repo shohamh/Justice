@@ -6,7 +6,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyManagerScope, HierarchyNode, Soldier
+from app.db.models import HierarchyNode, Soldier
 from app.services.hierarchy import get_level_rank
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 
@@ -57,6 +57,16 @@ def dm_scope_covers_target(
     return False
 
 
+def _commanded_node_ids_only(session: Session, soldier_id: uuid.UUID) -> set[uuid.UUID]:
+    from app.auth.authz import commanded_node_ids
+    return commanded_node_ids(session, soldier_id)
+
+
+def _dm_scope_node_ids_only(session: Session, soldier_id: uuid.UUID) -> set[uuid.UUID]:
+    from app.auth.authz import dm_scope_node_ids
+    return dm_scope_node_ids(session, soldier_id)
+
+
 def rank_advancement_edit_authorized(
     session: Session, *, user: Soldier, target_node: HierarchyNode | None,
 ) -> bool:
@@ -71,30 +81,14 @@ def rank_advancement_edit_authorized(
         return True
     if target_node is None:
         return False
-    commander_root_ids = set(
-        session.execute(
-            select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
-        ).scalars().all()
-    )
+    commander_root_ids = _commanded_node_ids_only(session, user.id)
     if dm_scope_covers_target(
-        session,
-        scope_root_ids=commander_root_ids,
-        target_node=target_node,
-        required_level_key="מדור",
+        session, scope_root_ids=commander_root_ids, target_node=target_node, required_level_key="מדור",
     ):
         return True
-    duty_manager_root_ids = set(
-        session.execute(
-            select(DutyManagerScope.hierarchy_node_id).where(
-                DutyManagerScope.duty_manager_id == user.id
-            )
-        ).scalars().all()
-    )
+    duty_manager_root_ids = _dm_scope_node_ids_only(session, user.id)
     return dm_scope_covers_target(
-        session,
-        scope_root_ids=duty_manager_root_ids,
-        target_node=target_node,
-        required_level_key="מדור",
+        session, scope_root_ids=duty_manager_root_ids, target_node=target_node, required_level_key="מדור",
     )
 
 
@@ -118,18 +112,8 @@ class RankAdvancementEditScope:
         self._covering_root_ids: set[uuid.UUID] = set()
         if self.is_admin:
             return
-        commander_root_ids = set(
-            session.execute(
-                select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
-            ).scalars().all()
-        )
-        duty_manager_root_ids = set(
-            session.execute(
-                select(DutyManagerScope.hierarchy_node_id).where(
-                    DutyManagerScope.duty_manager_id == user.id
-                )
-            ).scalars().all()
-        )
+        commander_root_ids = _commanded_node_ids_only(session, user.id)
+        duty_manager_root_ids = _dm_scope_node_ids_only(session, user.id)
         all_root_ids = commander_root_ids | duty_manager_root_ids
         if not all_root_ids:
             return
@@ -171,10 +155,7 @@ def range_attendance_edit_authorized(session: Session, *, user: Soldier, target_
     covers target_node. Commanders never qualify, regardless of rank."""
     if user.role == "admin":
         return True
-    dm_scope_rows = session.execute(
-        select(DutyManagerScope).where(DutyManagerScope.duty_manager_id == user.id)
-    ).scalars().all()
-    dm_root_ids = {row.hierarchy_node_id for row in dm_scope_rows}
+    dm_root_ids = _dm_scope_node_ids_only(session, user.id)
     required_level = _range_attendance_edit_min_level(session)
     return dm_scope_covers_target(
         session, scope_root_ids=dm_root_ids, target_node=target_node, required_level_key=required_level,
@@ -189,9 +170,7 @@ def commander_can_grant_commander_exemption(
     mador_rank = get_level_rank(session, _commander_exemption_min_level(session))
     if mador_rank is None:
         return False
-    commanded_nodes = session.execute(
-        select(HierarchyNode).where(HierarchyNode.commander_id == commander_id)
-    ).scalars().all()
+    commanded_nodes = _commanded_nodes(session, commander_id)
     for node in commanded_nodes:
         node_rank = get_level_rank(session, node.level)
         if node_rank is not None and node_rank <= mador_rank:
@@ -225,12 +204,7 @@ def duty_manager_exemption_immediate_apply_authorized(
     Commanders never qualify here, regardless of rank or scope — only DMs
     (and, via the caller's separate admin bypass, admins) may apply a
     commander-exemption grant immediately without DM approval."""
-    dm_root_ids = {
-        row.hierarchy_node_id
-        for row in session.execute(
-            select(DutyManagerScope).where(DutyManagerScope.duty_manager_id == user.id)
-        ).scalars().all()
-    }
+    dm_root_ids = _dm_scope_node_ids_only(session, user.id)
     required_level = _commander_escalation_min_level(session)
     return dm_scope_covers_target(
         session, scope_root_ids=dm_root_ids, target_node=target_node,
@@ -276,11 +250,7 @@ def commander_delete_soldier_authorized(
     """True iff `user` commands a node at `soldiers.commander_delete_min_level`
     (default מדור) or above (closer to root) whose subtree contains
     `target_node`."""
-    commander_root_ids = set(
-        session.execute(
-            select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
-        ).scalars().all()
-    )
+    commander_root_ids = _commanded_node_ids_only(session, user.id)
     required_level = _commander_delete_min_level(session)
     return dm_scope_covers_target(
         session, scope_root_ids=commander_root_ids, target_node=target_node,
@@ -297,9 +267,7 @@ def has_any_commander_delete_scope(session: Session, *, user: Soldier) -> bool:
     required_rank = get_level_rank(session, _commander_delete_min_level(session))
     if required_rank is None:
         return False
-    commanded_nodes = session.execute(
-        select(HierarchyNode).where(HierarchyNode.commander_id == user.id)
-    ).scalars().all()
+    commanded_nodes = _commanded_nodes(session, user.id)
     for node in commanded_nodes:
         node_rank = get_level_rank(session, node.level)
         if node_rank is not None and node_rank <= required_rank:
@@ -322,21 +290,22 @@ def _min_visible_level(session: Session) -> str:
 
 
 def _commanded_nodes(session: Session, soldier_id: uuid.UUID) -> list[HierarchyNode]:
+    from app.auth.authz import commanded_node_ids
+    ids = commanded_node_ids(session, soldier_id)
+    if not ids:
+        return []
     return list(
-        session.execute(
-            select(HierarchyNode).where(HierarchyNode.commander_id == soldier_id)
-        ).scalars().all()
+        session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(ids))).scalars().all()
     )
 
 
 def _dm_scope_nodes(session: Session, soldier_id: uuid.UUID) -> list[HierarchyNode]:
-    root_ids = session.execute(
-        select(DutyManagerScope.hierarchy_node_id).where(DutyManagerScope.duty_manager_id == soldier_id)
-    ).scalars().all()
-    if not root_ids:
+    from app.auth.authz import dm_scope_node_ids
+    ids = dm_scope_node_ids(session, soldier_id)
+    if not ids:
         return []
     return list(
-        session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(root_ids))).scalars().all()
+        session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(ids))).scalars().all()
     )
 
 

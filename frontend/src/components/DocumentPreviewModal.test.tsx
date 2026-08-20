@@ -48,6 +48,43 @@ describe("DocumentPreviewModal", () => {
     expect(link).toHaveAttribute("download", "note.pdf");
   });
 
+  it("zooms an image in on scroll-up and back out on scroll-down", () => {
+    render(
+      <DocumentPreviewModal
+        fileUrl="blob:mock-image"
+        fileName="note.png"
+        contentType="image/png"
+        onClose={() => {}}
+      />
+    );
+    const img = screen.getByRole("img");
+    expect(img).toHaveStyle({ transform: "scale(1)" });
+
+    fireEvent.wheel(img, { deltaY: -200 });
+    expect(img.style.transform).not.toBe("scale(1)");
+    const zoomedIn = img.style.transform;
+
+    fireEvent.wheel(img, { deltaY: 200 });
+    expect(img.style.transform).not.toBe(zoomedIn);
+  });
+
+  it("resets zoom to 1 on double-click", () => {
+    render(
+      <DocumentPreviewModal
+        fileUrl="blob:mock-image"
+        fileName="note.png"
+        contentType="image/png"
+        onClose={() => {}}
+      />
+    );
+    const img = screen.getByRole("img");
+    fireEvent.wheel(img, { deltaY: -500 });
+    expect(img.style.transform).not.toBe("scale(1)");
+
+    fireEvent.doubleClick(img);
+    expect(img).toHaveStyle({ transform: "scale(1)" });
+  });
+
   it("calls onClose when the close button is clicked", () => {
     const onClose = vi.fn();
     render(

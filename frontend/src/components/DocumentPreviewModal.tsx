@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const ZOOM_STEP_PER_PIXEL = 0.0015;
 
 interface Props {
   fileUrl: string;
@@ -16,7 +20,17 @@ interface Props {
 export default function DocumentPreviewModal({ fileUrl, fileName, contentType, onClose }: Props) {
   useModalBackClose(onClose);
   const [numPages, setNumPages] = useState<number | null>(null);
+  const [zoom, setZoom] = useState(1);
   const isPdf = contentType === "application/pdf";
+
+  useEffect(() => {
+    setZoom(1);
+  }, [fileUrl]);
+
+  function handleWheel(e: React.WheelEvent<HTMLImageElement>) {
+    e.preventDefault();
+    setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z - e.deltaY * ZOOM_STEP_PER_PIXEL)));
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={onClose}>
@@ -51,7 +65,16 @@ export default function DocumentPreviewModal({ fileUrl, fileName, contentType, o
             ))}
           </Document>
         ) : (
-          <img src={fileUrl} alt={fileName} className="max-w-full h-auto mx-auto" />
+          <div className="overflow-auto max-h-[75dvh]">
+            <img
+              src={fileUrl}
+              alt={fileName}
+              onWheel={handleWheel}
+              onDoubleClick={() => setZoom(1)}
+              style={{ transform: `scale(${zoom})`, transformOrigin: "center top" }}
+              className="max-w-full h-auto mx-auto cursor-zoom-in"
+            />
+          </div>
         )}
       </div>
     </div>

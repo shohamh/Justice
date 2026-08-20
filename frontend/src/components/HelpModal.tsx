@@ -396,6 +396,16 @@ function FairnessTab() {
         </div>
       </div>
 
+      <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-200 dark:border-gray-700 space-y-2 text-xs text-gray-700 dark:text-gray-300">
+        <p className="font-semibold text-gray-800 dark:text-gray-200">🗓️ מה זה &quot;ימים פעילים&quot; בדף השקיפות?</p>
+        <p>
+          <strong>ניקוד ליום</strong> בדף השקיפות מחושב כ<em>ניקוד מצטבר ÷ ימים פעילים</em>. &quot;ימים פעילים&quot; הם הימים שחלפו מאז שהצטרפת ליחידה, בניכוי ימים שבהם היית פטור לגמרי מתורנויות. זה מדד שונה מה<strong>עומס הרבעוני</strong> שמוסבר למעלה — האלגוריתם עצמו משבץ לפי עומס רבעוני, וניקוד-ליום משמש רק להשוואה מהירה בדף השקיפות.
+        </p>
+        <p>
+          <strong>חייל שבדיוק הצטרף</strong> מתחיל עם מספר ימים פעילים קטן מאוד (מינימום יום אחד) — כך שאפילו תורנות בודדת יכולה להראות ניקוד-ליום גבוה יחסית בימיו הראשונים. זה צפוי ולא מעיד על אי-הוגנות: המספר מתייצב ככל שצוברים עוד ימים פעילים, ובכל מקרה סדר העדיפויות בשיבוץ נקבע על ידי העומס הרבעוני (A/W) ולא על ידי המדד הזה.
+        </p>
+      </div>
+
       {/* Personal breakdown */}
       <div className="bg-green-50 dark:bg-green-950 rounded-xl p-4 border border-green-200 dark:border-green-800 space-y-2">
         <p className="font-semibold text-green-800 dark:text-green-200">🔢 הנתונים שלי</p>

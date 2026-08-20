@@ -172,3 +172,28 @@ def test_create_request_daily_cap_is_per_soldier(admin_session):
     req = create_request(admin_session, soldier_id=s2.id, to_node_id=node.id, requested_by=s2.id)
     admin_session.commit()
     assert req.soldier_id == s2.id
+
+
+def test_list_pending_for_approver_includes_active_deputy(admin_session):
+    import uuid
+    from datetime import date
+    from app.db.models import RoleDeputy
+    from app.services.hierarchy_transfers import create_request, list_pending_for_approver
+    from tests.helpers import create_node, create_soldier
+
+    dest = create_node(admin_session, level="group", name=f"dest_{uuid.uuid4().hex[:8]}")
+    principal = create_soldier(admin_session, personal_number=f"ht1_{uuid.uuid4().hex[:8]}", role="commander")
+    dest.commander_id = principal.id
+    admin_session.commit()
+    deputy = create_soldier(admin_session, personal_number=f"ht2_{uuid.uuid4().hex[:8]}")
+    admin_session.add(RoleDeputy(
+        principal_id=principal.id, deputy_id=deputy.id, role="commander",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    soldier = create_soldier(admin_session, personal_number=f"ht3_{uuid.uuid4().hex[:8]}")
+    admin_session.commit()
+
+    create_request(admin_session, soldier_id=soldier.id, to_node_id=dest.id, requested_by=soldier.id)
+
+    pending = list_pending_for_approver(admin_session, approver_id=deputy.id)
+    assert len(pending) == 1
