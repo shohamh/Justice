@@ -94,6 +94,7 @@ _DM_ACTIONS = {
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
+    Action.SOLDIER_RESET_PASSWORD,
     Action.HIERARCHY_READ,
     # I-1: commanders may manage the hierarchy subtree they directly command
     # (add/rename/move/delete child nodes, assign commanders, etc.), scoped
