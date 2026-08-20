@@ -1047,4 +1047,55 @@ describe("ImportSessionReviewPage - section exclusion", () => {
       );
     });
   });
+
+  it("flushes a pending exclusion save before confirming, so confirm never sees stale selections", async () => {
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(
+      makeDraftDetail({
+        parsed_state: {
+          ...makeDraftDetail().parsed_state,
+          personal_constraints: [
+            {
+              row: 2,
+              action: "new",
+              errors: [],
+              id: null,
+              soldier_personal_number: "1234567",
+              resolved_soldier_id: "sol-1",
+              start_date: "2026-09-01",
+              end_date: "2026-09-05",
+              reason: "חופשה",
+              status: "approved",
+              decided_by_personal_number: null,
+              resolved_decided_by_id: null,
+              decision_note: null,
+              existing_id: null,
+            },
+          ],
+        },
+      }),
+    );
+    renderPage();
+    const checkbox = await screen.findByTestId("section-toggle-personal_constraints");
+    expect(checkbox).toBeChecked();
+
+    // Uncheck the section, then immediately confirm — without waiting out the
+    // 500ms debounce on saveSelections. The confirm must flush the pending
+    // save first, so the server never confirms with stale (non-excluded)
+    // selections.
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByText("אשר וייבא"));
+
+    await waitFor(() => {
+      expect(importSessionsApi.confirmSession).toHaveBeenCalledWith("session-1");
+    });
+
+    expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ _excluded_groups: ["personal_constraints"] }),
+    );
+
+    const saveOrder = vi.mocked(importSessionsApi.saveSelections).mock.invocationCallOrder[0];
+    const confirmOrder = vi.mocked(importSessionsApi.confirmSession).mock.invocationCallOrder[0];
+    expect(saveOrder).toBeLessThan(confirmOrder);
+  });
 });

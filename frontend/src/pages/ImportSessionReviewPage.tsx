@@ -491,6 +491,8 @@ export default function ImportSessionReviewPage() {
     setConfirming(true);
     setConfirmError(null);
     try {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      await saveSelections(id, selections);
       const result = await confirmSession(id);
       setConfirmResult(result);
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionDetail(id) });
