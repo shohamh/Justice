@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
@@ -292,12 +292,17 @@ def test_load_duty_blocks_from_shifts_populates_node_quotas(admin_session):
     loc = DutyLocation(name="loc_bridge_quota")
     admin_session.add(loc)
     admin_session.flush()
+    # Relative to today, not a fixed date: load_duty_blocks_from_shifts clamps
+    # a shift's effective start to max(start_date, today) and skips shifts
+    # entirely in the past, so a hardcoded past date here would silently
+    # yield zero blocks once the calendar caught up to it.
+    today = date.today()
     shift = create_shift(
         admin_session,
         duty_type_id=dt.id,
         duty_location_id=loc.id,
-        start_date=date(2026, 8, 14),
-        end_date=date(2026, 8, 15),
+        start_date=today + timedelta(days=1),
+        end_date=today + timedelta(days=2),
         required_count=3,
     )
     admin_session.flush()

@@ -62,7 +62,6 @@ from app.db.models import (
     SwapRequest,
     SystemSetting,
 )
-from app.db.session import SessionLocal
 from app.services.invite_codes import create_invite_code
 from app.services.ranges import mark_attendance
 from app.services.rank_advancement import DEFAULT_RANK_ADVANCEMENT_INTERVALS, resolve_track
@@ -98,6 +97,20 @@ def _alal_dates_before_ganash(ganash_dates: list[date]) -> list[date]:
 
 
 def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = False):
+    # Deferred (not module-level): app.db.session builds its engine from the
+    # ambient DATABASE_URL at import time, and test fixtures can later call
+    # reset_engine() to point it elsewhere (e.g. a second per-suite test
+    # container). A module-level `from app.db.session import SessionLocal`
+    # here would freeze this module's SessionLocal to whichever engine
+    # existed the first time `app.scripts.seed` was imported for the whole
+    # process — every later seed() call would then keep writing to that
+    # stale engine even after reset_engine() moved everyone else to a new
+    # one, so a caller reading through the *current* SessionLocal would see
+    # none of what seed() just wrote (this is exactly what happened: seeded
+    # duty types committed successfully to container A while the test's own
+    # query read from container B).
+    from app.db.session import SessionLocal
+
     clear = force
     with SessionLocal() as session:
         # All regular soldiers share this password.
