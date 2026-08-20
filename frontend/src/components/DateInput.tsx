@@ -91,12 +91,17 @@ export default function DateInput({
     // field via a raw change event) may hand us an already-ISO value
     // directly, rather than the dd/mm/yyyy digits a human would type.
     // Detect that shape up front so it commits as-is instead of being
-    // misread as freeform digit entry.
+    // misread as freeform digit entry — but still route it through the
+    // same calendar-validity roundtrip every other commit path uses, so
+    // a bogus value like "2026-13-40" is rejected rather than silently
+    // accepted.
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-      setText(isoToDisplay(raw));
-      rawDigitsRef.current = isoToDigits(raw);
+      const validatedIso = displayToIso(isoToDisplay(raw));
+      if (!validatedIso) return;
+      setText(isoToDisplay(validatedIso));
+      rawDigitsRef.current = isoToDigits(validatedIso);
       isTypingRef.current = false;
-      commit(raw);
+      commit(validatedIso);
       return;
     }
     const typedDigits = raw.replace(/\D/g, "");

@@ -92,4 +92,23 @@ describe("DateInput", () => {
     }
     expect(screen.getByTestId("committed").textContent).toBe("2020-08-14");
   });
+
+  it("commits an already-ISO value driven directly via a change event", () => {
+    const onChange = vi.fn();
+    render(<DateInput onChange={onChange} data-testid="date-input" />);
+
+    fireEvent.change(screen.getByTestId("date-input"), { target: { value: "2026-02-01" } });
+
+    expect(onChange).toHaveBeenLastCalledWith("2026-02-01");
+    expect(screen.getByTestId("date-input")).toHaveValue("01/02/2026");
+  });
+
+  it("rejects a malformed ISO-shaped value instead of committing garbage", () => {
+    const onChange = vi.fn();
+    render(<DateInput onChange={onChange} data-testid="date-input" />);
+
+    fireEvent.change(screen.getByTestId("date-input"), { target: { value: "2026-13-40" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
