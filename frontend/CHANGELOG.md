@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-08-20
+
+### Features
+- Import review page now has a per-section include/exclude checklist, including the ability to skip an entire import section during confirmation.
+- MyRequestsPage now shows who a pending request is currently waiting on.
+- Two-step constraint approvals show a 1/2 or 2/2 step indicator, can be cancelled or retracted through the pending-duty-manager step.
+- Inline audit history is now embedded directly on exemption and constraint record UIs, backed by a new scoped audit-logs read endpoint.
+- Draft and swap-received duties are now fully usable across swaps and dashboards: swap eligibility, ask-swap, trade offers, cover offers, and the marketplace board all correctly include/exclude drafts; the HomePage upcoming widget and commander dashboard now surface draft assignments too.
+- Admin unit picker now renders as an indented hierarchy tree instead of a flat list.
+
+### Fixes
+- Import session confirmation now flushes pending selection changes before confirming, so last-second edits aren't lost.
+- Approve buttons are disabled while their request is in flight, preventing duplicate submissions.
+- Personal-constraint quarter cap check now anchors on the request's own quarter instead of the submission date.
+- Personal-constraint reason/decision notes are now hidden from non-private viewers in duty history.
+- Fixed combobox placeholder text, no-op profile saves, and the approvals waiting tab.
+- Fixed per-IP invite rate limiting, the career alal field, and a hierarchy-transfer permission gap.
+- Gimelim preview now shows the last inclusive duty day instead of the raw exclusive end date.
+- Login now shows an invalid-credentials message instead of a generic network error for malformed logins.
+- Transferred soldier now shows their real name instead of a truncated id.
+- Dashboard hierarchy-tree panel replaced with a read-only summary plus a link to the team page.
+- Fixed flaky tests caused by a stale test-container engine reference and a hardcoded past date.
+
+### Chores
+- Added implementation plans and design specs for the constraints/import-review/approval-visibility batch, the swaps-drafts batch, the dashboards batch, and the inline-audit-history batch.
+- Removed dead `activePanel` state and an unused `SummaryCards` prop; minor import-ordering and mypy typing cleanups.
+
 ## 2026-08-19
 
 ### Features
