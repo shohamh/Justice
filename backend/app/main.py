@@ -44,6 +44,7 @@ from app.routes import swaps_eligibility as swaps_eligibility_routes
 from app.routes import reserves as reserve_routes
 from app.routes import notifications as notification_routes
 from app.routes import dm_scope as dm_scope_routes
+from app.routes import deputies as deputy_routes
 from app.routes import enrollment as enrollment_routes
 from app.routes import invite_codes as invite_code_routes
 from app.routes import system_settings as system_settings_routes
@@ -193,6 +194,7 @@ def create_app() -> FastAPI:
     app.include_router(commander_dashboard_routes.router, prefix="/api")
     app.include_router(notification_routes.router, prefix="/api")
     app.include_router(dm_scope_routes.router, prefix="/api")
+    app.include_router(deputy_routes.router, prefix="/api")
     app.include_router(enrollment_routes.router, prefix="/api")
     app.include_router(invite_code_routes.router, prefix="/api")
     app.include_router(system_settings_routes.router, prefix="/api")
