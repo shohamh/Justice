@@ -1,7 +1,7 @@
 """create role_deputies table
 
 Revision ID: bccac29dd1b5
-Revises: b7c8d9e0f1a2
+Revises: 15feab823caf
 Create Date: 2026-08-20 17:21:17.422185
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'bccac29dd1b5'
-down_revision: Union[str, Sequence[str], None] = 'b7c8d9e0f1a2'
+down_revision: Union[str, Sequence[str], None] = '15feab823caf'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

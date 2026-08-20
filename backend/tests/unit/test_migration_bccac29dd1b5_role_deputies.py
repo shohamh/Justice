@@ -15,7 +15,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import IntegrityError
 from testcontainers.postgres import PostgresContainer
 
-DOWN_REVISION = "b7c8d9e0f1a2"
+DOWN_REVISION = "15feab823caf"
 REVISION = "bccac29dd1b5"
 
 
