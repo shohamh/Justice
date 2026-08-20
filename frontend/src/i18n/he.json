@@ -189,6 +189,7 @@
     "no_deputies": "אין ממלאי מקום מוגדרים",
     "revoke": "הסר",
     "revoke_confirm": "להסיר את ממלא המקום?",
+    "acting_as_banner": "פועל/ת כממלא/ת מקום עבור {{principal}} ({{role}}) עד {{endDate}}",
     "active_badge": "פעיל",
     "future_badge": "עתידי",
     "expired_badge": "פג תוקף",

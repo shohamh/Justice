@@ -18,6 +18,7 @@ import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
+import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
 
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
@@ -268,6 +269,8 @@ export default function HomePage() {
     <Layout>
       <div className="space-y-4 max-w-3xl mx-auto" dir="rtl">
         <h2 className="text-xl font-semibold">{t("home.welcome", { name: user?.full_name ?? "" })}</h2>
+
+        <ActiveDeputyBanner grants={user?.active_deputy_grants ?? []} />
 
         <AlertBanners
           lastMitvahimDate={user?.last_mitvahim_date ?? null}
