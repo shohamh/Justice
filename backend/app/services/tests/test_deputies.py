@@ -90,6 +90,33 @@ def test_create_deputy_rejects_recursion(admin_session):
         )
 
 
+def test_create_deputy_rejects_recursion_even_without_date_overlap(admin_session):
+    """Gap scenario: a soldier's existing deputy grant ends TODAY (so
+    is_commander(soldier) is True today), and someone attempts to name that
+    same soldier as PRINCIPAL for a brand-new deputy grant with a FUTURE
+    window that does NOT overlap their existing grant's window. This must
+    still be rejected — an overlap-only check would wrongly allow it,
+    producing a sub-deputy with no real permissions once the existing grant
+    ends."""
+    grandparent = create_soldier(admin_session, personal_number=f"u_{_uid()}", role="commander")
+    create_node(admin_session, level="team", name=f"n_{_uid()}", commander_id=grandparent.id)
+    parent = create_soldier(admin_session, personal_number=f"v_{_uid()}")
+    create_deputy(
+        admin_session, principal_id=grandparent.id, deputy_id=parent.id, role="commander",
+        start_date=date.today() - timedelta(days=5), end_date=date.today(), actor_id=grandparent.id,
+    )
+    admin_session.commit()
+    child = create_soldier(admin_session, personal_number=f"w_{_uid()}")
+
+    with pytest.raises(DeputyError, match="cannot_deputize_a_deputy"):
+        create_deputy(
+            admin_session, principal_id=parent.id, deputy_id=child.id, role="commander",
+            start_date=date.today() + timedelta(days=30),
+            end_date=date.today() + timedelta(days=37),
+            actor_id=grandparent.id,
+        )
+
+
 def test_create_deputy_allows_one_deputy_for_multiple_principals(admin_session):
     p1 = create_soldier(admin_session, personal_number=f"k_{_uid()}", role="commander")
     create_node(admin_session, level="team", name=f"n1_{_uid()}", commander_id=p1.id)

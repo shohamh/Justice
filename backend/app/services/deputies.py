@@ -15,18 +15,23 @@ class DeputyError(Exception):
     pass
 
 
-def _is_active_deputy(
-    session: Session, *, soldier_id: uuid.UUID, role: str, window_start: date, window_end: date
-) -> bool:
-    """True iff `soldier_id` already has a RoleDeputy row (as the deputy) for
-    `role` overlapping [window_start, window_end] — used to block naming a
-    current deputy as someone else's principal (no recursion)."""
+def _has_ever_been_deputy(session: Session, *, soldier_id: uuid.UUID, role: str) -> bool:
+    """True iff `soldier_id` has ANY RoleDeputy row (as the deputy, past,
+    present, or future) for `role` — used to block naming a current/former/
+    future deputy as someone else's principal (no recursion).
+
+    This is deliberately date-UNBOUNDED, not just overlap-with-the-new-
+    grant's-window: `is_commander`/`is_duty_manager` (which decide whether
+    the principal "holds the role" at all) are evaluated as of TODAY, so a
+    window-overlap-only check here would create a gap — e.g. a soldier whose
+    own deputy grant is active today (making is_commander(...) True today)
+    could still be handed a brand new, non-overlapping FUTURE deputy grant
+    as principal, producing a sub-deputy with no real permissions once their
+    own grant ends. Blocking on any row at all closes that gap."""
     return session.execute(
         select(RoleDeputy.id).where(
             RoleDeputy.deputy_id == soldier_id,
             RoleDeputy.role == role,
-            RoleDeputy.start_date <= window_end,
-            RoleDeputy.end_date >= window_start,
         ).limit(1)
     ).first() is not None
 
@@ -56,9 +61,11 @@ def create_deputy(
     if not holds_role:
         raise DeputyError("principal_lacks_role")
 
-    # No recursion: reject if the *principal* is themselves currently (for
-    # any part of this window) someone else's active deputy for this role.
-    if _is_active_deputy(session, soldier_id=principal_id, role=role, window_start=start_date, window_end=end_date):
+    # No recursion: reject if the *principal* has EVER (past, present, or
+    # future) been someone else's deputy for this role. See
+    # _has_ever_been_deputy's docstring for why this must be date-unbounded
+    # rather than limited to overlap with this grant's window.
+    if _has_ever_been_deputy(session, soldier_id=principal_id, role=role):
         raise DeputyError("cannot_deputize_a_deputy")
 
     existing = session.execute(
