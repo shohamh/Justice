@@ -111,9 +111,13 @@ def _get_subtree_ids(session: Session, node_id: uuid.UUID) -> list[uuid.UUID]:
 
 
 def _commander_node(session: Session, user: Soldier) -> uuid.UUID | None:
-    return session.execute(
-        select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
-    ).scalar_one_or_none()
+    from app.auth.authz import commanded_node_ids
+    ids = commanded_node_ids(session, user.id)
+    # The dashboard is built around a single "my command post" view. A
+    # soldier who both commands their own node and is an active deputy for
+    # another commander could have more than one id here — pick
+    # deterministically (smallest UUID) rather than by arbitrary set order.
+    return min(ids) if ids else None
 
 
 def _assert_commander(session: Session, user: Soldier) -> uuid.UUID:
