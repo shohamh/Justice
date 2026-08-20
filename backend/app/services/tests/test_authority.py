@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import delete
 
-from app.db.models import DutyManagerScope, HierarchyLevelType, HierarchyNode, Soldier
+from app.db.models import DutyManagerScope, HierarchyLevelType, HierarchyNode, RoleDeputy, Soldier
 from app.services.authority import (
     RankAdvancementEditScope,
     can_view_soldier_scope,
@@ -17,8 +18,10 @@ from app.services.authority import (
     has_any_commander_delete_scope,
     has_any_exemption_immediate_apply_scope,
     has_any_visibility,
+    range_attendance_edit_authorized,
     rank_advancement_edit_authorized,
 )
+from tests.helpers import create_node, create_soldier
 
 
 @pytest.fixture(autouse=True)
@@ -509,3 +512,85 @@ def test_has_any_exemption_immediate_apply_scope_true_for_qualifying_dm(app_sess
     app_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=root.id))
     app_session.flush()
     assert has_any_exemption_immediate_apply_scope(app_session, user=dm) is True
+
+
+def test_rank_advancement_edit_authorized_extends_to_active_commander_deputy(admin_session):
+    # rank_advancement_edit_authorized hardcodes required_level_key="מדור" (not
+    # the seeded "group" key whose *label* happens to be "מדור" — get_level_rank
+    # matches on .key). Add a level type keyed "מדור" itself, senior enough
+    # ("group"'s rank 6 or above/junior) to cover a "group"-level node.
+    admin_session.add(HierarchyLevelType(key="מדור", label="מדור", rank=100))
+    principal = create_soldier(admin_session, personal_number=f"ra1_{uuid.uuid4().hex[:8]}", role="commander")
+    node = create_node(admin_session, level="group", name=f"n_{uuid.uuid4().hex[:8]}", commander_id=principal.id)
+    deputy = create_soldier(admin_session, personal_number=f"ra2_{uuid.uuid4().hex[:8]}")
+    admin_session.add(RoleDeputy(
+        principal_id=principal.id, deputy_id=deputy.id, role="commander",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    admin_session.commit()
+
+    assert rank_advancement_edit_authorized(admin_session, user=deputy, target_node=node) is True
+
+
+def test_commander_can_grant_commander_exemption_extends_to_active_deputy(admin_session):
+    from app.services.settings_loader import set_setting
+    set_setting(admin_session, "exemptions.commander_exemption_min_level", "group", actor_id=None)
+    admin_session.commit()
+    principal = create_soldier(admin_session, personal_number=f"ce1_{uuid.uuid4().hex[:8]}", role="commander")
+    create_node(admin_session, level="group", name=f"n_{uuid.uuid4().hex[:8]}", commander_id=principal.id)
+    deputy = create_soldier(admin_session, personal_number=f"ce2_{uuid.uuid4().hex[:8]}")
+    admin_session.add(RoleDeputy(
+        principal_id=principal.id, deputy_id=deputy.id, role="commander",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    admin_session.commit()
+
+    assert commander_can_grant_commander_exemption(admin_session, commander_id=deputy.id) is True
+
+
+def test_commander_delete_soldier_authorized_extends_to_active_deputy(admin_session):
+    from app.services.settings_loader import set_setting
+    set_setting(admin_session, "soldiers.commander_delete_min_level", "group", actor_id=None)
+    admin_session.commit()
+    principal = create_soldier(admin_session, personal_number=f"cd1_{uuid.uuid4().hex[:8]}", role="commander")
+    node = create_node(admin_session, level="group", name=f"n_{uuid.uuid4().hex[:8]}", commander_id=principal.id)
+    deputy = create_soldier(admin_session, personal_number=f"cd2_{uuid.uuid4().hex[:8]}")
+    admin_session.add(RoleDeputy(
+        principal_id=principal.id, deputy_id=deputy.id, role="commander",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    admin_session.commit()
+
+    assert commander_delete_soldier_authorized(admin_session, user=deputy, target_node=node) is True
+    assert has_any_commander_delete_scope(admin_session, user=deputy) is True
+
+
+def test_range_attendance_edit_authorized_extends_to_active_dm_deputy(admin_session):
+    from app.services.settings_loader import set_setting
+    set_setting(admin_session, "mitvachim.attendance_edit_min_level", "group", actor_id=None)
+    admin_session.commit()
+    principal = create_soldier(admin_session, personal_number=f"rae1_{uuid.uuid4().hex[:8]}", role="duty_manager")
+    node = create_node(admin_session, level="group", name=f"n_{uuid.uuid4().hex[:8]}")
+    admin_session.add(DutyManagerScope(duty_manager_id=principal.id, hierarchy_node_id=node.id))
+    deputy = create_soldier(admin_session, personal_number=f"rae2_{uuid.uuid4().hex[:8]}")
+    admin_session.add(RoleDeputy(
+        principal_id=principal.id, deputy_id=deputy.id, role="duty_manager",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    admin_session.commit()
+
+    assert range_attendance_edit_authorized(admin_session, user=deputy, target_node=node) is True
+
+
+def test_can_view_soldier_scope_extends_to_active_commander_deputy(admin_session):
+    principal = create_soldier(admin_session, personal_number=f"cv1_{uuid.uuid4().hex[:8]}", role="commander")
+    node = create_node(admin_session, level="group", name=f"n_{uuid.uuid4().hex[:8]}", commander_id=principal.id)
+    deputy = create_soldier(admin_session, personal_number=f"cv2_{uuid.uuid4().hex[:8]}")
+    admin_session.add(RoleDeputy(
+        principal_id=principal.id, deputy_id=deputy.id, role="commander",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    admin_session.commit()
+
+    assert can_view_soldier_scope(admin_session, deputy, node) is True
+    assert has_any_visibility(admin_session, deputy) is True
