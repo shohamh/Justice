@@ -70,6 +70,24 @@ _FRONTEND_PATHS: dict[str, str] = {
 }
 
 
+def _active_deputy_ids(
+    session: Session, *, principal_id: uuid.UUID, role: str, today: date | None = None
+) -> set[uuid.UUID]:
+    """Soldiers currently (today) an active deputy for `principal_id` in `role`."""
+    from app.db.models import RoleDeputy
+    today = today or date.today()
+    return set(
+        session.execute(
+            select(RoleDeputy.deputy_id).where(
+                RoleDeputy.principal_id == principal_id,
+                RoleDeputy.role == role,
+                RoleDeputy.start_date <= today,
+                RoleDeputy.end_date >= today,
+            )
+        ).scalars().all()
+    )
+
+
 class NotificationError(Exception):
     pass
 
@@ -402,12 +420,14 @@ def notify_duty_managers_of_request(
             required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
         ):
             continue
-        _create_notif(
-            session, soldier_id=dm_id, type=type,
-            title=f"{soldier.full_name}: {title}", body=body,
-            reference_type=reference_type, reference_id=reference_id,
-            actor_id=actor_id,
-        )
+        recipients = {dm_id} | _active_deputy_ids(session, principal_id=dm_id, role="duty_manager")
+        for recipient_id in recipients:
+            _create_notif(
+                session, soldier_id=recipient_id, type=type,
+                title=f"{soldier.full_name}: {title}", body=body,
+                reference_type=reference_type, reference_id=reference_id,
+                actor_id=actor_id,
+            )
 
 
 def cascade_to_commanders(
@@ -443,12 +463,16 @@ def cascade_to_commanders(
                 if depth > max_depth:
                     continue
         seen.add(scope.commander_id)
-        _create_notif(
-            session, soldier_id=scope.commander_id,
-            type=type, title=f"{soldier.full_name}: {title}",
-            body=body, reference_type=reference_type,
-            reference_id=reference_id, actor_id=actor_id,
+        recipients = {scope.commander_id} | _active_deputy_ids(
+            session, principal_id=scope.commander_id, role="commander"
         )
+        for recipient_id in recipients:
+            _create_notif(
+                session, soldier_id=recipient_id,
+                type=type, title=f"{soldier.full_name}: {title}",
+                body=body, reference_type=reference_type,
+                reference_id=reference_id, actor_id=actor_id,
+            )
 
 
 def _create_notif(
@@ -514,13 +538,18 @@ def notify_enrollment_received(
         if scope.commander_id in seen or scope.commander_id == soldier.id:
             continue
         seen.add(scope.commander_id)
-        _create_notif(
-            session, soldier_id=scope.commander_id,
-            type=NotificationType.enrollment_request_received,
-            title=title, body=None,
-            reference_type="enrollment_request", reference_id=enrollment_req.id,
-            actor_id=None,
+        recipients = {scope.commander_id} | _active_deputy_ids(
+            session, principal_id=scope.commander_id, role="commander"
         )
+        recipients.discard(soldier.id)
+        for recipient_id in recipients:
+            _create_notif(
+                session, soldier_id=recipient_id,
+                type=NotificationType.enrollment_request_received,
+                title=title, body=None,
+                reference_type="enrollment_request", reference_id=enrollment_req.id,
+                actor_id=None,
+            )
 
     if not has_exemptions:
         return
@@ -548,13 +577,18 @@ def notify_enrollment_received(
         if lt is None or lt.rank < min_rank:
             continue
         seen.add(dm_scope.duty_manager_id)
-        _create_notif(
-            session, soldier_id=dm_scope.duty_manager_id,
-            type=NotificationType.enrollment_request_received,
-            title=title, body=None,
-            reference_type="enrollment_request", reference_id=enrollment_req.id,
-            actor_id=None,
+        recipients = {dm_scope.duty_manager_id} | _active_deputy_ids(
+            session, principal_id=dm_scope.duty_manager_id, role="duty_manager"
         )
+        recipients.discard(soldier.id)
+        for recipient_id in recipients:
+            _create_notif(
+                session, soldier_id=recipient_id,
+                type=NotificationType.enrollment_request_received,
+                title=title, body=None,
+                reference_type="enrollment_request", reference_id=enrollment_req.id,
+                actor_id=None,
+            )
 
 
 def notify_duty_managers_in_scope(
@@ -593,13 +627,20 @@ def notify_duty_managers_in_scope(
         ):
             continue
         seen.add(dm_scope.duty_manager_id)
-        _create_notif(
-            session, soldier_id=dm_scope.duty_manager_id,
-            type=type, title=f"{soldier.full_name}: {title}",
-            body=body, reference_type=reference_type,
-            reference_id=reference_id, actor_id=actor_id,
-            metadata=metadata,
+        recipients = {dm_scope.duty_manager_id} | _active_deputy_ids(
+            session, principal_id=dm_scope.duty_manager_id, role="duty_manager"
         )
+        recipients.discard(soldier.id)
+        if exclude_soldier_ids is not None:
+            recipients -= exclude_soldier_ids
+        for recipient_id in recipients:
+            _create_notif(
+                session, soldier_id=recipient_id,
+                type=type, title=f"{soldier.full_name}: {title}",
+                body=body, reference_type=reference_type,
+                reference_id=reference_id, actor_id=actor_id,
+                metadata=metadata,
+            )
 
 
 def ensure_default_prefs(session: Session, *, soldier_id: uuid.UUID) -> None:
