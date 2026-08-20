@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-20 (3)
+
+### Chores
+- The daily אל"ל-expiry check now fetches the active אל"ל duty-type list once per run instead of re-querying it for every soldier, reducing daily-worker query load.
+
 ## 2026-08-20 (2)
 
 ### Features
