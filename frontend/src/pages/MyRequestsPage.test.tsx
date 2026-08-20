@@ -261,3 +261,33 @@ describe("MyRequestsPage - retraction through pending_duty_manager", () => {
     expect(within(row).getByTestId("cancel-c1")).toBeTruthy();
   });
 });
+
+describe("MyRequestsPage - waiting-on visibility", () => {
+  it("shows who a pending_commander constraint is waiting on", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      {
+        ...constraint,
+        status: "pending_commander",
+        nearest_commander: { id: "cmd-1", name: "רס\"ן לוי" },
+        nearest_duty_manager: { id: "dm-1", name: "סמ\"ר כהן" },
+      },
+    ]);
+    renderPage();
+    const row = await screen.findByTestId("constraint-row-c1");
+    expect(within(row).getByTestId("constraint-waiting-on-c1")).toHaveTextContent("רס\"ן לוי");
+  });
+
+  it("shows the duty manager once the commander step is done", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      {
+        ...constraint,
+        status: "pending_duty_manager",
+        nearest_commander: { id: "cmd-1", name: "רס\"ן לוי" },
+        nearest_duty_manager: { id: "dm-1", name: "סמ\"ר כהן" },
+      },
+    ]);
+    renderPage();
+    const row = await screen.findByTestId("constraint-row-c1");
+    expect(within(row).getByTestId("constraint-waiting-on-c1")).toHaveTextContent("סמ\"ר כהן");
+  });
+});

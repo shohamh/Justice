@@ -25,6 +25,20 @@ import {
   submitExemptionRequest,
 } from "../api/exemptions";
 
+function waitingOnLabel(
+  status: string,
+  nearestCommander: { id: string; name: string } | null,
+  nearestDutyManager: { id: string; name: string } | null,
+): string | null {
+  if (status === "pending_commander" || status === "pending") {
+    return nearestCommander?.name ?? null;
+  }
+  if (status === "pending_duty_manager") {
+    return nearestDutyManager?.name ?? null;
+  }
+  return null;
+}
+
 export default function MyRequestsPage() {
   const { t } = useTranslation();
   const { user, enrollmentPending } = useAuth();
@@ -230,6 +244,14 @@ export default function MyRequestsPage() {
                     <DaysBadge start={c.start_date} end={c.end_date} />
                     <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                     {statusBadge(c.status)}
+                    {(() => {
+                      const waitingOn = waitingOnLabel(c.status, c.nearest_commander, c.nearest_duty_manager);
+                      return waitingOn ? (
+                        <span className="text-xs text-gray-500 dark:text-gray-400" data-testid={`constraint-waiting-on-${c.id}`}>
+                          ממתין ל: {waitingOn}
+                        </span>
+                      ) : null;
+                    })()}
                     {/* Either pending step is cancelable — see cancel_constraint
                         in backend/app/services/constraints.py. Once approved or
                         rejected it's final, so hide the button to avoid a call
@@ -457,6 +479,14 @@ export default function MyRequestsPage() {
                     er.status === "approved" ? "text-green-600 dark:text-green-400" :
                     er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
                   }`}>{t(`exemption_requests.${er.status}`)}</span>
+                  {(() => {
+                    const waitingOn = waitingOnLabel(er.status, er.nearest_commander, er.nearest_duty_manager);
+                    return waitingOn ? (
+                      <span className="text-xs text-gray-500 dark:text-gray-400" data-testid={`er-waiting-on-${er.id}`}>
+                        ממתין ל: {waitingOn}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
                 {er.status === "rejected" && er.decision_note && (
                   <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {er.decision_note}</p>
