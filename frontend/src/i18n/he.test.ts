@@ -23,6 +23,8 @@ const NOTIFICATION_TYPES = [
   "system_announcement", "enrollment_fields_edited",
   "swap_pending_approval", "no_show_marked", "range_assignment_confirmed", "range_roster_changed", "range_cancelled", "range_no_show", "range_excusal_pending", "range_excusal_approved", "range_excusal_rejected", "range_reserve_promoted", "range_reserve_excused", "range_excusal_no_backfill", "range_reminder", "range_reminder_shortfall",
   "bug_report_comment", "weapon_ineligible_detected", "range_covers_duty_info",
+  "range_absence_reported_to_commander", "range_attendance_corrected_to_present",
+  "rank_advanced", "rank_advancement_soon",
 ];
 
 describe("he.json notification type coverage", () => {
