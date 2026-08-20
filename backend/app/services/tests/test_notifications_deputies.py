@@ -58,6 +58,45 @@ def test_cascade_to_commanders_also_notifies_active_deputy(admin_session):
     assert deputy.id in recipients
 
 
+def test_cascade_to_commanders_dedupes_deputy_notified_via_two_principals(admin_session):
+    """A soldier who is an active deputy for TWO different commanders that
+    both match in a single cascade_to_commanders run must get exactly one
+    notification, not one per principal."""
+    node = create_node(admin_session, level="team", name=f"n_{_uid()}")
+    soldier = create_soldier(admin_session, personal_number=f"j_{_uid()}", hierarchy_node_id=node.id)
+    commander_a = create_soldier(admin_session, personal_number=f"k_{_uid()}", role="commander")
+    commander_b = create_soldier(admin_session, personal_number=f"l_{_uid()}", role="commander")
+    admin_session.add(CommanderNotificationScope(commander_id=commander_a.id, hierarchy_node_id=node.id))
+    admin_session.add(CommanderNotificationScope(commander_id=commander_b.id, hierarchy_node_id=node.id))
+    deputy = create_soldier(admin_session, personal_number=f"m_{_uid()}")
+    admin_session.add(RoleDeputy(
+        principal_id=commander_a.id, deputy_id=deputy.id, role="commander",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    admin_session.add(RoleDeputy(
+        principal_id=commander_b.id, deputy_id=deputy.id, role="commander",
+        start_date=date.today(), end_date=date.today(),
+    ))
+    admin_session.commit()
+
+    ref_id = uuid.uuid4()
+    cascade_to_commanders(
+        admin_session, type=NotificationType.assignment_created, title="t", body=None,
+        reference_type="duty_assignment", reference_id=ref_id, actor_id=None,
+        original_soldier_id=soldier.id,
+    )
+    admin_session.commit()
+
+    deputy_notif_count = len(admin_session.execute(
+        select(Notification.id).where(
+            Notification.reference_id == ref_id, Notification.soldier_id == deputy.id
+        )
+    ).scalars().all())
+    assert deputy_notif_count == 1, (
+        f"deputy for two matched commanders got {deputy_notif_count} notifications, expected exactly 1"
+    )
+
+
 def test_notify_duty_managers_in_scope_also_notifies_active_deputy(admin_session):
     node = create_node(admin_session, level="team", name=f"n_{_uid()}")
     soldier = create_soldier(admin_session, personal_number=f"d_{_uid()}", hierarchy_node_id=node.id)

@@ -407,6 +407,7 @@ def notify_duty_managers_of_request(
     dm_ids = set(
         session.execute(select(DutyManagerScope.duty_manager_id)).scalars().all()
     )
+    notified: set[uuid.UUID] = set()
     for dm_id in dm_ids:
         roots = set(
             session.execute(
@@ -422,6 +423,9 @@ def notify_duty_managers_of_request(
             continue
         recipients = {dm_id} | _active_deputy_ids(session, principal_id=dm_id, role="duty_manager")
         for recipient_id in recipients:
+            if recipient_id in notified:
+                continue
+            notified.add(recipient_id)
             _create_notif(
                 session, soldier_id=recipient_id, type=type,
                 title=f"{soldier.full_name}: {title}", body=body,
@@ -448,6 +452,7 @@ def cascade_to_commanders(
         )
     ).scalars().all()
     seen: set[uuid.UUID] = set()
+    notified: set[uuid.UUID] = set()
     for scope in scopes:
         if scope.commander_id in seen:
             continue
@@ -467,6 +472,9 @@ def cascade_to_commanders(
             session, principal_id=scope.commander_id, role="commander"
         )
         for recipient_id in recipients:
+            if recipient_id in notified:
+                continue
+            notified.add(recipient_id)
             _create_notif(
                 session, soldier_id=recipient_id,
                 type=type, title=f"{soldier.full_name}: {title}",
@@ -534,6 +542,7 @@ def notify_enrollment_received(
         )
     ).scalars().all()
     seen: set[uuid.UUID] = set()
+    notified: set[uuid.UUID] = set()
     for scope in cmdr_scopes:
         if scope.commander_id in seen or scope.commander_id == soldier.id:
             continue
@@ -543,6 +552,9 @@ def notify_enrollment_received(
         )
         recipients.discard(soldier.id)
         for recipient_id in recipients:
+            if recipient_id in notified:
+                continue
+            notified.add(recipient_id)
             _create_notif(
                 session, soldier_id=recipient_id,
                 type=NotificationType.enrollment_request_received,
@@ -582,6 +594,9 @@ def notify_enrollment_received(
         )
         recipients.discard(soldier.id)
         for recipient_id in recipients:
+            if recipient_id in notified:
+                continue
+            notified.add(recipient_id)
             _create_notif(
                 session, soldier_id=recipient_id,
                 type=NotificationType.enrollment_request_received,
@@ -619,6 +634,7 @@ def notify_duty_managers_in_scope(
         )
     ).scalars().all()
     seen: set[uuid.UUID] = set()
+    notified: set[uuid.UUID] = set()
     for dm_scope in dm_scopes:
         if (
             dm_scope.duty_manager_id in seen
@@ -634,6 +650,9 @@ def notify_duty_managers_in_scope(
         if exclude_soldier_ids is not None:
             recipients -= exclude_soldier_ids
         for recipient_id in recipients:
+            if recipient_id in notified:
+                continue
+            notified.add(recipient_id)
             _create_notif(
                 session, soldier_id=recipient_id,
                 type=type, title=f"{soldier.full_name}: {title}",
