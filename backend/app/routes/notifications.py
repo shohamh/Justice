@@ -29,6 +29,7 @@ class NotificationOut(BaseModel):
     is_read: bool
     created_at: datetime
     metadata: dict | None = None
+    sender_name: str | None = None
 
 
 class NotificationPrefOut(BaseModel):
@@ -169,13 +170,34 @@ def _resolve_scope(session: Session, scope: CommanderNotificationScope) -> Comma
     )
 
 
-def _out(n: Notification) -> NotificationOut:
+def _out(n: Notification, *, sender_name: str | None = None) -> NotificationOut:
     return NotificationOut(
         id=n.id, soldier_id=n.soldier_id, title=n.title, body=n.body,
         type=n.type.value, reference_type=n.reference_type,
         reference_id=n.reference_id, is_read=n.is_read, created_at=n.created_at,
-        metadata=n.metadata_json,
+        metadata=n.metadata_json, sender_name=sender_name,
     )
+
+
+def _announcement_sender_names(session: Session, notifications: list[Notification]) -> dict[uuid.UUID, str]:
+    """Map announcement_id -> sender's full_name, for the announcement/system_announcement
+    notifications in `notifications`. Announcement.sender_id is the source of truth here —
+    Notification itself doesn't carry an actor, since create_notification only uses actor_id
+    for the audit log, not a stored column (announcements are the one notification type a
+    recipient views with no other way to see who sent it, unlike swap/exemption decisions
+    whose actor is already named in the title text)."""
+    announcement_ids = {
+        n.reference_id for n in notifications
+        if n.type in (NotificationType.announcement, NotificationType.system_announcement) and n.reference_id
+    }
+    if not announcement_ids:
+        return {}
+    rows = session.execute(
+        sa_select(Announcement.id, Soldier.full_name)
+        .join(Soldier, Soldier.id == Announcement.sender_id)
+        .where(Announcement.id.in_(announcement_ids))
+    ).all()
+    return {announcement_id: full_name for announcement_id, full_name in rows}
 
 
 def _err(msg: str, code: int = 400) -> HTTPException:
@@ -194,7 +216,11 @@ def list_my_notifications(
     items, total = svc.list_notifications(session, soldier_id=user.id,
                                            is_read=is_read, type=type,
                                            offset=offset, limit=limit)
-    return PaginatedNotifications(items=[_out(n) for n in items], total=total)
+    sender_names = _announcement_sender_names(session, items)
+    return PaginatedNotifications(
+        items=[_out(n, sender_name=sender_names.get(n.reference_id)) for n in items],
+        total=total,
+    )
 
 
 @router.get("/notifications/unread-count", response_model=UnreadCountOut)

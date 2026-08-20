@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Announcement, CommanderNotificationScope, HierarchyNode, Notification, NotificationType
+from app.services.notifications import create_notification
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -254,6 +255,31 @@ def test_broadcast_org_wide_uses_system_announcement_type(client: TestClient, ad
     assert notif.type == NotificationType.system_announcement
     assert notif.reference_type == "announcement"
     assert notif.reference_id == uuid.UUID(resp.json()["id"])
+
+
+def test_recipient_sees_announcement_sender_name(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001024", full_name="שרה כהן", role="admin")
+    recipient = create_soldier(admin_session, personal_number="9001025")
+    resp = client.post("/api/notifications/announce", headers=auth_headers(admin), json={"title": "org wide sender"})
+    assert resp.status_code == 201
+
+    listing = client.get("/api/notifications", headers=auth_headers(recipient))
+    assert listing.status_code == 200
+    item = next(i for i in listing.json()["items"] if i["title"] == "org wide sender")
+    assert item["sender_name"] == "שרה כהן"
+
+
+def test_non_announcement_notification_has_no_sender_name(client: TestClient, admin_session: Session):
+    recipient = create_soldier(admin_session, personal_number="9001026")
+    create_notification(
+        admin_session, soldier_id=recipient.id, type=NotificationType.swap_offer, title="not an announcement",
+    )
+    admin_session.commit()
+
+    listing = client.get("/api/notifications", headers=auth_headers(recipient))
+    assert listing.status_code == 200
+    item = next(i for i in listing.json()["items"] if i["title"] == "not an announcement")
+    assert item["sender_name"] is None
 
 
 def test_broadcast_scoped_uses_announcement_type(client: TestClient, admin_session: Session):
