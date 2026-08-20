@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from app.db.models import DutyType, ExemptionDutyTypeMap, ExemptionType, RangeType, SoldierExemption
-from app.services.alal_relevance import is_alal_relevant
+from app.services.alal_relevance import active_alal_duty_types, is_alal_relevant
 from tests.helpers import create_node, create_soldier
 
 
@@ -181,3 +181,64 @@ def test_revoked_exemption_does_not_suppress(app_session) -> None:
     app_session.commit()
 
     assert is_alal_relevant(app_session, soldier) is True
+
+
+def test_active_alal_duty_types_returns_all_active_alal_types_unfiltered_by_node(app_session) -> None:
+    node_a = create_node(app_session, level="team", name="alal-rel-team-11a")
+    node_b = create_node(app_session, level="team", name="alal-rel-team-11b")
+    alal_a = DutyType(
+        name="alal-rel-duty-11a", score_per_day=1, requires_weapon=True,
+        required_range_type=RangeType.alal, eligible_node_ids=[node_a.id],
+    )
+    alal_b = DutyType(
+        name="alal-rel-duty-11b", score_per_day=1, requires_weapon=True,
+        required_range_type=RangeType.alal, eligible_node_ids=[node_b.id],
+    )
+    inactive_alal = DutyType(
+        name="alal-rel-duty-11c", score_per_day=1, requires_weapon=True,
+        required_range_type=RangeType.alal, eligible_node_ids=[node_a.id], active=False,
+    )
+    non_alal = DutyType(
+        name="alal-rel-duty-11d", score_per_day=1, requires_weapon=True,
+        required_range_type=RangeType.laser, eligible_node_ids=[node_a.id],
+    )
+    app_session.add_all([alal_a, alal_b, inactive_alal, non_alal])
+    app_session.commit()
+
+    result_ids = {dt.id for dt in active_alal_duty_types(app_session)}
+
+    assert result_ids == {alal_a.id, alal_b.id}
+
+
+def test_is_alal_relevant_uses_the_provided_active_duty_types_instead_of_querying(app_session) -> None:
+    """Passing active_alal_duty_types must actually be used -- not just accepted
+    and ignored -- so a worker scanning many soldiers can fetch the active list
+    once instead of re-querying per soldier."""
+    node = create_node(app_session, level="team", name="alal-rel-team-12")
+    soldier = create_soldier(app_session, personal_number="alal-rel-012", hierarchy_node_id=node.id)
+    app_session.commit()  # deliberately no committed alal DutyType -- a fresh query would find none
+
+    uncommitted_alal_duty_type = DutyType(
+        name="alal-rel-duty-12", score_per_day=1, requires_weapon=True,
+        required_range_type=RangeType.alal, eligible_node_ids=[node.id],
+    )
+
+    assert is_alal_relevant(
+        app_session, soldier, active_alal_duty_types=[uncommitted_alal_duty_type],
+    ) is True
+
+
+def test_is_alal_relevant_with_provided_types_still_respects_node_scope(app_session) -> None:
+    node = create_node(app_session, level="team", name="alal-rel-team-13")
+    other_node = create_node(app_session, level="team", name="alal-rel-team-13b")
+    soldier = create_soldier(app_session, personal_number="alal-rel-013", hierarchy_node_id=node.id)
+    app_session.commit()
+
+    out_of_scope_alal_duty_type = DutyType(
+        name="alal-rel-duty-13", score_per_day=1, requires_weapon=True,
+        required_range_type=RangeType.alal, eligible_node_ids=[other_node.id],
+    )
+
+    assert is_alal_relevant(
+        app_session, soldier, active_alal_duty_types=[out_of_scope_alal_duty_type],
+    ) is False

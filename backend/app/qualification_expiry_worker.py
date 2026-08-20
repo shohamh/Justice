@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.db.models import Soldier
 from app.db.session import session_scope
-from app.services.alal_relevance import is_alal_relevant
+from app.services.alal_relevance import active_alal_duty_types, is_alal_relevant
 from app.services.notifications import (
     notify_alal_expired,
     notify_alal_expiring_soon,
@@ -53,8 +53,9 @@ def _check_alal_expiry() -> None:
         validity_days = get_setting_int(session, "home.alal_validity_days", 90)
         warn_days = get_setting_int(session, "home.alal_warn_days", 30)
         soldiers = _active_soldiers_with_date(session, date_column=Soldier.last_alal_date, today=today)
+        duty_types = active_alal_duty_types(session)
         for s in soldiers:
-            if not is_alal_relevant(session, s):
+            if not is_alal_relevant(session, s, active_alal_duty_types=duty_types):
                 continue
             expiry = s.last_alal_date + timedelta(days=validity_days)
             if expiry <= today:
