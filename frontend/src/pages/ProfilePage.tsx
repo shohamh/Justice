@@ -10,6 +10,7 @@ import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
 import ExemptionsPanel from "../components/ExemptionsPanel";
 import SoldierLink from "../components/SoldierLink";
+import DeputiesPanel from "../components/DeputiesPanel";
 import { useAuth } from "../auth/AuthContext";
 import {
   submitFieldUpdate,
@@ -555,6 +556,15 @@ export default function ProfilePage() {
           );
         })()}
       </section>
+
+      {isCommanderLike && user?.id && (
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3" dir="rtl">
+          <DeputiesPanel
+            principalId={user.id}
+            principalRoles={{ isCommander: !!user?.is_commander, isDutyManager: !!user?.is_duty_manager }}
+          />
+        </section>
+      )}
 
       {(user?.role === "admin" || user?.is_commander || user?.is_duty_manager) && (
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
