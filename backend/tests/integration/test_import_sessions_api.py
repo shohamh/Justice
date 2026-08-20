@@ -502,6 +502,7 @@ def test_upload_and_confirm_assignments_end_to_end(client, admin_session):
     )
     assert confirm_resp.status_code == 200
     assert confirm_resp.json()["created"] == 0  # error row, nothing created
+    assert admin_session.execute(select(DutyAssignment)).scalars().all() == []
 
 
 def test_confirm_skips_an_excluded_group_even_when_rows_would_otherwise_import(client, admin_session):
