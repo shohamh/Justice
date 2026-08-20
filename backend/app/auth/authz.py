@@ -1,37 +1,94 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyManagerScope, HierarchyNode, Soldier
+from app.db.models import DutyManagerScope, HierarchyNode, RoleDeputy, Soldier
 from app.services.eligibility import RANKS_RASAN_AND_ABOVE
 
 PRIVATE_FIELD_NAMES: frozenset[str] = frozenset({"gender", "phone", "email"})
 
 
-def is_commander(session: Session, soldier_id: uuid.UUID) -> bool:
-    """True iff this soldier currently commands at least one hierarchy node."""
-    return (
+def _active_principal_ids(
+    session: Session, *, deputy_id: uuid.UUID, role: str, today: date | None = None
+) -> set[uuid.UUID]:
+    """Principals `deputy_id` is currently (today) an active deputy for, in `role`."""
+    today = today or date.today()
+    return set(
         session.execute(
-            select(HierarchyNode.id).where(HierarchyNode.commander_id == soldier_id).limit(1)
-        ).first()
-        is not None
+            select(RoleDeputy.principal_id).where(
+                RoleDeputy.deputy_id == deputy_id,
+                RoleDeputy.role == role,
+                RoleDeputy.start_date <= today,
+                RoleDeputy.end_date >= today,
+            )
+        ).scalars().all()
     )
+
+
+def commanded_node_ids(
+    session: Session, soldier_id: uuid.UUID, *, today: date | None = None
+) -> set[uuid.UUID]:
+    """Node ids this soldier commands directly, plus — via any active
+    commander-role deputy grant — the commanded node ids of every principal
+    they're currently deputizing for. Single source of truth: every other
+    place in the codebase that needs "which nodes does X command" should
+    call this instead of querying HierarchyNode.commander_id directly."""
+    direct = set(
+        session.execute(
+            select(HierarchyNode.id).where(HierarchyNode.commander_id == soldier_id)
+        ).scalars().all()
+    )
+    principal_ids = _active_principal_ids(session, deputy_id=soldier_id, role="commander", today=today)
+    if principal_ids:
+        direct.update(
+            session.execute(
+                select(HierarchyNode.id).where(HierarchyNode.commander_id.in_(principal_ids))
+            ).scalars().all()
+        )
+    return direct
+
+
+def dm_scope_node_ids(
+    session: Session, soldier_id: uuid.UUID, *, today: date | None = None
+) -> set[uuid.UUID]:
+    """Node ids in this soldier's own DutyManagerScope, plus — via any active
+    duty_manager-role deputy grant — the DM-scope node ids of every principal
+    they're currently deputizing for. Single source of truth, mirroring
+    commanded_node_ids above."""
+    direct = set(
+        session.execute(
+            select(DutyManagerScope.hierarchy_node_id).where(
+                DutyManagerScope.duty_manager_id == soldier_id
+            )
+        ).scalars().all()
+    )
+    principal_ids = _active_principal_ids(session, deputy_id=soldier_id, role="duty_manager", today=today)
+    if principal_ids:
+        direct.update(
+            session.execute(
+                select(DutyManagerScope.hierarchy_node_id).where(
+                    DutyManagerScope.duty_manager_id.in_(principal_ids)
+                )
+            ).scalars().all()
+        )
+    return direct
+
+
+def is_commander(session: Session, soldier_id: uuid.UUID) -> bool:
+    """True iff this soldier currently commands at least one hierarchy node,
+    directly or via an active commander-role deputy grant."""
+    return bool(commanded_node_ids(session, soldier_id))
 
 
 def is_duty_manager(session: Session, soldier_id: uuid.UUID) -> bool:
-    """True iff this soldier currently holds at least one DutyManagerScope row."""
-    return (
-        session.execute(
-            select(DutyManagerScope.id)
-            .where(DutyManagerScope.duty_manager_id == soldier_id)
-            .limit(1)
-        ).first()
-        is not None
-    )
+    """True iff this soldier currently holds at least one DutyManagerScope
+    row, directly or via an active duty_manager-role deputy grant."""
+    return bool(dm_scope_node_ids(session, soldier_id))
 
 
 class Action:
@@ -121,25 +178,9 @@ _DM_GLOBAL_ACTIONS = {
 
 
 def scope_root_ids(session: Session, user: Soldier) -> set[uuid.UUID]:
-    """The node ids whose subtrees this user governs."""
-    roots: set[uuid.UUID] = set()
-    dm_nodes = (
-        session.execute(
-            select(DutyManagerScope.hierarchy_node_id).where(
-                DutyManagerScope.duty_manager_id == user.id
-            )
-        )
-        .scalars()
-        .all()
-    )
-    roots.update(dm_nodes)
-    commanded = (
-        session.execute(select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id))
-        .scalars()
-        .all()
-    )
-    roots.update(commanded)
-    return roots
+    """The node ids whose subtrees this user governs — directly, or via an
+    active deputy grant for someone who does."""
+    return dm_scope_node_ids(session, user.id) | commanded_node_ids(session, user.id)
 
 
 def _node_in_scope(target_node: HierarchyNode | None, roots: set[uuid.UUID]) -> bool:
@@ -235,28 +276,14 @@ def can_view_medical_document(session: Session, viewer: Soldier, target: Soldier
             return default_level
 
     if is_commander(session, viewer.id):
-        commander_roots = set(
-            session.execute(
-                select(HierarchyNode.id).where(HierarchyNode.commander_id == viewer.id)
-            )
-            .scalars()
-            .all()
-        )
+        commander_roots = commanded_node_ids(session, viewer.id)
         required_level = _min_level("exemptions.medical_doc_min_commander_level", "מדור")
         if dm_scope_covers_target(
             session, scope_root_ids=commander_roots, target_node=node, required_level_key=required_level
         ):
             return True
     if is_duty_manager(session, viewer.id):
-        dm_roots = set(
-            session.execute(
-                select(DutyManagerScope.hierarchy_node_id).where(
-                    DutyManagerScope.duty_manager_id == viewer.id
-                )
-            )
-            .scalars()
-            .all()
-        )
+        dm_roots = dm_scope_node_ids(session, viewer.id)
         required_level = _min_level("exemptions.medical_doc_min_duty_manager_level", "מרכז")
         if dm_scope_covers_target(
             session, scope_root_ids=dm_roots, target_node=node, required_level_key=required_level
