@@ -40,10 +40,10 @@ def _check_mitvahim_expiry() -> None:
         soldiers = _active_soldiers_with_date(session, date_column=Soldier.last_mitvahim_date, today=today)
         for s in soldiers:
             expiry = s.last_mitvahim_date + timedelta(days=validity_days)
-            if expiry == today + timedelta(days=warn_days):
+            if expiry <= today:
+                notify_mitvahim_expired(session, soldier_id=s.id, expiry_date=expiry)
+            elif expiry <= today + timedelta(days=warn_days):
                 notify_mitvahim_expiring_soon(session, soldier_id=s.id, expiry_date=expiry)
-            elif expiry == today:
-                notify_mitvahim_expired(session, soldier_id=s.id)
         session.commit()
 
 
@@ -57,10 +57,10 @@ def _check_alal_expiry() -> None:
             if not is_alal_relevant(session, s):
                 continue
             expiry = s.last_alal_date + timedelta(days=validity_days)
-            if expiry == today + timedelta(days=warn_days):
+            if expiry <= today:
+                notify_alal_expired(session, soldier_id=s.id, expiry_date=expiry)
+            elif expiry <= today + timedelta(days=warn_days):
                 notify_alal_expiring_soon(session, soldier_id=s.id, expiry_date=expiry)
-            elif expiry == today:
-                notify_alal_expired(session, soldier_id=s.id)
         session.commit()
 
 

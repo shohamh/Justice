@@ -66,8 +66,22 @@ _FRONTEND_PATHS: dict[str, str] = {
     "gimelim_reassigned": "/schedule",
     "rank_advanced": "/profile",
     "rank_advancement_soon": "/profile",
+    "mitvahim_expiring_soon": "/profile",
+    "mitvahim_expired": "/profile",
+    "alal_expiring_soon": "/profile",
+    "alal_expired": "/profile",
     "bug_report_comment": "/",
 }
+
+
+def _already_notified_for_expiry(
+    session: Session, *, soldier_id: uuid.UUID, type: NotificationType, expiry_date: date,
+) -> bool:
+    return session.query(Notification).filter(
+        Notification.soldier_id == soldier_id,
+        Notification.type == type,
+        Notification.metadata_json["expiry_date"].astext == expiry_date.isoformat(),
+    ).first() is not None
 
 
 class NotificationError(Exception):
@@ -875,46 +889,58 @@ def notify_rank_advancement_soon(
 def notify_mitvahim_expiring_soon(
     session: Session, *, soldier_id: uuid.UUID, expiry_date: date, actor_id: uuid.UUID | None = None
 ) -> None:
+    if _already_notified_for_expiry(session, soldier_id=soldier_id, type=NotificationType.mitvahim_expiring_soon, expiry_date=expiry_date):
+        return
     create_notification(
         session,
         soldier_id=soldier_id,
         type=NotificationType.mitvahim_expiring_soon,
-        title=f"תוקף המטווחים פג בתאריך {expiry_date.strftime('%d.%m.%Y')}",
+        title=f"תוקף המטווחים יפוג בתאריך {expiry_date.strftime('%d.%m.%Y')}",
         actor_id=actor_id,
+        metadata={"expiry_date": expiry_date.isoformat()},
     )
 
 
 def notify_mitvahim_expired(
-    session: Session, *, soldier_id: uuid.UUID, actor_id: uuid.UUID | None = None
+    session: Session, *, soldier_id: uuid.UUID, expiry_date: date, actor_id: uuid.UUID | None = None
 ) -> None:
+    if _already_notified_for_expiry(session, soldier_id=soldier_id, type=NotificationType.mitvahim_expired, expiry_date=expiry_date):
+        return
     create_notification(
         session,
         soldier_id=soldier_id,
         type=NotificationType.mitvahim_expired,
         title="תוקף המטווחים פג",
         actor_id=actor_id,
+        metadata={"expiry_date": expiry_date.isoformat()},
     )
 
 
 def notify_alal_expiring_soon(
     session: Session, *, soldier_id: uuid.UUID, expiry_date: date, actor_id: uuid.UUID | None = None
 ) -> None:
+    if _already_notified_for_expiry(session, soldier_id=soldier_id, type=NotificationType.alal_expiring_soon, expiry_date=expiry_date):
+        return
     create_notification(
         session,
         soldier_id=soldier_id,
         type=NotificationType.alal_expiring_soon,
-        title=f'תוקף האל"ל פג בתאריך {expiry_date.strftime("%d.%m.%Y")}',
+        title=f'תוקף האל"ל יפוג בתאריך {expiry_date.strftime("%d.%m.%Y")}',
         actor_id=actor_id,
+        metadata={"expiry_date": expiry_date.isoformat()},
     )
 
 
 def notify_alal_expired(
-    session: Session, *, soldier_id: uuid.UUID, actor_id: uuid.UUID | None = None
+    session: Session, *, soldier_id: uuid.UUID, expiry_date: date, actor_id: uuid.UUID | None = None
 ) -> None:
+    if _already_notified_for_expiry(session, soldier_id=soldier_id, type=NotificationType.alal_expired, expiry_date=expiry_date):
+        return
     create_notification(
         session,
         soldier_id=soldier_id,
         type=NotificationType.alal_expired,
         title='תוקף האל"ל פג',
         actor_id=actor_id,
+        metadata={"expiry_date": expiry_date.isoformat()},
     )

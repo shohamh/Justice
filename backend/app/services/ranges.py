@@ -554,8 +554,13 @@ def _sync_profile_date_on_present(soldier: Soldier, *, range_type: str, event_da
         setattr(soldier, field, event_date)
 
 
-def _resync_profile_date_on_reversal(session: Session, *, soldier: Soldier, assignment: RangeAssignment, range_type: str) -> None:
+def _resync_profile_date_on_reversal(
+    session: Session, *, soldier: Soldier, assignment: RangeAssignment, range_type: str, event_date: date,
+) -> None:
     field = _profile_date_field_for_range_type(range_type)
+    current = getattr(soldier, field)
+    if current is not None and current != event_date:
+        return  # the stored value didn't come from this attendance -- leave it
     types = (RangeType.alal,) if range_type == RangeType.alal else _MITVAHIM_RANGE_TYPES
     latest = session.execute(
         select(func.max(RangeEvent.date))
@@ -623,7 +628,7 @@ def mark_attendance(
         assignment.score_adjustment_id = None
     if previous_status == RangeAttendanceStatus.present:
         _delete_qualification_from_this_assignment(session, assignment=assignment)
-        _resync_profile_date_on_reversal(session, soldier=soldier, assignment=assignment, range_type=event.range_type)
+        _resync_profile_date_on_reversal(session, soldier=soldier, assignment=assignment, range_type=event.range_type, event_date=event.date)
 
     # Apply the new side effect.
     if status == RangeAttendanceStatus.present:

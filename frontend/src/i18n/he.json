@@ -1203,7 +1203,13 @@
     "type_range_covers_duty_info": "מטווח מתוכנן יכסה תורנות",
     "type_bug_report_comment": "תגובה חדשה לדיווח באג",
     "type_range_absence_reported_to_commander": "דווחה היעדרות ממטווח למפקד",
-    "type_range_attendance_corrected_to_present": "נוכחות במטווח תוקנה ל'נכח'"
+    "type_range_attendance_corrected_to_present": "נוכחות במטווח תוקנה ל'נכח'",
+    "type_rank_advanced": "קודמת בדרגה",
+    "type_rank_advancement_soon": "קידום צפוי בקרוב",
+    "type_mitvahim_expiring_soon": "תוקף מטווחים יפוג בקרוב",
+    "type_mitvahim_expired": "תוקף מטווחים פג",
+    "type_alal_expiring_soon": "תוקף אל\"ל יפוג בקרוב",
+    "type_alal_expired": "תוקף אל\"ל פג"
   },
   "announcements": {
     "title": "הכרזות",

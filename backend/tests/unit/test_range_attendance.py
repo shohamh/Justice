@@ -545,3 +545,24 @@ def test_synced_mitvahim_date_satisfies_legacy_eligibility_check(app_session: Se
     app_session.refresh(soldier)
 
     assert _is_eligible(soldier, reqs, mitvahim_months=6, alal_months=3, today=date.today()) is True
+
+
+def test_reversal_does_not_overwrite_a_newer_manually_entered_date(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    event_date = date.today() - timedelta(days=30)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=event_date)
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == event_date
+
+    manual_newer_date = date.today() - timedelta(days=1)
+    soldier.last_mitvahim_date = manual_newer_date  # admin manually overrides with a newer date from an off-system range
+    app_session.flush()
+
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=soldier.id, note="תיקון",
+    )
+
+    app_session.refresh(soldier)
+    assert soldier.last_mitvahim_date == manual_newer_date  # unrelated reversal must not drag this backward

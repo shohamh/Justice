@@ -173,3 +173,46 @@ def test_check_mitvahim_expiry_commits_and_persists_after_session_close(app_sess
             Notification.type == NotificationType.mitvahim_expired,
         ).one_or_none()
         assert notif is not None
+
+
+def test_check_mitvahim_expiry_catches_up_after_a_missed_cycle(app_session) -> None:
+    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
+    s = create_soldier(app_session, personal_number="1000108")
+    s.last_mitvahim_date = date(2026, 1, 1)  # expiry = 2026-06-30
+    app_session.commit()
+
+    with patch("app.qualification_expiry_worker.session_scope") as mock_scope, \
+         patch("app.qualification_expiry_worker.date") as mock_date:
+        mock_scope.return_value.__enter__.return_value = app_session
+        mock_date.today.return_value = date(2026, 7, 5)  # 5 days AFTER expiry -- a missed cycle
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        _check_mitvahim_expiry()
+
+    notif = app_session.query(Notification).filter(
+        Notification.soldier_id == s.id,
+        Notification.type == NotificationType.mitvahim_expired,
+    ).one_or_none()
+    assert notif is not None
+
+
+def test_check_mitvahim_expiry_does_not_duplicate_on_a_second_run(app_session) -> None:
+    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
+    s = create_soldier(app_session, personal_number="1000109")
+    s.last_mitvahim_date = date(2026, 1, 1)  # expiry = 2026-06-30
+    app_session.commit()
+
+    with patch("app.qualification_expiry_worker.session_scope") as mock_scope, \
+         patch("app.qualification_expiry_worker.date") as mock_date:
+        mock_scope.return_value.__enter__.return_value = app_session
+        mock_date.today.return_value = date(2026, 6, 30)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        _check_mitvahim_expiry()
+        _check_mitvahim_expiry()  # simulate a second run (e.g. a restart) on the same day
+
+    count = app_session.query(Notification).filter(
+        Notification.soldier_id == s.id,
+        Notification.type == NotificationType.mitvahim_expired,
+    ).count()
+    assert count == 1
