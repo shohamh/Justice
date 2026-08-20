@@ -29,6 +29,17 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 
+// Notification types that are never sent to a plain soldier — only to their
+// commander(s), duty managers, or admins (see notify_* call sites in
+// backend/app/services/notifications.py). Hiding them for everyone else
+// avoids showing preference toggles a soldier can never actually trigger.
+const MANAGER_ONLY_NOTIFICATION_TYPES = new Set([
+  "algorithm_job_done", "algorithm_job_failed",
+  "enrollment_request_received", "constraint_pending", "exemption_request_pending",
+  "swap_pending_approval", "transfer_request_pending", "transfer_request_rejected",
+  "range_reminder_shortfall", "range_excusal_no_backfill", "range_absence_reported_to_commander",
+]);
+
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -65,6 +76,11 @@ export default function ProfilePage() {
   const [addingScopeLoading, setAddingScopeLoading] = useState(false);
 
   const isCommanderLike = !!(user?.role === "admin" || user?.is_commander || user?.is_duty_manager);
+
+  const visiblePrefs = useMemo(
+    () => isCommanderLike ? prefs : prefs.filter((p) => !MANAGER_ONLY_NOTIFICATION_TYPES.has(p.notification_type)),
+    [prefs, isCommanderLike]
+  );
 
   const fieldUpdatesQuery = useQuery({
     queryKey: user ? queryKeys.fieldUpdates(user.id) : ["soldiers", "fieldUpdates", "anonymous"],
@@ -186,9 +202,12 @@ export default function ProfilePage() {
     scheduleSyncPrefs();
   }
 
-  function handleToggleAll(field: "in_app_enabled" | "push_enabled" | "email_enabled") {
-    const allOn = latestPrefsRef.current.every((p) => p[field]);
-    const updated = latestPrefsRef.current.map((p) => ({ ...p, [field]: !allOn }));
+  function handleToggleAll(field: "in_app_enabled" | "push_enabled" | "email_enabled", visibleTypes: Set<string>) {
+    const visible = latestPrefsRef.current.filter((p) => visibleTypes.has(p.notification_type));
+    const allOn = visible.length > 0 && visible.every((p) => p[field]);
+    const updated = latestPrefsRef.current.map((p) =>
+      visibleTypes.has(p.notification_type) ? { ...p, [field]: !allOn } : p
+    );
     latestPrefsRef.current = updated;
     setPrefs(updated);
     scheduleSyncPrefs();
@@ -495,20 +514,21 @@ export default function ProfilePage() {
           const prefColumns = (
             ["in_app_enabled", "push_enabled", "email_enabled"] as const
           ).filter((field) => field !== "push_enabled" || telegramEnabled);
+          const visibleTypes = new Set(visiblePrefs.map((p) => p.notification_type));
           return (
             <div className="text-sm" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${prefColumns.length}, 4.5rem)` }}>
               {/* header — column labels with select-all checkboxes */}
               <div className="py-1 border-b dark:border-gray-600" />
               {prefColumns.map((field) => {
-            const allOn = prefs.length > 0 && prefs.every((p) => p[field]);
-            const someOn = prefs.some((p) => p[field]);
+            const allOn = visiblePrefs.length > 0 && visiblePrefs.every((p) => p[field]);
+            const someOn = visiblePrefs.some((p) => p[field]);
             return (
               <label key={field} className="py-1 border-b dark:border-gray-600 flex flex-col items-center gap-1 cursor-pointer select-none font-medium">
                 <input
                   type="checkbox"
                   checked={allOn}
                   ref={(el) => { if (el) el.indeterminate = someOn && !allOn; }}
-                  onChange={() => handleToggleAll(field)}
+                  onChange={() => handleToggleAll(field, visibleTypes)}
                 />
                 <span className="text-xs text-center leading-tight">
                   {field === "in_app_enabled" ? t("notifications.in_app") : field === "push_enabled" ? t("notifications.push") : t("notifications.email")}
@@ -517,7 +537,7 @@ export default function ProfilePage() {
             );
           })}
           {/* preference rows */}
-          {prefs.map((p) => (
+          {visiblePrefs.map((p) => (
             <React.Fragment key={p.notification_type}>
               <div className="py-1 border-b dark:border-gray-600 flex items-center">{t(`notifications.type_${p.notification_type}`)}</div>
               {prefColumns.map((field) => (
