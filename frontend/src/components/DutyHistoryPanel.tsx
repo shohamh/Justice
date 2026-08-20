@@ -334,7 +334,7 @@ function EventCard({
             )}
             {e.event_type === "exemption_request" && (e.status === "pending_commander" || e.status === "pending_duty_manager") && (
               <p className="text-xs text-gray-500">
-                {e.status === "pending_commander" ? "ממתין לאישור מפקד" : 'ממתין לאישור קצין אג"ם/מרכז ומעלה'}
+                {e.status === "pending_commander" ? "ממתין לאישור מפקד" : "ממתין לאישור אחראי תורנויות"}
               </p>
             )}
             {canManage && (e.status === "pending" || e.status === "pending_commander" || e.status === "pending_duty_manager") && (

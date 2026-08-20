@@ -583,7 +583,7 @@ export default function ApprovalsPage() {
                     {er.status === "pending_commander"
                       ? "ממתין לאישור מפקד"
                       : er.status === "pending_duty_manager"
-                      ? 'ממתין לאישור קצין אג"ם/מרכז ומעלה'
+                      ? "ממתין לאישור אחראי תורנויות"
                       : null}
                   </p>
                   <p className="text-sm flex items-center gap-2" dir="ltr">

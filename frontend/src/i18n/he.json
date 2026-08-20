@@ -227,7 +227,7 @@
     "requests_title": "בקשות פטור",
     "requests_none": "אין בקשות פטור",
     "request_status_pending_commander": "ממתין לאישור מפקד",
-    "request_status_pending_duty_manager": "ממתין לאישור קצין אג\"ם/מרכז ומעלה",
+    "request_status_pending_duty_manager": "ממתין לאישור אחראי תורנויות",
     "request_status_approved": "אושר",
     "request_status_rejected": "נדחה",
     "approve_commander_step": "אשר (שלב מפקד)",
