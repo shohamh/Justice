@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { CreateShiftInput, DutyShift, createShift, updateShift, setShiftQuotas, getQuotaSplitPreview } from "../api/shifts";
-import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
+import { DutyType, DutyLocation } from "../api/dutyConfig";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { getPublicSettings } from "../api/publicSettings";
 import { submitJob, getAlgorithmDefaults, SolverSettings } from "../api/algorithm";
 import Combobox from "./Combobox";
 import SubHierarchySelector from "./SubHierarchySelector";
+import LocationFormModal from "./LocationFormModal";
 import { isDateRangeValid, lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "./DateInput";
@@ -206,9 +207,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dtId]);
-  const [addingLocation, setAddingLocation] = useState(false);
-  const [newLocName, setNewLocName] = useState("");
-  const [locSaving, setLocSaving] = useState(false);
+  const [showAddLoc, setShowAddLoc] = useState(false);
 
   useEffect(() => {
     if (!existing) {
@@ -216,21 +215,6 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dtId]);
-
-  async function handleAddLocation(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newLocName.trim()) return;
-    setLocSaving(true);
-    try {
-      const created = await createLocation({ name: newLocName.trim() });
-      setLocations(prev => [...prev, created]);
-      setLocId(created.id);
-      setNewLocName("");
-      setAddingLocation(false);
-    } finally {
-      setLocSaving(false);
-    }
-  }
 
   function validate(): Record<string, string> {
     const errors: Record<string, string> = {};
@@ -296,6 +280,13 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   }
 
   return (
+    <>
+    {showAddLoc && (
+      <LocationFormModal
+        onCreated={loc => { setLocations(prev => [...prev, loc]); setLocId(loc.id); setShowAddLoc(false); }}
+        onClose={() => setShowAddLoc(false)}
+      />
+    )}
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
@@ -313,32 +304,11 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
               <div className="block text-sm">
                 <div className="flex items-center justify-between mb-1">
                   <span>{t("shifts.location")}</span>
-                  {!addingLocation && (
-                    <button type="button" onClick={() => setAddingLocation(true)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                      + {t("shifts.add_location")}
-                    </button>
-                  )}
+                  <button type="button" onClick={() => setShowAddLoc(true)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                    + {t("shifts.add_location")}
+                  </button>
                 </div>
-                {addingLocation ? (
-                  <form onSubmit={handleAddLocation} className="flex gap-1">
-                    <input
-                      autoFocus
-                      type="text"
-                      value={newLocName}
-                      onChange={e => setNewLocName(e.target.value)}
-                      placeholder={t("shifts.location_name")}
-                      className="flex-1 border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                    />
-                    <button type="submit" disabled={locSaving || !newLocName.trim()} className="px-2 py-1 text-xs bg-blue-600 text-white rounded disabled:opacity-50">
-                      {t("shifts.save")}
-                    </button>
-                    <button type="button" onClick={() => { setAddingLocation(false); setNewLocName(""); }} className="px-2 py-1 text-xs border dark:border-gray-600 dark:text-gray-300 rounded">
-                      {t("shifts.dismiss")}
-                    </button>
-                  </form>
-                ) : (
-                  <Combobox items={locations} value={locId} onChange={(v) => { setLocId(v); setFieldErrors((prev) => ({ ...prev, locId: "" })); }} />
-                )}
+                <Combobox items={locations} value={locId} onChange={(v) => { setLocId(v); setFieldErrors((prev) => ({ ...prev, locId: "" })); }} />
                 {fieldErrors.locId && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.locId}</p>}
               </div>
               <div className="flex gap-2">
@@ -475,5 +445,6 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
         </form>
       </div>
     </div>
+    </>
   );
 }

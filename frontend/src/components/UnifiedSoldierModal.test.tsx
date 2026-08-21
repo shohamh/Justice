@@ -19,10 +19,23 @@ vi.mock("../api/constraints", () => ({
 vi.mock("../api/rangeStatus", () => ({
   getSoldierRangeStatus: vi.fn().mockResolvedValue({ soldier_id: "s1", statuses: [] }),
 }));
+const mockGetSoldierDutyHistory = vi.fn().mockResolvedValue([]);
+vi.mock("../api/dutyHistory", () => ({
+  getSoldierDutyHistory: (...args: unknown[]) => mockGetSoldierDutyHistory(...args),
+}));
+vi.mock("../api/dutyConfig", () => ({
+  listDutyTypes: vi.fn().mockResolvedValue([]),
+}));
+// Mocked t must be a stable module-level reference: react-i18next's real
+// useTranslation returns a stable `t`, but an inline closure here would be a
+// fresh function on every render, which (via DutyHistoryPanel's
+// `load = useCallback(..., [soldierId, canManage, t])` and its
+// `useEffect([isActive, soldierId, load])` that unconditionally calls
+// setState) causes an infinite render loop the moment DutyHistoryPanel
+// actually mounts. Mirrors DutyHistoryPanel.test.tsx's `mockT` pattern.
+const mockT = (key: string) => (key === "errors.rank_track_incompatible" ? "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר" : key);
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => (key === "errors.rank_track_incompatible" ? "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר" : key),
-  }),
+  useTranslation: () => ({ t: mockT }),
 }));
 const mockUseAuth = vi.fn();
 vi.mock("../auth/AuthContext", () => ({
@@ -103,6 +116,33 @@ describe("UnifiedSoldierModal profile save error handling", () => {
   });
 });
 
+describe("UnifiedSoldierModal profile editor field layout", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+  });
+
+  test("every profile field stacks in a plain single-column layout, not a CSS grid", async () => {
+    // Regression test: this section previously used `grid grid-cols-1`
+    // with two fields marked `col-span-2`. On real browsers the
+    // `grid-cols-1` utility didn't win for this element (verified live via
+    // devtools — computed grid-template-columns resolved to two implicit
+    // tracks, driven by the col-span-2 children), scattering every field
+    // across two columns and clipping/overlapping their labels and inputs
+    // on mobile. jsdom doesn't run layout, so this can't assert pixel
+    // positions — it asserts the fragile grid/col-span classes are gone
+    // and the container uses plain block stacking instead.
+    renderModal({}, true);
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    const genderLabel = await screen.findByText("soldier_profile.gender");
+    const fieldsContainer = genderLabel.closest("label")?.parentElement;
+    expect(fieldsContainer?.className).not.toMatch(/\bgrid\b/);
+    expect(fieldsContainer?.className).toMatch(/\bspace-y-3\b/);
+    expect(fieldsContainer?.querySelector(".col-span-2")).toBeNull();
+  });
+});
+
 describe("UnifiedSoldierModal scoped rank/next-rank-date correction", () => {
   beforeEach(() => {
     mockUpdateSoldierProfile.mockReset();
@@ -168,7 +208,7 @@ describe("UnifiedSoldierModal scoped rank/next-rank-date correction", () => {
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
     fireEvent.click(screen.getByTestId("rank-correction-toggle"));
 
-    fireEvent.click(await screen.findByText("soldier_profile.clear"));
+    fireEvent.click(await screen.findByLabelText("נקה"));
     fireEvent.click(screen.getByTestId("rank-correction-submit"));
 
     await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));
@@ -235,7 +275,7 @@ describe("UnifiedSoldierModal full editor rank-field dirty gating and next-rank-
 
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
     const dateInput = await screen.findByTestId("next-rank-date-input");
-    fireEvent.click(screen.getByText("soldier_profile.clear"));
+    fireEvent.click(screen.getByLabelText("נקה"));
     fireEvent.click(screen.getByText("duty_config.save"));
 
     await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));
@@ -272,5 +312,73 @@ describe("UnifiedSoldierModal duty-history tab visibility for a commander", () =
     renderModal({ personal_number: "9999999" });
 
     expect(await screen.findByTestId("modal-tab-duty_history")).toBeInTheDocument();
+  });
+});
+
+describe("UnifiedSoldierModal initialTab", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    mockGetSoldierDutyHistory.mockReset();
+    mockGetSoldierDutyHistory.mockResolvedValue([]);
+  });
+
+  test("opens directly on the duty_history tab when initialTab is set", async () => {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <UnifiedSoldierModal
+          soldier={soldier}
+          score={null}
+          nodes={[]}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+          initialTab="duty_history"
+        />
+      </QueryClientProvider>,
+    );
+
+    const historyTabButton = screen.getByTestId("modal-tab-duty_history");
+    expect(historyTabButton.className).toContain("border-indigo-600");
+    // DutyHistoryPanel mounts and loads its (empty, mocked) history.
+    expect(await screen.findByText("duty_history.empty")).toBeInTheDocument();
+  });
+
+  test("passes initialHistoryTypes through to DutyHistoryPanel so it seeds the event-type filter", async () => {
+    // Regression lock: initialTab alone isn't enough — initialHistoryTypes
+    // must also reach DutyHistoryPanel's `initialTypes` prop. Both fixture
+    // events are dated in the past (relative to the mocked "today"), so
+    // DutyHistoryPanel treats them as non-upcoming and never calls
+    // listSwapsForAssignment/checkCoverEligibility, keeping this test free
+    // of needing to mock ../api/swaps or ../api/assignments.
+    mockGetSoldierDutyHistory.mockResolvedValue([
+      {
+        id: "a1", event_type: "assignment", date: "2026-01-10", end_date: "2026-01-11",
+        title: "שמירה במוצב", description: null, status: "published",
+        metadata: {}, created_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "ra1", event_type: "range_assignment", date: "2026-01-10", end_date: null,
+        title: "מטווח laser במטווח צפון", description: null, status: "present",
+        metadata: { range_type: "laser", location_name: "מטווח צפון" }, created_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <UnifiedSoldierModal
+          soldier={soldier}
+          score={null}
+          nodes={[]}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+          initialTab="duty_history"
+          initialHistoryTypes={["assignment"]}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("history-event-assignment")).toBeInTheDocument();
+    expect(screen.queryByTestId("history-event-range_assignment")).not.toBeInTheDocument();
   });
 });

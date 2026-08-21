@@ -134,6 +134,17 @@ it("fairness tab recomputes effort_score live when the what-if slider changes", 
   expect(await screen.findByText(/עומס לאחר התוספת/)).toBeInTheDocument();
 });
 
+it("fairness tab explains active days and why a new soldier's score-per-day starts high", async () => {
+  const { getEffortBreakdown } = await import("../api/scoring");
+  (getEffortBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    quarters: [], effort_score: "0.05", A_i: "0.20", W_i: "4.0",
+  });
+  setUser("soldier");
+  render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="fairness" />);
+  expect(await screen.findByText(/מה זה "ימים פעילים"/)).toBeInTheDocument();
+  expect(screen.getByText(/חייל שבדיוק הצטרף/)).toBeInTheDocument();
+});
+
 it("Algorithm tab shows draft/publish mode section only for canPlan roles", () => {
   setUser("soldier");
   const { rerender } = render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="algorithm" />);

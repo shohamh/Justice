@@ -1398,6 +1398,33 @@ class DutyManagerScope(Base):
     )
 
 
+class RoleDeputy(Base):
+    __tablename__ = "role_deputies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    principal_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    deputy_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    role: Mapped[str] = mapped_column(Enum("commander", "duty_manager", name="deputy_role"))
+    start_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date] = mapped_column(Date)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    __table_args__ = (
+        sa.UniqueConstraint("principal_id", "deputy_id", "role", name="uq_role_deputy"),
+        sa.CheckConstraint("end_date >= start_date", name="ck_role_deputy_date_range"),
+    )
+
+
 class RegistrationInviteCode(Base):
     __tablename__ = "registration_invite_codes"
 

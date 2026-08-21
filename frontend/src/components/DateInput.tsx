@@ -87,6 +87,23 @@ export default function DateInput({
   }
 
   function handleTextChange(raw: string, deleting = false) {
+    // Programmatic value assignment (e.g. autofill or a test driving the
+    // field via a raw change event) may hand us an already-ISO value
+    // directly, rather than the dd/mm/yyyy digits a human would type.
+    // Detect that shape up front so it commits as-is instead of being
+    // misread as freeform digit entry — but still route it through the
+    // same calendar-validity roundtrip every other commit path uses, so
+    // a bogus value like "2026-13-40" is rejected rather than silently
+    // accepted.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const validatedIso = displayToIso(isoToDisplay(raw));
+      if (!validatedIso) return;
+      setText(isoToDisplay(validatedIso));
+      rawDigitsRef.current = isoToDigits(validatedIso);
+      isTypingRef.current = false;
+      commit(validatedIso);
+      return;
+    }
     const typedDigits = raw.replace(/\D/g, "");
     const previousDigits = rawDigitsRef.current;
     // A six-digit date is displayed with an implied four-digit year (e.g.
@@ -126,28 +143,91 @@ export default function DateInput({
     commit(raw);
   }
 
-  // Callers style the text field directly (e.g. `w-full`) expecting it to
-  // fill its parent, same as the native input it replaces — the wrapper
-  // needs the same sizing class or the flex row won't stretch.
-  const wrapperClassName = `inline-flex items-center gap-1${className?.includes("w-full") ? " w-full" : ""}`;
+  function handleClear() {
+    setText("");
+    rawDigitsRef.current = "";
+    isTypingRef.current = false;
+    commit("");
+  }
+
+  // Callers style the text field directly (e.g. `w-full` or `flex-1`)
+  // expecting it to fill its parent, same as the native input it replaces —
+  // the wrapper needs the same sizing class or the flex row won't stretch.
+  // `flex-1` matters when a caller nests DateInput in its own flex row
+  // (e.g. next to a "clear" button): that class lands on the inner
+  // <input> (below), but the WRAPPER is the actual flex item of the
+  // caller's row, so without flex-grow on the wrapper too, it sits at its
+  // own content width — width:auto default — leaving a gap before the
+  // input even though the caller's `w-full` div around it stretches fine.
+  //
+  // Block (not inline-flex): when a caller places this directly after a
+  // label's <span> with no wrapping container (the common
+  // `<label className="block"><span>...</span><DateInput .../></label>`
+  // pattern), an inline-level wrapper only stacks onto its own line via the
+  // "inline element sized to 100% width can't fit next to preceding inline
+  // content, so it wraps" trick. That's fragile once the wrapper contains
+  // several inline children (text input, calendar button, hidden native
+  // input) inside an RTL bidi context — Chromium/WebKit can render the
+  // fields overlapping instead of stacking (seen on mobile). A genuinely
+  // block-level wrapper stacks unconditionally, and is blockified back to a
+  // normal flex item on the rare caller that nests this inside its own flex
+  // row (e.g. next to a "clear" button), so this is safe either way.
+  const wrapperClassName = `flex items-center gap-1${className?.includes("w-full") ? " w-full" : ""}${className?.includes("flex-1") ? " flex-1 min-w-0" : ""}`;
+
+  const showClear = !disabled && text !== "";
 
   return (
     <span className={wrapperClassName}>
-      <input
-        type="text"
-        inputMode="numeric"
-        dir="ltr"
-        placeholder="dd/mm/yyyy"
-        value={text}
-        disabled={disabled}
-        required={required}
-        autoFocus={autoFocus}
-        id={id}
-        data-testid={rest["data-testid"]}
-        onChange={e => handleTextChange(e.target.value, (e.nativeEvent as InputEvent).inputType?.startsWith("delete"))}
-        onBlur={handleTextBlur}
-        className={className}
-      />
+      {/* relative wrapper scoped to just the text input, so the clear
+          button is positioned against ITS box specifically — not the
+          whole flex row (which would anchor it against the calendar
+          button/hidden native input too, and in an RTL flex row put it
+          outside the input on the wrong side). Uses the physical "right"
+          and "pr" utilities below, not the logical "end"/"pe" ones,
+          deliberately: Tailwind also emits an "[dir=rtl] .end-1" rule
+          setting left instead, which matches against ANY rtl ancestor
+          (the page's own html/body, almost certainly rtl) by plain CSS
+          specificity/source-order, not "nearest dir wins" — so it kept
+          beating a dir="ltr" wrapper placed right here. Physical
+          properties sidestep that entirely and are also just what was
+          actually asked for: the right side. */}
+      <span className="relative flex-1 min-w-0 flex items-center">
+        <input
+          type="text"
+          inputMode="numeric"
+          dir="ltr"
+          placeholder="dd/mm/yyyy"
+          value={text}
+          disabled={disabled}
+          required={required}
+          autoFocus={autoFocus}
+          id={id}
+          data-testid={rest["data-testid"]}
+          onChange={e => handleTextChange(e.target.value, (e.nativeEvent as InputEvent).inputType?.startsWith("delete"))}
+          onBlur={handleTextBlur}
+          // w-full min-w-0 always applied (not left to each caller's
+          // className): the input now fills this dedicated relative
+          // wrapper (itself flex-1 min-w-0 in the outer row, so it still
+          // grows/shrinks correctly next to the calendar button and any
+          // caller-added siblings) rather than being a flex item directly
+          // alongside shrink-0 buttons, which previously forced the
+          // flex-shrink algorithm to squeeze it down instead of filling
+          // the row. pr-5 reserves room on the right for the clear
+          // button so typed/displayed digits never sit under it.
+          className={`w-full min-w-0 ${showClear ? "pr-5" : ""} ${className ?? ""}`}
+        />
+        {showClear && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="נקה"
+            onClick={handleClear}
+            className="absolute inset-y-0 right-1 my-auto w-4 h-4 flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-600 text-white text-[10px] leading-none hover:bg-gray-400 dark:hover:bg-gray-500"
+          >
+            ×
+          </button>
+        )}
+      </span>
       <button
         type="button"
         tabIndex={-1}

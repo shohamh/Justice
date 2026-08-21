@@ -79,6 +79,28 @@ def test_reset_password_returns_temp_and_sets_flag(client: TestClient, admin_ses
     assert len(r.json()["temp_password"]) >= 10
 
 
+def test_commander_in_scope_can_reset_password(client: TestClient, admin_session: Session):
+    cmd = create_soldier(admin_session, personal_number="4000006", role="commander")
+    root = create_node(admin_session, level="group", name="reset_root", commander_id=cmd.id)
+    target = create_soldier(admin_session, personal_number="4100006", hierarchy_node_id=root.id)
+    admin_session.commit()
+
+    r = client.post(f"/api/soldiers/{target.id}/reset-password", headers=auth_headers(cmd))
+    assert r.status_code == 200, r.text
+    assert len(r.json()["temp_password"]) >= 10
+
+
+def test_commander_out_of_scope_cannot_reset_password(client: TestClient, admin_session: Session):
+    cmd = create_soldier(admin_session, personal_number="4000007", role="commander")
+    create_node(admin_session, level="group", name="reset_own", commander_id=cmd.id)
+    other_root = create_node(admin_session, level="group", name="reset_other")
+    target = create_soldier(admin_session, personal_number="4100007", hierarchy_node_id=other_root.id)
+    admin_session.commit()
+
+    r = client.post(f"/api/soldiers/{target.id}/reset-password", headers=auth_headers(cmd))
+    assert r.status_code == 403
+
+
 def test_soft_delete_sets_left_at(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="4000008", role="admin")
     target = create_soldier(admin_session, personal_number="4100007")

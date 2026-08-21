@@ -81,7 +81,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
           return (
             <div
               key={i}
-              className={`w-full text-right border rounded-lg transition-colors overflow-hidden ${
+              className={`w-full text-right border rounded-lg transition-colors ${
                 isActive
                   ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950 ring-1 ring-indigo-400"
                   : onGroupToggle

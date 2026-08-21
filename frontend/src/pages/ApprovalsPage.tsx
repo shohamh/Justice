@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -35,10 +35,10 @@ import {
 } from "../api/soldiers";
 import {
   managerApproveSwap,
+  isSwapActionableForUser,
   listPendingSwaps,
   managerRejectSwap,
   getSwapConfig,
-  SwapRequest,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, rejectEnrollment } from "../api/enrollment";
 import {
@@ -50,6 +50,7 @@ import {
 import { DaysBadge } from "../components/DaysBadge";
 import i18n from "../i18n";
 import { translateApiError } from "../utils/translateApiError";
+import { usePagePagination } from "../hooks/usePagePagination";
 
 async function handleExportApprovals() {
   const resp = await fetch("/api/approvals/export", {
@@ -157,6 +158,27 @@ type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollmen
 
 const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment", "transfers", "waiting"];
 
+const APPROVALS_PAGE_SIZE = 20;
+
+/** Numbered-page pager, matching the pattern already used by NotificationsPage. */
+function Pager({ page, setPage, pages }: { page: number; setPage: (page: number) => void; pages: number }) {
+  if (pages <= 1) return null;
+  return (
+    <div className="flex justify-center gap-2 mt-4">
+      {Array.from({ length: pages }, (_, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => setPage(i + 1)}
+          className={`px-3 py-1 rounded text-sm ${page === i + 1 ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
+        >
+          {i + 1}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ApprovalsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -202,6 +224,9 @@ export default function ApprovalsPage() {
   const swapsQuery = useQuery({ queryKey: queryKeys.pendingSwaps(), queryFn: listPendingSwaps });
   const swapItems = swapsQuery.data ?? [];
 
+  const actionableConstraints = items.filter(c => c.can_approve);
+  const waitingConstraints = items.filter(c => !c.can_approve);
+
   const isAdmin = user?.role === "admin";
   const canActCommander = (approvals: DirectCommanderApprovalRow[]) =>
     isAdmin || approvals.some(a => a.commander_id === user?.id);
@@ -221,22 +246,45 @@ export default function ApprovalsPage() {
       (er.status === "pending_duty_manager" && er.can_approve_duty_manager_step)
     );
   }
-  function swapIsActionable(swap: SwapRequest): boolean {
-    const reqGroups = groupByKind(swap.requester_manager_approvals);
-    if (canActCommander(reqGroups.commander) || canActDutyManager(reqGroups.duty_manager)) return true;
-    const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
-    return liveCandidates.some(candidate => {
-      const covGroups = groupByKind(candidate.manager_approvals);
-      return canActCommander(covGroups.commander) || canActDutyManager(covGroups.duty_manager);
-    });
-  }
   const erActionable = erItems.filter(exemptionIsActionable);
   const erWaiting = erItems.filter(er => !exemptionIsActionable(er));
   const fuActionable = fuItems.filter(i => i.can_approve);
   const fuWaiting = fuItems.filter(i => !i.can_approve);
-  const swapsActionable = swapItems.filter(swapIsActionable);
-  const swapsWaiting = swapItems.filter(s => !swapIsActionable(s));
-  const waitingCount = erWaiting.length + fuWaiting.length + swapsWaiting.length;
+  const swapsActionable = swapItems.filter(s => isSwapActionableForUser(s, user?.id, isAdmin));
+  const swapsWaiting = swapItems.filter(s => !isSwapActionableForUser(s, user?.id, isAdmin));
+  const waitingCount = waitingConstraints.length + erWaiting.length + fuWaiting.length + swapsWaiting.length;
+
+  // Client-side pagination for the three lists that can grow large (constraints,
+  // exemptions, swaps) — one independent page param per tab so switching tabs
+  // doesn't reset another tab's page. See usePagePagination.
+  const constraintsPaging = usePagePagination({ limit: APPROVALS_PAGE_SIZE, paramName: "cpage" });
+  const exemptionsPaging = usePagePagination({ limit: APPROVALS_PAGE_SIZE, paramName: "epage" });
+  const swapsPaging = usePagePagination({ limit: APPROVALS_PAGE_SIZE, paramName: "spage" });
+  const itemsPageItems = actionableConstraints.slice(constraintsPaging.offset, constraintsPaging.offset + constraintsPaging.limit);
+  const erActionablePageItems = erActionable.slice(exemptionsPaging.offset, exemptionsPaging.offset + exemptionsPaging.limit);
+  const swapsActionablePageItems = swapsActionable.slice(swapsPaging.offset, swapsPaging.offset + swapsPaging.limit);
+
+  // Approve/reject actions invalidate these lists' queries, which can shrink
+  // a list below the page the user is currently viewing. Clamp back down so
+  // they don't land on a blank page with no way back — mirrors
+  // NotificationsPage.tsx's clamp effect.
+  const { page: constraintsPage, setPage: setConstraintsPage } = constraintsPaging;
+  const constraintsPages = Math.ceil(items.length / APPROVALS_PAGE_SIZE);
+  useEffect(() => {
+    if (constraintsPages > 0 && constraintsPage > constraintsPages) setConstraintsPage(constraintsPages);
+  }, [constraintsPage, constraintsPages, setConstraintsPage]);
+
+  const { page: exemptionsPage, setPage: setExemptionsPage } = exemptionsPaging;
+  const exemptionsPages = Math.ceil(erActionable.length / APPROVALS_PAGE_SIZE);
+  useEffect(() => {
+    if (exemptionsPages > 0 && exemptionsPage > exemptionsPages) setExemptionsPage(exemptionsPages);
+  }, [exemptionsPage, exemptionsPages, setExemptionsPage]);
+
+  const { page: swapsPage, setPage: setSwapsPage } = swapsPaging;
+  const swapsPages = Math.ceil(swapsActionable.length / APPROVALS_PAGE_SIZE);
+  useEffect(() => {
+    if (swapsPages > 0 && swapsPage > swapsPages) setSwapsPage(swapsPages);
+  }, [swapsPage, swapsPages, setSwapsPage]);
 
   const swapConfigQuery = useQuery({
     queryKey: queryKeys.swapConfig(),
@@ -428,7 +476,7 @@ export default function ApprovalsPage() {
     }
   }
 
-  const total = items.length + erActionable.length + fuActionable.length + swapsActionable.length + enrollItems.length + transferItems.length;
+  const total = actionableConstraints.length + erActionable.length + fuActionable.length + swapsActionable.length + enrollItems.length + transferItems.length;
 
   return (
     <Layout>
@@ -457,7 +505,7 @@ export default function ApprovalsPage() {
             onClick={() => setTab("constraints")}
             data-testid="approvals-tab-constraints"
           >
-            {t("approvals.tab_constraints")}{items.length > 0 ? ` (${items.length})` : ""}
+            {t("approvals.tab_constraints")}{actionableConstraints.length > 0 ? ` (${actionableConstraints.length})` : ""}
           </button>
           <button
             className={`pb-2 text-sm ${tab === "exemptions" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
@@ -505,9 +553,9 @@ export default function ApprovalsPage() {
 
         {tab === "constraints" && (
           <>
-            {items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
+            {actionableConstraints.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
-              {items.map((c) => {
+              {itemsPageItems.map((c) => {
                 const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={c.id} className="border dark:border-gray-600 rounded p-3" data-testid={`approval-row-${c.id}`}>
@@ -517,7 +565,7 @@ export default function ApprovalsPage() {
                   </div>
                   {(c.status === "pending_commander" || c.status === "pending_duty_manager") && (
                     <p className="text-xs text-gray-500 mb-1" data-testid={`constraint-stage-${c.id}`}>
-                      {c.status === "pending_commander" ? "שלב 1/2 — ממתין לאישור מפקד" : "שלב 2/2 — ממתין לאישור אג\"ם"}
+                      {c.status === "pending_commander" ? "שלב 1/2 — ממתין לאישור מפקד" : "שלב 2/2 — ממתין לאישור אחראי תורנויות"}
                     </p>
                   )}
                   <p className="text-sm flex items-center gap-2" dir="ltr">
@@ -558,6 +606,7 @@ export default function ApprovalsPage() {
                 );
               })}
             </ul>
+            <Pager page={constraintsPaging.page} setPage={constraintsPaging.setPage} pages={constraintsPages} />
           </>
         )}
 
@@ -565,7 +614,7 @@ export default function ApprovalsPage() {
           <>
             {erActionable.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
             <ul className="space-y-3" data-testid="er-approvals-list">
-              {erActionable.map((er) => {
+              {erActionablePageItems.map((er) => {
                 const erGrouped = groupByKind(nearestApproversToRows(
                   er.nearest_commander, er.nearest_duty_manager,
                   er.status === "approved" ? "approved" : er.status === "rejected" ? "rejected" : "pending",
@@ -583,7 +632,7 @@ export default function ApprovalsPage() {
                     {er.status === "pending_commander"
                       ? "ממתין לאישור מפקד"
                       : er.status === "pending_duty_manager"
-                      ? 'ממתין לאישור קצין אג"ם/מרכז ומעלה'
+                      ? "ממתין לאישור אחראי תורנויות"
                       : null}
                   </p>
                   <p className="text-sm flex items-center gap-2" dir="ltr">
@@ -650,6 +699,7 @@ export default function ApprovalsPage() {
                 );
               })}
             </ul>
+            <Pager page={exemptionsPaging.page} setPage={exemptionsPaging.setPage} pages={exemptionsPages} />
           </>
         )}
 
@@ -708,7 +758,7 @@ export default function ApprovalsPage() {
         {tab === "swaps" && (
           <div className="space-y-3" dir="rtl">
             {swapsActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
-            {swapsActionable.map(swap => {
+            {swapsActionablePageItems.map(swap => {
               const reqGroups = groupByKind(swap.requester_manager_approvals);
               const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
               const statusColumns = [
@@ -830,6 +880,7 @@ export default function ApprovalsPage() {
                 </div>
               );
             })}
+            <Pager page={swapsPaging.page} setPage={swapsPaging.setPage} pages={swapsPages} />
           </div>
         )}
         {tab === "enrollment" && (
@@ -921,6 +972,18 @@ export default function ApprovalsPage() {
         {tab === "waiting" && (
           <div className="space-y-3" dir="rtl">
             {waitingCount === 0 && <p className="text-gray-500 text-sm">{t("approvals.waiting_none")}</p>}
+            {waitingConstraints.map(c => (
+              <div key={c.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
+                <div className="flex items-center gap-2">
+                  <strong><SoldierLink id={c.soldier_id} name={c.soldier_name || c.soldier_id.slice(0, 8)} /></strong>
+                  {c.node_name && <span className="text-xs text-gray-400">{c.node_name}</span>}
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {c.status === "pending_commander" ? "ממתין לאישור מפקד" : "ממתין לאישור אחראי תורנויות"}
+                </p>
+                <p className="text-sm" dir="ltr">{c.start_date} → {c.end_date}</p>
+              </div>
+            ))}
             {fuWaiting.map(item => {
               const isRankField = ["rank", "rank_track", "is_officer", "next_rank_date"].includes(item.field_name);
               const waitingForName = isRankField

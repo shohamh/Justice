@@ -10,6 +10,7 @@ import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectCo
 import Combobox from "./Combobox";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
+import DeputiesPanel from "./DeputiesPanel";
 import SoldierLink from "./SoldierLink";
 import DateInput from "../components/DateInput";
 import { useAuth } from "../auth/AuthContext";
@@ -45,12 +46,14 @@ interface Props {
   onClose: () => void;
   onRefresh: () => void;
   initialEditing?: boolean;
+  initialTab?: TabKey;
+  initialHistoryTypes?: string[];
 }
 
 const ALL_TABS = ["details", "profile", "exemptions", "constraints", "duty_history"] as const;
-type TabKey = (typeof ALL_TABS)[number];
+export type TabKey = (typeof ALL_TABS)[number];
 
-export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false }: Props) {
+export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false, initialTab, initialHistoryTypes }: Props) {
   useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -74,7 +77,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
   useEffect(() => { setSoldierData(soldier); }, [soldier]);
 
-  const [tab, setTab] = useState<TabKey>("details");
+  const [tab, setTab] = useState<TabKey>(initialTab ?? "details");
   const { data: rangeStatus } = useQuery({
     queryKey: ["soldierRangeStatus", soldierData.id],
     queryFn: () => getSoldierRangeStatus(soldierData.id),
@@ -559,17 +562,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             </label>
             <label className="block">
               <span className="text-xs">{t("soldier_profile.next_rank_date")}</span>
-              <div className="flex gap-1 items-center">
-                <DateInput
-                  className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  value={nextRankDate}
-                  onChange={setNextRankDate}
-                  data-testid="next-rank-date-input"
-                />
-                {nextRankDate && (
-                  <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setNextRankDate("")}>{t("soldier_profile.clear")}</button>
-                )}
-              </div>
+              <DateInput
+                className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={nextRankDate}
+                onChange={setNextRankDate}
+                data-testid="next-rank-date-input"
+              />
             </label>
             {profileError && <p className="text-red-500 text-xs">{profileError}</p>}
             <div className="flex justify-end gap-2">
@@ -581,7 +579,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
         {tab === "profile" && editing && (
           <form onSubmit={handleProfileSave} className="space-y-3">
-            <div className="grid grid-cols-1 gap-x-4 gap-y-3">
+            <div className="space-y-3">
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.gender")}</span>
                 <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileGender} onChange={(e) => setProfileGender(e.target.value)}>
@@ -610,17 +608,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               {soldierData.can_edit_rank_advancement && (
                 <label className="block">
                   <span className="text-xs">{t("soldier_profile.next_rank_date")}</span>
-                  <div className="flex gap-1 items-center">
-                    <DateInput
-                      className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                      value={nextRankDate}
-                      onChange={setNextRankDate}
-                      data-testid="next-rank-date-input"
-                    />
-                    {nextRankDate && (
-                      <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setNextRankDate("")}>{t("soldier_profile.clear")}</button>
-                    )}
-                  </div>
+                  <DateInput
+                    className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    value={nextRankDate}
+                    onChange={setNextRankDate}
+                    data-testid="next-rank-date-input"
+                  />
                 </label>
               )}
               <label className="block">
@@ -634,12 +627,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.discharge_date")}</span>
-                <div className="flex gap-1 items-center">
-                  <DateInput className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={setProfileDischarge} />
-                  {profileDischarge && (
-                    <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setProfileDischarge("")}>{t("soldier_profile.clear")}</button>
-                  )}
-                </div>
+                <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={setProfileDischarge} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.last_mitvahim_date")}</span>
@@ -663,12 +651,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 </label>
               )}
               {isAdmin && (
-                <label className="block col-span-2">
+                <label className="block">
                   <span className="text-xs">{t("profile.email")}</span>
                   <input type="email" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="כתובת אימייל" />
                 </label>
               )}
-              <label className="block col-span-2">
+              <label className="block">
                 <span className="text-xs">{t("soldier_profile.profile_picture_url")}</span>
                 <input type="url" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profilePictureUrl} onChange={(e) => setProfilePictureUrl(e.target.value)} placeholder="https://..." dir="ltr" />
               </label>
@@ -725,7 +713,20 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             soldierName={soldier.full_name}
             canManage={canManage}
             isActive={tab === "duty_history"}
+            initialTypes={initialHistoryTypes}
           />
+        )}
+
+        {user?.role === "admin" && (soldierData.role === "commander" || soldierData.role === "duty_manager") && (
+          <div className="mt-4 pt-4 border-t dark:border-gray-600">
+            <DeputiesPanel
+              principalId={soldierData.id}
+              principalRoles={{
+                isCommander: soldierData.role === "commander",
+                isDutyManager: soldierData.role === "duty_manager",
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

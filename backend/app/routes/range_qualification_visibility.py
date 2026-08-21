@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, is_commander, is_duty_manager
 from app.auth.deps import require_password_changed
-from app.db.models import DutyManagerScope, HierarchyNode, RangeType, Soldier
+from app.db.models import HierarchyNode, RangeType, Soldier
 from app.db.session import get_session
 from app.services import ineligible_soldiers as svc
 from app.services.soldier_range_status import list_relevant_range_statuses
@@ -101,26 +101,16 @@ def _resolve_roots(session: Session, *, user: Soldier, audience: Audience) -> se
     if user.role == "admin":
         return None
 
+    from app.auth.authz import commanded_node_ids, dm_scope_node_ids
+
     if audience == "planning":
         if not is_duty_manager(session, user.id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
-        return set(
-            session.execute(
-                select(DutyManagerScope.hierarchy_node_id).where(
-                    DutyManagerScope.duty_manager_id == user.id
-                )
-            )
-            .scalars()
-            .all()
-        )
+        return dm_scope_node_ids(session, user.id)
 
     if not is_commander(session, user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
-    return set(
-        session.execute(select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id))
-        .scalars()
-        .all()
-    )
+    return commanded_node_ids(session, user.id)
 
 
 def _visible_path(

@@ -19,9 +19,17 @@ from app.services.authority import (
     has_any_exemption_immediate_apply_scope,
     has_any_visibility,
 )
+from app.services.deputies import list_active_deputies_for
 from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/me", tags=["me"])
+
+
+class ActiveDeputyGrantOut(BaseModel):
+    principal_id: uuid.UUID
+    principal_name: str
+    role: str
+    end_date: str
 
 
 class MeResponse(BaseModel):
@@ -60,6 +68,7 @@ class MeResponse(BaseModel):
     alal_relevant: bool = False
     can_delete_soldier: bool = False
     can_apply_commander_exemption_immediately: bool = False
+    active_deputy_grants: list[ActiveDeputyGrantOut] = []
 
 
 class SetEmailRequest(BaseModel):
@@ -128,6 +137,17 @@ def me(
         user.role == "admin" or has_any_exemption_immediate_apply_scope(session, user=user)
     )
 
+    active_grants = list_active_deputies_for(session, deputy_id=user.id)
+    active_deputy_grants = []
+    for g in active_grants:
+        g_principal = session.get(Soldier, g.principal_id)
+        active_deputy_grants.append(ActiveDeputyGrantOut(
+            principal_id=g.principal_id,
+            principal_name=g_principal.full_name if g_principal else "",
+            role=g.role,
+            end_date=str(g.end_date),
+        ))
+
     return MeResponse(
         id=user.id,
         personal_number=user.personal_number,
@@ -164,6 +184,7 @@ def me(
         alal_relevant=is_alal_relevant(session, user),
         can_delete_soldier=can_delete_soldier,
         can_apply_commander_exemption_immediately=can_apply_commander_exemption_immediately,
+        active_deputy_grants=active_deputy_grants,
     )
 
 

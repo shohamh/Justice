@@ -92,4 +92,85 @@ describe("DateInput", () => {
     }
     expect(screen.getByTestId("committed").textContent).toBe("2020-08-14");
   });
+
+  it("commits an already-ISO value driven directly via a change event", () => {
+    const onChange = vi.fn();
+    render(<DateInput onChange={onChange} data-testid="date-input" />);
+
+    fireEvent.change(screen.getByTestId("date-input"), { target: { value: "2026-02-01" } });
+
+    expect(onChange).toHaveBeenLastCalledWith("2026-02-01");
+    expect(screen.getByTestId("date-input")).toHaveValue("01/02/2026");
+  });
+
+  it("rejects a malformed ISO-shaped value instead of committing garbage", () => {
+    const onChange = vi.fn();
+    render(<DateInput onChange={onChange} data-testid="date-input" />);
+
+    fireEvent.change(screen.getByTestId("date-input"), { target: { value: "2026-13-40" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("uses a block-level (not inline-flex) wrapper, so it stacks onto its own line next to a preceding label span", () => {
+    // Regression test: an inline-flex wrapper only stacked below preceding
+    // inline content (e.g. a label's <span>) via a "100%-width inline
+    // element can't fit, so it wraps" trick, which rendered fields
+    // overlapping instead of stacking on mobile RTL layouts. A block-level
+    // wrapper stacks unconditionally.
+    render(<DateInput data-testid="date-input" />);
+    const wrapper = screen.getByTestId("date-input").parentElement;
+    expect(wrapper?.className).toMatch(/(^|\s)flex(\s|$)/);
+    expect(wrapper?.className).not.toMatch(/inline-flex/);
+  });
+
+  it("puts the visible text input in its own always-growing relative wrapper, regardless of the caller's className", () => {
+    // Regression test: the text input sits in a dedicated
+    // `relative flex-1 min-w-0` wrapper (so the clear button, absolutely
+    // positioned inside that wrapper, is anchored to the input's own box
+    // rather than the whole flex row). That inner wrapper must always be
+    // able to grow/shrink correctly next to the calendar button, no
+    // matter what className the caller passed the input itself.
+    render(<DateInput className="border p-1 w-full" data-testid="date-input" />);
+    const input = screen.getByTestId("date-input");
+    expect(input.className).toMatch(/(^|\s)w-full(\s|$)/);
+    expect(input.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+    const innerWrapper = input.parentElement;
+    expect(innerWrapper?.className).toMatch(/(^|\s)relative(\s|$)/);
+    expect(innerWrapper?.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    expect(innerWrapper?.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+  });
+
+  it("also grows the outer wrapper when the caller passes flex-1 (nested in its own flex row next to a button)", () => {
+    // Regression test: a caller nesting DateInput in its own
+    // `<div className="flex ...">` (next to a "clear" button) passes
+    // flex-1 in className expecting DateInput to grow and fill that row.
+    // The OUTER <span> (two levels up from the input — the input's own
+    // relative wrapper is always flex-1 regardless, see the test above)
+    // is the element that's actually the flex item of the caller's row —
+    // without flex-grow on it too, it stayed at its own content width,
+    // leaving a visible gap before the input even though the input
+    // inside it was internally full-width.
+    render(<DateInput className="border p-1 flex-1" data-testid="date-input" />);
+    const outerWrapper = screen.getByTestId("date-input").parentElement?.parentElement;
+    expect(outerWrapper?.className).toMatch(/(^|\s)flex-1(\s|$)/);
+  });
+
+  it("shows a built-in clear button only when there's a value, and clearing it commits an empty string", () => {
+    const onChange = vi.fn();
+    render(<DateInput value="2026-08-21" onChange={onChange} data-testid="date-input" />);
+
+    const clearButton = screen.getByLabelText("נקה");
+    expect(clearButton).toBeInTheDocument();
+
+    fireEvent.click(clearButton);
+    expect(onChange).toHaveBeenLastCalledWith("");
+    expect(screen.getByTestId("date-input")).toHaveValue("");
+    expect(screen.queryByLabelText("נקה")).not.toBeInTheDocument();
+  });
+
+  it("hides the built-in clear button when the field is empty", () => {
+    render(<DateInput data-testid="date-input" />);
+    expect(screen.queryByLabelText("נקה")).not.toBeInTheDocument();
+  });
 });

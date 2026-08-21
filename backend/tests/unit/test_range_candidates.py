@@ -16,7 +16,7 @@ from app.db.models import (
     SoldierExemption,
     SoldierRangeQualification,
 )
-from app.services.range_auto_assign import rank_candidates
+from app.services.range_auto_assign import rank_candidates, rank_candidates_with_excluded
 from app.services.ranges import add_range_assignment, create_range_event
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
 
@@ -644,6 +644,65 @@ def test_explanation_shows_last_valid_until_when_previously_qualified(app_sessio
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "available_and_balanced"
     assert mine.explanation == f"אין מטווחים בתוקף מ-{expired_until.strftime('%d.%m.%Y')}"
+
+
+def test_excluded_candidates_reports_reasons_and_omits_them_from_ranking(app_session: Session) -> None:
+    """A weapon-exempt soldier, a structurally-ineligible soldier, and a soldier
+    already assigned to another range the same day should each show up in
+    `excluded_candidates` with the matching reason code, and none of them should
+    appear in `rank_candidates`'s eligible/ranked list."""
+    node = create_node(app_session, level="פלוגה", name="פלוגה סיבות החרגה")
+    other_node = create_node(app_session, level="פלוגה", name="פלוגה בלי כשירות נשק")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-excluded-reasons")
+    dm = _dm_for(app_session, node, personal_number="8000000")
+    event_date = date.today() + timedelta(days=5)
+
+    exempt_soldier = create_soldier(app_session, personal_number="8000001", hierarchy_node_id=node.id)
+    exemption_type = ExemptionType(name="פציעה קבועה", forbids_weapons=True, is_global=False)
+    app_session.add(exemption_type)
+    app_session.flush()
+    app_session.add(SoldierExemption(
+        soldier_id=exempt_soldier.id, exemption_type_id=exemption_type.id,
+        start_date=date.today(), end_date=None,
+    ))
+
+    # No requires_weapon duty type is eligible for other_node -> structurally exempt.
+    structurally_ineligible_soldier = create_soldier(app_session, personal_number="8000002", hierarchy_node_id=other_node.id)
+    # Extend the dm's scope to cover other_node too, so this soldier is in the pool at all.
+    session_dm_scope = DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=other_node.id)
+    app_session.add(session_dm_scope)
+
+    elsewhere_soldier = create_soldier(app_session, personal_number="8000003", hierarchy_node_id=node.id)
+    other_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח אחר-החרגה").id,
+        required_count=1,
+    )
+    add_range_assignment(app_session, event=other_event, soldier_id=elsewhere_soldier.id, is_reserve=False)
+
+    eligible_soldier = create_soldier(app_session, personal_number="8000004", hierarchy_node_id=node.id)
+    app_session.flush()
+
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח סיבות החרגה").id,
+        required_count=1,
+    )
+
+    ranked, excluded = rank_candidates_with_excluded(app_session, event=event, user=dm)
+
+    ranked_ids = {c.soldier.id for c in ranked}
+    reasons_by_id = {x.soldier_id: x.reason for x in excluded}
+
+    assert eligible_soldier.id in ranked_ids
+    assert exempt_soldier.id not in ranked_ids
+    assert structurally_ineligible_soldier.id not in ranked_ids
+    assert elsewhere_soldier.id not in ranked_ids
+
+    assert reasons_by_id[exempt_soldier.id] == "weapon_exempt"
+    assert reasons_by_id[structurally_ineligible_soldier.id] == "structurally_ineligible"
+    assert reasons_by_id[elsewhere_soldier.id] == "assigned_elsewhere_same_day"
+    assert eligible_soldier.id not in reasons_by_id
 
 
 def test_admin_sees_soldiers_across_the_whole_tree(app_session: Session) -> None:

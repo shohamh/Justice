@@ -7,6 +7,13 @@ export interface LoginResponse {
   must_change_password: boolean;
 }
 
+export interface ActiveDeputyGrantDTO {
+  principal_id: string;
+  principal_name: string;
+  role: "commander" | "duty_manager";
+  end_date: string;
+}
+
 export interface Me {
   id: string;
   personal_number: string;
@@ -43,6 +50,7 @@ export interface Me {
   alal_relevant?: boolean;
   can_delete_soldier?: boolean;
   can_apply_commander_exemption_immediately?: boolean;
+  active_deputy_grants: ActiveDeputyGrantDTO[];
 }
 
 export interface NodeOut {

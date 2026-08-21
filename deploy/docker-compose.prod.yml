@@ -56,7 +56,7 @@ services:
     # nginx's own connection, breaking per-IP rate limiting for all users.
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --forwarded-allow-ips='*'"
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --forwarded-allow-ips='*'"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/live || exit 1"]
       interval: 10s

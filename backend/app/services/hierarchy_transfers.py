@@ -127,14 +127,8 @@ def reject_request(
 
 
 def list_pending_for_approver(session: Session, *, approver_id: uuid.UUID) -> list[HierarchyTransferRequest]:
-    from app.db.models import DutyManagerScope, HierarchyNode
-    commanded_nodes = session.execute(
-        select(HierarchyNode.id).where(HierarchyNode.commander_id == approver_id)
-    ).scalars().all()
-    dm_nodes = session.execute(
-        select(DutyManagerScope.hierarchy_node_id).where(DutyManagerScope.duty_manager_id == approver_id)
-    ).scalars().all()
-    root_ids = set(commanded_nodes) | set(dm_nodes)
+    from app.auth.authz import commanded_node_ids, dm_scope_node_ids
+    root_ids = commanded_node_ids(session, approver_id) | dm_scope_node_ids(session, approver_id)
     if not root_ids:
         return []
     pending = list(session.execute(

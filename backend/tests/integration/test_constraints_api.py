@@ -55,7 +55,9 @@ def test_commander_approves_in_subtree(client: TestClient, admin_session: Sessio
     b = create_node(admin_session, level="branch", name="b", parent=d)
     cmd = create_soldier(admin_session, personal_number="7500003", role="commander")
     b.commander_id = cmd.id
-    dm = create_soldier(admin_session, personal_number="7500016", role="duty_manager", hierarchy_node_id=b.id)
+    dm = create_soldier(
+        admin_session, personal_number="7500016", role="duty_manager", hierarchy_node_id=b.id
+    )
     admin_session.commit()
     target = create_soldier(admin_session, personal_number="7500004", hierarchy_node_id=b.id)
     c = client.post(
@@ -114,7 +116,9 @@ def test_soldier_cannot_approve(client: TestClient, admin_session: Session):
 
 def test_pending_count(client: TestClient, admin_session: Session):
     d = create_node(admin_session, level="department", name="d")
-    dm = create_soldier(admin_session, personal_number="7500009", role="duty_manager", hierarchy_node_id=d.id)
+    dm = create_soldier(
+        admin_session, personal_number="7500009", role="duty_manager", hierarchy_node_id=d.id
+    )
     target = create_soldier(admin_session, personal_number="7500010", hierarchy_node_id=d.id)
     client.post(
         "/api/me/constraints",
@@ -154,13 +158,17 @@ def test_reject_requires_note(client: TestClient, admin_session: Session):
     assert r.json()["status"] == "rejected"
 
 
-def test_constraint_list_includes_nearest_commander_and_duty_manager(client: TestClient, admin_session: Session):
+def test_constraint_list_includes_nearest_commander_and_duty_manager(
+    client: TestClient, admin_session: Session
+):
     d = create_node(admin_session, level="department", name="d-nearest")
     b = create_node(admin_session, level="branch", name="b-nearest", parent=d)
     cmd = create_soldier(admin_session, personal_number="7500013", role="commander")
     b.commander_id = cmd.id
     admin_session.commit()
-    dm = create_soldier(admin_session, personal_number="7500014", role="duty_manager", hierarchy_node_id=d.id)
+    dm = create_soldier(
+        admin_session, personal_number="7500014", role="duty_manager", hierarchy_node_id=d.id
+    )
     target = create_soldier(admin_session, personal_number="7500015", hierarchy_node_id=b.id)
     c = client.post(
         "/api/me/constraints",
@@ -186,3 +194,69 @@ def test_constraint_list_includes_nearest_commander_and_duty_manager(client: Tes
     match = next(i for i in pending_items if i["id"] == c["id"])
     assert match["nearest_commander"]["id"] == str(cmd.id)
     assert match["nearest_duty_manager"]["id"] == str(dm.id)
+
+
+def test_pending_list_marks_own_request_as_not_approvable(
+    client: TestClient, admin_session: Session
+):
+    # cmd commands node b and also lives inside it — a common real setup, and
+    # exactly the case forbid_self_target() guards: scope containment alone
+    # would make cmd's own request look approvable to cmd.
+    b = create_node(admin_session, level="branch", name="b-self-approve")
+    cmd = create_soldier(
+        admin_session, personal_number="7500016", role="commander", hierarchy_node_id=b.id
+    )
+    b.commander_id = cmd.id
+    admin_session.commit()
+    other = create_soldier(admin_session, personal_number="7500017", hierarchy_node_id=b.id)
+
+    own = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(cmd),
+        json={
+            "start_date": (date.today() + timedelta(days=5)).isoformat(),
+            "end_date": (date.today() + timedelta(days=10)).isoformat(),
+            "reason": "חופשה",
+        },
+    ).json()
+    others = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(other),
+        json={
+            "start_date": (date.today() + timedelta(days=5)).isoformat(),
+            "end_date": (date.today() + timedelta(days=10)).isoformat(),
+            "reason": "חופשה",
+        },
+    ).json()
+
+    pending_items = client.get("/api/constraints/pending", headers=auth_headers(cmd)).json()
+    own_row = next(i for i in pending_items if i["id"] == own["id"])
+    others_row = next(i for i in pending_items if i["id"] == others["id"])
+    assert own_row["can_approve"] is False
+    assert others_row["can_approve"] is True
+
+    # The backend must also refuse the click itself, not just hide the button.
+    r = client.post(
+        f"/api/constraints/{own['id']}/approve",
+        headers=auth_headers(cmd),
+        json={},
+    )
+    assert r.status_code == 403
+
+
+def test_pending_list_marks_admins_own_request_as_not_approvable(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="7500018", role="admin")
+    own = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(admin),
+        json={
+            "start_date": (date.today() + timedelta(days=5)).isoformat(),
+            "end_date": (date.today() + timedelta(days=10)).isoformat(),
+            "reason": "חופשה",
+        },
+    ).json()
+    pending_items = client.get("/api/constraints/pending", headers=auth_headers(admin)).json()
+    own_row = next(i for i in pending_items if i["id"] == own["id"])
+    assert own_row["can_approve"] is False

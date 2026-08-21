@@ -4,6 +4,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Literal
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -123,6 +124,12 @@ class RankedCandidate:
     conflict_warning: str | None
 
 
+@dataclass(frozen=True)
+class ExcludedSoldier:
+    soldier_id: uuid.UUID
+    reason: Literal["weapon_exempt", "structurally_ineligible", "assigned_elsewhere_same_day"]
+
+
 NEAR_DUTY_WINDOW_DAYS = 30
 
 
@@ -175,17 +182,18 @@ def _bulk_duty_start_by_soldier(
 def _bulk_eligibility(
     session: Session, *, soldiers: list[Soldier], event: RangeEvent,
     duty_start_by_soldier: dict[tuple[uuid.UUID, bool], date],
-) -> dict[uuid.UUID, str | None]:
-    """{soldier_id: conflict_warning} for soldiers who may appear in the candidate
-    list at all. Uses the same eligibility rules as range_exemption.is_range_exempt
-    and _validate_and_build_assignment's other hard checks, batched across the whole
-    candidate set instead of per soldier.
+) -> tuple[dict[uuid.UUID, str | None], list[ExcludedSoldier]]:
+    """({soldier_id: conflict_warning}, excluded) for soldiers who may appear in
+    the candidate list at all. Uses the same eligibility rules as
+    range_exemption.is_range_exempt and _validate_and_build_assignment's other
+    hard checks, batched across the whole candidate set instead of per soldier.
 
-    A soldier is entirely OMITTED from the result (hard-excluded from the candidate
-    list) if they have a weapons-forbidding exemption, are structurally ineligible
-    for every weapon duty type, or are already assigned to a different range the
-    same day — all of these also fail actual assignment, so there's never a reason
-    to show them.
+    A soldier is entirely OMITTED from the result dict (hard-excluded from the
+    candidate list, but recorded in `excluded` with a reason) if they have a
+    weapons-forbidding exemption, are structurally ineligible for every weapon
+    duty type, or are already assigned to a different range the same day — all
+    of these also fail actual assignment, so there's never a reason to show them
+    as a candidate.
 
     A soldier blocked only by a personal constraint or an overlapping duty
     assignment is a softer, schedule-level conflict that _validate_and_build_
@@ -253,13 +261,21 @@ def _bulk_eligibility(
 
     near_duty_cutoff = date.today() + timedelta(days=NEAR_DUTY_WINDOW_DAYS)
 
+    excluded: list[ExcludedSoldier] = []
     result: dict[uuid.UUID, str | None] = {}
     for soldier in soldiers:
         node = nodes_by_id.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
         structurally_exempt = node is None or not any(
             node_in_scope(dt.eligible_node_ids, node.path_ids) for dt in weapon_duty_types
         )
-        if soldier.id in exempted or structurally_exempt or soldier.id in at_other_range:
+        if soldier.id in exempted:
+            excluded.append(ExcludedSoldier(soldier.id, "weapon_exempt"))
+            continue
+        if structurally_exempt:
+            excluded.append(ExcludedSoldier(soldier.id, "structurally_ineligible"))
+            continue
+        if soldier.id in at_other_range:
+            excluded.append(ExcludedSoldier(soldier.id, "assigned_elsewhere_same_day"))
             continue
 
         constraint = constraint_by_soldier.get(soldier.id)
@@ -288,7 +304,7 @@ def _bulk_eligibility(
             duty, duty_type_name = duty_conflict
             parts.append(f"משובץ לתורנות '{duty_type_name}' ב-{duty.start_date.strftime('%d.%m.%Y')}")
         result[soldier.id] = " · ".join(parts)
-    return result
+    return result, excluded
 
 
 def _bulk_rank(
@@ -341,13 +357,10 @@ def _bulk_rank(
     return result
 
 
-def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> list[RankedCandidate]:
-    """Read-only: ranks every ELIGIBLE soldier in the requesting user's authorized
-    scope who isn't already assigned to this event, using the Phase 2 tier ordering,
-    but never writes to the database. Soldiers who can't actually be sent to this
-    range (exemption, structural ineligibility, already assigned elsewhere the same
-    day) never appear here at all — see _bulk_eligibility for the one deliberate
-    exception (an urgent upcoming duty overriding a scheduling-only conflict)."""
+def rank_candidates_with_excluded(
+    session: Session, *, event: RangeEvent, user: Soldier,
+) -> tuple[list[RankedCandidate], list[ExcludedSoldier]]:
+    """Return ranked candidates and hard-excluded soldiers in one read-only pass."""
     existing_soldier_ids = {
         a.soldier_id for a in session.execute(
             select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
@@ -355,15 +368,15 @@ def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> li
     }
     soldiers = [s for s in _soldier_pool(session, event=event, user=user) if s.id not in existing_soldier_ids]
     if not soldiers:
-        return []
+        return [], []
 
     duty_start_by_soldier = _bulk_duty_start_by_soldier(session, soldier_ids=[s.id for s in soldiers])
-    eligibility = _bulk_eligibility(
+    eligibility, excluded = _bulk_eligibility(
         session, soldiers=soldiers, event=event, duty_start_by_soldier=duty_start_by_soldier,
     )
     eligible_soldiers = [s for s in soldiers if s.id in eligibility]
     if not eligible_soldiers:
-        return []
+        return [], excluded
 
     ranks = _bulk_rank(session, soldiers=eligible_soldiers, event=event, duty_start_by_soldier=duty_start_by_soldier)
 
@@ -375,4 +388,25 @@ def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> li
         for soldier in eligible_soldiers
     ]
     ranked.sort(key=lambda c: ranks[c.soldier.id][0])
+    return ranked, excluded
+
+
+def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> list[RankedCandidate]:
+    """Read-only: ranks every ELIGIBLE soldier in the requesting user's authorized
+    scope who isn't already assigned to this event, using the Phase 2 tier ordering,
+    but never writes to the database. Soldiers who can't actually be sent to this
+    range (exemption, structural ineligibility, already assigned elsewhere the same
+    day) never appear here at all — see _bulk_eligibility for the one deliberate
+    exception (an urgent upcoming duty overriding a scheduling-only conflict), and
+    see `excluded_candidates` to retrieve those hard-excluded soldiers instead."""
+    ranked, _excluded = rank_candidates_with_excluded(session, event=event, user=user)
     return ranked
+
+
+def excluded_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> list[ExcludedSoldier]:
+    """Read-only: the soldiers hard-excluded from `rank_candidates`'s pool for this
+    event (weapon-exempt, structurally ineligible, or already assigned to another
+    range the same day), each with a reason code — so the UI can show *why* a
+    soldier the commander expected to see doesn't appear as a candidate."""
+    _ranked, excluded = rank_candidates_with_excluded(session, event=event, user=user)
+    return excluded

@@ -4,14 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
-  Calendar, BarChart2,
+  Calendar, BarChart2, Bell,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
-import { getIncomingSwapCount } from "../api/swaps";
+import { getIncomingSwapCount, isSwapActionableForUser, listPendingSwaps } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
 import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
@@ -102,16 +102,17 @@ export default function UnifiedNav() {
   useEffect(() => {
     if (!canApprove) return;
     void (async () => {
-      const [c, e, f, enroll, hk] = await Promise.all([
+      const [c, e, f, enroll, hk, swaps] = await Promise.all([
         getPendingCount().catch(() => 0),
         getPendingExemptionCount().catch(() => 0),
         getPendingFieldUpdateCount().catch(() => 0),
         listPendingEnrollments().then((r) => r.length).catch(() => 0),
         getPendingHakpazaCount().catch(() => 0),
+        listPendingSwaps().then((rows) => rows.filter((swap) => isSwapActionableForUser(swap, user?.id, user?.role === "admin")).length).catch(() => 0),
       ]);
-      setPendingCount(c + e + f + enroll + hk);
+      setPendingCount(c + e + f + enroll + hk + swaps);
     })();
-  }, [canApprove, location.pathname]);
+  }, [canApprove, location.pathname, user?.id, user?.role]);
 
   useEffect(() => {
     void (async () => {
@@ -165,6 +166,7 @@ export default function UnifiedNav() {
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
     { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", badge: swapIncomingCount, testId: "nav-swaps" },
+    { label: t("nav.notifications"), icon: <Bell size={20} />, to: "/notifications", testId: "nav-notifications" },
     { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
     ...(canViewTransparency
       ? [{ label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" }]

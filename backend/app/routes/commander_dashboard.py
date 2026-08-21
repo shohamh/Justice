@@ -111,9 +111,25 @@ def _get_subtree_ids(session: Session, node_id: uuid.UUID) -> list[uuid.UUID]:
 
 
 def _commander_node(session: Session, user: Soldier) -> uuid.UUID | None:
-    return session.execute(
-        select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
-    ).scalar_one_or_none()
+    from app.auth.authz import commanded_node_ids
+
+    # Prefer a node the soldier genuinely commands themselves. A commander
+    # who is also an active deputy for another commander must still land on
+    # their own dashboard, not have it silently swapped for a deputized one.
+    own_ids = (
+        session.execute(
+            select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
+        )
+        .scalars()
+        .all()
+    )
+    if own_ids:
+        return min(own_ids)
+
+    # No direct command of their own — fall back to nodes commanded via an
+    # active deputy grant. Pick deterministically (smallest UUID) if several.
+    ids = commanded_node_ids(session, user.id)
+    return min(ids) if ids else None
 
 
 def _assert_commander(session: Session, user: Soldier) -> uuid.UUID:

@@ -39,28 +39,63 @@ def _soldiers_in_nodes(session: Session, subtree_ids: list[uuid.UUID]) -> list[S
     )
 
 
+def _active_global_exemption_soldier_ids(
+    session: Session, soldier_ids: set[uuid.UUID], *, as_of: date
+) -> set[uuid.UUID]:
+    """Soldier ids with a currently-active global exemption, in one query."""
+    if not soldier_ids:
+        return set()
+    rows = session.execute(
+        select(SoldierExemption.soldier_id)
+        .join(ExemptionType, ExemptionType.id == SoldierExemption.exemption_type_id)
+        .where(
+            SoldierExemption.soldier_id.in_(soldier_ids),
+            ExemptionType.is_global.is_(True),
+            SoldierExemption.start_date <= as_of,
+            (SoldierExemption.end_date.is_(None) | (SoldierExemption.end_date >= as_of)),
+        )
+    ).all()
+    return {row[0] for row in rows}
+
+
+def _soon_expiring_exemptions(
+    session: Session, soldier_ids: set[uuid.UUID], *, start: date, end: date
+) -> list[tuple[uuid.UUID, date, str]]:
+    """(soldier_id, end_date, exemption_type_name) for exemptions expiring in [start, end], in one query."""
+    if not soldier_ids:
+        return []
+    rows = session.execute(
+        select(SoldierExemption.soldier_id, SoldierExemption.end_date, ExemptionType.name)
+        .join(ExemptionType, ExemptionType.id == SoldierExemption.exemption_type_id)
+        .where(
+            SoldierExemption.soldier_id.in_(soldier_ids),
+            SoldierExemption.end_date.isnot(None),
+            SoldierExemption.end_date <= end,
+            SoldierExemption.end_date >= start,
+        )
+    ).all()
+    return [(row[0], row[1], row[2]) for row in rows]
+
+
 def _score_data(session: Session, soldiers: list[Soldier]) -> dict[uuid.UUID, dict]:
     soldier_ids = {s.id for s in soldiers}
-    duty_scores: dict[uuid.UUID, Decimal] = {}
-    for dt in session.execute(select(DutyType)).scalars().all():
-        duty_scores[dt.id] = dt.score_per_day
-
-    score_by_soldier: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
-    assignments = (
-        session.execute(
-            select(DutyAssignment).where(
+    score_by_soldier = {
+        soldier_id: Decimal(total)
+        for soldier_id, total in session.execute(
+            select(
+                DutyAssignment.soldier_id,
+                func.sum(
+                    (DutyAssignment.end_date - DutyAssignment.start_date) * DutyType.score_per_day
+                ),
+            )
+            .join(DutyType, DutyType.id == DutyAssignment.duty_type_id)
+            .where(
                 DutyAssignment.status == "published",
                 DutyAssignment.soldier_id.in_(soldier_ids),
             )
-        )
-        .scalars()
-        .all()
-    )
-    for a in assignments:
-        days = (a.end_date - a.start_date).days
-        score_by_soldier[a.soldier_id] += duty_scores.get(a.duty_type_id, Decimal("0")) * Decimal(
-            days
-        )
+            .group_by(DutyAssignment.soldier_id)
+        ).all()
+    }
 
     adj_totals: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
     for row in session.execute(
@@ -119,18 +154,24 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
             select(SwapCandidate.swap_request_id)
             .where(SwapCandidate.status.in_(["pending", "accepted"]))
             .distinct()
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     pending_swaps = (
-        session.execute(
-            select(func.count(SwapRequest.id)).where(
-                SwapRequest.requesting_soldier_id.in_(soldier_ids),
-                SwapRequest.status == "open",
-                SwapRequest.id.in_(_swap_candidate_request_ids),
-            )
-        ).scalar()
-        or 0
-    ) if _swap_candidate_request_ids else 0
+        (
+            session.execute(
+                select(func.count(SwapRequest.id)).where(
+                    SwapRequest.requesting_soldier_id.in_(soldier_ids),
+                    SwapRequest.status == "open",
+                    SwapRequest.id.in_(_swap_candidate_request_ids),
+                )
+            ).scalar()
+            or 0
+        )
+        if _swap_candidate_request_ids
+        else 0
+    )
 
     approvals_pending = pending_field + pending_exempt + pending_swaps
 
@@ -162,41 +203,47 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
         .all()
     )
 
-    unfilled_gaps = 0
-    for shift in shifts_in_subtree:
-        if shift.start_date <= next_week and shift.end_date > today:
-            assigned = (
-                session.execute(
-                    select(func.count(DutyAssignment.id)).where(
-                        DutyAssignment.duty_shift_id == shift.id,
-                        DutyAssignment.status == "published",
-                    )
-                ).scalar()
-                or 0
-            )
-            if assigned < shift.required_count:
-                unfilled_gaps += 1
-
+    shifts_in_window = [
+        shift
+        for shift in shifts_in_subtree
+        if shift.start_date <= next_week and shift.end_date > today
+    ]
+    assigned_by_shift = (
+        {
+            shift_id: count
+            for shift_id, count in session.execute(
+                select(DutyAssignment.duty_shift_id, func.count(DutyAssignment.id))
+                .where(
+                    DutyAssignment.duty_shift_id.in_([shift.id for shift in shifts_in_window]),
+                    DutyAssignment.status == "published",
+                )
+                .group_by(DutyAssignment.duty_shift_id)
+            ).all()
+        }
+        if shifts_in_window
+        else {}
+    )
+    unfilled_gaps = sum(
+        assigned_by_shift.get(shift.id, 0) < shift.required_count for shift in shifts_in_window
+    )
     # Alerts: soldiers below score threshold, exemptions expiring
     score_data = _score_data(session, soldiers)
     threshold = Decimal("-3.0")
     alerts_count = sum(1 for sd in score_data.values() if sd["normalised_score"] < threshold)
 
-    # Exemptions expiring within 7 days
-    for s in soldiers:
-        expiring = (
-            session.execute(
-                select(func.count(SoldierExemption.id)).where(
-                    SoldierExemption.soldier_id == s.id,
-                    SoldierExemption.end_date.isnot(None),
-                    SoldierExemption.end_date <= next_week,
-                    SoldierExemption.end_date >= today,
-                )
-            ).scalar()
-            or 0
-        )
-        alerts_count += expiring
-
+    # Exemptions expiring within 7 days, counted in one grouped query.
+    expiring_count = (
+        session.execute(
+            select(func.count(SoldierExemption.id)).where(
+                SoldierExemption.soldier_id.in_(soldier_ids),
+                SoldierExemption.end_date.isnot(None),
+                SoldierExemption.end_date <= next_week,
+                SoldierExemption.end_date >= today,
+            )
+        ).scalar()
+        or 0
+    )
+    alerts_count += expiring_count
     return {
         "approvals_pending": approvals_pending,
         "upcoming_duties_7d": upcoming_duties_7d,
@@ -209,29 +256,13 @@ def soldiers_in_subtree(session: Session, *, subtree_ids: list[uuid.UUID]) -> li
     soldiers = _soldiers_in_nodes(session, subtree_ids)
     score_data = _score_data(session, soldiers)
 
-    # Compute status
     today = date.today()
+    soldier_ids = {s.id for s in soldiers}
+    exempt_soldier_ids = _active_global_exemption_soldier_ids(session, soldier_ids, as_of=today)
+
     result = []
     for s in soldiers:
-        status = "active"
-        # Check for active global exemptions
-        ex = (
-            session.execute(
-                select(SoldierExemption).where(
-                    SoldierExemption.soldier_id == s.id,
-                    SoldierExemption.start_date <= today,
-                    (SoldierExemption.end_date.is_(None) | (SoldierExemption.end_date >= today)),
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if ex:
-            for e in ex:
-                et = session.get(ExemptionType, e.exemption_type_id)
-                if et and et.is_global:
-                    status = "exempt"
-                    break
+        status = "exempt" if s.id in exempt_soldier_ids else "active"
 
         sd = score_data.get(
             s.id, {"cumulative_score": Decimal("0"), "normalised_score": Decimal("0")}
@@ -368,6 +399,10 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
     today = date.today()
     next_week = today + timedelta(days=7)
 
+    soldier_ids = {s.id for s in soldiers}
+    name_by_id = {s.id: s.full_name for s in soldiers}
+    expiring = _soon_expiring_exemptions(session, soldier_ids, start=today, end=next_week)
+
     alerts_list: list[dict] = []
 
     for s in soldiers:
@@ -383,29 +418,15 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
                 }
             )
 
-        exemptions = (
-            session.execute(
-                select(SoldierExemption).where(
-                    SoldierExemption.soldier_id == s.id,
-                    SoldierExemption.end_date.isnot(None),
-                    SoldierExemption.end_date <= next_week,
-                    SoldierExemption.end_date >= today,
-                )
-            )
-            .scalars()
-            .all()
+    for soldier_id, end_date, exemption_type_name in expiring:
+        alerts_list.append(
+            {
+                "severity": "info",
+                "soldier_id": soldier_id,
+                "soldier_name": name_by_id.get(soldier_id, ""),
+                "message": f"תוקף {exemption_type_name} מסתיים ב-{end_date}",
+            }
         )
-        for ex in exemptions:
-            et = session.get(ExemptionType, ex.exemption_type_id)
-            name = et.name if et else "פטור"
-            alerts_list.append(
-                {
-                    "severity": "info",
-                    "soldier_id": s.id,
-                    "soldier_name": s.full_name,
-                    "message": f"תוקף {name} מסתיים ב-{ex.end_date}",
-                }
-            )
 
     return alerts_list
 
