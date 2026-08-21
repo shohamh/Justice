@@ -47,8 +47,8 @@ beforeEach(() => {
 describe("RangeEditAssignmentsModal", () => {
   it("renders primary and reserve assignments in the summary table", () => {
     renderModal({ event: event([assignment("a1", "s1"), assignment("a2", "s2", true, true)]) });
-    expect(screen.getAllByText("אורי")).toHaveLength(2);
-    expect(screen.getAllByText("דנה")).toHaveLength(2);
+    expect(screen.getByText("אורי")).toBeInTheDocument();
+    expect(screen.getByText("דנה")).toBeInTheDocument();
     expect(screen.getAllByText("ראשי").length).toBeGreaterThan(0);
     expect(screen.getAllByText("רזרבה").length).toBeGreaterThan(0);
   });
@@ -58,8 +58,8 @@ describe("RangeEditAssignmentsModal", () => {
       assignment("a1", "s1", false, false, "qualified", null),
       assignment("a2", "s2", true, false, "manual", "שיבוץ לפי צורך מבצעי"),
     ]) });
-    expect(screen.getAllByText("כשירות תקפה למטווח")).toHaveLength(2);
-    expect(screen.getAllByText("שיבוץ לפי צורך מבצעי")).toHaveLength(2);
+    expect(screen.getByText("כשירות תקפה למטווח")).toBeInTheDocument();
+    expect(screen.getByText("שיבוץ לפי צורך מבצעי")).toBeInTheDocument();
   });
 
   it("lets a planner edit and save an assignment explanation", async () => {
@@ -76,7 +76,7 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("keeps assignment reasons visible but hides editing controls from a non-manager", () => {
     renderModal({ canManage: false, event: event([assignment("a1", "s1", false, false, "manual", "שיבוץ לפי צורך מבצעי")]) });
-    expect(screen.getAllByText("שיבוץ לפי צורך מבצעי")).toHaveLength(2);
+    expect(screen.getByText("שיבוץ לפי צורך מבצעי")).toBeInTheDocument();
     expect(screen.queryByTestId("edit-assignment-reason-a1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("save-assignment-reason-a1")).not.toBeInTheDocument();
   });
@@ -85,7 +85,7 @@ describe("RangeEditAssignmentsModal", () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse());
     renderModal({ canManage: false, event: event([assignment("a1", "s1", false, false)]) });
 
-    expect(screen.getAllByText("אורי")).toHaveLength(2);
+    expect(screen.getByText("אורי")).toBeInTheDocument();
     expect(screen.queryByTestId("range-auto-select-primary")).not.toBeInTheDocument();
     expect(screen.queryByTestId("save-assignments")).not.toBeInTheDocument();
     expect(screen.queryByTestId("remove-assignment-a1")).not.toBeInTheDocument();
@@ -135,7 +135,7 @@ describe("RangeEditAssignmentsModal", () => {
     renderModal({ event: event([assignment("a1", "s1")]) });
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
     expect(rangesApi.removeRangeAssignment).not.toHaveBeenCalled();
-    expect(screen.getAllByText(/אורי/)).toHaveLength(2);
+    expect(screen.getByText(/אורי/)).toBeInTheDocument();
   });
 
   it("renders the ranked candidate panel with auto-select and lets a manager save a batch", async () => {
@@ -212,12 +212,12 @@ describe("RangeEditAssignmentsModal", () => {
     renderModal({ event: event([]) });
 
     await screen.findByTestId("candidate-checkbox-s1");
-    expect(screen.getByTestId("candidate-checkbox-s2")).toHaveLength(2);
+    expect(screen.getByTestId("candidate-checkbox-s2")).toBeInTheDocument();
 
     fireEvent.change(screen.getAllByPlaceholderText("חיפוש...")[0], { target: { value: "דנה" } });
 
     expect(screen.queryByTestId("candidate-checkbox-s1")).not.toBeInTheDocument();
-    expect(screen.getByTestId("candidate-checkbox-s2")).toHaveLength(2);
+    expect(screen.getByTestId("candidate-checkbox-s2")).toBeInTheDocument();
   });
 
   it("shows a loading placeholder while candidates are being fetched, not the empty-state message", async () => {
@@ -293,7 +293,7 @@ describe("RangeEditAssignmentsModal", () => {
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
 
     await waitFor(() => expect(rangesApi.getRangeCandidates).toHaveBeenCalledTimes(2));
-    expect(await screen.findByTestId("candidate-checkbox-s1")).toHaveLength(2);
+    expect(await screen.findByTestId("candidate-checkbox-s1")).toBeInTheDocument();
   });
 
   it("reports full primary and reserve capacity and closes explicitly", () => {
