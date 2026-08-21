@@ -1,4 +1,5 @@
 # tests/conftest.py
+import ast
 import logging
 import os
 import re
@@ -34,8 +35,44 @@ def _render_psycopg_url(url: str) -> str:
 
 
 def _pure_only_selected(config: pytest.Config) -> bool:
-    """Return whether pytest explicitly selected only the ``pure`` marker."""
-    return getattr(config.option, "markexpr", "").strip() == "pure"
+    """Return whether the marker expression can select only ``pure`` tests."""
+    markexpr = getattr(config.option, "markexpr", "").strip()
+    if not markexpr:
+        return False
+
+    try:
+        expression = ast.parse(markexpr, mode="eval").body
+    except SyntaxError:
+        return False
+
+    known_safe_markers = {"pure", "slow", *_AREA_MARKERS.values()}
+    requires_pure = False
+
+    def is_safe_conjunction(node: ast.expr, *, negated: bool = False) -> bool:
+        nonlocal requires_pure
+
+        if isinstance(node, ast.Name):
+            if node.id not in known_safe_markers or node.id in {"database", "http"}:
+                return False
+            if node.id == "pure":
+                if negated:
+                    return False
+                requires_pure = True
+            return True
+
+        if isinstance(node, ast.BoolOp):
+            if negated or not isinstance(node.op, ast.And):
+                return False
+            return all(is_safe_conjunction(value) for value in node.values)
+
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            if negated or not isinstance(node.operand, ast.Name):
+                return False
+            return is_safe_conjunction(node.operand, negated=True)
+
+        return False
+
+    return is_safe_conjunction(expression) and requires_pure
 
 
 def _shared_postgres_enabled(config: pytest.Config) -> bool:
@@ -54,12 +91,12 @@ def _shared_postgres_enabled(config: pytest.Config) -> bool:
     if not getattr(config.option, "numprocesses", 0):
         return False
 
-    # ``-m pure`` also has no positional arguments under ``testpaths``. It is
-    # the one explicit marker expression that guarantees no test can request
-    # the database-backed fixtures, so avoid starting the controller container.
-    # Be deliberately conservative: a different or mixed expression may select
-    # database/http items and must retain the full-suite template behavior.
-    return not config.args and not _pure_only_selected(config)
+    # A marker expression that necessarily includes ``pure`` cannot request
+    # database-backed fixtures, even when an explicit pure test path is given.
+    if _pure_only_selected(config):
+        return False
+
+    return not config.args
 
 
 def _worker_database_name(workerinput: dict[str, object]) -> str:

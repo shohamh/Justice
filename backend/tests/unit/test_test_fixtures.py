@@ -111,29 +111,57 @@ def test_shared_postgres_enabled_for_full_parallel_suite(tmp_path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("markexpr", "expected"),
+    "markexpr",
     [
-        ("pure", True),
-        ("  pure  ", True),
-        ("", False),
-        ("database", False),
-        ("pure or database", False),
-        ("pure and not slow", False),
+        "pure",
+        "  pure  ",
+        "pure and not slow",
+        "not slow and pure",
+        "(pure)",
+        "((pure and not slow))",
+        "pure and algorithm",
+        "pure and not algorithm",
     ],
 )
-def test_pure_only_selected_requires_an_explicit_pure_expression(
-    markexpr: str, expected: bool
-) -> None:
+def test_pure_only_selected_accepts_conjunctions_requiring_pure(markexpr: str) -> None:
     config = SimpleNamespace(option=SimpleNamespace(markexpr=markexpr))
 
-    assert conftest._pure_only_selected(config) is expected
+    assert conftest._pure_only_selected(config) is True
+
+
+@pytest.mark.parametrize(
+    "markexpr",
+    [
+        "",
+        "database",
+        "http",
+        "not pure",
+        "pure or pure",
+        "pure or database",
+        "pure and database",
+        "pure and not database",
+        "pure and http",
+        "pure and not http",
+        "pure and unknown_marker",
+        "pure and not unknown_marker",
+        "pure and (not slow or algorithm)",
+    ],
+)
+def test_pure_only_selected_rejects_expressions_that_may_not_be_pure(markexpr: str) -> None:
+    config = SimpleNamespace(option=SimpleNamespace(markexpr=markexpr))
+
+    assert conftest._pure_only_selected(config) is False
 
 
 @pytest.mark.parametrize(
     ("markexpr", "expected"),
     [
         ("pure", False),
+        ("pure and not slow", False),
+        ("not slow and (pure)", False),
         ("database", True),
+        ("http", True),
+        ("pure and unknown_marker", True),
         ("pure or database", True),
     ],
 )
@@ -150,13 +178,24 @@ def test_shared_postgres_starts_only_when_marker_selection_can_need_database(
     assert _shared_postgres_enabled(config) is expected
 
 
-def test_pytest_configure_does_not_create_container_for_pure_selection(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(
+    ("markexpr", "args"),
+    [
+        ("pure", []),
+        ("pure and not slow", []),
+        ("not slow and (pure)", []),
+        ("pure", ["tests/unit/test_model.py::test_fairness_all_zero_scores_distributes"]),
+    ],
+)
+def test_pytest_configure_does_not_create_container_for_pure_only_selection(
+    monkeypatch, tmp_path, markexpr: str, args: list[str]
+) -> None:
     configured_markers: list[tuple[str, str]] = []
     config = SimpleNamespace(
         workerinput=None,
-        option=SimpleNamespace(numprocesses=4, markexpr="pure"),
+        option=SimpleNamespace(numprocesses=4, markexpr=markexpr),
         rootpath=tmp_path,
-        args=[],
+        args=args,
         addinivalue_line=lambda name, value: configured_markers.append((name, value)),
     )
 
