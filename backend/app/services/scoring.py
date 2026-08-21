@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+import logging
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -19,8 +20,12 @@ from app.db.models import (
     ExemptionType,
     HierarchyNode,
     ScoreAdjustment,
+    ScoreProjectionDirtyBucket,
+    ScoreProjectionQuarterTotal,
     Soldier,
     SoldierExemption,
+    SoldierQuarterScoreProjection,
+    SoldierScoreProjection,
 )
 from app.algorithm.duration import calendar_days_touched, score_days
 from app.services.eligibility import inferred_service_type
@@ -28,6 +33,8 @@ from app.auth.authz import scope_root_ids
 from app.services.authority import can_view_soldier_scope
 
 _UNSET: object = object()
+_SCORE_QUANT = Decimal("0.000001")
+logger = logging.getLogger(__name__)
 
 
 def _duty_type_scores(session: Session) -> dict[uuid.UUID, Decimal]:
@@ -558,11 +565,547 @@ def _exemption_label(exemption: SoldierExemption, ex_type: ExemptionType) -> str
     return f"{ex_type.name} ({category})"
 
 
+def _q6(value: Decimal | int | str | None) -> Decimal:
+    return Decimal(value or "0").quantize(_SCORE_QUANT)
+
+
+def _score_projection_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iter_calendar_quarters(start: date, end: date) -> list[date]:
+    """Calendar quarter starts touched by inclusive [start, end]."""
+    from app.services.effort_score import quarter_end, quarter_start
+
+    if end < start:
+        return []
+    current = quarter_start(start)
+    last = quarter_start(end)
+    quarters: list[date] = []
+    while current <= last:
+        quarters.append(current)
+        current = quarter_end(current) + timedelta(days=1)
+    return quarters
+
+
+def _effort_reset_date(session: Session) -> date:
+    from app.services.effort_score import quarter_start
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    today = date.today()
+    try:
+        reset_raw = get_setting(session, "fairness.reset_date")
+        return date.fromisoformat(str(reset_raw))
+    except (SettingNotFound, ValueError, Exception):
+        return quarter_start(date(today.year - 2, today.month, 1))
+
+
+def _effort_planning_start(session: Session) -> date:
+    today = date.today()
+    latest_published_end = session.execute(
+        select(func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
+    ).scalar()
+    if latest_published_end is not None and latest_published_end >= today:
+        return latest_published_end + timedelta(days=1)
+    return today
+
+
+def _effort_quarter_windows(
+    session: Session, *, reset_date: date, planning_start: date, planning_end: date
+) -> list[tuple[date, date, date]]:
+    """Return (tracked_start, tracked_end, calendar_quarter_start) like effort_score legacy code."""
+    from app.services.effort_score import quarter_end, quarter_start
+
+    windows: list[tuple[date, date, date]] = []
+    history_end = planning_start - timedelta(days=1)
+    if history_end >= reset_date:
+        q_s = quarter_start(reset_date)
+        while q_s < planning_start:
+            q_e = quarter_end(q_s)
+            actual_start = max(q_s, reset_date)
+            actual_end = min(q_e, history_end)
+            windows.append((actual_start, actual_end, q_s))
+            q_s = q_e + timedelta(days=1)
+
+    min_future = planning_end + timedelta(days=1)
+    rows = session.execute(
+        select(DutyAssignment.start_date, DutyAssignment.end_date).where(
+            DutyAssignment.status == "published",
+            DutyAssignment.end_date > min_future,
+            DutyAssignment.end_date > reset_date,
+        )
+    ).all()
+    future_quarters: set[date] = set()
+    for start_date, end_date in rows:
+        first_day = max(start_date, reset_date, min_future)
+        last_day = end_date - timedelta(days=1)
+        future_quarters.update(_iter_calendar_quarters(first_day, last_day))
+    for q_s in sorted(future_quarters):
+        windows.append((q_s, quarter_end(q_s), q_s))
+    return windows
+
+
+def _projection_data_quarters_for_soldiers(
+    session: Session, soldier_ids: set[uuid.UUID]
+) -> set[date]:
+    if not soldier_ids:
+        return set()
+
+    quarters: set[date] = set()
+    assignments = session.execute(
+        select(DutyAssignment.start_date, DutyAssignment.end_date).where(
+            DutyAssignment.status == "published",
+            DutyAssignment.soldier_id.in_(soldier_ids),
+        )
+    ).all()
+    for start_date, end_date in assignments:
+        quarters.update(_iter_calendar_quarters(start_date, end_date - timedelta(days=1)))
+
+    override_rows = session.execute(
+        select(DutyDayOverride.date)
+        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
+        .where(
+            DutyAssignment.status == "published",
+            DutyDayOverride.effective_soldier_id.in_(soldier_ids),
+        )
+    ).all()
+    for (override_date,) in override_rows:
+        quarters.update(_iter_calendar_quarters(override_date, override_date))
+
+    adjustment_dates = session.execute(
+        select(ScoreAdjustment.created_at).where(ScoreAdjustment.soldier_id.in_(soldier_ids))
+    ).scalars().all()
+    for created_at in adjustment_dates:
+        if created_at is not None:
+            quarters.update(_iter_calendar_quarters(created_at.date(), created_at.date()))
+
+    persisted = session.execute(
+        select(SoldierQuarterScoreProjection.quarter_start).where(
+            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids)
+        )
+    ).scalars().all()
+    quarters.update(persisted)
+    return quarters
+
+
+def _projection_data_keys_for_soldiers(
+    session: Session, soldier_ids: set[uuid.UUID]
+) -> set[tuple[uuid.UUID, date]]:
+    if not soldier_ids:
+        return set()
+
+    keys: set[tuple[uuid.UUID, date]] = set()
+    assignments = session.execute(
+        select(DutyAssignment.soldier_id, DutyAssignment.start_date, DutyAssignment.end_date).where(
+            DutyAssignment.status == "published",
+            DutyAssignment.soldier_id.in_(soldier_ids),
+        )
+    ).all()
+    for soldier_id, start_date, end_date in assignments:
+        for quarter_start_value in _iter_calendar_quarters(start_date, end_date - timedelta(days=1)):
+            keys.add((soldier_id, quarter_start_value))
+
+    override_rows = session.execute(
+        select(DutyDayOverride.effective_soldier_id, DutyDayOverride.date)
+        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
+        .where(
+            DutyAssignment.status == "published",
+            DutyDayOverride.effective_soldier_id.in_(soldier_ids),
+        )
+    ).all()
+    for soldier_id, override_date in override_rows:
+        if soldier_id is not None:
+            keys.add((soldier_id, _iter_calendar_quarters(override_date, override_date)[0]))
+
+    adjustment_rows = session.execute(
+        select(ScoreAdjustment.soldier_id, ScoreAdjustment.created_at).where(
+            ScoreAdjustment.soldier_id.in_(soldier_ids)
+        )
+    ).all()
+    for soldier_id, created_at in adjustment_rows:
+        if created_at is not None:
+            keys.add((soldier_id, _iter_calendar_quarters(created_at.date(), created_at.date())[0]))
+
+    persisted = session.execute(
+        select(SoldierQuarterScoreProjection.soldier_id, SoldierQuarterScoreProjection.quarter_start).where(
+            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids)
+        )
+    ).all()
+    keys.update((soldier_id, quarter_start_value) for soldier_id, quarter_start_value in persisted)
+    return keys
+
+
+def _projection_rows_by_key(
+    session: Session, keys: set[tuple[uuid.UUID, date]]
+) -> dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]]:
+    if not keys:
+        return {}
+    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+    quarter_starts = {quarter for _soldier_id, quarter in keys}
+    rows = session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
+            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
+        )
+    ).scalars().all()
+    by_key: dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]] = defaultdict(list)
+    for row in rows:
+        key = (row.soldier_id, row.quarter_start)
+        if key in keys:
+            by_key[key].append(row)
+    return by_key
+
+
+def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjection]) -> bool:
+    from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
+
+    if not rows:
+        return False
+    aggregate_count = sum(1 for row in rows if row.duty_type_id is None)
+    return aggregate_count <= 1 and all(
+        row.projection_version == SCORE_PROJECTION_CANONICAL_VERSION for row in rows
+    )
+
+
+def _dirty_or_divergent_projection_keys(
+    session: Session, *, keys: set[tuple[uuid.UUID, date]], quarter_starts: set[date]
+) -> set[tuple[uuid.UUID, date]]:
+    if not keys and not quarter_starts:
+        return set()
+    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+    all_quarters = {quarter for _soldier_id, quarter in keys} | quarter_starts
+    query = select(ScoreProjectionDirtyBucket).where(
+        ScoreProjectionDirtyBucket.quarter_start.in_(all_quarters),
+        or_(
+            ScoreProjectionDirtyBucket.status == "dirty",
+            ScoreProjectionDirtyBucket.divergence.is_not(None),
+        ),
+    )
+    if soldier_ids and not quarter_starts:
+        query = query.where(ScoreProjectionDirtyBucket.soldier_id.in_(soldier_ids))
+    rows = session.execute(query).scalars().all()
+    return {(row.soldier_id, row.quarter_start) for row in rows}
+
+
+def _mark_projection_key_current(
+    session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date
+) -> None:
+    dirty = session.execute(
+        select(ScoreProjectionDirtyBucket).where(
+            ScoreProjectionDirtyBucket.soldier_id == soldier_id,
+            ScoreProjectionDirtyBucket.quarter_start == quarter_start_value,
+        )
+    ).scalar_one_or_none()
+    if dirty is None:
+        return
+    now = _score_projection_now()
+    dirty.status = "current"
+    dirty.divergence = None
+    dirty.refreshed_at = now
+    dirty.updated_at = now
+    session.flush()
+
+
+def _quarter_totals_are_current(session: Session, quarter_starts: set[date]) -> bool:
+    from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
+
+    if not quarter_starts:
+        return True
+    rows = session.execute(
+        select(ScoreProjectionQuarterTotal).where(
+            ScoreProjectionQuarterTotal.quarter_start.in_(quarter_starts)
+        )
+    ).scalars().all()
+    by_quarter = {row.quarter_start: row for row in rows}
+    return all(
+        (row := by_quarter.get(quarter_start_value)) is not None
+        and row.projection_version == SCORE_PROJECTION_CANONICAL_VERSION
+        for quarter_start_value in quarter_starts
+    )
+
+
+def _ensure_projection_ready(
+    session: Session,
+    *,
+    keys: set[tuple[uuid.UUID, date]],
+    quarter_starts: set[date] | None = None,
+) -> bool:
+    from app.services.score_projection import projection_is_current, rebuild_projection_bucket
+
+    quarter_starts = set(quarter_starts or set())
+    rebuild_keys: set[tuple[uuid.UUID, date]] = set()
+    rows_by_key = _projection_rows_by_key(session, keys)
+    for key in keys:
+        if not _projection_bucket_rows_are_complete(rows_by_key.get(key, [])):
+            rebuild_keys.add(key)
+
+    rebuild_keys.update(
+        _dirty_or_divergent_projection_keys(session, keys=keys, quarter_starts=quarter_starts)
+    )
+
+    if quarter_starts and not _quarter_totals_are_current(session, quarter_starts):
+        soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+        rebuild_keys.update(
+            (soldier_id, quarter_start_value)
+            for soldier_id in soldier_ids
+            for quarter_start_value in quarter_starts
+        )
+
+    for soldier_id, quarter_start_value in sorted(rebuild_keys, key=lambda item: (str(item[0]), item[1])):
+        try:
+            rebuild_projection_bucket(session, soldier_id, quarter_start_value)
+            _mark_projection_key_current(
+                session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
+            )
+        except Exception:
+            logger.exception(
+                "score projection bucket rebuild failed during read",
+                extra={"soldier_id": str(soldier_id), "quarter_start": str(quarter_start_value)},
+            )
+            return False
+
+    required: set[Any] = set(keys) | set(quarter_starts)
+    if not projection_is_current(session, required):
+        logger.warning("score projection read fell back because required buckets are not current")
+        return False
+    final_rows_by_key = _projection_rows_by_key(session, keys)
+    if keys and not all(
+        _projection_bucket_rows_are_complete(final_rows_by_key.get(key, []))
+        for key in keys
+    ):
+        logger.warning("score projection read fell back because required buckets are incomplete")
+        return False
+    if quarter_starts and not _quarter_totals_are_current(session, quarter_starts):
+        logger.warning("score projection read fell back because required quarter totals are incomplete")
+        return False
+    return True
+
+
+def _projection_effort_inputs(
+    session: Session,
+    *,
+    soldiers: list[Soldier],
+    reset_date: date,
+    planning_start: date,
+    planning_end: date,
+) -> tuple[
+    list[tuple[date, date, date]],
+    dict[date, Decimal],
+    dict[date, dict[uuid.UUID, Decimal]],
+] | None:
+    from app.services.effort_score import quarter_start
+
+    # Persisted buckets are calendar-quarter aggregates. A reset date inside a
+    # quarter needs day-level clipping, so keep legacy for that rare setting.
+    if reset_date != quarter_start(reset_date):
+        logger.warning("score projection read fell back because reset_date is not quarter-aligned")
+        return None
+
+    windows = _effort_quarter_windows(
+        session, reset_date=reset_date, planning_start=planning_start, planning_end=planning_end
+    )
+    if not windows:
+        return [], {}, {}
+
+    soldier_ids = {soldier.id for soldier in soldiers}
+    quarter_starts = {calendar_qs for _q_start, _q_end, calendar_qs in windows}
+    keys = {
+        key
+        for key in _projection_data_keys_for_soldiers(session, soldier_ids)
+        if key[1] in quarter_starts
+    }
+    data_quarters = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    if not _ensure_projection_ready(session, keys=keys, quarter_starts=data_quarters):
+        return None
+
+    totals = {
+        row.quarter_start: _q6(row.total_score)
+        for row in session.execute(
+            select(ScoreProjectionQuarterTotal).where(
+                ScoreProjectionQuarterTotal.quarter_start.in_(quarter_starts)
+            )
+        ).scalars().all()
+    }
+    soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = defaultdict(dict)
+    projection_rows = session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
+            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
+        )
+    ).scalars().all()
+    grouped: dict[tuple[uuid.UUID, date], Decimal] = defaultdict(lambda: Decimal("0"))
+    for row in projection_rows:
+        grouped[(row.soldier_id, row.quarter_start)] += _q6(row.duty_score) + _q6(row.adjustment_score)
+    for (soldier_id, quarter_start_value), score in grouped.items():
+        soldier_scores[quarter_start_value][soldier_id] = _q6(score)
+    return windows, totals, dict(soldier_scores)
+
+
+def _try_projected_effort_data(
+    session: Session, soldiers: list[Soldier]
+) -> dict[uuid.UUID, Any] | None:
+    from app.services.effort_score import _compute_effort_data
+
+    reset_date = _effort_reset_date(session)
+    planning_start = _effort_planning_start(session)
+    projection_inputs = _projection_effort_inputs(
+        session,
+        soldiers=soldiers,
+        reset_date=reset_date,
+        planning_start=planning_start,
+        planning_end=planning_start,
+    )
+    if projection_inputs is None:
+        return None
+    windows, q_unit_scores, q_soldier_scores = projection_inputs
+    data = _compute_effort_data(
+        soldiers=soldiers,
+        quarters=[(q_start, q_end) for q_start, q_end, _calendar_qs in windows],
+        quarter_unit_scores={
+            q_start: q_unit_scores.get(calendar_qs, Decimal("0"))
+            for q_start, _q_end, calendar_qs in windows
+        },
+        quarter_soldier_scores={
+            q_start: q_soldier_scores.get(calendar_qs, {})
+            for q_start, _q_end, calendar_qs in windows
+        },
+    )
+    return data
+
+
+def _try_projected_effort_scores(
+    session: Session, soldiers: list[Soldier]
+) -> dict[uuid.UUID, float] | None:
+    data = _try_projected_effort_data(session, soldiers)
+    if data is None:
+        return None
+    return {sid: float(item.effort_score) for sid, item in data.items()}
+
+
+def _try_projected_effort_breakdown(
+    session: Session,
+    *,
+    soldier: Any,
+    planning_start: date,
+    planning_end: date,
+    reset_date: date,
+    extra_adj_delta: Decimal = Decimal("0"),
+    extra_adj_date: date | None = None,
+) -> Any | None:
+    from app.services.effort_score import (
+        EffortBreakdown,
+        EffortQuarterDetail,
+        _quarter_label,
+        quarter_end,
+        quarter_start,
+    )
+
+    if reset_date != quarter_start(reset_date):
+        logger.warning("effort breakdown fell back because reset_date is not quarter-aligned")
+        return None
+
+    windows = _effort_quarter_windows(
+        session, reset_date=reset_date, planning_start=planning_start, planning_end=planning_end
+    )
+    if not windows:
+        return EffortBreakdown(quarters=[], effort_score=Decimal("0"), A_i=Decimal("0"), W_i=Decimal("0"))
+
+    quarter_starts = {calendar_qs for _q_start, _q_end, calendar_qs in windows}
+    keys = {
+        key
+        for key in _projection_data_keys_for_soldiers(session, {soldier.id})
+        if key[1] in quarter_starts
+    }
+    data_quarters = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    if not _ensure_projection_ready(session, keys=keys, quarter_starts=data_quarters):
+        return None
+
+    quarter_totals = {
+        row.quarter_start: row
+        for row in session.execute(
+            select(ScoreProjectionQuarterTotal).where(
+                ScoreProjectionQuarterTotal.quarter_start.in_(quarter_starts)
+            )
+        ).scalars().all()
+    }
+    q_unit_scores: dict[date, Decimal] = {
+        quarter_start_value: _q6(total.duty_score)
+        for quarter_start_value, total in quarter_totals.items()
+    }
+    q_soldier_scores: dict[date, Decimal] = defaultdict(lambda: Decimal("0"))
+    q_adj_scores: dict[date, Decimal] = defaultdict(lambda: Decimal("0"))
+    rows = session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id == soldier.id,
+            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
+        )
+    ).scalars().all()
+    for row in rows:
+        q_soldier_scores[row.quarter_start] += _q6(row.duty_score) + _q6(row.adjustment_score)
+        q_adj_scores[row.quarter_start] += _q6(row.adjustment_score)
+
+    # Legacy compute_effort_breakdown includes this soldier's adjustments in the
+    # displayed unit score, not every soldier's adjustments. Keep that contract.
+    for quarter_start_value, adjustment_score in q_adj_scores.items():
+        q_unit_scores[quarter_start_value] = q_unit_scores.get(quarter_start_value, Decimal("0")) + adjustment_score
+
+    if extra_adj_delta and extra_adj_date is not None:
+        extra_qs = quarter_start(extra_adj_date)
+        if extra_qs in quarter_starts:
+            delta = Decimal(extra_adj_delta)
+            q_adj_scores[extra_qs] += delta
+            q_unit_scores[extra_qs] = q_unit_scores.get(extra_qs, Decimal("0")) + delta
+            q_soldier_scores[extra_qs] += delta
+
+    quarter_details: list[EffortQuarterDetail] = []
+    A_i = Decimal("0")
+    W_i = Decimal("0")
+    for q_start_d, q_end_d, calendar_qs in windows:
+        q_days = (q_end_d - q_start_d).days + 1
+        soldier_start = max(soldier.enrolled_at, q_start_d)
+        if soldier_start > q_end_d:
+            continue
+
+        active_in_q = (q_end_d - soldier_start).days + 1
+        active_frac = Decimal(active_in_q) / Decimal(q_days)
+        unit_score = q_unit_scores.get(calendar_qs, Decimal("0"))
+        s_score = q_soldier_scores.get(calendar_qs, Decimal("0"))
+        share = s_score / unit_score if unit_score > 0 else Decimal("0")
+        weighted_share = share * active_frac
+
+        if unit_score > 0:
+            A_i += s_score * active_frac
+            W_i += unit_score * active_frac
+
+        true_q_end = quarter_end(q_start_d)
+        quarter_details.append(
+            EffortQuarterDetail(
+                quarter_start=q_start_d,
+                quarter_end=q_end_d,
+                quarter_label=_quarter_label(q_start_d),
+                soldier_score=s_score,
+                unit_score=unit_score,
+                active_frac=active_frac,
+                share=share,
+                weighted_share=weighted_share,
+                is_partial=(q_end_d < true_q_end),
+                adjustment_delta=q_adj_scores.get(calendar_qs, Decimal("0")),
+            )
+        )
+
+    effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
+    return EffortBreakdown(quarters=quarter_details, effort_score=effort_score, A_i=A_i, W_i=W_i)
+
+
 def effort_scores_by_soldier(
     session: Session, soldiers: list[Soldier]
 ) -> dict[uuid.UUID, float]:
     """Effort score (scale-invariant A_i/W_i ratio) per soldier id, using the
     same reset-date/planning-horizon rules as the transparency page."""
+    projected = _try_projected_effort_scores(session, soldiers)
+    if projected is not None:
+        return projected
+
     from app.services.effort_score import compute_effort_data, quarter_start
     from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -592,7 +1135,134 @@ def effort_scores_by_soldier(
     return {sid: float(data.effort_score) for sid, data in effort_map.items()}
 
 
+def _try_projected_transparency_rows(
+    session: Session, *, viewer: Soldier | None = None
+) -> dict[str, Any] | None:
+    soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
+    soldier_ids = {soldier.id for soldier in soldiers}
+    reset_date = _effort_reset_date(session)
+    planning_start = _effort_planning_start(session)
+    effort_windows = _effort_quarter_windows(
+        session,
+        reset_date=reset_date,
+        planning_start=planning_start,
+        planning_end=planning_start,
+    )
+    effort_quarters = {calendar_qs for _q_start, _q_end, calendar_qs in effort_windows}
+    keys = _projection_data_keys_for_soldiers(session, soldier_ids)
+    score_quarters = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    if not _ensure_projection_ready(session, keys=keys, quarter_starts=score_quarters & effort_quarters):
+        return None
+
+    total_rows = session.execute(
+        select(SoldierScoreProjection).where(SoldierScoreProjection.soldier_id.in_(soldier_ids))
+    ).scalars().all()
+    totals_by_soldier = {row.soldier_id: row for row in total_rows}
+    active_days_map = _bulk_active_days(session, list(soldiers))
+    nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
+    exempted_ids = globally_exempted_soldier_ids(session)
+    exemptions_by_soldier = _active_exemptions_by_soldier(session)
+    roots = scope_root_ids(session, viewer) if viewer is not None else set()
+    can_see_exemption_aggregates = viewer is not None and (
+        viewer.role == "admin" or bool(roots)
+    )
+    effort_map = _try_projected_effort_data(session, list(soldiers))
+    if effort_map is None:
+        return None
+
+    rows: list[dict[str, Any]] = []
+    population_spd: list[Decimal] = []
+    for s in soldiers:
+        node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
+        total = totals_by_soldier.get(s.id)
+        cum = _q6(total.cumulative_score) if total is not None else Decimal("0")
+        shift_count = total.shift_count if total is not None else 0
+        ad = active_days_map.get(s.id, 1)
+        # Normalisation is computed over the FULL active population (dev
+        # behavior) regardless of which rows this viewer may see.
+        population_spd.append(cum / Decimal(ad))
+        if viewer is not None and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+            continue
+        soldier_exemptions = exemptions_by_soldier.get(s.id, [])
+        in_scope = node is not None and any(root in node.path_ids for root in roots)
+        if in_scope:
+            exemptions_display = ", ".join(
+                _exemption_label(exemption, ex_type) for exemption, ex_type in soldier_exemptions
+            )
+            exemptions_summary = [
+                {
+                    "id": exemption.id,
+                    "exemption_type_name": ex_type.name,
+                    "is_global": ex_type.is_global,
+                    "start_date": exemption.start_date,
+                    "end_date": exemption.end_date,
+                }
+                for exemption, ex_type in soldier_exemptions
+            ]
+        else:
+            exemptions_display = "חסוי"
+            exemptions_summary = []
+        has_global = any(ex_type.is_global for _, ex_type in soldier_exemptions)
+        has_partial = any(not ex_type.is_global for _, ex_type in soldier_exemptions)
+        has_temporary = any(exemption.end_date is not None for exemption, _ in soldier_exemptions)
+        effort_data = effort_map.get(s.id)
+        effort_score = float(effort_data.effort_score) if effort_data else 0.0
+        c_over_d = float(effort_data.C_over_D) if effort_data else 0.0
+        effort_offset_raw = effort_data.effort_offset if effort_data else 0
+        rows.append(
+            {
+                "soldier_id": s.id,
+                "full_name": s.full_name,
+                "node_id": s.hierarchy_node_id,
+                "node_name": node.name if node is not None else None,
+                "enrolled_at": s.enrolled_at,
+                "active_days": ad,
+                "shift_count": shift_count,
+                "rank": s.rank,
+                "is_officer": s.is_officer,
+                "service_type": inferred_service_type(s),
+                "cumulative_score": cum,
+                "score_per_day": cum / Decimal(ad),
+                "is_globally_exempted": s.id in exempted_ids,
+                "exemptions_display": exemptions_display,
+                "exemptions_visible": in_scope,
+                "exemptions": exemptions_summary,
+                "has_global_exemption": has_global if can_see_exemption_aggregates else None,
+                "has_partial_exemption": has_partial if can_see_exemption_aggregates else None,
+                "has_temporary_exemption": has_temporary if can_see_exemption_aggregates else None,
+                "effort_score": effort_score,
+                "c_over_d": c_over_d,
+                "effort_offset_raw": effort_offset_raw,
+            }
+        )
+    if population_spd:
+        avg_spd = sum(population_spd) / Decimal(len(population_spd))
+    else:
+        avg_spd = Decimal("0")
+    for r in rows:
+        r["normalised_score"] = (
+            r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
+        )
+    rows.sort(key=lambda r: r["effort_score"], reverse=True)
+    return {
+        "rows": rows,
+        "can_see_exemption_aggregates": can_see_exemption_aggregates,
+        "population_count": len(soldiers),
+    }
+
+
 def transparency_rows(
+    session: Session, *, viewer: Soldier | None = None
+) -> dict[str, Any]:
+    # Both projected and legacy builders preserve the public "effort_score" key.
+    projected = _try_projected_transparency_rows(session, viewer=viewer)
+    if projected is not None:
+        return projected
+    logger.warning("transparency scoring read fell back to legacy calculation")
+    return _legacy_transparency_rows(session, viewer=viewer)
+
+
+def _legacy_transparency_rows(
     session: Session, *, viewer: Soldier | None = None
 ) -> dict[str, Any]:
     from app.services.effort_score import compute_effort_data, quarter_start
@@ -717,7 +1387,72 @@ def transparency_rows(
     }
 
 
+def _try_projected_soldier_score_breakdown(
+    session: Session, *, soldier_id: uuid.UUID
+) -> dict[str, Any] | None:
+    keys = _projection_data_keys_for_soldiers(session, {soldier_id})
+    if keys and not _ensure_projection_ready(session, keys=keys):
+        return None
+
+    dt_names = {dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()}
+    rows = session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id == soldier_id
+        )
+    ).scalars().all()
+
+    today = date.today()
+    per_type_data: dict[uuid.UUID, dict[str, Any]] = {}
+    for row in rows:
+        if row.duty_type_id is None:
+            continue
+        entry = per_type_data.setdefault(
+            row.duty_type_id,
+            {
+                "duty_type_id": row.duty_type_id,
+                "duty_type_name": dt_names.get(row.duty_type_id),
+                "days": 0,
+                "days_past": 0,
+                "days_future": 0,
+                "score": Decimal("0"),
+            },
+        )
+        entry["score"] += _q6(row.duty_score)
+        for duty_row in row.source_fingerprint.get("duty_rows", []):
+            day_raw = duty_row.get("day")
+            day = date.fromisoformat(day_raw) if isinstance(day_raw, str) else day_raw
+            if day is None:
+                continue
+            entry["days"] += 1
+            if day <= today:
+                entry["days_past"] += 1
+            else:
+                entry["days_future"] += 1
+
+    adjustments = (
+        session.execute(
+            select(ScoreAdjustment)
+            .where(ScoreAdjustment.soldier_id == soldier_id)
+            .order_by(ScoreAdjustment.created_at)
+        )
+        .scalars()
+        .all()
+    )
+    return {"per_type": list(per_type_data.values()), "adjustments": list(adjustments)}
+
+
 def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[str, Any]:
+    projected = _try_projected_soldier_score_breakdown(session, soldier_id=soldier_id)
+    if projected is not None:
+        return projected
+    logger.warning(
+        "single-soldier score breakdown fell back to legacy calculation",
+        extra={"soldier_id": str(soldier_id)},
+    )
+    return _legacy_soldier_score_breakdown(session, soldier_id=soldier_id)
+
+
+def _legacy_soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[str, Any]:
     scores = _duty_type_scores(session)
     dt_names = {dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()}
     by_type: dict[uuid.UUID, Decimal] = defaultdict(Decimal)
@@ -850,10 +1585,22 @@ def fairness_components(session: Session, *, viewer: Soldier | None = None) -> d
     Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope)."""
     from app.services.algorithm_bridge import load_soldier_inputs
 
-    rows = transparency_rows(session, viewer=viewer)["rows"]
-    visible_ids = {r["soldier_id"] for r in rows}
-    effort_by_id = {r["soldier_id"]: float(r["effort_score"]) for r in rows}
-    name_by_id = {r["soldier_id"]: r["full_name"] for r in rows}
+    soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
+    nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
+    visible_soldiers = [
+        soldier
+        for soldier in soldiers
+        if viewer is None
+        or viewer.role == "admin"
+        or can_view_soldier_scope(
+            session,
+            viewer,
+            nodes.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None,
+        )
+    ]
+    visible_ids = {soldier.id for soldier in visible_soldiers}
+    effort_by_id = effort_scores_by_soldier(session, visible_soldiers)
+    name_by_id = {soldier.id: soldier.full_name for soldier in visible_soldiers}
 
     active_type_ids = _active_duty_type_ids(session)
     type_names = {
