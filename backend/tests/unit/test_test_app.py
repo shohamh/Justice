@@ -1,9 +1,53 @@
 import asyncio
 import os
+from types import SimpleNamespace
 
 import pytest
 
+from app.algorithm import solver as solver_module
+from tests import conftest
 from tests.support import app as test_app_support
+
+pytestmark = pytest.mark.test_layer("http")
+
+
+def test_test_app_module_is_collected_as_http_not_pure(request) -> None:
+    """Catch path fallback misclassifying direct TestClient construction as pure."""
+    assert request.node.get_closest_marker("http") is not None
+    assert request.node.get_closest_marker("pure") is None
+
+
+def test_enabled_solver_profile_hook_records_and_prints_terminal_summary() -> None:
+    """Catch disconnecting the enabled pytest fixture from its terminal report."""
+    config = SimpleNamespace()
+    setattr(config, conftest._SOLVER_PROFILE_ENABLED_ATTR, True)
+    setattr(config, conftest._SOLVER_PROFILES_ATTR, [])
+    setattr(config, conftest._SOLVER_PROFILE_WARNING_ATTR, None)
+    request = SimpleNamespace(
+        config=config,
+        node=SimpleNamespace(nodeid="tests/unit/test_test_app.py::profiled"),
+    )
+
+    profile_fixture = conftest._solver_profile_report.__wrapped__(request)
+    next(profile_fixture)
+    with solver_module._profile_phase("solve_primary"):
+        pass
+    with pytest.raises(StopIteration):
+        next(profile_fixture)
+
+    separators: list[tuple[str, str]] = []
+    lines: list[str] = []
+    terminalreporter = SimpleNamespace(
+        write_sep=lambda separator, title: separators.append((separator, title)),
+        write_line=lines.append,
+    )
+
+    conftest.pytest_terminal_summary(terminalreporter, 0, config)
+
+    assert separators == [("=", "solver phase profile")]
+    assert len(lines) == 1
+    assert lines[0].startswith("solve_primary: ")
+    assert lines[0].endswith("s across 1 call(s)")
 
 
 def test_test_app_sets_testing_flag_only_for_its_context(monkeypatch) -> None:

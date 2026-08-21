@@ -40,6 +40,7 @@ RESET_TABLES = (
     "duty_shifts",
     "shift_templates",
     "range_events",
+    "range_locations",
     "range_excusal_requests",
     "range_assignments",
     "soldier_range_qualifications",

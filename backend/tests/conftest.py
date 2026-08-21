@@ -4,7 +4,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 from sqlalchemy import text
@@ -22,6 +22,10 @@ _SHARED_TEMPLATE_ATTR = "_shared_postgres_template"
 _SOLVER_PROFILES_ATTR = "_justice_solver_profiles"
 _SOLVER_PROFILE_ENABLED_ATTR = "_justice_solver_profile_enabled"
 _SOLVER_PROFILE_WARNING_ATTR = "_justice_solver_profile_warning"
+
+TestLayer = Literal["pure", "database", "http"]
+_TEST_LAYERS: tuple[TestLayer, ...] = ("pure", "database", "http")
+_EXPLICIT_LAYER_MARKER = "test_layer"
 
 
 def _pure_only_selected(config: pytest.Config) -> bool:
@@ -68,10 +72,9 @@ def _pure_only_selected(config: pytest.Config) -> bool:
 def _shared_postgres_enabled(config: pytest.Config) -> bool:
     """Use one migrated template for pytest's default full parallel suite.
 
-    With ``testpaths`` configured, ``pytest -q`` leaves ``config.args`` empty.
-    The previous check only recognized an explicit ``pytest tests`` argument,
-    so the documented command silently fell back to one Postgres container and
-    Alembic migration run per xdist worker.
+    Pytest expands configured ``testpaths`` into ``config.args`` even when the
+    user invoked only ``pytest -q``. Compare the parsed positional selectors to
+    ``invocation_params.args`` so configured testpaths do not look explicit.
 
     Explicit file/path runs stay isolated: they are intentionally useful for
     focused debugging and should not pay for controller-side template cloning.
@@ -86,7 +89,19 @@ def _shared_postgres_enabled(config: pytest.Config) -> bool:
     if _pure_only_selected(config):
         return False
 
-    return not config.args
+    invocation_args = {
+        os.fspath(argument) for argument in config.invocation_params.args
+    }
+    parsed_selectors = getattr(config.option, "file_or_dir", None)
+    if parsed_selectors is None:
+        # ``file_or_dir`` is present on real pytest configs. Falling back to
+        # ``config.args`` keeps the helper usable with narrow config adapters.
+        parsed_selectors = config.args
+
+    explicitly_selected = any(
+        os.fspath(selector) in invocation_args for selector in parsed_selectors
+    )
+    return not explicitly_selected
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -98,6 +113,10 @@ def pytest_configure(config: pytest.Config) -> None:
         ("pure", "pure unit or algorithm test; no database or HTTP fixture required"),
         ("database", "database-backed test without an HTTP client"),
         ("http", "HTTP integration test using the test client"),
+        (
+            _EXPLICIT_LAYER_MARKER,
+            "test_layer(layer): override path inference for direct layer dependencies",
+        ),
     ):
         config.addinivalue_line("markers", f"{marker}: {description}")
 
@@ -213,8 +232,27 @@ _HTTP_FIXTURES = {"client"}
 _PURE_TEST_PATH_PREFIXES = ("app/algorithm/tests/", "tests/unit/")
 
 
-def item_layer(item: pytest.Item) -> Literal["pure", "database", "http"]:
+def _explicit_item_layer(item: pytest.Item) -> TestLayer | None:
+    """Read an intentional layer override from a collected test item."""
+    get_closest_marker = getattr(item, "get_closest_marker", None)
+    if get_closest_marker is None:
+        return None
+
+    marker = get_closest_marker(_EXPLICIT_LAYER_MARKER)
+    if marker is None:
+        return None
+    if len(marker.args) != 1 or marker.kwargs or marker.args[0] not in _TEST_LAYERS:
+        raise pytest.UsageError(
+            "@pytest.mark.test_layer requires exactly one of: pure, database, http"
+        )
+    return cast(TestLayer, marker.args[0])
+
+
+def item_layer(item: pytest.Item) -> TestLayer:
     """Classify a collected test by its fixture requirements and test location."""
+    explicit_layer = _explicit_item_layer(item)
+    if explicit_layer is not None:
+        return explicit_layer
     if _HTTP_FIXTURES.intersection(item.fixturenames):
         return "http"
     if _item_needs_database(item):

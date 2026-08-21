@@ -123,12 +123,38 @@ def test_truncate_tables_uses_database_runtime_reset() -> None:
 def test_shared_postgres_enabled_for_full_parallel_suite(tmp_path) -> None:
     config = SimpleNamespace(
         workerinput=None,
-        option=SimpleNamespace(numprocesses=4, markexpr=""),
+        option=SimpleNamespace(numprocesses=4, markexpr="", file_or_dir=[]),
         rootpath=tmp_path,
-        args=[],
+        args=[str(tmp_path / "tests"), str(tmp_path / "app/services/tests")],
+        invocation_params=pytest.Config.InvocationParams(
+            args=("-q",),
+            plugins=None,
+            dir=tmp_path,
+        ),
     )
 
     assert _shared_postgres_enabled(config) is True
+
+
+def test_shared_postgres_stays_isolated_for_realistic_focused_invocation(tmp_path) -> None:
+    focused_path = "tests/unit/test_test_fixtures.py"
+    config = SimpleNamespace(
+        workerinput=None,
+        option=SimpleNamespace(
+            numprocesses=4,
+            markexpr="",
+            file_or_dir=[focused_path],
+        ),
+        rootpath=tmp_path,
+        args=[focused_path],
+        invocation_params=pytest.Config.InvocationParams(
+            args=(focused_path, "-q"),
+            plugins=None,
+            dir=tmp_path,
+        ),
+    )
+
+    assert _shared_postgres_enabled(config) is False
 
 
 @pytest.mark.parametrize(
@@ -191,9 +217,14 @@ def test_shared_postgres_starts_only_when_marker_selection_can_need_database(
 ) -> None:
     config = SimpleNamespace(
         workerinput=None,
-        option=SimpleNamespace(numprocesses=4, markexpr=markexpr),
+        option=SimpleNamespace(numprocesses=4, markexpr=markexpr, file_or_dir=[]),
         rootpath=tmp_path,
-        args=[],
+        args=[str(tmp_path / "tests"), str(tmp_path / "app/services/tests")],
+        invocation_params=pytest.Config.InvocationParams(
+            args=("-m", markexpr),
+            plugins=None,
+            dir=tmp_path,
+        ),
     )
 
     assert _shared_postgres_enabled(config) is expected
@@ -214,9 +245,14 @@ def test_pytest_configure_does_not_create_container_for_pure_only_selection(
     configured_markers: list[tuple[str, str]] = []
     config = SimpleNamespace(
         workerinput=None,
-        option=SimpleNamespace(numprocesses=4, markexpr=markexpr),
+        option=SimpleNamespace(numprocesses=4, markexpr=markexpr, file_or_dir=args),
         rootpath=tmp_path,
         args=args,
+        invocation_params=pytest.Config.InvocationParams(
+            args=("-m", markexpr, *args),
+            plugins=None,
+            dir=tmp_path,
+        ),
         addinivalue_line=lambda name, value: configured_markers.append((name, value)),
     )
 
@@ -227,7 +263,7 @@ def test_pytest_configure_does_not_create_container_for_pure_only_selection(
 
     conftest.pytest_configure(config)
 
-    assert len(configured_markers) == 3
+    assert len(configured_markers) == 4
 
 
 @pytest.mark.parametrize(
@@ -244,9 +280,14 @@ def test_shared_postgres_disabled_outside_full_parallel_controller(
 ) -> None:
     config = SimpleNamespace(
         workerinput=workerinput,
-        option=SimpleNamespace(numprocesses=numprocesses, markexpr=""),
+        option=SimpleNamespace(numprocesses=numprocesses, markexpr="", file_or_dir=args),
         rootpath=tmp_path,
         args=[str(tmp_path / arg) for arg in args],
+        invocation_params=pytest.Config.InvocationParams(
+            args=tuple(args),
+            plugins=None,
+            dir=tmp_path,
+        ),
     )
 
     assert _shared_postgres_enabled(config) is False

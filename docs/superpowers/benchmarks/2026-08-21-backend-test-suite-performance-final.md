@@ -120,13 +120,36 @@ full-suite speedup or a clean full/slow suite.
 
 ## `_database_runtime` classification
 
-The Task 4 algorithm-area run's `fixture '_database_runtime' not found` error is
-branch-introduced by Task 2. Commit `11a18c94` changed the re-exported
+The Task 4 algorithm-area run's `fixture '_database_runtime' not found` error
+was branch-introduced by Task 2: commit `11a18c94` changed the re-exported
 `admin_engine` and `app_engine` fixtures to depend on `_database_runtime`, while
-`app/services/tests/conftest.py` still imports the old fixture list from
-`tests.conftest` and omits `_database_runtime`. Pytest therefore sees the
+`app/services/tests/conftest.py` still imported the old fixture list from
+`tests.conftest` and omitted `_database_runtime`. Pytest therefore saw the
 consumer fixtures in that subtree but not their new dependency.
 
-No repair was made in Task 5 after the user stopped broad verification and
-requested a profiling-only commit. This remains a concrete blocker for the
-database-backed algorithm bridge slice, not a solver profiling failure.
+That blocker was repaired by commit `8890467c` (`test: re-export database
+runtime fixture`), which re-exports `_database_runtime` in the service-test
+conftest. Its focused algorithm-bridge regression passed in 10.4 seconds. The
+old unresolved-blocker conclusion is stale and must not be used for the current
+branch status.
+
+## Final harness-fix addendum — 2026-08-22
+
+- Default parallel pytest invocation now distinguishes configured `testpaths`
+  from actual command-line path selectors with `invocation_params.args`, so
+  `pytest -q` still enables the shared migrated template while explicit focused
+  paths remain isolated.
+- Direct FastAPI lifecycle tests in `test_test_app.py` explicitly declare
+  `@pytest.mark.test_layer("http")`; they no longer rely on their unit-test path
+  to infer the wrong layer.
+- The enabled solver-profile fixture is covered end-to-end through the terminal
+  summary hook, including a recorded phase line.
+- `range_locations` is included in the reset sequence after `range_events`,
+  preserving its foreign-key dependency order.
+
+Focused final-harness verification (not a broad suite):
+
+```text
+python -m pytest tests/unit/test_test_fixtures.py tests/unit/test_test_app.py tests/unit/test_database_test_adapter.py -n 0
+63 passed, 1 warning in 9.00s
+```

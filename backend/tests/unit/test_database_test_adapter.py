@@ -9,6 +9,7 @@ def test_reset_tables_keep_referencing_tables_before_their_dependencies() -> Non
     assert len(tables) == len(set(tables))
     assert tables.index("audit_log") < tables.index("soldiers")
     assert tables.index("duty_assignments") < tables.index("duty_types")
+    assert tables.index("range_events") < tables.index("range_locations")
     assert tables.index("hierarchy_nodes") == len(tables) - 1
 
 
