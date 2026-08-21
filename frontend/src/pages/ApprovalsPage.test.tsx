@@ -103,6 +103,7 @@ const constraint = {
   decided_at: null,
   decision_note: null,
   created_at: "2026-01-01",
+  can_approve: true,
 } as constraintsApi.PersonalConstraint;
 
 const exemptionRequestWithFile = {
@@ -137,6 +138,13 @@ beforeEach(() => {
   vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("");
   vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([]);
   vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([]);
+  vi.mocked(swapsApi.isSwapActionableForUser).mockImplementation((swap, userId, isAdmin = false) => {
+    if (isAdmin) return true;
+    const viewerCanAct = (approvals: swapsApi.SwapManagerApproval[]) => approvals.some(a => a.commander_id === userId);
+    return viewerCanAct(swap.requester_manager_approvals) || swap.candidates
+      .filter(c => c.status === "pending" || c.status === "accepted")
+      .some(c => viewerCanAct(c.manager_approvals));
+  });
   vi.mocked(swapsApi.getSwapConfig).mockResolvedValue({
     require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5,
   });
@@ -625,6 +633,27 @@ describe("ApprovalsPage - exemption file links", () => {
 });
 
 describe("ApprovalsPage - approve button authority", () => {
+  it("moves a self-requested constraint to the waiting tab without approval controls", async () => {
+    vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([
+      { ...constraint, soldier_id: "viewer-1", soldier_name: "אני", can_approve: false },
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    fireEvent.click(await screen.findByTestId("approvals-tab-constraints"));
+    expect(screen.queryByTestId("approval-row-c1")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId("approvals-tab-waiting"));
+    expect(await screen.findByText("אני")).toBeInTheDocument();
+    expect(screen.queryByTestId("approve-c1")).not.toBeInTheDocument();
+  });
+
   it("moves a duty-manager exemption the viewer can't approve to the waiting tab instead of the exemptions tab", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([
       { ...exemptionRequestWithFile, status: "pending_duty_manager", can_approve_duty_manager_step: false },

@@ -39,7 +39,6 @@ import {
   listPendingSwaps,
   managerRejectSwap,
   getSwapConfig,
-  SwapRequest,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, rejectEnrollment } from "../api/enrollment";
 import {
@@ -203,6 +202,9 @@ export default function ApprovalsPage() {
   const swapsQuery = useQuery({ queryKey: queryKeys.pendingSwaps(), queryFn: listPendingSwaps });
   const swapItems = swapsQuery.data ?? [];
 
+  const actionableConstraints = items.filter(c => c.can_approve);
+  const waitingConstraints = items.filter(c => !c.can_approve);
+
   const isAdmin = user?.role === "admin";
   const canActCommander = (approvals: DirectCommanderApprovalRow[]) =>
     isAdmin || approvals.some(a => a.commander_id === user?.id);
@@ -228,7 +230,7 @@ export default function ApprovalsPage() {
   const fuWaiting = fuItems.filter(i => !i.can_approve);
   const swapsActionable = swapItems.filter(s => isSwapActionableForUser(s, user?.id, isAdmin));
   const swapsWaiting = swapItems.filter(s => !isSwapActionableForUser(s, user?.id, isAdmin));
-  const waitingCount = erWaiting.length + fuWaiting.length + swapsWaiting.length;
+  const waitingCount = waitingConstraints.length + erWaiting.length + fuWaiting.length + swapsWaiting.length;
 
   const swapConfigQuery = useQuery({
     queryKey: queryKeys.swapConfig(),
@@ -420,7 +422,7 @@ export default function ApprovalsPage() {
     }
   }
 
-  const total = items.length + erActionable.length + fuActionable.length + swapsActionable.length + enrollItems.length + transferItems.length;
+  const total = actionableConstraints.length + erActionable.length + fuActionable.length + swapsActionable.length + enrollItems.length + transferItems.length;
 
   return (
     <Layout>
@@ -449,7 +451,7 @@ export default function ApprovalsPage() {
             onClick={() => setTab("constraints")}
             data-testid="approvals-tab-constraints"
           >
-            {t("approvals.tab_constraints")}{items.length > 0 ? ` (${items.length})` : ""}
+            {t("approvals.tab_constraints")}{actionableConstraints.length > 0 ? ` (${actionableConstraints.length})` : ""}
           </button>
           <button
             className={`pb-2 text-sm ${tab === "exemptions" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
@@ -497,9 +499,9 @@ export default function ApprovalsPage() {
 
         {tab === "constraints" && (
           <>
-            {items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
+            {actionableConstraints.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
-              {items.map((c) => {
+              {actionableConstraints.map((c) => {
                 const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={c.id} className="border dark:border-gray-600 rounded p-3" data-testid={`approval-row-${c.id}`}>
@@ -509,7 +511,7 @@ export default function ApprovalsPage() {
                   </div>
                   {(c.status === "pending_commander" || c.status === "pending_duty_manager") && (
                     <p className="text-xs text-gray-500 mb-1" data-testid={`constraint-stage-${c.id}`}>
-                      {c.status === "pending_commander" ? "שלב 1/2 — ממתין לאישור מפקד" : "שלב 2/2 — ממתין לאישור אג\"ם"}
+                      {c.status === "pending_commander" ? "שלב 1/2 — ממתין לאישור מפקד" : "שלב 2/2 — ממתין לאישור אחראי תורנויות"}
                     </p>
                   )}
                   <p className="text-sm flex items-center gap-2" dir="ltr">
@@ -913,6 +915,18 @@ export default function ApprovalsPage() {
         {tab === "waiting" && (
           <div className="space-y-3" dir="rtl">
             {waitingCount === 0 && <p className="text-gray-500 text-sm">{t("approvals.waiting_none")}</p>}
+            {waitingConstraints.map(c => (
+              <div key={c.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
+                <div className="flex items-center gap-2">
+                  <strong><SoldierLink id={c.soldier_id} name={c.soldier_name || c.soldier_id.slice(0, 8)} /></strong>
+                  {c.node_name && <span className="text-xs text-gray-400">{c.node_name}</span>}
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {c.status === "pending_commander" ? "ממתין לאישור מפקד" : "ממתין לאישור אחראי תורנויות"}
+                </p>
+                <p className="text-sm" dir="ltr">{c.start_date} → {c.end_date}</p>
+              </div>
+            ))}
             {fuWaiting.map(item => {
               const isRankField = ["rank", "rank_track", "is_officer", "next_rank_date"].includes(item.field_name);
               const waitingForName = isRankField

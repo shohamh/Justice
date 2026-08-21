@@ -8,7 +8,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids, can_see_private, forbid_self_target
+from app.auth.authz import (
+    Action,
+    authorize,
+    can,
+    can_see_private,
+    forbid_self_target,
+    is_commander,
+    is_duty_manager,
+    scope_root_ids,
+)
 from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import HierarchyNode, PersonalConstraint, Soldier
 from app.db.session import get_session
@@ -32,7 +41,7 @@ class ConstraintOut(BaseModel):
     node_name: str | None = None
     start_date: date
     end_date: date
-    reason: str | None          # None when viewer cannot see private field
+    reason: str | None  # None when viewer cannot see private field
     status: str
     decided_by: uuid.UUID | None = None
     decided_at: datetime | None = None
@@ -40,6 +49,7 @@ class ConstraintOut(BaseModel):
     created_at: datetime
     nearest_commander: NearestApproverOut | None = None
     nearest_duty_manager: NearestApproverOut | None = None
+    can_approve: bool = True
 
 
 class SubmitRequest(BaseModel):
@@ -72,8 +82,13 @@ class RemainingDaysOut(BaseModel):
 
 
 def _out(
-    c: PersonalConstraint, soldier_name: str = "", node_name: str | None = None, include_reason: bool = True,
-    nearest_commander: NearestApproverOut | None = None, nearest_duty_manager: NearestApproverOut | None = None,
+    c: PersonalConstraint,
+    soldier_name: str = "",
+    node_name: str | None = None,
+    include_reason: bool = True,
+    nearest_commander: NearestApproverOut | None = None,
+    nearest_duty_manager: NearestApproverOut | None = None,
+    can_approve: bool = True,
 ) -> ConstraintOut:
     return ConstraintOut(
         id=c.id,
@@ -90,13 +105,45 @@ def _out(
         created_at=c.created_at,
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
+        can_approve=can_approve,
+    )
+
+
+def _can_approve_constraint(
+    session: Session,
+    user: Soldier,
+    target_soldier_id: uuid.UUID,
+    target_node: HierarchyNode | None,
+) -> bool:
+    """Mirror the authorization in approve()/reject(): a pending-list row's approve
+    button should only be shown when a click would actually succeed. Most notably,
+    this excludes the viewer's own pending request — forbid_self_target() always
+    denies deciding your own request, even for admins, but scope containment alone
+    (a commander/duty-manager's own node is typically inside their own subtree)
+    doesn't naturally exclude that case.
+    """
+    if user.id == target_soldier_id:
+        return False
+    if user.role == "admin":
+        return True
+    roots = scope_root_ids(session, user)
+    return can(
+        user,
+        Action.CONSTRAINT_APPROVE,
+        target_node=target_node,
+        roots=roots,
+        is_commander=is_commander(session, user.id),
+        is_duty_manager=is_duty_manager(session, user.id),
     )
 
 
 def _nearest_approvers(
     session: Session, soldier_id: uuid.UUID
 ) -> tuple[NearestApproverOut | None, NearestApproverOut | None]:
-    from app.services.approval_scope import nearest_commander_for_soldier, nearest_duty_manager_for_soldier
+    from app.services.approval_scope import (
+        nearest_commander_for_soldier,
+        nearest_duty_manager_for_soldier,
+    )
 
     cmd_id = nearest_commander_for_soldier(session, soldier_id)
     dm_id = nearest_duty_manager_for_soldier(session, soldier_id)
@@ -165,7 +212,9 @@ def submit(
     return _out(c, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
-@router.delete("/me/constraints/{constraint_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete(
+    "/me/constraints/{constraint_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None
+)
 def cancel(
     constraint_id: uuid.UUID,
     session: Session = Depends(get_session),
@@ -193,7 +242,12 @@ def list_for_soldier(
     include_reason = can_see_private(session, user, s)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     return [
-        _out(c, include_reason=include_reason, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+        _out(
+            c,
+            include_reason=include_reason,
+            nearest_commander=nearest_commander,
+            nearest_duty_manager=nearest_duty_manager,
+        )
         for c in svc.list_constraints(session, soldier_id=soldier_id)
     ]
 
@@ -216,9 +270,9 @@ def _attach_names(
     nodes_by_id = (
         {
             n.id: n
-            for n in session.execute(
-                select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
-            ).scalars().all()
+            for n in session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(node_ids)))
+            .scalars()
+            .all()
         }
         if node_ids
         else {}
@@ -234,10 +288,17 @@ def _attach_names(
         )
         include_reason = s is not None and can_see_private(session, user, s)
         nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+        target_node = nodes_by_id.get(s.hierarchy_node_id) if s and s.hierarchy_node_id else None
+        can_approve = _can_approve_constraint(session, user, c.soldier_id, target_node)
         result.append(
             _out(
-                c, soldier_name=soldier_name, node_name=node_name, include_reason=include_reason,
-                nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+                c,
+                soldier_name=soldier_name,
+                node_name=node_name,
+                include_reason=include_reason,
+                nearest_commander=nearest_commander,
+                nearest_duty_manager=nearest_duty_manager,
+                can_approve=can_approve,
             )
         )
     return result
@@ -313,7 +374,12 @@ def approve(
     session.commit()
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
-    return _out(c, include_reason=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(
+        c,
+        include_reason=True,
+        nearest_commander=nearest_commander,
+        nearest_duty_manager=nearest_duty_manager,
+    )
 
 
 @router.post("/constraints/{constraint_id}/reject", response_model=ConstraintOut)
@@ -338,4 +404,9 @@ def reject(
     session.commit()
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
-    return _out(c, include_reason=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(
+        c,
+        include_reason=True,
+        nearest_commander=nearest_commander,
+        nearest_duty_manager=nearest_duty_manager,
+    )
