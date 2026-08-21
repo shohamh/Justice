@@ -306,7 +306,7 @@ export default function SwapsPage() {
       {swap.decision_note && (
         <p className="text-xs text-amber-600 dark:text-amber-400">{t("swaps.decision_note")}: {swap.decision_note}</p>
       )}
-      {swap.status === "open" && swap.requester_side_approved !== true && (
+      {swap.status === "open" && swap.requester_side_approved !== true && liveCandidates.length > 0 && (
         <div className="flex gap-2 items-center">
           <button type="button" onClick={() => handleSoldierApprove(swap.id)}
             className="bg-green-600 text-white px-2 py-1 rounded text-xs">
