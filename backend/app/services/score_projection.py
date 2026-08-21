@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -7,24 +8,29 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyAssignment,
     DutyDayOverride,
+    DutyType,
     ScoreAdjustment,
     ScoreProjectionDirtyBucket,
     ScoreProjectionQuarterTotal,
     ScoreProjectionState,
+    Soldier,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
 from app.services.effort_score import quarter_end, quarter_start
 from app.services.scoring import _duty_type_scores, _effective_duty_day_rows
 
+logger = logging.getLogger(__name__)
+
 SCORE_PROJECTION_CANONICAL_VERSION = "1"
 SCORE_PROJECTION_STATE_KEY = "score_projection"
+SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY = "scoring.commander_dashboard_projection_reads_enabled"
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,23 @@ class ProjectionPartitionRow:
     source_fingerprint: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class CommanderScoreReadDiagnostics:
+    gate_enabled: bool
+    used_projection: bool
+    compared_soldiers: int
+    matched_soldiers: int
+    repaired_soldiers: int
+    divergent_soldiers: int
+    fallback_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class CommanderScoreReadResult:
+    score_by_soldier: dict[uuid.UUID, Decimal]
+    diagnostics: CommanderScoreReadDiagnostics
+
+
 def _quarter_datetime_bounds(quarter_start_value: date) -> tuple[datetime, datetime]:
     start_at = datetime.combine(quarter_start_value, time.min, tzinfo=timezone.utc)
     end_at = datetime.combine(
@@ -69,6 +92,10 @@ def _quarter_datetime_bounds(quarter_start_value: date) -> tuple[datetime, datet
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _q6(value: Any) -> Decimal:
+    return Decimal(str(value)).quantize(Decimal("0.000001"))
 
 
 def _json_safe_value(value: Any) -> Any:
@@ -612,6 +639,20 @@ def _projection_totals_from_buckets(buckets: list[ProjectionBucket]) -> Projecti
     )
 
 
+def _bool_setting(session: Session, key: str, default: bool) -> bool:
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    try:
+        value = get_setting(session, key)
+    except SettingNotFound:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _get_or_create_state(session: Session) -> ScoreProjectionState:
     state = session.get(ScoreProjectionState, SCORE_PROJECTION_STATE_KEY)
     if state is None:
@@ -628,6 +669,15 @@ def _get_or_create_state(session: Session) -> ScoreProjectionState:
         return state
     state.canonical_version = SCORE_PROJECTION_CANONICAL_VERSION
     return state
+
+
+def _projection_state_is_complete(session: Session) -> bool:
+    state = session.get(ScoreProjectionState, SCORE_PROJECTION_STATE_KEY)
+    return (
+        state is not None
+        and state.backfill_complete is True
+        and state.canonical_version == SCORE_PROJECTION_CANONICAL_VERSION
+    )
 
 
 def _state_resume_after(state: ScoreProjectionState) -> tuple[uuid.UUID, date] | None:
@@ -698,7 +748,7 @@ def _upsert_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> Soldier
 
 def _upsert_quarter_total(
     session: Session, *, quarter_start_value: date
-) -> ScoreProjectionQuarterTotal:
+    ) -> ScoreProjectionQuarterTotal:
     totals = _projection_totals_from_buckets(
         project_all_buckets(session, quarter_starts={quarter_start_value})
     )
@@ -724,6 +774,272 @@ def _upsert_quarter_total(
         projection.updated_at = _utcnow()
     session.flush()
     return projection
+
+
+def _projection_rows_by_key(
+    session: Session, keys: set[tuple[uuid.UUID, date]]
+) -> dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]]:
+    if not keys:
+        return {}
+    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+    quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    rows = session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
+            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
+        )
+    ).scalars().all()
+    by_key: dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]] = defaultdict(list)
+    for row in rows:
+        key = (row.soldier_id, row.quarter_start)
+        if key in keys:
+            by_key[key].append(row)
+    return by_key
+
+
+def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjection]) -> bool:
+    if not rows:
+        return False
+    aggregate_count = sum(1 for row in rows if row.duty_type_id is None)
+    return aggregate_count <= 1 and all(
+        row.projection_version == SCORE_PROJECTION_CANONICAL_VERSION for row in rows
+    )
+
+
+def _projection_keys_for_soldiers(
+    session: Session, soldier_ids: set[uuid.UUID]
+) -> set[tuple[uuid.UUID, date]]:
+    if not soldier_ids:
+        return set()
+
+    keys: set[tuple[uuid.UUID, date]] = set()
+    assignments = session.execute(
+        select(DutyAssignment.soldier_id, DutyAssignment.start_date, DutyAssignment.end_date).where(
+            DutyAssignment.status == "published",
+            DutyAssignment.soldier_id.in_(soldier_ids),
+        )
+    ).all()
+    for soldier_id, start_date, end_date in assignments:
+        for quarter_start_value in _iter_quarters_touched(start_date, end_date):
+            keys.add((soldier_id, quarter_start_value))
+
+    override_rows = session.execute(
+        select(DutyDayOverride.effective_soldier_id, DutyDayOverride.date)
+        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
+        .where(
+            DutyAssignment.status == "published",
+            DutyDayOverride.effective_soldier_id.in_(soldier_ids),
+        )
+    ).all()
+    for soldier_id, override_date in override_rows:
+        if soldier_id is not None:
+            keys.add((soldier_id, quarter_start(override_date)))
+
+    adjustment_rows = session.execute(
+        select(ScoreAdjustment.soldier_id, ScoreAdjustment.created_at).where(
+            ScoreAdjustment.soldier_id.in_(soldier_ids)
+        )
+    ).all()
+    for soldier_id, created_at in adjustment_rows:
+        if created_at is not None:
+            keys.add((soldier_id, quarter_start(created_at.date())))
+
+    persisted = session.execute(
+        select(SoldierQuarterScoreProjection.soldier_id, SoldierQuarterScoreProjection.quarter_start).where(
+            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids)
+        )
+    ).all()
+    keys.update((soldier_id, quarter_start_value) for soldier_id, quarter_start_value in persisted)
+    return keys
+
+
+def _dirty_or_divergent_projection_keys(
+    session: Session, *, keys: set[tuple[uuid.UUID, date]]
+) -> set[tuple[uuid.UUID, date]]:
+    if not keys:
+        return set()
+    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+    quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    rows = session.execute(
+        select(ScoreProjectionDirtyBucket).where(
+            ScoreProjectionDirtyBucket.soldier_id.in_(soldier_ids),
+            ScoreProjectionDirtyBucket.quarter_start.in_(quarter_starts),
+            or_(
+                ScoreProjectionDirtyBucket.status == "dirty",
+                ScoreProjectionDirtyBucket.divergence.is_not(None),
+            ),
+        )
+    ).scalars().all()
+    return {(row.soldier_id, row.quarter_start) for row in rows}
+
+
+def _mark_projection_key_current(
+    session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date
+) -> None:
+    dirty = session.execute(
+        select(ScoreProjectionDirtyBucket).where(
+            ScoreProjectionDirtyBucket.soldier_id == soldier_id,
+            ScoreProjectionDirtyBucket.quarter_start == quarter_start_value,
+        )
+    ).scalar_one_or_none()
+    if dirty is None:
+        return
+    dirty.status = "current"
+    dirty.divergence = None
+    dirty.refreshed_at = _utcnow()
+    dirty.updated_at = _utcnow()
+    session.flush()
+
+
+def _repair_projection_keys(
+    session: Session, *, keys: set[tuple[uuid.UUID, date]]
+) -> set[uuid.UUID]:
+    repaired_soldiers: set[uuid.UUID] = set()
+    for soldier_id, quarter_start_value in sorted(keys, key=_partition_sort_key):
+        rebuild_projection_bucket(
+            session,
+            soldier_id,
+            quarter_start_value,
+            refresh_quarter_total=False,
+        )
+        _mark_projection_key_current(
+            session,
+            soldier_id=soldier_id,
+            quarter_start_value=quarter_start_value,
+        )
+        repaired_soldiers.add(soldier_id)
+    return repaired_soldiers
+
+
+def _repair_projection_for_soldiers(
+    session: Session, *, soldier_ids: set[uuid.UUID]
+) -> set[uuid.UUID]:
+    if not soldier_ids:
+        return set()
+    keys = _projection_keys_for_soldiers(session, soldier_ids)
+    repaired_soldiers = _repair_projection_keys(session, keys=keys)
+    keyed_soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+    for soldier_id in sorted(soldier_ids - keyed_soldier_ids, key=str):
+        _upsert_soldier_total(session, soldier_id=soldier_id)
+        repaired_soldiers.add(soldier_id)
+    return repaired_soldiers
+
+
+def _aggregate_commander_score_totals(
+    session: Session, *, soldier_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, Decimal]:
+    if not soldier_ids:
+        return {}
+
+    duty_scores = (
+        select(
+            DutyAssignment.soldier_id.label("soldier_id"),
+            func.sum(
+                (DutyAssignment.end_date - DutyAssignment.start_date) * DutyType.score_per_day
+            ).label("duty_score"),
+        )
+        .join(DutyType, DutyType.id == DutyAssignment.duty_type_id)
+        .where(
+            DutyAssignment.status == "published",
+            DutyAssignment.soldier_id.in_(soldier_ids),
+        )
+        .group_by(DutyAssignment.soldier_id)
+        .subquery()
+    )
+    adjustment_scores = (
+        select(
+            ScoreAdjustment.soldier_id.label("soldier_id"),
+            func.sum(ScoreAdjustment.delta).label("adjustment_score"),
+        )
+        .where(ScoreAdjustment.soldier_id.in_(soldier_ids))
+        .group_by(ScoreAdjustment.soldier_id)
+        .subquery()
+    )
+    rows = session.execute(
+        select(
+            Soldier.id,
+            duty_scores.c.duty_score,
+            adjustment_scores.c.adjustment_score,
+        )
+        .select_from(Soldier)
+        .outerjoin(duty_scores, duty_scores.c.soldier_id == Soldier.id)
+        .outerjoin(adjustment_scores, adjustment_scores.c.soldier_id == Soldier.id)
+        .where(Soldier.id.in_(soldier_ids))
+    ).all()
+    return {
+        soldier_id: _q6(Decimal(duty_score or 0) + Decimal(adjustment_score or 0))
+        for soldier_id, duty_score, adjustment_score in rows
+    }
+
+
+def _canonical_commander_score_totals(
+    session: Session, *, soldier_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, Decimal]:
+    from app.services.scoring import _duty_stats_by_soldier, adjustments_by_soldier
+
+    duty_scores, _shift_counts = _duty_stats_by_soldier(session)
+    adjustment_scores = adjustments_by_soldier(session)
+    return {
+        soldier_id: _q6(
+            duty_scores.get(soldier_id, Decimal("0"))
+            + adjustment_scores.get(soldier_id, Decimal("0"))
+        )
+        for soldier_id in soldier_ids
+    }
+
+
+def _projected_commander_score_totals(
+    session: Session, *, soldier_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, Decimal]:
+    if not soldier_ids:
+        return {}
+    rows = session.execute(
+        select(SoldierScoreProjection).where(SoldierScoreProjection.soldier_id.in_(soldier_ids))
+    ).scalars().all()
+    return {
+        row.soldier_id: _q6(row.cumulative_score)
+        for row in rows
+        if row.projection_version == SCORE_PROJECTION_CANONICAL_VERSION
+    }
+
+
+def _mismatched_commander_score_ids(
+    *,
+    soldier_ids: set[uuid.UUID],
+    projected_scores: dict[uuid.UUID, Decimal],
+    comparison_scores: dict[uuid.UUID, Decimal],
+) -> set[uuid.UUID]:
+    return {
+        soldier_id
+        for soldier_id in soldier_ids
+        if _q6(projected_scores.get(soldier_id, Decimal("0")))
+        != _q6(comparison_scores.get(soldier_id, Decimal("0")))
+    }
+
+
+def _commander_score_read_result(
+    *,
+    score_by_soldier: dict[uuid.UUID, Decimal],
+    gate_enabled: bool,
+    used_projection: bool,
+    compared_soldiers: int,
+    matched_soldiers: int,
+    repaired_soldiers: int,
+    divergent_soldiers: int,
+    fallback_reason: str | None = None,
+) -> CommanderScoreReadResult:
+    return CommanderScoreReadResult(
+        score_by_soldier={soldier_id: _q6(score) for soldier_id, score in score_by_soldier.items()},
+        diagnostics=CommanderScoreReadDiagnostics(
+            gate_enabled=gate_enabled,
+            used_projection=used_projection,
+            compared_soldiers=compared_soldiers,
+            matched_soldiers=matched_soldiers,
+            repaired_soldiers=repaired_soldiers,
+            divergent_soldiers=divergent_soldiers,
+            fallback_reason=fallback_reason,
+        ),
+    )
 
 
 def rebuild_projection_bucket(
@@ -892,6 +1208,226 @@ def backfill_score_projection(
     state.updated_at = _utcnow()
     session.flush()
     return state
+
+
+def commander_score_totals(
+    session: Session,
+    *,
+    soldiers: list[Soldier],
+    canonical_diagnostic_compare: bool = False,
+) -> CommanderScoreReadResult:
+    soldier_ids = {soldier.id for soldier in soldiers}
+    if not soldier_ids:
+        return _commander_score_read_result(
+            score_by_soldier={},
+            gate_enabled=False,
+            used_projection=False,
+            compared_soldiers=0,
+            matched_soldiers=0,
+            repaired_soldiers=0,
+            divergent_soldiers=0,
+        )
+
+    gate_enabled = _bool_setting(
+        session,
+        SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+        False,
+    )
+    if not gate_enabled:
+        return _commander_score_read_result(
+            score_by_soldier=_aggregate_commander_score_totals(session, soldier_ids=soldier_ids),
+            gate_enabled=False,
+            used_projection=False,
+            compared_soldiers=0,
+            matched_soldiers=0,
+            repaired_soldiers=0,
+            divergent_soldiers=0,
+            fallback_reason="rollout_disabled",
+        )
+
+    if not _projection_state_is_complete(session):
+        logger.warning(
+            "commander dashboard score projection fell back because projection backfill is incomplete",
+            extra={
+                "gate_key": SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+                "soldier_count": len(soldier_ids),
+                "fallback_reason": "projection_backfill_incomplete",
+            },
+        )
+        return _commander_score_read_result(
+            score_by_soldier=_canonical_commander_score_totals(session, soldier_ids=soldier_ids),
+            gate_enabled=True,
+            used_projection=False,
+            compared_soldiers=0,
+            matched_soldiers=0,
+            repaired_soldiers=0,
+            divergent_soldiers=0,
+            fallback_reason="projection_backfill_incomplete",
+        )
+
+    keys = _projection_keys_for_soldiers(session, soldier_ids)
+    repair_keys = _dirty_or_divergent_projection_keys(session, keys=keys)
+    rows_by_key = _projection_rows_by_key(session, keys)
+    repair_keys.update(
+        key for key in keys if not _projection_bucket_rows_are_complete(rows_by_key.get(key, []))
+    )
+
+    repaired_soldiers: set[uuid.UUID] = set()
+    if repair_keys:
+        try:
+            repaired_soldiers.update(_repair_projection_keys(session, keys=repair_keys))
+        except Exception:
+            logger.exception(
+                "commander dashboard score projection repair failed",
+                extra={
+                    "gate_key": SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+                    "soldier_count": len(soldier_ids),
+                    "fallback_reason": "projection_repair_failed",
+                },
+            )
+            return _commander_score_read_result(
+                score_by_soldier=_canonical_commander_score_totals(session, soldier_ids=soldier_ids),
+                gate_enabled=True,
+                used_projection=False,
+                compared_soldiers=0,
+                matched_soldiers=0,
+                repaired_soldiers=0,
+                divergent_soldiers=0,
+                fallback_reason="projection_repair_failed",
+            )
+
+    if keys and not projection_is_current(session, keys):
+        logger.warning(
+            "commander dashboard score projection fell back because required buckets are not current",
+            extra={
+                "gate_key": SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+                "soldier_count": len(soldier_ids),
+                "fallback_reason": "projection_not_current",
+            },
+        )
+        return _commander_score_read_result(
+            score_by_soldier=_canonical_commander_score_totals(session, soldier_ids=soldier_ids),
+            gate_enabled=True,
+            used_projection=False,
+            compared_soldiers=0,
+            matched_soldiers=0,
+            repaired_soldiers=len(repaired_soldiers),
+            divergent_soldiers=0,
+            fallback_reason="projection_not_current",
+        )
+
+    final_rows_by_key = _projection_rows_by_key(session, keys)
+    if any(not _projection_bucket_rows_are_complete(final_rows_by_key.get(key, [])) for key in keys):
+        logger.warning(
+            "commander dashboard score projection fell back because required buckets are incomplete",
+            extra={
+                "gate_key": SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+                "soldier_count": len(soldier_ids),
+                "fallback_reason": "projection_incomplete",
+            },
+        )
+        return _commander_score_read_result(
+            score_by_soldier=_canonical_commander_score_totals(session, soldier_ids=soldier_ids),
+            gate_enabled=True,
+            used_projection=False,
+            compared_soldiers=0,
+            matched_soldiers=0,
+            repaired_soldiers=len(repaired_soldiers),
+            divergent_soldiers=0,
+            fallback_reason="projection_incomplete",
+        )
+
+    projected_scores = _projected_commander_score_totals(session, soldier_ids=soldier_ids)
+    required_total_ids = {soldier_id for soldier_id, _quarter_start_value in keys}
+    missing_total_ids = required_total_ids - set(projected_scores)
+    if missing_total_ids:
+        repaired_soldiers.update(_repair_projection_for_soldiers(session, soldier_ids=missing_total_ids))
+        projected_scores = _projected_commander_score_totals(session, soldier_ids=soldier_ids)
+        missing_total_ids = required_total_ids - set(projected_scores)
+    if missing_total_ids:
+        logger.warning(
+            "commander dashboard score projection fell back because required totals are missing",
+            extra={
+                "gate_key": SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+                "soldier_count": len(soldier_ids),
+                "fallback_reason": "projection_totals_missing",
+            },
+        )
+        return _commander_score_read_result(
+            score_by_soldier=_canonical_commander_score_totals(session, soldier_ids=soldier_ids),
+            gate_enabled=True,
+            used_projection=False,
+            compared_soldiers=0,
+            matched_soldiers=0,
+            repaired_soldiers=len(repaired_soldiers),
+            divergent_soldiers=0,
+            fallback_reason="projection_totals_missing",
+        )
+
+    if canonical_diagnostic_compare:
+        canonical_scores = _canonical_commander_score_totals(session, soldier_ids=soldier_ids)
+        mismatched_ids = _mismatched_commander_score_ids(
+            soldier_ids=soldier_ids,
+            projected_scores=projected_scores,
+            comparison_scores=canonical_scores,
+        )
+        if mismatched_ids:
+            repaired_soldiers.update(_repair_projection_for_soldiers(session, soldier_ids=mismatched_ids))
+            projected_scores = _projected_commander_score_totals(session, soldier_ids=soldier_ids)
+            mismatched_ids = _mismatched_commander_score_ids(
+                soldier_ids=soldier_ids,
+                projected_scores=projected_scores,
+                comparison_scores=canonical_scores,
+            )
+        if mismatched_ids:
+            logger.warning(
+                "commander dashboard score projection diagnostic comparison diverged",
+                extra={
+                    "gate_key": SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+                    "soldier_count": len(soldier_ids),
+                    "compared_soldiers": len(soldier_ids),
+                    "matched_soldiers": len(soldier_ids) - len(mismatched_ids),
+                    "repaired_soldiers": len(repaired_soldiers),
+                    "divergent_soldiers": len(mismatched_ids),
+                },
+            )
+        else:
+            logger.info(
+                "commander dashboard score projection diagnostic comparison matched",
+                extra={
+                    "gate_key": SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+                    "soldier_count": len(soldier_ids),
+                    "compared_soldiers": len(soldier_ids),
+                    "matched_soldiers": len(soldier_ids),
+                    "repaired_soldiers": len(repaired_soldiers),
+                    "divergent_soldiers": 0,
+                },
+            )
+        return _commander_score_read_result(
+            score_by_soldier={
+                soldier_id: projected_scores.get(soldier_id, Decimal("0"))
+                for soldier_id in soldier_ids
+            },
+            gate_enabled=True,
+            used_projection=True,
+            compared_soldiers=len(soldier_ids),
+            matched_soldiers=len(soldier_ids) - len(mismatched_ids),
+            repaired_soldiers=len(repaired_soldiers),
+            divergent_soldiers=len(mismatched_ids),
+        )
+
+    return _commander_score_read_result(
+        score_by_soldier={
+            soldier_id: projected_scores.get(soldier_id, Decimal("0"))
+            for soldier_id in soldier_ids
+        },
+        gate_enabled=True,
+        used_projection=True,
+        compared_soldiers=0,
+        matched_soldiers=0,
+        repaired_soldiers=len(repaired_soldiers),
+        divergent_soldiers=0,
+    )
 
 
 def reconcile_score_projection(session: Session, limit: int = 500) -> dict[str, Any]:

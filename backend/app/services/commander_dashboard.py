@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 from statistics import mean, median, stdev
@@ -17,13 +16,13 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     HierarchyNode,
-    ScoreAdjustment,
     Soldier,
     SoldierExemption,
     SoldierFieldUpdate,
     SwapCandidate,
     SwapRequest,
 )
+from app.services.score_projection import commander_score_totals
 
 
 def _soldiers_in_nodes(session: Session, subtree_ids: list[uuid.UUID]) -> list[Soldier]:
@@ -78,37 +77,11 @@ def _soon_expiring_exemptions(
 
 
 def _score_data(session: Session, soldiers: list[Soldier]) -> dict[uuid.UUID, dict]:
-    soldier_ids = {s.id for s in soldiers}
-    score_by_soldier = {
-        soldier_id: Decimal(total)
-        for soldier_id, total in session.execute(
-            select(
-                DutyAssignment.soldier_id,
-                func.sum(
-                    (DutyAssignment.end_date - DutyAssignment.start_date) * DutyType.score_per_day
-                ),
-            )
-            .join(DutyType, DutyType.id == DutyAssignment.duty_type_id)
-            .where(
-                DutyAssignment.status == "published",
-                DutyAssignment.soldier_id.in_(soldier_ids),
-            )
-            .group_by(DutyAssignment.soldier_id)
-        ).all()
-    }
-
-    adj_totals: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
-    for row in session.execute(
-        select(ScoreAdjustment.soldier_id, func.sum(ScoreAdjustment.delta))
-        .where(ScoreAdjustment.soldier_id.in_(soldier_ids))
-        .group_by(ScoreAdjustment.soldier_id)
-    ).all():
-        adj_totals[row[0]] += Decimal(row[1])
-
+    score_by_soldier = commander_score_totals(session, soldiers=soldiers).score_by_soldier
     result: dict[uuid.UUID, dict] = {}
     today = date.today()
     for s in soldiers:
-        cum = score_by_soldier.get(s.id, Decimal("0")) + adj_totals.get(s.id, Decimal("0"))
+        cum = score_by_soldier.get(s.id, Decimal("0"))
         raw_days = (today - s.enrolled_at).days
         ad = max(1, raw_days)
         result[s.id] = {
