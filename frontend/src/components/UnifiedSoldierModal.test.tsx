@@ -19,10 +19,23 @@ vi.mock("../api/constraints", () => ({
 vi.mock("../api/rangeStatus", () => ({
   getSoldierRangeStatus: vi.fn().mockResolvedValue({ soldier_id: "s1", statuses: [] }),
 }));
+const mockGetSoldierDutyHistory = vi.fn().mockResolvedValue([]);
+vi.mock("../api/dutyHistory", () => ({
+  getSoldierDutyHistory: (...args: unknown[]) => mockGetSoldierDutyHistory(...args),
+}));
+vi.mock("../api/dutyConfig", () => ({
+  listDutyTypes: vi.fn().mockResolvedValue([]),
+}));
+// Mocked t must be a stable module-level reference: react-i18next's real
+// useTranslation returns a stable `t`, but an inline closure here would be a
+// fresh function on every render, which (via DutyHistoryPanel's
+// `load = useCallback(..., [soldierId, canManage, t])` and its
+// `useEffect([isActive, soldierId, load])` that unconditionally calls
+// setState) causes an infinite render loop the moment DutyHistoryPanel
+// actually mounts. Mirrors DutyHistoryPanel.test.tsx's `mockT` pattern.
+const mockT = (key: string) => (key === "errors.rank_track_incompatible" ? "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר" : key);
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => (key === "errors.rank_track_incompatible" ? "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר" : key),
-  }),
+  useTranslation: () => ({ t: mockT }),
 }));
 const mockUseAuth = vi.fn();
 vi.mock("../auth/AuthContext", () => ({
@@ -306,6 +319,8 @@ describe("UnifiedSoldierModal initialTab", () => {
   beforeEach(() => {
     mockUseAuth.mockReset();
     mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    mockGetSoldierDutyHistory.mockReset();
+    mockGetSoldierDutyHistory.mockResolvedValue([]);
   });
 
   test("opens directly on the duty_history tab when initialTab is set", async () => {
@@ -325,7 +340,45 @@ describe("UnifiedSoldierModal initialTab", () => {
 
     const historyTabButton = screen.getByTestId("modal-tab-duty_history");
     expect(historyTabButton.className).toContain("border-indigo-600");
-    // DutyHistoryPanel mounts and immediately shows its loading state.
-    expect(await screen.findByText("app.loading")).toBeInTheDocument();
+    // DutyHistoryPanel mounts and loads its (empty, mocked) history.
+    expect(await screen.findByText("duty_history.empty")).toBeInTheDocument();
+  });
+
+  test("passes initialHistoryTypes through to DutyHistoryPanel so it seeds the event-type filter", async () => {
+    // Regression lock: initialTab alone isn't enough — initialHistoryTypes
+    // must also reach DutyHistoryPanel's `initialTypes` prop. Both fixture
+    // events are dated in the past (relative to the mocked "today"), so
+    // DutyHistoryPanel treats them as non-upcoming and never calls
+    // listSwapsForAssignment/checkCoverEligibility, keeping this test free
+    // of needing to mock ../api/swaps or ../api/assignments.
+    mockGetSoldierDutyHistory.mockResolvedValue([
+      {
+        id: "a1", event_type: "assignment", date: "2026-01-10", end_date: "2026-01-11",
+        title: "שמירה במוצב", description: null, status: "published",
+        metadata: {}, created_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "ra1", event_type: "range_assignment", date: "2026-01-10", end_date: null,
+        title: "מטווח laser במטווח צפון", description: null, status: "present",
+        metadata: { range_type: "laser", location_name: "מטווח צפון" }, created_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <UnifiedSoldierModal
+          soldier={soldier}
+          score={null}
+          nodes={[]}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+          initialTab="duty_history"
+          initialHistoryTypes={["assignment"]}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("history-event-assignment")).toBeInTheDocument();
+    expect(screen.queryByTestId("history-event-range_assignment")).not.toBeInTheDocument();
   });
 });
