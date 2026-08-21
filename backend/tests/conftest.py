@@ -5,6 +5,7 @@ import re
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -32,16 +33,33 @@ def _render_psycopg_url(url: str) -> str:
     return make_url(url).set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
 
 
+def _pure_only_selected(config: pytest.Config) -> bool:
+    """Return whether pytest explicitly selected only the ``pure`` marker."""
+    return getattr(config.option, "markexpr", "").strip() == "pure"
+
+
 def _shared_postgres_enabled(config: pytest.Config) -> bool:
-    """Use the controller-owned database only for a complete parallel suite."""
+    """Use one migrated template for pytest's default full parallel suite.
+
+    With ``testpaths`` configured, ``pytest -q`` leaves ``config.args`` empty.
+    The previous check only recognized an explicit ``pytest tests`` argument,
+    so the documented command silently fell back to one Postgres container and
+    Alembic migration run per xdist worker.
+
+    Explicit file/path runs stay isolated: they are intentionally useful for
+    focused debugging and should not pay for controller-side template cloning.
+    """
     if getattr(config, "workerinput", None):
         return False
     if not getattr(config.option, "numprocesses", 0):
         return False
 
-    suite_root = (Path(config.rootpath) / "tests").resolve()
-    selected_paths = [Path(arg).resolve() for arg in config.args]
-    return selected_paths == [suite_root]
+    # ``-m pure`` also has no positional arguments under ``testpaths``. It is
+    # the one explicit marker expression that guarantees no test can request
+    # the database-backed fixtures, so avoid starting the controller container.
+    # Be deliberately conservative: a different or mixed expression may select
+    # database/http items and must retain the full-suite template behavior.
+    return not config.args and not _pure_only_selected(config)
 
 
 def _worker_database_name(workerinput: dict[str, object]) -> str:
@@ -87,6 +105,13 @@ def _run_migrations(database_url: str, rootpath: Path) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Build one migrated template database before xdist workers start."""
+    for marker, description in (
+        ("pure", "pure unit or algorithm test; no database or HTTP fixture required"),
+        ("database", "database-backed test without an HTTP client"),
+        ("http", "HTTP integration test using the test client"),
+    ):
+        config.addinivalue_line("markers", f"{marker}: {description}")
+
     if not _shared_postgres_enabled(config):
         return
 
@@ -167,6 +192,23 @@ _DATABASE_FIXTURES = {
 
 def _item_needs_database(item: pytest.Item) -> bool:
     return bool(_DATABASE_FIXTURES.intersection(item.fixturenames))
+
+
+_HTTP_FIXTURES = {"client"}
+_PURE_TEST_PATH_PREFIXES = ("app/algorithm/tests/", "tests/unit/")
+
+
+def item_layer(item: pytest.Item) -> Literal["pure", "database", "http"]:
+    """Classify a collected test by its fixture requirements and test location."""
+    if _HTTP_FIXTURES.intersection(item.fixturenames):
+        return "http"
+    if _item_needs_database(item):
+        return "database"
+
+    test_path = item.nodeid.split("::", 1)[0].replace("\\", "/")
+    if test_path.startswith(_PURE_TEST_PATH_PREFIXES):
+        return "pure"
+    return "database"
 
 
 # Test file stem -> system-area marker. Applied automatically in
@@ -295,6 +337,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             items[:] = keep
 
     for item in items:
+        item.add_marker(getattr(pytest.mark, item_layer(item)))
         stem = item.nodeid.split("::", 1)[0].rsplit("/", 1)[-1].removesuffix(".py")
         area = _AREA_MARKERS.get(stem)
         if area is not None:

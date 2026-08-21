@@ -2,12 +2,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests import conftest
 from tests.conftest import (
     _apply_schema,
     _item_needs_database,
     _shared_postgres_enabled,
     _truncate_tables,
     _worker_database_name,
+    pytest_collection_modifyitems,
 )
 
 
@@ -100,20 +102,81 @@ def test_truncate_tables_requests_admin_engine_for_database_item() -> None:
 def test_shared_postgres_enabled_for_full_parallel_suite(tmp_path) -> None:
     config = SimpleNamespace(
         workerinput=None,
-        option=SimpleNamespace(numprocesses=4),
+        option=SimpleNamespace(numprocesses=4, markexpr=""),
         rootpath=tmp_path,
-        args=[str(tmp_path / "tests")],
+        args=[],
     )
 
     assert _shared_postgres_enabled(config) is True
 
 
 @pytest.mark.parametrize(
+    ("markexpr", "expected"),
+    [
+        ("pure", True),
+        ("  pure  ", True),
+        ("", False),
+        ("database", False),
+        ("pure or database", False),
+        ("pure and not slow", False),
+    ],
+)
+def test_pure_only_selected_requires_an_explicit_pure_expression(
+    markexpr: str, expected: bool
+) -> None:
+    config = SimpleNamespace(option=SimpleNamespace(markexpr=markexpr))
+
+    assert conftest._pure_only_selected(config) is expected
+
+
+@pytest.mark.parametrize(
+    ("markexpr", "expected"),
+    [
+        ("pure", False),
+        ("database", True),
+        ("pure or database", True),
+    ],
+)
+def test_shared_postgres_starts_only_when_marker_selection_can_need_database(
+    tmp_path, markexpr: str, expected: bool
+) -> None:
+    config = SimpleNamespace(
+        workerinput=None,
+        option=SimpleNamespace(numprocesses=4, markexpr=markexpr),
+        rootpath=tmp_path,
+        args=[],
+    )
+
+    assert _shared_postgres_enabled(config) is expected
+
+
+def test_pytest_configure_does_not_create_container_for_pure_selection(monkeypatch, tmp_path) -> None:
+    configured_markers: list[tuple[str, str]] = []
+    config = SimpleNamespace(
+        workerinput=None,
+        option=SimpleNamespace(numprocesses=4, markexpr="pure"),
+        rootpath=tmp_path,
+        args=[],
+        addinivalue_line=lambda name, value: configured_markers.append((name, value)),
+    )
+
+    def unexpected_container():
+        raise AssertionError("pure-only selection must not create a PostgreSQL container")
+
+    monkeypatch.setattr(conftest, "_new_postgres_container", unexpected_container)
+
+    conftest.pytest_configure(config)
+
+    assert len(configured_markers) == 3
+
+
+@pytest.mark.parametrize(
     ("numprocesses", "args", "workerinput"),
     [
-        (0, ["tests"], None),
+        (0, [], None),
+        (4, ["tests"], None),
         (4, ["tests/unit/test_jwt_tokens.py"], None),
-        (4, ["tests"], {"workerid": "gw0"}),
+        (4, [], {"workerid": "gw0"}),
     ],
 )
 def test_shared_postgres_disabled_outside_full_parallel_controller(
@@ -121,7 +184,7 @@ def test_shared_postgres_disabled_outside_full_parallel_controller(
 ) -> None:
     config = SimpleNamespace(
         workerinput=workerinput,
-        option=SimpleNamespace(numprocesses=numprocesses),
+        option=SimpleNamespace(numprocesses=numprocesses, markexpr=""),
         rootpath=tmp_path,
         args=[str(tmp_path / arg) for arg in args],
     )
@@ -136,3 +199,44 @@ def test_worker_database_name_is_safe_and_bounded() -> None:
     assert name.replace("_", "").isalnum()
     assert name == name.lower()
     assert len(name) <= 63
+
+
+class _CollectedItem:
+    def __init__(self, nodeid: str, *, slow: bool = False) -> None:
+        self.nodeid = nodeid
+        self.fixturenames: list[str] = []
+        self.keywords = {"slow": object()} if slow else {}
+        self.markers: list[str] = []
+
+    def add_marker(self, marker) -> None:
+        self.markers.append(marker.name)
+
+
+class _DeselectionHook:
+    def __init__(self) -> None:
+        self.items: list[_CollectedItem] = []
+
+    def pytest_deselected(self, *, items: list[_CollectedItem]) -> None:
+        self.items.extend(items)
+
+
+@pytest.mark.parametrize("include_slow", [False, True])
+def test_collection_includes_slow_items_only_with_slow_option(include_slow: bool) -> None:
+    slow_item = _CollectedItem("tests/unit/test_fairness_e2e.py::test_large")
+    slow_item.keywords["slow"] = object()
+    regular_item = _CollectedItem("tests/unit/test_model.py::test_small")
+    deselection_hook = _DeselectionHook()
+    config = SimpleNamespace(
+        getoption=lambda option: include_slow if option == "--slow" else None,
+        hook=deselection_hook,
+    )
+    items = [slow_item, regular_item]
+
+    pytest_collection_modifyitems(config, items)
+
+    expected_items = [slow_item, regular_item] if include_slow else [regular_item]
+    expected_deselected = [] if include_slow else [slow_item]
+    assert items == expected_items
+    assert deselection_hook.items == expected_deselected
+    assert regular_item.markers == ["pure", "algorithm"]
+    assert slow_item.markers == (["pure", "algorithm"] if include_slow else [])
