@@ -10,6 +10,7 @@ import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
+import CheckboxListDropdown from "./CheckboxListDropdown";
 import { useAuth } from "../auth/AuthContext";
 import { formatDate, lastDutyDay } from "../utils/formatDate";
 
@@ -17,8 +18,7 @@ import { formatDate, lastDutyDay } from "../utils/formatDate";
 // every other event type (dismissal, call_up, exemption, constraint) is already inclusive.
 const EXCLUSIVE_END_DATE_EVENT_TYPES = new Set(["assignment", "cancellation"]);
 
-type FilterType =
-  | "all"
+type EventTypeFilter =
   | "assignment"
   | "algorithm_draft"
   | "cancellation"
@@ -31,8 +31,7 @@ type FilterType =
 
 type StatusFilter = "all" | "published" | "draft" | "reserve" | "cancelled";
 
-const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
-  { type: "all", i18nKey: "duty_history.filter_all" },
+const EVENT_TYPE_FILTER_KEYS: { type: EventTypeFilter; i18nKey: string }[] = [
   { type: "assignment", i18nKey: "duty_history.filter_assignments" },
   { type: "algorithm_draft", i18nKey: "duty_history.filter_drafts" },
   { type: "cancellation", i18nKey: "duty_history.filter_cancellations" },
@@ -43,6 +42,14 @@ const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
   { type: "personal_constraint", i18nKey: "duty_history.filter_constraints" },
   { type: "range", i18nKey: "duty_history.filter_ranges" },
 ];
+
+const ALL_EVENT_TYPE_FILTER_IDS = EVENT_TYPE_FILTER_KEYS.map((f) => f.type);
+
+function eventMatchesTypes(e: TimelineEvent, selected: string[]): boolean {
+  if (selected.includes("algorithm_draft") && e.status === "algorithm_draft") return true;
+  if (selected.includes("range") && (e.event_type === "range_assignment" || e.event_type === "range_removed")) return true;
+  return selected.includes(e.event_type);
+}
 
 const TYPE_COLORS: Record<string, string> = {
   assignment: "border-indigo-500 bg-indigo-50 dark:bg-indigo-950",
@@ -110,6 +117,7 @@ interface Props {
   soldierName?: string;
   canManage: boolean;
   isActive: boolean;
+  initialTypes?: string[];
 }
 
 function EventCard({
@@ -468,13 +476,13 @@ function Timeline({
   );
 }
 
-export default function DutyHistoryPanel({ soldierId, soldierName, canManage, isActive }: Props) {
+export default function DutyHistoryPanel({ soldierId, soldierName, canManage, isActive, initialTypes }: Props) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterType>("all");
+  const [types, setTypes] = useState<string[] | null>(initialTypes ?? null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [swapsByAssignment, setSwapsByAssignment] = useState<Record<string, SwapRequest[]>>({});
@@ -653,16 +661,8 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const matchesFilter = (e: TimelineEvent, filterType: FilterType) =>
-    filterType === "all"
-    || e.event_type === filterType
-    || (filterType === "range" && (e.event_type === "range_assignment" || e.event_type === "range_removed"));
-  const typeFiltered =
-    filter === "all"
-      ? events
-      : filter === "algorithm_draft"
-        ? events.filter((e) => e.status === "algorithm_draft")
-        : events.filter((e) => matchesFilter(e, filter));
+  const effectiveTypes = types ?? ALL_EVENT_TYPE_FILTER_IDS;
+  const typeFiltered = events.filter((e) => eventMatchesTypes(e, effectiveTypes));
 
   const filtered = (() => {
     switch (statusFilter) {
@@ -718,22 +718,15 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   return (
     <>
     <div>
-      {/* Filter chips */}
+      {/* Event-type filter */}
       <div className="flex flex-wrap gap-1 mb-4">
-        {FILTER_KEYS.map(({ type, i18nKey }) => (
-          <button
-            key={type}
-            onClick={() => setFilter(type)}
-            className={`text-xs px-2 py-1 rounded-full border ${
-              filter === type
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:border-indigo-500 dark:hover:border-indigo-400"
-            }`}
-            data-testid={`history-filter-${type}`}
-          >
-            {t(i18nKey)}
-          </button>
-        ))}
+        <CheckboxListDropdown
+          items={EVENT_TYPE_FILTER_KEYS.map(({ type, i18nKey }) => ({ id: type, label: t(i18nKey) }))}
+          selected={types ?? ALL_EVENT_TYPE_FILTER_IDS}
+          onChange={setTypes}
+          triggerLabel={t("duty_history.filter_types_label")}
+          panelDir="rtl"
+        />
       </div>
 
       {/* Status filter row */}

@@ -8,10 +8,10 @@ import {
 } from "react";
 import { SoldierDTO, SoldierScoreDTO, getSoldier, getSoldierScore } from "../api/soldiers";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
-import UnifiedSoldierModal from "../components/UnifiedSoldierModal";
+import UnifiedSoldierModal, { type TabKey } from "../components/UnifiedSoldierModal";
 
 interface SoldierModalContextValue {
-  openSoldierModal: (soldierId: string, onRefresh?: () => void) => void;
+  openSoldierModal: (soldierId: string, onRefresh?: () => void, initialTab?: TabKey, initialHistoryTypes?: string[]) => void;
 }
 
 const SoldierModalContext = createContext<SoldierModalContextValue | null>(null);
@@ -27,6 +27,8 @@ interface ModalState {
   score: SoldierScoreDTO | null;
   nodes: NodeDTO[];
   onRefresh?: () => void;
+  initialTab?: TabKey;
+  initialHistoryTypes?: string[];
 }
 
 export function SoldierModalProvider({ children }: { children: ReactNode }) {
@@ -34,7 +36,7 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
   const [opening, setOpening] = useState(false);
 
   const openSoldierModal = useCallback(
-    async (soldierId: string, onRefresh?: () => void) => {
+    async (soldierId: string, onRefresh?: () => void, initialTab?: TabKey, initialHistoryTypes?: string[]) => {
       setOpening(true);
       try {
         const [soldier, score, nodes] = await Promise.allSettled([
@@ -59,6 +61,8 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
               ? (nodes as PromiseFulfilledResult<NodeDTO[]>).value
               : [],
           onRefresh,
+          initialTab,
+          initialHistoryTypes,
         });
       } finally {
         setOpening(false);
@@ -95,6 +99,8 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
           nodes={modal.nodes}
           onClose={handleClose}
           onRefresh={handleRefresh}
+          initialTab={modal.initialTab}
+          initialHistoryTypes={modal.initialHistoryTypes}
         />
       )}
     </SoldierModalContext.Provider>

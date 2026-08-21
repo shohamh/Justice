@@ -1104,6 +1104,7 @@
   "weekday_7": "א׳",
   "duty_history": {
     "title": "היסטוריית תורנויות",
+    "filter_types_label": "סוגי אירועים",
     "filter_all": "הכל",
     "filter_assignments": "תורנויות",
     "filter_cancellations": "ביטולים",

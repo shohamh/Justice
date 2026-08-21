@@ -12,6 +12,7 @@ import { TransparencyRow, getEffortBreakdown, getFairnessComponents, getTranspar
 import { DataTable, type ColDef } from "../components/DataTable";
 import { ExcelExportButton } from "../components/ExcelExportButton";
 import SoldierLink from "../components/SoldierLink";
+import { useSoldierModal } from "../contexts/SoldierModalContext";
 import ExemptionsCell from "../components/ExemptionsCell";
 import { formatDate } from "../utils/formatDate";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
@@ -45,6 +46,8 @@ function gapColor(gap: number | null): string {
 function formatGap(gap: number | null): string {
   return gap === null ? "—" : gap.toFixed(3);
 }
+
+const SCORE_AFFECTING_TYPES = ["assignment", "cancellation", "call_up", "dismissal"];
 
 // ─── rank ordering ───────────────────────────────────────────────────────────
 
@@ -271,6 +274,7 @@ function FairnessCard({ stats, helpVariant }: { stats: EffortStats | null; helpV
 export default function TransparencyPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { openSoldierModal } = useSoldierModal();
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -589,7 +593,20 @@ export default function TransparencyPage() {
     },
     {
       id: "cumulative", header: t("transparency.cumulative"),
-      cell: (r) => { const n = Number(r.cumulative_score); return isNaN(n) ? r.cumulative_score : n.toFixed(3); },
+      headerTooltip: "לחץ על הערך לצפייה באירועים שמשפיעים על הניקוד (תורנויות, ביטולים, הקפצות, שחרורים).",
+      cell: (r) => {
+        const n = Number(r.cumulative_score);
+        const label = isNaN(n) ? r.cumulative_score : n.toFixed(3);
+        return (
+          <button
+            className="text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
+            onClick={() => openSoldierModal(r.soldier_id, undefined, "duty_history", SCORE_AFFECTING_TYPES)}
+            title="לחץ לצפייה באירועים שמשפיעים על הניקוד"
+          >
+            {label}
+          </button>
+        );
+      },
       sortValue: (r) => Number(r.cumulative_score),
     },
     {

@@ -101,9 +101,9 @@ describe("DutyHistoryPanel range events", () => {
   });
 });
 
-describe("DutyHistoryPanel matchesFilter for range events", () => {
-  it("the 'range' filter chip shows both range_assignment and range_removed events", async () => {
-    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([
+describe("DutyHistoryPanel event-type filter", () => {
+  function threeEvents() {
+    return [
       {
         id: "ra1", event_type: "range_assignment", date: "2026-09-01", end_date: null,
         title: "מטווח laser במטווח צפון", description: null, status: "present",
@@ -122,14 +122,30 @@ describe("DutyHistoryPanel matchesFilter for range events", () => {
         metadata: {},
         created_at: "2026-08-01T00:00:00Z",
       },
-    ]);
+    ];
+  }
+
+  it("selecting only the 'range' checkbox shows both range_assignment and range_removed events, and hides assignment", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue(threeEvents());
     render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} />);
     await screen.findByTestId("history-event-range_assignment");
 
-    fireEvent.click(screen.getByTestId("history-filter-range"));
+    // Open the dropdown, clear the default "all selected" state, then pick just "range".
+    fireEvent.click(screen.getByText("duty_history.filter_types_label"));
+    fireEvent.click(screen.getByText("הכל"));
+    fireEvent.click(screen.getByText("duty_history.filter_ranges"));
 
     expect(screen.getByTestId("history-event-range_assignment")).toBeTruthy();
     expect(screen.getByTestId("history-event-range_removed")).toBeTruthy();
     expect(screen.queryByTestId("history-event-assignment")).toBeNull();
+  });
+
+  it("initialTypes seeds the filter on mount without needing to open the dropdown", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue(threeEvents());
+    render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} initialTypes={["assignment"]} />);
+
+    await screen.findByTestId("history-event-assignment");
+    expect(screen.queryByTestId("history-event-range_assignment")).toBeNull();
+    expect(screen.queryByTestId("history-event-range_removed")).toBeNull();
   });
 });
