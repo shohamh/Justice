@@ -560,7 +560,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             </label>
             <label className="block">
               <span className="text-xs">{t("soldier_profile.next_rank_date")}</span>
-              <div className="flex gap-1 items-center">
+              <div className="flex gap-1 items-center w-full">
                 <DateInput
                   className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={nextRankDate}
@@ -611,7 +611,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               {soldierData.can_edit_rank_advancement && (
                 <label className="block">
                   <span className="text-xs">{t("soldier_profile.next_rank_date")}</span>
-                  <div className="flex gap-1 items-center">
+                  <div className="flex gap-1 items-center w-full">
                     <DateInput
                       className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       value={nextRankDate}
@@ -635,7 +635,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.discharge_date")}</span>
-                <div className="flex gap-1 items-center">
+                <div className="flex gap-1 items-center w-full">
                   <DateInput className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={setProfileDischarge} />
                   {profileDischarge && (
                     <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setProfileDischarge("")}>{t("soldier_profile.clear")}</button>

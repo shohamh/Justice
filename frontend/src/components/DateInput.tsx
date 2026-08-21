@@ -143,9 +143,15 @@ export default function DateInput({
     commit(raw);
   }
 
-  // Callers style the text field directly (e.g. `w-full`) expecting it to
-  // fill its parent, same as the native input it replaces — the wrapper
-  // needs the same sizing class or the flex row won't stretch.
+  // Callers style the text field directly (e.g. `w-full` or `flex-1`)
+  // expecting it to fill its parent, same as the native input it replaces —
+  // the wrapper needs the same sizing class or the flex row won't stretch.
+  // `flex-1` matters when a caller nests DateInput in its own flex row
+  // (e.g. next to a "clear" button): that class lands on the inner
+  // <input> (below), but the WRAPPER is the actual flex item of the
+  // caller's row, so without flex-grow on the wrapper too, it sits at its
+  // own content width — width:auto default — leaving a gap before the
+  // input even though the caller's `w-full` div around it stretches fine.
   //
   // Block (not inline-flex): when a caller places this directly after a
   // label's <span> with no wrapping container (the common
@@ -159,7 +165,7 @@ export default function DateInput({
   // block-level wrapper stacks unconditionally, and is blockified back to a
   // normal flex item on the rare caller that nests this inside its own flex
   // row (e.g. next to a "clear" button), so this is safe either way.
-  const wrapperClassName = `flex items-center gap-1${className?.includes("w-full") ? " w-full" : ""}`;
+  const wrapperClassName = `flex items-center gap-1${className?.includes("w-full") ? " w-full" : ""}${className?.includes("flex-1") ? " flex-1 min-w-0" : ""}`;
 
   return (
     <span className={wrapperClassName}>
