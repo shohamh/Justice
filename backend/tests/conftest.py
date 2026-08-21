@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 
+from tests.support import app as test_app_support
 from tests.support import database
 
 _SHARED_URL_KEY = "shared_postgres_url"
@@ -412,9 +413,7 @@ def _reset_rate_limiter() -> Iterator[None]:
     """Reset the in-memory rate-limiter storage before each test so that
     rate-limited endpoints (e.g. algorithm job creation) don't bleed state
     across tests that share the same synthetic client IP."""
-    from app.rate_limit import limiter
-
-    limiter._storage.reset()
+    test_app_support.reset_process_state()
     yield
 
 
@@ -451,10 +450,5 @@ def app_session(app_engine) -> Iterator[Session]:
 
 @pytest.fixture()
 def client() -> Iterator["TestClient"]:  # noqa: F821
-    from fastapi.testclient import TestClient
-
-    from app.main import create_app
-
-    app = create_app()
-    with TestClient(app) as c:
+    with test_app_support.test_client() as c:
         yield c
