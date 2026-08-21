@@ -305,7 +305,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--slow",
         action="store_true",
         default=False,
-        help="also run @pytest.mark.slow large-scale CP-SAT tests (~11 min); "
+        help="also run @pytest.mark.slow scale and statistical CP-SAT tests; "
         "excluded by default so a plain `pytest` run stays fast",
     )
 

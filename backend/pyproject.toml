@@ -53,16 +53,16 @@ testpaths = ["tests", "app/services/tests"]
 # of native DLLs, which overcommits memory/the Windows page file (and Docker
 # Desktop's smaller VM CPU/RAM cap) well before the host CPU count is reached,
 # causing intermittent WinError 1455 crashes that cascade into unrelated test
-# failures under xdist. The 8 @pytest.mark.slow large-scale CP-SAT cases
-# (n≈100, m≈200, ~11 min combined) are deselected by a conftest.py hook unless
-# --slow is passed.
+# failures under xdist. @pytest.mark.slow covers large-scale CP-SAT scenarios
+# and multi-scenario statistical fairness sweeps; they are deselected by a
+# conftest.py hook unless --slow is passed.
 # Area markers (algorithm, auth, hierarchy, duty, scoring, notifications,
 # soldiers, misc) are assigned automatically by the same hook based on test
 # file name — run a slice with e.g. `pytest -m algorithm`.
 addopts = "-ra -q -n 4"
 asyncio_mode = "auto"
 markers = [
-  "slow: large-scale CP-SAT tests (n≈100, m≈200); deselected by default, run with: pytest --slow",
+  "slow: scale and statistical CP-SAT tests; deselected by default, run with: pytest --slow",
   "algorithm: CP-SAT solver, scheduling model, fairness/effort scoring inputs",
   "auth: login, JWT, password policy, RBAC, registration/enrollment, security hardening",
   "hierarchy: hierarchy nodes (corps/division/unit/...) and duty-manager scope",
