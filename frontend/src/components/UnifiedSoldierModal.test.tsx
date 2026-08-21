@@ -195,7 +195,7 @@ describe("UnifiedSoldierModal scoped rank/next-rank-date correction", () => {
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
     fireEvent.click(screen.getByTestId("rank-correction-toggle"));
 
-    fireEvent.click(await screen.findByText("soldier_profile.clear"));
+    fireEvent.click(await screen.findByLabelText("נקה"));
     fireEvent.click(screen.getByTestId("rank-correction-submit"));
 
     await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));
@@ -262,7 +262,7 @@ describe("UnifiedSoldierModal full editor rank-field dirty gating and next-rank-
 
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
     const dateInput = await screen.findByTestId("next-rank-date-input");
-    fireEvent.click(screen.getByText("soldier_profile.clear"));
+    fireEvent.click(screen.getByLabelText("נקה"));
     fireEvent.click(screen.getByText("duty_config.save"));
 
     await waitFor(() => expect(mockUpdateSoldierProfile).toHaveBeenCalledTimes(1));

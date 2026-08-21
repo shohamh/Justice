@@ -143,6 +143,13 @@ export default function DateInput({
     commit(raw);
   }
 
+  function handleClear() {
+    setText("");
+    rawDigitsRef.current = "";
+    isTypingRef.current = false;
+    commit("");
+  }
+
   // Callers style the text field directly (e.g. `w-full` or `flex-1`)
   // expecting it to fill its parent, same as the native input it replaces —
   // the wrapper needs the same sizing class or the flex row won't stretch.
@@ -192,6 +199,17 @@ export default function DateInput({
         // would otherwise still block shrinking below content size.
         className={`flex-1 min-w-0 ${className ?? ""}`}
       />
+      {!disabled && text !== "" && (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="נקה"
+          onClick={handleClear}
+          className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-600 text-white text-[10px] leading-none hover:bg-gray-400 dark:hover:bg-gray-500"
+        >
+          ×
+        </button>
+      )}
       <button
         type="button"
         tabIndex={-1}

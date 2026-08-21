@@ -150,4 +150,22 @@ describe("DateInput", () => {
     const wrapper = screen.getByTestId("date-input").parentElement;
     expect(wrapper?.className).toMatch(/(^|\s)flex-1(\s|$)/);
   });
+
+  it("shows a built-in clear button only when there's a value, and clearing it commits an empty string", () => {
+    const onChange = vi.fn();
+    render(<DateInput value="2026-08-21" onChange={onChange} data-testid="date-input" />);
+
+    const clearButton = screen.getByLabelText("נקה");
+    expect(clearButton).toBeInTheDocument();
+
+    fireEvent.click(clearButton);
+    expect(onChange).toHaveBeenLastCalledWith("");
+    expect(screen.getByTestId("date-input")).toHaveValue("");
+    expect(screen.queryByLabelText("נקה")).not.toBeInTheDocument();
+  });
+
+  it("hides the built-in clear button when the field is empty", () => {
+    render(<DateInput data-testid="date-input" />);
+    expect(screen.queryByLabelText("נקה")).not.toBeInTheDocument();
+  });
 });
