@@ -15,7 +15,7 @@ from app.db.models import (
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
-from app.services import effort_score, scoring
+from app.services import effort_score, score_projection, scoring
 from app.services.effort_score import compute_effort_breakdown
 from app.services.score_projection import backfill_score_projection
 from app.services.tests.test_score_projection import _seed_projection_scenario
@@ -75,6 +75,22 @@ def _fail_if_expands_duty_days(*_args, **_kwargs):
     raise AssertionError("normal projected scoring read expanded duty days")
 
 
+def _fail_if_enumerates_canonical_buckets(*_args, **_kwargs):
+    raise AssertionError("normal projected scoring read enumerated canonical buckets")
+
+
+def _forbid_normal_projection_expansion(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_effective_rows = score_projection._effective_duty_day_rows
+
+    def fail_unbounded_projection_expansion(*args, **kwargs):
+        if "assignment_ids" in kwargs:
+            return original_effective_rows(*args, **kwargs)
+        return _fail_if_expands_duty_days(*args, **kwargs)
+
+    monkeypatch.setattr(score_projection, "_effective_duty_day_rows", fail_unbounded_projection_expansion)
+    monkeypatch.setattr(score_projection, "project_all_buckets", _fail_if_enumerates_canonical_buckets)
+
+
 def test_transparency_rows_match_legacy_from_projection_without_expanding_duty_days(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
@@ -83,7 +99,7 @@ def test_transparency_rows_match_legacy_from_projection_without_expanding_duty_d
     backfill_score_projection(admin_session)
     admin_session.flush()
 
-    monkeypatch.setattr(scoring, "_effective_duty_day_rows", _fail_if_expands_duty_days)
+    _forbid_normal_projection_expansion(monkeypatch)
 
     projected = scoring.transparency_rows(admin_session, viewer=admin)
 
@@ -107,6 +123,7 @@ def test_fairness_components_use_projected_effort_without_calling_transparency_r
         raise AssertionError("fairness must not call transparency_rows")
 
     monkeypatch.setattr(scoring, "transparency_rows", fail_transparency)
+    _forbid_normal_projection_expansion(monkeypatch)
 
     projected = scoring.fairness_components(admin_session, viewer=admin)
 
@@ -131,6 +148,7 @@ def test_effort_breakdown_matches_legacy_from_projection_and_keeps_preview_in_me
     admin_session.flush()
 
     monkeypatch.setattr(effort_score, "effective_duty_days", _fail_if_expands_duty_days)
+    _forbid_normal_projection_expansion(monkeypatch)
 
     projected = compute_effort_breakdown(
         admin_session,
@@ -189,7 +207,7 @@ def test_transparency_rebuilds_missing_soldier_total_before_projected_read(
         )
     )
     admin_session.flush()
-    monkeypatch.setattr(scoring, "_effective_duty_day_rows", _fail_if_expands_duty_days)
+    _forbid_normal_projection_expansion(monkeypatch)
 
     projected = scoring.transparency_rows(admin_session, viewer=admin)
 
@@ -201,7 +219,7 @@ def test_transparency_rebuilds_missing_soldier_total_before_projected_read(
     assert _canonical(projected) == _canonical(legacy)
 
 
-def test_effort_breakdown_rebuilds_denominator_only_quarter_total(
+def test_effort_breakdown_rebuilds_denominator_only_quarter_total_from_projection_rows(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
     scenario, _admin = _build_projected_scenario(admin_session)
@@ -239,6 +257,7 @@ def test_effort_breakdown_rebuilds_denominator_only_quarter_total(
     )
     admin_session.flush()
     monkeypatch.setattr(effort_score, "effective_duty_days", _fail_if_expands_duty_days)
+    _forbid_normal_projection_expansion(monkeypatch)
 
     projected = compute_effort_breakdown(
         admin_session,
@@ -254,7 +273,7 @@ def test_effort_breakdown_rebuilds_denominator_only_quarter_total(
     assert _canonical_breakdown(projected) == _canonical_breakdown(legacy)
 
 
-def test_transparency_rebuilds_divergent_projection_bucket_before_projected_read(
+def test_transparency_falls_back_for_unprovable_divergent_projection_bucket_without_expansion(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
     scenario, admin = _build_projected_scenario(admin_session)
@@ -272,19 +291,19 @@ def test_transparency_rebuilds_divergent_projection_bucket_before_projected_read
     stale_row.duty_score = Decimal("99.000000")
     stale_row.source_fingerprint = {"stale": True}
     admin_session.flush()
-    monkeypatch.setattr(scoring, "_effective_duty_day_rows", _fail_if_expands_duty_days)
+    _forbid_normal_projection_expansion(monkeypatch)
 
     projected = scoring.transparency_rows(admin_session, viewer=admin)
 
-    repaired_row = admin_session.execute(
+    stale_row_after_read = admin_session.execute(
         select(SoldierQuarterScoreProjection).where(
             SoldierQuarterScoreProjection.soldier_id == scenario["primary"].id,
             SoldierQuarterScoreProjection.quarter_start == scenario["q3"],
             SoldierQuarterScoreProjection.duty_type_id == stale_row.duty_type_id,
         )
     ).scalar_one()
-    assert repaired_row.duty_score == Decimal("2.700000")
-    assert "duty_rows" in repaired_row.source_fingerprint
+    assert stale_row_after_read.duty_score == Decimal("99.000000")
+    assert stale_row_after_read.source_fingerprint == {"stale": True}
     assert _canonical(projected) == _canonical(legacy)
 
 
@@ -329,7 +348,7 @@ def test_projected_transparency_matches_legacy_for_scoped_redacted_non_admin(
     legacy = scoring.transparency_rows(admin_session, viewer=viewer)
     backfill_score_projection(admin_session)
     admin_session.flush()
-    monkeypatch.setattr(scoring, "_effective_duty_day_rows", _fail_if_expands_duty_days)
+    _forbid_normal_projection_expansion(monkeypatch)
 
     projected = scoring.transparency_rows(admin_session, viewer=viewer)
 
@@ -339,4 +358,35 @@ def test_projected_transparency_matches_legacy_for_scoped_redacted_non_admin(
     assert redacted_row["exemptions_display"] == "חסוי"
     assert redacted_row["has_global_exemption"] is True
     assert visible_row["exemptions_visible"] is True
+    assert _canonical(projected) == _canonical(legacy)
+
+
+def test_projected_transparency_scale_read_does_not_expand_projection_history(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    scenario, admin = _build_projected_scenario(admin_session)
+    for idx in range(18):
+        soldier = create_soldier(
+            admin_session,
+            personal_number=f"projected-scale-{idx:02d}",
+            full_name=f"Projected Scale {idx:02d}",
+        )
+        admin_session.add(
+            DutyAssignment(
+                soldier_id=soldier.id,
+                duty_type_id=scenario["cross_quarter"].duty_type_id,
+                duty_location_id=scenario["cross_quarter"].duty_location_id,
+                start_date=date(2025, 1 + (idx % 12), 1),
+                end_date=date(2025, 1 + (idx % 12), 3),
+                status="published",
+            )
+        )
+    admin_session.flush()
+    legacy = scoring.transparency_rows(admin_session, viewer=admin)
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+    _forbid_normal_projection_expansion(monkeypatch)
+
+    projected = scoring.transparency_rows(admin_session, viewer=admin)
+
     assert _canonical(projected) == _canonical(legacy)

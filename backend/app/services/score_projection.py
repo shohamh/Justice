@@ -727,7 +727,11 @@ def _upsert_quarter_total(
 
 
 def rebuild_projection_bucket(
-    session: Session, soldier_id: uuid.UUID, quarter_start_value: date
+    session: Session,
+    soldier_id: uuid.UUID,
+    quarter_start_value: date,
+    *,
+    refresh_quarter_total: bool = True,
 ) -> list[SoldierQuarterScoreProjection]:
     _get_or_create_state(session)
     bucket = project_soldier_bucket(session, soldier_id, quarter_start_value)
@@ -736,7 +740,8 @@ def rebuild_projection_bucket(
     session.add_all(rows)
     session.flush()
     _upsert_soldier_total(session, soldier_id=soldier_id)
-    _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
+    if refresh_quarter_total:
+        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
     return list(
         session.execute(
             select(SoldierQuarterScoreProjection).where(

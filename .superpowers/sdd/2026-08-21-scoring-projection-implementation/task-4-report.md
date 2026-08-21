@@ -168,3 +168,83 @@ Exit code: 0.
 
 - I reran the requested 94 focused tests plus the 4 new fix-round readiness/differential tests (98 total). I did not run the full backend suite.
 - The stricter projected-read proof intentionally performs bounded canonical checks for required read keys/quarters; this avoids silently serving stale projection data, with legacy fallback if proof cannot be established.
+
+## Fix round 2 report
+
+### Status
+
+Implemented.
+
+### Findings addressed
+
+- Removed canonical per-bucket and per-quarter expansion from the normal projected-read readiness path.
+- Normal `_ensure_projection_ready` now uses persisted projection metadata only: projection state completeness/current version, row presence/version, dirty/divergent bucket rows, persisted fingerprint self-consistency, and row-summed soldier/quarter totals.
+- Read-time bucket rebuilds now refresh only the affected soldier-quarter bucket and skip broad `project_all_buckets` quarter-total refresh; required quarter totals are repaired by summing persisted projection rows.
+- Kept canonical bucket/quarter comparison helpers available behind explicit `canonical_diagnostic_check=True`; normal transparency/fairness/breakdown reads do not enable it.
+- Updated no-expansion tests to monkeypatch the actual `score_projection` seam and added scale/no-history-expansion coverage.
+- Unprovable persisted metadata now falls back to the legacy canonical path with diagnostics instead of performing canonical expansion as a readiness check.
+
+### TDD evidence
+
+Fix-round RED command:
+
+```powershell
+python -m pytest app\services\tests\test_projected_scoring_reads.py -q
+```
+
+Fix-round RED output summary:
+
+```text
+F..F...F.                                                                [100%]
+FAILED app/services/tests/test_projected_scoring_reads.py::test_effort_breakdown_matches_legacy_from_projection_and_keeps_preview_in_memory
+FAILED app/services/tests/test_projected_scoring_reads.py::test_transparency_rebuilds_missing_soldier_total_before_projected_read
+FAILED app/services/tests/test_projected_scoring_reads.py::test_effort_breakdown_rebuilds_denominator_only_quarter_total_from_projection_rows
+```
+
+Focused GREEN command:
+
+```powershell
+python -m pytest app\services\tests\test_projected_scoring_reads.py -q
+```
+
+Focused GREEN output:
+
+```text
+.........                                                                [100%]
+```
+
+### Verification
+
+Final focused Task 4 regression command:
+
+```powershell
+python -m pytest app\services\tests\test_projected_scoring_reads.py app\services\tests\test_score_projection.py app\services\tests\test_score_projection_persistence.py app\services\tests\test_score_projection_freshness.py app\routes\tests\test_scoring_routes.py app\services\tests\test_scoring_dismissal.py tests\test_effort_score.py tests\unit\test_scoring_service.py tests\unit\test_fairness_components.py tests\integration\test_scoring_api.py -q
+```
+
+Final focused Task 4 regression output:
+
+```text
+........................................................................ [ 72%]
+...........................                                              [100%]
+```
+
+Diff hygiene:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+warning: in the working copy of 'backend/app/services/score_projection.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/services/scoring.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/services/tests/test_projected_scoring_reads.py', LF will be replaced by CRLF the next time Git touches it
+```
+
+Exit code: 0.
+
+### Concerns
+
+- I reran the focused Task 4 suite plus the new scale/no-history-expansion test (99 total). I did not run the full backend suite.
+- The round-1 canonical-readiness concern is superseded by this fix: canonical comparison remains available only through explicit diagnostic mode, not normal reads.

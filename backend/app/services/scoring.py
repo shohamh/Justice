@@ -22,6 +22,7 @@ from app.db.models import (
     ScoreAdjustment,
     ScoreProjectionDirtyBucket,
     ScoreProjectionQuarterTotal,
+    ScoreProjectionState,
     Soldier,
     SoldierExemption,
     SoldierQuarterScoreProjection,
@@ -767,6 +768,88 @@ def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjectio
     )
 
 
+def _projection_state_is_complete(session: Session) -> bool:
+    from app.services.score_projection import (
+        SCORE_PROJECTION_CANONICAL_VERSION,
+        SCORE_PROJECTION_STATE_KEY,
+    )
+
+    state = session.get(ScoreProjectionState, SCORE_PROJECTION_STATE_KEY)
+    return (
+        state is not None
+        and state.backfill_complete is True
+        and state.canonical_version == SCORE_PROJECTION_CANONICAL_VERSION
+    )
+
+
+def _fingerprint_list(fingerprint: dict[str, Any], key: str) -> list[dict[str, Any]] | None:
+    value = fingerprint.get(key)
+    if not isinstance(value, list):
+        return None
+    return value
+
+
+def _projection_row_matches_fingerprint_metadata(row: SoldierQuarterScoreProjection) -> bool:
+    fingerprint = row.source_fingerprint
+    if not isinstance(fingerprint, dict):
+        return False
+
+    duty_rows = _fingerprint_list(fingerprint, "duty_rows")
+    overrides = _fingerprint_list(fingerprint, "overrides")
+    dismissals = _fingerprint_list(fingerprint, "dismissals")
+    adjustments = _fingerprint_list(fingerprint, "adjustments")
+    if duty_rows is None or overrides is None or dismissals is None or adjustments is None:
+        return False
+
+    try:
+        if row.duty_type_id is None:
+            adjustment_score = sum(
+                (_q6(adjustment.get("delta")) for adjustment in adjustments),
+                Decimal("0"),
+            )
+            return (
+                duty_rows == []
+                and _q6(row.effective_weighted_days) == Decimal("0.000000")
+                and _q6(row.duty_score) == Decimal("0.000000")
+                and _q6(row.adjustment_score) == _q6(adjustment_score)
+                and row.raw_day_count == 0
+            )
+
+        expected_duty_type_id = str(row.duty_type_id)
+        if any(str(duty_row.get("duty_type_id")) != expected_duty_type_id for duty_row in duty_rows):
+            return False
+        effective_weighted_days = sum(
+            (_q6(duty_row.get("weighted_multiplier")) for duty_row in duty_rows),
+            Decimal("0"),
+        )
+        duty_score = sum((_q6(duty_row.get("score")) for duty_row in duty_rows), Decimal("0"))
+        return (
+            row.raw_day_count == len(duty_rows)
+            and _q6(row.effective_weighted_days) == _q6(effective_weighted_days)
+            and _q6(row.duty_score) == _q6(duty_score)
+            and _q6(row.adjustment_score) == Decimal("0.000000")
+            and adjustments == []
+        )
+    except Exception:
+        logger.exception(
+            "score projection persisted fingerprint metadata proof failed",
+            extra={
+                "soldier_id": str(row.soldier_id),
+                "quarter_start": str(row.quarter_start),
+                "projection_row_id": str(row.id),
+            },
+        )
+        return False
+
+
+def _projection_bucket_rows_match_persisted_metadata(
+    rows: list[SoldierQuarterScoreProjection],
+) -> bool:
+    return _projection_bucket_rows_are_complete(rows) and all(
+        _projection_row_matches_fingerprint_metadata(row) for row in rows
+    )
+
+
 def _projection_bucket_matches_canonical(
     session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date
 ) -> bool:
@@ -877,22 +960,124 @@ def _quarter_total_matches_canonical(session: Session, quarter_start_value: date
     )
 
 
-def _projection_quarter_bucket_keys(
-    session: Session, quarter_start_value: date
-) -> set[tuple[uuid.UUID, date]] | None:
-    from app.services.score_projection import project_all_buckets
-
-    try:
-        return {
-            (bucket.soldier_id, bucket.quarter_start)
-            for bucket in project_all_buckets(session, quarter_starts={quarter_start_value})
-        }
-    except Exception:
-        logger.exception(
-            "score projection canonical quarter bucket enumeration failed",
-            extra={"quarter_start": str(quarter_start_value)},
+def _quarter_total_from_projection_rows(
+    session: Session, *, quarter_start_value: date
+) -> dict[str, Decimal | int]:
+    rows = session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.quarter_start == quarter_start_value
         )
-        return None
+    ).scalars().all()
+    duty_score = sum((_q6(row.duty_score) for row in rows), Decimal("0"))
+    adjustment_score = sum((_q6(row.adjustment_score) for row in rows), Decimal("0"))
+    effective_weighted_days = sum(
+        (_q6(row.effective_weighted_days) for row in rows), Decimal("0")
+    )
+    raw_day_count = sum(row.raw_day_count for row in rows)
+    return {
+        "raw_day_count": raw_day_count,
+        "effective_weighted_days": _q6(effective_weighted_days),
+        "duty_score": _q6(duty_score),
+        "adjustment_score": _q6(adjustment_score),
+        "total_score": _q6(duty_score + adjustment_score),
+    }
+
+
+def _projection_quarter_rows_match_persisted_metadata(
+    session: Session, *, quarter_start_value: date
+) -> bool:
+    from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
+
+    rows = session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.quarter_start == quarter_start_value
+        )
+    ).scalars().all()
+    return all(
+        row.projection_version == SCORE_PROJECTION_CANONICAL_VERSION
+        and _projection_row_matches_fingerprint_metadata(row)
+        for row in rows
+    )
+
+
+def _quarter_total_matches_projection_rows(
+    session: Session, *, quarter_start_value: date
+) -> bool:
+    from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
+
+    row = session.get(ScoreProjectionQuarterTotal, quarter_start_value)
+    if row is None or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION:
+        return False
+    expected = _quarter_total_from_projection_rows(
+        session, quarter_start_value=quarter_start_value
+    )
+    return (
+        row.raw_day_count == expected["raw_day_count"]
+        and _q6(row.effective_weighted_days) == expected["effective_weighted_days"]
+        and _q6(row.duty_score) == expected["duty_score"]
+        and _q6(row.adjustment_score) == expected["adjustment_score"]
+        and _q6(row.total_score) == expected["total_score"]
+    )
+
+
+def _refresh_required_quarter_totals_from_projection_rows(
+    session: Session, *, quarter_starts: set[date]
+) -> bool:
+    from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
+
+    for quarter_start_value in sorted(quarter_starts):
+        if not _projection_quarter_rows_match_persisted_metadata(
+            session, quarter_start_value=quarter_start_value
+        ):
+            logger.warning(
+                "score projection read fell back because quarter row metadata is unprovable",
+                extra={"quarter_start": str(quarter_start_value)},
+            )
+            return False
+        if _quarter_total_matches_projection_rows(
+            session, quarter_start_value=quarter_start_value
+        ):
+            continue
+        try:
+            expected = _quarter_total_from_projection_rows(
+                session, quarter_start_value=quarter_start_value
+            )
+            row = session.get(ScoreProjectionQuarterTotal, quarter_start_value)
+            if row is None:
+                row = ScoreProjectionQuarterTotal(
+                    quarter_start=quarter_start_value,
+                    projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                    raw_day_count=expected["raw_day_count"],
+                    effective_weighted_days=expected["effective_weighted_days"],
+                    duty_score=expected["duty_score"],
+                    adjustment_score=expected["adjustment_score"],
+                    total_score=expected["total_score"],
+                )
+                session.add(row)
+            else:
+                row.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
+                row.raw_day_count = expected["raw_day_count"]
+                row.effective_weighted_days = expected["effective_weighted_days"]
+                row.duty_score = expected["duty_score"]
+                row.adjustment_score = expected["adjustment_score"]
+                row.total_score = expected["total_score"]
+                row.updated_at = _score_projection_now()
+            session.flush()
+        except Exception:
+            logger.exception(
+                "score projection quarter total metadata rebuild failed during read",
+                extra={"quarter_start": str(quarter_start_value)},
+            )
+            return False
+        if not _quarter_total_matches_projection_rows(
+            session, quarter_start_value=quarter_start_value
+        ):
+            logger.warning(
+                "score projection read fell back because a quarter total is incomplete",
+                extra={"quarter_start": str(quarter_start_value)},
+            )
+            return False
+    return True
 
 
 def _projected_soldier_total_from_rows(
@@ -964,15 +1149,19 @@ def _ensure_projection_ready(
     keys: set[tuple[uuid.UUID, date]],
     quarter_starts: set[date] | None = None,
     total_soldier_ids: set[uuid.UUID] | None = None,
+    canonical_diagnostic_check: bool = False,
 ) -> bool:
     from app.services.score_projection import (
-        _upsert_quarter_total,
         projection_is_current,
         rebuild_projection_bucket,
     )
 
     quarter_starts = set(quarter_starts or set())
     total_soldier_ids = set(total_soldier_ids or set())
+    if (keys or quarter_starts or total_soldier_ids) and not _projection_state_is_complete(session):
+        logger.warning("score projection read fell back because projection backfill is incomplete")
+        return False
+
     rebuild_keys: set[tuple[uuid.UUID, date]] = set()
     rows_by_key = _projection_rows_by_key(session, keys)
     for key in keys:
@@ -980,36 +1169,30 @@ def _ensure_projection_ready(
         if not _projection_bucket_rows_are_complete(rows_by_key.get(key, [])):
             rebuild_keys.add(key)
             continue
-        if not _projection_bucket_matches_canonical(
+        if not _projection_bucket_rows_match_persisted_metadata(rows_by_key.get(key, [])):
+            logger.warning(
+                "score projection read fell back because persisted bucket metadata is unprovable",
+                extra={"soldier_id": str(soldier_id), "quarter_start": str(quarter_start_value)},
+            )
+            return False
+        if canonical_diagnostic_check and not _projection_bucket_matches_canonical(
             session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
         ):
-            rebuild_keys.add(key)
+            logger.warning(
+                "score projection diagnostic canonical bucket comparison diverged",
+                extra={"soldier_id": str(soldier_id), "quarter_start": str(quarter_start_value)},
+            )
+            return False
 
     rebuild_keys.update(
         _dirty_or_divergent_projection_keys(session, keys=keys, quarter_starts=quarter_starts)
     )
 
-    for quarter_start_value in sorted(quarter_starts):
-        if _quarter_total_matches_canonical(session, quarter_start_value):
-            continue
-        quarter_keys = _projection_quarter_bucket_keys(session, quarter_start_value)
-        if quarter_keys is None:
-            return False
-        if quarter_keys:
-            rebuild_keys.update(quarter_keys)
-        else:
-            try:
-                _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
-            except Exception:
-                logger.exception(
-                    "score projection quarter total rebuild failed during read",
-                    extra={"quarter_start": str(quarter_start_value)},
-                )
-                return False
-
     for soldier_id, quarter_start_value in sorted(rebuild_keys, key=lambda item: (str(item[0]), item[1])):
         try:
-            rebuild_projection_bucket(session, soldier_id, quarter_start_value)
+            rebuild_projection_bucket(
+                session, soldier_id, quarter_start_value, refresh_quarter_total=False
+            )
             _mark_projection_key_current(
                 session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
             )
@@ -1032,19 +1215,30 @@ def _ensure_projection_ready(
         logger.warning("score projection read fell back because required buckets are incomplete")
         return False
     if keys and not all(
-        _projection_bucket_matches_canonical(
-            session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
-        )
-        for soldier_id, quarter_start_value in keys
+        _projection_bucket_rows_match_persisted_metadata(final_rows_by_key.get(key, []))
+        for key in keys
     ):
-        logger.warning("score projection read fell back because required buckets diverge")
+        logger.warning("score projection read fell back because required bucket metadata is unprovable")
         return False
-    if quarter_starts and not all(
-        _quarter_total_matches_canonical(session, quarter_start_value)
-        for quarter_start_value in quarter_starts
+    if quarter_starts and not _refresh_required_quarter_totals_from_projection_rows(
+        session, quarter_starts=quarter_starts
     ):
-        logger.warning("score projection read fell back because required quarter totals diverge")
         return False
+    if canonical_diagnostic_check:
+        if keys and not all(
+            _projection_bucket_matches_canonical(
+                session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
+            )
+            for soldier_id, quarter_start_value in keys
+        ):
+            logger.warning("score projection diagnostic canonical bucket comparison diverged")
+            return False
+        if quarter_starts and not all(
+            _quarter_total_matches_canonical(session, quarter_start_value)
+            for quarter_start_value in quarter_starts
+        ):
+            logger.warning("score projection diagnostic canonical quarter-total comparison diverged")
+            return False
     if total_soldier_ids and not _refresh_required_soldier_totals(
         session, soldier_ids=total_soldier_ids
     ):
