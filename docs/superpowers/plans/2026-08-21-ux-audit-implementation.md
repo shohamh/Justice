@@ -312,8 +312,8 @@ git add frontend/src/pages/RangesPage.tsx
 git commit -m "fix: remove duplicate blank option in ranges status filter"
 ```
 
-*(If Task 14 — the RangesPage i18n migration — is done in the same pass, fold this fix into
-that task instead of committing it separately, since Task 14 rewrites this same line.)*
+*(If Task 16 — the RangesPage i18n migration — is done in the same pass, fold this fix into
+that task instead of committing it separately, since Task 16 rewrites this same line.)*
 
 ---
 
@@ -620,8 +620,8 @@ git commit -m "fix: replace native alert() with inline errors in the swap flow"
 - Create: `frontend/src/components/ranges/ConfirmDialog.tsx` (reusable styled
   confirm/reason dialog)
 
-**Depends on:** none — can be done independently of Task 14 (the i18n migration), but if both
-are being done, do this one first since Task 14 will move the strings this task touches into
+**Depends on:** none — can be done independently of Task 16 (the i18n migration), but if both
+are being done, do this one first since Task 16 will move the strings this task touches into
 `he.json` anyway.
 
 **Context:** `bulkDelete` (`RangesPage.tsx:71-86`), `bulkClear` (`:102-119`), and the

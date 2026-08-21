@@ -7,6 +7,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+backend/.pytest-tmp-*/
 
 # Node
 node_modules/
@@ -51,3 +52,7 @@ backend/vendor/
 
 # Ad-hoc data exports from manual testing
 *.xlsx
+
+# Local attachments and image assets
+.codex-remote-attachments/
+/pics/
