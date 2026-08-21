@@ -103,6 +103,33 @@ describe("UnifiedSoldierModal profile save error handling", () => {
   });
 });
 
+describe("UnifiedSoldierModal profile editor field layout", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+  });
+
+  test("every profile field stacks in a plain single-column layout, not a CSS grid", async () => {
+    // Regression test: this section previously used `grid grid-cols-1`
+    // with two fields marked `col-span-2`. On real browsers the
+    // `grid-cols-1` utility didn't win for this element (verified live via
+    // devtools — computed grid-template-columns resolved to two implicit
+    // tracks, driven by the col-span-2 children), scattering every field
+    // across two columns and clipping/overlapping their labels and inputs
+    // on mobile. jsdom doesn't run layout, so this can't assert pixel
+    // positions — it asserts the fragile grid/col-span classes are gone
+    // and the container uses plain block stacking instead.
+    renderModal({}, true);
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    const genderLabel = await screen.findByText("soldier_profile.gender");
+    const fieldsContainer = genderLabel.closest("label")?.parentElement;
+    expect(fieldsContainer?.className).not.toMatch(/\bgrid\b/);
+    expect(fieldsContainer?.className).toMatch(/\bspace-y-3\b/);
+    expect(fieldsContainer?.querySelector(".col-span-2")).toBeNull();
+  });
+});
+
 describe("UnifiedSoldierModal scoped rank/next-rank-date correction", () => {
   beforeEach(() => {
     mockUpdateSoldierProfile.mockReset();

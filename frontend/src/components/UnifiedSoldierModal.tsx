@@ -582,7 +582,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
         {tab === "profile" && editing && (
           <form onSubmit={handleProfileSave} className="space-y-3">
-            <div className="grid grid-cols-1 gap-x-4 gap-y-3">
+            <div className="space-y-3">
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.gender")}</span>
                 <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileGender} onChange={(e) => setProfileGender(e.target.value)}>
@@ -664,12 +664,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 </label>
               )}
               {isAdmin && (
-                <label className="block col-span-2">
+                <label className="block">
                   <span className="text-xs">{t("profile.email")}</span>
                   <input type="email" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="כתובת אימייל" />
                 </label>
               )}
-              <label className="block col-span-2">
+              <label className="block">
                 <span className="text-xs">{t("soldier_profile.profile_picture_url")}</span>
                 <input type="url" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profilePictureUrl} onChange={(e) => setProfilePictureUrl(e.target.value)} placeholder="https://..." dir="ltr" />
               </label>
