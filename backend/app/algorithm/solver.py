@@ -6,7 +6,6 @@ import time
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from contextvars import ContextVar
 from datetime import timedelta
 
 from ortools.sat.python.cp_model import CpModel, CpSolver, CpSolverSolutionCallback, IntVar
@@ -54,25 +53,30 @@ DEFAULT_SOLVER_SEED = 42
 STALL_SECONDS = 15.0
 
 _ProfileCallback = Callable[[str, float], None]
-_profile_callback: ContextVar[_ProfileCallback | None] = ContextVar(
-    "solver_profile_callback", default=None
-)
+_profile_callbacks: list[_ProfileCallback] = []
+_profile_callbacks_lock = threading.Lock()
 
 
 @contextmanager
 def _capture_profile(callback: _ProfileCallback) -> Iterator[None]:
-    """Activate the internal solver timer for the current test context only."""
-    token = _profile_callback.set(callback)
+    """Activate a process-local solver timer until the explicit context exits."""
+    with _profile_callbacks_lock:
+        _profile_callbacks.append(callback)
     try:
         yield
     finally:
-        _profile_callback.reset(token)
+        with _profile_callbacks_lock:
+            for index in range(len(_profile_callbacks) - 1, -1, -1):
+                if _profile_callbacks[index] is callback:
+                    del _profile_callbacks[index]
+                    break
 
 
 @contextmanager
 def _profile_phase(name: str) -> Iterator[None]:
-    callback = _profile_callback.get()
-    if callback is None:
+    with _profile_callbacks_lock:
+        callbacks = tuple(_profile_callbacks)
+    if not callbacks:
         yield
         return
 
@@ -80,7 +84,15 @@ def _profile_phase(name: str) -> Iterator[None]:
     try:
         yield
     finally:
-        callback(name, time.perf_counter() - started)
+        duration = time.perf_counter() - started
+        with _profile_callbacks_lock:
+            active_callbacks = tuple(
+                callback
+                for callback in callbacks
+                if any(callback is active for active in _profile_callbacks)
+            )
+        for callback in active_callbacks:
+            callback(name, duration)
 
 
 def _watch_cancel(solver: CpSolver, event: threading.Event) -> None:
@@ -147,7 +159,7 @@ def solve(
     reserve_dist: dict[tuple[int, int], int] | None = None,
     cancel_event: threading.Event | None = None,
     progress_cb: ProgressCb | None = None,
-    swap_progress_cb: "Callable[[], None] | None" = None,
+    swap_progress_cb: Callable[[], None] | None = None,
     node_parents: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics.

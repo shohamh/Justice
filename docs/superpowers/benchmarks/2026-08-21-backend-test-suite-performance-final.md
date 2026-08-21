@@ -10,15 +10,18 @@
 - Broad final-matrix maximum: 180 seconds per command, sequential execution.
 - Final disposition: the user stopped the matrix before any broad command was
   started. No full or slow suite was left running.
+- Solver profiling is serial-only. The normal `-n 4` pytest default is
+  unchanged; profiling commands must override it with `-n 0`.
 
 ## Focused profiling verification
 
 | Command | Limit | Result | Counts / duration |
 | --- | ---: | --- | --- |
-| `python -m pytest tests/unit/test_solver_profiling.py -q -n 0` | 180 seconds | Passed as the sole final verification requested by the user. | 6 passed; 2.8 seconds wall time. |
-| `python -m pytest tests/unit/test_solver_profiling.py app/algorithm/tests/test_solver.py::test_solver_returns_assignments -q -n 0` | 180 seconds | Failed during collection because the named test node does not exist in this checkout. | No tests completed; approximately 2.7 seconds. |
-| `python -m pytest tests/unit/test_solver_profiling.py app/algorithm/tests/test_solver.py::test_solve_basic -q -n 0` | 180 seconds | Passed using the existing equivalent solver assignment smoke test. | 7 passed; approximately 2.6 seconds. |
-| `JUSTICE_TEST_SOLVER_PROFILE=1 python -m pytest tests/unit/test_solver_profiling.py::test_profiled_small_solve_reports_named_non_negative_phases_without_changing_result -q -n 0` | 180 seconds | Passed and emitted the optional phase summary. | 1 passed; approximately 2.7 seconds. |
+| `python -m pytest tests/unit/test_solver_profiling.py -q -n 0` | 180 seconds | Passed before review round 1. The whole file was not rerun after the review fixes because the user stopped at the focused-test boundary. | 6 passed; 2.8 seconds wall time. |
+| `python -m pytest tests/unit/test_solver_profiling.py app/algorithm/tests/test_solver.py::test_solve_basic -q -n 0` | 180 seconds | Passed before review round 1 using the existing solver assignment smoke test. | 7 passed; approximately 2.6 seconds. |
+| PowerShell: set `JUSTICE_TEST_SOLVER_PROFILE=1`, then run `python -m pytest tests/unit/test_solver_profiling.py::test_profiled_small_solve_reports_named_non_negative_phases_without_changing_result -q -n 0` | 180 seconds | Passed before review round 1 and emitted the optional phase summary. | 1 passed; approximately 2.7 seconds. |
+| `python -m pytest tests/unit/test_solver_profiling.py::test_profiled_solve_from_worker_thread_reports_phases -q -n 0` | 120 seconds | Review regression failed before the callback fix, then passed after it. | Final focused run: 1 passed in 3.3 seconds pytest time. |
+| `python -m pytest tests/unit/test_solver_profiling.py::test_requested_profiling_is_disabled_under_xdist tests/unit/test_solver_profiling.py::test_requested_profiling_is_enabled_for_serial_pytest -q -n 0` | 120 seconds | Review regressions failed during collection before the pure support API existed, then passed after it. | Final focused run: 2 passed in 3.3 seconds pytest time. |
 
 One exploratory combined run enabled the session-wide profiling hook while also
 executing the contract that proves the disabled path does not read the profiling
@@ -26,10 +29,12 @@ clock. It correctly failed that contract because profiling was explicitly on.
 The final verification separates disabled-path contracts from the enabled
 measurement; no assertion or implementation was weakened.
 
-The profiling contracts cover named non-negative durations, equality of
+The brief's stale `test_solver_returns_assignments` node is omitted here because
+that node does not exist in this checkout; `test_solve_basic` is the existing
+equivalent. The profiling contracts cover named non-negative durations, equality of
 profiled and unprofiled assignments/status/seed, the zero-clock-read disabled
 path, cancellation cleanup, exception cleanup and context detachment, explicit
-environment gating, and the optional pytest report hook.
+environment gating, worker-thread capture, and serial-only pytest gating.
 
 ## Solver phase measurements
 
@@ -48,10 +53,25 @@ phases. The other phase totals are suitable for ranking solver work, not for
 summing into wall-clock duration.
 
 Profiling is inactive by default. The inactive path does not read
-`time.perf_counter`; tests activate the private callback context directly, and
-the pytest report hook activates it only when
-`JUSTICE_TEST_SOLVER_PROFILE=1`. Solver time limits, random seeds, worker counts,
-status handling, and returned assignments are unchanged.
+`time.perf_counter`; tests activate the private process-local callback context
+directly, and the pytest report hook activates it only when
+`JUSTICE_TEST_SOLVER_PROFILE=1`. The callback registry and recorder are
+thread-safe so solves launched from internal worker threads are included.
+
+Profiling does not aggregate xdist worker results. If the environment setting is
+combined with any active xdist worker count, pytest prints a terminal warning,
+collects no solver profile data, and directs the operator to rerun with `-n 0`.
+This refusal prevents a partial per-worker report from being mistaken for a
+complete profile. Solver time limits, random seeds, worker counts, status
+handling, and returned assignments are unchanged.
+
+The supported PowerShell invocation is:
+
+```powershell
+$env:JUSTICE_TEST_SOLVER_PROFILE = "1"
+python -m pytest tests/unit/test_solver_profiling.py::test_profiled_small_solve_reports_named_non_negative_phases_without_changing_result -q -n 0
+Remove-Item Env:JUSTICE_TEST_SOLVER_PROFILE
+```
 
 ## Final verification matrix
 
@@ -66,7 +86,7 @@ pass, failure, or timeout.
 | `pytest -m algorithm -q -n 0` | 180 seconds | Not run — stopped by user instruction. | Unavailable. |
 | `pytest -m "not algorithm" -q -n 0` | 180 seconds | Not run — stopped by user instruction. | Unavailable. |
 | `python -m py_compile app/main.py app/algorithm/solver.py tests/conftest.py tests/support/database.py tests/support/app.py tests/support/profiling.py` | 180 seconds | Not run — the user limited final verification to the focused profiling file. | Not applicable. |
-| `git diff --check` | 180 seconds | Not run — the user limited final verification to the focused profiling file. | Not applicable. |
+| `git diff --check` | 180 seconds | Passed during recovery verification before review round 1. A fresh review-round result is recorded in the Task 5 report. | Exit 0. |
 
 ## Fixture phases and remaining bottlenecks
 

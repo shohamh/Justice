@@ -2,9 +2,10 @@
 
 ## Delivered
 
-- Added a private `ContextVar`-backed profiling callback in
+- Added a private process-local profiling callback registry in
   `app/algorithm/solver.py`. It records only when a test activates the context;
-  the disabled path does not read the profiling clock.
+  the disabled path does not read the profiling clock, and callbacks remain
+  available to solver work launched from a worker thread.
 - Timed model construction, primary/coverage/fairness/tie-break solve phases,
   decomposition batching, and the post-solve swap pass.
 - Added `tests/support/profiling.py` with an aggregate recorder, explicit
@@ -12,7 +13,8 @@
 - Added an optional pytest fixture/terminal summary hook in `tests/conftest.py`.
 - Added profiling contracts for phase names and non-negative values, disabled
   behavior, assignment/status/seed preservation, cancellation, failures,
-  context cleanup, environment gating, and pytest hook recording.
+  context cleanup, environment gating, worker-thread capture, and serial-only
+  pytest profiling.
 - Updated the historical baseline without rewriting prior numbers and added the
   final benchmark report.
 
@@ -47,9 +49,8 @@ just to satisfy the command. `test_solve_basic` is the existing assignment smoke
 test and was used as the bounded equivalent.
 
 The final matrix was stopped by the user before any broad command started. All
-four broad pytest commands, `py_compile`, and `git diff --check` are recorded as
-not run with planned 180-second caps in the final benchmark report. No full/slow
-pass claim is made.
+four broad pytest commands and `py_compile` are recorded as not run with planned
+180-second caps in the final benchmark report. No full/slow pass claim is made.
 
 ## Profiling result
 
@@ -88,3 +89,21 @@ profiling and requested the profiling/report commit.
 | --- | --- |
 | `python -m pytest tests/unit/test_solver_profiling.py -q -n 0` | `...... [100%]`; 6 passed. Pytest emitted one `python_multipart` pending-deprecation warning. |
 | `git diff --check` | Exit 0 with no whitespace errors. Git emitted only LF-to-CRLF conversion warnings for modified working-tree files. |
+
+## Fix-round recovery (2026-08-22)
+
+- Removed the root `tests.conftest` import from the pure profiling tests, so
+  importing those tests does not pull in database/container support.
+- Made opt-in profiling serial-only: an active xdist controller or worker
+  disables collection and prints `WARNING: solver profiling is disabled because
+  pytest-xdist is active; no profile data was collected. Rerun with -n 0.`
+- Replaced the task-local callback with a lock-protected process-local registry;
+  phase delivery confirms callbacks are still active before invoking them. The
+  recorder is also lock-protected, so an internal worker-thread solve is
+  captured without mutating aggregate state unsafely.
+- No pytest command was run in this recovery round, by explicit instruction.
+
+| Command | Output |
+| --- | --- |
+| `git diff --check` | Exit 0; no whitespace errors. |
+| Commit | `test: harden solver profiling` (Task 5 files only). |

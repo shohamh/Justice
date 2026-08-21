@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -10,8 +11,13 @@ import pytest
 
 from app.algorithm import solver as solver_module
 from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
-from tests import conftest
-from tests.support.profiling import capture_solver_profile, profiling_requested
+from tests.support.profiling import (
+    PROFILE_XDIST_WARNING,
+    capture_solver_profile,
+    profiling_enabled,
+    profiling_requested,
+    profiling_warning,
+)
 
 
 def _small_problem() -> tuple[
@@ -97,6 +103,23 @@ def test_profiling_disabled_does_not_read_the_profiling_clock(monkeypatch) -> No
     assert result.assignments
 
 
+def test_profiled_solve_from_worker_thread_reports_phases() -> None:
+    soldiers, duties, existing, settings = _small_problem()
+
+    with capture_solver_profile() as profile, ThreadPoolExecutor(max_workers=1) as executor:
+        result = executor.submit(
+            solver_module.solve,
+            soldiers,
+            duties,
+            existing,
+            settings,
+        ).result()
+
+    assert result.assignments
+    assert profile.counts["model_construction"] >= 1
+    assert profile.counts["solve_primary"] >= 1
+
+
 def test_cancelled_solve_closes_batch_timing_context() -> None:
     soldiers, duties, existing, settings = _small_problem()
     cancel_event = threading.Event()
@@ -125,9 +148,11 @@ def test_model_construction_failure_closes_and_detaches_profile(monkeypatch) -> 
             "build_model",
             lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("model failed")),
         )
-        with pytest.raises(RuntimeError, match="model failed"):
-            with capture_solver_profile() as profile:
-                solver_module.solve(soldiers, duties, existing, settings)
+        with (
+            pytest.raises(RuntimeError, match="model failed"),
+            capture_solver_profile() as profile,
+        ):
+            solver_module.solve(soldiers, duties, existing, settings)
 
     assert profile.closed is True
     assert profile.durations["model_construction"] >= 0
@@ -149,23 +174,18 @@ def test_profiling_requires_explicit_test_environment_setting(monkeypatch) -> No
     assert profiling_requested() is False
 
 
-def test_optional_pytest_hook_records_solver_phases_only_when_enabled(monkeypatch) -> None:
-    soldiers, duties, existing, settings = _small_problem()
-    config = SimpleNamespace(_justice_solver_profiles=[])
-    request = SimpleNamespace(
-        config=config,
-        node=SimpleNamespace(nodeid="tests/unit/test_example.py::test_profiled"),
-    )
+def test_requested_profiling_is_disabled_under_xdist(monkeypatch) -> None:
     monkeypatch.setenv("JUSTICE_TEST_SOLVER_PROFILE", "1")
+    parallel_config = SimpleNamespace(option=SimpleNamespace(numprocesses=4))
 
-    fixture = conftest._solver_profile_report.__wrapped__(request)
-    next(fixture)
-    solver_module.solve(soldiers, duties, existing, settings)
-    with pytest.raises(StopIteration):
-        next(fixture)
+    assert profiling_enabled(parallel_config) is False
+    assert profiling_warning(parallel_config) == PROFILE_XDIST_WARNING
+    assert "-n 0" in PROFILE_XDIST_WARNING
 
-    assert len(config._justice_solver_profiles) == 1
-    nodeid, durations, counts = config._justice_solver_profiles[0]
-    assert nodeid == request.node.nodeid
-    assert durations["model_construction"] >= 0
-    assert counts["model_construction"] >= 1
+
+def test_requested_profiling_is_enabled_for_serial_pytest(monkeypatch) -> None:
+    monkeypatch.setenv("JUSTICE_TEST_SOLVER_PROFILE", "1")
+    serial_config = SimpleNamespace(option=SimpleNamespace(numprocesses=0))
+
+    assert profiling_enabled(serial_config) is True
+    assert profiling_warning(serial_config) is None

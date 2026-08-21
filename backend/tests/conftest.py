@@ -12,8 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 
 from tests.support import app as test_app_support
-from tests.support import database
-from tests.support import profiling
+from tests.support import database, profiling
 
 _SHARED_URL_KEY = "shared_postgres_url"
 _SHARED_TEMPLATE_KEY = "shared_postgres_template"
@@ -21,6 +20,8 @@ _SHARED_CONTAINER_ATTR = "_shared_postgres_container"
 _SHARED_URL_ATTR = "_shared_postgres_url"
 _SHARED_TEMPLATE_ATTR = "_shared_postgres_template"
 _SOLVER_PROFILES_ATTR = "_justice_solver_profiles"
+_SOLVER_PROFILE_ENABLED_ATTR = "_justice_solver_profile_enabled"
+_SOLVER_PROFILE_WARNING_ATTR = "_justice_solver_profile_warning"
 
 
 def _pure_only_selected(config: pytest.Config) -> bool:
@@ -91,6 +92,8 @@ def _shared_postgres_enabled(config: pytest.Config) -> bool:
 def pytest_configure(config: pytest.Config) -> None:
     """Build one migrated template database before xdist workers start."""
     setattr(config, _SOLVER_PROFILES_ATTR, [])
+    setattr(config, _SOLVER_PROFILE_ENABLED_ATTR, profiling.profiling_enabled(config))
+    setattr(config, _SOLVER_PROFILE_WARNING_ATTR, profiling.profiling_warning(config))
     for marker, description in (
         ("pure", "pure unit or algorithm test; no database or HTTP fixture required"),
         ("database", "database-backed test without an HTTP client"),
@@ -166,6 +169,12 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config: pytest.Config) -> None:
+    warning = getattr(config, _SOLVER_PROFILE_WARNING_ATTR, None)
+    if warning is not None:
+        terminalreporter.write_sep("=", "solver phase profile")
+        terminalreporter.write_line(warning)
+        return
+
     records = getattr(config, _SOLVER_PROFILES_ATTR, [])
     if not records:
         return
@@ -443,7 +452,7 @@ def _reset_rate_limiter() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _solver_profile_report(request: pytest.FixtureRequest) -> Iterator[None]:
     """Collect solver phase totals only for explicitly enabled test runs."""
-    if not profiling.profiling_requested():
+    if not getattr(request.config, _SOLVER_PROFILE_ENABLED_ATTR, False):
         yield
         return
 
