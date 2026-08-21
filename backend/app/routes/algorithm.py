@@ -29,6 +29,7 @@ from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services.algorithm_bridge import analyze_shift_availability, run_algorithm_job
 from app.services.duty_eligibility_watch import recheck_assignments
+from app.services.score_projection import refresh_projection_for_assignment_change
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
 
@@ -860,6 +861,7 @@ def reset_published_assignments(
             after={"status": "cancelled"},
             context={"days_ahead": days_ahead},
         )
+        refresh_projection_for_assignment_change(session, assignment=a)
 
     session.commit()
     return {"cancelled": len(assignments)}
@@ -947,6 +949,7 @@ def accept_proposal(
     )
     session.flush()
     recheck_assignments(session, [a.id])
+    refresh_projection_for_assignment_change(session, assignment=a)
     _maybe_publish_job(session, job_id)
     session.commit()
     return {"status": "published"}
@@ -995,6 +998,11 @@ def bulk_accept_proposals(
             ])
         )
         recheck_assignments(session, accepted_ids)
+        accepted_assignments = session.execute(
+            select(DutyAssignment).where(DutyAssignment.id.in_(accepted_ids))
+        ).scalars().all()
+        for assignment in accepted_assignments:
+            refresh_projection_for_assignment_change(session, assignment=assignment)
 
     _maybe_publish_job(session, job_id)
     session.commit()
@@ -1095,6 +1103,7 @@ def accept_proposal_direct(
     )
     if job_id is not None:
         _maybe_publish_job(session, job_id)
+    refresh_projection_for_assignment_change(session, assignment=a)
     session.commit()
     return {"status": "published"}
 

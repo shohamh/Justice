@@ -113,9 +113,7 @@ def _quarters_for_dates(affected_dates: set[date] | list[date] | tuple[date, ...
 
 
 def affected_dates_for_assignment(assignment: DutyAssignment) -> set[date]:
-    if assignment.end_date <= assignment.start_date:
-        return set()
-    return {assignment.start_date, assignment.end_date - timedelta(days=1)}
+    return set(_iter_quarters_touched(assignment.start_date, assignment.end_date))
 
 
 def affected_dates_for_inclusive_period(start_date: date, end_date: date | None) -> set[date]:
