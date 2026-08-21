@@ -796,6 +796,90 @@ class ScoreAdjustment(Base):
     )
 
 
+class SoldierScoreProjection(Base):
+    __tablename__ = "soldier_score_projection"
+
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), primary_key=True
+    )
+    projection_version: Mapped[str] = mapped_column(Text)
+    duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    cumulative_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    shift_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class SoldierQuarterScoreProjection(Base):
+    __tablename__ = "soldier_quarter_score_projection"
+
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    quarter_start: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
+    projection_version: Mapped[str] = mapped_column(Text)
+    duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    total_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    source_fingerprint: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    shift_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    __table_args__ = (
+        sa.Index(
+            "ix_soldier_quarter_score_projection_soldier_quarter",
+            "soldier_id",
+            "quarter_start",
+        ),
+    )
+
+
+class ScoreProjectionQuarterTotal(Base):
+    __tablename__ = "score_projection_quarter_total"
+
+    quarter_start: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
+    projection_version: Mapped[str] = mapped_column(Text)
+    duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    total_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class ScoreProjectionState(Base):
+    __tablename__ = "score_projection_state"
+
+    canonical_version: Mapped[str] = mapped_column(Text)
+    projection_key: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        server_default=text("'score_projection'"),
+        default="score_projection",
+    )
+    backfill_complete: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    resume_after_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class DutyNoShow(Base):
     __tablename__ = "duty_no_shows"
 
