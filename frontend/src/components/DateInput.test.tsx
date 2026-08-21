@@ -124,31 +124,36 @@ describe("DateInput", () => {
     expect(wrapper?.className).not.toMatch(/inline-flex/);
   });
 
-  it("always makes the visible text input the growing flex item, regardless of the caller's className", () => {
-    // Regression test: the calendar button is shrink-0, so without flex-1
-    // (and min-w-0, overriding the flex default min-width:auto) on the text
-    // input, its flex-basis defaulted to its own `width` (100% when a
-    // caller passed w-full), and the flex-shrink algorithm squeezed it down
-    // to share the row with its shrink-0 sibling — visible as the date text
-    // clipped to 1-2 characters even though "w-full" was set.
+  it("puts the visible text input in its own always-growing relative wrapper, regardless of the caller's className", () => {
+    // Regression test: the text input sits in a dedicated
+    // `relative flex-1 min-w-0` wrapper (so the clear button, absolutely
+    // positioned inside that wrapper, is anchored to the input's own box
+    // rather than the whole flex row). That inner wrapper must always be
+    // able to grow/shrink correctly next to the calendar button, no
+    // matter what className the caller passed the input itself.
     render(<DateInput className="border p-1 w-full" data-testid="date-input" />);
     const input = screen.getByTestId("date-input");
-    expect(input.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    expect(input.className).toMatch(/(^|\s)w-full(\s|$)/);
     expect(input.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+    const innerWrapper = input.parentElement;
+    expect(innerWrapper?.className).toMatch(/(^|\s)relative(\s|$)/);
+    expect(innerWrapper?.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    expect(innerWrapper?.className).toMatch(/(^|\s)min-w-0(\s|$)/);
   });
 
   it("also grows the outer wrapper when the caller passes flex-1 (nested in its own flex row next to a button)", () => {
     // Regression test: a caller nesting DateInput in its own
     // `<div className="flex ...">` (next to a "clear" button) passes
     // flex-1 in className expecting DateInput to grow and fill that row.
-    // That class lands on the inner <input> (see the test above), but the
-    // WRAPPER <span> is the element that's actually the flex item of the
-    // caller's row — without flex-grow on the wrapper too, it stayed at
-    // its own content width, leaving a visible gap before the input even
-    // though the input inside it was internally full-width.
+    // The OUTER <span> (two levels up from the input — the input's own
+    // relative wrapper is always flex-1 regardless, see the test above)
+    // is the element that's actually the flex item of the caller's row —
+    // without flex-grow on it too, it stayed at its own content width,
+    // leaving a visible gap before the input even though the input
+    // inside it was internally full-width.
     render(<DateInput className="border p-1 flex-1" data-testid="date-input" />);
-    const wrapper = screen.getByTestId("date-input").parentElement;
-    expect(wrapper?.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    const outerWrapper = screen.getByTestId("date-input").parentElement?.parentElement;
+    expect(outerWrapper?.className).toMatch(/(^|\s)flex-1(\s|$)/);
   });
 
   it("shows a built-in clear button only when there's a value, and clearing it commits an empty string", () => {
