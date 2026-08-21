@@ -5,6 +5,20 @@ from datetime import date
 import uuid
 
 
+def _parse_resume_after_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> tuple[uuid.UUID, date] | None:
+    has_soldier = args.resume_after_soldier is not None
+    has_quarter = args.resume_after_quarter is not None
+    if has_soldier != has_quarter:
+        parser.error(
+            "--resume-after-soldier and --resume-after-quarter must be supplied together"
+        )
+    if not has_soldier:
+        return None
+    return (args.resume_after_soldier, args.resume_after_quarter)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill persisted scoring projections")
     parser.add_argument("--batch-size", type=int, default=500, metavar="N")
@@ -25,11 +39,7 @@ def main() -> None:
     from app.db.session import SessionLocal
     from app.services.score_projection import backfill_score_projection
 
-    resume_after = (
-        (args.resume_after_soldier, args.resume_after_quarter)
-        if args.resume_after_soldier is not None and args.resume_after_quarter is not None
-        else None
-    )
+    resume_after = _parse_resume_after_args(parser, args)
     with SessionLocal() as session:
         while True:
             state = backfill_score_projection(
@@ -46,11 +56,7 @@ def main() -> None:
             )
             if not args.until_complete or state.backfill_complete:
                 break
-            resume_after = (
-                (state.resume_after_soldier_id, state.resume_after_quarter_start)
-                if state.resume_after_soldier_id is not None and state.resume_after_quarter_start is not None
-                else None
-            )
+            resume_after = None
 
 
 if __name__ == "__main__":

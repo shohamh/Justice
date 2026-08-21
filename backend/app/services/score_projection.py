@@ -452,6 +452,12 @@ def _get_or_create_state(session: Session) -> ScoreProjectionState:
     return state
 
 
+def _state_resume_after(state: ScoreProjectionState) -> tuple[uuid.UUID, date] | None:
+    if state.resume_after_soldier_id is None or state.resume_after_quarter_start is None:
+        return None
+    return (state.resume_after_soldier_id, state.resume_after_quarter_start)
+
+
 def _delete_partition_rows(session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date) -> None:
     for row in session.execute(
         select(SoldierQuarterScoreProjection).where(
@@ -593,10 +599,19 @@ def backfill_score_projection(
     resume_after: tuple[uuid.UUID, date] | None = None,
 ) -> ScoreProjectionState:
     state = _get_or_create_state(session)
+    if resume_after is None and state.backfill_complete:
+        session.flush()
+        return state
+
+    effective_resume_after = resume_after if resume_after is not None else _state_resume_after(state)
     all_partitions = _enumerate_projection_keys(session)
     remaining_partitions = (
-        [partition for partition in all_partitions if _partition_sort_key(partition) > _partition_sort_key(resume_after)]
-        if resume_after is not None
+        [
+            partition
+            for partition in all_partitions
+            if _partition_sort_key(partition) > _partition_sort_key(effective_resume_after)
+        ]
+        if effective_resume_after is not None
         else all_partitions
     )
     batch_partitions = remaining_partitions[:batch_size]

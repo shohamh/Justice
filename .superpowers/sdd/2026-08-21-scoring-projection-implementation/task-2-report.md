@@ -279,3 +279,88 @@ alembic upgrade head -> downgrade 595a35bbf19e -> upgrade head: PASS
 
 1. The projection-key enumeration used by backfill is now correctly partitioned by soldier+quarter, but it still derives the global partition list in memory before slicing a batch. That is functionally correct for Task 2 and covered by the focused tests, but Task 6 scale work should revisit the enumeration path if it becomes a backfill bottleneck.
 2. The pre-existing Starlette `python_multipart` PendingDeprecationWarning remains unchanged.
+
+## Fix round 2 — persisted cursor is authoritative on restart
+
+### Findings addressed
+
+1. `backfill_score_projection(...)` now treats the persisted `ScoreProjectionState` cursor as authoritative whenever no explicit `resume_after` override is supplied.
+   - Interrupted restarts continue lexicographically after the stored `(resume_after_soldier_id, resume_after_quarter_start)` cursor.
+   - Completed plain reruns preserve `backfill_complete=True` and do not restart or duplicate rows unless an explicit cursor override is supplied.
+
+2. The CLI now defaults to persisted state.
+   - `backend/app/scripts/score_projection.py` only overrides the stored cursor when both `--resume-after-soldier` and `--resume-after-quarter` are supplied together.
+   - Supplying only one half of the explicit cursor now fails fast with an argparse error.
+   - In `--until-complete` mode, the explicit override is used only for the first call; subsequent iterations fall back to the persisted state cursor.
+
+3. The focused persistence tests now prove:
+   - an interrupted restart resumes without manually restating the cursor,
+   - a completed plain rerun remains complete,
+   - persisted soldier-quarter rows remain duplicate-free across reruns,
+   - the CLI accepts no explicit cursor by default and requires both explicit cursor parts together.
+
+### Focused verification after fix round 2
+
+Command:
+
+```powershell
+pytest -q -n 0 app/services/tests/test_score_projection.py app/services/tests/test_score_projection_persistence.py
+```
+
+Output:
+
+```text
+.........                                                                [100%]
+============================== warnings summary ===============================
+... PendingDeprecationWarning: Please use `import python_multipart` instead.
+```
+
+### Migration round-trip after fix round 2
+
+Command:
+
+```powershell
+@'
+import os
+from pathlib import Path
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, text
+from testcontainers.postgres import PostgresContainer
+
+root = Path.cwd()
+container = PostgresContainer(
+    'postgres:16-alpine',
+    username='db_admin',
+    password='db_admin_pw',
+    dbname='justice',
+).with_command('postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off')
+container.start()
+try:
+    url = container.get_connection_url().replace('postgresql://', 'postgresql+psycopg://', 1)
+    os.environ['DATABASE_URL'] = url
+    os.environ['DB_ADMIN_URL'] = url
+    cfg = Config(str(root / 'alembic.ini'))
+    cfg.set_main_option('script_location', str(root / 'alembic'))
+    command.upgrade(cfg, 'head')
+    engine = create_engine(url, future=True)
+    with engine.connect() as conn:
+        conn.execute(text("select canonical_version, backfill_complete, resume_after_soldier_id, resume_after_quarter_start from score_projection_state"))
+        conn.commit()
+    command.downgrade(cfg, '595a35bbf19e')
+    command.upgrade(cfg, 'head')
+    print('alembic upgrade head -> downgrade 595a35bbf19e -> upgrade head: PASS')
+finally:
+    container.stop()
+'@ | python -
+```
+
+Output:
+
+```text
+alembic upgrade head -> downgrade 595a35bbf19e -> upgrade head: PASS
+```
+
+### Fix-round concerns
+
+1. The pre-existing Starlette `python_multipart` PendingDeprecationWarning remains unchanged in the focused pytest run.

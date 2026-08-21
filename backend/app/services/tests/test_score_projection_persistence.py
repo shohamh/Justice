@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -15,6 +16,7 @@ from app.db.models import (
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
+from app.scripts.score_projection import _parse_resume_after_args
 from app.services.score_projection import (
     SCORE_PROJECTION_CANONICAL_VERSION,
     backfill_score_projection,
@@ -256,11 +258,7 @@ def test_backfill_score_projection_is_resumable_by_soldier_and_quarter_and_idemp
     assert first_state.resume_after_quarter_start == date(2026, 4, 1)
     assert _soldier_total(admin_session, soldier_id=soldier.id).cumulative_score == Decimal("2.000000")
 
-    second_state = backfill_score_projection(
-        admin_session,
-        batch_size=2,
-        resume_after=(first_state.resume_after_soldier_id, first_state.resume_after_quarter_start),
-    )
+    second_state = backfill_score_projection(admin_session, batch_size=2)
     admin_session.flush()
 
     second_rows = admin_session.execute(
@@ -281,15 +279,43 @@ def test_backfill_score_projection_is_resumable_by_soldier_and_quarter_and_idemp
     assert second_state.resume_after_quarter_start is None
     assert _soldier_total(admin_session, soldier_id=soldier.id).cumulative_score == Decimal("4.000000")
 
+    completed_at = second_state.completed_at
     rerun_state = backfill_score_projection(admin_session, batch_size=2)
     admin_session.flush()
 
     rerun_rows = admin_session.execute(select(SoldierQuarterScoreProjection)).scalars().all()
-    assert rerun_state.backfill_complete is False
+    assert rerun_state.backfill_complete is True
+    assert rerun_state.resume_after_soldier_id is None
+    assert rerun_state.resume_after_quarter_start is None
+    assert rerun_state.completed_at == completed_at
     assert len(rerun_rows) == 4
     assert len({(row.soldier_id, row.quarter_start, row.duty_type_id) for row in rerun_rows}) == len(
         rerun_rows
     )
+
+
+def test_score_projection_cli_resume_flags_default_to_state_and_require_both_cursor_parts():
+    parser = argparse.ArgumentParser()
+
+    assert (
+        _parse_resume_after_args(
+            parser,
+            argparse.Namespace(
+                resume_after_soldier=None,
+                resume_after_quarter=None,
+            ),
+        )
+        is None
+    )
+
+    with pytest.raises(SystemExit):
+        _parse_resume_after_args(
+            parser,
+            argparse.Namespace(
+                resume_after_soldier=uuid.uuid4(),
+                resume_after_quarter=None,
+            ),
+        )
 
 
 def test_projection_tables_enforce_partition_keys_and_foreign_keys(admin_session):
