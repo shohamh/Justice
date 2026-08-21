@@ -572,7 +572,7 @@
     "file_not_found": "הקובץ לא נמצא",
     "already_invited": "המשתמש כבר הוזמן — רענן את הדף",
     "target_limit_reached": "הגעת למגבלת ההזמנות",
-    "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות",
+    "already_on_marketplace": "הבקשה כבר פורסמה במרקטפלייס",
     "no_soldier_for_side": "לא נמצא חייל מתאים לצד זה של הבקשה",
     "candidate_mismatch": "הבקשה השתנתה בינתיים על ידי מישהו אחר — רענן ונסה שוב",
     "not_found": "הפריט לא נמצא",
@@ -900,7 +900,6 @@
   "swaps": {
     "title": "החלפות",
     "help_aria": "עזרה על החלפות",
-    "board": "לוח מחליפים",
     "mine": "הבקשות שלי",
     "cover": "אני מחליף",
     "organizational_distance": "מרחק ארגוני",
@@ -996,7 +995,7 @@
     "manage_swap_title": "ניהול בקשת החלפה",
     "already_invited": "כבר הוזמן",
     "invite_limit_reached": "הגעת למגבלת ההזמנות",
-    "already_on_marketplace": "כבר פורסם בשוק ההחלפות",
+    "already_on_marketplace": "כבר פורסם במרקטפלייס",
     "nothing_new_selected": "לא נבחר דבר חדש להוספה",
     "filter_eligible_only": "רק תורנויות שאני כשיר ופנוי",
     "filter_clear": "נקה סינון"
