@@ -7,12 +7,20 @@ from typing import Any
 import pytest
 from sqlalchemy import delete, select
 
-from app.db.models import SoldierQuarterScoreProjection
+from app.db.models import (
+    DutyAssignment,
+    ExemptionType,
+    ScoreProjectionQuarterTotal,
+    SoldierExemption,
+    SoldierQuarterScoreProjection,
+    SoldierScoreProjection,
+)
 from app.services import effort_score, scoring
 from app.services.effort_score import compute_effort_breakdown
 from app.services.score_projection import backfill_score_projection
 from app.services.tests.test_score_projection import _seed_projection_scenario
-from tests.helpers import create_soldier
+from app.services.settings_loader import set_setting
+from tests.helpers import create_node, create_soldier
 
 
 def _canonical(value: Any) -> Any:
@@ -164,4 +172,171 @@ def test_transparency_rebuilds_missing_projection_bucket_before_serving_projecte
         )
     ).scalars().all()
     assert rebuilt_rows
+    assert _canonical(projected) == _canonical(legacy)
+
+
+def test_transparency_rebuilds_missing_soldier_total_before_projected_read(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    scenario, admin = _build_projected_scenario(admin_session)
+    legacy = scoring.transparency_rows(admin_session, viewer=admin)
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+
+    admin_session.execute(
+        delete(SoldierScoreProjection).where(
+            SoldierScoreProjection.soldier_id == scenario["primary"].id,
+        )
+    )
+    admin_session.flush()
+    monkeypatch.setattr(scoring, "_effective_duty_day_rows", _fail_if_expands_duty_days)
+
+    projected = scoring.transparency_rows(admin_session, viewer=admin)
+
+    rebuilt_total = admin_session.get(SoldierScoreProjection, scenario["primary"].id)
+    primary = next(row for row in projected["rows"] if row["soldier_id"] == scenario["primary"].id)
+    assert rebuilt_total is not None
+    assert rebuilt_total.cumulative_score == Decimal("8.700000")
+    assert primary["cumulative_score"] == Decimal("8.700000")
+    assert _canonical(projected) == _canonical(legacy)
+
+
+def test_effort_breakdown_rebuilds_denominator_only_quarter_total(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    scenario, _admin = _build_projected_scenario(admin_session)
+    hidden = create_soldier(
+        admin_session,
+        personal_number="projected-hidden-future",
+        full_name="Projected Hidden Future",
+    )
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=hidden.id,
+            duty_type_id=scenario["cross_quarter"].duty_type_id,
+            duty_location_id=scenario["cross_quarter"].duty_location_id,
+            start_date=date(2026, 10, 10),
+            end_date=date(2026, 10, 12),
+            status="published",
+        )
+    )
+    admin_session.flush()
+    soldier = scenario["primary"]
+    legacy = compute_effort_breakdown(
+        admin_session,
+        soldier=soldier,
+        planning_start=scenario["planning_start"],
+        planning_end=scenario["planning_start"],
+        reset_date=scenario["reset_date"],
+    )
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+
+    admin_session.execute(
+        delete(ScoreProjectionQuarterTotal).where(
+            ScoreProjectionQuarterTotal.quarter_start == date(2026, 10, 1),
+        )
+    )
+    admin_session.flush()
+    monkeypatch.setattr(effort_score, "effective_duty_days", _fail_if_expands_duty_days)
+
+    projected = compute_effort_breakdown(
+        admin_session,
+        soldier=soldier,
+        planning_start=scenario["planning_start"],
+        planning_end=scenario["planning_start"],
+        reset_date=scenario["reset_date"],
+    )
+
+    rebuilt_total = admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1))
+    assert rebuilt_total is not None
+    assert rebuilt_total.total_score == Decimal("2.000000")
+    assert _canonical_breakdown(projected) == _canonical_breakdown(legacy)
+
+
+def test_transparency_rebuilds_divergent_projection_bucket_before_projected_read(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    scenario, admin = _build_projected_scenario(admin_session)
+    legacy = scoring.transparency_rows(admin_session, viewer=admin)
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+
+    stale_row = admin_session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id == scenario["primary"].id,
+            SoldierQuarterScoreProjection.quarter_start == scenario["q3"],
+            SoldierQuarterScoreProjection.duty_type_id.is_not(None),
+        )
+    ).scalar_one()
+    stale_row.duty_score = Decimal("99.000000")
+    stale_row.source_fingerprint = {"stale": True}
+    admin_session.flush()
+    monkeypatch.setattr(scoring, "_effective_duty_day_rows", _fail_if_expands_duty_days)
+
+    projected = scoring.transparency_rows(admin_session, viewer=admin)
+
+    repaired_row = admin_session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id == scenario["primary"].id,
+            SoldierQuarterScoreProjection.quarter_start == scenario["q3"],
+            SoldierQuarterScoreProjection.duty_type_id == stale_row.duty_type_id,
+        )
+    ).scalar_one()
+    assert repaired_row.duty_score == Decimal("2.700000")
+    assert "duty_rows" in repaired_row.source_fingerprint
+    assert _canonical(projected) == _canonical(legacy)
+
+
+def test_projected_transparency_matches_legacy_for_scoped_redacted_non_admin(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
+    in_scope = create_node(admin_session, level="division", name="projected-in-scope")
+    out_scope = create_node(admin_session, level="division", name="projected-out-scope")
+    viewer = create_soldier(
+        admin_session,
+        personal_number="projected-dm-redact",
+        role="duty_manager",
+        hierarchy_node_id=in_scope.id,
+    )
+    visible = create_soldier(
+        admin_session,
+        personal_number="projected-visible-redact",
+        hierarchy_node_id=in_scope.id,
+    )
+    redacted = create_soldier(
+        admin_session,
+        personal_number="projected-hidden-redact",
+        hierarchy_node_id=out_scope.id,
+    )
+    exemption_type = ExemptionType(name="projected-redacted-global", is_global=True)
+    admin_session.add(exemption_type)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(
+            soldier_id=redacted.id,
+            exemption_type_id=exemption_type.id,
+            start_date=date.today(),
+        )
+    )
+    admin_session.flush()
+
+    scenario = _seed_projection_scenario(admin_session)
+    scenario["primary"].hierarchy_node_id = in_scope.id
+    scenario["replacement"].hierarchy_node_id = out_scope.id
+    admin_session.flush()
+    legacy = scoring.transparency_rows(admin_session, viewer=viewer)
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+    monkeypatch.setattr(scoring, "_effective_duty_day_rows", _fail_if_expands_duty_days)
+
+    projected = scoring.transparency_rows(admin_session, viewer=viewer)
+
+    redacted_row = next(row for row in projected["rows"] if row["soldier_id"] == redacted.id)
+    visible_row = next(row for row in projected["rows"] if row["soldier_id"] == visible.id)
+    assert redacted_row["exemptions_visible"] is False
+    assert redacted_row["exemptions_display"] == "חסוי"
+    assert redacted_row["has_global_exemption"] is True
+    assert visible_row["exemptions_visible"] is True
     assert _canonical(projected) == _canonical(legacy)
