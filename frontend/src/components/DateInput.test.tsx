@@ -111,4 +111,16 @@ describe("DateInput", () => {
 
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("uses a block-level (not inline-flex) wrapper, so it stacks onto its own line next to a preceding label span", () => {
+    // Regression test: an inline-flex wrapper only stacked below preceding
+    // inline content (e.g. a label's <span>) via a "100%-width inline
+    // element can't fit, so it wraps" trick, which rendered fields
+    // overlapping instead of stacking on mobile RTL layouts. A block-level
+    // wrapper stacks unconditionally.
+    render(<DateInput data-testid="date-input" />);
+    const wrapper = screen.getByTestId("date-input").parentElement;
+    expect(wrapper?.className).toMatch(/(^|\s)flex(\s|$)/);
+    expect(wrapper?.className).not.toMatch(/inline-flex/);
+  });
 });

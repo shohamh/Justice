@@ -146,7 +146,20 @@ export default function DateInput({
   // Callers style the text field directly (e.g. `w-full`) expecting it to
   // fill its parent, same as the native input it replaces — the wrapper
   // needs the same sizing class or the flex row won't stretch.
-  const wrapperClassName = `inline-flex items-center gap-1${className?.includes("w-full") ? " w-full" : ""}`;
+  //
+  // Block (not inline-flex): when a caller places this directly after a
+  // label's <span> with no wrapping container (the common
+  // `<label className="block"><span>...</span><DateInput .../></label>`
+  // pattern), an inline-level wrapper only stacks onto its own line via the
+  // "inline element sized to 100% width can't fit next to preceding inline
+  // content, so it wraps" trick. That's fragile once the wrapper contains
+  // several inline children (text input, calendar button, hidden native
+  // input) inside an RTL bidi context — Chromium/WebKit can render the
+  // fields overlapping instead of stacking (seen on mobile). A genuinely
+  // block-level wrapper stacks unconditionally, and is blockified back to a
+  // normal flex item on the rare caller that nests this inside its own flex
+  // row (e.g. next to a "clear" button), so this is safe either way.
+  const wrapperClassName = `flex items-center gap-1${className?.includes("w-full") ? " w-full" : ""}`;
 
   return (
     <span className={wrapperClassName}>
