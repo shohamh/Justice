@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -15,7 +16,6 @@ from app.db.models import (
     ScoreAdjustment,
     ScoreProjectionQuarterTotal,
     ScoreProjectionState,
-    Soldier,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
@@ -38,10 +38,24 @@ class ProjectionBucket:
 
 @dataclass(frozen=True)
 class ProjectionTotals:
+    raw_day_count: int
+    effective_weighted_days: Decimal
     duty_score: Decimal
     adjustment_score: Decimal
     total_score: Decimal
     shift_count: int
+
+
+@dataclass(frozen=True)
+class ProjectionPartitionRow:
+    soldier_id: uuid.UUID
+    quarter_start: date
+    duty_type_id: uuid.UUID | None
+    raw_day_count: int
+    effective_weighted_days: Decimal
+    duty_score: Decimal
+    adjustment_score: Decimal
+    source_fingerprint: dict[str, Any]
 
 
 def _quarter_datetime_bounds(quarter_start_value: date) -> tuple[datetime, datetime]:
@@ -70,6 +84,23 @@ def _json_safe_value(value: Any) -> Any:
     if isinstance(value, list):
         return [_json_safe_value(child) for child in value]
     return value
+
+
+def _partition_sort_key(partition: tuple[uuid.UUID, date]) -> tuple[str, date]:
+    return str(partition[0]), partition[1]
+
+
+def _iter_quarters_touched(start_date: date, end_date: date) -> list[date]:
+    if end_date <= start_date:
+        return []
+    touched: list[date] = []
+    current = quarter_start(start_date)
+    last_day = end_date - timedelta(days=1)
+    last_quarter = quarter_start(last_day)
+    while current <= last_quarter:
+        touched.append(current)
+        current = quarter_end(current) + timedelta(days=1)
+    return touched
 
 
 def _candidate_assignment_ids_for_bucket(
@@ -301,39 +332,105 @@ def project_all_buckets(
 
     return [
         project_soldier_bucket(session, soldier_id, quarter_start_value)
-        for soldier_id, quarter_start_value in sorted(keys, key=lambda entry: (str(entry[0]), entry[1]))
+        for soldier_id, quarter_start_value in sorted(keys, key=_partition_sort_key)
     ]
 
 
-def _projection_totals_from_rows(
-    rows: list[SoldierQuarterScoreProjection],
-) -> ProjectionTotals:
+def _bucket_partition_rows(bucket: ProjectionBucket) -> list[ProjectionPartitionRow]:
+    duty_rows = bucket.source_fingerprint.get("duty_rows", [])
+    grouped_rows: dict[uuid.UUID, list[dict[str, Any]]] = defaultdict(list)
+    for duty_row in duty_rows:
+        grouped_rows[duty_row["duty_type_id"]].append(duty_row)
+
+    overrides = {
+        item["override_id"]: item
+        for item in bucket.source_fingerprint.get("overrides", [])
+        if item["override_id"] is not None
+    }
+    dismissals = {
+        item["dismissal_id"]: item
+        for item in bucket.source_fingerprint.get("dismissals", [])
+        if item["dismissal_id"] is not None
+    }
+
+    rows: list[ProjectionPartitionRow] = []
+    for duty_type_id in sorted(grouped_rows, key=str):
+        typed_rows = grouped_rows[duty_type_id]
+        override_ids = {row["override_id"] for row in typed_rows if row["override_id"] is not None}
+        dismissal_ids = {row["dismissal_id"] for row in typed_rows if row["dismissal_id"] is not None}
+        rows.append(
+            ProjectionPartitionRow(
+                soldier_id=bucket.soldier_id,
+                quarter_start=bucket.quarter_start,
+                duty_type_id=duty_type_id,
+                raw_day_count=len(typed_rows),
+                effective_weighted_days=sum(
+                    (row["weighted_multiplier"] for row in typed_rows), Decimal("0")
+                ),
+                duty_score=sum((row["score"] for row in typed_rows), Decimal("0")),
+                adjustment_score=Decimal("0"),
+                source_fingerprint={
+                    "duty_rows": typed_rows,
+                    "overrides": [overrides[key] for key in sorted(override_ids, key=str)],
+                    "dismissals": [dismissals[key] for key in sorted(dismissal_ids, key=str)],
+                    "adjustments": [],
+                },
+            )
+        )
+
+    if bucket.adjustment_score != Decimal("0") or not duty_rows:
+        rows.append(
+            ProjectionPartitionRow(
+                soldier_id=bucket.soldier_id,
+                quarter_start=bucket.quarter_start,
+                duty_type_id=None,
+                raw_day_count=0,
+                effective_weighted_days=Decimal("0"),
+                duty_score=Decimal("0"),
+                adjustment_score=bucket.adjustment_score,
+                source_fingerprint={
+                    "duty_rows": [],
+                    "overrides": [],
+                    "dismissals": [],
+                    "adjustments": bucket.source_fingerprint.get("adjustments", []),
+                },
+            )
+        )
+
+    return rows
+
+
+def _partition_row_model(row: ProjectionPartitionRow) -> SoldierQuarterScoreProjection:
+    return SoldierQuarterScoreProjection(
+        soldier_id=row.soldier_id,
+        quarter_start=row.quarter_start,
+        duty_type_id=row.duty_type_id,
+        projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+        raw_day_count=row.raw_day_count,
+        effective_weighted_days=row.effective_weighted_days.quantize(Decimal("0.000001")),
+        duty_score=row.duty_score.quantize(Decimal("0.000001")),
+        adjustment_score=row.adjustment_score.quantize(Decimal("0.000001")),
+        source_fingerprint=_json_safe_value(row.source_fingerprint),
+    )
+
+
+def _projection_totals_from_rows(rows: list[SoldierQuarterScoreProjection]) -> ProjectionTotals:
+    raw_day_count = sum(row.raw_day_count for row in rows)
+    effective_weighted_days = sum((row.effective_weighted_days for row in rows), Decimal("0"))
     duty_score = sum((row.duty_score for row in rows), Decimal("0"))
     adjustment_score = sum((row.adjustment_score for row in rows), Decimal("0"))
-    total_score = sum((row.total_score for row in rows), Decimal("0"))
     shift_assignment_ids = {
         duty_row["assignment_id"]
         for row in rows
         for duty_row in row.source_fingerprint.get("duty_rows", [])
     }
     return ProjectionTotals(
-        duty_score=duty_score,
-        adjustment_score=adjustment_score,
-        total_score=total_score,
+        raw_day_count=raw_day_count,
+        effective_weighted_days=effective_weighted_days.quantize(Decimal("0.000001")),
+        duty_score=duty_score.quantize(Decimal("0.000001")),
+        adjustment_score=adjustment_score.quantize(Decimal("0.000001")),
+        total_score=(duty_score + adjustment_score).quantize(Decimal("0.000001")),
         shift_count=len(shift_assignment_ids),
-    )
-
-
-def _bucket_to_row(bucket: ProjectionBucket) -> SoldierQuarterScoreProjection:
-    return SoldierQuarterScoreProjection(
-        soldier_id=bucket.soldier_id,
-        quarter_start=bucket.quarter_start,
-        projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
-        duty_score=bucket.duty_score,
-        adjustment_score=bucket.adjustment_score,
-        total_score=bucket.duty_score + bucket.adjustment_score,
-        shift_count=bucket.shift_count,
-        source_fingerprint=_json_safe_value(bucket.source_fingerprint),
     )
 
 
@@ -345,6 +442,7 @@ def _get_or_create_state(session: Session) -> ScoreProjectionState:
             canonical_version=SCORE_PROJECTION_CANONICAL_VERSION,
             backfill_complete=False,
             resume_after_soldier_id=None,
+            resume_after_quarter_start=None,
             completed_at=None,
         )
         session.add(state)
@@ -354,19 +452,14 @@ def _get_or_create_state(session: Session) -> ScoreProjectionState:
     return state
 
 
-def _replace_bucket_row(
-    session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date, bucket: ProjectionBucket
-) -> None:
-    existing = session.execute(
+def _delete_partition_rows(session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date) -> None:
+    for row in session.execute(
         select(SoldierQuarterScoreProjection).where(
             SoldierQuarterScoreProjection.soldier_id == soldier_id,
             SoldierQuarterScoreProjection.quarter_start == quarter_start_value,
         )
-    ).scalar_one_or_none()
-    if existing is not None:
-        session.delete(existing)
-        session.flush()
-    session.add(_bucket_to_row(bucket))
+    ).scalars().all():
+        session.delete(row)
     session.flush()
 
 
@@ -429,6 +522,8 @@ def _upsert_quarter_total(
         projection = ScoreProjectionQuarterTotal(
             quarter_start=quarter_start_value,
             projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+            raw_day_count=totals.raw_day_count,
+            effective_weighted_days=totals.effective_weighted_days,
             duty_score=totals.duty_score,
             adjustment_score=totals.adjustment_score,
             total_score=totals.total_score,
@@ -436,6 +531,8 @@ def _upsert_quarter_total(
         session.add(projection)
     else:
         projection.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
+        projection.raw_day_count = totals.raw_day_count
+        projection.effective_weighted_days = totals.effective_weighted_days
         projection.duty_score = totals.duty_score
         projection.adjustment_score = totals.adjustment_score
         projection.total_score = totals.total_score
@@ -446,88 +543,82 @@ def _upsert_quarter_total(
 
 def rebuild_projection_bucket(
     session: Session, soldier_id: uuid.UUID, quarter_start_value: date
-) -> SoldierQuarterScoreProjection:
+) -> list[SoldierQuarterScoreProjection]:
     _get_or_create_state(session)
     bucket = project_soldier_bucket(session, soldier_id, quarter_start_value)
-    _replace_bucket_row(
-        session,
-        soldier_id=soldier_id,
-        quarter_start_value=quarter_start_value,
-        bucket=bucket,
-    )
-    persisted = _quarter_row(
-        session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
-    )
+    _delete_partition_rows(session, soldier_id=soldier_id, quarter_start_value=quarter_start_value)
+    rows = [_partition_row_model(row) for row in _bucket_partition_rows(bucket)]
+    session.add_all(rows)
+    session.flush()
     _upsert_soldier_total(session, soldier_id=soldier_id)
     _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
-    return persisted
+    return list(
+        session.execute(
+            select(SoldierQuarterScoreProjection).where(
+                SoldierQuarterScoreProjection.soldier_id == soldier_id,
+                SoldierQuarterScoreProjection.quarter_start == quarter_start_value,
+            )
+        ).scalars().all()
+    )
 
 
-def _quarter_row(
-    session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date
-) -> SoldierQuarterScoreProjection:
-    return session.execute(
-        select(SoldierQuarterScoreProjection).where(
-            SoldierQuarterScoreProjection.soldier_id == soldier_id,
-            SoldierQuarterScoreProjection.quarter_start == quarter_start_value,
+def _enumerate_projection_keys(session: Session) -> list[tuple[uuid.UUID, date]]:
+    keys: set[tuple[uuid.UUID, date]] = set()
+    for assignment in session.execute(
+        select(DutyAssignment).where(DutyAssignment.status == "published")
+    ).scalars().all():
+        for quarter_start_value in _iter_quarters_touched(assignment.start_date, assignment.end_date):
+            keys.add((assignment.soldier_id, quarter_start_value))
+
+    for override in session.execute(
+        select(DutyDayOverride)
+        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
+        .where(
+            DutyAssignment.status == "published",
+            DutyDayOverride.effective_soldier_id.is_not(None),
         )
-    ).scalar_one()
+    ).scalars().all():
+        if override.effective_soldier_id is not None:
+            keys.add((override.effective_soldier_id, quarter_start(override.date)))
+
+    for adjustment in session.execute(select(ScoreAdjustment)).scalars().all():
+        keys.add((adjustment.soldier_id, quarter_start(adjustment.created_at.date())))
+
+    return sorted(keys, key=_partition_sort_key)
 
 
 def backfill_score_projection(
     session: Session,
     batch_size: int = 500,
-    resume_after: uuid.UUID | None = None,
+    resume_after: tuple[uuid.UUID, date] | None = None,
 ) -> ScoreProjectionState:
     state = _get_or_create_state(session)
-    soldier_query = select(Soldier.id).order_by(Soldier.id)
-    if resume_after is not None:
-        soldier_query = soldier_query.where(Soldier.id > resume_after)
-    soldier_ids = list(session.execute(soldier_query.limit(batch_size)).scalars().all())
+    all_partitions = _enumerate_projection_keys(session)
+    remaining_partitions = (
+        [partition for partition in all_partitions if _partition_sort_key(partition) > _partition_sort_key(resume_after)]
+        if resume_after is not None
+        else all_partitions
+    )
+    batch_partitions = remaining_partitions[:batch_size]
 
-    if not soldier_ids:
+    if not batch_partitions:
         state.backfill_complete = True
         state.resume_after_soldier_id = None
+        state.resume_after_quarter_start = None
         state.completed_at = _utcnow()
         state.updated_at = _utcnow()
         session.flush()
         return state
 
-    existing_quarters = {
-        row.quarter_start
-        for row in session.execute(
-            select(SoldierQuarterScoreProjection).where(
-                SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids)
-            )
-        ).scalars().all()
-    }
-    for row in session.execute(
-        select(SoldierQuarterScoreProjection).where(
-            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids)
-        )
-    ).scalars().all():
-        session.delete(row)
-    session.flush()
+    for soldier_id, quarter_start_value in batch_partitions:
+        rebuild_projection_bucket(session, soldier_id, quarter_start_value)
 
-    buckets = project_all_buckets(session, soldier_ids=set(soldier_ids))
-    for bucket in buckets:
-        session.add(_bucket_to_row(bucket))
-    session.flush()
-
-    for soldier_id in soldier_ids:
-        _upsert_soldier_total(session, soldier_id=soldier_id)
-
-    affected_quarters = existing_quarters | {bucket.quarter_start for bucket in buckets}
-    for quarter_start_value in sorted(affected_quarters):
-        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
-
-    last_processed = soldier_ids[-1]
-    has_more = session.execute(
-        select(Soldier.id).where(Soldier.id > last_processed).limit(1)
-    ).scalar_one_or_none()
-    state.backfill_complete = has_more is None
-    state.resume_after_soldier_id = None if has_more is None else last_processed
-    state.completed_at = _utcnow() if has_more is None else None
+    last_partition = batch_partitions[-1]
+    has_more = len(remaining_partitions) > batch_size
+    state.backfill_complete = not has_more
+    state.resume_after_soldier_id = None if not has_more else last_partition[0]
+    state.resume_after_quarter_start = None if not has_more else last_partition[1]
+    state.completed_at = _utcnow() if not has_more else None
     state.updated_at = _utcnow()
     session.flush()
     return state

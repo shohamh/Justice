@@ -815,27 +815,46 @@ class SoldierScoreProjection(Base):
 class SoldierQuarterScoreProjection(Base):
     __tablename__ = "soldier_quarter_score_projection"
 
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
     soldier_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("soldiers.id", ondelete="CASCADE"),
-        primary_key=True,
-        index=True,
     )
-    quarter_start: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
+    quarter_start: Mapped[date] = mapped_column(Date)
+    duty_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("duty_types.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     projection_version: Mapped[str] = mapped_column(Text)
+    effective_weighted_days: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
-    total_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     source_fingerprint: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    shift_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    raw_day_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
     __table_args__ = (
+        sa.Index("ix_soldier_quarter_score_projection_soldier_id", "soldier_id"),
+        sa.Index("ix_soldier_quarter_score_projection_quarter_start", "quarter_start"),
+        sa.Index("ix_soldier_quarter_score_projection_soldier_quarter", "soldier_id", "quarter_start"),
         sa.Index(
-            "ix_soldier_quarter_score_projection_soldier_quarter",
+            "uq_soldier_quarter_score_projection_duty_type",
             "soldier_id",
             "quarter_start",
+            "duty_type_id",
+            unique=True,
+            postgresql_where=sa.text("duty_type_id IS NOT NULL"),
+        ),
+        sa.Index(
+            "uq_soldier_quarter_score_projection_aggregate",
+            "soldier_id",
+            "quarter_start",
+            unique=True,
+            postgresql_where=sa.text("duty_type_id IS NULL"),
         ),
     )
 
@@ -845,9 +864,11 @@ class ScoreProjectionQuarterTotal(Base):
 
     quarter_start: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
     projection_version: Mapped[str] = mapped_column(Text)
+    effective_weighted_days: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
     total_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    raw_day_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -871,6 +892,9 @@ class ScoreProjectionState(Base):
         ForeignKey("soldiers.id", ondelete="SET NULL"),
         nullable=True,
         default=None,
+    )
+    resume_after_quarter_start: Mapped[date | None] = mapped_column(
+        Date, nullable=True, default=None
     )
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None

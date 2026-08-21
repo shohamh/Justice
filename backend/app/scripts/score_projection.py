@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import uuid
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill persisted scoring projections")
     parser.add_argument("--batch-size", type=int, default=500, metavar="N")
-    parser.add_argument("--resume-after", type=uuid.UUID, default=None, metavar="SOLDIER_UUID")
+    parser.add_argument("--resume-after-soldier", type=uuid.UUID, default=None, metavar="SOLDIER_UUID")
+    parser.add_argument(
+        "--resume-after-quarter",
+        type=date.fromisoformat,
+        default=None,
+        metavar="YYYY-MM-DD",
+    )
     parser.add_argument(
         "--until-complete",
         action="store_true",
@@ -18,7 +25,11 @@ def main() -> None:
     from app.db.session import SessionLocal
     from app.services.score_projection import backfill_score_projection
 
-    resume_after = args.resume_after
+    resume_after = (
+        (args.resume_after_soldier, args.resume_after_quarter)
+        if args.resume_after_soldier is not None and args.resume_after_quarter is not None
+        else None
+    )
     with SessionLocal() as session:
         while True:
             state = backfill_score_projection(
@@ -30,11 +41,16 @@ def main() -> None:
             print(
                 f"version={state.canonical_version} "
                 f"complete={state.backfill_complete} "
-                f"resume_after={state.resume_after_soldier_id}"
+                f"resume_after_soldier={state.resume_after_soldier_id} "
+                f"resume_after_quarter={state.resume_after_quarter_start}"
             )
             if not args.until_complete or state.backfill_complete:
                 break
-            resume_after = state.resume_after_soldier_id
+            resume_after = (
+                (state.resume_after_soldier_id, state.resume_after_quarter_start)
+                if state.resume_after_soldier_id is not None and state.resume_after_quarter_start is not None
+                else None
+            )
 
 
 if __name__ == "__main__":

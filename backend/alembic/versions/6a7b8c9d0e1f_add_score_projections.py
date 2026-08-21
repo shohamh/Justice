@@ -47,18 +47,30 @@ def upgrade() -> None:
     op.create_table(
         "soldier_quarter_score_projection",
         sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            nullable=False,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column(
             "soldier_id",
             postgresql.UUID(as_uuid=True),
             sa.ForeignKey("soldiers.id", ondelete="CASCADE"),
-            primary_key=True,
             nullable=False,
         ),
-        sa.Column("quarter_start", sa.Date(), primary_key=True, nullable=False),
+        sa.Column("quarter_start", sa.Date(), nullable=False),
+        sa.Column(
+            "duty_type_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("duty_types.id", ondelete="RESTRICT"),
+            nullable=True,
+        ),
         sa.Column("projection_version", sa.Text(), nullable=False),
+        sa.Column("raw_day_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("effective_weighted_days", sa.Numeric(18, 6), nullable=False),
         sa.Column("duty_score", sa.Numeric(18, 6), nullable=False),
         sa.Column("adjustment_score", sa.Numeric(18, 6), nullable=False),
-        sa.Column("total_score", sa.Numeric(18, 6), nullable=False),
-        sa.Column("shift_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("source_fingerprint", postgresql.JSONB(), nullable=False),
         sa.Column(
             "updated_at",
@@ -81,13 +93,28 @@ def upgrade() -> None:
         "ix_soldier_quarter_score_projection_soldier_quarter",
         "soldier_quarter_score_projection",
         ["soldier_id", "quarter_start"],
+    )
+    op.create_index(
+        "uq_soldier_quarter_score_projection_duty_type",
+        "soldier_quarter_score_projection",
+        ["soldier_id", "quarter_start", "duty_type_id"],
         unique=True,
+        postgresql_where=sa.text("duty_type_id IS NOT NULL"),
+    )
+    op.create_index(
+        "uq_soldier_quarter_score_projection_aggregate",
+        "soldier_quarter_score_projection",
+        ["soldier_id", "quarter_start"],
+        unique=True,
+        postgresql_where=sa.text("duty_type_id IS NULL"),
     )
 
     op.create_table(
         "score_projection_quarter_total",
         sa.Column("quarter_start", sa.Date(), primary_key=True, nullable=False),
         sa.Column("projection_version", sa.Text(), nullable=False),
+        sa.Column("raw_day_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("effective_weighted_days", sa.Numeric(18, 6), nullable=False),
         sa.Column("duty_score", sa.Numeric(18, 6), nullable=False),
         sa.Column("adjustment_score", sa.Numeric(18, 6), nullable=False),
         sa.Column("total_score", sa.Numeric(18, 6), nullable=False),
@@ -126,6 +153,7 @@ def upgrade() -> None:
             sa.ForeignKey("soldiers.id", ondelete="SET NULL"),
             nullable=True,
         ),
+        sa.Column("resume_after_quarter_start", sa.Date(), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "updated_at",
@@ -156,6 +184,14 @@ def downgrade() -> None:
         table_name="score_projection_quarter_total",
     )
     op.drop_table("score_projection_quarter_total")
+    op.drop_index(
+        "uq_soldier_quarter_score_projection_aggregate",
+        table_name="soldier_quarter_score_projection",
+    )
+    op.drop_index(
+        "uq_soldier_quarter_score_projection_duty_type",
+        table_name="soldier_quarter_score_projection",
+    )
     op.drop_index(
         "ix_soldier_quarter_score_projection_soldier_quarter",
         table_name="soldier_quarter_score_projection",
