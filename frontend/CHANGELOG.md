@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-21
+
+### Features
+- Range-assignment candidate lists now explain excluded and ineligible soldiers inline.
+- Approval, notification, and qualification-alert flows now provide clearer actions, pagination, refresh behavior, and deep links.
+- Scoring projections now expose an explicit cumulative bucket contract.
+
+### Fixes
+- Fixed swap approval controls and terminology, range dialogs and status filtering, commander dashboard query batching, and unauthorized approval routing.
+- Fixed qualification warning links so they open the relevant profile field.
+
+### Chores
+- Added real demo-login guidance, UX-audit implementation notes, and more reliable frontend/backend test execution.
+
 ## 2026-08-20
 
 ### Features
