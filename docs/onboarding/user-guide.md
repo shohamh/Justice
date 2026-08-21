@@ -283,16 +283,13 @@ These exist **only after running the seed script** (`uv run python -m
 app.scripts.seed`) and are for development. All seeded users have password
 `1234567890` and do not need to change it.
 
-| Personal number | Role | Name (Hebrew) |
-|---|---|---|
-| `1000001` | admin | מפקד על הראשי |
-| `2000001` | duty_manager | מפקד מבצעים |
-| `3000001` | commander | מפקדת מודיעין |
-| `3000002` | commander | מפקד אוויר |
-| `3000003` | commander | מפקד ים |
-| `4000001`–`4000008` | soldier | various |
-| `5000001`–`5000008` | soldier | various |
-| `6000001`–`6000008` | soldier | various |
+Personal numbers are assigned during seeding and can shift as the seed script evolves — the
+seed script itself prints one example login per role at the end of a run
+(`uv run python -m app.scripts.seed`), under "Demo logins". Use those exact values; don't
+rely on any specific personal number written down here going stale.
+
+The admin's personal number `1000001` is always valid — it's created deterministically by
+`bootstrap.py`/`seed.py`'s special-cased admin block (`seed.py:294-317`) and won't drift.
 
 The seed also creates duty types (morning/evening/night shift, Shabbat, holiday),
 locations, three exemption types with duty-type mappings, ~30 days of duty
