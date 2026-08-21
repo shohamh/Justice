@@ -58,3 +58,31 @@ numeric before/after delta is unavailable. The duration report does not break
 out the reset fixture itself; it provides no evidence that a second reset
 strategy is a material contributor, so no additional reset optimization was
 started.
+
+## Task 2 review follow-up measurement
+
+The requested representative database slice was rerun after review with a
+180-second cap:
+
+| Command | Result | Wall-clock duration | Pass count |
+| --- | --- | --- | --- |
+| `pytest tests/integration/test_soldiers_api.py tests/integration/test_private_fields.py -q -n 0 --durations=30` | Exit code 0 | 37.9 seconds | 38 passed |
+
+`--durations=30` reported setup, call, and teardown phases. The first test's
+setup was 7.93 seconds (session/container/migration startup included); the
+remaining listed setup phases were 0.32–0.66 seconds. The two slowest calls
+were 1.45 and 0.49 seconds, and the listed teardown was 0.66 seconds.
+
+`_truncate_tables`/`reset_database` runs as part of each database test setup.
+Pytest does not separately attribute fixture-internal time in the duration
+report, so the 0.32–0.66-second recurring setup figures are reset-inclusive
+upper bounds, not reset-only timings. The initial 7.93-second setup must not be
+treated as reset cost because it also includes one-time database startup and
+migration work.
+
+A like-for-like base/head comparison is unavailable: the recorded baseline at
+`005bb477` contains only timed-out full-suite runs, an incomplete algorithm
+slice, and collection-only layer slices; it does not contain this exact
+soldiers/private-fields command or per-phase durations. No base checkout was
+measured because this follow-up authorized one bounded representative slice,
+not a second test run against a historical checkout.
