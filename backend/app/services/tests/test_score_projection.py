@@ -17,7 +17,7 @@ from app.db.models import (
 from app.services.adjustments import create_adjustment
 from app.services.duty_config import map_exemption_to_duty_type
 from app.services.effort_score import compute_effort_breakdown, quarter_end
-from app.services.scoring import active_days, effective_duty_spans
+from app.services.scoring import active_days, cumulative_score, effective_duty_spans
 from app.services.score_projection import project_all_buckets, project_soldier_bucket
 from app.services.settings_loader import set_setting
 from tests.helpers import create_soldier
@@ -157,6 +157,13 @@ def _seed_projection_scenario(admin_session):
             dismissed_to=date(2026, 7, 1),
         )
     )
+    admin_session.flush()
+    override = admin_session.execute(
+        select(DutyDayOverride).where(DutyDayOverride.duty_assignment_id == cross_quarter.id)
+    ).scalar_one()
+    dismissal = admin_session.execute(
+        select(DutyDismissal).where(DutyDismissal.duty_assignment_id == cross_quarter.id)
+    ).scalar_one()
 
     primary_adjustment = create_adjustment(
         admin_session,
@@ -193,6 +200,8 @@ def _seed_projection_scenario(admin_session):
         "replacement": replacement,
         "cross_quarter": cross_quarter,
         "reserve": reserve,
+        "override": override,
+        "dismissal": dismissal,
         "primary_adjustment": primary_adjustment,
         "replacement_adjustment": replacement_adjustment,
         "q2": date(2026, 4, 1),
@@ -286,6 +295,60 @@ def test_project_soldier_bucket_matches_canonical_scoring_contract(admin_session
     }
     assert replacement_q2_days == {date(2026, 6, 30)}
 
+    replacement_q2_row = next(iter(replacement_q2.source_fingerprint["duty_rows"]))
+    assert replacement_q2_row["override_id"] == scenario["override"].id
+    assert replacement_q2_row["override_date"] == date(2026, 6, 30)
+    assert replacement_q2_row["override_effective_soldier_id"] == scenario["replacement"].id
+    assert replacement_q2_row["override_reason"] == "replacement"
+
+    primary_q3_dismissed_row = next(
+        row for row in primary_q3.source_fingerprint["duty_rows"] if row["day"] == date(2026, 7, 1)
+    )
+    assert primary_q3_dismissed_row["dismissal_id"] == scenario["dismissal"].id
+    assert primary_q3_dismissed_row["dismissed_from"] == date(2026, 7, 1)
+    assert primary_q3_dismissed_row["dismissed_to"] == date(2026, 7, 1)
+    assert primary_q3_dismissed_row["score"] == Decimal("0")
+
+
+def test_source_fingerprint_changes_when_override_or_dismissal_rows_change(admin_session):
+    scenario = _seed_projection_scenario(admin_session)
+    third_soldier = create_soldier(admin_session, personal_number="score-proj-03")
+
+    before_replacement_q2 = project_soldier_bucket(
+        admin_session, scenario["replacement"].id, scenario["q2"]
+    )
+    before_primary_q3 = project_soldier_bucket(
+        admin_session, scenario["primary"].id, scenario["q3"]
+    )
+
+    scenario["override"].effective_soldier_id = third_soldier.id
+    scenario["dismissal"].dismissed_to = date(2026, 7, 2)
+    admin_session.flush()
+
+    after_replacement_q2 = project_soldier_bucket(
+        admin_session, scenario["replacement"].id, scenario["q2"]
+    )
+    after_third_q2 = project_soldier_bucket(admin_session, third_soldier.id, scenario["q2"])
+    after_primary_q3 = project_soldier_bucket(
+        admin_session, scenario["primary"].id, scenario["q3"]
+    )
+
+    assert before_replacement_q2.source_fingerprint != after_replacement_q2.source_fingerprint
+    assert after_replacement_q2.duty_score == Decimal("0")
+    assert after_third_q2.source_fingerprint["duty_rows"][0]["override_id"] == scenario["override"].id
+    assert after_third_q2.source_fingerprint["duty_rows"][0]["override_effective_soldier_id"] == third_soldier.id
+
+    before_dismissed_row = next(
+        row for row in before_primary_q3.source_fingerprint["duty_rows"] if row["day"] == date(2026, 7, 1)
+    )
+    after_july_second_row = next(
+        row for row in after_primary_q3.source_fingerprint["duty_rows"] if row["day"] == date(2026, 7, 2)
+    )
+    assert before_dismissed_row["dismissed_to"] == date(2026, 7, 1)
+    assert after_july_second_row["dismissal_id"] == scenario["dismissal"].id
+    assert after_july_second_row["dismissed_to"] == date(2026, 7, 2)
+    assert after_primary_q3.duty_score == Decimal("1.70")
+
 
 def test_project_all_buckets_respects_filters_and_is_rerunnable(admin_session):
     scenario = _seed_projection_scenario(admin_session)
@@ -342,3 +405,21 @@ def test_project_all_buckets_respects_filters_and_is_rerunnable(admin_session):
             1,
         ),
     }
+
+
+def test_full_coverage_exemption_reduces_active_days_used_by_projected_read_contract(admin_session):
+    scenario = _seed_projection_scenario(admin_session)
+
+    projected_buckets = project_all_buckets(
+        admin_session,
+        soldier_ids={scenario["primary"].id},
+    )
+    projected_cumulative = sum(
+        (bucket.duty_score + bucket.adjustment_score for bucket in projected_buckets),
+        Decimal("0"),
+    )
+    expected_exempt_days = 16
+    raw_active_days = max(1, (date.today() - scenario["primary"].enrolled_at).days)
+
+    assert projected_cumulative == cumulative_score(admin_session, soldier_id=scenario["primary"].id)
+    assert active_days(admin_session, soldier=scenario["primary"]) == raw_active_days - expected_exempt_days

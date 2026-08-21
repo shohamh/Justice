@@ -105,3 +105,68 @@ Output:
 3. The test runs emit a pre-existing Starlette `python_multipart` PendingDeprecationWarning. It did not affect Task 1 behavior.
 
 4. I preserved unrelated dirty/untracked workspace state and did not reset or stash anything.
+
+## Fix round 1 — reviewer findings
+
+### Findings addressed
+
+1. Expanded `source_fingerprint` so duty rows now carry:
+   - `override_id`, `override_date`, `override_effective_soldier_id`, `override_reason`
+   - `dismissal_id`, `dismissed_from`, `dismissed_to`, `dismissal_reason`
+   - supporting canonical values such as `assignment_soldier_id`, `day_weight`, `multiplier`, and `multiplier_source`
+   - plus deduplicated top-level `overrides` and `dismissals` lists
+
+2. Removed the remaining scoring-semantics fork:
+   - `effective_duty_days(...)` now delegates to the shared `_effective_duty_day_rows(...)` seam
+   - projection and existing scoring helpers therefore consume the same canonical day expansion
+
+3. Strengthened the full-coverage exemption coverage:
+   - added an assertion that projected cumulative score matches canonical cumulative score
+   - added an explicit active-days assertion showing the exemption reduces the normalization input used by projected reads
+
+### Additional red phase
+
+Command:
+
+```powershell
+pytest -q -n 0 app/services/tests/test_score_projection.py
+```
+
+Output:
+
+```text
+FF..
+KeyError: 'override_id'
+```
+
+### Fix-round focused verification
+
+Command:
+
+```powershell
+pytest -q -n 0 app/services/tests/test_score_projection.py
+```
+
+Output:
+
+```text
+....                                                                     [100%]
+============================== warnings summary ===============================
+... PendingDeprecationWarning: Please use `import python_multipart` instead.
+```
+
+### Fix-round covering verification
+
+Command:
+
+```powershell
+pytest -q -n 0 app/services/tests/test_score_projection.py tests/unit/test_scoring_service.py tests/unit/test_scoring_reserve.py app/services/tests/test_scoring_dismissal.py tests/test_effort_score.py
+```
+
+Output:
+
+```text
+........................................................                 [100%]
+============================== warnings summary ===============================
+... PendingDeprecationWarning: Please use `import python_multipart` instead.
+```

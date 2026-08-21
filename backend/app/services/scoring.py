@@ -52,57 +52,20 @@ def effective_duty_days(
     - Reserve assignment: called_up_multiplier if in called-up range, else standby_multiplier
     Overrides (replacements) still reassign effective_soldier_id.
     """
-    standby_mult = _get_multiplier_setting(session, "scoring.reserve_standby_multiplier", "0.2")
-    called_up_mult = _get_multiplier_setting(session, "scoring.reserve_called_up_multiplier", "1.3")
-    dismissed_mult = _get_multiplier_setting(session, "scoring.dismissed_multiplier", "0.0")
-
-    assignments = (
-        session.execute(select(DutyAssignment).where(DutyAssignment.status == "published"))
-        .scalars().all()
-    )
-    overrides = {
-        (o.duty_assignment_id, o.date): o
-        for o in session.execute(select(DutyDayOverride)).scalars().all()
-    }
-    dismissal_ranges: dict[uuid.UUID, list[tuple[date, date]]] = {}
-    for d in session.execute(select(DutyDismissal)).scalars().all():
-        dismissal_ranges.setdefault(d.duty_assignment_id, []).append(
-            (d.dismissed_from, d.dismissed_to)
+    return [
+        (
+            row["day"],
+            row["effective_soldier_id"],
+            row["duty_type_id"],
+            row["weighted_multiplier"],
         )
-
-    out: list[tuple[date, uuid.UUID, uuid.UUID, Decimal]] = []
-    for a in assignments:
-        touched = calendar_days_touched(a.start_date, a.end_date)
-        day_weight = (
-            Decimal(score_days(a.start_date, a.end_date, a.start_time, a.end_time)) / Decimal(touched)
-            if touched > 0
-            else Decimal("1")
+        for row in _effective_duty_day_rows(
+            session,
+            statuses=["published"],
+            date_from=date_from,
+            date_to=date_to,
         )
-        day = a.start_date
-        while day < a.end_date:
-            if date_to is not None and day > date_to:
-                break
-            if (date_from is None or day >= date_from):
-                ov = overrides.get((a.id, day))
-                eff = ov.effective_soldier_id if ov is not None else a.soldier_id
-                if eff is not None:
-                    if a.forced_call_up_multiplier is not None:
-                        mult = a.forced_call_up_multiplier
-                    elif a.is_reserve:
-                        if (a.called_up_from is not None and a.called_up_to is not None
-                                and a.called_up_from <= day <= a.called_up_to):
-                            mult = called_up_mult
-                        else:
-                            mult = standby_mult
-                    else:
-                        ranges = dismissal_ranges.get(a.id, [])
-                        if any(df <= day <= dt for df, dt in ranges):
-                            mult = dismissed_mult
-                        else:
-                            mult = Decimal("1.0")
-                    out.append((day, eff, a.duty_type_id, mult * day_weight))
-            day += timedelta(days=1)
-    return out
+    ]
 
 
 def _effective_duty_spans_impl(
@@ -430,11 +393,9 @@ def _effective_duty_day_rows(
         dismissals_query = dismissals_query.where(DutyDismissal.dismissed_to >= date_from)
     if date_to is not None:
         dismissals_query = dismissals_query.where(DutyDismissal.dismissed_from <= date_to)
-    dismissal_ranges: dict[uuid.UUID, list[tuple[date, date]]] = {}
+    dismissals_by_assignment: dict[uuid.UUID, list[DutyDismissal]] = {}
     for dismissal in session.execute(dismissals_query).scalars().all():
-        dismissal_ranges.setdefault(dismissal.duty_assignment_id, []).append(
-            (dismissal.dismissed_from, dismissal.dismissed_to)
-        )
+        dismissals_by_assignment.setdefault(dismissal.duty_assignment_id, []).append(dismissal)
 
     rows: list[dict[str, Any]] = []
     for assignment in assignments:
@@ -464,8 +425,17 @@ def _effective_duty_day_rows(
                 override.effective_soldier_id if override is not None else assignment.soldier_id
             )
             if effective_soldier_id is not None:
+                dismissal = next(
+                    (
+                        dismissal_row
+                        for dismissal_row in dismissals_by_assignment.get(assignment.id, [])
+                        if dismissal_row.dismissed_from <= day <= dismissal_row.dismissed_to
+                    ),
+                    None,
+                )
                 if assignment.forced_call_up_multiplier is not None:
                     multiplier = assignment.forced_call_up_multiplier
+                    multiplier_source = "forced_call_up"
                 elif assignment.is_reserve:
                     if (
                         assignment.called_up_from is not None
@@ -473,21 +443,38 @@ def _effective_duty_day_rows(
                         and assignment.called_up_from <= day <= assignment.called_up_to
                     ):
                         multiplier = called_up_mult
+                        multiplier_source = "reserve_called_up"
                     else:
                         multiplier = standby_mult
+                        multiplier_source = "reserve_standby"
                 else:
-                    ranges = dismissal_ranges.get(assignment.id, [])
-                    if any(dismissed_from <= day <= dismissed_to for dismissed_from, dismissed_to in ranges):
+                    if dismissal is not None:
                         multiplier = dismissed_mult
+                        multiplier_source = "dismissal"
                     else:
                         multiplier = Decimal("1.0")
+                        multiplier_source = "default"
                 rows.append(
                     {
                         "assignment_id": assignment.id,
                         "day": day,
                         "effective_soldier_id": effective_soldier_id,
+                        "assignment_soldier_id": assignment.soldier_id,
                         "duty_type_id": assignment.duty_type_id,
+                        "day_weight": day_weight,
+                        "multiplier": multiplier,
+                        "multiplier_source": multiplier_source,
                         "weighted_multiplier": multiplier * day_weight,
+                        "override_id": override.id if override is not None else None,
+                        "override_date": override.date if override is not None else None,
+                        "override_effective_soldier_id": (
+                            override.effective_soldier_id if override is not None else None
+                        ),
+                        "override_reason": override.reason if override is not None else None,
+                        "dismissal_id": dismissal.id if dismissal is not None else None,
+                        "dismissed_from": dismissal.dismissed_from if dismissal is not None else None,
+                        "dismissed_to": dismissal.dismissed_to if dismissal is not None else None,
+                        "dismissal_reason": dismissal.reason if dismissal is not None else None,
                     }
                 )
             day += timedelta(days=1)

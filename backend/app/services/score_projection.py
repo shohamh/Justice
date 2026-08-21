@@ -84,8 +84,20 @@ def _fingerprint_duty_rows(
             "assignment_id": row["assignment_id"],
             "day": row["day"],
             "duty_type_id": row["duty_type_id"],
+            "assignment_soldier_id": row["assignment_soldier_id"],
             "effective_soldier_id": row["effective_soldier_id"],
+            "day_weight": row["day_weight"],
+            "multiplier": row["multiplier"],
+            "multiplier_source": row["multiplier_source"],
             "weighted_multiplier": row["weighted_multiplier"],
+            "override_id": row["override_id"],
+            "override_date": row["override_date"],
+            "override_effective_soldier_id": row["override_effective_soldier_id"],
+            "override_reason": row["override_reason"],
+            "dismissal_id": row["dismissal_id"],
+            "dismissed_from": row["dismissed_from"],
+            "dismissed_to": row["dismissed_to"],
+            "dismissal_reason": row["dismissal_reason"],
             "score": type_scores.get(row["duty_type_id"], Decimal("0")) * row["weighted_multiplier"],
         }
         for row in sorted(
@@ -97,6 +109,34 @@ def _fingerprint_duty_rows(
             ),
         )
     ]
+
+
+def _fingerprint_overrides(duty_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    overrides = {
+        row["override_id"]: {
+            "override_id": row["override_id"],
+            "override_date": row["override_date"],
+            "override_effective_soldier_id": row["override_effective_soldier_id"],
+            "override_reason": row["override_reason"],
+        }
+        for row in duty_rows
+        if row["override_id"] is not None
+    }
+    return [overrides[key] for key in sorted(overrides, key=str)]
+
+
+def _fingerprint_dismissals(duty_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    dismissals = {
+        row["dismissal_id"]: {
+            "dismissal_id": row["dismissal_id"],
+            "dismissed_from": row["dismissed_from"],
+            "dismissed_to": row["dismissed_to"],
+            "dismissal_reason": row["dismissal_reason"],
+        }
+        for row in duty_rows
+        if row["dismissal_id"] is not None
+    }
+    return [dismissals[key] for key in sorted(dismissals, key=str)]
 
 
 def _fingerprint_adjustments(adjustments: list[ScoreAdjustment]) -> list[dict[str, Any]]:
@@ -146,6 +186,8 @@ def project_soldier_bucket(
         shift_count=shift_count,
         source_fingerprint={
             "duty_rows": _fingerprint_duty_rows(duty_rows, type_scores),
+            "overrides": _fingerprint_overrides(duty_rows),
+            "dismissals": _fingerprint_dismissals(duty_rows),
             "adjustments": _fingerprint_adjustments(adjustments),
         },
     )
