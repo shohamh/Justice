@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -43,6 +43,7 @@ const MANAGER_ONLY_NOTIFICATION_TYPES = new Set([
 
 export default function ProfilePage() {
   const { t } = useTranslation();
+  const location = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const publicSettings = usePublicSettings();
@@ -75,6 +76,18 @@ export default function ProfilePage() {
   const [addNodeId, setAddNodeId] = useState("");
   const [addDepth, setAddDepth] = useState<number>(-1);
   const [addingScopeLoading, setAddingScopeLoading] = useState(false);
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const target = document.getElementById(location.hash.slice(1));
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("ring-2", "ring-indigo-500", "ring-offset-2");
+    const timer = window.setTimeout(() => {
+      target.classList.remove("ring-2", "ring-indigo-500", "ring-offset-2");
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [location.hash]);
 
   const isCommanderLike = !!(user?.role === "admin" || user?.is_commander || user?.is_duty_manager);
 
@@ -358,14 +371,14 @@ export default function ProfilePage() {
           {phoneReq && !isValidIsraeliPhone(phoneReq) && (
             <p className="text-red-600 text-xs">מספר טלפון לא תקין</p>
           )}
-          <div className="flex gap-2 items-center">
+          <div id="last-mitvahim-field" className="flex gap-2 items-center scroll-mt-24">
             <label className="w-40">{t("soldier_profile.last_mitvahim_date")}</label>
             <DateInput value={mitvahimReq} onChange={setMitvahimReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)} disabled={!mitvahimReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div className="flex gap-2 items-center">
+          <div id="last-alal-field" className="flex gap-2 items-center scroll-mt-24">
             <label className="w-40">{t("soldier_profile.last_alal_date")}</label>
             <DateInput value={alalReq} onChange={setAlalReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">

@@ -1,6 +1,6 @@
-﻿import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { RangeEvent } from "../../api/ranges";
+import { RangeCandidate, RangeCandidatesResponse, RangeEvent } from "../../api/ranges";
 import * as rangesApi from "../../api/ranges";
 import { SoldierDTO } from "../../api/soldiers";
 import RangeEditAssignmentsModal from "./RangeEditAssignmentsModal";
@@ -26,6 +26,11 @@ const assignment = (id: string, soldier_id: string, is_reserve = false, is_draft
   id, soldier_id, is_reserve, is_draft, attendance_status: "pending" as const, note: null, assignment_reason_code, assignment_reason_text,
 });
 
+const candidateResponse = (
+  candidates: RangeCandidate[] = [],
+  excluded: RangeCandidatesResponse["excluded"] = [],
+): RangeCandidatesResponse => ({ candidates, excluded });
+
 function renderModal(overrides: Partial<React.ComponentProps<typeof RangeEditAssignmentsModal>> = {}) {
   const props = {
     open: true, event: event(), soldiers: [soldier("s1", "אורי"), soldier("s2", "דנה")],
@@ -36,7 +41,7 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof RangeEditAss
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([]);
+  vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse());
 });
 
 describe("RangeEditAssignmentsModal", () => {
@@ -77,7 +82,7 @@ describe("RangeEditAssignmentsModal", () => {
   });
 
   it("keeps the roster visible but hides every assignment mutation control from a non-manager", async () => {
-    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([]);
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse());
     renderModal({ canManage: false, event: event([assignment("a1", "s1", false, false)]) });
 
     expect(screen.getByText("אורי")).toBeInTheDocument();
@@ -134,11 +139,11 @@ describe("RangeEditAssignmentsModal", () => {
   });
 
   it("renders the ranked candidate panel with auto-select and lets a manager save a batch", async () => {
-    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([
       { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
       { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
       { soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
-    ]);
+    ]));
     vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
       { id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "qualified", assignment_reason_text: null },
     ]);
@@ -153,11 +158,27 @@ describe("RangeEditAssignmentsModal", () => {
     expect(props.onChanged).toHaveBeenCalled();
   });
 
+  it("shows excluded candidates and their reasons in a collapsed summary", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([], [
+      { soldier_id: "s1", soldier_name: "אורי", reason: "weapon_exempt" },
+      { soldier_id: "s2", soldier_name: "דנה", reason: "structurally_ineligible" },
+      { soldier_id: "s3", soldier_name: "רון", reason: "assigned_elsewhere_same_day" },
+    ]));
+    renderModal({ event: event([]) });
+
+    const summaries = await screen.findAllByText("ranges.excluded_summary");
+    expect(summaries).toHaveLength(2);
+    fireEvent.click(summaries[0]);
+    expect(await screen.findAllByText("אורי: ranges.excluded_reason.weapon_exempt")).toHaveLength(2);
+    expect(screen.getAllByText("דנה: ranges.excluded_reason.structurally_ineligible")).toHaveLength(2);
+    expect(screen.getAllByText("רון: ranges.excluded_reason.assigned_elsewhere_same_day")).toHaveLength(2);
+  });
+
   it("does not auto-select any reserve candidates once the reserve slots are already full", async () => {
-    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([
       { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
       { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
-    ]);
+    ]));
     // reserve_count: 1, and one reserve assignment already fills that slot.
     renderModal({ event: { ...event([assignment("a1", "s3", true)]), reserve_count: 1 } });
 
@@ -170,10 +191,10 @@ describe("RangeEditAssignmentsModal", () => {
   });
 
   it("disables auto-select once a pending (not-yet-saved) selection already fills the slots", async () => {
-    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([
       { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
       { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
-    ]);
+    ]));
     renderModal({ event: { ...event([]), required_count: 1 } });
 
     fireEvent.click(await screen.findByTestId("candidate-checkbox-s1"));
@@ -184,10 +205,10 @@ describe("RangeEditAssignmentsModal", () => {
   });
 
   it("filters the primary candidate list live as the user types in the search box", async () => {
-    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([
       { soldier_id: "s1", full_name: "אורי", personal_number: "111", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
       { soldier_id: "s2", full_name: "דנה", personal_number: "222", reason_code: "available_and_balanced", explanation: "available_and_balanced", conflict_warning: null },
-    ]);
+    ]));
     renderModal({ event: event([]) });
 
     await screen.findByTestId("candidate-checkbox-s1");
@@ -200,7 +221,7 @@ describe("RangeEditAssignmentsModal", () => {
   });
 
   it("shows a loading placeholder while candidates are being fetched, not the empty-state message", async () => {
-    let resolveCandidates: (value: rangesApi.RangeCandidate[]) => void = () => {};
+    let resolveCandidates: (value: rangesApi.RangeCandidatesResponse) => void = () => {};
     vi.mocked(rangesApi.getRangeCandidates).mockReturnValue(
       new Promise(resolve => { resolveCandidates = resolve; })
     );
@@ -209,18 +230,18 @@ describe("RangeEditAssignmentsModal", () => {
     expect(await screen.findAllByText("טוען רשימת מועמדים...")).toHaveLength(2);
     expect(screen.queryByText("אין מועמדים זמינים")).not.toBeInTheDocument();
 
-    resolveCandidates([]);
+    resolveCandidates(candidateResponse());
     expect(await screen.findAllByText("אין מועמדים זמינים")).toHaveLength(2);
   });
 
   it("shows a conflict-warning badge for a candidate kept despite a scheduling conflict, but leaves them selectable", async () => {
-    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([
       {
         soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "duty_priority",
         explanation: "תורנות קרובה ב-20.08.2026",
         conflict_warning: "אילוץ מאושר 18.08.2026–20.08.2026",
       },
-    ]);
+    ]));
     renderModal({ event: event([]) });
 
     const checkbox = await screen.findByTestId("candidate-checkbox-s3");
@@ -230,9 +251,9 @@ describe("RangeEditAssignmentsModal", () => {
   });
 
   it("shows a user-facing error when saving the batch fails", async () => {
-    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([
       { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
-    ]);
+    ]));
     vi.mocked(rangesApi.batchAssignRange).mockRejectedValue(new Error("batch"));
     renderModal({ event: event([]) });
 
@@ -243,10 +264,10 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("re-fetches candidates after a successful batch save so a just-assigned soldier is no longer offered", async () => {
     vi.mocked(rangesApi.getRangeCandidates)
-      .mockResolvedValueOnce([
+      .mockResolvedValueOnce(candidateResponse([
         { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
-      ])
-      .mockResolvedValueOnce([]);
+      ]))
+      .mockResolvedValueOnce(candidateResponse());
     vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
       { id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "qualified", assignment_reason_text: null },
     ]);
@@ -261,10 +282,10 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("re-fetches candidates after removing an assignment so the freed soldier becomes selectable again", async () => {
     vi.mocked(rangesApi.getRangeCandidates)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
+      .mockResolvedValueOnce(candidateResponse())
+      .mockResolvedValueOnce(candidateResponse([
         { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null },
-      ]);
+      ]));
     vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
     renderModal({ event: event([assignment("a1", "s1")]) });

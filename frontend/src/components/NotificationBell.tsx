@@ -18,12 +18,18 @@ export default function NotificationBell() {
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
   const navigate = useNavigate();
 
+  const openRef = useRef(open);
+  useEffect(() => { openRef.current = open; }, [open]);
+
   useEffect(() => {
     const fetch = async () => {
       try {
         const { count } = await getUnreadCount();
         setUnread(count);
       } catch { /* ignore */ }
+      if (openRef.current) {
+        listNotifications({ is_read: false, limit: 5 }).then((r) => setNotifications(r.items)).catch(() => {});
+      }
     };
     fetch();
     const interval = setInterval(fetch, 30000);

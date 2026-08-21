@@ -235,6 +235,7 @@ export default function SwapsPage() {
   }
 
   async function refreshSwapData() {
+    setSwapActionError(null);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() }),
@@ -254,10 +255,12 @@ export default function SwapsPage() {
 
   const hasActiveFilters = !!(boardFilters.dateFrom || boardFilters.dateTo || boardFilters.dutyTypeIds?.length || boardFilters.nodeIds?.length || boardFilters.eligibleOnly);
 
+  const [swapActionError, setSwapActionError] = useState<string | null>(null);
+
   async function handleCancel(id: string) {
     try { await cancelSwap(id); await refreshSwapData(); }
     catch (err: unknown) {
-      alert(translateApiError(err, t, "שגיאה"));
+      setSwapActionError(translateApiError(err, t, "שגיאה"));
     }
   }
 
@@ -266,7 +269,7 @@ export default function SwapsPage() {
   async function handleSoldierApprove(id: string) {
     try { await soldierApproveSwap(id); await refreshSwapData(); }
     catch (err: unknown) {
-      alert(translateApiError(err, t, "שגיאה"));
+      setSwapActionError(translateApiError(err, t, "שגיאה"));
     }
   }
   async function handleSoldierReject(id: string) {
@@ -275,7 +278,7 @@ export default function SwapsPage() {
       setSwapRejectNote((prev) => { const next = { ...prev }; delete next[id]; return next; });
       await refreshSwapData();
     } catch (err: unknown) {
-      alert(translateApiError(err, t, "שגיאה"));
+      setSwapActionError(translateApiError(err, t, "שגיאה"));
     }
   }
 
@@ -306,7 +309,7 @@ export default function SwapsPage() {
       {swap.decision_note && (
         <p className="text-xs text-amber-600 dark:text-amber-400">{t("swaps.decision_note")}: {swap.decision_note}</p>
       )}
-      {swap.status === "open" && swap.requester_side_approved !== true && (
+      {swap.status === "open" && swap.requester_side_approved !== true && liveCandidates.length > 0 && (
         <div className="flex gap-2 items-center">
           <button type="button" onClick={() => handleSoldierApprove(swap.id)}
             className="bg-green-600 text-white px-2 py-1 rounded text-xs">
@@ -461,6 +464,14 @@ export default function SwapsPage() {
         </div>
         {loadError && (
           <p className="text-red-500 text-sm mb-3">{loadError}</p>
+        )}
+        {swapActionError && (
+          <p className="text-red-500 text-sm mb-3" role="alert" data-testid="swap-action-error">
+            {swapActionError}
+            <button type="button" onClick={() => setSwapActionError(null)} className="mr-2 underline">
+              {t("common.dismiss", { defaultValue: "סגור" })}
+            </button>
+          </p>
         )}
         <TabBar tabs={tabs} active={tab} onChange={setTab} />
 

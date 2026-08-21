@@ -305,7 +305,7 @@ export default function OfferSwapModal({
                     onClick={(e) => {
                       if (isIneligible && isMobile) {
                         e.preventDefault();
-                        alert(elig?.reason ?? "חייל זה אינו יכול לקבל תורנות זו");
+                        setError(elig?.reason ?? "חייל זה אינו יכול לקבל תורנות זו");
                       }
                     }}
                   >

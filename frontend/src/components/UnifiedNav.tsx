@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
-  Calendar, BarChart2,
+  Calendar, BarChart2, Bell,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
@@ -166,6 +166,7 @@ export default function UnifiedNav() {
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
     { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", badge: swapIncomingCount, testId: "nav-swaps" },
+    { label: t("nav.notifications"), icon: <Bell size={20} />, to: "/notifications", testId: "nav-notifications" },
     { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
     ...(canViewTransparency
       ? [{ label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" }]

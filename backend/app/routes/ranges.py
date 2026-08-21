@@ -571,23 +571,51 @@ class RangeCandidateOut(BaseModel):
     conflict_warning: str | None = None
 
 
-@router.get("/{event_id}/candidates", response_model=list[RangeCandidateOut])
+class ExcludedSoldierOut(BaseModel):
+    soldier_id: uuid.UUID
+    soldier_name: str
+    reason: str
+
+
+class RangeCandidatesOut(BaseModel):
+    candidates: list[RangeCandidateOut]
+    excluded: list[ExcludedSoldierOut]
+
+
+@router.get("/{event_id}/candidates", response_model=RangeCandidatesOut)
 def get_range_candidates(
     event_id: uuid.UUID,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> list[RangeCandidateOut]:
+) -> RangeCandidatesOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
     authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
-    ranked = auto_assign_svc.rank_candidates(session, event=event, user=user)
-    return [
-        RangeCandidateOut(
-            soldier_id=c.soldier.id, full_name=c.soldier.full_name, personal_number=c.soldier.personal_number,
-            reason_code=c.reason_code, explanation=c.explanation, conflict_warning=c.conflict_warning,
-        )
-        for c in ranked
-    ]
+    ranked, excluded = auto_assign_svc.rank_candidates_with_excluded(session, event=event, user=user)
+    excluded_soldiers_by_id = {
+        s.id: s
+        for s in session.execute(
+            select(Soldier).where(Soldier.id.in_([x.soldier_id for x in excluded]))
+        ).scalars().all()
+    } if excluded else {}
+    return RangeCandidatesOut(
+        candidates=[
+            RangeCandidateOut(
+                soldier_id=c.soldier.id, full_name=c.soldier.full_name, personal_number=c.soldier.personal_number,
+                reason_code=c.reason_code, explanation=c.explanation, conflict_warning=c.conflict_warning,
+            )
+            for c in ranked
+        ],
+        excluded=[
+            ExcludedSoldierOut(
+                soldier_id=x.soldier_id,
+                soldier_name=excluded_soldiers_by_id[x.soldier_id].full_name
+                if x.soldier_id in excluded_soldiers_by_id else str(x.soldier_id),
+                reason=x.reason,
+            )
+            for x in excluded
+        ],
+    )
 
 
 def _authorize_excusal_decision(session: Session, user: Soldier, event: RangeEvent) -> None:

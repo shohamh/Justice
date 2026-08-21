@@ -800,6 +800,52 @@ describe("ApprovalsPage - in-flight approve button", () => {
   });
 });
 
+describe("ApprovalsPage - pagination clamp on shrinking list", () => {
+  it("clamps the constraints page back down when an approval shrinks the list below the current page", async () => {
+    // 21 pending constraints => 2 pages at APPROVALS_PAGE_SIZE (20). Start on
+    // page 2 (only c20 there). Approving it shrinks the refetched list to 20
+    // items (1 page), and the page should clamp back to 1 instead of leaving
+    // the user on a now-nonexistent page 2 with nothing rendered.
+    const manyConstraints = Array.from({ length: 21 }, (_, i) => ({
+      ...constraint,
+      id: `c${i}`,
+      soldier_name: `Soldier ${i}`,
+    }));
+    vi.mocked(constraintsApi.listPendingApprovals)
+      .mockResolvedValueOnce(manyConstraints)
+      .mockResolvedValueOnce(manyConstraints.slice(0, 20)); // c20 approved away
+    vi.mocked(constraintsApi.approveConstraint).mockResolvedValue({ ...constraint, id: "c20", status: "approved" });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/approvals?cpage=2"]}>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    // On page 2, only the 21st item (c20) is present.
+    const approveBtn = await screen.findByTestId("approve-c20");
+    expect(screen.queryByTestId("approve-c0")).not.toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument(); // pager showing page 2 as active
+
+    fireEvent.click(approveBtn);
+
+    // After the shrink, the list fits on one page: the pager disappears
+    // (Pager renders nothing for pages <= 1) and the first item is visible
+    // again, proving the page clamped back to 1 rather than staying stuck.
+    await waitFor(() => {
+      expect(screen.getByTestId("approve-c0")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("2")).not.toBeInTheDocument();
+  });
+});
+
 describe("ApprovalsPage - two-step indicator", () => {
   it("shows a step indicator on a constraint still pending the commander step", async () => {
     vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([

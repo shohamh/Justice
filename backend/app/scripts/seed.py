@@ -1803,6 +1803,11 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         import sys
 
         _safe_print = lambda s: sys.stdout.buffer.write(s.encode("utf-8", errors="replace") + b"\n")
+
+        def _example(role: str) -> str:
+            match = next((s for s in all_soldiers if s.role == role), None)
+            return match.personal_number if match else "—"
+
         _safe_print("Seed complete! Created:")
         _safe_print(f"  {len(all_nodes)} hierarchy nodes")
         _safe_print(f"  {len(all_soldiers)} soldiers")
@@ -1834,6 +1839,12 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         _safe_print(f"  5 score adjustments")
         _safe_print(f"  8 exemption requests (6 pending, 1 approved, 1 rejected)")
         _safe_print(f"  {fu_count} profile field update requests")
+        _safe_print("")
+        _safe_print("Demo logins (password 1234567890 for all):")
+        _safe_print(f"  admin: {_example('admin')}")
+        _safe_print(f"  duty_manager: {_example('duty_manager')}")
+        _safe_print(f"  commander: {_example('commander')}")
+        _safe_print(f"  soldier: {_example('soldier')}")
 
 
 if __name__ == "__main__":
