@@ -39,9 +39,18 @@ def _shared_postgres_enabled(config: pytest.Config) -> bool:
     if not getattr(config.option, "numprocesses", 0):
         return False
 
-    suite_root = (Path(config.rootpath) / "tests").resolve()
+    suite_roots = {
+        (Path(config.rootpath) / "tests").resolve(),
+        (Path(config.rootpath) / "app" / "services" / "tests").resolve(),
+    }
     selected_paths = [Path(arg).resolve() for arg in config.args]
-    return selected_paths == [suite_root]
+    # `pytest -q` is the documented full-suite command and leaves config.args
+    # empty. Treat it the same as explicitly selecting both configured test
+    # roots so each xdist worker gets a database cloned from one migrated
+    # template instead of starting its own Postgres container.
+    return not selected_paths or set(selected_paths) == suite_roots or (
+        len(selected_paths) == 1 and selected_paths[0] in suite_roots
+    )
 
 
 def _worker_database_name(workerinput: dict[str, object]) -> str:
