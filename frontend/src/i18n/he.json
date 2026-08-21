@@ -1390,6 +1390,12 @@
     "search_soldier": "חיפוש חייל",
     "adding": "מוסיף...",
     "no_available_soldiers": "אין חיילים זמינים",
+    "excluded_summary": "{{count}} חיילים לא הוצגו — הצג סיבה",
+    "excluded_reason": {
+      "weapon_exempt": "פטור מנשק",
+      "structurally_ineligible": "לא כשיר מבנית לתפקידי נשק",
+      "assigned_elsewhere_same_day": "משובץ למטווח אחר באותו יום"
+    },
     "close": "סגור",
     "self_excuse": "אני לא אוכל להגיע",
     "self_excuse_reason": "סיבת היעדרות",

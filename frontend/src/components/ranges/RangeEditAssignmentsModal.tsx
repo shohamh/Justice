@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RangeAssignment, RangeCandidate, RangeEvent, batchAssignRange, getRangeCandidates, removeRangeAssignment, updateRangeAssignmentReason } from "../../api/ranges";
+import { ExcludedRangeCandidate, RangeAssignment, RangeCandidate, RangeEvent, batchAssignRange, getRangeCandidates, removeRangeAssignment, updateRangeAssignmentReason } from "../../api/ranges";
 import { SoldierDTO } from "../../api/soldiers";
 import { EventDetailModal } from "../planning";
 import TableSearchInput from "../TableSearchInput";
@@ -45,6 +45,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const [reasonText, setReasonText] = useState("");
   const [savingReason, setSavingReason] = useState<string | null>(null);
   const [rangeCandidates, setRangeCandidates] = useState<RangeCandidate[]>([]);
+  const [excludedCandidates, setExcludedCandidates] = useState<ExcludedRangeCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [primarySelected, setPrimarySelected] = useState<Set<string>>(new Set());
   const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());
@@ -72,8 +73,8 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     if (!editable) return;
     setCandidatesLoading(true);
     getRangeCandidates(event.id)
-      .then(setRangeCandidates)
-      .catch(() => setRangeCandidates([]))
+      .then(({ candidates, excluded }) => { setRangeCandidates(candidates); setExcludedCandidates(excluded); })
+      .catch(() => { setRangeCandidates([]); setExcludedCandidates([]); })
       .finally(() => setCandidatesLoading(false));
   }, [event.id, editable]);
 
@@ -147,7 +148,9 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
       setAssignments(current => [...current, ...created]);
       setPrimarySelected(new Set());
       setReserveSelected(new Set());
-      await getRangeCandidates(event.id).then(setRangeCandidates).catch(() => setRangeCandidates([]));
+      await getRangeCandidates(event.id)
+        .then(({ candidates, excluded }) => { setRangeCandidates(candidates); setExcludedCandidates(excluded); })
+        .catch(() => { setRangeCandidates([]); setExcludedCandidates([]); });
       await onChanged();
     } catch (err) {
       setError(translateApiError(err, t, text("ranges.errors.save_assignments", "שמירת השיבוצים נכשלה")));
@@ -165,7 +168,9 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     try {
       await removeRangeAssignment(event.id, assignmentId, reason.trim());
       setAssignments(current => current.filter(a => a.id !== assignmentId));
-      await getRangeCandidates(event.id).then(setRangeCandidates).catch(() => setRangeCandidates([]));
+      await getRangeCandidates(event.id)
+        .then(({ candidates, excluded }) => { setRangeCandidates(candidates); setExcludedCandidates(excluded); })
+        .catch(() => { setRangeCandidates([]); setExcludedCandidates([]); });
       await onChanged();
     } catch {
       setError(text("ranges.errors.remove_assignment", "הסרת השיבוץ נכשלה"));
@@ -363,6 +368,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                 testIdPrefix="candidate-checkbox"
                 full={primarySlotsLeft === 0}
                 loading={candidatesLoading}
+                excluded={excludedCandidates}
               />
             </div>
           )}
@@ -397,6 +403,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                 testIdPrefix="reserve-candidate-checkbox"
                 full={reserveSlotsLeft === 0}
                 loading={candidatesLoading}
+                excluded={excludedCandidates}
               />
             </div>
           )}
@@ -423,12 +430,15 @@ interface CandidateTableProps {
   testIdPrefix: string;
   full: boolean;
   loading: boolean;
+  excluded: ExcludedRangeCandidate[];
 }
 
-function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, loading }: CandidateTableProps) {
+function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, loading, excluded }: CandidateTableProps) {
+  const { t } = useTranslation();
   return (
-    <div className="border dark:border-gray-600 rounded overflow-x-auto max-h-64 overflow-y-auto">
-      <table className="w-full text-xs">
+    <>
+      <div className="border dark:border-gray-600 rounded overflow-x-auto max-h-64 overflow-y-auto">
+        <table className="w-full text-xs">
         <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
           <tr>
             <th className="p-2 w-8"></th>
@@ -472,7 +482,18 @@ function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, lo
             );
           })}
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+      {excluded.length > 0 && (
+        <details className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          <summary className="cursor-pointer">{t("ranges.excluded_summary", { count: excluded.length })}</summary>
+          <ul className="mt-1 space-y-0.5">
+            {excluded.map(candidate => (
+              <li key={candidate.soldier_id}>{candidate.soldier_name}: {t(`ranges.excluded_reason.${candidate.reason}`)}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
   );
 }
