@@ -572,6 +572,8 @@
     "already_invited": "המשתמש כבר הוזמן — רענן את הדף",
     "target_limit_reached": "הגעת למגבלת ההזמנות",
     "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות",
+    "no_soldier_for_side": "לא נמצא חייל מתאים לצד זה של הבקשה",
+    "candidate_mismatch": "הבקשה השתנתה בינתיים על ידי מישהו אחר — רענן ונסה שוב",
     "not_found": "הפריט לא נמצא",
     "file_too_large": "הקובץ חורג מהגודל המותר (5MB)",
     "invalid_file_type": "סוג קובץ לא נתמך — יש להעלות תמונת JPG, PNG או GIF",
