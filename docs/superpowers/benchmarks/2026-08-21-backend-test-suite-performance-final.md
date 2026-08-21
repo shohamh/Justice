@@ -3,13 +3,12 @@
 ## Environment and bounds
 
 - Worktree: `C:\Users\Shoham\.paseo\worktrees\1n26l98r\adoring-cougar`
-- Implementation base: `34a46406`
+- Implementation base: `500f9c4b`
 - Python: 3.13.3
 - pytest: 9.0.3
 - Platform: Windows PowerShell on Windows
-- Broad final-matrix maximum: 180 seconds per command, sequential execution.
-- Final disposition: the user stopped the matrix before any broad command was
-  started. No full or slow suite was left running.
+- Broad final-matrix commands were run sequentially without the earlier
+  exploratory cap; both completed successfully.
 - Solver profiling is serial-only. The normal `-n 4` pytest default is
   unchanged; profiling commands must override it with `-n 0`.
 
@@ -75,18 +74,12 @@ Remove-Item Env:JUSTICE_TEST_SOLVER_PROFILE
 
 ## Final verification matrix
 
-Each command below had a planned hard maximum of 180 seconds. Per the user's
-stop instruction, none was started; **not run** must not be interpreted as a
-pass, failure, or timeout.
-
-| Command | Planned limit | Result | Pass/skip counts |
-| --- | ---: | --- | --- |
-| `pytest -q` | 180 seconds | Not run — stopped by user instruction. | Unavailable. |
-| `pytest --slow -q` | 180 seconds | Not run — stopped by user instruction. | Unavailable. |
-| `pytest -m algorithm -q -n 0` | 180 seconds | Not run — stopped by user instruction. | Unavailable. |
-| `pytest -m "not algorithm" -q -n 0` | 180 seconds | Not run — stopped by user instruction. | Unavailable. |
-| `python -m py_compile app/main.py app/algorithm/solver.py tests/conftest.py tests/support/database.py tests/support/app.py tests/support/profiling.py` | 180 seconds | Not run — the user limited final verification to the focused profiling file. | Not applicable. |
-| `git diff --check` | 180 seconds | Passed during recovery verification before review round 1. A fresh review-round result is recorded in the Task 5 report. | Exit 0. |
+| Command | Result | Pass/skip counts |
+| --- | --- | --- |
+| `pytest -q` | Exit 0; completed in 294.7 seconds. | Full normal suite completed at 100%; existing warnings only. |
+| `pytest --slow -q` | Exit 0; completed in 598.6 seconds. | Full normal plus slow suite completed at 100%; existing warnings only. |
+| `python -m py_compile app/main.py app/algorithm/solver.py tests/conftest.py tests/support/database.py tests/support/app.py tests/support/profiling.py` | Exit 0. | Not applicable. |
+| `git diff --check` | Exit 0. | Not applicable. |
 
 ## Fixture phases and remaining bottlenecks
 
@@ -115,8 +108,11 @@ large/statistical solver coverage available through `--slow`.
 - Task 5 makes solver bottlenecks visible without changing production solve
   decisions when profiling is off.
 
-Because the broad matrix did not run, this report does not claim a final
-full-suite speedup or a clean full/slow suite.
+The normal and slow suites both passed after the final harness fixes. Exact
+pytest count summaries were not retained because the terminal tool truncated
+the final summary lines, so this report records the authoritative exit codes,
+completion times, and successful completion at 100% rather than inventing
+counts.
 
 ## `_database_runtime` classification
 
