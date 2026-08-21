@@ -307,7 +307,8 @@ uv pip install --no-index --find-links vendor/ -r requirements-vendor.txt
   for missing entities, and partial confirm; per-shift exact sub-unit soldier
   quotas enforced by the solver with one-level-up relaxation.
 - **Next**: production deployment artefacts (Caddy, TLS, prod compose);
-  notifications (SMS/push) for swap offers and approval decisions; greedy online
+  SMS/push notification channels (in-app + email notifications already ship — 50+ event types,
+  per-user preferences); greedy online
   assignment for ad-hoc single duties; no-show / punishment-duty mechanic;
   longitudinal fairness dashboard.
 
