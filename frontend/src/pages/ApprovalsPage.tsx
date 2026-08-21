@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -260,6 +260,28 @@ export default function ApprovalsPage() {
   const itemsPageItems = items.slice(constraintsPaging.offset, constraintsPaging.offset + constraintsPaging.limit);
   const erActionablePageItems = erActionable.slice(exemptionsPaging.offset, exemptionsPaging.offset + exemptionsPaging.limit);
   const swapsActionablePageItems = swapsActionable.slice(swapsPaging.offset, swapsPaging.offset + swapsPaging.limit);
+
+  // Approve/reject actions invalidate these lists' queries, which can shrink
+  // a list below the page the user is currently viewing. Clamp back down so
+  // they don't land on a blank page with no way back — mirrors
+  // NotificationsPage.tsx's clamp effect.
+  const { page: constraintsPage, setPage: setConstraintsPage } = constraintsPaging;
+  const constraintsPages = Math.ceil(items.length / APPROVALS_PAGE_SIZE);
+  useEffect(() => {
+    if (constraintsPages > 0 && constraintsPage > constraintsPages) setConstraintsPage(constraintsPages);
+  }, [constraintsPage, constraintsPages, setConstraintsPage]);
+
+  const { page: exemptionsPage, setPage: setExemptionsPage } = exemptionsPaging;
+  const exemptionsPages = Math.ceil(erActionable.length / APPROVALS_PAGE_SIZE);
+  useEffect(() => {
+    if (exemptionsPages > 0 && exemptionsPage > exemptionsPages) setExemptionsPage(exemptionsPages);
+  }, [exemptionsPage, exemptionsPages, setExemptionsPage]);
+
+  const { page: swapsPage, setPage: setSwapsPage } = swapsPaging;
+  const swapsPages = Math.ceil(swapsActionable.length / APPROVALS_PAGE_SIZE);
+  useEffect(() => {
+    if (swapsPages > 0 && swapsPage > swapsPages) setSwapsPage(swapsPages);
+  }, [swapsPage, swapsPages, setSwapsPage]);
 
   const swapConfigQuery = useQuery({
     queryKey: queryKeys.swapConfig(),
@@ -581,7 +603,7 @@ export default function ApprovalsPage() {
                 );
               })}
             </ul>
-            <Pager page={constraintsPaging.page} setPage={constraintsPaging.setPage} pages={Math.ceil(items.length / APPROVALS_PAGE_SIZE)} />
+            <Pager page={constraintsPaging.page} setPage={constraintsPaging.setPage} pages={constraintsPages} />
           </>
         )}
 
@@ -674,7 +696,7 @@ export default function ApprovalsPage() {
                 );
               })}
             </ul>
-            <Pager page={exemptionsPaging.page} setPage={exemptionsPaging.setPage} pages={Math.ceil(erActionable.length / APPROVALS_PAGE_SIZE)} />
+            <Pager page={exemptionsPaging.page} setPage={exemptionsPaging.setPage} pages={exemptionsPages} />
           </>
         )}
 
@@ -855,7 +877,7 @@ export default function ApprovalsPage() {
                 </div>
               );
             })}
-            <Pager page={swapsPaging.page} setPage={swapsPaging.setPage} pages={Math.ceil(swapsActionable.length / APPROVALS_PAGE_SIZE)} />
+            <Pager page={swapsPaging.page} setPage={swapsPaging.setPage} pages={swapsPages} />
           </div>
         )}
         {tab === "enrollment" && (
