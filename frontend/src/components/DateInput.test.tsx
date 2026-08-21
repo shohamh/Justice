@@ -123,4 +123,17 @@ describe("DateInput", () => {
     expect(wrapper?.className).toMatch(/(^|\s)flex(\s|$)/);
     expect(wrapper?.className).not.toMatch(/inline-flex/);
   });
+
+  it("always makes the visible text input the growing flex item, regardless of the caller's className", () => {
+    // Regression test: the calendar button is shrink-0, so without flex-1
+    // (and min-w-0, overriding the flex default min-width:auto) on the text
+    // input, its flex-basis defaulted to its own `width` (100% when a
+    // caller passed w-full), and the flex-shrink algorithm squeezed it down
+    // to share the row with its shrink-0 sibling — visible as the date text
+    // clipped to 1-2 characters even though "w-full" was set.
+    render(<DateInput className="border p-1 w-full" data-testid="date-input" />);
+    const input = screen.getByTestId("date-input");
+    expect(input.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    expect(input.className).toMatch(/(^|\s)min-w-0(\s|$)/);
+  });
 });

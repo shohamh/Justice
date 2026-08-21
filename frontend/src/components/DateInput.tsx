@@ -176,7 +176,15 @@ export default function DateInput({
         data-testid={rest["data-testid"]}
         onChange={e => handleTextChange(e.target.value, (e.nativeEvent as InputEvent).inputType?.startsWith("delete"))}
         onBlur={handleTextBlur}
-        className={className}
+        // flex-1 min-w-0 always applied (not left to each caller's className):
+        // the button next to it is shrink-0, so without these the text
+        // input's flex-basis defaults to its own width (100% when the
+        // caller passes w-full), forcing the flex-shrink algorithm to
+        // squeeze it down to share the row with its siblings instead of
+        // actually filling the row — seen as the date text clipped to 1-2
+        // characters. min-w-0 overrides the default min-width:auto that
+        // would otherwise still block shrinking below content size.
+        className={`flex-1 min-w-0 ${className ?? ""}`}
       />
       <button
         type="button"
