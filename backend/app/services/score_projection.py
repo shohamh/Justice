@@ -14,6 +14,7 @@ from app.db.models import (
     DutyAssignment,
     DutyDayOverride,
     ScoreAdjustment,
+    ScoreProjectionDirtyBucket,
     ScoreProjectionQuarterTotal,
     ScoreProjectionState,
     SoldierQuarterScoreProjection,
@@ -86,6 +87,10 @@ def _json_safe_value(value: Any) -> Any:
     return value
 
 
+def _json_safe_summary(value: Any) -> Any:
+    return _json_safe_value(value)
+
+
 def _partition_sort_key(partition: tuple[uuid.UUID, date]) -> tuple[str, date]:
     return str(partition[0]), partition[1]
 
@@ -101,6 +106,162 @@ def _iter_quarters_touched(start_date: date, end_date: date) -> list[date]:
         touched.append(current)
         current = quarter_end(current) + timedelta(days=1)
     return touched
+
+
+def _quarters_for_dates(affected_dates: set[date] | list[date] | tuple[date, ...]) -> set[date]:
+    return {quarter_start(affected_date) for affected_date in affected_dates}
+
+
+def affected_dates_for_assignment(assignment: DutyAssignment) -> set[date]:
+    if assignment.end_date <= assignment.start_date:
+        return set()
+    return {assignment.start_date, assignment.end_date - timedelta(days=1)}
+
+
+def affected_dates_for_inclusive_period(start_date: date, end_date: date | None) -> set[date]:
+    if end_date is None:
+        return {start_date}
+    if end_date < start_date:
+        return set()
+    return {start_date, end_date}
+
+
+def affected_soldier_ids_for_assignment(session: Session, assignment: DutyAssignment) -> set[uuid.UUID]:
+    soldier_ids = {assignment.soldier_id}
+    soldier_ids.update(
+        session.execute(
+            select(DutyDayOverride.effective_soldier_id).where(
+                DutyDayOverride.duty_assignment_id == assignment.id,
+                DutyDayOverride.effective_soldier_id.is_not(None),
+            )
+        ).scalars().all()
+    )
+    return {soldier_id for soldier_id in soldier_ids if soldier_id is not None}
+
+
+def affected_dates_for_soldier_existing_projection(session: Session, soldier_id: uuid.UUID) -> set[date]:
+    affected_dates: set[date] = set()
+    assignments = session.execute(
+        select(DutyAssignment).where(DutyAssignment.soldier_id == soldier_id)
+    ).scalars().all()
+    for assignment in assignments:
+        affected_dates.update(affected_dates_for_assignment(assignment))
+    override_dates = session.execute(
+        select(DutyDayOverride.date).where(DutyDayOverride.effective_soldier_id == soldier_id)
+    ).scalars().all()
+    affected_dates.update(override_dates)
+    adjustment_dates = session.execute(
+        select(ScoreAdjustment.created_at).where(ScoreAdjustment.soldier_id == soldier_id)
+    ).scalars().all()
+    affected_dates.update(created_at.date() for created_at in adjustment_dates if created_at is not None)
+    persisted_quarters = session.execute(
+        select(SoldierQuarterScoreProjection.quarter_start).where(
+            SoldierQuarterScoreProjection.soldier_id == soldier_id
+        )
+    ).scalars().all()
+    affected_dates.update(persisted_quarters)
+    return affected_dates
+
+
+def refresh_projection_for_assignment_change(
+    session: Session,
+    *,
+    assignment: DutyAssignment,
+    extra_soldier_ids: set[uuid.UUID] | list[uuid.UUID] | tuple[uuid.UUID, ...] = (),
+) -> None:
+    refresh_projection_for_change(
+        session,
+        soldier_ids=affected_soldier_ids_for_assignment(session, assignment) | set(extra_soldier_ids),
+        affected_dates=affected_dates_for_assignment(assignment),
+    )
+
+
+def _merge_node_ids(existing: list[str] | None, incoming: tuple[uuid.UUID, ...] | list[uuid.UUID] | set[uuid.UUID]) -> list[str]:
+    merged = set(existing or [])
+    merged.update(str(node_id) for node_id in incoming if node_id is not None)
+    return sorted(merged)
+
+
+def _mark_dirty_bucket(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    quarter_start_value: date,
+    old_node_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] | set[uuid.UUID] = (),
+    new_node_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] | set[uuid.UUID] = (),
+) -> ScoreProjectionDirtyBucket:
+    dirty = session.execute(
+        select(ScoreProjectionDirtyBucket).where(
+            ScoreProjectionDirtyBucket.soldier_id == soldier_id,
+            ScoreProjectionDirtyBucket.quarter_start == quarter_start_value,
+        )
+    ).scalar_one_or_none()
+    if dirty is None:
+        dirty = ScoreProjectionDirtyBucket(
+            soldier_id=soldier_id,
+            quarter_start=quarter_start_value,
+            status="dirty",
+            old_node_ids=[str(node_id) for node_id in old_node_ids],
+            new_node_ids=[str(node_id) for node_id in new_node_ids],
+            divergence=None,
+        )
+        session.add(dirty)
+    else:
+        dirty.status = "dirty"
+        dirty.old_node_ids = _merge_node_ids(dirty.old_node_ids, old_node_ids)
+        dirty.new_node_ids = _merge_node_ids(dirty.new_node_ids, new_node_ids)
+        dirty.divergence = None
+        dirty.updated_at = _utcnow()
+    session.flush()
+    return dirty
+
+
+def _persisted_bucket_summary(
+    session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date
+) -> dict[str, Any] | None:
+    rows = list(
+        session.execute(
+            select(SoldierQuarterScoreProjection).where(
+                SoldierQuarterScoreProjection.soldier_id == soldier_id,
+                SoldierQuarterScoreProjection.quarter_start == quarter_start_value,
+            )
+        ).scalars().all()
+    )
+    if not rows:
+        return None
+    totals = _projection_totals_from_rows(rows)
+    return {
+        "raw_day_count": totals.raw_day_count,
+        "effective_weighted_days": totals.effective_weighted_days,
+        "duty_score": totals.duty_score,
+        "adjustment_score": totals.adjustment_score,
+        "total_score": totals.total_score,
+        "shift_count": totals.shift_count,
+        "fingerprints": [
+            row.source_fingerprint
+            for row in sorted(rows, key=lambda row: (row.duty_type_id is None, str(row.duty_type_id or "")))
+        ],
+    }
+
+
+def _canonical_bucket_summary(
+    session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date
+) -> dict[str, Any]:
+    bucket = project_soldier_bucket(session, soldier_id, quarter_start_value)
+    return {
+        "raw_day_count": sum(row.raw_day_count for row in _bucket_partition_rows(bucket)),
+        "effective_weighted_days": sum(
+            (row.effective_weighted_days for row in _bucket_partition_rows(bucket)), Decimal("0")
+        ).quantize(Decimal("0.000001")),
+        "duty_score": bucket.duty_score.quantize(Decimal("0.000001")),
+        "adjustment_score": bucket.adjustment_score.quantize(Decimal("0.000001")),
+        "total_score": (bucket.duty_score + bucket.adjustment_score).quantize(Decimal("0.000001")),
+        "shift_count": bucket.shift_count,
+        "fingerprints": [
+            _json_safe_value(row.source_fingerprint)
+            for row in _bucket_partition_rows(bucket)
+        ],
+    }
 
 
 def _candidate_assignment_ids_for_bucket(
@@ -250,8 +411,11 @@ def project_soldier_bucket(
         if row["effective_soldier_id"] == soldier_id and quarter_start(row["day"]) == quarter_start_value
     ]
     duty_score = sum(
-        (type_scores.get(row["duty_type_id"], Decimal("0")) * row["weighted_multiplier"])
-        for row in duty_rows
+        (
+            type_scores.get(row["duty_type_id"], Decimal("0")) * row["weighted_multiplier"]
+            for row in duty_rows
+        ),
+        Decimal("0"),
     )
     adjustments = _adjustments_for_bucket(
         session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
@@ -434,6 +598,22 @@ def _projection_totals_from_rows(rows: list[SoldierQuarterScoreProjection]) -> P
     )
 
 
+def _projection_totals_from_buckets(buckets: list[ProjectionBucket]) -> ProjectionTotals:
+    partition_rows = [row for bucket in buckets for row in _bucket_partition_rows(bucket)]
+    duty_score = sum((bucket.duty_score for bucket in buckets), Decimal("0"))
+    adjustment_score = sum((bucket.adjustment_score for bucket in buckets), Decimal("0"))
+    return ProjectionTotals(
+        raw_day_count=sum(row.raw_day_count for row in partition_rows),
+        effective_weighted_days=sum(
+            (row.effective_weighted_days for row in partition_rows), Decimal("0")
+        ).quantize(Decimal("0.000001")),
+        duty_score=duty_score.quantize(Decimal("0.000001")),
+        adjustment_score=adjustment_score.quantize(Decimal("0.000001")),
+        total_score=(duty_score + adjustment_score).quantize(Decimal("0.000001")),
+        shift_count=sum(bucket.shift_count for bucket in buckets),
+    )
+
+
 def _get_or_create_state(session: Session) -> ScoreProjectionState:
     state = session.get(ScoreProjectionState, SCORE_PROJECTION_STATE_KEY)
     if state is None:
@@ -521,8 +701,9 @@ def _upsert_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> Soldier
 def _upsert_quarter_total(
     session: Session, *, quarter_start_value: date
 ) -> ScoreProjectionQuarterTotal:
-    rows = _rows_for_quarter(session, quarter_start_value=quarter_start_value)
-    totals = _projection_totals_from_rows(rows)
+    totals = _projection_totals_from_buckets(
+        project_all_buckets(session, quarter_starts={quarter_start_value})
+    )
     projection = session.get(ScoreProjectionQuarterTotal, quarter_start_value)
     if projection is None:
         projection = ScoreProjectionQuarterTotal(
@@ -564,8 +745,79 @@ def rebuild_projection_bucket(
                 SoldierQuarterScoreProjection.soldier_id == soldier_id,
                 SoldierQuarterScoreProjection.quarter_start == quarter_start_value,
             )
-        ).scalars().all()
+    ).scalars().all()
     )
+
+
+def refresh_projection_for_change(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID] | list[uuid.UUID] | tuple[uuid.UUID, ...],
+    affected_dates: set[date] | list[date] | tuple[date, ...],
+    old_node_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] | set[uuid.UUID] = (),
+    new_node_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] | set[uuid.UUID] = (),
+) -> None:
+    """Synchronously refresh every affected soldier/quarter bucket.
+
+    The dirty row is written before rebuilding and then marked current only after the
+    bucket has been rebuilt from canonical rows. Reconciliation can therefore repair
+    any bucket left dirty by a future interrupted writer, but normal writes do not
+    rely on that safety net for freshness.
+    """
+    soldier_id_set = {soldier_id for soldier_id in soldier_ids if soldier_id is not None}
+    quarter_starts = _quarters_for_dates(affected_dates)
+    if not soldier_id_set or not quarter_starts:
+        return
+
+    for soldier_id in sorted(soldier_id_set, key=str):
+        for quarter_start_value in sorted(quarter_starts):
+            dirty = _mark_dirty_bucket(
+                session,
+                soldier_id=soldier_id,
+                quarter_start_value=quarter_start_value,
+                old_node_ids=old_node_ids,
+                new_node_ids=new_node_ids,
+            )
+            rebuild_projection_bucket(session, soldier_id, quarter_start_value)
+            dirty.status = "current"
+            dirty.refreshed_at = _utcnow()
+            dirty.updated_at = _utcnow()
+            session.flush()
+
+
+def _normalize_required_quarters(
+    required_quarters: set[Any] | list[Any] | tuple[Any, ...],
+) -> tuple[set[tuple[uuid.UUID, date]], set[date]]:
+    bucket_keys: set[tuple[uuid.UUID, date]] = set()
+    quarter_only: set[date] = set()
+    for item in required_quarters:
+        if isinstance(item, tuple) and len(item) == 2:
+            soldier_id, quarter_start_value = item
+            bucket_keys.add((soldier_id, quarter_start(quarter_start_value)))
+        else:
+            quarter_only.add(quarter_start(item))
+    return bucket_keys, quarter_only
+
+
+def projection_is_current(session: Session, required_quarters: set[Any] | list[Any] | tuple[Any, ...]) -> bool:
+    bucket_keys, quarter_only = _normalize_required_quarters(required_quarters)
+    if not bucket_keys and not quarter_only:
+        return True
+
+    dirty_query = select(ScoreProjectionDirtyBucket).where(
+        ScoreProjectionDirtyBucket.status == "dirty"
+    )
+    if bucket_keys:
+        dirty_rows = session.execute(dirty_query).scalars().all()
+        if any((row.soldier_id, row.quarter_start) in bucket_keys for row in dirty_rows):
+            return False
+    if quarter_only:
+        dirty_rows = session.execute(
+            dirty_query.where(ScoreProjectionDirtyBucket.quarter_start.in_(quarter_only))
+        ).scalars().all()
+        if dirty_rows:
+            return False
+    return True
 
 
 def _enumerate_projection_keys(session: Session) -> list[tuple[uuid.UUID, date]]:
@@ -637,3 +889,9 @@ def backfill_score_projection(
     state.updated_at = _utcnow()
     session.flush()
     return state
+
+
+def reconcile_score_projection(session: Session, limit: int = 500) -> dict[str, Any]:
+    from app.services.score_projection_reconciliation import reconcile_score_projection as _reconcile
+
+    return _reconcile(session, limit=limit)

@@ -309,6 +309,7 @@ _ALL_DATA_TABLES = [
     "bug_report_comment_attachments",
     "duty_day_overrides",
     "duty_dismissals",
+    "score_projection_dirty_buckets",
     "score_projection_state",
     "score_projection_quarter_total",
     "soldier_quarter_score_projection",

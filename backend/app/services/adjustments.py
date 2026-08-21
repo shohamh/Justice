@@ -53,6 +53,14 @@ def create_adjustment(
         after={"soldier_id": str(soldier_id), "delta": str(delta)},
         context={"reason": reason},
     )
+    session.refresh(adj)
+    from app.services.score_projection import refresh_projection_for_change
+
+    refresh_projection_for_change(
+        session,
+        soldier_ids={adj.soldier_id},
+        affected_dates={adj.created_at.date()},
+    )
     return adj
 
 

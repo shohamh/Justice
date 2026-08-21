@@ -904,6 +904,39 @@ class ScoreProjectionState(Base):
     )
 
 
+class ScoreProjectionDirtyBucket(Base):
+    __tablename__ = "score_projection_dirty_buckets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    quarter_start: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'dirty'"), default="dirty")
+    old_node_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"), default_factory=list)
+    new_node_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"), default_factory=list)
+    divergence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
+    dirtied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    reconciled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    __table_args__ = (
+        sa.UniqueConstraint("soldier_id", "quarter_start", name="uq_score_projection_dirty_bucket"),
+        sa.Index("ix_score_projection_dirty_buckets_status", "status"),
+        sa.Index("ix_score_projection_dirty_buckets_quarter", "quarter_start"),
+    )
+
+
 class DutyNoShow(Base):
     __tablename__ = "duty_no_shows"
 
