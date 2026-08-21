@@ -46,12 +46,14 @@ interface Props {
   onClose: () => void;
   onRefresh: () => void;
   initialEditing?: boolean;
+  initialTab?: TabKey;
+  initialHistoryTypes?: string[];
 }
 
 const ALL_TABS = ["details", "profile", "exemptions", "constraints", "duty_history"] as const;
-type TabKey = (typeof ALL_TABS)[number];
+export type TabKey = (typeof ALL_TABS)[number];
 
-export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false }: Props) {
+export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false, initialTab, initialHistoryTypes }: Props) {
   useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -75,7 +77,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
   useEffect(() => { setSoldierData(soldier); }, [soldier]);
 
-  const [tab, setTab] = useState<TabKey>("details");
+  const [tab, setTab] = useState<TabKey>(initialTab ?? "details");
   const { data: rangeStatus } = useQuery({
     queryKey: ["soldierRangeStatus", soldierData.id],
     queryFn: () => getSoldierRangeStatus(soldierData.id),
@@ -711,6 +713,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             soldierName={soldier.full_name}
             canManage={canManage}
             isActive={tab === "duty_history"}
+            initialTypes={initialHistoryTypes}
           />
         )}
 

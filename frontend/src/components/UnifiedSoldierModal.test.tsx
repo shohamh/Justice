@@ -301,3 +301,31 @@ describe("UnifiedSoldierModal duty-history tab visibility for a commander", () =
     expect(await screen.findByTestId("modal-tab-duty_history")).toBeInTheDocument();
   });
 });
+
+describe("UnifiedSoldierModal initialTab", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+  });
+
+  test("opens directly on the duty_history tab when initialTab is set", async () => {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <UnifiedSoldierModal
+          soldier={soldier}
+          score={null}
+          nodes={[]}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+          initialTab="duty_history"
+        />
+      </QueryClientProvider>,
+    );
+
+    const historyTabButton = screen.getByTestId("modal-tab-duty_history");
+    expect(historyTabButton.className).toContain("border-indigo-600");
+    // DutyHistoryPanel mounts and immediately shows its loading state.
+    expect(await screen.findByText("app.loading")).toBeInTheDocument();
+  });
+});
