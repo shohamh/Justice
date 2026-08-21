@@ -38,7 +38,6 @@ import {
   listPendingSwaps,
   managerRejectSwap,
   getSwapConfig,
-  SwapRequest,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, rejectEnrollment } from "../api/enrollment";
 import {
@@ -50,6 +49,7 @@ import {
 import { DaysBadge } from "../components/DaysBadge";
 import i18n from "../i18n";
 import { translateApiError } from "../utils/translateApiError";
+import { isSwapActionable } from "../utils/swapApprovals";
 
 async function handleExportApprovals() {
   const resp = await fetch("/api/approvals/export", {
@@ -221,21 +221,12 @@ export default function ApprovalsPage() {
       (er.status === "pending_duty_manager" && er.can_approve_duty_manager_step)
     );
   }
-  function swapIsActionable(swap: SwapRequest): boolean {
-    const reqGroups = groupByKind(swap.requester_manager_approvals);
-    if (canActCommander(reqGroups.commander) || canActDutyManager(reqGroups.duty_manager)) return true;
-    const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
-    return liveCandidates.some(candidate => {
-      const covGroups = groupByKind(candidate.manager_approvals);
-      return canActCommander(covGroups.commander) || canActDutyManager(covGroups.duty_manager);
-    });
-  }
   const erActionable = erItems.filter(exemptionIsActionable);
   const erWaiting = erItems.filter(er => !exemptionIsActionable(er));
   const fuActionable = fuItems.filter(i => i.can_approve);
   const fuWaiting = fuItems.filter(i => !i.can_approve);
-  const swapsActionable = swapItems.filter(swapIsActionable);
-  const swapsWaiting = swapItems.filter(s => !swapIsActionable(s));
+  const swapsActionable = swapItems.filter((s) => isSwapActionable(s, { id: user?.id ?? "", isAdmin }));
+  const swapsWaiting = swapItems.filter((s) => !isSwapActionable(s, { id: user?.id ?? "", isAdmin }));
   const waitingCount = erWaiting.length + fuWaiting.length + swapsWaiting.length;
 
   const swapConfigQuery = useQuery({

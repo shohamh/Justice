@@ -40,6 +40,7 @@ vi.mock("../api/soldiers", () => ({
 }));
 vi.mock("../api/swaps", () => ({
   getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
+  listPendingSwaps: vi.fn(() => Promise.resolve([])),
 }));
 const mockGetIneligibleSoldierCount = vi.fn();
 vi.mock("../api/ineligibleSoldiers", () => ({

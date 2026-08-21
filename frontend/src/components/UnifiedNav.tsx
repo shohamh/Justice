@@ -11,13 +11,14 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
-import { getIncomingSwapCount } from "../api/swaps";
+import { getIncomingSwapCount, listPendingSwaps, SwapRequest } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
 import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
 import { queryKeys } from "../queryKeys";
 import { listJobs } from "../api/algorithm";
 import { computeRunBadgeCounts, RunBadgeCounts, RunBadgeJob } from "../utils/algorithmRunBadges";
+import { countActionableSwaps } from "../utils/swapApprovals";
 import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
 import NavSheet, { BadgeColor } from "./NavSheet";
 
@@ -102,16 +103,19 @@ export default function UnifiedNav() {
   useEffect(() => {
     if (!canApprove) return;
     void (async () => {
-      const [c, e, f, enroll, hk] = await Promise.all([
+      const [c, e, f, enroll, hk, swaps] = await Promise.all([
         getPendingCount().catch(() => 0),
         getPendingExemptionCount().catch(() => 0),
         getPendingFieldUpdateCount().catch(() => 0),
         listPendingEnrollments().then((r) => r.length).catch(() => 0),
         getPendingHakpazaCount().catch(() => 0),
+        listPendingSwaps().catch(() => [] as SwapRequest[]),
       ]);
-      setPendingCount(c + e + f + enroll + hk);
+      const isAdmin = user?.role === "admin";
+      const swapCount = user ? countActionableSwaps(swaps, { id: user.id, isAdmin }) : 0;
+      setPendingCount(c + e + f + enroll + hk + swapCount);
     })();
-  }, [canApprove, location.pathname]);
+  }, [canApprove, location.pathname, user]);
 
   useEffect(() => {
     void (async () => {
