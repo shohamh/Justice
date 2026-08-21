@@ -7,10 +7,22 @@ import * as rangesApi from "../api/ranges";
 import * as rangeLocationsApi from "../api/rangeLocations";
 import * as ineligibleSoldiersApi from "../api/ineligibleSoldiers";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
+import he from "../i18n/he.json";
 
 vi.mock("../api/ranges");
 vi.mock("../api/rangeLocations");
 vi.mock("../api/ineligibleSoldiers");
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      const value = key.split(".").reduce<unknown>((current, part) => (
+        current && typeof current === "object" ? (current as Record<string, unknown>)[part] : undefined
+      ), he);
+      if (typeof value !== "string") return key;
+      return value.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(options?.[name] ?? `{{${name}}}`));
+    },
+  }),
+}));
 vi.mock("../hooks/useLevelTypes", () => ({
   useLevelTypes: () => ({ levelTypes: [], loading: false, refresh: vi.fn() }),
 }));

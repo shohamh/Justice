@@ -82,7 +82,7 @@ export default function RangesPage() {
       setSelectedIds(new Set());
       await invalidate();
     } catch {
-      setBulkError("מחיקת המטווחים נכשלה");
+      setBulkError(t("ranges.errors.bulk_delete"));
     } finally {
       setBulkBusy(false);
       setBulkDeleteConfirmOpen(false);
@@ -98,7 +98,7 @@ export default function RangesPage() {
       setSelectedIds(new Set());
       await invalidate();
     } catch {
-      setBulkError("ביטול המטווחים נכשל");
+      setBulkError(t("ranges.errors.bulk_cancel"));
     } finally {
       setBulkBusy(false);
     }
@@ -112,7 +112,7 @@ export default function RangesPage() {
       setSelectedIds(new Set());
       await invalidate();
     } catch {
-      setBulkError("ניקוי השיבוצים נכשל");
+      setBulkError(t("ranges.errors.bulk_clear"));
     } finally {
       setBulkBusy(false);
       setBulkClearConfirmOpen(false);
@@ -130,7 +130,7 @@ export default function RangesPage() {
   async function attendance() { await invalidate(selected ?? undefined); }
 
   return <Layout><section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="ranges-page">
-    <div className="flex flex-wrap justify-between items-center gap-2"><h1 className="text-xl font-semibold">מטווחים</h1><div className="flex items-center gap-3">{manage && <><Link to="/planning/export" className="text-indigo-600 hover:underline text-sm">ייצוא</Link><Link to="/import" className="text-indigo-600 hover:underline text-sm">ייבוא</Link></>}{!showIneligible && manage && <button type="button" data-testid="create-event-button" onClick={() => setFormEvent(null)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">מטווח חדש</button>}</div></div>
+    <div className="flex flex-wrap justify-between items-center gap-2"><h1 className="text-xl font-semibold">{t("ranges.page_title")}</h1><div className="flex items-center gap-3">{manage && <><Link to="/planning/export" className="text-indigo-600 hover:underline text-sm">{t("ranges.export_link")}</Link><Link to="/import" className="text-indigo-600 hover:underline text-sm">{t("ranges.import_link")}</Link></>}{!showIneligible && manage && <button type="button" data-testid="create-event-button" onClick={() => setFormEvent(null)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">{t("ranges.create_button")}</button>}</div></div>
      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700" role="tablist" aria-label={t("range_qualification.tablistLabel")}>
        <button type="button" role="tab" aria-selected={!showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete("tab"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${!showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>{t("range_qualification.tabs.schedule")}</button>
        <button type="button" role="tab" aria-selected={showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set("tab", "ineligible"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>{t("range_qualification.tabs.qualification")}</button>
@@ -139,44 +139,44 @@ export default function RangesPage() {
     <div className={showIneligible ? "hidden" : undefined}>
     {manage && selectedIds.size > 0 && <div data-testid="range-bulk-action-bar" className="flex flex-col gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 dark:border-indigo-800 dark:bg-indigo-950" dir="rtl">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{selectedIds.size} נבחרו</span>
-        <button type="button" data-testid="bulk-clear-button" disabled={bulkBusy} onClick={() => setBulkClearConfirmOpen(true)} className="rounded bg-orange-500 px-3 py-1 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-40">נקה שיבוצים</button>
-        <button type="button" data-testid="bulk-cancel-button" disabled={bulkBusy || plannedSelectedEvents.length === 0} onClick={() => setBulkCancelOpen(true)} className="rounded bg-amber-500 px-3 py-1 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-40">{`בטל מטווחים${plannedSelectedEvents.length < selectedEvents.length ? ` (${plannedSelectedEvents.length})` : ""}`}</button>
-        <button type="button" data-testid="bulk-delete-button" disabled={bulkBusy} onClick={() => { if (deletableCount === 0) { setBulkError("כל המטווחים הנבחרים מכילים שיבוצים ולא ניתן למחוק אותם."); return; } setBulkDeleteConfirmOpen(true); }} className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40">מחק מטווחים</button>
+        <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{t("ranges.bulk_selected_count", { count: selectedIds.size })}</span>
+        <button type="button" data-testid="bulk-clear-button" disabled={bulkBusy} onClick={() => setBulkClearConfirmOpen(true)} className="rounded bg-orange-500 px-3 py-1 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-40">{t("ranges.bulk_clear_button")}</button>
+        <button type="button" data-testid="bulk-cancel-button" disabled={bulkBusy || plannedSelectedEvents.length === 0} onClick={() => setBulkCancelOpen(true)} className="rounded bg-amber-500 px-3 py-1 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-40">{t("ranges.bulk_cancel_button", { suffix: plannedSelectedEvents.length < selectedEvents.length ? ` (${plannedSelectedEvents.length})` : "" })}</button>
+        <button type="button" data-testid="bulk-delete-button" disabled={bulkBusy} onClick={() => { if (deletableCount === 0) { setBulkError(t("ranges.bulk_delete_no_deletable")); return; } setBulkDeleteConfirmOpen(true); }} className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40">{t("ranges.bulk_delete_button")}</button>
       </div>
       {bulkError && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{bulkError}</p>}
     </div>}
-    <RangePlanningTable rows={rows} loading={ranges.isLoading} error={ranges.isError ? "טעינת המטווחים נכשלה" : undefined} selectedIds={manage ? selectedIds : undefined} onToggleSelect={manage ? toggleSelected : undefined} onRowClick={e => { setSelected(e.id); setEditAssignments(null); }} rowActions={e =><div className="flex gap-1 items-center"><button type="button" data-testid={`view-assignments-${e.id}`} onClick={async () => { const detail = await getRangeEvent(e.id); setEditAssignments(detail); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600">📋 שיבוצים</button>{manage && e.status === "planned" && <><button type="button" data-testid={`edit-range-${e.id}`} onClick={async () => { const detail = await getRangeEvent(e.id); setFormEvent(detail); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800">✏️ עריכה</button><button type="button" disabled={count(e, false) > 0 || count(e, true) > 0} data-testid={`delete-range-${e.id}`} onClick={() => setDeleteConfirmId(e.id)} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40 disabled:cursor-not-allowed">🗑️ מחיקה</button><button type="button" data-testid={`cancel-range-${e.id}`} onClick={() => setCancelId(e.id)} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800">🚫 ביטול</button></>}</div>} filters={<div className="flex flex-wrap gap-x-4 gap-y-2 items-center text-sm"><label className="flex items-center gap-2">מתאריך<input aria-label="מתאריך" type="date" value={from} onChange={e => setFrom(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" /></label><label className="flex items-center gap-2">עד תאריך<input aria-label="עד תאריך" type="date" value={to} onChange={e => setTo(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" /></label><label className="flex items-center gap-2">סוג<select aria-label="סוג" value={type} onChange={e => setType(e.target.value as RangeType | "")} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><option value="">כל הסוגים</option>{Object.entries(RANGE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><label className="flex items-center gap-2">סטטוס<select aria-label="סטטוס" value={status} onChange={e => setStatus(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><option value="">כל הסטטוסים</option>{Object.entries(RANGE_EVENT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><label className="flex items-center gap-2">מילוי<select aria-label="מילוי" value={fill} onChange={e => setFill(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><option value="">כל המצבים</option><option value="open">חסר</option><option value="full">מלא</option></select></label></div>} sort={<button type="button" onClick={() => setSortAsc(v => !v)} className="text-blue-600 dark:text-blue-400 hover:underline">מיון תאריך {sortAsc ? "↑" : "↓"}</button>} />
+    <RangePlanningTable rows={rows} loading={ranges.isLoading} error={ranges.isError ? t("ranges.load_error") : undefined} selectedIds={manage ? selectedIds : undefined} onToggleSelect={manage ? toggleSelected : undefined} onRowClick={e => { setSelected(e.id); setEditAssignments(null); }} rowActions={e =><div className="flex gap-1 items-center"><button type="button" data-testid={`view-assignments-${e.id}`} onClick={async () => { const detail = await getRangeEvent(e.id); setEditAssignments(detail); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600">{t("ranges.view_assignments_button")}</button>{manage && e.status === "planned" && <><button type="button" data-testid={`edit-range-${e.id}`} onClick={async () => { const detail = await getRangeEvent(e.id); setFormEvent(detail); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800">{t("ranges.edit_button")}</button><button type="button" disabled={count(e, false) > 0 || count(e, true) > 0} data-testid={`delete-range-${e.id}`} onClick={() => setDeleteConfirmId(e.id)} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40 disabled:cursor-not-allowed">{t("ranges.delete_button")}</button><button type="button" data-testid={`cancel-range-${e.id}`} onClick={() => setCancelId(e.id)} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800">{t("ranges.cancel_button")}</button></>}</div>} filters={<div className="flex flex-wrap gap-x-4 gap-y-2 items-center text-sm"><label className="flex items-center gap-2">{t("ranges.filter_from_date")}<input aria-label={t("ranges.filter_from_date")} type="date" value={from} onChange={e => setFrom(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" /></label><label className="flex items-center gap-2">{t("ranges.filter_to_date")}<input aria-label={t("ranges.filter_to_date")} type="date" value={to} onChange={e => setTo(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" /></label><label className="flex items-center gap-2">{t("ranges.filter_type_label")}<select aria-label={t("ranges.filter_type_label")} value={type} onChange={e => setType(e.target.value as RangeType | "")} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><option value="">{t("ranges.filter_type_all")}</option>{Object.entries(RANGE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><label className="flex items-center gap-2">{t("ranges.filter_status_label")}<select aria-label={t("ranges.filter_status_label")} value={status} onChange={e => setStatus(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><option value="">{t("ranges.filter_status_all")}</option>{Object.entries(RANGE_EVENT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label><label className="flex items-center gap-2">{t("ranges.filter_fill_label")}<select aria-label={t("ranges.filter_fill_label")} value={fill} onChange={e => setFill(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"><option value="">{t("ranges.filter_fill_all")}</option><option value="open">{t("ranges.filter_fill_open")}</option><option value="full">{t("ranges.filter_fill_full")}</option></select></label></div>} sort={<button type="button" onClick={() => setSortAsc(v => !v)} className="text-blue-600 dark:text-blue-400 hover:underline">{t("ranges.sort_by_date")} {sortAsc ? "↑" : "↓"}</button>} />
     </div>
-    {!editAssignments && formEvent === undefined && !cancelId && event.data && <EventDetailModal open title={event.data.location} subtitle={`${RANGE_TYPE_LABELS[event.data.range_type] ?? event.data.range_type} · ${event.data.date}`} onClose={() => { setSelected(null); setEditAssignments(null); }} metadata={[{ label: "סטטוס", value: RANGE_EVENT_STATUS_LABELS[event.data.status] ?? event.data.status }, { label: "שעות", value: `${event.data.start_time ?? "—"}–${event.data.end_time ?? "—"}` }]}><RangeDetailContent event={event.data} canManage={manage} canEditAttendance={event.data.can_edit_attendance} userId={user?.id} soldierName={names} excusalRequests={excusal.data} onExcuse={async (id, reason) => { await excuseRangeAssignment(event.data!.id, id, reason); await invalidate(event.data!.id); await qc.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(event.data!.id) }); }} onDecide={async (id, approve) => { await decideRangeExcusal(event.data!.id, id, approve); await invalidate(event.data!.id); await qc.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(event.data!.id) }); }} onAttendance={attendance} /></EventDetailModal>}
+    {!editAssignments && formEvent === undefined && !cancelId && event.data && <EventDetailModal open title={event.data.location} subtitle={`${RANGE_TYPE_LABELS[event.data.range_type] ?? event.data.range_type} · ${event.data.date}`} onClose={() => { setSelected(null); setEditAssignments(null); }} metadata={[{ label: t("ranges.metadata_status"), value: RANGE_EVENT_STATUS_LABELS[event.data.status] ?? event.data.status }, { label: t("ranges.metadata_hours"), value: `${event.data.start_time ?? "—"}–${event.data.end_time ?? "—"}` }]}><RangeDetailContent event={event.data} canManage={manage} canEditAttendance={event.data.can_edit_attendance} userId={user?.id} soldierName={names} excusalRequests={excusal.data} onExcuse={async (id, reason) => { await excuseRangeAssignment(event.data!.id, id, reason); await invalidate(event.data!.id); await qc.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(event.data!.id) }); }} onDecide={async (id, approve) => { await decideRangeExcusal(event.data!.id, id, approve); await invalidate(event.data!.id); await qc.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(event.data!.id) }); }} onAttendance={attendance} /></EventDetailModal>}
     {editAssignments && <RangeEditAssignmentsModal open event={editAssignments} soldiers={soldiers.data ?? []} canManage={manage} onClose={() => setEditAssignments(null)} onChanged={async () => { await invalidate(editAssignments.id); }} />}
     <RangeFormModal open={formEvent !== undefined} event={formEvent} hierarchyNodeId={nodeId ?? ""} locations={rangeLocations.data ?? []} onClose={() => setFormEvent(undefined)} onSubmit={save} /><RangeCancelDialog open={!!cancelId} onClose={() => setCancelId(null)} onConfirm={async reason => { if (cancelId) { await cancelRangeEvent(cancelId, reason); await invalidate(cancelId); } }} />
     <RangeBulkCancelDialog open={bulkCancelOpen} count={plannedSelectedEvents.length} onClose={() => setBulkCancelOpen(false)} onConfirm={bulkCancel} />
     <ConfirmDialog
       open={bulkDeleteConfirmOpen}
-      title="מחיקת מטווחים"
-      message={`למחוק ${deletableCount} מטווחים לצמיתות?`}
+      title={t("ranges.confirm_bulk_delete_title")}
+      message={t("ranges.confirm_bulk_delete_message", { count: deletableCount })}
       danger
-      confirmLabel="מחק"
+      confirmLabel={t("ranges.confirm_delete_label")}
       onConfirm={() => void bulkDelete()}
       onClose={() => setBulkDeleteConfirmOpen(false)}
     />
     <ConfirmDialog
       open={bulkClearConfirmOpen}
-      title="ניקוי שיבוצים"
-      message={`לנקות שיבוצים מ-${selectedEvents.length} מטווחים?`}
-      reasonLabel="סיבת הניקוי (תחול על כל השיבוצים שינוקו)"
-      confirmLabel="נקה"
+      title={t("ranges.confirm_bulk_clear_title")}
+      message={t("ranges.confirm_bulk_clear_message", { count: selectedEvents.length })}
+      reasonLabel={t("ranges.confirm_bulk_clear_reason_label")}
+      confirmLabel={t("ranges.confirm_bulk_clear_label")}
       danger
       onConfirm={(reason) => void bulkClear(reason ?? "")}
       onClose={() => setBulkClearConfirmOpen(false)}
     />
     <ConfirmDialog
       open={!!deleteConfirmId}
-      title="מחיקת מטווח"
-      message="למחוק מטווח זה?"
+      title={t("ranges.confirm_single_delete_title")}
+      message={t("ranges.confirm_single_delete_message")}
       danger
-      confirmLabel="מחק"
+      confirmLabel={t("ranges.confirm_delete_label")}
       onConfirm={async () => {
         if (!deleteConfirmId) return;
         setSelected(current => current === deleteConfirmId ? null : current);
