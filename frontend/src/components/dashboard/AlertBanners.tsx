@@ -105,7 +105,7 @@ export default function AlertBanners({ lastMitvahimDate, lastAlalDate, settings 
         <div
           key={a.key}
           className="flex items-center justify-between bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 rounded-lg px-4 py-3 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900"
-          onClick={() => navigate("/profile")}
+          onClick={() => navigate(`/profile#${a.key === "alal" ? "last-alal-field" : "last-mitvahim-field"}`)}
           role="alert"
           data-testid={`alert-banner-${a.key}`}
         >
