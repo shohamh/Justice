@@ -248,3 +248,80 @@ Exit code: 0.
 
 - I reran the focused Task 4 suite plus the new scale/no-history-expansion test (99 total). I did not run the full backend suite.
 - The round-1 canonical-readiness concern is superseded by this fix: canonical comparison remains available only through explicit diagnostic mode, not normal reads.
+
+## Fix round 3 report
+
+### Status
+
+Implemented.
+
+### Findings addressed
+
+- For every projected effort/fairness/breakdown quarter, readiness now compares the persisted `ScoreProjectionQuarterTotal` against the sum of all persisted `SoldierQuarterScoreProjection` rows for raw days, weighted days, duty score, adjustment score, and total score.
+- Normal reads no longer overwrite missing or mismatched quarter totals from persisted row sums. Missing totals or row/total mismatches now force legacy canonical effort calculation for that read and emit diagnostics.
+- Added a regression deleting another soldier's denominator-only persisted row while leaving the quarter total; the read falls back, leaves the quarter total unchanged, and preserves the denominator.
+- Updated the previous missing-quarter-total test to the new fallback contract.
+- Preserved round-2 no-history-expansion behavior for healthy projected reads.
+
+### TDD evidence
+
+Fix-round RED command:
+
+```powershell
+python -m pytest app\services\tests\test_projected_scoring_reads.py -q
+```
+
+Fix-round RED output summary:
+
+```text
+.....F....                                                               [100%]
+FAILED app/services/tests/test_projected_scoring_reads.py::test_effort_breakdown_falls_back_when_denominator_row_missing_but_quarter_total_remains
+AssertionError: assert Decimal('0.000000') == Decimal('2.000000')
+```
+
+Focused GREEN command:
+
+```powershell
+python -m pytest app\services\tests\test_projected_scoring_reads.py -q
+```
+
+Focused GREEN output:
+
+```text
+..........                                                               [100%]
+```
+
+### Verification
+
+Final focused Task 4 regression command:
+
+```powershell
+python -m pytest app\services\tests\test_projected_scoring_reads.py app\services\tests\test_score_projection.py app\services\tests\test_score_projection_persistence.py app\services\tests\test_score_projection_freshness.py app\routes\tests\test_scoring_routes.py app\services\tests\test_scoring_dismissal.py tests\test_effort_score.py tests\unit\test_scoring_service.py tests\unit\test_fairness_components.py tests\integration\test_scoring_api.py -q
+```
+
+Final focused Task 4 regression output:
+
+```text
+........................................................................ [ 72%]
+............................                                             [100%]
+```
+
+Diff hygiene:
+
+```powershell
+git diff --check
+```
+
+Output:
+
+```text
+warning: in the working copy of 'backend/app/services/scoring.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/app/services/tests/test_projected_scoring_reads.py', LF will be replaced by CRLF the next time Git touches it
+```
+
+Exit code: 0.
+
+### Concerns
+
+- I reran the focused Task 4 suite plus the new denominator-row deletion regression (100 total). I did not run the full backend suite.
+- Missing or mismatched quarter totals now deliberately take the legacy path for that read unless a future explicit repair path proves a complete canonical partition set.

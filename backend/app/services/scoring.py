@@ -1020,11 +1020,9 @@ def _quarter_total_matches_projection_rows(
     )
 
 
-def _refresh_required_quarter_totals_from_projection_rows(
+def _required_quarter_totals_match_projection_rows(
     session: Session, *, quarter_starts: set[date]
 ) -> bool:
-    from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
-
     for quarter_start_value in sorted(quarter_starts):
         if not _projection_quarter_rows_match_persisted_metadata(
             session, quarter_start_value=quarter_start_value
@@ -1038,45 +1036,17 @@ def _refresh_required_quarter_totals_from_projection_rows(
             session, quarter_start_value=quarter_start_value
         ):
             continue
-        try:
-            expected = _quarter_total_from_projection_rows(
-                session, quarter_start_value=quarter_start_value
-            )
-            row = session.get(ScoreProjectionQuarterTotal, quarter_start_value)
-            if row is None:
-                row = ScoreProjectionQuarterTotal(
-                    quarter_start=quarter_start_value,
-                    projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
-                    raw_day_count=expected["raw_day_count"],
-                    effective_weighted_days=expected["effective_weighted_days"],
-                    duty_score=expected["duty_score"],
-                    adjustment_score=expected["adjustment_score"],
-                    total_score=expected["total_score"],
-                )
-                session.add(row)
-            else:
-                row.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
-                row.raw_day_count = expected["raw_day_count"]
-                row.effective_weighted_days = expected["effective_weighted_days"]
-                row.duty_score = expected["duty_score"]
-                row.adjustment_score = expected["adjustment_score"]
-                row.total_score = expected["total_score"]
-                row.updated_at = _score_projection_now()
-            session.flush()
-        except Exception:
-            logger.exception(
-                "score projection quarter total metadata rebuild failed during read",
-                extra={"quarter_start": str(quarter_start_value)},
-            )
-            return False
-        if not _quarter_total_matches_projection_rows(
-            session, quarter_start_value=quarter_start_value
-        ):
+        if session.get(ScoreProjectionQuarterTotal, quarter_start_value) is None:
             logger.warning(
-                "score projection read fell back because a quarter total is incomplete",
+                "score projection read fell back because a quarter total is missing",
                 extra={"quarter_start": str(quarter_start_value)},
             )
-            return False
+        else:
+            logger.warning(
+                "score projection read fell back because quarter total diverges from persisted rows",
+                extra={"quarter_start": str(quarter_start_value)},
+            )
+        return False
     return True
 
 
@@ -1220,7 +1190,7 @@ def _ensure_projection_ready(
     ):
         logger.warning("score projection read fell back because required bucket metadata is unprovable")
         return False
-    if quarter_starts and not _refresh_required_quarter_totals_from_projection_rows(
+    if quarter_starts and not _required_quarter_totals_match_projection_rows(
         session, quarter_starts=quarter_starts
     ):
         return False

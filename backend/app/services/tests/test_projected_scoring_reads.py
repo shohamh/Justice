@@ -219,8 +219,8 @@ def test_transparency_rebuilds_missing_soldier_total_before_projected_read(
     assert _canonical(projected) == _canonical(legacy)
 
 
-def test_effort_breakdown_rebuilds_denominator_only_quarter_total_from_projection_rows(
-    admin_session, monkeypatch: pytest.MonkeyPatch
+def test_effort_breakdown_falls_back_when_denominator_quarter_total_is_missing(
+    admin_session, caplog: pytest.LogCaptureFixture
 ):
     scenario, _admin = _build_projected_scenario(admin_session)
     hidden = create_soldier(
@@ -256,10 +256,9 @@ def test_effort_breakdown_rebuilds_denominator_only_quarter_total_from_projectio
         )
     )
     admin_session.flush()
-    monkeypatch.setattr(effort_score, "effective_duty_days", _fail_if_expands_duty_days)
-    _forbid_normal_projection_expansion(monkeypatch)
+    caplog.clear()
 
-    projected = compute_effort_breakdown(
+    projected_or_fallback = compute_effort_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -267,10 +266,73 @@ def test_effort_breakdown_rebuilds_denominator_only_quarter_total_from_projectio
         reset_date=scenario["reset_date"],
     )
 
-    rebuilt_total = admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1))
-    assert rebuilt_total is not None
-    assert rebuilt_total.total_score == Decimal("2.000000")
-    assert _canonical_breakdown(projected) == _canonical_breakdown(legacy)
+    assert admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1)) is None
+    assert _canonical_breakdown(projected_or_fallback) == _canonical_breakdown(legacy)
+    assert "quarter total is missing" in caplog.text
+
+
+def test_effort_breakdown_falls_back_when_denominator_row_missing_but_quarter_total_remains(
+    admin_session, caplog: pytest.LogCaptureFixture
+):
+    scenario, _admin = _build_projected_scenario(admin_session)
+    hidden = create_soldier(
+        admin_session,
+        personal_number="projected-hidden-row-missing",
+        full_name="Projected Hidden Row Missing",
+    )
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=hidden.id,
+            duty_type_id=scenario["cross_quarter"].duty_type_id,
+            duty_location_id=scenario["cross_quarter"].duty_location_id,
+            start_date=date(2026, 10, 10),
+            end_date=date(2026, 10, 12),
+            status="published",
+        )
+    )
+    admin_session.flush()
+    soldier = scenario["primary"]
+    legacy = compute_effort_breakdown(
+        admin_session,
+        soldier=soldier,
+        planning_start=scenario["planning_start"],
+        planning_end=scenario["planning_start"],
+        reset_date=scenario["reset_date"],
+    )
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+
+    q4_total_before = admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1))
+    assert q4_total_before is not None
+    assert q4_total_before.total_score == Decimal("2.000000")
+    admin_session.execute(
+        delete(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id == hidden.id,
+            SoldierQuarterScoreProjection.quarter_start == date(2026, 10, 1),
+        )
+    )
+    admin_session.flush()
+    caplog.clear()
+
+    projected_or_fallback = compute_effort_breakdown(
+        admin_session,
+        soldier=soldier,
+        planning_start=scenario["planning_start"],
+        planning_end=scenario["planning_start"],
+        reset_date=scenario["reset_date"],
+    )
+
+    q4_total_after = admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1))
+    q4 = next(
+        quarter
+        for quarter in projected_or_fallback.quarters
+        if quarter.quarter_start == date(2026, 10, 1)
+    )
+    assert q4_total_after is not None
+    assert q4_total_after.total_score == Decimal("2.000000")
+    assert q4.unit_score == Decimal("2.000000")
+    assert _canonical_breakdown(projected_or_fallback) == _canonical_breakdown(legacy)
+    assert "quarter total diverges from persisted rows" in caplog.text
 
 
 def test_transparency_falls_back_for_unprovable_divergent_projection_bucket_without_expansion(
