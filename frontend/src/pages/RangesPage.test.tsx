@@ -262,7 +262,6 @@ describe("RangesPage", () => {
         reserve_count: 1, status: "planned", assignments: [],
       },
     ]);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.mocked(rangesApi.deleteRangeEvent).mockResolvedValue(undefined);
 
     renderWithQuery(<RangesPage />);
@@ -270,6 +269,7 @@ describe("RangesPage", () => {
     const del = await screen.findByTestId("delete-range-event-empty");
     expect(del).not.toBeDisabled();
     fireEvent.click(del);
+    fireEvent.click(await screen.findByTestId("confirm-dialog-confirm"));
     await waitFor(() => expect(rangesApi.deleteRangeEvent).toHaveBeenCalledWith("event-empty"));
   });
 
@@ -635,7 +635,6 @@ describe("RangesPage assignment editor integration", () => {
   });
 
   it("bulk-deletes only the selected events with no assignments, skipping the rest", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       { id: "event-empty", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
         location: "מטווח ריק", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
@@ -650,6 +649,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(screen.getByTestId("select-range-event-empty"));
     fireEvent.click(screen.getByTestId("select-range-event-full"));
     fireEvent.click(await screen.findByTestId("bulk-delete-button"));
+    fireEvent.click(await screen.findByTestId("confirm-dialog-confirm"));
 
     await waitFor(() => expect(rangesApi.deleteRangeEvent).toHaveBeenCalledWith("event-empty"));
     expect(rangesApi.deleteRangeEvent).not.toHaveBeenCalledWith("event-full");
@@ -689,18 +689,17 @@ describe("RangesPage assignment editor integration", () => {
         location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned",
         assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null }] },
     );
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.spyOn(window, "prompt").mockReturnValue("ניקוי כללי");
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
 
     renderWithQuery(<RangesPage />);
     await screen.findByText("מטווח א");
     fireEvent.click(screen.getByTestId("select-range-event-1"));
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
+    fireEvent.change(await screen.findByLabelText("סיבת הניקוי (תחול על כל השיבוצים שינוקו)"), { target: { value: "ניקוי כללי" } });
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
 
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1", "ניקוי כללי"));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("1 שיבוצים"));
   });
 
   it("shows an error message when a bulk action fails", async () => {
@@ -711,12 +710,13 @@ describe("RangesPage assignment editor integration", () => {
     // bulkClear (Promise.all under the hood) rejects on the first failure, unlike
     // bulkDelete's Promise.allSettled which never rejects — exercise the catch path here.
     vi.mocked(rangesApi.getRangeEvent).mockRejectedValue(new Error("boom"));
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderWithQuery(<RangesPage />);
     await screen.findByText("מטווח א");
     fireEvent.click(screen.getByTestId("select-range-event-1"));
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
+    fireEvent.change(await screen.findByLabelText("סיבת הניקוי (תחול על כל השיבוצים שינוקו)"), { target: { value: "ניקוי כללי" } });
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
