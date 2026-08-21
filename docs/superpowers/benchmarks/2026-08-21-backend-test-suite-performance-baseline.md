@@ -37,3 +37,24 @@ That arithmetic confirms every non-slow collected item has exactly one explicit
 test-layer marker.
 
 This baseline is intentionally incomplete: the long measurements were stopped or timed out before later performance refactors could run. Do not compare later timings to missing pass/skip counts as though they were successful runs.
+
+## Task 2 adapter measurement
+
+Task 2 extracted container, migration, pooled-engine, and reset ownership into
+`backend/tests/support/database.py`. The representative database slice was
+measured after the extraction with a 180-second cap:
+
+| Command | Result | Wall-clock duration | Pass count |
+| --- | --- | --- | --- |
+| `pytest tests/integration/test_soldiers_api.py tests/integration/test_private_fields.py -q -n 0 --durations=30` | Exit code 0 | 37.5 seconds | 38 passed |
+
+The slowest result was the initial setup for
+`test_admin_onboards_without_password_gets_temp` (6.91 seconds). The remaining
+listed database-test setups were 0.35–0.63 seconds; the slowest calls were
+1.48 and 0.49 seconds, and the only listed teardown was 0.74 seconds.
+
+There is no matching pre-Task-2 per-phase measurement in the baseline, so a
+numeric before/after delta is unavailable. The duration report does not break
+out the reset fixture itself; it provides no evidence that a second reset
+strategy is a material contributor, so no additional reset optimization was
+started.
