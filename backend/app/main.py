@@ -128,11 +128,11 @@ def _fail_orphaned_algorithm_jobs() -> None:
 async def lifespan(app: FastAPI):
     logger.info("=== STARTUP pid=%d ===", os.getpid())
     asyncio.get_running_loop().set_exception_handler(_handle_async_exception)
+    _fail_orphaned_algorithm_jobs()
     if os.getenv("JUSTICE_TESTING") == "1":
         yield
         logger.info("=== CLEAN SHUTDOWN ===")
         return
-    _fail_orphaned_algorithm_jobs()
     email_task = asyncio.create_task(run_email_worker())
     swap_expiry_task = asyncio.create_task(run_swap_expiry_worker())
     range_reminder_task = asyncio.create_task(run_range_reminder_worker())
