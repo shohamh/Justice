@@ -86,3 +86,28 @@ slice, and collection-only layer slices; it does not contain this exact
 soldiers/private-fields command or per-phase durations. No base checkout was
 measured because this follow-up authorized one bounded representative slice,
 not a second test run against a historical checkout.
+
+## Task 5 profiling and final-matrix disposition
+
+Task 5 added an opt-in solver phase recorder. A successful focused run with
+`JUSTICE_TEST_SOLVER_PROFILE=1` reported these aggregate durations for one
+small deterministic solve:
+
+| Phase | Duration | Calls |
+| --- | ---: | ---: |
+| `batching` | 0.007201 seconds | 1 |
+| `solve_primary` | 0.004550 seconds | 1 |
+| `model_construction` | 0.001249 seconds | 2 |
+| `solve_tiebreak` | 0.001007 seconds | 1 |
+| `post_solve_swap` | 0.000046 seconds | 1 |
+
+The final broad verification commands were each assigned a 180-second maximum,
+but none was started after the user explicitly stopped the final matrix. They
+are recorded as **not run**, not as passes, failures, or timeouts. Consequently,
+the historical timeout numbers above remain the only full-suite measurements
+and no end-to-end runtime improvement is claimed.
+
+The latest available fixture-phase evidence remains Task 2's focused database
+slice: 7.93 seconds for the first setup (including container startup and
+migrations), 1.45 seconds for the slowest call, and 0.66 seconds for the slowest
+listed teardown. These are not fresh Task 5 measurements.

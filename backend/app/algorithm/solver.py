@@ -4,7 +4,9 @@ import dataclasses
 import threading
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import timedelta
 
 from ortools.sat.python.cp_model import CpModel, CpSolver, CpSolverSolutionCallback, IntVar
@@ -50,6 +52,35 @@ DEFAULT_SOLVER_SEED = 42
 # (eligible soldiers receiving 0 duties). 15s resolves this without meaningfully
 # increasing runtime on large batches that stall late anyway.
 STALL_SECONDS = 15.0
+
+_ProfileCallback = Callable[[str, float], None]
+_profile_callback: ContextVar[_ProfileCallback | None] = ContextVar(
+    "solver_profile_callback", default=None
+)
+
+
+@contextmanager
+def _capture_profile(callback: _ProfileCallback) -> Iterator[None]:
+    """Activate the internal solver timer for the current test context only."""
+    token = _profile_callback.set(callback)
+    try:
+        yield
+    finally:
+        _profile_callback.reset(token)
+
+
+@contextmanager
+def _profile_phase(name: str) -> Iterator[None]:
+    callback = _profile_callback.get()
+    if callback is None:
+        yield
+        return
+
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        callback(name, time.perf_counter() - started)
 
 
 def _watch_cancel(solver: CpSolver, event: threading.Event) -> None:
@@ -143,14 +174,38 @@ def solve(
     and this argument.
     """
     if settings.decomposition == "interleaved" and settings.batching_enabled:
-        result = _interleaved_solve(soldiers, duties, existing, settings, reserve_dist,
-                                    cancel_event=cancel_event, progress_cb=progress_cb)
+        with _profile_phase("batching"):
+            result = _interleaved_solve(
+                soldiers,
+                duties,
+                existing,
+                settings,
+                reserve_dist,
+                cancel_event=cancel_event,
+                progress_cb=progress_cb,
+            )
     elif settings.decomposition == "effort_rounds" and settings.batching_enabled:
-        result = _effort_round_solve(soldiers, duties, existing, settings, reserve_dist,
-                                     cancel_event=cancel_event, progress_cb=progress_cb)
+        with _profile_phase("batching"):
+            result = _effort_round_solve(
+                soldiers,
+                duties,
+                existing,
+                settings,
+                reserve_dist,
+                cancel_event=cancel_event,
+                progress_cb=progress_cb,
+            )
     elif settings.decomposition == "calendar" and settings.batching_enabled:
-        result = _decomposed_solve(soldiers, duties, existing, settings, reserve_dist,
-                                   cancel_event=cancel_event, progress_cb=progress_cb)
+        with _profile_phase("batching"):
+            result = _decomposed_solve(
+                soldiers,
+                duties,
+                existing,
+                settings,
+                reserve_dist,
+                cancel_event=cancel_event,
+                progress_cb=progress_cb,
+            )
     else:
         # Unknown/``"none"`` decomposition value or batching disabled → whole solve in one model.
         total_duties = len(duties)
@@ -173,7 +228,8 @@ def solve(
     if result.status in ("OPTIMAL", "FEASIBLE") and result.assignments:
         if swap_progress_cb:
             swap_progress_cb()
-        swapped = _swap_pass(soldiers, duties, existing, result.assignments, settings)
+        with _profile_phase("post_solve_swap"):
+            swapped = _swap_pass(soldiers, duties, existing, result.assignments, settings)
         result = dataclasses.replace(result, assignments=swapped)
     return result
 
@@ -726,10 +782,11 @@ def _solve_soft_coverage(
     by the caller). Two-stage lexicographic on a single model avoids stacking a
     coverage tier above the 1e11 L1 weight (which risks int64 overflow).
     """
-    model, x, terms = build_model(
-        soldiers, duties, existing, settings, reserve_dist,
-        coverage="soft", with_obj_terms=True,
-    )
+    with _profile_phase("model_construction"):
+        model, x, terms = build_model(
+            soldiers, duties, existing, settings, reserve_dist,
+            coverage="soft", with_obj_terms=True,
+        )
     covered = sum(x.values()) if x else 0
     solver = CpSolver()
     solver.parameters.max_time_in_seconds = settings.time_limit_seconds
@@ -743,7 +800,8 @@ def _solve_soft_coverage(
     # Stage 1: maximize number of covered duties. Replaces the fairness
     # objective that build_model installed.
     model.Maximize(covered)
-    st1 = _solve_with_stall_guard(solver, model, cancel_event)
+    with _profile_phase("solve_coverage"):
+        st1 = _solve_with_stall_guard(solver, model, cancel_event)
     if cancel_event is not None and cancel_event.is_set():
         return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
     if solver.StatusName(st1) not in ("OPTIMAL", "FEASIBLE"):
@@ -763,8 +821,10 @@ def _solve_soft_coverage(
     # Stage 2: pin coverage to the optimum, then optimize fairness.
     if x:
         model.Add(covered >= best)
-    build_fairness_objective(model, x, duties, settings, reserve_dist, terms)
-    st2 = _solve_with_stall_guard(solver, model, cancel_event)
+    with _profile_phase("model_construction"):
+        build_fairness_objective(model, x, duties, settings, reserve_dist, terms)
+    with _profile_phase("solve_fairness"):
+        st2 = _solve_with_stall_guard(solver, model, cancel_event)
     if cancel_event is not None and cancel_event.is_set():
         return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
     if solver.StatusName(st2) in ("OPTIMAL", "FEASIBLE"):
@@ -789,9 +849,10 @@ def _solve_with_settings(
     reserve_dist: dict[tuple[int, int], int] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> tuple[CpSolver, dict[tuple[int, int], IntVar], int]:
-    model, x, terms = build_model(
-        soldiers, duties, existing, settings, reserve_dist, with_obj_terms=True
-    )
+    with _profile_phase("model_construction"):
+        model, x, terms = build_model(
+            soldiers, duties, existing, settings, reserve_dist, with_obj_terms=True
+        )
     solver = CpSolver()
     solver.parameters.max_time_in_seconds = settings.time_limit_seconds
     # Fixed seed + single worker = deterministic results. random_seed alone is
@@ -799,7 +860,8 @@ def _solve_with_settings(
     # on CPU scheduling, not the seed. Callers may override seed via settings.seed.
     solver.parameters.random_seed = settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED
     solver.parameters.num_search_workers = settings.num_workers
-    status = _solve_with_stall_guard(solver, model, cancel_event)
+    with _profile_phase("solve_primary"):
+        status = _solve_with_stall_guard(solver, model, cancel_event)
 
     if settings.tiebreak_mode == "off" or not terms.dev_terms:
         return solver, x, status
@@ -818,15 +880,19 @@ def _solve_with_settings(
     # does) would leave Value() reflecting stage 2's failed attempt instead.
     achieved_l1 = sum(solver.Value(d) for d in terms.dev_terms)
     stage1_values = {key: solver.Value(var) for key, var in x.items()}
-    for key, var in x.items():
-        model.AddHint(var, stage1_values[key])
-    apply_tiebreak_objective(model, x, duties, settings, reserve_dist, terms, achieved_l1)
+    with _profile_phase("model_construction"):
+        for key, var in x.items():
+            model.AddHint(var, stage1_values[key])
+        apply_tiebreak_objective(
+            model, x, duties, settings, reserve_dist, terms, achieved_l1
+        )
 
     solver2 = CpSolver()
     solver2.parameters.max_time_in_seconds = settings.tiebreak_time_limit_seconds
     solver2.parameters.random_seed = solver.parameters.random_seed
     solver2.parameters.num_search_workers = settings.num_workers
-    status2 = _solve_with_stall_guard(solver2, model, cancel_event)
+    with _profile_phase("solve_tiebreak"):
+        status2 = _solve_with_stall_guard(solver2, model, cancel_event)
     if solver2.StatusName(status2) in ("OPTIMAL", "FEASIBLE"):
         return solver2, x, status2
     # Stage 2 found nothing usable within budget (or got cancelled) — fall

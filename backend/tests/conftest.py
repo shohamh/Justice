@@ -13,12 +13,14 @@ from testcontainers.postgres import PostgresContainer
 
 from tests.support import app as test_app_support
 from tests.support import database
+from tests.support import profiling
 
 _SHARED_URL_KEY = "shared_postgres_url"
 _SHARED_TEMPLATE_KEY = "shared_postgres_template"
 _SHARED_CONTAINER_ATTR = "_shared_postgres_container"
 _SHARED_URL_ATTR = "_shared_postgres_url"
 _SHARED_TEMPLATE_ATTR = "_shared_postgres_template"
+_SOLVER_PROFILES_ATTR = "_justice_solver_profiles"
 
 
 def _pure_only_selected(config: pytest.Config) -> bool:
@@ -88,6 +90,7 @@ def _shared_postgres_enabled(config: pytest.Config) -> bool:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Build one migrated template database before xdist workers start."""
+    setattr(config, _SOLVER_PROFILES_ATTR, [])
     for marker, description in (
         ("pure", "pure unit or algorithm test; no database or HTTP fixture required"),
         ("database", "database-backed test without an HTTP client"),
@@ -160,6 +163,26 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     container = getattr(config, _SHARED_CONTAINER_ATTR, None)
     if container is not None:
         container.stop()
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config: pytest.Config) -> None:
+    records = getattr(config, _SOLVER_PROFILES_ATTR, [])
+    if not records:
+        return
+
+    totals: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for _nodeid, durations, phase_counts in records:
+        for phase, duration in durations.items():
+            totals[phase] = totals.get(phase, 0.0) + duration
+        for phase, count in phase_counts.items():
+            counts[phase] = counts.get(phase, 0) + count
+
+    terminalreporter.write_sep("=", "solver phase profile")
+    for phase, duration in sorted(totals.items(), key=lambda item: item[1], reverse=True):
+        terminalreporter.write_line(
+            f"{phase}: {duration:.6f}s across {counts.get(phase, 0)} call(s)"
+        )
 
 
 _DATABASE_FIXTURES = {
@@ -415,6 +438,26 @@ def _reset_rate_limiter() -> Iterator[None]:
     across tests that share the same synthetic client IP."""
     test_app_support.reset_process_state()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _solver_profile_report(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Collect solver phase totals only for explicitly enabled test runs."""
+    if not profiling.profiling_requested():
+        yield
+        return
+
+    with profiling.capture_solver_profile() as profile:
+        yield
+
+    records = getattr(request.config, _SOLVER_PROFILES_ATTR)
+    records.append(
+        (
+            request.node.nodeid,
+            dict(profile.durations),
+            dict(profile.counts),
+        )
+    )
 
 
 @pytest.fixture(autouse=True)
