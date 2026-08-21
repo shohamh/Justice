@@ -149,3 +149,23 @@ describe("DutyHistoryPanel event-type filter", () => {
     expect(screen.queryByTestId("history-event-range_removed")).toBeNull();
   });
 });
+vi.mock('../api/exemptions', () => ({
+  approveExemptionRequestCommanderStep: vi.fn(() => Promise.resolve()),
+  approveExemptionRequestDutyManagerStep: vi.fn(() => Promise.resolve()),
+  rejectExemptionRequest: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../api/constraints', () => ({
+  approveConstraint: vi.fn(() => Promise.resolve()),
+  rejectConstraint: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../api/algorithm', () => ({
+  acceptProposalDirect: vi.fn(() => Promise.resolve()),
+  rejectProposalDirect: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../api/swaps', () => ({
+  listSwapsForAssignment: vi.fn(() => Promise.resolve([])),
+  checkCoverEligibility: vi.fn(() => Promise.resolve({ eligible: false })),
+}));
+vi.mock('../api/assignments', () => ({
+  listEffectiveDuties: vi.fn(() => Promise.resolve([])),
+}));

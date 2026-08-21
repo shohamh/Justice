@@ -207,7 +207,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
 
   const events = useMemo(() => [...shiftEvents, ...rangeCalEvents], [shiftEvents, rangeCalEvents]);
 
-  function handleDateClick(_: { dateStr: string }) {
+  function handleDateClick() {
     setSelectedShift(null);
   }
 

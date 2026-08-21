@@ -1,4 +1,6 @@
-import "@testing-library/jest-dom";
+if (typeof document !== "undefined") {
+  await import("@testing-library/jest-dom");
+}
 
 // jsdom's Blob/File implementation doesn't implement the async arrayBuffer()
 // method (unlike real browsers), which fileValidation.ts relies on to read

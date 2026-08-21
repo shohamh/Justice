@@ -1,11 +1,11 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "src") },
+    alias: { "@": path.resolve(import.meta.dirname, "src") },
   },
   optimizeDeps: {
     include: ["mermaid"],
@@ -37,21 +37,47 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     // Playwright specs live in tests/e2e and must not be collected by vitest.
     exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**"],
     passWithNoTests: true,
-    // Keep the pool single-threaded: several jsdom tests reject Axios-shaped
-    // objects that contain functions, and Vitest's worker serializer turns
-    // those otherwise-contained failures into cross-worker DataCloneErrors.
-    // A single worker keeps failures local and makes the full suite reliable.
-    poolOptions: {
-      threads: {
-        maxThreads: 1,
-        minThreads: 1,
+    pool: "threads",
+    maxWorkers: 8,
+    // Vitest 4 replaces environmentMatchGlobs with projects. Keep pure tests
+    // on Node while the remaining component tests use jsdom.
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "jsdom",
+          environment: "jsdom",
+          exclude: [
+            "**/node_modules/**",
+            "**/dist/**",
+            "tests/e2e/**",
+            "**/src/api/**/*.test.ts",
+            "**/src/utils/**/*.test.ts",
+            "**/src/auth/permissions.test.ts",
+            "**/src/searchRegistry.test.ts",
+            "**/src/i18n/he.test.ts",
+          ],
+        },
       },
-    },
-  } as unknown as Record<string, unknown>,
+      {
+        extends: true,
+        test: {
+          name: "node",
+          environment: "node",
+          include: [
+            "**/src/api/**/*.test.ts",
+            "**/src/utils/**/*.test.ts",
+            "**/src/auth/permissions.test.ts",
+            "**/src/searchRegistry.test.ts",
+            "**/src/i18n/he.test.ts",
+          ],
+        },
+      },
+    ],
+  },
 });

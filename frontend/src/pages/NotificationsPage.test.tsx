@@ -150,3 +150,11 @@ describe("NotificationsPage", () => {
     await waitFor(() => expect(rangesApi.decideRangeExcusal).toHaveBeenCalledWith("evt1", "req1", false));
   });
 });
+vi.mock('../api/client', () => ({
+  api: {
+    get: vi.fn(() => Promise.resolve({ data: {} })),
+    post: vi.fn(() => Promise.resolve({ data: {} })),
+    patch: vi.fn(() => Promise.resolve({ data: {} })),
+    delete: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+}));

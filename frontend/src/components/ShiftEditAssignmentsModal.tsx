@@ -192,7 +192,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
     setError(null);
     setPrimarySelected(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
     setReserveSelected(prev => {
@@ -211,7 +211,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
     setError(null);
     setReserveSelected(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }

@@ -97,7 +97,7 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
   function togglePrimary(id: string) {
     setPrimarySelected(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
     setReserveSelected(prev => {
@@ -111,7 +111,7 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
   function toggleReserve(id: string) {
     setReserveSelected(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }

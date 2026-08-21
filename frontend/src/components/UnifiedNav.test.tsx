@@ -47,6 +47,16 @@ vi.mock("../api/ineligibleSoldiers", () => ({
   getIneligibleSoldierCount: (...args: unknown[]) => mockGetIneligibleSoldierCount(...args),
 }));
 
+// UnifiedNav refreshes all badge counters on mount. Keep every network edge
+// local to this test: an unmocked Axios rejection contains transform functions
+// that Vitest cannot serialize across worker threads.
+vi.mock('../api/enrollment', () => ({
+  listPendingEnrollments: vi.fn(() => Promise.resolve([])),
+}));
+vi.mock('../api/hakpaza', () => ({
+  getPendingHakpazaCount: vi.fn(() => Promise.resolve(0)),
+}));
+
 const mockListJobs = vi.fn();
 vi.mock("../api/algorithm", () => ({
   listJobs: (...args: unknown[]) => mockListJobs(...args),

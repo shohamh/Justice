@@ -109,3 +109,6 @@ describe("SummaryCards", () => {
     expect(screen.getByTestId("summary-cards")).toBeInTheDocument();
   });
 });
+vi.mock('../api/hierarchyTransfers', () => ({
+  listPendingTransferRequests: vi.fn(() => Promise.resolve([])),
+}));

@@ -4,6 +4,11 @@ import * as XLSX from "xlsx";
 import { ExcelExportButton } from "./ExcelExportButton";
 import type { ColDef } from "./DataTable";
 
+vi.mock("xlsx", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("xlsx")>();
+  return { ...actual, writeFile: vi.fn() };
+});
+
 interface Row { name: string; score: number; }
 
 const columns: ColDef<Row>[] = [
@@ -34,7 +39,8 @@ test("is enabled when there are rows", () => {
 });
 
 test("writes a workbook with header row and exportValue fallback chain on click", () => {
-  const writeFileSpy = vi.spyOn(XLSX, "writeFile").mockImplementation(() => {});
+  const writeFileSpy = vi.mocked(XLSX.writeFile);
+  writeFileSpy.mockClear();
   render(<ExcelExportButton columns={columns} rows={rows} filename="export.xlsx" />);
   fireEvent.click(screen.getByRole("button"));
 
@@ -48,5 +54,4 @@ test("writes a workbook with header row and exportValue fallback chain on click"
   expect(aoa[1]).toEqual(["Alice", 3, "3 out of 10"]);
   expect(aoa[2]).toEqual(["Bob", 7, "7 out of 10"]);
 
-  writeFileSpy.mockRestore();
 });
