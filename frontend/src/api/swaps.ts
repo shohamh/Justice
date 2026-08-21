@@ -51,6 +51,18 @@ export interface SwapRequest {
   candidates: SwapCandidate[];
 }
 
+/** Whether a pending swap has an approval step the viewer can act on. */
+export function isSwapActionableForUser(
+  swap: SwapRequest,
+  userId: string | undefined,
+  isAdmin = false,
+): boolean {
+  if (isAdmin) return true;
+  const viewerCanAct = (approvals: SwapManagerApproval[]) => approvals.some((approval) => approval.commander_id === userId);
+  if (viewerCanAct(swap.requester_manager_approvals)) return true;
+  return swap.candidates.filter((candidate) => candidate.status === "pending" || candidate.status === "accepted").some((candidate) => viewerCanAct(candidate.manager_approvals));
+}
+
 export interface CreateSwapInput {
   duty_assignment_id: string;
   target_soldier_id?: string | null;
