@@ -382,27 +382,39 @@ def _effective_duty_day_rows(
         return []
 
     scoped_assignment_ids = {assignment.id for assignment in assignments}
-    overrides_query = select(DutyDayOverride).where(
-        DutyDayOverride.duty_assignment_id.in_(scoped_assignment_ids)
-    )
-    if date_from is not None:
-        overrides_query = overrides_query.where(DutyDayOverride.date >= date_from)
-    if date_to is not None:
-        overrides_query = overrides_query.where(DutyDayOverride.date <= date_to)
+    # psycopg rejects statements with more than 65535 bind parameters; large
+    # deployments exceed that with a single IN (...) over every assignment.
+    override_chunks: list[DutyDayOverride] = []
+    dismissal_chunks: list[DutyDismissal] = []
+    scoped_ids = sorted(scoped_assignment_ids)
+    chunk_size = 30_000
+    for offset in range(0, len(scoped_ids), chunk_size):
+        id_chunk = scoped_ids[offset : offset + chunk_size]
+        overrides_query = select(DutyDayOverride).where(
+            DutyDayOverride.duty_assignment_id.in_(id_chunk)
+        )
+        if date_from is not None:
+            overrides_query = overrides_query.where(DutyDayOverride.date >= date_from)
+        if date_to is not None:
+            overrides_query = overrides_query.where(DutyDayOverride.date <= date_to)
+        override_chunks.extend(session.execute(overrides_query).scalars().all())
+
+        dismissals_query = select(DutyDismissal).where(
+            DutyDismissal.duty_assignment_id.in_(id_chunk)
+        )
+        if date_from is not None:
+            dismissals_query = dismissals_query.where(DutyDismissal.dismissed_to >= date_from)
+        if date_to is not None:
+            dismissals_query = dismissals_query.where(DutyDismissal.dismissed_from <= date_to)
+        dismissal_chunks.extend(session.execute(dismissals_query).scalars().all())
+
     overrides = {
         (override.duty_assignment_id, override.date): override
-        for override in session.execute(overrides_query).scalars().all()
+        for override in override_chunks
     }
 
-    dismissals_query = select(DutyDismissal).where(
-        DutyDismissal.duty_assignment_id.in_(scoped_assignment_ids)
-    )
-    if date_from is not None:
-        dismissals_query = dismissals_query.where(DutyDismissal.dismissed_to >= date_from)
-    if date_to is not None:
-        dismissals_query = dismissals_query.where(DutyDismissal.dismissed_from <= date_to)
     dismissals_by_assignment: dict[uuid.UUID, list[DutyDismissal]] = {}
-    for dismissal in session.execute(dismissals_query).scalars().all():
+    for dismissal in dismissal_chunks:
         dismissals_by_assignment.setdefault(dismissal.duty_assignment_id, []).append(dismissal)
 
     rows: list[dict[str, Any]] = []
@@ -1965,10 +1977,11 @@ def fairness_components(session: Session, *, viewer: Soldier | None = None) -> d
             select(DutyType).where(DutyType.id.in_(active_type_ids))
         ).scalars().all()
     }
-    inputs = load_soldier_inputs(session, as_of=date.today())
+    from app.services.algorithm_bridge import exempted_duty_type_ids_by_soldier
+
+    exempt_map = exempted_duty_type_ids_by_soldier(session, as_of=date.today())
     eligible_types = {
-        si.id: (active_type_ids - set(si.exempted_duty_type_ids))
-        for si in inputs
-        if si.id in visible_ids
+        soldier_id: (active_type_ids - exempt_map.get(soldier_id, set()))
+        for soldier_id in visible_ids
     }
     return _build_fairness_components(eligible_types, type_names, effort_by_id, name_by_id, soldier_eligible_types=eligible_types)
