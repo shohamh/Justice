@@ -16,66 +16,43 @@ via `upgrade()`. This file proves the migration now touches all 10 rows
 (officer-only included), and that a קבע officer becomes eligible for one of
 the previously-skipped duty types as a direct result.
 
-Uses the same throwaway-container pattern as
-test_migration_4a4997526f58_backfill.py: the shared session-scoped container
-in conftest.py is already migrated straight to head, so there's no way to
-seed pre-migration rows against it.
+Uses the shared migration-template harness in tests/support/database.py: a
+process-cached database is migrated exactly to the down_revision, and each
+test runs against a cheap clone of it (the shared session-scoped conftest
+container is already migrated straight to head, so pre-migration rows cannot
+be seeded against it).
 """
-import os
 import uuid
 from contextlib import contextmanager
 from datetime import date, timedelta
+from pathlib import Path
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine.url import make_url
-from testcontainers.postgres import PostgresContainer
+import pytest
+from sqlalchemy import text
+
+from tests.support import database as db_support
 
 DOWN_REVISION = "63cff804e3e4"
 REVISION = "6b45caf468c2"
 
+pytestmark = pytest.mark.slow
+
+_TEMPLATE = None
+
 
 @contextmanager
 def _db_at_down_revision():
-    from app.settings import get_settings
-
-    saved_database_url = os.environ.get("DATABASE_URL")
-    saved_db_admin_url = os.environ.get("DB_ADMIN_URL")
-
-    with PostgresContainer(
-        "postgres:16-alpine", username="db_admin", password="db_admin_pw", dbname="justice"
-    ).with_command(
-        "postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off"
-    ) as pg:
-        url = make_url(pg.get_connection_url()).set(drivername="postgresql+psycopg")
-        db_url = url.render_as_string(hide_password=False)
-
-        try:
-            os.environ["DATABASE_URL"] = db_url
-            os.environ["DB_ADMIN_URL"] = db_url
-            get_settings.cache_clear()
-
-            from alembic import command
-            from alembic.config import Config
-
-            cfg = Config("alembic.ini")
-            cfg.set_main_option("script_location", "alembic")
-            command.upgrade(cfg, DOWN_REVISION)
-
-            engine = create_engine(db_url, future=True)
-            try:
-                yield engine, (lambda: command.upgrade(cfg, REVISION))
-            finally:
-                engine.dispose()
-        finally:
-            if saved_database_url is None:
-                os.environ.pop("DATABASE_URL", None)
-            else:
-                os.environ["DATABASE_URL"] = saved_database_url
-            if saved_db_admin_url is None:
-                os.environ.pop("DB_ADMIN_URL", None)
-            else:
-                os.environ["DB_ADMIN_URL"] = saved_db_admin_url
-            get_settings.cache_clear()
+    """Fresh clone of the cached template migrated to DOWN_REVISION, plus a
+    callable that steps it one more revision (onto REVISION)."""
+    global _TEMPLATE
+    if _TEMPLATE is None:
+        _TEMPLATE = db_support.get_migrated_template(
+            DOWN_REVISION, Path(__file__).resolve().parents[2]
+        )
+    with db_support.cloned_migration_database(
+        _TEMPLATE, upgrade_to_revision=REVISION, rootpath=Path(__file__).resolve().parents[2]
+    ) as (engine, run_migration):
+        yield engine, run_migration
 
 
 def _insert_duty_type(conn, *, name, requirements_json):

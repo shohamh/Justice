@@ -1,117 +1,144 @@
 # tests/conftest.py
-import logging
+import ast
 import os
-import re
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Literal, cast
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine.url import make_url
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
+
+from tests.support import app as test_app_support
+from tests.support import database, profiling
 
 _SHARED_URL_KEY = "shared_postgres_url"
 _SHARED_TEMPLATE_KEY = "shared_postgres_template"
 _SHARED_CONTAINER_ATTR = "_shared_postgres_container"
 _SHARED_URL_ATTR = "_shared_postgres_url"
 _SHARED_TEMPLATE_ATTR = "_shared_postgres_template"
+_SOLVER_PROFILES_ATTR = "_justice_solver_profiles"
+_SOLVER_PROFILE_ENABLED_ATTR = "_justice_solver_profile_enabled"
+_SOLVER_PROFILE_WARNING_ATTR = "_justice_solver_profile_warning"
+
+TestLayer = Literal["pure", "database", "http"]
+_TEST_LAYERS: tuple[TestLayer, ...] = ("pure", "database", "http")
+_EXPLICIT_LAYER_MARKER = "test_layer"
 
 
-def _new_postgres_container() -> PostgresContainer:
-    return PostgresContainer(
-        "postgres:16-alpine",
-        username="db_admin",
-        password="db_admin_pw",
-        dbname="justice",
-    ).with_command("postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off")
+def _pure_only_selected(config: pytest.Config) -> bool:
+    """Return whether the marker expression can select only ``pure`` tests."""
+    markexpr = getattr(config.option, "markexpr", "").strip()
+    if not markexpr:
+        return False
 
+    try:
+        expression = ast.parse(markexpr, mode="eval").body
+    except SyntaxError:
+        return False
 
-def _render_psycopg_url(url: str) -> str:
-    return make_url(url).set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
+    known_safe_markers = {"pure", "slow", *_AREA_MARKERS.values()}
+    requires_pure = False
+
+    def is_safe_conjunction(node: ast.expr, *, negated: bool = False) -> bool:
+        nonlocal requires_pure
+
+        if isinstance(node, ast.Name):
+            if node.id not in known_safe_markers or node.id in {"database", "http"}:
+                return False
+            if node.id == "pure":
+                if negated:
+                    return False
+                requires_pure = True
+            return True
+
+        if isinstance(node, ast.BoolOp):
+            if negated or not isinstance(node.op, ast.And):
+                return False
+            return all(is_safe_conjunction(value) for value in node.values)
+
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            if negated or not isinstance(node.operand, ast.Name):
+                return False
+            return is_safe_conjunction(node.operand, negated=True)
+
+        return False
+
+    return is_safe_conjunction(expression) and requires_pure
 
 
 def _shared_postgres_enabled(config: pytest.Config) -> bool:
-    """Use the controller-owned database only for a complete parallel suite."""
+    """Use one migrated template for pytest's default full parallel suite.
+
+    Pytest expands configured ``testpaths`` into ``config.args`` even when the
+    user invoked only ``pytest -q``. Compare the parsed positional selectors to
+    ``invocation_params.args`` so configured testpaths do not look explicit.
+
+    Explicit file/path runs stay isolated: they are intentionally useful for
+    focused debugging and should not pay for controller-side template cloning.
+    """
     if getattr(config, "workerinput", None):
         return False
     if not getattr(config.option, "numprocesses", 0):
         return False
 
-    suite_roots = {
-        (Path(config.rootpath) / "tests").resolve(),
-        (Path(config.rootpath) / "app" / "services" / "tests").resolve(),
+    # A marker expression that necessarily includes ``pure`` cannot request
+    # database-backed fixtures, even when an explicit pure test path is given.
+    if _pure_only_selected(config):
+        return False
+
+    invocation_args = {
+        os.fspath(argument) for argument in config.invocation_params.args
     }
-    selected_paths = [Path(arg).resolve() for arg in config.args]
-    # `pytest -q` is the documented full-suite command and leaves config.args
-    # empty. Treat it the same as explicitly selecting both configured test
-    # roots so each xdist worker gets a database cloned from one migrated
-    # template instead of starting its own Postgres container.
-    return not selected_paths or set(selected_paths) == suite_roots or (
-        len(selected_paths) == 1 and selected_paths[0] in suite_roots
+    parsed_selectors = getattr(config.option, "file_or_dir", None)
+    if parsed_selectors is None:
+        # ``file_or_dir`` is present on real pytest configs. Falling back to
+        # ``config.args`` keeps the helper usable with narrow config adapters.
+        parsed_selectors = config.args
+
+    explicitly_selected = any(
+        os.fspath(selector) in invocation_args for selector in parsed_selectors
     )
-
-
-def _worker_database_name(workerinput: dict[str, object]) -> str:
-    raw = f"{workerinput['testrunuid']}_{workerinput['workerid']}".lower()
-    safe = re.sub(r"[^a-z0-9_]", "_", raw)
-    return f"pytest_{safe}"[:63].rstrip("_")
-
-
-def _database_url(base_url: str, database: str) -> str:
-    return make_url(base_url).set(database=database).render_as_string(hide_password=False)
-
-
-def _quoted_database_name(name: str) -> str:
-    if not re.fullmatch(r"[a-z0-9_]{1,63}", name):
-        raise ValueError(f"unsafe PostgreSQL database name: {name!r}")
-    return f'"{name}"'
-
-
-def _run_migrations(database_url: str, rootpath: Path) -> None:
-    os.environ["DATABASE_URL"] = database_url
-    os.environ["DB_ADMIN_URL"] = database_url
-
-    from app.settings import get_settings
-
-    get_settings.cache_clear()
-
-    from alembic.config import Config
-
-    from alembic import command
-
-    cfg = Config(str(rootpath / "alembic.ini"))
-    cfg.set_main_option("script_location", str(rootpath / "alembic"))
-    command.upgrade(cfg, "head")
-
-    # alembic's env.py runs in-process here and calls logging.config.fileConfig,
-    # whose disable_existing_loggers defaults to True: every logger that existed
-    # before the migration gets disabled=True, silently killing later logging in
-    # this pytest process (e.g. capture helpers and caplog assertions). Restore.
-    for _lg in logging.Logger.manager.loggerDict.values():
-        if isinstance(_lg, logging.Logger):
-            _lg.disabled = False
+    return not explicitly_selected
 
 
 def pytest_configure(config: pytest.Config) -> None:
     """Build one migrated template database before xdist workers start."""
+    # Process-wide test flag: app lifespans suppress production background
+    # workers, and hash_password memoizes argon2 seeding across tests.
+    os.environ.setdefault("JUSTICE_TESTING", "1")
+    setattr(config, _SOLVER_PROFILES_ATTR, [])
+    setattr(config, _SOLVER_PROFILE_ENABLED_ATTR, profiling.profiling_enabled(config))
+    setattr(config, _SOLVER_PROFILE_WARNING_ATTR, profiling.profiling_warning(config))
+    for marker, description in (
+        ("pure", "pure unit or algorithm test; no database or HTTP fixture required"),
+        ("database", "database-backed test without an HTTP client"),
+        ("http", "HTTP integration test using the test client"),
+        (
+            _EXPLICIT_LAYER_MARKER,
+            "test_layer(layer): override path inference for direct layer dependencies",
+        ),
+    ):
+        config.addinivalue_line("markers", f"{marker}: {description}")
+
     if not _shared_postgres_enabled(config):
         return
 
-    container = _new_postgres_container()
+    container = database.new_postgres_container()
     container.start()
-    base_url = _render_psycopg_url(container.get_connection_url())
+    base_url = database.render_psycopg_url(container.get_connection_url())
     template_name = f"pytest_template_{uuid.uuid4().hex[:16]}"
-    template_sql = _quoted_database_name(template_name)
-    server_engine = create_engine(base_url, isolation_level="AUTOCOMMIT", future=True)
+    template_sql = database.quoted_database_name(template_name)
+    server_engine = database.autocommit_engine(base_url)
 
     previous_database_url = os.environ.get("DATABASE_URL")
     previous_admin_url = os.environ.get("DB_ADMIN_URL")
     try:
         with server_engine.connect() as conn:
             conn.execute(text(f"CREATE DATABASE {template_sql} TEMPLATE template0"))
-        _run_migrations(_database_url(base_url, template_name), Path(config.rootpath))
+        database.run_migrations(database.database_url(base_url, template_name), Path(config.rootpath))
         with server_engine.connect() as conn:
             conn.execute(text(f"ALTER DATABASE {template_sql} ALLOW_CONNECTIONS false"))
     except BaseException:
@@ -142,11 +169,11 @@ def pytest_configure_node(node) -> None:
     if base_url is None:
         return
 
-    database_name = _worker_database_name(node.workerinput)
-    database_sql = _quoted_database_name(database_name)
-    template_sql = _quoted_database_name(getattr(node.config, _SHARED_TEMPLATE_ATTR))
-    maintenance_url = _database_url(base_url, "postgres")
-    server_engine = create_engine(maintenance_url, isolation_level="AUTOCOMMIT", future=True)
+    database_name = database.worker_database_name(node.workerinput)
+    database_sql = database.quoted_database_name(database_name)
+    template_sql = database.quoted_database_name(getattr(node.config, _SHARED_TEMPLATE_ATTR))
+    maintenance_url = database.database_url(base_url, "postgres")
+    server_engine = database.autocommit_engine(maintenance_url)
     try:
         with server_engine.connect() as conn:
             conn.execute(text(f"CREATE DATABASE {database_sql} TEMPLATE {template_sql}"))
@@ -154,13 +181,39 @@ def pytest_configure_node(node) -> None:
     finally:
         server_engine.dispose()
 
-    node.workerinput[_SHARED_URL_KEY] = _database_url(base_url, database_name)
+    node.workerinput[_SHARED_URL_KEY] = database.database_url(base_url, database_name)
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
     container = getattr(config, _SHARED_CONTAINER_ATTR, None)
     if container is not None:
         container.stop()
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config: pytest.Config) -> None:
+    warning = getattr(config, _SOLVER_PROFILE_WARNING_ATTR, None)
+    if warning is not None:
+        terminalreporter.write_sep("=", "solver phase profile")
+        terminalreporter.write_line(warning)
+        return
+
+    records = getattr(config, _SOLVER_PROFILES_ATTR, [])
+    if not records:
+        return
+
+    totals: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for _nodeid, durations, phase_counts in records:
+        for phase, duration in durations.items():
+            totals[phase] = totals.get(phase, 0.0) + duration
+        for phase, count in phase_counts.items():
+            counts[phase] = counts.get(phase, 0) + count
+
+    terminalreporter.write_sep("=", "solver phase profile")
+    for phase, duration in sorted(totals.items(), key=lambda item: item[1], reverse=True):
+        terminalreporter.write_line(
+            f"{phase}: {duration:.6f}s across {counts.get(phase, 0)} call(s)"
+        )
 
 
 _DATABASE_FIXTURES = {
@@ -176,6 +229,42 @@ _DATABASE_FIXTURES = {
 
 def _item_needs_database(item: pytest.Item) -> bool:
     return bool(_DATABASE_FIXTURES.intersection(item.fixturenames))
+
+
+_HTTP_FIXTURES = {"client"}
+_PURE_TEST_PATH_PREFIXES = ("app/algorithm/tests/", "tests/unit/")
+
+
+def _explicit_item_layer(item: pytest.Item) -> TestLayer | None:
+    """Read an intentional layer override from a collected test item."""
+    get_closest_marker = getattr(item, "get_closest_marker", None)
+    if get_closest_marker is None:
+        return None
+
+    marker = get_closest_marker(_EXPLICIT_LAYER_MARKER)
+    if marker is None:
+        return None
+    if len(marker.args) != 1 or marker.kwargs or marker.args[0] not in _TEST_LAYERS:
+        raise pytest.UsageError(
+            "@pytest.mark.test_layer requires exactly one of: pure, database, http"
+        )
+    return cast(TestLayer, marker.args[0])
+
+
+def item_layer(item: pytest.Item) -> TestLayer:
+    """Classify a collected test by its fixture requirements and test location."""
+    explicit_layer = _explicit_item_layer(item)
+    if explicit_layer is not None:
+        return explicit_layer
+    if _HTTP_FIXTURES.intersection(item.fixturenames):
+        return "http"
+    if _item_needs_database(item):
+        return "database"
+
+    test_path = item.nodeid.split("::", 1)[0].replace("\\", "/")
+    if test_path.startswith(_PURE_TEST_PATH_PREFIXES):
+        return "pure"
+    return "database"
 
 
 # Test file stem -> system-area marker. Applied automatically in
@@ -289,7 +378,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--slow",
         action="store_true",
         default=False,
-        help="also run @pytest.mark.slow large-scale CP-SAT tests (~11 min); "
+        help="also run @pytest.mark.slow scale and statistical CP-SAT tests; "
         "excluded by default so a plain `pytest` run stays fast",
     )
 
@@ -304,63 +393,17 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             items[:] = keep
 
     for item in items:
+        item.add_marker(getattr(pytest.mark, item_layer(item)))
         stem = item.nodeid.split("::", 1)[0].rsplit("/", 1)[-1].removesuffix(".py")
         area = _AREA_MARKERS.get(stem)
         if area is not None:
             item.add_marker(getattr(pytest.mark, area))
 
 
-# All data tables in dependency order (referenced-by-FK tables first so CASCADE handles the rest)
-_ALL_DATA_TABLES = [
-    "audit_log",
-    "bug_reports",
-    "bug_report_comments",
-    "bug_report_comment_attachments",
-    "duty_day_overrides",
-    "duty_dismissals",
-    "score_adjustments",
-    "duty_assignments",
-    "swap_requests",
-    "personal_constraints",
-    "exemption_request_files",
-    "exemption_requests",
-    "soldier_exemptions",
-    "exemption_duty_type_map",
-    "forced_callups",
-    "algorithm_jobs",
-    "duty_shifts",
-    "shift_templates",
-    "range_events",
-    "range_excusal_requests",
-    "range_assignments",
-    "soldier_range_qualifications",
-    "commander_notification_scopes",
-    "commander_notification_depth",
-    "duty_manager_scope",
-    "email_outbox",
-    "notification_preferences",
-    "telegram_outbox",
-    "telegram_action_tokens",
-    "telegram_links",
-    "password_reset_tokens",
-    "email_verification_tokens",
-    "registration_invite_codes",
-    "soldier_enrollment_requests",
-    "rank_advancement_intervals",
-    "exemption_types",
-    "duty_types",
-    "duty_locations",
-    "system_settings",
-    "soldiers",
-    "hierarchy_level_types",
-    "hierarchy_nodes",
-]
-
-
 @pytest.fixture(scope="session")
 def pg_container() -> Iterator[PostgresContainer]:
     # Focused and single-process runs retain an independent throwaway database.
-    with _new_postgres_container() as pg:
+    with database.new_postgres_container() as pg:
         yield pg
 
 
@@ -374,7 +417,20 @@ def db_admin_url(request: pytest.FixtureRequest) -> Iterator[str]:
         return
 
     pg = request.getfixturevalue("pg_container")
-    yield _render_psycopg_url(pg.get_connection_url())
+    yield database.render_psycopg_url(pg.get_connection_url())
+
+
+@pytest.fixture(scope="session")
+def _database_runtime(request: pytest.FixtureRequest, db_admin_url: str) -> Iterator[database.TestDatabaseRuntime]:
+    """Session-scoped engines and migration decision for this test worker."""
+    workerinput = getattr(request.config, "workerinput", {})
+    runtime = database.TestDatabaseRuntime.for_database(
+        db_admin_url,
+        Path(request.config.rootpath),
+        cloned_from_template=_SHARED_URL_KEY in workerinput,
+    )
+    yield runtime
+    runtime.dispose()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -391,9 +447,9 @@ def _apply_schema(request: pytest.FixtureRequest) -> None:
     if not any(_item_needs_database(item) for item in request.session.items):
         return
 
-    db_admin_url = request.getfixturevalue("db_admin_url")
-    os.environ["DATABASE_URL"] = db_admin_url
-    os.environ["DB_ADMIN_URL"] = db_admin_url
+    runtime = request.getfixturevalue("_database_runtime")
+    os.environ["DATABASE_URL"] = runtime.database_url
+    os.environ["DB_ADMIN_URL"] = runtime.database_url
     os.environ["JWT_SECRET"] = "test-secret-32-bytes-of-padding-_-x"
     os.environ["LOGIN_RATE_LIMIT"] = "10000/minute"
 
@@ -405,52 +461,24 @@ def _apply_schema(request: pytest.FixtureRequest) -> None:
 
     reset_engine()
 
-    workerinput = getattr(request.config, "workerinput", {})
-    if _SHARED_URL_KEY not in workerinput:
-        _run_migrations(db_admin_url, Path(request.config.rootpath))
-
-
-_SYSTEM_SETTINGS_DEFAULTS = [
-    ("auth.session_minutes", "15"),
-    ("auth.refresh_days", "30"),
-    ("auth.login_rate_limit_per_5m", "5"),
-    ("eligibility.mitvahim_months", "6"),
-    ("eligibility.alal_months", "3"),
-    ("mitvachim.excusal_approve_min_commander_level", '"מדור"'),
-]
-
-_LEVEL_TYPE_DEFAULTS = [
-    ("corps", "אגף", 1),
-    ("division", "מערך", 2),
-    ("unit", "יחידה", 3),
-    ("department", "מרכז", 4),
-    ("branch", "ענף", 5),
-    ("group", "מדור", 6),
-    ("team", "צוות", 7),
-]
-
+    runtime.migrate_schema()
 
 @pytest.fixture(scope="session")
-def admin_engine(db_admin_url: str) -> Iterator["Engine"]:  # noqa: F821
+def admin_engine(_database_runtime: database.TestDatabaseRuntime) -> Iterator["Engine"]:  # noqa: F821
     """Superuser engine, shared for the whole session.
 
     Session-scoped so the connection pool is created once per worker instead of
     rebuilt for every test (the old function-scoped engine + the per-test engine
     in _truncate_tables were the dominant fixture overhead)."""
-    engine = create_engine(db_admin_url, future=True)
-    yield engine
-    engine.dispose()
+    yield _database_runtime.admin_engine
 
 
 @pytest.fixture(scope="session")
-def app_engine(db_admin_url: str) -> Iterator["Engine"]:  # noqa: F821
+def app_engine(_database_runtime: database.TestDatabaseRuntime) -> Iterator["Engine"]:  # noqa: F821
     """Engine using the unprivileged 'app' role — exposes RBAC errors at the DB layer.
 
     Session-scoped for the same pool-reuse reason as admin_engine."""
-    app_url = make_url(db_admin_url).set(username="app", password="app_pw")
-    engine = create_engine(app_url.render_as_string(hide_password=False), future=True)
-    yield engine
-    engine.dispose()
+    yield _database_runtime.app_engine
 
 
 @pytest.fixture(autouse=True)
@@ -458,10 +486,28 @@ def _reset_rate_limiter() -> Iterator[None]:
     """Reset the in-memory rate-limiter storage before each test so that
     rate-limited endpoints (e.g. algorithm job creation) don't bleed state
     across tests that share the same synthetic client IP."""
-    from app.rate_limit import limiter
-
-    limiter._storage.reset()
+    test_app_support.reset_process_state()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _solver_profile_report(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Collect solver phase totals only for explicitly enabled test runs."""
+    if not getattr(request.config, _SOLVER_PROFILE_ENABLED_ATTR, False):
+        yield
+        return
+
+    with profiling.capture_solver_profile() as profile:
+        yield
+
+    records = getattr(request.config, _SOLVER_PROFILES_ATTR)
+    records.append(
+        (
+            request.node.nodeid,
+            dict(profile.durations),
+            dict(profile.counts),
+        )
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -470,34 +516,14 @@ def _truncate_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     never collide across test functions, even when they use the same hardcoded values.
     Re-seeds system_settings defaults (set by migrations) after truncation.
 
-    Reuses the session-scoped admin_engine (one pooled connection) rather than
-    building and disposing a fresh engine on every test."""
+    Reuses the session-scoped adapter runtime (and its pooled admin engine)
+    rather than building and disposing a fresh engine on every test."""
     if not _item_needs_database(request.node):
         yield
         return
 
-    admin_engine = request.getfixturevalue("admin_engine")
-    table_list = ", ".join(_ALL_DATA_TABLES)
-    with admin_engine.begin() as conn:
-        conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
-        # Re-apply migration-seeded defaults for system_settings.
-        # Use string formatting (not bind params) to avoid :param vs ::cast ambiguity.
-        rows = ", ".join(f"('{k}', '{v}'::jsonb)" for k, v in _SYSTEM_SETTINGS_DEFAULTS)
-        conn.execute(
-            text(
-                f"INSERT INTO system_settings (key, value) VALUES {rows}"
-                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
-            )
-        )
-        level_type_rows = ", ".join(
-            f"(gen_random_uuid(), '{key}', '{label}', {rank})"
-            for key, label, rank in _LEVEL_TYPE_DEFAULTS
-        )
-        conn.execute(
-            text(
-                f"INSERT INTO hierarchy_level_types (id, key, label, rank) VALUES {level_type_rows}"
-            )
-        )
+    runtime = request.getfixturevalue("_database_runtime")
+    runtime.reset()
     yield
 
 
@@ -517,10 +543,5 @@ def app_session(app_engine) -> Iterator[Session]:
 
 @pytest.fixture()
 def client() -> Iterator["TestClient"]:  # noqa: F821
-    from fastapi.testclient import TestClient
-
-    from app.main import create_app
-
-    app = create_app()
-    with TestClient(app) as c:
+    with test_app_support.test_client() as c:
         yield c

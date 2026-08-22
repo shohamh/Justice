@@ -215,6 +215,7 @@ def _scenario_spreads(case: tuple[int, int, int]) -> tuple[int, int]:
     return spreads[0], spreads[1]
 
 
+@pytest.mark.slow
 def test_range_mode_improves_average_spread_across_scenarios():
     """'range' improves average spread over the same randomised scenarios.
 

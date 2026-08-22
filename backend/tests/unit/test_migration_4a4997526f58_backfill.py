@@ -1,13 +1,13 @@
 """Backfill tests for migration 4a4997526f58 (unify swap requests with candidates).
 
-Runs the migration's backfill logic against a throwaway Postgres container of
-its own, independent of the shared session-scoped container in conftest.py:
-that container is already migrated straight to head before any test runs, so
-there's no way to seed pre-migration rows against it. These tests instead
-upgrade a fresh container to the migration's own down_revision, seed rows
-in the OLD two-party swap_requests schema, upgrade one more step to the
-migration under test, and assert on the resulting swap_requests /
-swap_candidates / swap_manager_approvals rows.
+Runs the migration's backfill logic against a clone of the shared
+migration-template database (tests/support/database.py), independent of the
+session-scoped conftest container: that container is already migrated straight
+to head before any test runs, so there's no way to seed pre-migration rows
+against it. These tests run against a fresh clone migrated to the migration's
+own down_revision, seed rows in the OLD two-party swap_requests schema,
+upgrade one more step to the migration under test, and assert on the resulting
+swap_requests / swap_candidates / swap_manager_approvals rows.
 
 Covered:
 
@@ -24,73 +24,43 @@ Covered:
   the backfill inserted two SwapCandidate rows for them and blew up on
   `uq_swap_candidate_request_soldier` mid-`alembic upgrade`.
 """
-import os
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine.url import make_url
-from testcontainers.postgres import PostgresContainer
+import pytest
+from sqlalchemy import text
+
+from tests.support import database as db_support
 
 DOWN_REVISION = "990fbafee861"
 REVISION = "4a4997526f58"
 
+pytestmark = pytest.mark.slow
+
+_TEMPLATE = None
+
 
 @contextmanager
 def _db_at_down_revision():
-    """Throwaway Postgres upgraded to the migration's down_revision, plus a
-    callable that steps it one more revision (onto the migration under test).
+    """Fresh clone of the cached template migrated to DOWN_REVISION, plus a
+    callable that steps it one more revision (onto REVISION).
 
-    Save/restore process-global state this has to mutate: the app settings
-    singleton is lru_cache'd (app/settings.py:get_settings), and alembic/env.py
-    always resolves its DB url from it, so pointing alembic at a private
-    throwaway container -- instead of the shared session container conftest.py
-    already migrated to head -- means temporarily repointing
-    DATABASE_URL/DB_ADMIN_URL and clearing that cache. Restored in `finally` so
-    later tests in this worker process see the original (shared container)
-    settings again.
+    The shared harness temporarily repoints DATABASE_URL/DB_ADMIN_URL and
+    clears the lru_cache'd app settings singleton for the body, restoring
+    them afterwards so later tests in this worker process see the original
+    (shared container) settings again.
     """
-    from app.settings import get_settings
-
-    saved_database_url = os.environ.get("DATABASE_URL")
-    saved_db_admin_url = os.environ.get("DB_ADMIN_URL")
-
-    with PostgresContainer(
-        "postgres:16-alpine", username="db_admin", password="db_admin_pw", dbname="justice"
-    ).with_command(
-        "postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off"
-    ) as pg:
-        url = make_url(pg.get_connection_url()).set(drivername="postgresql+psycopg")
-        db_url = url.render_as_string(hide_password=False)
-
-        try:
-            os.environ["DATABASE_URL"] = db_url
-            os.environ["DB_ADMIN_URL"] = db_url
-            get_settings.cache_clear()
-
-            from alembic import command
-            from alembic.config import Config
-
-            cfg = Config("alembic.ini")
-            cfg.set_main_option("script_location", "alembic")
-            command.upgrade(cfg, DOWN_REVISION)
-
-            engine = create_engine(db_url, future=True)
-            try:
-                yield engine, (lambda: command.upgrade(cfg, REVISION))
-            finally:
-                engine.dispose()
-        finally:
-            if saved_database_url is None:
-                os.environ.pop("DATABASE_URL", None)
-            else:
-                os.environ["DATABASE_URL"] = saved_database_url
-            if saved_db_admin_url is None:
-                os.environ.pop("DB_ADMIN_URL", None)
-            else:
-                os.environ["DB_ADMIN_URL"] = saved_db_admin_url
-            get_settings.cache_clear()
+    global _TEMPLATE
+    if _TEMPLATE is None:
+        _TEMPLATE = db_support.get_migrated_template(
+            DOWN_REVISION, Path(__file__).resolve().parents[2]
+        )
+    with db_support.cloned_migration_database(
+        _TEMPLATE, upgrade_to_revision=REVISION, rootpath=Path(__file__).resolve().parents[2]
+    ) as (engine, run_migration):
+        yield engine, run_migration
 
 
 def _seed_soldier(conn, sid, name):
