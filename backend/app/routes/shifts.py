@@ -736,7 +736,26 @@ def get_shift_candidates(
 
     from app.algorithm.types import node_in_scope
 
-    soldier_inputs = load_soldier_inputs(session, as_of=shift.start_date)
+    # Cohort scope: active soldiers not already on this shift whose hierarchy
+    # path falls within the shift's eligible nodes. Later filters (duty-type
+    # exemptions, constraints) still need SoldierInputs, so they are applied
+    # after loading — but the loaded set is already force-size-independent.
+    # Mirror node_in_scope semantics exactly: None = unrestricted, a list
+    # (including empty) = path-intersection subtree check.
+    candidate_soldier_ids: set[uuid.UUID] = set()
+    if shift.eligible_node_ids is None:
+        candidate_soldier_ids = {s.id for s in soldier_map.values()}
+    else:
+        eligible_id_set = {uuid.UUID(str(nid)) for nid in shift.eligible_node_ids}
+        for soldier in soldier_map.values():
+            node = node_map.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
+            if node is not None and eligible_id_set & set(node.path_ids):
+                candidate_soldier_ids.add(soldier.id)
+    candidate_soldier_ids -= already_on_shift
+
+    soldier_inputs = load_soldier_inputs(
+        session, as_of=shift.start_date, soldier_ids=candidate_soldier_ids
+    )
 
     weapon_ineligible: dict[uuid.UUID, set[uuid.UUID]] = {}
     if required_range_type is not None:
