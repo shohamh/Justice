@@ -1158,6 +1158,7 @@ def _ensure_projection_ready(
         _dirty_or_divergent_projection_keys(session, keys=keys, quarter_starts=quarter_starts)
     )
 
+    repaired_quarters: set[date] = set()
     for soldier_id, quarter_start_value in sorted(rebuild_keys, key=lambda item: (str(item[0]), item[1])):
         try:
             rebuild_projection_bucket(
@@ -1166,12 +1167,23 @@ def _ensure_projection_ready(
             _mark_projection_key_current(
                 session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
             )
+            repaired_quarters.add(quarter_start_value)
         except Exception:
             logger.exception(
                 "score projection bucket rebuild failed during read",
                 extra={"soldier_id": str(soldier_id), "quarter_start": str(quarter_start_value)},
             )
             return False
+
+    if repaired_quarters:
+        from app.services.score_projection import _upsert_quarter_total
+
+        # Repairing a bucket can change its partition rows (e.g. dropping an
+        # adjustments-only row that no longer belongs to this quarter); the
+        # quarter total must track the repaired rows or the divergence check
+        # below fails on the repair's own write.
+        for quarter_start_value in sorted(repaired_quarters):
+            _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
 
     required: set[Any] = set(keys) | set(quarter_starts)
     if not projection_is_current(session, required):

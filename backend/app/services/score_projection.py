@@ -748,9 +748,9 @@ def _upsert_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> Soldier
 
 def _upsert_quarter_total(
     session: Session, *, quarter_start_value: date
-    ) -> ScoreProjectionQuarterTotal:
-    totals = _projection_totals_from_buckets(
-        project_all_buckets(session, quarter_starts={quarter_start_value})
+) -> ScoreProjectionQuarterTotal:
+    totals = _projection_totals_from_rows(
+        _rows_for_quarter(session, quarter_start_value=quarter_start_value)
     )
     projection = session.get(ScoreProjectionQuarterTotal, quarter_start_value)
     if projection is None:
@@ -895,6 +895,7 @@ def _repair_projection_keys(
     session: Session, *, keys: set[tuple[uuid.UUID, date]]
 ) -> set[uuid.UUID]:
     repaired_soldiers: set[uuid.UUID] = set()
+    repaired_quarters: set[date] = set()
     for soldier_id, quarter_start_value in sorted(keys, key=_partition_sort_key):
         rebuild_projection_bucket(
             session,
@@ -908,6 +909,9 @@ def _repair_projection_keys(
             quarter_start_value=quarter_start_value,
         )
         repaired_soldiers.add(soldier_id)
+        repaired_quarters.add(quarter_start_value)
+    for quarter_start_value in sorted(repaired_quarters):
+        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
     return repaired_soldiers
 
 
@@ -1139,6 +1143,39 @@ def projection_is_current(session: Session, required_quarters: set[Any] | list[A
     return True
 
 
+def _read_required_quarters(session: Session) -> set[date]:
+    """Calendar quarters the projected transparency/effort reads validate totals for.
+
+    Mirrors the window math used by scoring._try_projected_transparency_rows, so a
+    completed backfill guarantees every quarter a read can demand — including
+    empty history quarters between fairness.reset_date and the planning horizon —
+    has a quarter-total row.
+    """
+    from app.services.scoring import (
+        _effort_planning_start,
+        _effort_quarter_windows,
+        _effort_reset_date,
+    )
+
+    reset_date = _effort_reset_date(session)
+    planning_start = _effort_planning_start(session)
+    windows = _effort_quarter_windows(
+        session,
+        reset_date=reset_date,
+        planning_start=planning_start,
+        planning_end=planning_start,
+    )
+    return {calendar_quarter for _tracked_start, _tracked_end, calendar_quarter in windows}
+
+
+def _ensure_read_required_quarter_totals(session: Session) -> None:
+    existing = set(
+        session.execute(select(ScoreProjectionQuarterTotal.quarter_start)).scalars().all()
+    )
+    for quarter_start_value in sorted(_read_required_quarters(session) - existing):
+        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
+
+
 def _enumerate_projection_keys(session: Session) -> list[tuple[uuid.UUID, date]]:
     keys: set[tuple[uuid.UUID, date]] = set()
     for assignment in session.execute(
@@ -1186,8 +1223,9 @@ def backfill_score_projection(
         else all_partitions
     )
     batch_partitions = remaining_partitions[:batch_size]
-
     if not batch_partitions:
+        if not state.backfill_complete:
+            _ensure_read_required_quarter_totals(session)
         state.backfill_complete = True
         state.resume_after_soldier_id = None
         state.resume_after_quarter_start = None
@@ -1196,8 +1234,13 @@ def backfill_score_projection(
         session.flush()
         return state
 
+    batch_quarters = sorted({quarter_start_value for _, quarter_start_value in batch_partitions})
     for soldier_id, quarter_start_value in batch_partitions:
-        rebuild_projection_bucket(session, soldier_id, quarter_start_value)
+        rebuild_projection_bucket(
+            session, soldier_id, quarter_start_value, refresh_quarter_total=False
+        )
+    for quarter_start_value in batch_quarters:
+        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
 
     last_partition = batch_partitions[-1]
     has_more = len(remaining_partitions) > batch_size
@@ -1206,6 +1249,8 @@ def backfill_score_projection(
     state.resume_after_quarter_start = None if not has_more else last_partition[1]
     state.completed_at = _utcnow() if not has_more else None
     state.updated_at = _utcnow()
+    if not has_more:
+        _ensure_read_required_quarter_totals(session)
     session.flush()
     return state
 
