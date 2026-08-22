@@ -14,6 +14,7 @@ from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
 from app.qualification_expiry_worker import run_qualification_expiry_worker
 from app.rank_advancement_worker import run_rank_advancement_worker
+from app.score_projection_revalidation_worker import run_score_projection_revalidation_worker
 from app.range_reminder_worker import run_range_reminder_worker
 from app.range_attendance_worker import run_range_attendance_worker
 from app.swap_expiry_worker import run_swap_expiry_worker
@@ -137,10 +138,11 @@ async def lifespan(app: FastAPI):
     duty_eligibility_task = asyncio.create_task(run_duty_eligibility_worker())
     rank_advancement_task = asyncio.create_task(run_rank_advancement_worker())
     qualification_expiry_task = asyncio.create_task(run_qualification_expiry_worker())
+    score_projection_revalidation_task = asyncio.create_task(run_score_projection_revalidation_worker())
     yield
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task, score_projection_revalidation_task):
         task.cancel()
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task, score_projection_revalidation_task):
         try:
             await task
         except asyncio.CancelledError:

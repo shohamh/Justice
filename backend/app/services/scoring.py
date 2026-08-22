@@ -1010,32 +1010,62 @@ def _required_quarter_totals_match_projection_rows(
     session: Session,
     *,
     quarter_starts: set[date],
-    skip_metadata_for_quarters: set[date] | None = None,
+    recompute_for_quarters: set[date] | None = None,
 ) -> bool:
+    """Ensure every required quarter has a current stored total.
+
+    Read-path contract: writers keep quarter totals in step with the partition
+    rows, so the read only verifies existence and version (indexed lookups) and
+    recomputes a total from its rows when it is missing/stale or its quarter
+    was just repaired. Numeric divergence checking lives in
+    ``verify_quarter_totals_match_rows`` (revalidation worker / diagnostics).
+    """
     if not quarter_starts:
         return True
 
     from app.services.score_projection import (
         SCORE_PROJECTION_CANONICAL_VERSION,
-        _metadata_unprovable_bucket_keys,
+        _upsert_quarter_total,
     )
 
-    # Quarters already covered by the caller's combined proof scan don't need
-    # a second JSONB pass here.
-    remaining_quarters = set(quarter_starts) - set(skip_metadata_for_quarters or set())
-    if remaining_quarters:
-        unprovable = _metadata_unprovable_bucket_keys(
-            session, quarter_starts=remaining_quarters
-        )
-    else:
-        unprovable = set()
-    if unprovable:
-        first_quarter = min(quarter_start_value for _sid, quarter_start_value in unprovable)
-        logger.warning(
-            "score projection read fell back because quarter row metadata is unprovable",
-            extra={"quarter_start": str(first_quarter)},
-        )
-        return False
+    recompute_for_quarters = set(recompute_for_quarters or set())
+    total_rows = {
+        row.quarter_start: row
+        for row in session.execute(
+            select(ScoreProjectionQuarterTotal).where(
+                ScoreProjectionQuarterTotal.quarter_start.in_(quarter_starts)
+            )
+        ).scalars().all()
+    }
+
+    for quarter_start_value in sorted(quarter_starts):
+        total_row = total_rows.get(quarter_start_value)
+        if (
+            total_row is None
+            or total_row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION
+            or quarter_start_value in recompute_for_quarters
+        ):
+            _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
+    return True
+
+
+def verify_quarter_totals_match_rows(
+    session: Session, *, quarter_starts: set[date] | None = None
+) -> bool:
+    """Full numeric verification of stored quarter totals against partition rows.
+
+    Not used on the read path; the revalidation worker and diagnostics call
+    this. With no quarters given, verifies every stored total.
+    """
+    if quarter_starts is None:
+        quarter_starts = {
+            row
+            for (row,) in session.execute(select(ScoreProjectionQuarterTotal.quarter_start)).all()
+        }
+    quarter_starts = set(quarter_starts)
+    if not quarter_starts:
+        return True
+
     sums_by_quarter: dict[date, tuple[Any, Any, Any, Any]] = {}
     for quarter_start_value, raw_sum, ewd_sum, duty_sum, adj_sum in session.execute(
         select(
@@ -1069,9 +1099,9 @@ def _required_quarter_totals_match_projection_rows(
 
     for quarter_start_value in sorted(quarter_starts):
         total_row = total_rows.get(quarter_start_value)
-        if total_row is None or total_row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION:
+        if total_row is None:
             logger.warning(
-                "score projection read fell back because a quarter total is missing",
+                "score projection quarter total verification failed: total missing",
                 extra={"quarter_start": str(quarter_start_value)},
             )
             return False
@@ -1088,7 +1118,7 @@ def _required_quarter_totals_match_projection_rows(
             and _close(total_row.total_score, expected_duty + expected_adj)
         ):
             logger.warning(
-                "score projection read fell back because quarter total diverges from persisted rows",
+                "score projection quarter total diverges from persisted rows",
                 extra={"quarter_start": str(quarter_start_value)},
             )
             return False
@@ -1151,28 +1181,50 @@ def _refresh_required_soldier_totals(
     if not soldier_ids:
         return True
 
-    # Two set-based reads instead of two point queries per soldier; only
-    # soldiers whose stored total diverges from their partition rows are
-    # rebuilt one at a time (rare — writes keep totals current).
     stored = _soldier_totals_by_id(session, soldier_ids)
-    expected = _expected_soldier_totals_by_id(session, soldier_ids)
-    stale: list[uuid.UUID] = []
-    for soldier_id in sorted(soldier_ids, key=str):
-        row = stored.get(soldier_id)
-        want = expected[soldier_id]
-        cumulative_want = _q6(want["duty_score"] + want["adjustment_score"])
-        if (
-            row is not None
-            and row.projection_version == SCORE_PROJECTION_CANONICAL_VERSION
-            and _q6(row.duty_score) == _q6(want["duty_score"])
-            and _q6(row.adjustment_score) == _q6(want["adjustment_score"])
-            and _q6(row.cumulative_score) == cumulative_want
-            and row.shift_count == want["shift_count"]
-        ):
-            continue
-        stale.append(soldier_id)
+    # Read-path contract: totals are trusted unless they are missing/stale or
+    # a dirty/divergent marker implicates the soldier. The numeric comparison
+    # (an aggregate over partition-row fingerprints) only runs for implicated
+    # soldiers.
+    missing_or_stale = [
+        soldier_id
+        for soldier_id in sorted(soldier_ids, key=str)
+        if (row := stored.get(soldier_id)) is None
+        or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION
+    ]
+    implicated = {
+        row.soldier_id
+        for row in session.execute(
+            select(ScoreProjectionDirtyBucket.soldier_id).where(
+                uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids),
+                or_(
+                    ScoreProjectionDirtyBucket.status == "dirty",
+                    ScoreProjectionDirtyBucket.divergence.is_not(None),
+                ),
+            )
+        ).all()
+    }
+    if not implicated:
+        stale = missing_or_stale
+    else:
+        expected = _expected_soldier_totals_by_id(session, implicated)
+        stale = list(missing_or_stale)
+        for soldier_id in sorted(implicated, key=str):
+            row = stored.get(soldier_id)
+            want = expected[soldier_id]
+            cumulative_want = _q6(want["duty_score"] + want["adjustment_score"])
+            if (
+                row is None
+                or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION
+                or _q6(row.duty_score) != _q6(want["duty_score"])
+                or _q6(row.adjustment_score) != _q6(want["adjustment_score"])
+                or _q6(row.cumulative_score) != cumulative_want
+                or row.shift_count != want["shift_count"]
+            ):
+                if soldier_id not in missing_or_stale:
+                    stale.append(soldier_id)
 
-    for soldier_id in stale:
+    for soldier_id in sorted(set(stale), key=str):
         try:
             _upsert_soldier_total(session, soldier_id=soldier_id)
         except Exception:
@@ -1210,32 +1262,17 @@ def _ensure_projection_ready(
         return False
 
     rebuild_keys: set[tuple[uuid.UUID, date]] = set()
-    from app.services.score_projection import (
-        _incomplete_bucket_keys,
-        _metadata_unprovable_bucket_keys,
-    )
+    from app.services.score_projection import _incomplete_bucket_keys
 
+    # Read-path contract: writers mark buckets dirty before rebuilding and
+    # clear the marker after, so a clean marker table means every stored bucket
+    # is exactly what its writer computed. Reads therefore verify structure
+    # (completeness, versions — index-only) and rebuild what the markers
+    # implicate; the JSONB fingerprint proof itself runs periodically in the
+    # revalidation worker instead of here.
     incomplete_keys = _incomplete_bucket_keys(session, keys)
     rebuild_keys.update(incomplete_keys)
-    # One combined server-side proof scan per read: the required quarters are a
-    # superset of the key quarters, so this covers both the per-key bucket
-    # check and the quarter-total metadata check below.
-    proof_scope_quarters = set(quarter_starts) | {q for _, q in keys}
-    unprovable_all = (
-        _metadata_unprovable_bucket_keys(session, quarter_starts=proof_scope_quarters)
-        if proof_scope_quarters
-        else set()
-    )
-    unprovable_keys = unprovable_all & keys - incomplete_keys
-    if unprovable_keys:
-        soldier_id, quarter_start_value = sorted(
-            unprovable_keys, key=lambda item: (str(item[0]), item[1])
-        )[0]
-        logger.warning(
-            "score projection read fell back because persisted bucket metadata is unprovable",
-            extra={"soldier_id": str(soldier_id), "quarter_start": str(quarter_start_value)},
-        )
-        return False
+
     if canonical_diagnostic_check:
         for soldier_id, quarter_start_value in sorted(keys - incomplete_keys, key=lambda item: (str(item[0]), item[1])):
             if not _projection_bucket_matches_canonical(
@@ -1273,8 +1310,7 @@ def _ensure_projection_ready(
 
         # Repairing a bucket can change its partition rows (e.g. dropping an
         # adjustments-only row that no longer belongs to this quarter); the
-        # quarter total must track the repaired rows or the divergence check
-        # below fails on the repair's own write.
+        # quarter total must track the repaired rows.
         for quarter_start_value in sorted(repaired_quarters):
             _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
 
@@ -1282,25 +1318,15 @@ def _ensure_projection_ready(
     if not projection_is_current(session, required):
         logger.warning("score projection read fell back because required buckets are not current")
         return False
-    # The first-pass checks already reflect the persisted state when nothing
-    # was rebuilt; only re-run the (server-side JSONB) proofs after a repair.
     if rebuild_keys:
-        unprovable_all = (
-            _metadata_unprovable_bucket_keys(session, quarter_starts=proof_scope_quarters)
-            if proof_scope_quarters
-            else set()
-        )
         final_incomplete_keys = _incomplete_bucket_keys(session, keys)
         if keys and final_incomplete_keys:
             logger.warning("score projection read fell back because required buckets are incomplete")
             return False
-        if unprovable_all & keys - final_incomplete_keys:
-            logger.warning("score projection read fell back because required bucket metadata is unprovable")
-            return False
     if quarter_starts and not _required_quarter_totals_match_projection_rows(
         session,
         quarter_starts=quarter_starts,
-        skip_metadata_for_quarters=proof_scope_quarters,
+        recompute_for_quarters=repaired_quarters,
     ):
         return False
     if canonical_diagnostic_check:

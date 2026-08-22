@@ -902,6 +902,14 @@ class ScoreProjectionState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+    revalidated_after_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        default=None,
+    )
+    revalidated_after_quarter_start: Mapped[date | None] = mapped_column(
+        Date, nullable=True, default=None
+    )
 
 
 class ScoreProjectionDirtyBucket(Base):

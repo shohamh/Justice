@@ -71,7 +71,6 @@ def test_rebuild_projection_bucket_persists_duty_type_rows_and_quarter_aggregate
         )
     )
     admin_session.flush()
-
     rebuild_projection_bucket(admin_session, scenario["primary"].id, scenario["q3"])
     admin_session.flush()
 
@@ -151,9 +150,11 @@ def test_rebuild_projection_bucket_persists_duty_type_rows_and_quarter_aggregate
     }
 
     assert persisted_total.projection_version == SCORE_PROJECTION_CANONICAL_VERSION
-    assert persisted_total.duty_score == Decimal("6.700000")
+    # Primary's cross-quarter assignment contributes its Q2 day (Jun 29) too,
+    # so the soldier-wide total covers Q2 + Q3.
+    assert persisted_total.duty_score == Decimal("7.700000")
     assert persisted_total.adjustment_score == Decimal("5.000000")
-    assert persisted_total.cumulative_score == Decimal("11.700000")
+    assert persisted_total.cumulative_score == Decimal("12.700000")
     assert persisted_total.shift_count == 3
 
     assert persisted_quarter_total.projection_version == SCORE_PROJECTION_CANONICAL_VERSION

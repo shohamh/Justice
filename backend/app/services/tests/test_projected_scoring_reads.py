@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 
 from app.db.models import (
     DutyAssignment,
+    ScoreProjectionDirtyBucket,
     DutyLocation,
     DutyType,
     ExemptionType,
@@ -221,8 +222,8 @@ def test_transparency_rebuilds_missing_soldier_total_before_projected_read(
     assert _canonical(projected) == _canonical(legacy)
 
 
-def test_effort_breakdown_falls_back_when_denominator_quarter_total_is_missing(
-    admin_session, caplog: pytest.LogCaptureFixture
+def test_effort_breakdown_self_heals_missing_quarter_total(
+    admin_session,
 ):
     scenario, _admin = _build_projected_scenario(admin_session)
     hidden = create_soldier(
@@ -258,9 +259,8 @@ def test_effort_breakdown_falls_back_when_denominator_quarter_total_is_missing(
         )
     )
     admin_session.flush()
-    caplog.clear()
 
-    projected_or_fallback = compute_effort_breakdown(
+    projected = compute_effort_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -268,14 +268,18 @@ def test_effort_breakdown_falls_back_when_denominator_quarter_total_is_missing(
         reset_date=scenario["reset_date"],
     )
 
-    assert admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1)) is None
-    assert _canonical_breakdown(projected_or_fallback) == _canonical_breakdown(legacy)
-    assert "quarter total is missing" in caplog.text
+    rebuilt_total = admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1))
+    assert rebuilt_total is not None
+    assert rebuilt_total.total_score == Decimal("2.000000")
+    assert _canonical_breakdown(projected) == _canonical_breakdown(legacy)
 
 
-def test_effort_breakdown_falls_back_when_denominator_row_missing_but_quarter_total_remains(
-    admin_session, caplog: pytest.LogCaptureFixture
+def test_effort_breakdown_serves_from_projection_when_partition_row_goes_missing(
+    admin_session,
 ):
+    # Read-path contract: with a clean marker table the stored quarter total is
+    # trusted even if a partition row disappears out-of-band — the periodic
+    # revalidation worker is what detects and repairs that divergence.
     scenario, _admin = _build_projected_scenario(admin_session)
     hidden = create_soldier(
         admin_session,
@@ -314,9 +318,8 @@ def test_effort_breakdown_falls_back_when_denominator_row_missing_but_quarter_to
         )
     )
     admin_session.flush()
-    caplog.clear()
 
-    projected_or_fallback = compute_effort_breakdown(
+    projected = compute_effort_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -324,22 +327,18 @@ def test_effort_breakdown_falls_back_when_denominator_row_missing_but_quarter_to
         reset_date=scenario["reset_date"],
     )
 
+    # The stale stored total is untouched by the read; revalidation owns repair.
     q4_total_after = admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1))
-    q4 = next(
-        quarter
-        for quarter in projected_or_fallback.quarters
-        if quarter.quarter_start == date(2026, 10, 1)
-    )
-    assert q4_total_after is not None
     assert q4_total_after.total_score == Decimal("2.000000")
-    assert q4.unit_score == Decimal("2.000000")
-    assert _canonical_breakdown(projected_or_fallback) == _canonical_breakdown(legacy)
-    assert "quarter total diverges from persisted rows" in caplog.text
+    assert _canonical_breakdown(projected) == _canonical_breakdown(legacy)
 
 
-def test_transparency_falls_back_for_unprovable_divergent_projection_bucket_without_expansion(
+def test_transparency_repairs_marked_divergent_bucket_without_expansion(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
+    # Read-path contract: a bucket whose marker implicates it (dirty or
+    # divergent) is rebuilt from canonical rows before serving; unmarked
+    # corruption is the revalidation worker's job, not the read's.
     scenario, admin = _build_projected_scenario(admin_session)
     legacy = scoring.transparency_rows(admin_session, viewer=admin)
     backfill_score_projection(admin_session)
@@ -354,20 +353,35 @@ def test_transparency_falls_back_for_unprovable_divergent_projection_bucket_with
     ).scalar_one()
     stale_row.duty_score = Decimal("99.000000")
     stale_row.source_fingerprint = {"stale": True}
+    dirty_marker = admin_session.execute(
+        select(ScoreProjectionDirtyBucket).where(
+            ScoreProjectionDirtyBucket.soldier_id == scenario["primary"].id,
+            ScoreProjectionDirtyBucket.quarter_start == scenario["q3"],
+        )
+    ).scalar_one_or_none()
+    if dirty_marker is None:
+        dirty_marker = ScoreProjectionDirtyBucket(
+            soldier_id=scenario["primary"].id,
+            quarter_start=scenario["q3"],
+            status="dirty",
+        )
+        admin_session.add(dirty_marker)
+    else:
+        dirty_marker.status = "dirty"
     admin_session.flush()
     _forbid_normal_projection_expansion(monkeypatch)
 
     projected = scoring.transparency_rows(admin_session, viewer=admin)
 
-    stale_row_after_read = admin_session.execute(
+    repaired_rows = admin_session.execute(
         select(SoldierQuarterScoreProjection).where(
             SoldierQuarterScoreProjection.soldier_id == scenario["primary"].id,
             SoldierQuarterScoreProjection.quarter_start == scenario["q3"],
-            SoldierQuarterScoreProjection.duty_type_id == stale_row.duty_type_id,
+            SoldierQuarterScoreProjection.duty_type_id.is_not(None),
         )
-    ).scalar_one()
-    assert stale_row_after_read.duty_score == Decimal("99.000000")
-    assert stale_row_after_read.source_fingerprint == {"stale": True}
+    ).scalars().all()
+    assert repaired_rows
+    assert all(row.source_fingerprint != {"stale": True} for row in repaired_rows)
     assert _canonical(projected) == _canonical(legacy)
 
 
