@@ -106,6 +106,9 @@ def _shared_postgres_enabled(config: pytest.Config) -> bool:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Build one migrated template database before xdist workers start."""
+    # Process-wide test flag: app lifespans suppress production background
+    # workers, and hash_password memoizes argon2 seeding across tests.
+    os.environ.setdefault("JUSTICE_TESTING", "1")
     setattr(config, _SOLVER_PROFILES_ATTR, [])
     setattr(config, _SOLVER_PROFILE_ENABLED_ATTR, profiling.profiling_enabled(config))
     setattr(config, _SOLVER_PROFILE_WARNING_ATTR, profiling.profiling_warning(config))

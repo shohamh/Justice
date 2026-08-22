@@ -1,56 +1,33 @@
 """Tests for migration 0e39f17b207b (transparency settings rework)."""
-import os
 from contextlib import contextmanager
+from pathlib import Path
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine.url import make_url
-from testcontainers.postgres import PostgresContainer
+import pytest
+from sqlalchemy import text
+
+from tests.support import database as db_support
 
 DOWN_REVISION = "5abac7d1ec0b"
 REVISION = "0e39f17b207b"
 
+pytestmark = pytest.mark.slow
+
+_TEMPLATE = None
+
 
 @contextmanager
 def _db_at_down_revision():
-    from app.settings import get_settings
-
-    saved_database_url = os.environ.get("DATABASE_URL")
-    saved_db_admin_url = os.environ.get("DB_ADMIN_URL")
-
-    with PostgresContainer(
-        "postgres:16-alpine", username="db_admin", password="db_admin_pw", dbname="justice"
-    ).with_command(
-        "postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off"
-    ) as pg:
-        url = make_url(pg.get_connection_url()).set(drivername="postgresql+psycopg")
-        db_url = url.render_as_string(hide_password=False)
-        try:
-            os.environ["DATABASE_URL"] = db_url
-            os.environ["DB_ADMIN_URL"] = db_url
-            get_settings.cache_clear()
-
-            from alembic import command
-            from alembic.config import Config
-
-            cfg = Config("alembic.ini")
-            cfg.set_main_option("script_location", "alembic")
-            command.upgrade(cfg, DOWN_REVISION)
-
-            engine = create_engine(db_url, future=True)
-            try:
-                yield engine, (lambda: command.upgrade(cfg, REVISION))
-            finally:
-                engine.dispose()
-        finally:
-            if saved_database_url is None:
-                os.environ.pop("DATABASE_URL", None)
-            else:
-                os.environ["DATABASE_URL"] = saved_database_url
-            if saved_db_admin_url is None:
-                os.environ.pop("DB_ADMIN_URL", None)
-            else:
-                os.environ["DB_ADMIN_URL"] = saved_db_admin_url
-            get_settings.cache_clear()
+    """Fresh clone of the cached template migrated to DOWN_REVISION, plus a
+    callable that steps it one more revision (onto REVISION)."""
+    global _TEMPLATE
+    if _TEMPLATE is None:
+        _TEMPLATE = db_support.get_migrated_template(
+            DOWN_REVISION, Path(__file__).resolve().parents[2]
+        )
+    with db_support.cloned_migration_database(
+        _TEMPLATE, upgrade_to_revision=REVISION, rootpath=Path(__file__).resolve().parents[2]
+    ) as (engine, run_migration):
+        yield engine, run_migration
 
 
 def test_nonempty_old_array_migrates_to_most_senior_level():
