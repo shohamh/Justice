@@ -12,6 +12,7 @@ if backend_dir not in sys.path:
 # tests/conftest.py as a plugin — pytest >= 9 rejects pytest_plugins in a
 # non-top-level conftest as a collection error.
 from tests.conftest import (  # noqa: F401
+    _database_runtime,
     admin_engine,
     admin_session,
     app_engine,
