@@ -128,6 +128,70 @@ def _count_space_stats(
     }
 
 
+def exempted_duty_type_ids_by_soldier(
+    session: Session, *, as_of: date
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """Per-soldier duty-type ids the soldier is exempt from at `as_of`.
+
+    Resolves the same union as ``SoldierInput.exempted_duty_type_ids`` in
+    :func:`load_soldier_inputs` — exemption mappings plus eligibility
+    exclusions — without loading any duty-day scores. Callers that only need
+    exemption scope (e.g. fairness grouping) avoid the full canonical scoring
+    expansion this way.
+    """
+    etid_to_dtids: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for etid, dtid in session.execute(
+        select(ExemptionDutyTypeMap.exemption_type_id, ExemptionDutyTypeMap.duty_type_id)
+    ).all():
+        etid_to_dtids.setdefault(etid, set()).add(dtid)
+
+    global_etids: set[uuid.UUID] = set(
+        session.execute(
+            select(ExemptionType.id).where(ExemptionType.is_global.is_(True))
+        ).scalars().all()
+    )
+    active_dt_ids: set[uuid.UUID] = set(
+        session.execute(select(DutyType.id).where(DutyType.active.is_(True))).scalars().all()
+    )
+    full_coverage_etids: set[uuid.UUID] = set(global_etids)
+    if active_dt_ids:
+        full_coverage_etids.update(
+            etid for etid, dts in etid_to_dtids.items() if active_dt_ids <= dts
+        )
+        for etid in global_etids:
+            etid_to_dtids[etid] = active_dt_ids
+
+    result: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for ex in session.execute(select(SoldierExemption)).scalars().all():
+        if ex.start_date <= as_of and (ex.end_date is None or ex.end_date >= as_of):
+            result.setdefault(ex.soldier_id, set()).update(
+                etid_to_dtids.get(ex.exemption_type_id, set())
+            )
+
+    from app.services.eligibility import compute_eligibility_exclusions
+    from app.services.settings_loader import get_setting
+
+    def _setting_int(key: str, default: int) -> int:
+        try:
+            return int(get_setting(session, key))
+        except Exception:
+            return default
+
+    soldiers = (
+        session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
+    )
+    eligibility_exclusions = compute_eligibility_exclusions(
+        session,
+        soldiers,
+        mitvahim_months=_setting_int("eligibility.mitvahim_months", 6),
+        alal_months=_setting_int("eligibility.alal_months", 3),
+        reference_date=as_of,
+    )
+    for soldier_id, dtids in eligibility_exclusions.items():
+        result.setdefault(soldier_id, set()).update(dtids)
+    return result
+
+
 def load_soldier_inputs(
     session: Session, *, as_of: date, eligible_node_ids: list[uuid.UUID] | None = None
 ) -> list[SoldierInput]:

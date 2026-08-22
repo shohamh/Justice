@@ -166,12 +166,20 @@ export default function UnifiedNav() {
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
     { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", badge: swapIncomingCount, testId: "nav-swaps" },
-    { label: t("nav.notifications"), icon: <Bell size={20} />, to: "/notifications", testId: "nav-notifications" },
     { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
     ...(canViewTransparency
       ? [{ label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" }]
       : []),
   ];
+
+  // Notification inbox lives in the desktop sidebar only; the mobile bottom
+  // bar stays at five items.
+  const notificationsTab: NavTab = {
+    label: t("nav.notifications"),
+    icon: <Bell size={20} />,
+    to: "/notifications",
+    testId: "nav-notifications",
+  };
 
   const commanderTab: NavTab = {
     label: t("nav.commander"),
@@ -303,7 +311,7 @@ export default function UnifiedNav() {
         className="hidden md:flex fixed right-0 top-0 bottom-0 w-24 bg-white border-l flex-col z-30 dark:bg-gray-800 dark:border-gray-700"
         data-testid="sidebar"
       >
-        {tabs.map((tab) => {
+        {[...tabs.slice(0, 3), notificationsTab, ...tabs.slice(3)].map((tab) => {
           const active = isActive(tab.to);
           return tab.to ? (
             <Link

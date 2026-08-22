@@ -1450,6 +1450,7 @@ def confirm_session(
             elif effective == "update" and row.get("existing_id"):
                 s = session.get(Soldier, uuid.UUID(row["existing_id"]))
                 if s is not None:
+                    old_node_id = s.hierarchy_node_id
                     s.personal_number = row["personal_number"]
                     s.full_name = row["full_name"]
                     if row.get("rank") is not None:
@@ -1494,6 +1495,21 @@ def confirm_session(
                         s.left_at = date_type.fromisoformat(row["left_at"])
                     _init_rank_advancement_from_row(session, s, row)
                     session.flush()
+                    if old_node_id != s.hierarchy_node_id:
+                        from app.services.score_projection import (
+                            affected_dates_for_soldier_existing_projection,
+                            refresh_projection_for_change,
+                        )
+
+                        refresh_projection_for_change(
+                            session,
+                            soldier_ids={s.id},
+                            affected_dates=affected_dates_for_soldier_existing_projection(session, s.id),
+                            old_node_ids=({old_node_id} if old_node_id is not None else set()),
+                            new_node_ids=(
+                                {s.hierarchy_node_id} if s.hierarchy_node_id is not None else set()
+                            ),
+                        )
                     updated += 1
                     created_soldiers.append(str(s.id))
                 else:
@@ -1601,6 +1617,9 @@ def confirm_session(
                     assignment.end_time = shift.end_time
                 session.add(assignment)
                 session.flush()
+                from app.services.score_projection import refresh_projection_for_assignment_change
+
+                refresh_projection_for_assignment_change(session, assignment=assignment)
 
             created += 1
             created_assignments.append(str(assignment.id))
@@ -2204,10 +2223,25 @@ def confirm_session(
                         se.revoked_at = datetime.now(UTC)
                         se.revoke_reason = row.get("revoke_reason")
                     session.add(se)
+                    session.flush()
+                    from app.services.score_projection import (
+                        affected_dates_for_inclusive_period,
+                        affected_dates_for_soldier_existing_projection,
+                        refresh_projection_for_change,
+                    )
+
+                    refresh_projection_for_change(
+                        session,
+                        soldier_ids={se.soldier_id},
+                        affected_dates=affected_dates_for_inclusive_period(se.start_date, se.end_date)
+                        | affected_dates_for_soldier_existing_projection(session, se.soldier_id),
+                    )
                     created += 1
                 elif effective == "update" and row.get("existing_id"):
                     se = session.get(SoldierExemption, uuid.UUID(row["existing_id"]))
                     if se is not None:
+                        old_start_date = se.start_date
+                        old_end_date = se.end_date
                         se.start_date = date_type.fromisoformat(row["start_date"])
                         se.end_date = (
                             date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
@@ -2219,6 +2253,20 @@ def confirm_session(
                             if se.revoked_at is None:
                                 se.revoked_at = datetime.now(UTC)
                             se.revoke_reason = row.get("revoke_reason")
+                        session.flush()
+                        from app.services.score_projection import (
+                            affected_dates_for_inclusive_period,
+                            affected_dates_for_soldier_existing_projection,
+                            refresh_projection_for_change,
+                        )
+
+                        refresh_projection_for_change(
+                            session,
+                            soldier_ids={se.soldier_id},
+                            affected_dates=affected_dates_for_inclusive_period(old_start_date, old_end_date)
+                            | affected_dates_for_inclusive_period(se.start_date, se.end_date)
+                            | affected_dates_for_soldier_existing_projection(session, se.soldier_id),
+                        )
                         updated += 1
                     else:
                         skipped += 1

@@ -796,6 +796,155 @@ class ScoreAdjustment(Base):
     )
 
 
+class SoldierScoreProjection(Base):
+    __tablename__ = "soldier_score_projection"
+
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), primary_key=True
+    )
+    projection_version: Mapped[str] = mapped_column(Text)
+    duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    cumulative_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    shift_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class SoldierQuarterScoreProjection(Base):
+    __tablename__ = "soldier_quarter_score_projection"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="CASCADE"),
+    )
+    quarter_start: Mapped[date] = mapped_column(Date)
+    duty_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("duty_types.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    projection_version: Mapped[str] = mapped_column(Text)
+    effective_weighted_days: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    source_fingerprint: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    raw_day_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    __table_args__ = (
+        sa.Index("ix_soldier_quarter_score_projection_soldier_id", "soldier_id"),
+        sa.Index("ix_soldier_quarter_score_projection_quarter_start", "quarter_start"),
+        sa.Index("ix_soldier_quarter_score_projection_soldier_quarter", "soldier_id", "quarter_start"),
+        sa.Index(
+            "uq_soldier_quarter_score_projection_duty_type",
+            "soldier_id",
+            "quarter_start",
+            "duty_type_id",
+            unique=True,
+            postgresql_where=sa.text("duty_type_id IS NOT NULL"),
+        ),
+        sa.Index(
+            "uq_soldier_quarter_score_projection_aggregate",
+            "soldier_id",
+            "quarter_start",
+            unique=True,
+            postgresql_where=sa.text("duty_type_id IS NULL"),
+        ),
+    )
+
+
+class ScoreProjectionQuarterTotal(Base):
+    __tablename__ = "score_projection_quarter_total"
+
+    quarter_start: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
+    projection_version: Mapped[str] = mapped_column(Text)
+    effective_weighted_days: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    duty_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    adjustment_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    total_score: Mapped[Decimal] = mapped_column(Numeric(18, 6))
+    raw_day_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class ScoreProjectionState(Base):
+    __tablename__ = "score_projection_state"
+
+    canonical_version: Mapped[str] = mapped_column(Text)
+    projection_key: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        server_default=text("'score_projection'"),
+        default="score_projection",
+    )
+    backfill_complete: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    resume_after_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    resume_after_quarter_start: Mapped[date | None] = mapped_column(
+        Date, nullable=True, default=None
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    revalidated_after_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        default=None,
+    )
+    revalidated_after_quarter_start: Mapped[date | None] = mapped_column(
+        Date, nullable=True, default=None
+    )
+
+
+class ScoreProjectionDirtyBucket(Base):
+    __tablename__ = "score_projection_dirty_buckets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    quarter_start: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'dirty'"), default="dirty")
+    old_node_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"), default_factory=list)
+    new_node_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"), default_factory=list)
+    divergence: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
+    dirtied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    reconciled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    __table_args__ = (
+        sa.UniqueConstraint("soldier_id", "quarter_start", name="uq_score_projection_dirty_bucket"),
+        sa.Index("ix_score_projection_dirty_buckets_status", "status"),
+        sa.Index("ix_score_projection_dirty_buckets_quarter", "quarter_start"),
+    )
+
+
 class DutyNoShow(Base):
     __tablename__ = "duty_no_shows"
 

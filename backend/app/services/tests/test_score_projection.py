@@ -18,7 +18,11 @@ from app.services.adjustments import create_adjustment
 from app.services.duty_config import map_exemption_to_duty_type
 from app.services.effort_score import compute_effort_breakdown, quarter_end
 from app.services.scoring import active_days, cumulative_score, effective_duty_spans
-from app.services.score_projection import project_all_buckets, project_soldier_bucket
+from app.services.score_projection import (
+    project_all_buckets,
+    project_soldier_bucket,
+    refresh_projection_for_change,
+)
 from app.services.settings_loader import set_setting
 from tests.helpers import create_soldier
 
@@ -172,6 +176,7 @@ def _seed_projection_scenario(admin_session):
         reason="quarter-bonus",
         actor_id=None,
     )
+    primary_creation_day = primary_adjustment.created_at.date()
     primary_adjustment.created_at = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
 
     replacement_adjustment = create_adjustment(
@@ -181,7 +186,23 @@ def _seed_projection_scenario(admin_session):
         reason="quarter-correction",
         actor_id=None,
     )
+    replacement_creation_day = replacement_adjustment.created_at.date()
     replacement_adjustment.created_at = datetime(2026, 6, 20, 9, 0, tzinfo=timezone.utc)
+
+    # Rewinding created_at moves these adjustments across quarters *after*
+    # create_adjustment's creation-time projection refresh, which leaves stale
+    # out-of-quarter buckets behind. Rebuild both soldiers' affected quarters
+    # so persisted rows match the canonical dates again.
+    refresh_projection_for_change(
+        admin_session,
+        soldier_ids={primary.id, replacement.id},
+        affected_dates={
+            primary_creation_day,
+            primary_adjustment.created_at.date(),
+            replacement_creation_day,
+            replacement_adjustment.created_at.date(),
+        },
+    )
 
     _grant_full_coverage_exemption(
         admin_session,

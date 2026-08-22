@@ -220,6 +220,18 @@ def approve_duty_manager_step(
                         title=f"בקשת הפטור אושרה — {type_name}, {period}",
                         reference_type="exemption_request", reference_id=req.id,
                         actor_id=decided_by)
+    from app.services.score_projection import (
+        affected_dates_for_inclusive_period,
+        affected_dates_for_soldier_existing_projection,
+        refresh_projection_for_change,
+    )
+
+    refresh_projection_for_change(
+        session,
+        soldier_ids={req.soldier_id},
+        affected_dates=affected_dates_for_inclusive_period(req.start_date, req.end_date)
+        | affected_dates_for_soldier_existing_projection(session, req.soldier_id),
+    )
     if req.enrollment_request_id:
         from app.services.enrollment import try_activate
         try_activate(session, req.enrollment_request_id)
