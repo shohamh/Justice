@@ -26,6 +26,17 @@ from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_soldier
 
 
+
+def _completed_backfill(session):
+    """Drive the quarter-granular backfill until fully complete."""
+    from app.services.score_projection import backfill_score_projection
+
+    state = backfill_score_projection(session)
+    while not state.backfill_complete:
+        state = backfill_score_projection(session)
+    return state
+
+
 def _canonical(value: Any) -> Any:
     if isinstance(value, Decimal):
         return value.quantize(Decimal("0.000001"))
@@ -99,7 +110,7 @@ def test_transparency_rows_match_legacy_from_projection_without_expanding_duty_d
 ):
     scenario, admin = _build_projected_scenario(admin_session)
     legacy = scoring.transparency_rows(admin_session, viewer=admin)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     _forbid_normal_projection_expansion(monkeypatch)
@@ -119,7 +130,7 @@ def test_fairness_components_use_projected_effort_without_calling_transparency_r
 ):
     _scenario, admin = _build_projected_scenario(admin_session)
     legacy = scoring.fairness_components(admin_session, viewer=admin)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     def fail_transparency(*_args, **_kwargs):
@@ -147,7 +158,7 @@ def test_effort_breakdown_matches_legacy_from_projection_and_keeps_preview_in_me
         extra_adj_delta=Decimal("3.25"),
         extra_adj_date=date(2026, 7, 20),
     )
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     monkeypatch.setattr(effort_score, "effective_duty_days", _fail_if_expands_duty_days)
@@ -173,7 +184,7 @@ def test_transparency_rebuilds_missing_projection_bucket_before_serving_projecte
 ):
     scenario, admin = _build_projected_scenario(admin_session)
     legacy = scoring.transparency_rows(admin_session, viewer=admin)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     admin_session.execute(
@@ -182,6 +193,25 @@ def test_transparency_rebuilds_missing_projection_bucket_before_serving_projecte
             SoldierQuarterScoreProjection.quarter_start == scenario["q3"],
         )
     )
+    # Out-of-band deletion is not healed on the read path under the marker
+    # contract; an interrupted writer would have left a dirty marker, so mark
+    # the bucket the way the writer would.
+    existing_marker = admin_session.execute(
+        select(ScoreProjectionDirtyBucket).where(
+            ScoreProjectionDirtyBucket.soldier_id == scenario["primary"].id,
+            ScoreProjectionDirtyBucket.quarter_start == scenario["q3"],
+        )
+    ).scalar_one_or_none()
+    if existing_marker is None:
+        admin_session.add(
+            ScoreProjectionDirtyBucket(
+                soldier_id=scenario["primary"].id,
+                quarter_start=scenario["q3"],
+                status="dirty",
+            )
+        )
+    else:
+        existing_marker.status = "dirty"
     admin_session.flush()
 
     projected = scoring.transparency_rows(admin_session, viewer=admin)
@@ -201,7 +231,7 @@ def test_transparency_rebuilds_missing_soldier_total_before_projected_read(
 ):
     scenario, admin = _build_projected_scenario(admin_session)
     legacy = scoring.transparency_rows(admin_session, viewer=admin)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     admin_session.execute(
@@ -250,7 +280,7 @@ def test_effort_breakdown_self_heals_missing_quarter_total(
         planning_end=scenario["planning_start"],
         reset_date=scenario["reset_date"],
     )
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     admin_session.execute(
@@ -305,7 +335,7 @@ def test_effort_breakdown_serves_from_projection_when_partition_row_goes_missing
         planning_end=scenario["planning_start"],
         reset_date=scenario["reset_date"],
     )
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     q4_total_before = admin_session.get(ScoreProjectionQuarterTotal, date(2026, 10, 1))
@@ -341,7 +371,7 @@ def test_transparency_repairs_marked_divergent_bucket_without_expansion(
     # corruption is the revalidation worker's job, not the read's.
     scenario, admin = _build_projected_scenario(admin_session)
     legacy = scoring.transparency_rows(admin_session, viewer=admin)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     stale_row = admin_session.execute(
@@ -424,7 +454,7 @@ def test_projected_transparency_matches_legacy_for_scoped_redacted_non_admin(
     scenario["replacement"].hierarchy_node_id = out_scope.id
     admin_session.flush()
     legacy = scoring.transparency_rows(admin_session, viewer=viewer)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
     _forbid_normal_projection_expansion(monkeypatch)
 
@@ -461,7 +491,7 @@ def test_projected_transparency_scale_read_does_not_expand_projection_history(
         )
     admin_session.flush()
     legacy = scoring.transparency_rows(admin_session, viewer=admin)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
     _forbid_normal_projection_expansion(monkeypatch)
 
@@ -479,7 +509,7 @@ def test_backfill_covers_empty_effort_history_quarters_so_reads_serve_from_proje
     # quarter-total row for every one of them or every projected read silently
     # falls back to legacy.
     _scenario, admin = _build_projected_scenario(admin_session)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
     set_setting(
         admin_session,
@@ -523,7 +553,7 @@ def test_dashboard_summary_uses_projected_scores_without_expanding_history(
         True,
         actor_id=None,
     )
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     _forbid_normal_projection_expansion(monkeypatch)

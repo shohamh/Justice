@@ -14,6 +14,17 @@ from app.services.score_projection_reconciliation import revalidate_score_projec
 from app.services.tests.test_score_projection import _seed_projection_scenario
 
 
+
+def _completed_backfill(session):
+    """Drive the quarter-granular backfill until fully complete."""
+    from app.services.score_projection import backfill_score_projection
+
+    state = backfill_score_projection(session)
+    while not state.backfill_complete:
+        state = backfill_score_projection(session)
+    return state
+
+
 def _corrupt_one_bucket(admin_session):
     """Overwrite a typed partition row with values that violate its fingerprint."""
     stale_row = admin_session.execute(
@@ -32,7 +43,7 @@ def test_revalidate_repairs_unmarked_corruption_and_advances_cursor(
     admin_session,
 ):
     scenario = _seed_projection_scenario(admin_session)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     stale_row = _corrupt_one_bucket(admin_session)
@@ -61,7 +72,7 @@ def test_revalidate_repairs_quarter_totals_of_repaired_buckets(
     admin_session,
 ):
     scenario = _seed_projection_scenario(admin_session)
-    backfill_score_projection(admin_session)
+    _completed_backfill(admin_session)
     admin_session.flush()
 
     # Corrupt every typed row in Q3 so its quarter total becomes unprovable.

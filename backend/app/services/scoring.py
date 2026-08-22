@@ -220,11 +220,51 @@ def shift_count_by_soldier(session: Session) -> dict[uuid.UUID, int]:
 
 
 def duty_score_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
+    """Duty score per effective soldier.
+
+    Served from the projection tables when the writer invariant holds (backfill
+    complete, no dirty markers); falls back to canonical day-expansion
+    otherwise. Values may differ from legacy by <1e-6 per bucket due to
+    6-decimal quantization at write time.
+    """
+    if _projection_state_is_complete(session) and not _any_dirty_markers(session):
+        from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
+
+        rows = session.execute(
+            select(
+                SoldierScoreProjection.soldier_id,
+                SoldierScoreProjection.duty_score,
+                SoldierScoreProjection.projection_version,
+            )
+        ).all()
+        return {
+            soldier_id: Decimal(duty_score)
+            for soldier_id, duty_score, version in rows
+            if version == SCORE_PROJECTION_CANONICAL_VERSION
+        }
+
     scores = _duty_type_scores(session)
     out: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
     for _day, eff, dtid, mult in effective_duty_days(session):
         out[eff] += scores.get(dtid, Decimal("0")) * mult
-    return out
+    return dict(out)
+
+
+def _any_dirty_markers(session: Session) -> bool:
+    from app.db.models import ScoreProjectionDirtyBucket
+
+    row = session.execute(
+        select(ScoreProjectionDirtyBucket.id).where(
+            or_(
+                ScoreProjectionDirtyBucket.status == "dirty",
+                and_(
+                    ScoreProjectionDirtyBucket.divergence.is_not(None),
+                    ScoreProjectionDirtyBucket.reconciled_at.is_(None),
+                ),
+            )
+        ).limit(1)
+    ).first()
+    return row is not None
 
 
 def adjustments_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
@@ -671,76 +711,12 @@ def _effort_quarter_windows(
     return windows
 
 
-def _projection_data_quarters_for_soldiers(
-    session: Session, soldier_ids: set[uuid.UUID]
-) -> set[date]:
-    if not soldier_ids:
-        return set()
-
-    quarters: set[date] = set()
-    assignments = session.execute(
-        select(DutyAssignment.start_date, DutyAssignment.end_date).where(
-            DutyAssignment.status == "published",
-            DutyAssignment.soldier_id.in_(soldier_ids),
-        )
-    ).all()
-    for start_date, end_date in assignments:
-        quarters.update(_iter_calendar_quarters(start_date, end_date - timedelta(days=1)))
-
-    override_rows = session.execute(
-        select(DutyDayOverride.date)
-        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
-        .where(
-            DutyAssignment.status == "published",
-            DutyDayOverride.effective_soldier_id.in_(soldier_ids),
-        )
-    ).all()
-    for (override_date,) in override_rows:
-        quarters.update(_iter_calendar_quarters(override_date, override_date))
-
-    adjustment_dates = session.execute(
-        select(ScoreAdjustment.created_at).where(ScoreAdjustment.soldier_id.in_(soldier_ids))
-    ).scalars().all()
-    for created_at in adjustment_dates:
-        if created_at is not None:
-            quarters.update(_iter_calendar_quarters(created_at.date(), created_at.date()))
-
-    persisted = session.execute(
-        select(SoldierQuarterScoreProjection.quarter_start).where(
-            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids)
-        )
-    ).scalars().all()
-    quarters.update(persisted)
-    return quarters
-
-
 def _projection_data_keys_for_soldiers(
     session: Session, soldier_ids: set[uuid.UUID]
 ) -> set[tuple[uuid.UUID, date]]:
     from app.services.score_projection import _projection_keys_for_soldiers
 
     return _projection_keys_for_soldiers(session, soldier_ids)
-
-
-def _projection_rows_by_key(
-    session: Session, keys: set[tuple[uuid.UUID, date]]
-) -> dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]]:
-    if not keys:
-        return {}
-    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
-    quarter_starts = {quarter for _soldier_id, quarter in keys}
-    rows = session.execute(
-        select(SoldierQuarterScoreProjection).where(
-            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
-            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
-        )
-    ).scalars().all()
-    by_key: dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]] = defaultdict(list)
-    for row in rows:
-        key = (row.soldier_id, row.quarter_start)
-        if key in keys:
-            by_key[key].append(row)
-    return by_key
 
 
 def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjection]) -> bool:
@@ -858,26 +834,6 @@ def _projection_bucket_matches_canonical(
         )
         return False
     return persisted == canonical
-
-
-def _dirty_or_divergent_projection_keys(
-    session: Session, *, keys: set[tuple[uuid.UUID, date]], quarter_starts: set[date]
-) -> set[tuple[uuid.UUID, date]]:
-    if not keys and not quarter_starts:
-        return set()
-    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
-    all_quarters = {quarter for _soldier_id, quarter in keys} | quarter_starts
-    query = select(ScoreProjectionDirtyBucket).where(
-        ScoreProjectionDirtyBucket.quarter_start.in_(all_quarters),
-        or_(
-            ScoreProjectionDirtyBucket.status == "dirty",
-            ScoreProjectionDirtyBucket.divergence.is_not(None),
-        ),
-    )
-    if soldier_ids and not quarter_starts:
-        query = query.where(uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids))
-    rows = session.execute(query).scalars().all()
-    return {(row.soldier_id, row.quarter_start) for row in rows}
 
 
 def _mark_projection_key_current(
@@ -1262,19 +1218,26 @@ def _ensure_projection_ready(
         return False
 
     rebuild_keys: set[tuple[uuid.UUID, date]] = set()
-    from app.services.score_projection import _incomplete_bucket_keys
+    from app.services.score_projection import (
+        _bucket_health_counts,
+        _dirty_or_divergent_projection_keys,
+        _unhealthy_bucket_keys_detailed,
+    )
 
     # Read-path contract: writers mark buckets dirty before rebuilding and
     # clear the marker after, so a clean marker table means every stored bucket
-    # is exactly what its writer computed. Reads therefore verify structure
-    # (completeness, versions — index-only) and rebuild what the markers
-    # implicate; the JSONB fingerprint proof itself runs periodically in the
-    # revalidation worker instead of here.
-    incomplete_keys = _incomplete_bucket_keys(session, keys)
-    rebuild_keys.update(incomplete_keys)
+    # is exactly what its writer computed. Reads therefore run one cheap
+    # structural health aggregate and rebuild what it or the markers flag; the
+    # JSONB fingerprint proof runs periodically in the revalidation worker.
+    key_soldiers = {soldier_id for soldier_id, _quarter_start_value in keys}
+    dup_groups, stale_rows = (
+        _bucket_health_counts(session, soldier_ids=key_soldiers) if key_soldiers else (0, 0)
+    )
+    if dup_groups or stale_rows:
+        rebuild_keys |= _unhealthy_bucket_keys_detailed(session, soldier_ids=key_soldiers)
 
     if canonical_diagnostic_check:
-        for soldier_id, quarter_start_value in sorted(keys - incomplete_keys, key=lambda item: (str(item[0]), item[1])):
+        for soldier_id, quarter_start_value in sorted(keys, key=lambda item: (str(item[0]), item[1])):
             if not _projection_bucket_matches_canonical(
                 session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
             ):
@@ -1285,7 +1248,10 @@ def _ensure_projection_ready(
                 return False
 
     rebuild_keys.update(
-        _dirty_or_divergent_projection_keys(session, keys=keys, quarter_starts=quarter_starts)
+        _dirty_or_divergent_projection_keys(
+            session,
+            soldier_ids=key_soldiers | total_soldier_ids,
+        )
     )
 
     repaired_quarters: set[date] = set()
@@ -1318,9 +1284,9 @@ def _ensure_projection_ready(
     if not projection_is_current(session, required):
         logger.warning("score projection read fell back because required buckets are not current")
         return False
-    if rebuild_keys:
-        final_incomplete_keys = _incomplete_bucket_keys(session, keys)
-        if keys and final_incomplete_keys:
+    if rebuild_keys and (key_soldiers and (dup_groups or stale_rows)):
+        dup_after, stale_after = _bucket_health_counts(session, soldier_ids=key_soldiers)
+        if dup_after or stale_after:
             logger.warning("score projection read fell back because required buckets are incomplete")
             return False
     if quarter_starts and not _required_quarter_totals_match_projection_rows(

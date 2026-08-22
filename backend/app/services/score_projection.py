@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
 from app.services.sql_arrays import uuid_any
 
@@ -723,79 +723,75 @@ def _rows_for_quarter(
 
 
 def _upsert_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> SoldierScoreProjection:
-    rows = _rows_for_soldier(session, soldier_id=soldier_id)
-    totals = _projection_totals_from_rows(rows)
+    want = _expected_soldier_totals_by_id(session, {soldier_id})[soldier_id]
+    duty_score = _q6(want["duty_score"])
+    adjustment_score = _q6(want["adjustment_score"])
+    cumulative_score = _q6(duty_score + adjustment_score)
+    shift_count = int(want["shift_count"])
     projection = session.get(SoldierScoreProjection, soldier_id)
     if projection is None:
         projection = SoldierScoreProjection(
             soldier_id=soldier_id,
             projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
-            duty_score=totals.duty_score,
-            adjustment_score=totals.adjustment_score,
-            cumulative_score=totals.total_score,
-            shift_count=totals.shift_count,
+            duty_score=duty_score,
+            adjustment_score=adjustment_score,
+            cumulative_score=cumulative_score,
+            shift_count=shift_count,
         )
         session.add(projection)
     else:
         projection.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
-        projection.duty_score = totals.duty_score
-        projection.adjustment_score = totals.adjustment_score
-        projection.cumulative_score = totals.total_score
-        projection.shift_count = totals.shift_count
+        projection.duty_score = duty_score
+        projection.adjustment_score = adjustment_score
+        projection.cumulative_score = cumulative_score
+        projection.shift_count = shift_count
         projection.updated_at = _utcnow()
     session.flush()
     return projection
+
+
+def _quarter_sums(session: Session, *, quarter_start_value: date) -> tuple[int, Any, Any, Any]:
+    """Aggregate a quarter's partition rows server-side (no JSONB transfer)."""
+    raw_sum, ewd_sum, duty_sum, adj_sum = session.execute(
+        select(
+            func.coalesce(func.sum(SoldierQuarterScoreProjection.raw_day_count), 0),
+            func.coalesce(func.sum(SoldierQuarterScoreProjection.effective_weighted_days), 0),
+            func.coalesce(func.sum(SoldierQuarterScoreProjection.duty_score), 0),
+            func.coalesce(func.sum(SoldierQuarterScoreProjection.adjustment_score), 0),
+        ).where(SoldierQuarterScoreProjection.quarter_start == quarter_start_value)
+    ).one()
+    return int(raw_sum), ewd_sum, duty_sum, adj_sum
 
 
 def _upsert_quarter_total(
     session: Session, *, quarter_start_value: date
 ) -> ScoreProjectionQuarterTotal:
-    totals = _projection_totals_from_rows(
-        _rows_for_quarter(session, quarter_start_value=quarter_start_value)
+    raw_day_count, effective_weighted_days, duty_score, adjustment_score = _quarter_sums(
+        session, quarter_start_value=quarter_start_value
     )
+    total_score = Decimal(duty_score) + Decimal(adjustment_score)
     projection = session.get(ScoreProjectionQuarterTotal, quarter_start_value)
     if projection is None:
         projection = ScoreProjectionQuarterTotal(
             quarter_start=quarter_start_value,
             projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
-            raw_day_count=totals.raw_day_count,
-            effective_weighted_days=totals.effective_weighted_days,
-            duty_score=totals.duty_score,
-            adjustment_score=totals.adjustment_score,
-            total_score=totals.total_score,
+            raw_day_count=raw_day_count,
+            effective_weighted_days=_q6(effective_weighted_days),
+            duty_score=_q6(duty_score),
+            adjustment_score=_q6(adjustment_score),
+            total_score=_q6(total_score),
         )
         session.add(projection)
     else:
         projection.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
-        projection.raw_day_count = totals.raw_day_count
-        projection.effective_weighted_days = totals.effective_weighted_days
-        projection.duty_score = totals.duty_score
-        projection.adjustment_score = totals.adjustment_score
-        projection.total_score = totals.total_score
+        projection.raw_day_count = raw_day_count
+        projection.effective_weighted_days = _q6(effective_weighted_days)
+        projection.duty_score = _q6(duty_score)
+        projection.adjustment_score = _q6(adjustment_score)
+        projection.total_score = _q6(total_score)
         projection.updated_at = _utcnow()
     session.flush()
     return projection
-
-
-def _projection_rows_by_key(
-    session: Session, keys: set[tuple[uuid.UUID, date]]
-) -> dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]]:
-    if not keys:
-        return {}
-    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
-    quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
-    rows = session.execute(
-        select(SoldierQuarterScoreProjection).where(
-            uuid_any("soldier_quarter_score_projection.soldier_id", soldier_ids),
-            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
-        )
-    ).scalars().all()
-    by_key: dict[tuple[uuid.UUID, date], list[SoldierQuarterScoreProjection]] = defaultdict(list)
-    for row in rows:
-        key = (row.soldier_id, row.quarter_start)
-        if key in keys:
-            by_key[key].append(row)
-    return by_key
 
 
 def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjection]) -> bool:
@@ -1006,74 +1002,130 @@ def _expected_soldier_totals_by_id(
 def _projection_keys_for_soldiers(
     session: Session, soldier_ids: set[uuid.UUID]
 ) -> set[tuple[uuid.UUID, date]]:
+    """Persisted (soldier, quarter) buckets for the given soldiers.
+
+    Read-path trust model: every mutation that affects scores rebuilds its
+    buckets synchronously through ``refresh_projection_for_change``, so the
+    persisted bucket set is exactly the set of buckets reads may need. The old
+    implementation re-derived keys from every published assignment/override/
+    adjustment, which scanned hundreds of thousands of rows per request.
+    """
     if not soldier_ids:
         return set()
 
-    # Quarter derivation happens server-side: at scale the published
-    # assignments alone are hundreds of thousands of rows, and expanding them
-    # quarter-by-quarter in Python dominated dashboard reads.
     id_params = sorted(str(soldier_id) for soldier_id in soldier_ids)
     rows = session.execute(
         text(
             """
-            SELECT soldier_id, quarter_start FROM (
-                SELECT a.soldier_id AS soldier_id,
-                       (date_trunc('quarter', gs)::date) AS quarter_start
-                FROM duty_assignments a
-                CROSS JOIN LATERAL generate_series(
-                    date_trunc('quarter', a.start_date),
-                    a.end_date - INTERVAL '1 day',
-                    INTERVAL '3 months'
-                ) gs
-                WHERE a.status = 'published'
-                  AND a.soldier_id = ANY(CAST(:ids AS uuid[]))
-                UNION ALL
-                SELECT o.effective_soldier_id AS soldier_id,
-                       (date_trunc('quarter', o.date)::date) AS quarter_start
-                FROM duty_day_overrides o
-                JOIN duty_assignments a ON a.id = o.duty_assignment_id
-                WHERE a.status = 'published'
-                  AND o.effective_soldier_id = ANY(CAST(:ids AS uuid[]))
-                UNION ALL
-                SELECT sa.soldier_id AS soldier_id,
-                       (date_trunc('quarter', sa.created_at)::date) AS quarter_start
-                FROM score_adjustments sa
-                WHERE sa.soldier_id = ANY(CAST(:ids AS uuid[]))
-                  AND sa.created_at IS NOT NULL
-            ) q
-            GROUP BY soldier_id, quarter_start
+            SELECT DISTINCT soldier_id, quarter_start
+            FROM soldier_quarter_score_projection
+            WHERE soldier_id = ANY(CAST(:ids AS uuid[]))
             """
         ).bindparams(ids=id_params)
     ).all()
-    keys = {
+    return {
         (row.soldier_id if isinstance(row.soldier_id, uuid.UUID) else uuid.UUID(str(row.soldier_id)), row.quarter_start)
         for row in rows
     }
 
-    persisted = session.execute(
-        select(SoldierQuarterScoreProjection.soldier_id, SoldierQuarterScoreProjection.quarter_start).where(
-            uuid_any("soldier_quarter_score_projection.soldier_id", soldier_ids)
-        )
+
+def _bucket_health_counts(session: Session, *, soldier_ids: set[uuid.UUID]) -> tuple[int, int]:
+    """One-row health summary: (duplicate-aggregate-groups, stale-version rows).
+
+    Index-only against the covering index; lets reads skip detailed checks when
+    everything is healthy.
+    """
+    if not soldier_ids:
+        return (0, 0)
+    id_params = sorted(str(soldier_id) for soldier_id in soldier_ids)
+    row = session.execute(
+        text(
+            """
+            SELECT COALESCE(SUM(g.agg_dup), 0), COALESCE(SUM(g.stale_rows), 0)
+            FROM (
+                SELECT soldier_id, quarter_start,
+                       GREATEST(COUNT(*) FILTER (WHERE duty_type_id IS NULL) - 1, 0) AS agg_dup,
+                       COUNT(*) FILTER (WHERE projection_version <> :canonical_version) AS stale_rows
+                FROM soldier_quarter_score_projection
+                WHERE soldier_id = ANY(CAST(:ids AS uuid[]))
+                GROUP BY soldier_id, quarter_start
+            ) g
+            """
+        ).bindparams(ids=id_params, canonical_version=SCORE_PROJECTION_CANONICAL_VERSION)
+    ).one()
+    return int(row[0]), int(row[1])
+
+
+def _dirty_markers_present(session: Session, *, soldier_ids: set[uuid.UUID]) -> bool:
+    if not soldier_ids:
+        return False
+    row = session.execute(
+        select(ScoreProjectionDirtyBucket.id).where(
+            uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids),
+            ScoreProjectionDirtyBucket.status == "dirty",
+        ).limit(1)
+    ).first()
+    return row is not None
+
+
+def _unhealthy_bucket_keys_detailed(
+    session: Session, *, soldier_ids: set[uuid.UUID]
+) -> set[tuple[uuid.UUID, date]]:
+    """The specific buckets failing completeness (rare; detailed fallback)."""
+    if not soldier_ids:
+        return set()
+    id_params = sorted(str(soldier_id) for soldier_id in soldier_ids)
+    rows = session.execute(
+        text(
+            """
+            SELECT soldier_id, quarter_start
+            FROM soldier_quarter_score_projection
+            WHERE soldier_id = ANY(CAST(:ids AS uuid[]))
+            GROUP BY soldier_id, quarter_start
+            HAVING COUNT(*) FILTER (WHERE duty_type_id IS NULL) > 1
+                OR BOOL_OR(projection_version <> :canonical_version)
+            """
+        ).bindparams(ids=id_params, canonical_version=SCORE_PROJECTION_CANONICAL_VERSION)
     ).all()
-    keys.update((soldier_id, quarter_start_value) for soldier_id, quarter_start_value in persisted)
-    return keys
+    return {
+        (row[0] if isinstance(row[0], uuid.UUID) else uuid.UUID(str(row[0])), row[1])
+        for row in rows
+    }
 
 
 def _dirty_or_divergent_projection_keys(
-    session: Session, *, keys: set[tuple[uuid.UUID, date]]
+    session: Session,
+    *,
+    keys: set[tuple[uuid.UUID, date]] | None = None,
+    soldier_ids: set[uuid.UUID] | None = None,
 ) -> set[tuple[uuid.UUID, date]]:
-    if not keys:
+    """Buckets whose markers implicate them as needing repair.
+
+    Reconciled divergences (recorded audit trail) are excluded — they describe
+    past repairs, not pending work.
+    """
+    if keys is not None:
+        if not keys:
+            return set()
+        soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+        quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    elif not soldier_ids:
         return set()
-    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
-    quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    conditions = [
+        or_(
+            ScoreProjectionDirtyBucket.status == "dirty",
+            and_(
+                ScoreProjectionDirtyBucket.divergence.is_not(None),
+                ScoreProjectionDirtyBucket.reconciled_at.is_(None),
+            ),
+        )
+    ]
+    if keys is not None:
+        conditions.append(ScoreProjectionDirtyBucket.quarter_start.in_(quarter_starts))
     rows = session.execute(
         select(ScoreProjectionDirtyBucket).where(
             uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids),
-            ScoreProjectionDirtyBucket.quarter_start.in_(quarter_starts),
-            or_(
-                ScoreProjectionDirtyBucket.status == "dirty",
-                ScoreProjectionDirtyBucket.divergence.is_not(None),
-            ),
+            *conditions,
         )
     ).scalars().all()
     return {(row.soldier_id, row.quarter_start) for row in rows}
@@ -1268,14 +1320,7 @@ def rebuild_projection_bucket(
     _upsert_soldier_total(session, soldier_id=soldier_id)
     if refresh_quarter_total:
         _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
-    return list(
-        session.execute(
-            select(SoldierQuarterScoreProjection).where(
-                SoldierQuarterScoreProjection.soldier_id == soldier_id,
-                SoldierQuarterScoreProjection.quarter_start == quarter_start_value,
-            )
-    ).scalars().all()
-    )
+    return rows
 
 
 def refresh_projection_for_change(
@@ -1309,6 +1354,9 @@ def refresh_projection_for_change(
             )
             rebuild_projection_bucket(session, soldier_id, quarter_start_value)
             dirty.status = "current"
+            # A successful rebuild clears any recorded divergence; leaving it
+            # set would make every subsequent read re-repair this bucket.
+            dirty.divergence = None
             dirty.refreshed_at = _utcnow()
             dirty.updated_at = _utcnow()
             session.flush()
@@ -1412,24 +1460,37 @@ def backfill_score_projection(
     batch_size: int = 500,
     resume_after: tuple[uuid.UUID, date] | None = None,
 ) -> ScoreProjectionState:
+    """Build/refresh all projection buckets, one calendar quarter per call.
+
+    Each call rebuilds a whole quarter with the set-based bulk engine
+    (`score_projection_bulk`), so query count is O(quarters), not O(buckets).
+    ``batch_size`` is accepted for compatibility but quarter granularity
+    supersedes it. The resume cursor advances per completed quarter.
+    """
+    from app.services.score_projection_bulk import (
+        _bulk_upsert_soldier_totals,
+        _rebuild_quarter_buckets_bulk,
+    )
+
     state = _get_or_create_state(session)
     if resume_after is None and state.backfill_complete:
         session.flush()
         return state
 
-    effective_resume_after = resume_after if resume_after is not None else _state_resume_after(state)
-    all_partitions = _enumerate_projection_keys(session)
-    remaining_partitions = (
-        [
-            partition
-            for partition in all_partitions
-            if _partition_sort_key(partition) > _partition_sort_key(effective_resume_after)
-        ]
-        if effective_resume_after is not None
-        else all_partitions
+    # Quarter-granular resume: `resume_after_quarter_start` records the last
+    # completed quarter; that quarter and everything before it are skipped on
+    # resume (re-processing a partially completed quarter is idempotent).
+    completed_through = (
+        resume_after[1] if resume_after is not None else state.resume_after_quarter_start
     )
-    batch_partitions = remaining_partitions[:batch_size]
-    if not batch_partitions:
+    all_partitions = _enumerate_projection_keys(session)
+    by_quarter: dict[date, list[tuple[uuid.UUID, date]]] = defaultdict(list)
+    for partition in all_partitions:
+        if completed_through is not None and partition[1] <= completed_through:
+            continue
+        by_quarter[partition[1]].append(partition)
+
+    if not by_quarter:
         if not state.backfill_complete:
             _ensure_read_required_quarter_totals(session)
         state.backfill_complete = True
@@ -1440,19 +1501,21 @@ def backfill_score_projection(
         session.flush()
         return state
 
-    batch_quarters = sorted({quarter_start_value for _, quarter_start_value in batch_partitions})
-    for soldier_id, quarter_start_value in batch_partitions:
-        rebuild_projection_bucket(
-            session, soldier_id, quarter_start_value, refresh_quarter_total=False
-        )
-    for quarter_start_value in batch_quarters:
-        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
+    quarter = min(by_quarter)
+    quarter_partitions = by_quarter[quarter]
+    soldier_ids = {soldier_id for soldier_id, _quarter in quarter_partitions}
 
-    last_partition = batch_partitions[-1]
-    has_more = len(remaining_partitions) > batch_size
+    _rebuild_quarter_buckets_bulk(
+        session, quarter_start_value=quarter, soldier_ids=soldier_ids
+    )
+    _bulk_upsert_soldier_totals(session, soldier_ids)
+    _upsert_quarter_total(session, quarter_start_value=quarter)
+
+    has_more = any(q > quarter for q in by_quarter)
+    last_partition = max(quarter_partitions, key=_partition_sort_key)
     state.backfill_complete = not has_more
-    state.resume_after_soldier_id = None if not has_more else last_partition[0]
-    state.resume_after_quarter_start = None if not has_more else last_partition[1]
+    state.resume_after_soldier_id = last_partition[0] if has_more else None
+    state.resume_after_quarter_start = quarter if has_more else None
     state.completed_at = _utcnow() if not has_more else None
     state.updated_at = _utcnow()
     if not has_more:

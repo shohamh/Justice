@@ -119,7 +119,28 @@ Full scale: 10k soldiers, 500k assignments, 200 teams.
 | Transparency read queries | 20,582 | ~125 | **124** |
 | Fairness read queries | crashed (65,535-param limit) | ~70 | **69** |
 | Dashboard read queries | 39 (with full-JSONB fetches) | 58 | **58** |
-| Single-assignment write refresh | 0.66–2.4s | stable | ~6s incl. probe insert |
+| Single-assignment write refresh | 0.66–2.4s | stable | **0.19s** |
+| Backfill wall (fresh container, 500k) | un runnable | ~40–60 min | **~24 min** (192k queries) |
+| Dashboard wall (fresh container) | 11.2s (dev legacy) | ~20s | **15.0s** |
+| Fairness wall (fresh container) | CRASH | ~97s | **47.0s** |
+| Transparency wall (fresh container) | CRASH at ~30s | ~81s | **54.1s** |
+
+Fresh-container comparison vs `dev` (same dataset, same machine, Postgres
+restarted first): dev's transparency and fairness reads crash on psycopg's
+65,535-parameter limit; the branch serves both. The dashboard remains ~35%
+slower than dev's simpler aggregate path — that gap buys provable consistency
+with the other two reads.
+
+### Set-based backfill engine
+
+`score_projection_bulk._rebuild_quarter_buckets_bulk` rebuilds a whole quarter
+in ~5 queries: one canonical `_effective_duty_day_rows` expansion per quarter,
+candidate detection via scoped ownership/override queries, identical
+fingerprint builders and `_bucket_partition_rows` partitioning (byte-identical
+partition rows), bulk stale-row delete + insert, and one INSERT … ON CONFLICT
+statement recomputing every affected soldier total server-side.
+`backfill_score_projection` now processes one calendar quarter per call with a
+quarter-granular resume cursor (`resume_after_quarter_start`).
 
 Correctness: full fast suite green; legacy-vs-projected output equality
 asserted across scenarios; new tests cover empty-history-quarter coverage,
