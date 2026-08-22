@@ -2,12 +2,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests import conftest
+from tests.support import database
 from tests.conftest import (
     _apply_schema,
     _item_needs_database,
     _shared_postgres_enabled,
     _truncate_tables,
-    _worker_database_name,
+    pytest_collection_modifyitems,
 )
 
 
@@ -46,20 +48,20 @@ def test_apply_schema_skips_database_url_for_pure_collected_items() -> None:
     assert requested_fixtures == []
 
 
-def test_apply_schema_requests_database_url_for_database_collected_items() -> None:
-    class DatabaseUrlRequested(Exception):
+def test_apply_schema_requests_database_runtime_for_database_collected_items() -> None:
+    class DatabaseRuntimeRequested(Exception):
         pass
 
     def getfixturevalue(fixture_name: str) -> str:
-        assert fixture_name == "db_admin_url"
-        raise DatabaseUrlRequested
+        assert fixture_name == "_database_runtime"
+        raise DatabaseRuntimeRequested
 
     request = SimpleNamespace(
         session=SimpleNamespace(items=[SimpleNamespace(fixturenames=["client"])]),
         getfixturevalue=getfixturevalue,
     )
 
-    with pytest.raises(DatabaseUrlRequested):
+    with pytest.raises(DatabaseRuntimeRequested):
         _apply_schema.__wrapped__(request)
 
 
@@ -78,13 +80,13 @@ def test_truncate_tables_skips_admin_engine_for_pure_item() -> None:
     assert requested_fixtures == []
 
 
-def test_truncate_tables_requests_admin_engine_for_database_item() -> None:
-    class AdminEngineRequested(Exception):
+def test_truncate_tables_requests_database_runtime_for_database_item() -> None:
+    class DatabaseRuntimeRequested(Exception):
         pass
 
     def getfixturevalue(fixture_name: str) -> None:
-        assert fixture_name == "admin_engine"
-        raise AdminEngineRequested
+        assert fixture_name == "_database_runtime"
+        raise DatabaseRuntimeRequested
 
     request = SimpleNamespace(
         node=SimpleNamespace(fixturenames=["client"]),
@@ -93,27 +95,184 @@ def test_truncate_tables_requests_admin_engine_for_database_item() -> None:
 
     fixture = _truncate_tables.__wrapped__(request)
 
-    with pytest.raises(AdminEngineRequested):
+    with pytest.raises(DatabaseRuntimeRequested):
         next(fixture)
+
+
+def test_truncate_tables_uses_database_runtime_reset() -> None:
+    class Runtime:
+        reset_called = False
+
+        def reset(self) -> None:
+            self.reset_called = True
+
+    runtime = Runtime()
+    request = SimpleNamespace(
+        node=SimpleNamespace(fixturenames=["client"]),
+        getfixturevalue=lambda fixture_name: runtime if fixture_name == "_database_runtime" else None,
+    )
+
+    fixture = _truncate_tables.__wrapped__(request)
+
+    next(fixture)
+    with pytest.raises(StopIteration):
+        next(fixture)
+    assert runtime.reset_called is True
 
 
 def test_shared_postgres_enabled_for_full_parallel_suite(tmp_path) -> None:
     config = SimpleNamespace(
         workerinput=None,
-        option=SimpleNamespace(numprocesses=4),
+        option=SimpleNamespace(numprocesses=4, markexpr="", file_or_dir=[]),
         rootpath=tmp_path,
-        args=[str(tmp_path / "tests")],
+        args=[str(tmp_path / "tests"), str(tmp_path / "app/services/tests")],
+        invocation_params=pytest.Config.InvocationParams(
+            args=("-q",),
+            plugins=None,
+            dir=tmp_path,
+        ),
     )
 
     assert _shared_postgres_enabled(config) is True
 
 
+def test_shared_postgres_stays_isolated_for_realistic_focused_invocation(tmp_path) -> None:
+    focused_path = "tests/unit/test_test_fixtures.py"
+    config = SimpleNamespace(
+        workerinput=None,
+        option=SimpleNamespace(
+            numprocesses=4,
+            markexpr="",
+            file_or_dir=[focused_path],
+        ),
+        rootpath=tmp_path,
+        args=[focused_path],
+        invocation_params=pytest.Config.InvocationParams(
+            args=(focused_path, "-q"),
+            plugins=None,
+            dir=tmp_path,
+        ),
+    )
+
+    assert _shared_postgres_enabled(config) is False
+
+
+@pytest.mark.parametrize(
+    "markexpr",
+    [
+        "pure",
+        "  pure  ",
+        "pure and not slow",
+        "not slow and pure",
+        "(pure)",
+        "((pure and not slow))",
+        "pure and algorithm",
+        "pure and not algorithm",
+    ],
+)
+def test_pure_only_selected_accepts_conjunctions_requiring_pure(markexpr: str) -> None:
+    config = SimpleNamespace(option=SimpleNamespace(markexpr=markexpr))
+
+    assert conftest._pure_only_selected(config) is True
+
+
+@pytest.mark.parametrize(
+    "markexpr",
+    [
+        "",
+        "database",
+        "http",
+        "not pure",
+        "pure or pure",
+        "pure or database",
+        "pure and database",
+        "pure and not database",
+        "pure and http",
+        "pure and not http",
+        "pure and unknown_marker",
+        "pure and not unknown_marker",
+        "pure and (not slow or algorithm)",
+    ],
+)
+def test_pure_only_selected_rejects_expressions_that_may_not_be_pure(markexpr: str) -> None:
+    config = SimpleNamespace(option=SimpleNamespace(markexpr=markexpr))
+
+    assert conftest._pure_only_selected(config) is False
+
+
+@pytest.mark.parametrize(
+    ("markexpr", "expected"),
+    [
+        ("pure", False),
+        ("pure and not slow", False),
+        ("not slow and (pure)", False),
+        ("database", True),
+        ("http", True),
+        ("pure and unknown_marker", True),
+        ("pure or database", True),
+    ],
+)
+def test_shared_postgres_starts_only_when_marker_selection_can_need_database(
+    tmp_path, markexpr: str, expected: bool
+) -> None:
+    config = SimpleNamespace(
+        workerinput=None,
+        option=SimpleNamespace(numprocesses=4, markexpr=markexpr, file_or_dir=[]),
+        rootpath=tmp_path,
+        args=[str(tmp_path / "tests"), str(tmp_path / "app/services/tests")],
+        invocation_params=pytest.Config.InvocationParams(
+            args=("-m", markexpr),
+            plugins=None,
+            dir=tmp_path,
+        ),
+    )
+
+    assert _shared_postgres_enabled(config) is expected
+
+
+@pytest.mark.parametrize(
+    ("markexpr", "args"),
+    [
+        ("pure", []),
+        ("pure and not slow", []),
+        ("not slow and (pure)", []),
+        ("pure", ["tests/unit/test_model.py::test_fairness_all_zero_scores_distributes"]),
+    ],
+)
+def test_pytest_configure_does_not_create_container_for_pure_only_selection(
+    monkeypatch, tmp_path, markexpr: str, args: list[str]
+) -> None:
+    configured_markers: list[tuple[str, str]] = []
+    config = SimpleNamespace(
+        workerinput=None,
+        option=SimpleNamespace(numprocesses=4, markexpr=markexpr, file_or_dir=args),
+        rootpath=tmp_path,
+        args=args,
+        invocation_params=pytest.Config.InvocationParams(
+            args=("-m", markexpr, *args),
+            plugins=None,
+            dir=tmp_path,
+        ),
+        addinivalue_line=lambda name, value: configured_markers.append((name, value)),
+    )
+
+    def unexpected_container():
+        raise AssertionError("pure-only selection must not create a PostgreSQL container")
+
+    monkeypatch.setattr(database, "new_postgres_container", unexpected_container)
+
+    conftest.pytest_configure(config)
+
+    assert len(configured_markers) == 4
+
+
 @pytest.mark.parametrize(
     ("numprocesses", "args", "workerinput"),
     [
-        (0, ["tests"], None),
+        (0, [], None),
+        (4, ["tests"], None),
         (4, ["tests/unit/test_jwt_tokens.py"], None),
-        (4, ["tests"], {"workerid": "gw0"}),
+        (4, [], {"workerid": "gw0"}),
     ],
 )
 def test_shared_postgres_disabled_outside_full_parallel_controller(
@@ -121,18 +280,64 @@ def test_shared_postgres_disabled_outside_full_parallel_controller(
 ) -> None:
     config = SimpleNamespace(
         workerinput=workerinput,
-        option=SimpleNamespace(numprocesses=numprocesses),
+        option=SimpleNamespace(numprocesses=numprocesses, markexpr="", file_or_dir=args),
         rootpath=tmp_path,
         args=[str(tmp_path / arg) for arg in args],
+        invocation_params=pytest.Config.InvocationParams(
+            args=tuple(args),
+            plugins=None,
+            dir=tmp_path,
+        ),
     )
 
     assert _shared_postgres_enabled(config) is False
 
 
 def test_worker_database_name_is_safe_and_bounded() -> None:
-    name = _worker_database_name({"testrunuid": "ABC-123/unsafe" * 10, "workerid": "gw-7"})
+    name = database.worker_database_name({"testrunuid": "ABC-123/unsafe" * 10, "workerid": "gw-7"})
 
     assert name.startswith("pytest_")
     assert name.replace("_", "").isalnum()
     assert name == name.lower()
     assert len(name) <= 63
+
+
+class _CollectedItem:
+    def __init__(self, nodeid: str, *, slow: bool = False) -> None:
+        self.nodeid = nodeid
+        self.fixturenames: list[str] = []
+        self.keywords = {"slow": object()} if slow else {}
+        self.markers: list[str] = []
+
+    def add_marker(self, marker) -> None:
+        self.markers.append(marker.name)
+
+
+class _DeselectionHook:
+    def __init__(self) -> None:
+        self.items: list[_CollectedItem] = []
+
+    def pytest_deselected(self, *, items: list[_CollectedItem]) -> None:
+        self.items.extend(items)
+
+
+@pytest.mark.parametrize("include_slow", [False, True])
+def test_collection_includes_slow_items_only_with_slow_option(include_slow: bool) -> None:
+    slow_item = _CollectedItem("tests/unit/test_fairness_e2e.py::test_large")
+    slow_item.keywords["slow"] = object()
+    regular_item = _CollectedItem("tests/unit/test_model.py::test_small")
+    deselection_hook = _DeselectionHook()
+    config = SimpleNamespace(
+        getoption=lambda option: include_slow if option == "--slow" else None,
+        hook=deselection_hook,
+    )
+    items = [slow_item, regular_item]
+
+    pytest_collection_modifyitems(config, items)
+
+    expected_items = [slow_item, regular_item] if include_slow else [regular_item]
+    expected_deselected = [] if include_slow else [slow_item]
+    assert items == expected_items
+    assert deselection_hook.items == expected_deselected
+    assert regular_item.markers == ["pure", "algorithm"]
+    assert slow_item.markers == (["pure", "algorithm"] if include_slow else [])

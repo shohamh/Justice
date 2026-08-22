@@ -105,7 +105,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
       return;
     }
     setError("");
-    setPrimarySelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+    setPrimarySelected(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
     setReserveSelected(prev => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
   }
 
@@ -115,7 +115,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
       return;
     }
     setError("");
-    setReserveSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+    setReserveSelected(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
     setPrimarySelected(prev => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
   }
 

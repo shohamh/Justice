@@ -1,4 +1,4 @@
-from app.auth.password import hash_password, verify_password
+from app.auth.password import _hasher, hash_password, verify_password
 
 
 def test_hash_password_returns_string_with_argon2_prefix():
@@ -17,8 +17,10 @@ def test_verify_password_rejects_wrong_password():
 
 
 def test_hash_is_salted_so_two_hashes_of_same_password_differ():
-    a = hash_password("same")
-    b = hash_password("same")
+    # Assert against the raw hasher: hash_password() memoizes per plaintext
+    # under JUSTICE_TESTING=1, which would legitimately return equal strings.
+    a = _hasher.hash("same")
+    b = _hasher.hash("same")
     assert a != b
     assert verify_password("same", a)
     assert verify_password("same", b)

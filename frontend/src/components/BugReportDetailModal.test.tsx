@@ -31,7 +31,7 @@ const comment = {
   author_name: "Author",
   body: "hello",
   created_at: "2026-01-01T00:00:00Z",
-  attachments: [{ id: "att1", file_name: "photo.png" }],
+  attachments: [{ id: "att1", file_name: "photo.png", content_type: "image/png" }],
 };
 
 function renderModal() {

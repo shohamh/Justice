@@ -353,7 +353,7 @@ export default function ImportSessionReviewPage() {
     setSelections((prev) => {
       const next = {
         ...prev,
-        [group]: { ...(prev[group] ?? {}), [String(row)]: value },
+        [group]: { ...prev[group], [String(row)]: value },
       };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
@@ -431,7 +431,7 @@ export default function ImportSessionReviewPage() {
           ...nm,
           [kindKey]: {
             ...kindEntry,
-            by_name: { ...(kindEntry.by_name ?? {}), [pick.excelName]: pick.pickedId },
+            by_name: { ...kindEntry.by_name, [pick.excelName]: pick.pickedId },
           },
         },
       };
@@ -442,7 +442,7 @@ export default function ImportSessionReviewPage() {
           ...nm,
           [kindKey]: {
             ...kindEntry,
-            by_row: { ...(kindEntry.by_row ?? {}), [pick.rowKey]: pick.pickedId },
+            by_row: { ...kindEntry.by_row, [pick.rowKey]: pick.pickedId },
           },
         },
       };

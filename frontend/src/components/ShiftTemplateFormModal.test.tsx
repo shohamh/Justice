@@ -44,3 +44,9 @@ test("picking an until-date shows the computed instance count for the default we
   // matching days are Sun 6/21, Mon 6/22, Tue 6/23, Wed 6/24, Thu 6/25 = 5.
   expect(screen.getByTestId("auto-roll-until-count")).toHaveTextContent("count:5");
 });
+vi.mock('../api/hierarchy', () => ({
+  fetchTree: vi.fn(() => Promise.resolve([])),
+}));
+vi.mock('../api/soldiers', () => ({
+  getRanks: vi.fn(() => Promise.resolve([])),
+}));

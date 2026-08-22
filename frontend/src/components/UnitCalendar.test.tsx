@@ -272,3 +272,10 @@ describe("UnitCalendar eligibility badges", () => {
     expect(screen.queryByTestId(`shift-warning-badge-${testShift.id}`)).not.toBeInTheDocument();
   });
 });
+vi.mock('../api/ranges', () => ({
+  getRanges: vi.fn(() => Promise.resolve([])),
+  getMyRanges: vi.fn(() => Promise.resolve([])),
+}));
+vi.mock('../api/dutyConfig', () => ({
+  listDutyTypes: vi.fn(() => Promise.resolve([])),
+}));

@@ -20,7 +20,7 @@ export function downloadDutyICS(
   const dtend = formatICSDate(duty.end_date);
   const summary = escapeICS(`תורנות: ${dutyTypeName}`);
   const location = escapeICS(locationName);
-  const now = new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
+  const now = new Date().toISOString().replaceAll("-", "").replaceAll(":", "").replace(".", "").slice(0, 15) + "Z";
 
   const ics = [
     "BEGIN:VCALENDAR",

@@ -13,6 +13,7 @@
 # direct collection under the "tests" testpath, and importing them here too
 # would double-register e.g. the --slow CLI option.
 from tests.conftest import (  # noqa: F401
+    _database_runtime,
     admin_engine,
     admin_session,
     app_engine,
