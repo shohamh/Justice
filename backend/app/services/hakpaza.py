@@ -101,12 +101,17 @@ def find_candidates(
         raise ValueError("pulled soldier not found")
     scope_node_ids = candidate_scope_nodes(pulled_soldier, session)
 
-    all_inputs = load_soldier_inputs(session, as_of=pull_date)
-    candidate_inputs = [
-        si for si in all_inputs
-        if si.id != original.soldier_id
-        and si.hierarchy_node_id in scope_node_ids
-    ]
+    scope_soldier_ids = set(
+        session.execute(
+            select(Soldier.id).where(
+                Soldier.left_at.is_(None),
+                Soldier.hierarchy_node_id.in_(scope_node_ids),
+            )
+        ).scalars().all()
+    ) - {original.soldier_id}
+    candidate_inputs = load_soldier_inputs(
+        session, as_of=pull_date, soldier_ids=scope_soldier_ids
+    )
 
     existing = [
         ExistingAssignment(
