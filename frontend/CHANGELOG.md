@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-22
+
+### Chores
+- Commander dashboard and transparency scoring reads are now served from precomputed, rebuildable score projections with automatic backfill, cutting repeated score computation on large hierarchies.
+- Backend test suite runs substantially faster via memoized password hashing and a shared migrated database across runs.
+- Frontend test suite parallelized (jsdom/node project split) and upgraded to Vite 8 / Vitest 4; oxlint added as a fast lint pass.
+
 ## 2026-08-21
 
 ### Features
