@@ -149,3 +149,44 @@ Focused final-harness verification (not a broad suite):
 python -m pytest tests/unit/test_test_fixtures.py tests/unit/test_test_app.py tests/unit/test_database_test_adapter.py -n 0
 63 passed, 1 warning in 9.00s
 ```
+
+
+## Post-verification optimization round — 2026-08-22 (`77ec37c7`)
+
+Profiling the verified branch surfaced three hotspots; all three were addressed.
+
+### Findings
+
+| Hotspot | Evidence | Fix |
+| --- | --- | --- |
+| Argon2 password hashing in test seeding | ~2,075 `create_soldier()` callsites × ~96 ms measured hash cost ≈ ~200 s of suite worker time | `hash_password` memoizes per plaintext when `JUSTICE_TESTING=1` (set process-wide in `pytest_configure`). Production salting unchanged; the salt unit test now asserts against the raw hasher |
+| Migration-regression tests each booted a private container and replayed the full alembic chain | 5 slowest default-suite calls were 13.7 s / 7.5 s / 6.1 s / 5.7 s / 5.2 s, all migration tests | `tests/support/database.py::get_migrated_template` + `cloned_migration_database`: one process-cached container migrated to the down_revision per module; each test runs on a cheap `CREATE DATABASE ... TEMPLATE` clone. The 7 migration tests are additionally marked `slow` |
+| `create_app()` reuse hypothesis | Measured 0.6 ms median per call (module import 5 s, once) | Rejected — function-scoped clients stay; no change needed |
+
+Also fixed en route: dev's newer `app/routes/tests` and `app/scripts/tests`
+sub-conftests re-export root fixtures but lacked `_database_runtime`, erroring
+every database test under those trees with "fixture '_database_runtime' not
+found" (`58238b6f`).
+
+### Full-suite results (same worktree, fresh venv, pytest 9.1.1)
+
+| Command | Before (recorded above) | After | Exit |
+| --- | ---: | ---: | --- |
+| `pytest -q` | 294.7 s | **177.9 s** (−34%) | 0 |
+| `pytest --slow -q` | 598.6 s | **555.7 s** (−7%) | 0 |
+
+Focused spot-checks after the changes:
+
+```text
+tests/unit/test_password.py + 3 migration files + announcement pagination test (--slow -n 0)
+13 passed in ~33s
+keva upgrade test call:        13.74s -> 5.68s (first test builds the template)
+keva downgrade test call:       6.12s -> 0.49s (clone only)
+announcement pagination call:   5.65s -> 0.68s (26 memoized soldier hashes)
+```
+
+Caveats: CI skips `--slow`, so migration-regression coverage no longer runs in
+CI by default — run `pytest --slow -q` before releases (existing convention).
+The pre-existing `test_seed_creates_stable_range_scenarios_without_duplicates`
+failure (15 != 3 range events) reproduces identically on pristine `dev` and is
+unrelated to this branch.
