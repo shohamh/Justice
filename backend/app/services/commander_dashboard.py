@@ -7,6 +7,7 @@ from statistics import mean, median, stdev
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from app.services.sql_arrays import uuid_any
 
 from app.db.models import (
     DutyAssignment,
@@ -48,7 +49,7 @@ def _active_global_exemption_soldier_ids(
         select(SoldierExemption.soldier_id)
         .join(ExemptionType, ExemptionType.id == SoldierExemption.exemption_type_id)
         .where(
-            SoldierExemption.soldier_id.in_(soldier_ids),
+            uuid_any("soldier_exemptions.soldier_id", soldier_ids),
             ExemptionType.is_global.is_(True),
             SoldierExemption.start_date <= as_of,
             (SoldierExemption.end_date.is_(None) | (SoldierExemption.end_date >= as_of)),
@@ -67,7 +68,7 @@ def _soon_expiring_exemptions(
         select(SoldierExemption.soldier_id, SoldierExemption.end_date, ExemptionType.name)
         .join(ExemptionType, ExemptionType.id == SoldierExemption.exemption_type_id)
         .where(
-            SoldierExemption.soldier_id.in_(soldier_ids),
+            uuid_any("soldier_exemptions.soldier_id", soldier_ids),
             SoldierExemption.end_date.isnot(None),
             SoldierExemption.end_date <= end,
             SoldierExemption.end_date >= start,
@@ -100,7 +101,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
     pending_field = (
         session.execute(
             select(func.count(SoldierFieldUpdate.id)).where(
-                SoldierFieldUpdate.soldier_id.in_(soldier_ids),
+                uuid_any("soldier_field_updates.soldier_id", soldier_ids),
                 SoldierFieldUpdate.status == "pending",
             )
         ).scalar()
@@ -110,7 +111,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
     pending_exempt = (
         session.execute(
             select(func.count(ExemptionRequest.id)).where(
-                ExemptionRequest.soldier_id.in_(soldier_ids),
+                uuid_any("exemption_requests.soldier_id", soldier_ids),
                 ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
             )
         ).scalar()
@@ -135,7 +136,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
         (
             session.execute(
                 select(func.count(SwapRequest.id)).where(
-                    SwapRequest.requesting_soldier_id.in_(soldier_ids),
+                    uuid_any("swap_requests.requesting_soldier_id", soldier_ids),
                     SwapRequest.status == "open",
                     SwapRequest.id.in_(_swap_candidate_request_ids),
                 )
@@ -155,7 +156,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
         session.execute(
             select(DutyAssignment).where(
                 DutyAssignment.status.in_(["published", "algorithm_draft"]),
-                DutyAssignment.soldier_id.in_(soldier_ids),
+                uuid_any("duty_assignments.soldier_id", soldier_ids),
                 DutyAssignment.start_date <= next_week,
                 DutyAssignment.end_date > today,
             )
@@ -208,7 +209,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
     expiring_count = (
         session.execute(
             select(func.count(SoldierExemption.id)).where(
-                SoldierExemption.soldier_id.in_(soldier_ids),
+                uuid_any("soldier_exemptions.soldier_id", soldier_ids),
                 SoldierExemption.end_date.isnot(None),
                 SoldierExemption.end_date <= next_week,
                 SoldierExemption.end_date >= today,
@@ -307,7 +308,7 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
         session.execute(
             select(DutyAssignment).where(
                 DutyAssignment.status.in_(["published", "algorithm_draft"]),
-                DutyAssignment.soldier_id.in_(soldier_ids),
+                uuid_any("duty_assignments.soldier_id", soldier_ids),
                 DutyAssignment.start_date <= end,
                 DutyAssignment.end_date >= today,
             )
@@ -415,7 +416,7 @@ def pending_approvals(session: Session, *, subtree_ids: list[uuid.UUID]) -> list
     fus = (
         session.execute(
             select(SoldierFieldUpdate).where(
-                SoldierFieldUpdate.soldier_id.in_(soldier_ids),
+                uuid_any("soldier_field_updates.soldier_id", soldier_ids),
                 SoldierFieldUpdate.status == "pending",
             )
         )
@@ -438,7 +439,7 @@ def pending_approvals(session: Session, *, subtree_ids: list[uuid.UUID]) -> list
     ers = (
         session.execute(
             select(ExemptionRequest).where(
-                ExemptionRequest.soldier_id.in_(soldier_ids),
+                uuid_any("exemption_requests.soldier_id", soldier_ids),
                 ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
             )
         )

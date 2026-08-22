@@ -8,8 +8,9 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
+from app.services.sql_arrays import uuid_any
 
 from app.db.models import (
     DutyAssignment,
@@ -785,7 +786,7 @@ def _projection_rows_by_key(
     quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
     rows = session.execute(
         select(SoldierQuarterScoreProjection).where(
-            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
+            uuid_any("soldier_quarter_score_projection.soldier_id", soldier_ids),
             SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
         )
     ).scalars().all()
@@ -806,47 +807,252 @@ def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjectio
     )
 
 
+def _incomplete_bucket_keys(
+    session: Session, keys: set[tuple[uuid.UUID, date]]
+) -> set[tuple[uuid.UUID, date]]:
+    """Keys with no partition rows, duplicate aggregate rows, or a stale version.
+
+    Reads four light columns instead of hydrating full ORM entities with their
+    JSONB fingerprints.
+    """
+    if not keys:
+        return set()
+    soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+    quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    rows = session.execute(
+        select(
+            SoldierQuarterScoreProjection.soldier_id,
+            SoldierQuarterScoreProjection.quarter_start,
+            SoldierQuarterScoreProjection.duty_type_id,
+            SoldierQuarterScoreProjection.projection_version,
+        ).where(
+            uuid_any("soldier_quarter_score_projection.soldier_id", soldier_ids),
+            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
+        )
+    ).all()
+    state: dict[tuple[uuid.UUID, date], dict[str, Any]] = {}
+    for soldier_id, quarter_start_value, duty_type_id, projection_version in rows:
+        key_state = state.setdefault(
+            (soldier_id, quarter_start_value), {"aggregate": 0, "canonical": True}
+        )
+        if duty_type_id is None:
+            key_state["aggregate"] += 1
+        if projection_version != SCORE_PROJECTION_CANONICAL_VERSION:
+            key_state["canonical"] = False
+    return {
+        key
+        for key, key_state in state.items()
+        if key_state["aggregate"] > 1 or not key_state["canonical"]
+    } | (keys - set(state))
+
+
+def _metadata_violation_clause() -> Any:
+    """SQL predicate that is TRUE when a partition row's fingerprint proof fails.
+
+    Mirrors scoring._projection_row_matches_fingerprint_metadata: each row must
+    be consistent with its own source fingerprint. Runs inside PostgreSQL so
+    the JSONB blobs are validated without shipping them to the client; callers
+    only pay for the (normally empty) violating set.
+    """
+    return text(
+        """
+        NOT COALESCE(
+            projection_version = :canonical_version
+            AND (
+                (
+                    duty_type_id IS NULL
+                    AND source_fingerprint -> 'duty_rows' = '[]'::jsonb
+                    AND raw_day_count = 0
+                    AND effective_weighted_days = 0
+                    AND duty_score = 0
+                    AND abs(
+                        adjustment_score - COALESCE(
+                            (SELECT SUM((a ->> 'delta')::numeric)
+                             FROM jsonb_array_elements(
+                                 COALESCE(source_fingerprint, '{}'::jsonb) -> 'adjustments'
+                             ) a),
+                            0
+                        )
+                    ) <= 0.0000005
+                )
+                OR (
+                    duty_type_id IS NOT NULL
+                    AND source_fingerprint -> 'adjustments' = '[]'::jsonb
+                    AND adjustment_score = 0
+                    AND raw_day_count = COALESCE(
+                        (SELECT COUNT(*)
+                         FROM jsonb_array_elements(
+                             COALESCE(source_fingerprint, '{}'::jsonb) -> 'duty_rows'
+                         ) d),
+                        0
+                    )
+                    AND abs(
+                        effective_weighted_days - COALESCE(
+                            (SELECT SUM((d ->> 'weighted_multiplier')::numeric)
+                             FROM jsonb_array_elements(
+                                 COALESCE(source_fingerprint, '{}'::jsonb) -> 'duty_rows'
+                             ) d),
+                            0
+                        )
+                    ) <= 0.0000005
+                    AND abs(
+                        duty_score - COALESCE(
+                            (SELECT SUM((d ->> 'score')::numeric)
+                             FROM jsonb_array_elements(
+                                 COALESCE(source_fingerprint, '{}'::jsonb) -> 'duty_rows'
+                             ) d),
+                            0
+                        )
+                    ) <= 0.0000005
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements(
+                            COALESCE(source_fingerprint, '{}'::jsonb) -> 'duty_rows'
+                        ) d
+                        WHERE d ->> 'duty_type_id' IS DISTINCT FROM CAST(duty_type_id AS text)
+                    )
+                )
+            )
+        , false)
+        """
+    ).bindparams(canonical_version=SCORE_PROJECTION_CANONICAL_VERSION)
+
+
+def _metadata_unprovable_bucket_keys(
+    session: Session,
+    *,
+    keys: set[tuple[uuid.UUID, date]] | None = None,
+    soldier_ids: set[uuid.UUID] | None = None,
+    quarter_starts: set[date] | None = None,
+) -> set[tuple[uuid.UUID, date]]:
+    if keys is not None:
+        if not keys:
+            return set()
+        soldier_ids = {soldier_id for soldier_id, _quarter in keys}
+        quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    if not soldier_ids and not quarter_starts:
+        return set()
+    stmt = select(
+        SoldierQuarterScoreProjection.soldier_id,
+        SoldierQuarterScoreProjection.quarter_start,
+    ).where(_metadata_violation_clause())
+    if soldier_ids:
+        stmt = stmt.where(uuid_any("soldier_quarter_score_projection.soldier_id", soldier_ids))
+    if quarter_starts:
+        stmt = stmt.where(SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts))
+    found = {(sid, qs) for sid, qs in session.execute(stmt).all()}
+    if keys is not None:
+        found &= keys
+    return found
+
+
+def _expected_soldier_totals_by_id(
+    session: Session, soldier_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """Recompute every soldier's expected total from partition rows in bulk.
+
+    Runs as a single server-side aggregate (the shift count needs a distinct
+    over the JSONB fingerprint duty rows) so the fingerprints never leave the
+    database.
+    """
+    if not soldier_ids:
+        return {}
+    id_params = sorted(str(soldier_id) for soldier_id in soldier_ids)
+    rows = session.execute(
+        text(
+            """
+            SELECT p.soldier_id AS soldier_id,
+                   COALESCE(SUM(p.raw_day_count), 0) AS raw_day_count,
+                   COALESCE(SUM(p.effective_weighted_days), 0) AS effective_weighted_days,
+                   COALESCE(SUM(p.duty_score), 0) AS duty_score,
+                   COALESCE(SUM(p.adjustment_score), 0) AS adjustment_score,
+                   COALESCE((
+                       SELECT COUNT(DISTINCT d ->> 'assignment_id')
+                       FROM soldier_quarter_score_projection p2
+                       CROSS JOIN LATERAL jsonb_array_elements(
+                           COALESCE(p2.source_fingerprint, '{}'::jsonb) -> 'duty_rows'
+                       ) d
+                       WHERE p2.soldier_id = p.soldier_id
+                   ), 0) AS shift_count
+            FROM soldier_quarter_score_projection p
+            WHERE p.soldier_id = ANY(CAST(:soldier_ids AS uuid[]))
+            GROUP BY p.soldier_id
+            """
+        ).bindparams(soldier_ids=id_params)
+    ).all()
+    expected: dict[uuid.UUID, dict[str, Any]] = {}
+    for soldier_id, raw_sum, ewd_sum, duty_sum, adj_sum, shift_count in rows:
+        expected[uuid.UUID(str(soldier_id))] = {
+            "raw_day_count": int(raw_sum),
+            "effective_weighted_days": Decimal(str(ewd_sum)),
+            "duty_score": Decimal(str(duty_sum)),
+            "adjustment_score": Decimal(str(adj_sum)),
+            "shift_count": int(shift_count),
+        }
+    for soldier_id in soldier_ids:
+        expected.setdefault(
+            soldier_id,
+            {
+                "raw_day_count": 0,
+                "effective_weighted_days": Decimal("0"),
+                "duty_score": Decimal("0"),
+                "adjustment_score": Decimal("0"),
+                "shift_count": 0,
+            },
+        )
+    return expected
+
+
 def _projection_keys_for_soldiers(
     session: Session, soldier_ids: set[uuid.UUID]
 ) -> set[tuple[uuid.UUID, date]]:
     if not soldier_ids:
         return set()
 
-    keys: set[tuple[uuid.UUID, date]] = set()
-    assignments = session.execute(
-        select(DutyAssignment.soldier_id, DutyAssignment.start_date, DutyAssignment.end_date).where(
-            DutyAssignment.status == "published",
-            DutyAssignment.soldier_id.in_(soldier_ids),
-        )
+    # Quarter derivation happens server-side: at scale the published
+    # assignments alone are hundreds of thousands of rows, and expanding them
+    # quarter-by-quarter in Python dominated dashboard reads.
+    id_params = sorted(str(soldier_id) for soldier_id in soldier_ids)
+    rows = session.execute(
+        text(
+            """
+            SELECT soldier_id, quarter_start FROM (
+                SELECT a.soldier_id AS soldier_id,
+                       (date_trunc('quarter', gs)::date) AS quarter_start
+                FROM duty_assignments a
+                CROSS JOIN LATERAL generate_series(
+                    date_trunc('quarter', a.start_date),
+                    a.end_date - INTERVAL '1 day',
+                    INTERVAL '3 months'
+                ) gs
+                WHERE a.status = 'published'
+                  AND a.soldier_id = ANY(CAST(:ids AS uuid[]))
+                UNION ALL
+                SELECT o.effective_soldier_id AS soldier_id,
+                       (date_trunc('quarter', o.date)::date) AS quarter_start
+                FROM duty_day_overrides o
+                JOIN duty_assignments a ON a.id = o.duty_assignment_id
+                WHERE a.status = 'published'
+                  AND o.effective_soldier_id = ANY(CAST(:ids AS uuid[]))
+                UNION ALL
+                SELECT sa.soldier_id AS soldier_id,
+                       (date_trunc('quarter', sa.created_at)::date) AS quarter_start
+                FROM score_adjustments sa
+                WHERE sa.soldier_id = ANY(CAST(:ids AS uuid[]))
+                  AND sa.created_at IS NOT NULL
+            ) q
+            GROUP BY soldier_id, quarter_start
+            """
+        ).bindparams(ids=id_params)
     ).all()
-    for soldier_id, start_date, end_date in assignments:
-        for quarter_start_value in _iter_quarters_touched(start_date, end_date):
-            keys.add((soldier_id, quarter_start_value))
-
-    override_rows = session.execute(
-        select(DutyDayOverride.effective_soldier_id, DutyDayOverride.date)
-        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
-        .where(
-            DutyAssignment.status == "published",
-            DutyDayOverride.effective_soldier_id.in_(soldier_ids),
-        )
-    ).all()
-    for soldier_id, override_date in override_rows:
-        if soldier_id is not None:
-            keys.add((soldier_id, quarter_start(override_date)))
-
-    adjustment_rows = session.execute(
-        select(ScoreAdjustment.soldier_id, ScoreAdjustment.created_at).where(
-            ScoreAdjustment.soldier_id.in_(soldier_ids)
-        )
-    ).all()
-    for soldier_id, created_at in adjustment_rows:
-        if created_at is not None:
-            keys.add((soldier_id, quarter_start(created_at.date())))
+    keys = {
+        (row.soldier_id if isinstance(row.soldier_id, uuid.UUID) else uuid.UUID(str(row.soldier_id)), row.quarter_start)
+        for row in rows
+    }
 
     persisted = session.execute(
         select(SoldierQuarterScoreProjection.soldier_id, SoldierQuarterScoreProjection.quarter_start).where(
-            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids)
+            uuid_any("soldier_quarter_score_projection.soldier_id", soldier_ids)
         )
     ).all()
     keys.update((soldier_id, quarter_start_value) for soldier_id, quarter_start_value in persisted)
@@ -862,7 +1068,7 @@ def _dirty_or_divergent_projection_keys(
     quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
     rows = session.execute(
         select(ScoreProjectionDirtyBucket).where(
-            ScoreProjectionDirtyBucket.soldier_id.in_(soldier_ids),
+            uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids),
             ScoreProjectionDirtyBucket.quarter_start.in_(quarter_starts),
             or_(
                 ScoreProjectionDirtyBucket.status == "dirty",
@@ -945,7 +1151,7 @@ def _aggregate_commander_score_totals(
         .join(DutyType, DutyType.id == DutyAssignment.duty_type_id)
         .where(
             DutyAssignment.status == "published",
-            DutyAssignment.soldier_id.in_(soldier_ids),
+            uuid_any("duty_assignments.soldier_id", soldier_ids),
         )
         .group_by(DutyAssignment.soldier_id)
         .subquery()
@@ -955,7 +1161,7 @@ def _aggregate_commander_score_totals(
             ScoreAdjustment.soldier_id.label("soldier_id"),
             func.sum(ScoreAdjustment.delta).label("adjustment_score"),
         )
-        .where(ScoreAdjustment.soldier_id.in_(soldier_ids))
+        .where(uuid_any("score_adjustments.soldier_id", soldier_ids))
         .group_by(ScoreAdjustment.soldier_id)
         .subquery()
     )
@@ -968,7 +1174,7 @@ def _aggregate_commander_score_totals(
         .select_from(Soldier)
         .outerjoin(duty_scores, duty_scores.c.soldier_id == Soldier.id)
         .outerjoin(adjustment_scores, adjustment_scores.c.soldier_id == Soldier.id)
-        .where(Soldier.id.in_(soldier_ids))
+        .where(uuid_any("soldiers.id", soldier_ids))
     ).all()
     return {
         soldier_id: _q6(Decimal(duty_score or 0) + Decimal(adjustment_score or 0))
@@ -998,7 +1204,7 @@ def _projected_commander_score_totals(
     if not soldier_ids:
         return {}
     rows = session.execute(
-        select(SoldierScoreProjection).where(SoldierScoreProjection.soldier_id.in_(soldier_ids))
+        select(SoldierScoreProjection).where(uuid_any("soldier_score_projection.soldier_id", soldier_ids))
     ).scalars().all()
     return {
         row.soldier_id: _q6(row.cumulative_score)
@@ -1312,10 +1518,7 @@ def commander_score_totals(
 
     keys = _projection_keys_for_soldiers(session, soldier_ids)
     repair_keys = _dirty_or_divergent_projection_keys(session, keys=keys)
-    rows_by_key = _projection_rows_by_key(session, keys)
-    repair_keys.update(
-        key for key in keys if not _projection_bucket_rows_are_complete(rows_by_key.get(key, []))
-    )
+    repair_keys.update(_incomplete_bucket_keys(session, keys))
 
     repaired_soldiers: set[uuid.UUID] = set()
     if repair_keys:
@@ -1361,8 +1564,7 @@ def commander_score_totals(
             fallback_reason="projection_not_current",
         )
 
-    final_rows_by_key = _projection_rows_by_key(session, keys)
-    if any(not _projection_bucket_rows_are_complete(final_rows_by_key.get(key, [])) for key in keys):
+    if _incomplete_bucket_keys(session, keys):
         logger.warning(
             "commander dashboard score projection fell back because required buckets are incomplete",
             extra={
