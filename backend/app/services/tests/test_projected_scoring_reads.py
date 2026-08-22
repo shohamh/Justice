@@ -9,13 +9,15 @@ from sqlalchemy import delete, select
 
 from app.db.models import (
     DutyAssignment,
+    DutyLocation,
+    DutyType,
     ExemptionType,
     ScoreProjectionQuarterTotal,
     SoldierExemption,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
-from app.services import effort_score, score_projection, scoring
+from app.services import commander_dashboard, effort_score, score_projection, scoring
 from app.services.effort_score import compute_effort_breakdown
 from app.services.score_projection import backfill_score_projection
 from app.services.tests.test_score_projection import _seed_projection_scenario
@@ -452,3 +454,44 @@ def test_projected_transparency_scale_read_does_not_expand_projection_history(
     projected = scoring.transparency_rows(admin_session, viewer=admin)
 
     assert _canonical(projected) == _canonical(legacy)
+
+
+def test_dashboard_summary_uses_projected_scores_without_expanding_history(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    node = create_node(admin_session, level="division", name="projected-dashboard-node")
+    soldier = create_soldier(
+        admin_session,
+        personal_number="projected-dashboard-soldier",
+        hierarchy_node_id=node.id,
+    )
+    duty_type = DutyType(name="projected-dashboard-duty", score_per_day=Decimal("2.50"))
+    duty_location = DutyLocation(name="projected-dashboard-location")
+    admin_session.add_all([duty_type, duty_location])
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id,
+            duty_type_id=duty_type.id,
+            duty_location_id=duty_location.id,
+            start_date=date(2026, 7, 10),
+            end_date=date(2026, 7, 12),
+            status="published",
+        )
+    )
+    admin_session.flush()
+    legacy = commander_dashboard.summary_cards(admin_session, subtree_ids=[node.id])
+    set_setting(
+        admin_session,
+        score_projection.SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+        True,
+        actor_id=None,
+    )
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+
+    _forbid_normal_projection_expansion(monkeypatch)
+
+    projected = commander_dashboard.summary_cards(admin_session, subtree_ids=[node.id])
+
+    assert projected == legacy
