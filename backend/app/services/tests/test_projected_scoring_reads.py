@@ -456,6 +456,28 @@ def test_projected_transparency_scale_read_does_not_expand_projection_history(
     assert _canonical(projected) == _canonical(legacy)
 
 
+def test_backfill_covers_empty_effort_history_quarters_so_reads_serve_from_projections(
+    admin_session,
+):
+    # No fairness.reset_date setting is written here, so reads derive their
+    # required quarters from the two-years-back default — including calendar
+    # quarters with zero assignments. A completed backfill must leave a
+    # quarter-total row for every one of them or every projected read silently
+    # falls back to legacy.
+    _scenario, admin = _build_projected_scenario(admin_session)
+    backfill_score_projection(admin_session)
+    admin_session.flush()
+    set_setting(
+        admin_session,
+        score_projection.SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+        True,
+        actor_id=None,
+    )
+    admin_session.flush()
+
+    assert scoring._try_projected_transparency_rows(admin_session) is not None
+
+
 def test_dashboard_summary_uses_projected_scores_without_expanding_history(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
