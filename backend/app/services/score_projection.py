@@ -1772,7 +1772,10 @@ def refresh_projections_for_assignments_bulk(
 
     for quarter in sorted(affected_quarters):
         _rebuild_quarter_buckets_bulk(
-            session, quarter_start_value=quarter, soldier_ids=affected_soldiers
+            session,
+            quarter_start_value=quarter,
+            soldier_ids=affected_soldiers,
+            force_buckets=True,
         )
         _bulk_upsert_soldier_totals(session, affected_soldiers)
         _upsert_quarter_total(session, quarter_start_value=quarter)

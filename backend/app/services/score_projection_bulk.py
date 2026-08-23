@@ -37,12 +37,20 @@ from app.services.score_projection import (
 
 
 def _rebuild_quarter_buckets_bulk(
-    session: Session, *, quarter_start_value: date, soldier_ids: set[uuid.UUID]
+    session: Session,
+    *,
+    quarter_start_value: date,
+    soldier_ids: set[uuid.UUID],
+    force_buckets: bool = False,
 ) -> int:
     """Rebuild every bucket of `quarter_start_value` for `soldier_ids`.
 
     Returns the number of buckets written. Deletes any other partition rows of
     the quarter for these soldiers (stale leftovers from earlier enumerations).
+
+    ``force_buckets`` writes a zero-valued bucket even for soldiers with no
+    current activity — required by refresh contexts, where an affected soldier's
+    bucket must be rebuilt (possibly to zeros) after e.g. cancellation.
     """
     if not soldier_ids:
         return 0
@@ -117,7 +125,7 @@ def _rebuild_quarter_buckets_bulk(
             or bool(soldier_rows)
             or bool(soldier_adjustments)
         )
-        if not has_candidate:
+        if not has_candidate and not force_buckets:
             continue
         duty_score = sum(
             (

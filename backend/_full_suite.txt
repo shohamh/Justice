@@ -1,0 +1,382 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, create app role
+INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, create audit_log
+INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, create system_settings
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, create soldiers
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, create hierarchy_nodes
+INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, add soldiers.hierarchy_node_id foreign key
+INFO  [alembic.runtime.migration] Running upgrade 0006 -> 0007, create duty_types
+INFO  [alembic.runtime.migration] Running upgrade 0007 -> 0008, create duty_locations
+INFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, create exemption_types
+INFO  [alembic.runtime.migration] Running upgrade 0009 -> 0010, create exemption_duty_type_map
+INFO  [alembic.runtime.migration] Running upgrade 0010 -> 0011, create soldier_exemptions
+INFO  [alembic.runtime.migration] Running upgrade 0011 -> 0012, create duty_assignments
+INFO  [alembic.runtime.migration] Running upgrade 0012 -> 0013, create duty_day_overrides
+INFO  [alembic.runtime.migration] Running upgrade 0013 -> 0014, create score_adjustments
+INFO  [alembic.runtime.migration] Running upgrade 0014 -> 0015, create personal_constraints
+INFO  [alembic.runtime.migration] Running upgrade 0015 -> 0016, create algorithm tables
+INFO  [alembic.runtime.migration] Running upgrade 0016 -> 0017, add division and unit to hierarchy_level enum
+INFO  [alembic.runtime.migration] Running upgrade 0017 -> 0018, soldier profile fields, field updates table, duty type requirements
+INFO  [alembic.runtime.migration] Running upgrade 0018 -> 0019, create duty_shifts and add duty_shift_id to duty_assignments
+INFO  [alembic.runtime.migration] Running upgrade 0019 -> 0020, replace duty_type_ids/duty_location_id with shift_ids on algorithm_jobs
+INFO  [alembic.runtime.migration] Running upgrade 0020 -> 0021, add is_global flag to exemption_types
+INFO  [alembic.runtime.migration] Running upgrade 0021 -> 0022, add previous_value to soldier_field_updates
+INFO  [alembic.runtime.migration] Running upgrade 0022 -> 0023, shift_templates table + duty_shifts generation columns
+INFO  [alembic.runtime.migration] Running upgrade 0023 -> 0024, swap_requests table
+INFO  [alembic.runtime.migration] Running upgrade 0024 -> 0025, reserve assignments — duty_dismissals, duty_reserve_links, new columns
+INFO  [alembic.runtime.migration] Running upgrade 0025 -> 36d8af34a3d6, add eligible_node_ids to duty_shifts
+INFO  [alembic.runtime.migration] Running upgrade 0025 -> 0026, notification system — notifications, telegram_links, notification_preferences, etc.
+INFO  [alembic.runtime.migration] Running upgrade 0026, 36d8af34a3d6 -> 0027, merge heads: 0026 (notifications) + 36d8af34a3d6 (eligible_node_ids)
+INFO  [alembic.runtime.migration] Running upgrade 0027 -> 0028, create exemption_requests table
+INFO  [alembic.runtime.migration] Running upgrade 0028 -> 0029, fix duty_assignments status check constraint to include algorithm statuses
+INFO  [alembic.runtime.migration] Running upgrade 0029 -> 0030, add algorithm_job_done and algorithm_job_failed notification types
+INFO  [alembic.runtime.migration] Running upgrade 0030 -> 0031, add progress_message to algorithm_jobs
+INFO  [alembic.runtime.migration] Running upgrade 0031 -> 0032, telegram actionable notifications: new types, action tokens, commander depth
+INFO  [alembic.runtime.migration] Running upgrade 0032 -> 0033, duty_manager_scope table — multi-node DM scoping, seeds existing DMs
+INFO  [alembic.runtime.migration] Running upgrade 0033 -> 0034, Add enrollment notification types to notification_type enum
+INFO  [alembic.runtime.migration] Running upgrade 0034 -> 0035, registration_invite_codes and soldier_enrollment_requests tables
+INFO  [alembic.runtime.migration] Running upgrade 0035 -> 0036, forgot password: email on soldiers, password_reset_tokens table
+INFO  [alembic.runtime.migration] Running upgrade 0036 -> 0037, email verification: email_verified on soldiers, email_verification_tokens table
+INFO  [alembic.runtime.migration] Running upgrade 0037 -> 0038, add offered_assignment_ids to swap_requests
+INFO  [alembic.runtime.migration] Running upgrade 0038 -> 0039, add exemption request files and is_medical to exemption_types
+INFO  [alembic.runtime.migration] Running upgrade 0039 -> 0040, add forced_callups table
+INFO  [alembic.runtime.migration] Running upgrade 0040 -> 0041, Add is_gimelim to duty_dismissals and gimelim notification types
+INFO  [alembic.runtime.migration] Running upgrade 0041 -> 0042, Add gimelim_attachments table
+INFO  [alembic.runtime.migration] Running upgrade 0042 -> 0043, Add operational fields to duty_types
+INFO  [alembic.runtime.migration] Running upgrade 0043 -> 0044, Add forced_call_up_multiplier to duty_assignments
+INFO  [alembic.runtime.migration] Running upgrade 0044 -> 0045, add batch_results to algorithm_jobs and batch_index to duty_assignments
+INFO  [alembic.runtime.migration] Running upgrade 0045 -> 0046, add result_metadata to algorithm_jobs
+INFO  [alembic.runtime.migration] Running upgrade 0046 -> 0047, add status to duty_shifts
+INFO  [alembic.runtime.migration] Running upgrade 0047 -> 0048, add recurrence_type to shift_templates
+INFO  [alembic.runtime.migration] Running upgrade 0048 -> 0049, add duration_days to shift_templates
+INFO  [alembic.runtime.migration] Running upgrade 0049 -> 214b0552bf94, add_token_version_to_soldiers
+INFO  [alembic.runtime.migration] Running upgrade 214b0552bf94 -> 1506edfdeb2b, add_lockout_columns_to_soldiers
+INFO  [alembic.runtime.migration] Running upgrade 0049 -> 0050, add email_outbox table and email_enabled to notification_preferences
+INFO  [alembic.runtime.migration] Running upgrade 0050, 1506edfdeb2b -> 5fe19e1d2a31, merge_email_and_lockout_heads
+INFO  [alembic.runtime.migration] Running upgrade 1506edfdeb2b -> ac0f4dcab527, add_depth_to_commander_notification_scopes
+INFO  [alembic.runtime.migration] Running upgrade 5fe19e1d2a31, ac0f4dcab527 -> e1a591172b65, merge ux-improvements into master
+INFO  [alembic.runtime.migration] Running upgrade 5fe19e1d2a31 -> d6f7a12679be, add_soldier_profile_picture
+INFO  [alembic.runtime.migration] Running upgrade d6f7a12679be, e1a591172b65 -> 37feafd17119, merge all migration heads
+INFO  [alembic.runtime.migration] Running upgrade 37feafd17119 -> fcac936c2558, exclusive_end_date
+INFO  [alembic.runtime.migration] Running upgrade fcac936c2558 -> 0051, grant shift_templates table to app role
+INFO  [alembic.runtime.migration] Running upgrade 0051 -> 0052, add corps enum level
+INFO  [alembic.runtime.migration] Running upgrade 0052 -> 0053, create כלל המסגרת root node
+INFO  [alembic.runtime.migration] Running upgrade 0053 -> 0054, add auto_roll_until to shift_templates
+INFO  [alembic.runtime.migration] Running upgrade 0054 -> 0055, add start_time/end_time to duty_shifts
+INFO  [alembic.runtime.migration] Running upgrade 0055 -> 0056, add start_time/end_time to duty_assignments
+INFO  [alembic.runtime.migration] Running upgrade 0056 -> 0057, add solver_input_snapshot to algorithm_jobs
+INFO  [alembic.runtime.migration] Running upgrade 0057 -> 0058, add algorithm_job_id and score columns to duty_assignments
+INFO  [alembic.runtime.migration] Running upgrade 0058 -> 0059, create hierarchy_level_types; convert hierarchy_nodes.level to varchar
+INFO  [alembic.runtime.migration] Running upgrade 0059 -> 0060, add eligible_node_ids to duty_types and shift_templates
+INFO  [alembic.runtime.migration] Running upgrade 0060 -> 0061, create algorithm_job_seen table
+INFO  [alembic.runtime.migration] Running upgrade 0061 -> 0062, add FK indexes for performance
+INFO  [alembic.runtime.migration] Running upgrade 0062 -> 0063, add CHECK constraints for date integrity
+INFO  [alembic.runtime.migration] Running upgrade 0063 -> 7bef29786e25, add duty_shift_node_quotas table
+INFO  [alembic.runtime.migration] Running upgrade 7bef29786e25 -> 3e5a43da5e0e, add import_sessions table
+INFO  [alembic.runtime.migration] Running upgrade 0063 -> 0064, add is_career to soldiers and enrollment_request_id to exemption_requests
+INFO  [alembic.runtime.migration] Running upgrade 0064, 3e5a43da5e0e -> 52cd8f7417e1, merge dual-approval enrollment and import-sessions/shift-quotas heads
+INFO  [alembic.runtime.migration] Running upgrade 52cd8f7417e1 -> 0ba32881b81e, add_exemption_dual_approval
+INFO  [alembic.runtime.migration] Running upgrade 0ba32881b81e -> 0147aafd3359, add_is_commander_exemption_to_exemption_types
+INFO  [alembic.runtime.migration] Running upgrade 0147aafd3359 -> 4f9731b4a496, add_potential
+INFO  [alembic.runtime.migration] Running upgrade 4f9731b4a496 -> d98e78b867e5, add_military_driving_license
+INFO  [alembic.runtime.migration] Running upgrade d98e78b867e5 -> a1b2c3d4e5f6, Add revocation fields to soldier_exemptions and exemption_revoked notification type
+INFO  [alembic.runtime.migration] Running upgrade a1b2c3d4e5f6 -> b2c3d4e5f6a1, Add active flag to exemption_types
+INFO  [alembic.runtime.migration] Running upgrade d98e78b867e5 -> 1a5c77b91db5, add_linked_commander_exemption_id
+INFO  [alembic.runtime.migration] Running upgrade 1a5c77b91db5, b2c3d4e5f6a1 -> 3dd30881eefd, merge exemption-cancellation and linked-commander-exemption heads
+INFO  [alembic.runtime.migration] Running upgrade 3dd30881eefd -> b388b74fdae9, add_swap_manager_approvals
+INFO  [alembic.runtime.migration] Running upgrade b388b74fdae9 -> ba8eaf68d98c, backfill_swap_manager_approvals_for_inflight_swaps
+INFO  [alembic.runtime.migration] Running upgrade ba8eaf68d98c -> ee2f4db01671, add_chain_order_to_swap_manager_approvals
+INFO  [alembic.runtime.migration] Running upgrade ee2f4db01671 -> 4376e408d4e3, add hierarchy transfer requests
+INFO  [alembic.runtime.migration] Running upgrade 4376e408d4e3 -> dbb2a58b0f63, add approver_kind to swap_manager_approvals
+INFO  [alembic.runtime.migration] Running upgrade dbb2a58b0f63 -> 8c211fe562d5, create exemption duty location map
+INFO  [alembic.runtime.migration] Running upgrade dbb2a58b0f63 -> 5c504eb679a0, swap approval decision log
+INFO  [alembic.runtime.migration] Running upgrade 5c504eb679a0, 8c211fe562d5 -> 71e217f7c372, merge swap approval decision log and exemption duty location map
+INFO  [alembic.runtime.migration] Running upgrade 71e217f7c372 -> b7e4a19f6c3d, Add bug_reports table
+INFO  [alembic.runtime.migration] Running upgrade 71e217f7c372 -> 0065, add_theme_preference_to_soldiers
+INFO  [alembic.runtime.migration] Running upgrade 0065, b7e4a19f6c3d -> d22c211a3039, merge theme preference and bug reports heads
+INFO  [alembic.runtime.migration] Running upgrade d22c211a3039 -> 2abd7f54dac6, add read_at and system_announcement type
+INFO  [alembic.runtime.migration] Running upgrade 2abd7f54dac6 -> 990fbafee861, create announcements table
+INFO  [alembic.runtime.migration] Running upgrade 990fbafee861 -> 4c1a9f2e7b3d, add enrollment_fields_edited notification type
+INFO  [alembic.runtime.migration] Running upgrade 990fbafee861 -> 4a4997526f58, unify swap requests with candidates
+INFO  [alembic.runtime.migration] Running upgrade 4a4997526f58, 4c1a9f2e7b3d -> 63cff804e3e4, merge unify-swap-requests and enrollment-fields-edited-type heads
+INFO  [alembic.runtime.migration] Running upgrade 63cff804e3e4 -> a1c2e3f4b5d6, Add commander_approved_by to personal_constraints and migrate pending status
+to pending_commander for the new two-step approval flow
+INFO  [alembic.runtime.migration] Running upgrade a1c2e3f4b5d6 -> b2d3f4a5c6e7, Add duty_no_shows table and no_show_marked notification type
+INFO  [alembic.runtime.migration] Running upgrade b2d3f4a5c6e7 -> c3e4f5a6b7d8, Set personal_constraints.status default to pending_commander
+INFO  [alembic.runtime.migration] Running upgrade 63cff804e3e4 -> 6b45caf468c2, add keva to enlisted duty type allowed_service_types
+INFO  [alembic.runtime.migration] Running upgrade 6b45caf468c2 -> 71d0b601b670, add swap_pending_approval notification type
+INFO  [alembic.runtime.migration] Running upgrade 71d0b601b670 -> c4644d9c8590, add wont_fix to bug_report_status
+INFO  [alembic.runtime.migration] Running upgrade c4644d9c8590 -> 8583cfc30613, add bug report comments and attachments
+INFO  [alembic.runtime.migration] Running upgrade 8583cfc30613, c3e4f5a6b7d8 -> d18bea0e6cbb, merge heads: bug-report-comments batch + personal-constraint-default
+INFO  [alembic.runtime.migration] Running upgrade d18bea0e6cbb -> 651a0642281d, add indexes on bug report comment and attachment FKs
+INFO  [alembic.runtime.migration] Running upgrade 651a0642281d -> de2742d45fa3, add_ranges_tables
+INFO  [alembic.runtime.migration] Running upgrade de2742d45fa3 -> 619962785231, drop_soldier_range_qualification_unique
+INFO  [alembic.runtime.migration] Running upgrade 619962785231 -> 7a13f6c9b8e2, add_range_assignment_is_draft
+INFO  [alembic.runtime.migration] Running upgrade 7a13f6c9b8e2 -> 9d4b6c1e2f3a, add range_assignment_confirmed notification type
+INFO  [alembic.runtime.migration] Running upgrade 9d4b6c1e2f3a -> 7f2c1a9d4e6b, add range excusal requests
+INFO  [alembic.runtime.migration] Running upgrade 7f2c1a9d4e6b -> f4a1b2c3d4e5, add range reminder fields and notification types
+INFO  [alembic.runtime.migration] Running upgrade f4a1b2c3d4e5 -> 5e7f8a9b0c1d, add range lifecycle fields
+INFO  [alembic.runtime.migration] Running upgrade 5e7f8a9b0c1d -> 20260802rn01
+INFO  [alembic.runtime.migration] Running upgrade 20260802rn01 -> 20260802rq01, preserve range qualification event history
+INFO  [alembic.runtime.migration] Running upgrade 20260802rq01 -> f7a8b9c0d1e2, add bug report comment notification type
+INFO  [alembic.runtime.migration] Running upgrade 20260802rq01 -> 20260803rar1, add range assignment reasons
+INFO  [alembic.runtime.migration] Running upgrade 20260803rar1, f7a8b9c0d1e2 -> dd52c6d4e839, merge heads: range assignment reasons + bug report comment notification
+INFO  [alembic.runtime.migration] Running upgrade dd52c6d4e839 -> 5923458a9996, add reporter_last_seen_at to bug_reports
+INFO  [alembic.runtime.migration] Running upgrade 5923458a9996 -> c53f4d69e63d, create range_locations
+INFO  [alembic.runtime.migration] Running upgrade c53f4d69e63d -> 6660cfc999b7, migrate range_events location to range_location_id fk
+INFO  [alembic.runtime.migration] Running upgrade 6660cfc999b7 -> fa5a2130f396, add_duty_type_required_range_type
+INFO  [alembic.runtime.migration] Running upgrade 6660cfc999b7 -> 7199fa0e2b23, add range attendance correction notification types
+INFO  [alembic.runtime.migration] Running upgrade 7199fa0e2b23, fa5a2130f396 -> 55bf8c15f4b3, merge_range_attendance_correction_and_weapon_qualification_heads
+INFO  [alembic.runtime.migration] Running upgrade 6660cfc999b7 -> 4446d3a826d2, add_range_event_id_to_excusal_requests
+INFO  [alembic.runtime.migration] Running upgrade 4446d3a826d2 -> 06fced0151e1, add_audit_log_range_removal_index
+INFO  [alembic.runtime.migration] Running upgrade 06fced0151e1, 55bf8c15f4b3 -> ffe105dad988, merge ranges_in_duty_history and weapon_qualification_eligibility heads
+INFO  [alembic.runtime.migration] Running upgrade ffe105dad988 -> a1e57979ac8e, add_duty_assignment_weapon_ineligible_cache
+INFO  [alembic.runtime.migration] Running upgrade a1e57979ac8e -> 5abac7d1ec0b, add weapon_ineligible_detected notification type
+INFO  [alembic.runtime.migration] Running upgrade 5abac7d1ec0b -> e5ed06d0a69b, add_notification_metadata
+INFO  [alembic.runtime.migration] Running upgrade 5abac7d1ec0b -> 0e39f17b207b, transparency settings rework
+INFO  [alembic.runtime.migration] Running upgrade 0e39f17b207b, e5ed06d0a69b -> 6fab7ceeba84, merge notification metadata and transparency settings heads
+INFO  [alembic.runtime.migration] Running upgrade 6fab7ceeba84 -> b0dc843e6594, exemption_request start_date nullable
+INFO  [alembic.runtime.migration] Running upgrade 6fab7ceeba84 -> 86aec296e732, add_duty_assignment_range_info_cache
+INFO  [alembic.runtime.migration] Running upgrade 86aec296e732 -> a3f1c9d7e2b4, add range_covers_duty_info notification type
+INFO  [alembic.runtime.migration] Running upgrade a3f1c9d7e2b4, b0dc843e6594 -> 6615661974b2, merge heads exemption permanent start_date and range covers duty info type
+INFO  [alembic.runtime.migration] Running upgrade 6615661974b2 -> 554960f40583, make bug report reporter_id nullable
+INFO  [alembic.runtime.migration] Running upgrade 554960f40583 -> db05bb8f7744, add rank advancement
+INFO  [alembic.runtime.migration] Running upgrade db05bb8f7744 -> 92afb4359c3b, fix rank advancement interval id to use uuid
+INFO  [alembic.runtime.migration] Running upgrade 92afb4359c3b -> 2c93124c3a99, add advance_on_career_entry to rank_advancement_intervals
+INFO  [alembic.runtime.migration] Running upgrade 2c93124c3a99 -> c7e8f9a0b1c2, add persisted soldier rank track
+INFO  [alembic.runtime.migration] Running upgrade c7e8f9a0b1c2 -> b7c8d9e0f1a2, add qualification expiry notification types
+INFO  [alembic.runtime.migration] Running upgrade c7e8f9a0b1c2 -> 15feab823caf, seed squad hierarchy level type
+INFO  [alembic.runtime.migration] Running upgrade 15feab823caf -> bccac29dd1b5, create role_deputies table
+INFO  [alembic.runtime.migration] Running upgrade bccac29dd1b5 -> 032cff6493dd, add index on role_deputies.deputy_id
+INFO  [alembic.runtime.migration] Running upgrade 032cff6493dd, b7c8d9e0f1a2 -> 595a35bbf19e, merge deputy feature and qualification-expiry-notifications heads
+INFO  [alembic.runtime.migration] Running upgrade 595a35bbf19e -> 6a7b8c9d0e1f, add score projection tables
+INFO  [alembic.runtime.migration] Running upgrade 6a7b8c9d0e1f -> 9b1c2d3e4f5a, add score projection dirty buckets
+INFO  [alembic.runtime.migration] Running upgrade 9b1c2d3e4f5a -> a2b3c4d5e6f7, add score projection covering index and revalidation cursor
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [  3%]
+..................s...s................................................. [  6%]
+..............................s......................................... [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 24%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 36%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 46%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 61%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 86%]
+........................................................................ [ 89%]
+...............................................F........................ [ 92%]
+........................................................................ [ 95%]
+........FF.............................................................. [ 98%]
+..................................                                       [100%]
+================================== FAILURES ===================================
+_____ test_algorithm_reset_published_route_refreshes_cancelled_projection _____
+[gw2] win32 -- Python 3.13.3 C:\Users\Shoham\workspace\Justice\backend\.venv\Scripts\python.exe
+
+admin_session = <sqlalchemy.orm.session.Session object at 0x000001CE1BAD3E00>
+admin_engine = Engine(postgresql+psycopg://db_admin:***@localhost:2470/pytest_287b7381ab90495e8ea9b84f67e3af81_gw2)
+
+    def test_algorithm_reset_published_route_refreshes_cancelled_projection(admin_session, admin_engine):
+        _seed_scoring_settings(admin_session)
+        actor = create_soldier(admin_session, personal_number="fresh-algo-reset-admin", role="admin")
+        soldier = create_soldier(admin_session, personal_number="fresh-algo-reset")
+        duty_type = _duty_type(admin_session, name="fresh-algo-reset-duty")
+        location = _location(admin_session, name="fresh-algo-reset-location")
+        target_quarter = date(2027, 1, 1)
+        create_assignment(
+            admin_session,
+            soldier_id=soldier.id,
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            start_date=date(2027, 1, 8),
+            end_date=date(2027, 1, 10),
+        )
+        admin_session.flush()
+    
+        reset_published_assignments(days_ahead=0, session=admin_session, user=actor)
+    
+>       _assert_committed_bucket_is_fresh(
+            admin_engine, soldier_id=soldier.id, quarter_start_value=target_quarter
+        )
+
+app\services\tests\test_score_projection_freshness.py:301: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\services\tests\test_score_projection_freshness.py:109: in _assert_committed_bucket_is_fresh
+    _assert_persisted_bucket_is_fresh(
+app\services\tests\test_score_projection_freshness.py:100: in _assert_persisted_bucket_is_fresh
+    assert _projection_summary(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+session = <sqlalchemy.orm.session.Session object at 0x000001CE1E87A120>
+soldier_id = UUID('03981ffd-8fe8-4cfa-852f-a71bb339fd50')
+quarter_start_value = datetime.date(2027, 1, 1)
+
+    def _projection_summary(session, *, soldier_id, quarter_start_value: date) -> tuple[Decimal, Decimal, int]:
+        rows = session.execute(
+            select(SoldierQuarterScoreProjection).where(
+                SoldierQuarterScoreProjection.soldier_id == soldier_id,
+                SoldierQuarterScoreProjection.quarter_start == quarter_start_value,
+            )
+        ).scalars().all()
+>       assert rows
+E       assert []
+
+app\services\tests\test_score_projection_freshness.py:73: AssertionError
+____________ test_density_hard_constraint_infeasible_when_violated ____________
+[gw0] win32 -- Python 3.13.3 C:\Users\Shoham\workspace\Justice\backend\.venv\Scripts\python.exe
+
+>   ???
+E   AssertionError: assert 'OPTIMAL' == 'INFEASIBLE'
+E     
+E     - INFEASIBLE
+E     + OPTIMAL
+
+C:\Users\Shoham\workspace\callofduty2\backend\tests\unit\test_model.py:105: AssertionError
+__________ test_density_hard_constraint_distributes_across_soldiers ___________
+[gw0] win32 -- Python 3.13.3 C:\Users\Shoham\workspace\Justice\backend\.venv\Scripts\python.exe
+
+>   ???
+E   AssertionError: Consecutive duties must go to different soldiers
+E   assert UUID('6282b4ad-0e5d-457a-bcdb-ddb6b6fb5e94') != UUID('6282b4ad-0e5d-457a-bcdb-ddb6b6fb5e94')
+
+C:\Users\Shoham\workspace\callofduty2\backend\tests\unit\test_model.py:117: AssertionError
+============================== warnings summary ===============================
+tests\conftest.py:12
+tests\conftest.py:12
+tests\conftest.py:12
+tests\conftest.py:12
+tests\conftest.py:12
+  C:\Users\Shoham\workspace\Justice\backend\tests\conftest.py:12: DeprecationWarning: testcontainers.postgres is deprecated, use testcontainers.community.postgres instead
+    from testcontainers.postgres import PostgresContainer
+
+.venv\Lib\site-packages\fastapi\testclient.py:1
+.venv\Lib\site-packages\fastapi\testclient.py:1
+.venv\Lib\site-packages\fastapi\testclient.py:1
+.venv\Lib\site-packages\fastapi\testclient.py:1
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\Shoham\workspace\Justice\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/integration/test_notifications_swap_action.py: 1 warning
+tests/integration/test_swaps_api.py: 7 warnings
+tests/unit/test_swaps.py: 1 warning
+tests/unit/test_swaps_service.py: 3 warnings
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:716: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/integration/test_notifications_swap_action.py::test_dispatch_swap_approve_requester_admin_override
+tests/integration/test_swaps_api.py::test_admin_override_clears_manager_side
+tests/integration/test_swaps_api.py::test_admin_override_approval_visible_in_manager_approvals
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:893: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/integration/test_notifications_swap_action.py::test_dispatch_swap_reject_by_requester_kills_whole_request
+tests/integration/test_swaps_api.py::test_requester_reject_kills_whole_swap
+tests/integration/test_swaps_api.py::test_soldier_reject_ignores_stray_candidate_id
+tests/integration/test_swaps_api.py::test_manager_reject_kills_swap
+tests/integration/test_swaps_api.py::test_manager_reject_records_rejecting_commander_on_row
+tests/unit/test_swaps.py::test_reject_sets_status_and_no_override
+tests/unit/test_swaps.py::test_reject_request_notifies_covering_soldier
+tests/integration/test_swaps_api.py::test_admin_can_manager_reject_without_a_chain_row
+tests/unit/test_swaps_service.py::test_reject_manager_row_allows_override_authorized_actor
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:1022: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/integration/test_notifications_swap_action.py::test_dispatch_swap_reject_by_candidate_declines_only_own_candidacy
+tests/integration/test_swaps_api.py::test_candidate_reject_only_declines_own_candidacy
+tests/unit/test_swaps_service.py::test_declined_candidate_does_not_affect_other_candidates
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:535: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    candidate.decided_at = datetime.utcnow()
+
+tests/integration/test_enrollment_routes.py::test_reject_without_note_fails
+tests/integration/test_ranges_api.py::test_list_range_events_requires_node_id
+  C:\Users\Shoham\workspace\callofduty2\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py:1033: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+
+tests/integration/test_exemption_requests_api.py::test_submit_exemption_request_rejects_missing_reason
+tests/integration/test_registration_routes.py::test_register_rejects_missing_phone
+tests/integration/test_registration_routes.py::test_register_reports_short_password_as_password_policy
+tests/integration/test_registration_routes.py::test_register_rejects_invalid_phone_format
+  C:\Users\Shoham\workspace\Justice\backend\.venv\Lib\site-packages\fastapi\routing.py:352: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/integration/test_exemptions_api.py::test_patch_pending_commander_request_succeeds
+tests/integration/test_exemptions_api.py::test_patch_rejects_retargeting_to_commander_exemption_type
+tests/integration/test_exemptions_api.py::test_patch_rejects_setting_end_date_without_start_date
+  C:\Users\Shoham\workspace\Justice\backend\app\routes\exemption_requests.py:438: SAWarning: fully NULL primary key identity cannot load any object.  This condition may raise an error in a future release.
+    target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+
+tests/integration/test_exemptions_api.py::test_reject_permanent_start_date_pending_request_does_not_crash
+  C:\Users\Shoham\workspace\Justice\backend\app\routes\exemption_requests.py:537: SAWarning: fully NULL primary key identity cannot load any object.  This condition may raise an error in a future release.
+    target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+
+tests/integration/test_swaps_api.py: 2 warnings
+tests/unit/test_swaps_service.py: 8 warnings
+tests/unit/test_swaps.py: 11 warnings
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:489: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    winner.decided_at = datetime.utcnow()
+
+tests/integration/test_swaps_api.py::test_manager_reject_kills_swap
+tests/integration/test_swaps_api.py::test_manager_reject_records_rejecting_commander_on_row
+tests/integration/test_swaps_api.py::test_manager_reject_covering_candidate_only
+tests/integration/test_swaps_api.py::test_manager_reject_candidate_scoped_when_actor_also_covers_requester_side
+tests/integration/test_swaps_api.py::test_admin_can_manager_reject_without_a_chain_row
+tests/unit/test_swaps_service.py::test_reject_manager_row_per_candidate_does_not_escalate_to_whole_request
+tests/unit/test_swaps_service.py::test_reject_manager_row_allows_override_authorized_actor
+tests/unit/test_swaps_service.py::test_reject_manager_row_allows_override_authorized_actor
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:801: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/unit/test_swaps_service.py::test_claim_request_creates_marketplace_candidate_without_cancelling_invited
+tests/unit/test_swaps_service.py::test_approve_soldier_side_approves_only_the_callers_candidate
+tests/unit/test_swaps_service.py::test_finalize_first_fully_approved_candidate_wins_and_cancels_others
+tests/unit/test_swaps_service.py::test_approve_soldier_side_auto_sets_requester_consent_only_for_invited_candidates
+tests/unit/test_swaps_service.py::test_concurrent_finalize_of_two_candidates_applies_only_one
+tests/unit/test_swaps.py::test_claiming_one_targeted_request_cancels_siblings
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:503: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    other.decided_at = datetime.utcnow()
+
+tests/unit/test_swaps.py::test_cancel_open_request
+tests/unit/test_swaps_service.py::test_cancel_request_cascades_to_all_live_candidates
+tests/unit/test_swaps.py::test_cancel_request_notifies_covering_soldier
+tests/unit/test_swaps.py::test_expire_started_swaps_ignores_already_cancelled_requests
+tests/unit/test_swaps_service.py::test_add_targets_rejects_when_request_not_open
+tests/unit/test_swaps_service.py::test_publish_to_marketplace_rejects_when_request_not_open
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:1058: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/unit/test_swaps.py::test_expire_started_swaps_cancels_request_whose_duty_already_started
+  C:\Users\Shoham\workspace\Justice\backend\app\services\swaps.py:1269: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\integration\test_algorithm_routes.py:345: solver returned no proposals
+SKIPPED [1] tests\integration\test_algorithm_routes.py:389: no proposals
+SKIPPED [1] tests\integration\test_algorithm_routes.py:864: solver returned no proposals
+FAILED app/services/tests/test_score_projection_freshness.py::test_algorithm_reset_published_route_refreshes_cancelled_projection - assert []
+FAILED tests/unit/test_model.py::test_density_hard_constraint_infeasible_when_violated - AssertionError: assert 'OPTIMAL' == 'INFEASIBLE'
+  
+  - INFEASIBLE
+  + OPTIMAL
+FAILED tests/unit/test_model.py::test_density_hard_constraint_distributes_across_soldiers - AssertionError: Consecutive duties must go to different soldiers
+assert UUID('6282b4ad-0e5d-457a-bcdb-ddb6b6fb5e94') != UUID('6282b4ad-0e5d-457a-bcdb-ddb6b6fb5e94')
