@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
-  Calendar, BarChart2, Bell,
+  Calendar, BarChart2,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
@@ -172,15 +172,6 @@ export default function UnifiedNav() {
       : []),
   ];
 
-  // Notification inbox lives in the desktop sidebar only; the mobile bottom
-  // bar stays at five items.
-  const notificationsTab: NavTab = {
-    label: t("nav.notifications"),
-    icon: <Bell size={20} />,
-    to: "/notifications",
-    testId: "nav-notifications",
-  };
-
   const commanderTab: NavTab = {
     label: t("nav.commander"),
     icon: <Users size={20} />,
@@ -311,7 +302,7 @@ export default function UnifiedNav() {
         className="hidden md:flex fixed right-0 top-0 bottom-0 w-24 bg-white border-l flex-col z-30 dark:bg-gray-800 dark:border-gray-700"
         data-testid="sidebar"
       >
-        {[...tabs.slice(0, 3), notificationsTab, ...tabs.slice(3)].map((tab) => {
+        {tabs.map((tab) => {
           const active = isActive(tab.to);
           return tab.to ? (
             <Link
