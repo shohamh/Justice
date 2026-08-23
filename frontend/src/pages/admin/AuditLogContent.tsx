@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import { listAdminAuditLogs, type AdminAuditLogEntryDTO } from "../../api/adminAuditLogs";
 import { DataTable, ColDef } from "../../components/DataTable";
 
@@ -20,6 +21,7 @@ export default function AuditLogContent() {
   const [fromFilter, setFromFilter] = useState("");
   const [toFilter, setToFilter] = useState("");
   const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<AdminAuditLogEntryDTO | null>(null);
 
   const filters = useMemo(
     () => ({
@@ -64,7 +66,16 @@ export default function AuditLogContent() {
     {
       id: "action",
       header: t("admin.audit_log.action"),
-      cell: (row) => row.action,
+      cell: (row) => (
+        <button
+          type="button"
+          data-testid={`audit-log-action-${row.id}`}
+          className="text-indigo-600 dark:text-indigo-300 underline underline-offset-2 hover:text-indigo-800 dark:hover:text-indigo-200 text-start"
+          onClick={() => setSelected(row)}
+        >
+          {row.action}
+        </button>
+      ),
       sortValue: (row) => row.action,
       minWidth: 200,
     },
@@ -176,6 +187,87 @@ export default function AuditLogContent() {
           testId="audit-log-table"
           emptyMessage={t("admin.audit_log.empty")}
         />
+      )}
+
+      {selected && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50"
+          data-testid="audit-log-detail-modal"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-4 space-y-3 text-sm"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">{selected.action}</h3>
+              <button
+                type="button"
+                data-testid="audit-log-detail-close"
+                onClick={() => setSelected(null)}
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-gray-700 dark:text-gray-300">
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">{t("admin.audit_log.actor")}: </span>
+                {selected.actor_name ?? t("admin.audit_log.system")}
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">{t("admin.audit_log.time")}: </span>
+                {formatDateTime(selected.created_at)}
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">{t("admin.audit_log.entity_type")}: </span>
+                {selected.entity_type}
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">{t("admin.audit_log.entity_id")}: </span>
+                <span dir="ltr">{selected.entity_id ?? "—"}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <div className="mb-1 text-gray-500 dark:text-gray-400">{t("admin.audit_log.before")}</div>
+                <pre
+                  dir="ltr"
+                  data-testid="audit-log-detail-before"
+                  className="bg-red-50 dark:bg-gray-900 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all text-red-800 dark:text-red-300"
+                >
+                  {selected.before ? JSON.stringify(selected.before, null, 2) : "—"}
+                </pre>
+              </div>
+              <div>
+                <div className="mb-1 text-gray-500 dark:text-gray-400">{t("admin.audit_log.after")}</div>
+                <pre
+                  dir="ltr"
+                  data-testid="audit-log-detail-after"
+                  className="bg-green-50 dark:bg-gray-900 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all text-green-800 dark:text-green-300"
+                >
+                  {selected.after ? JSON.stringify(selected.after, null, 2) : "—"}
+                </pre>
+              </div>
+            </div>
+
+            {selected.context && (
+              <div>
+                <div className="mb-1 text-gray-500 dark:text-gray-400">{t("admin.audit_log.context")}</div>
+                <pre
+                  dir="ltr"
+                  data-testid="audit-log-detail-context"
+                  className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all"
+                >
+                  {JSON.stringify(selected.context, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="flex items-center justify-between text-sm" data-testid="audit-log-pagination">

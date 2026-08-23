@@ -22,12 +22,16 @@ def test_admin_audit_log_returns_entries_and_filters(client, admin_session):
     actor = create_soldier(admin_session, personal_number="audit-actor")
     admin_session.flush()
 
+    exemption_id = uuid.uuid4()
     write_audit(
         admin_session,
         actor_id=actor.id,
         action="exemption.grant",
         entity_type="soldier_exemption",
-        entity_id=uuid.uuid4(),
+        entity_id=exemption_id,
+        before={"status": "pending_commander"},
+        after={"status": "approved", "exemption_type": "פטור מבחן"},
+        context={"reason": "בקשה אושרה"},
     )
     write_audit(
         admin_session,
@@ -50,6 +54,12 @@ def test_admin_audit_log_returns_entries_and_filters(client, admin_session):
     # actor names resolved on items
     by_action = {item["action"]: item for item in body["items"]}
     assert by_action["exemption.grant"]["actor_name"] == actor.full_name
+    # JSONB payloads are included for the detail view
+    grant = by_action["exemption.grant"]
+    assert grant["before"] == {"status": "pending_commander"}
+    assert grant["after"]["status"] == "approved"
+    assert grant["context"] == {"reason": "בקשה אושרה"}
+    assert by_action["duty_config.update"]["before"] is None
 
     # action substring filter
     r2 = client.get(

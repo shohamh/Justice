@@ -1650,7 +1650,10 @@
       "showing": "מציג {{from}}–{{to}} מתוך {{total}}",
       "prev": "הקודם",
       "next": "הבא",
-      "system": "מערכת"
+      "system": "מערכת",
+      "before": "לפני",
+      "after": "אחרי",
+      "context": "הקשר"
     }
   }
 }

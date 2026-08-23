@@ -8,6 +8,9 @@ export interface AdminAuditLogEntryDTO {
   action: string;
   entity_type: string;
   entity_id: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  context: Record<string, unknown> | null;
 }
 
 export interface AuditLogActorDTO {

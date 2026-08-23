@@ -143,6 +143,9 @@ class AdminAuditLogEntryOut(BaseModel):
     action: str
     entity_type: str
     entity_id: uuid.UUID | None
+    before: dict[str, Any] | None
+    after: dict[str, Any] | None
+    context: dict[str, Any] | None
 
 
 class AdminAuditLogActorOut(BaseModel):
@@ -241,6 +244,9 @@ def admin_list_audit_logs(
                 action=row.action,
                 entity_type=row.entity_type,
                 entity_id=row.entity_id,
+                before=row.before,
+                after=row.after,
+                context=row.context,
             )
             for row in rows
         ],

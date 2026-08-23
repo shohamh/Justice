@@ -23,6 +23,9 @@ function makePage(overrides: Partial<AdminAuditLogPageDTO> = {}): AdminAuditLogP
         action: "exemption.grant",
         entity_type: "soldier_exemption",
         entity_id: "ent-1",
+        before: { status: "pending_commander" },
+        after: { status: "approved", exemption_type: "פטור מבחן" },
+        context: { reason: "בקשה אושרה" },
       },
       {
         id: "log-2",
@@ -32,6 +35,9 @@ function makePage(overrides: Partial<AdminAuditLogPageDTO> = {}): AdminAuditLogP
         action: "duty_config.update",
         entity_type: "duty_type",
         entity_id: null,
+        before: null,
+        after: null,
+        context: null,
       },
     ],
     total: 2,
@@ -94,4 +100,24 @@ test("shows empty state and pagination info", async () => {
   renderContent();
   await waitFor(() => expect(screen.getByText("לא נמצאו רשומות")).toBeInTheDocument());
   expect(screen.getByTestId("audit-log-pagination")).toBeInTheDocument();
+});
+
+
+test("clicking an action opens a detail modal with before/after payloads", async () => {
+  renderContent();
+  const table = await screen.findByTestId("audit-log-table");
+  expect(within(table).getByText("exemption.grant")).toBeInTheDocument();
+
+  fireEvent.click(within(table).getByText("exemption.grant"));
+
+  const modal = screen.getByTestId("audit-log-detail-modal");
+  console.log("DEBUG selected before:", JSON.stringify(mockList.mock.results));
+  expect(modal).toBeInTheDocument();
+  expect(screen.getByTestId("audit-log-detail-before")).toHaveTextContent("pending_commander");
+  expect(screen.getByTestId("audit-log-detail-after")).toHaveTextContent("approved");
+  expect(screen.getByTestId("audit-log-detail-context")).toHaveTextContent("בקשה אושרה");
+
+  // close
+  fireEvent.click(screen.getByTestId("audit-log-detail-close"));
+  expect(screen.queryByTestId("audit-log-detail-modal")).not.toBeInTheDocument();
 });
