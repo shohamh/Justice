@@ -8,6 +8,8 @@ from datetime import date as date_type
 from typing import Any, Literal
 
 import openpyxl
+
+from app.services.excel_bilingual import finalize_bilingual_workbook
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -517,6 +519,8 @@ def download_template():
     ])
     ws_rer.append(["12345", "12345", "מדור א", "live", "20.06.2024", "מטווח דרומי", "חופשה", "pending"])
 
+    finalize_bilingual_workbook(wb)
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -695,6 +699,8 @@ def export_current_data(
                 tpl.notes or "",
                 eligible,
             ])
+
+    finalize_bilingual_workbook(wb)
 
     buf = io.BytesIO()
     wb.save(buf)

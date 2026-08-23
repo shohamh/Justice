@@ -4,6 +4,8 @@ import io
 import json
 
 import openpyxl
+
+from app.services.excel_bilingual import finalize_bilingual_workbook
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -184,6 +186,8 @@ def export_config(
     wb.remove(wb.active)
     for sheet_name in requested:
         _WRITERS[sheet_name](wb, session)
+
+    finalize_bilingual_workbook(wb)
 
     buf = io.BytesIO()
     wb.save(buf)

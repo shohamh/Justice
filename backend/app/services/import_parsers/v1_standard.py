@@ -6,6 +6,7 @@ import openpyxl
 
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
+from app.services.excel_bilingual import canonical_headers, canonical_sheet_name, resolve_sheet_name
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportAssignmentRow,
@@ -50,10 +51,14 @@ def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
     Ported convention from app/routes/import_excel.py's per-sheet parsers:
     header row lowercased, data starts at row 2, all-None rows are skipped.
     """
-    if name not in wb.sheetnames:
+    resolved = resolve_sheet_name(wb.sheetnames, name)
+    if resolved is None:
         return []
-    ws = wb[name]
-    headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    ws = wb[resolved]
+    raw_headers = [
+        str(c.value).strip() if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))
+    ]
+    headers = canonical_headers(name, raw_headers)
     out = []
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if all(v is None for v in row):
@@ -157,7 +162,8 @@ class V1StandardParser:
     label = "תבנית סטנדרטית (v1)"
 
     def detect(self, wb: openpyxl.Workbook) -> float:
-        matches = KNOWN_SHEETS & set(wb.sheetnames)
+        canonical = {canonical_sheet_name(name) for name in wb.sheetnames}
+        matches = KNOWN_SHEETS & canonical
         if not matches:
             return 0.0
         return min(1.0, 0.5 + 0.2 * len(matches))
