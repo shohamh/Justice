@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select, and_
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
-from app.auth.deps import require_password_changed
+from app.auth.deps import require_password_changed, require_roles
 from app.db.models import AuditLog, HierarchyNode, PersonalConstraint, Soldier, SoldierExemption
 from app.db.session import get_session
 
@@ -130,3 +130,124 @@ def list_audit_logs(
         )
         for r in rows
     ]
+
+
+# ── Admin: filterable full audit-log table ─────────────────────────────────
+
+
+class AdminAuditLogEntryOut(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    actor_id: uuid.UUID | None
+    actor_name: str | None
+    action: str
+    entity_type: str
+    entity_id: uuid.UUID | None
+
+
+class AdminAuditLogActorOut(BaseModel):
+    id: uuid.UUID
+    full_name: str
+
+
+class AdminAuditLogFacetsOut(BaseModel):
+    actions: list[str]
+    entity_types: list[str]
+    actors: list[AdminAuditLogActorOut]
+
+
+class AdminAuditLogPageOut(BaseModel):
+    items: list[AdminAuditLogEntryOut]
+    total: int
+    facets: AdminAuditLogFacetsOut
+
+
+@router.get("/admin/audit-logs", response_model=AdminAuditLogPageOut)
+def admin_list_audit_logs(
+    action: str | None = Query(None, max_length=200, description="Substring of the action name"),
+    entity_type: str | None = Query(None, max_length=100),
+    actor_id: uuid.UUID | None = Query(None),
+    created_from: date | None = Query(None),
+    created_to: date | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    session: Session = Depends(get_session),
+    user=Depends(require_roles("admin")),
+) -> AdminAuditLogPageOut:
+    """Filterable audit-log table for administrators, newest first."""
+    conditions = []
+    if action:
+        conditions.append(AuditLog.action.ilike(f"%{action}%"))
+    if entity_type:
+        conditions.append(AuditLog.entity_type == entity_type)
+    if actor_id:
+        conditions.append(AuditLog.actor_id == actor_id)
+    if created_from:
+        conditions.append(
+            AuditLog.created_at >= datetime.combine(created_from, time.min, tzinfo=timezone.utc)
+        )
+    if created_to:
+        conditions.append(
+            AuditLog.created_at
+            < datetime.combine(created_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        )
+
+    base = select(AuditLog).where(*conditions)
+    total = session.execute(select(func.count()).select_from(base.subquery())).scalar_one()
+    rows = list(
+        session.execute(
+            base.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit).offset(offset)
+        ).scalars()
+    )
+
+    actor_ids = {row.actor_id for row in rows if row.actor_id}
+    actor_names: dict[uuid.UUID, str] = {}
+    if actor_ids:
+        actor_names = {
+            s.id: s.full_name
+            for s in session.execute(select(Soldier).where(Soldier.id.in_(actor_ids))).scalars()
+        }
+
+    facet_actions = [
+        row[0]
+        for row in session.execute(
+            select(AuditLog.action).distinct().order_by(AuditLog.action)
+        ).all()
+    ]
+    facet_entity_types = [
+        row[0]
+        for row in session.execute(
+            select(AuditLog.entity_type).distinct().order_by(AuditLog.entity_type)
+        ).all()
+    ]
+    facet_actors = [
+        AdminAuditLogActorOut(id=s.id, full_name=s.full_name)
+        for s in session.execute(
+            select(Soldier)
+            .join(AuditLog, AuditLog.actor_id == Soldier.id)
+            .distinct()
+            .order_by(Soldier.full_name)
+            .limit(500)
+        ).scalars()
+    ]
+
+    return AdminAuditLogPageOut(
+        items=[
+            AdminAuditLogEntryOut(
+                id=row.id,
+                created_at=row.created_at,
+                actor_id=row.actor_id,
+                actor_name=actor_names.get(row.actor_id) if row.actor_id else None,
+                action=row.action,
+                entity_type=row.entity_type,
+                entity_id=row.entity_id,
+            )
+            for row in rows
+        ],
+        total=total,
+        facets=AdminAuditLogFacetsOut(
+            actions=facet_actions,
+            entity_types=facet_entity_types,
+            actors=facet_actors,
+        ),
+    )
