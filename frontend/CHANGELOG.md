@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-23
+
+### Features
+- Scoring reads (transparency, fairness, commander dashboard) are now served from persisted score projections with an hourly background integrity-revalidation worker and a covering-index migration — fixing hard crashes at deployment scale (transparency and fairness previously failed on a 65,535-parameter database limit) and cutting read query counts by two orders of magnitude.
+- Bulk algorithm publishing and reset-published operations now refresh projections set-based (grouped by calendar quarter) instead of per assignment, so publishing a large run no longer times out.
+- Shift-candidate and reserve-pull (hakpaza) flows now compute soldier inputs for their cohort only, instead of the entire force.
+- Added a score-projection benchmark harness, a legacy-read measurement script, and a full redesign write-up under docs/benchmarks.
+
+### Fixes
+- Algorithm window caps now count duty-days inside each rolling window instead of duty starts — a week-long duty consumes 7 units of the per-14-day cap, so a single range-qualified soldier can no longer be assigned consecutive weekly duties indefinitely when they are the only qualified soldier.
+- Score projections: quarter totals now derive from persisted rows; empty effort-history quarters get totals so reads stop permanently falling back to legacy; repairs refresh the totals they invalidate; bulk rebuild keeps zero buckets for cancelled assignments.
+- Fairness components no longer crash at scale through the legacy duty-day expansion path.
+- Soldier duty history now renders Hebrew range-type labels (מטווח לייזר instead of RangeType.laser) and range attendance as נכח / לא נכח.
+- Notification inbox entry removed from the bottom navigation bar; the inbox stays reachable via the header bell.
+
+### Chores
+- Backend test-suite performance: memoized test password hashing, shared migration templates, an isolated database lifecycle adapter, and solver profiling marks.
+- Frontend test optimizations and a Vite toolchain upgrade.
+- Removed dead projection helpers, updated stale solver assertions, and archived benchmark result JSONs under docs/benchmarks/data.
+
+
 ## 2026-08-22
 
 ### Chores
