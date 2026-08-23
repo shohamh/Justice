@@ -1,0 +1,76 @@
+{
+  "backfill": {
+    "measurement": {
+      "db_seconds": 2189.0913112701965,
+      "python_seconds": 1401.9876812297734,
+      "query_count": 1525811,
+      "wall_seconds": 3591.07899249997
+    },
+    "resume_probe_after_first_partial_batch": {
+      "resume_after_quarter_start": "2026-04-01",
+      "resume_after_soldier_id": "1cd465e5-7268-45d9-b4ae-ca2e756feeeb"
+    },
+    "state": {
+      "backfill_complete": true,
+      "canonical_version": "1",
+      "completed_at": "2026-08-22T18:13:17.967420+00:00",
+      "resume_after_quarter_start": null,
+      "resume_after_soldier_id": null
+    }
+  },
+  "database_name": "justice_bench",
+  "database_url": "postgresql+psycopg://app:app_pw@localhost:5432/justice_bench",
+  "dataset_after_mutation": {
+    "assignments": 500001,
+    "hierarchy_nodes": 221,
+    "quarter_total_rows": 10,
+    "soldier_quarter_score_projection_rows": 191570,
+    "soldier_score_projection_rows": 10000,
+    "soldiers": 10000
+  },
+  "dataset_before_reads": {
+    "assignments": 500000,
+    "hierarchy_nodes": 221,
+    "quarter_total_rows": 1,
+    "soldier_quarter_score_projection_rows": 1,
+    "soldier_score_projection_rows": 1,
+    "soldiers": 10000
+  },
+  "generated_shape": {
+    "synthetic_soldier_count": 9880,
+    "team_count": 200
+  },
+  "migrate_stdout": "",
+  "mutation_refresh": {
+    "db_seconds": 0.5118618999840692,
+    "python_seconds": 0.9715045000193641,
+    "query_count": 26,
+    "wall_seconds": 1.4833664000034332
+  },
+  "reads": {
+    "dashboard_summary": {
+      "db_seconds": 12.783336200227495,
+      "python_seconds": 7.295128699799534,
+      "query_count": 37,
+      "wall_seconds": 20.07846490002703
+    },
+    "fairness": {
+      "db_seconds": 68.49698180012638,
+      "python_seconds": 28.4390504998737,
+      "query_count": 48,
+      "wall_seconds": 96.93603230000008
+    },
+    "transparency": {
+      "db_seconds": 43.11096010101028,
+      "python_seconds": 37.903452999016736,
+      "query_count": 638,
+      "wall_seconds": 81.01441310002701
+    }
+  },
+  "requested_shape": {
+    "assignments": 500000,
+    "soldiers": 10000,
+    "teams": 200
+  },
+  "seed_stdout": "bootstrap: created admin id=f35e043e-0324-4ee2-9df0-0c9c61e7f7cf personal_number=1000001\nbootstrap: created root node id=4be5c007-5a66-469d-bec6-240ce4bb6628\nbootstrap: created holding node id=0f2ea975-43cf-4812-9b38-126deb546178\nSeed complete! Created:\n  19 hierarchy nodes\n  116 soldiers\n  12 duty types\n  4 duty locations\n  6 exemption types with 20 mappings\n  258 duty shifts (8 \u05e9\u05de\u05d9\u05e8\u05d5\u05ea, 8 \u05d0\u05d1\u05d8\"\u05e9, 8 \u05d4\u05d2\u05e0\"\u05e9, 40 \u05dc\u05d9\u05d5\u05d5\u05d9\u05dd, 40 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1\"\u05e8, 8 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 8 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 8 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8\"\u05e9, 40 \u05d0\u05d1\u05d5\u05ea \u05d1\u05d9\u05ea, 40 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1\"\u05e8 \u05d1\u05d9\u05e0\u05d5\u05d9, 40 \u05de\u05e9\u05de\u05e8\u05ea \u05dc\u05d9\u05dc\u05d4, 10 \u05e0\u05d4\u05d2 \u05ea\u05d5\u05e8\u05df)\n  0 shift assignments (pass --with-assignments to include)\n  1 invite code\n  4 enrollment requests (2 pending, 1 approved, 1 rejected)\n  15 personal constraints\n  12 soldier exemptions\n  5 score adjustments\n  8 exemption requests (6 pending, 1 approved, 1 rejected)\n  7 profile field update requests\n\nDemo logins (password 1234567890 for all):\n  admin: 1000001\n  duty_manager: 2500001\n  commander: 2000001\n  soldier: 1000003"
+}
