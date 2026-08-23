@@ -329,6 +329,20 @@ def compute_effort_breakdown(
     Returns EffortBreakdown with one EffortQuarterDetail per historical quarter
     (past and future beyond planning window) plus the aggregate effort_score and C_over_D.
     """
+    from app.services.scoring import _try_projected_effort_breakdown
+
+    projected = _try_projected_effort_breakdown(
+        session,
+        soldier=soldier,
+        planning_start=planning_start,
+        planning_end=planning_end,
+        reset_date=reset_date,
+        extra_adj_delta=extra_adj_delta,
+        extra_adj_date=extra_adj_date,
+    )
+    if projected is not None:
+        return projected
+
     from sqlalchemy import select
     from app.db.models import DutyType, ScoreAdjustment
 

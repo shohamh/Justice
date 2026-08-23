@@ -91,6 +91,7 @@ def approve_request(
     if req.status != "pending":
         raise HierarchyTransferError("not_pending")
     soldier = session.get(Soldier, req.soldier_id)
+    old_node_id = soldier.hierarchy_node_id
     soldier.hierarchy_node_id = req.to_node_id
     req.status = "approved"
     req.decided_by = actor_id
@@ -98,6 +99,18 @@ def approve_request(
         session, actor_id=actor_id, action="hierarchy_transfer.approve",
         entity_type="hierarchy_transfer_request", entity_id=req.id,
         after={"to_node_id": str(req.to_node_id)},
+    )
+    from app.services.score_projection import (
+        affected_dates_for_soldier_existing_projection,
+        refresh_projection_for_change,
+    )
+
+    refresh_projection_for_change(
+        session,
+        soldier_ids={req.soldier_id},
+        affected_dates=affected_dates_for_soldier_existing_projection(session, req.soldier_id),
+        old_node_ids=({old_node_id} if old_node_id is not None else set()),
+        new_node_ids={req.to_node_id},
     )
     return req
 

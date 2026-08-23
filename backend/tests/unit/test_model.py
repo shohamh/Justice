@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -28,12 +28,13 @@ def _soldier(score: float, active_days: int = 100) -> SoldierInput:
 
 
 def _duty(start: date, end: date | None = None, score: float = 1.0) -> DutyBlock:
+    # end is exclusive, mirroring DutyAssignment; default to a 1-day duty.
     return DutyBlock(
         id=uuid.uuid4(),
         duty_type_id=uuid.uuid4(),
         duty_location_id=uuid.uuid4(),
         start_date=start,
-        end_date=end or start,
+        end_date=end or (start + timedelta(days=1)),
         score_per_day=Decimal(str(score)),
     )
 

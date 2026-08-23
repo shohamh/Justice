@@ -130,6 +130,19 @@ def _isodate(d: date | None) -> str | None:
     return d.isoformat() if d else None
 
 
+_RANGE_TYPE_HE: dict[str, str] = {
+    "laser": "לייזר",
+    "live": "חי",
+    "alal": 'אל"ל',
+}
+
+
+def _range_type_he(range_type) -> str:
+    """Hebrew label for a RangeType enum/str value."""
+    value = getattr(range_type, "value", range_type)
+    return _RANGE_TYPE_HE.get(value, value)
+
+
 def get_duty_history(
     session: Session,
     soldier_id: uuid.UUID,
@@ -476,7 +489,7 @@ def get_duty_history(
                 event_type="range_assignment",
                 date=event.date.isoformat(),
                 end_date=None,
-                title=f"מטווח {event.range_type} ב{loc_name}",
+                title=f"מטווח {_range_type_he(event.range_type)} ב{loc_name}",
                 description=ra.note,
                 status=ra.attendance_status,
                 metadata={
@@ -513,7 +526,7 @@ def get_duty_history(
                 event_type="range_removed",
                 date=event.date.isoformat(),
                 end_date=None,
-                title=f"הוסר ממטווח {event.range_type} ב{loc_name}",
+                title=f"הוסר ממטווח {_range_type_he(event.range_type)} ב{loc_name}",
                 description=req.reason,
                 status=None,
                 metadata={
@@ -551,7 +564,7 @@ def get_duty_history(
                 event_type="range_removed",
                 date=event.date.isoformat(),
                 end_date=None,
-                title=f"הוסר ממטווח {event.range_type} ב{loc_name}",
+                title=f"הוסר ממטווח {_range_type_he(event.range_type)} ב{loc_name}",
                 description=reason,
                 status=None,
                 metadata={

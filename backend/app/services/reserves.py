@@ -60,6 +60,10 @@ def call_up_reserve(
         reference_type="duty_assignment", reference_id=assignment.id,
         actor_id=actor_id,
     )
+    if assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_assignment_change
+
+        refresh_projection_for_assignment_change(session, assignment=assignment)
     return assignment
 
 
@@ -119,6 +123,10 @@ def dismiss_primary(
         reference_type="duty_assignment", reference_id=assignment.id,
         actor_id=actor_id,
     )
+    if assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_assignment_change
+
+        refresh_projection_for_assignment_change(session, assignment=assignment)
     return dismissal
 
 
@@ -251,6 +259,10 @@ def dismiss_reserve(
         reference_type="duty_assignment", reference_id=assignment.id,
         actor_id=actor_id,
     )
+    if assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_assignment_change
+
+        refresh_projection_for_assignment_change(session, assignment=assignment)
     if covering_reserve_id is not None:
         link_rows = (
             session.execute(
@@ -310,7 +322,13 @@ def delete_dismissal(
             "dismissed_to": dismissal.dismissed_to.isoformat(),
         },
     )
+    assignment = session.get(DutyAssignment, dismissal.duty_assignment_id)
     session.delete(dismissal)
+    session.flush()
+    if assignment is not None and assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_assignment_change
+
+        refresh_projection_for_assignment_change(session, assignment=assignment)
 
 
 def get_shift_reserve_detail(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]:

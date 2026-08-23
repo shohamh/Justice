@@ -81,6 +81,18 @@ def grant_exemption(
         reference_type="soldier_exemption", reference_id=ex.id,
         actor_id=actor_id,
     )
+    from app.services.score_projection import (
+        affected_dates_for_inclusive_period,
+        affected_dates_for_soldier_existing_projection,
+        refresh_projection_for_change,
+    )
+
+    refresh_projection_for_change(
+        session,
+        soldier_ids={soldier_id},
+        affected_dates=affected_dates_for_inclusive_period(start_date, end_date)
+        | affected_dates_for_soldier_existing_projection(session, soldier_id),
+    )
     return ex
 
 
@@ -142,6 +154,18 @@ def grant_commander_exemption(
         reference_type="soldier_exemption", reference_id=ex.id,
         actor_id=actor_id,
     )
+    from app.services.score_projection import (
+        affected_dates_for_inclusive_period,
+        affected_dates_for_soldier_existing_projection,
+        refresh_projection_for_change,
+    )
+
+    refresh_projection_for_change(
+        session,
+        soldier_ids={soldier_id},
+        affected_dates=affected_dates_for_inclusive_period(start_date, end_date)
+        | affected_dates_for_soldier_existing_projection(session, soldier_id),
+    )
     return ex
 
 
@@ -201,6 +225,18 @@ def revoke_exemption(
         body=reason,
         reference_type="soldier_exemption", reference_id=ex.id,
         actor_id=actor_id,
+    )
+    from app.services.score_projection import (
+        affected_dates_for_inclusive_period,
+        affected_dates_for_soldier_existing_projection,
+        refresh_projection_for_change,
+    )
+
+    refresh_projection_for_change(
+        session,
+        soldier_ids={ex.soldier_id},
+        affected_dates=affected_dates_for_inclusive_period(ex.start_date, ex.end_date)
+        | affected_dates_for_soldier_existing_projection(session, ex.soldier_id),
     )
 
 

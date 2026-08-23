@@ -1,0 +1,24 @@
+{
+  "transparency": {
+    "status": "CRASH: OperationalError",
+    "detail": "(psycopg.OperationalError) sending query and params failed: number of parameters must be between 0 and 65535\n[SQL: SELEC",
+    "wall_seconds": 29.68
+  },
+  "fairness": {
+    "status": "CRASH: OperationalError",
+    "detail": "(psycopg.OperationalError) sending query and params failed: number of parameters must be between 0 and 65535\n[SQL: SELEC",
+    "wall_seconds": 43.92
+  },
+  "dashboard_summary": {
+    "status": "ok",
+    "wall_seconds": 11.22,
+    "db_seconds": 7.78,
+    "query_count": 10
+  },
+  "mutation_insert_only": {
+    "status": "ok",
+    "wall_seconds": 0.09,
+    "db_seconds": 0.08,
+    "query_count": 1
+  }
+}

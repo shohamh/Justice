@@ -547,23 +547,29 @@ def build_model(
         sorted_existing_all = sorted(existing_all)
         sorted_existing_real = sorted(existing_real)
 
-        # ── T cap: non-reserve duty-days per Wt-day rolling window ───────────
+        # ── T cap: non-reserve DUTY-DAYS per Wt-day rolling window ───────────
+        # Each assigned duty consumes one unit per day it overlaps the window
+        # (end_date is exclusive), so a week-long duty burns 7 units — not 1.
         ws = min_d
         while ws <= max_d:
             we = ws + timedelta(days=Wt - 1)
+            window_end_excl = we + timedelta(days=1)
             existing_real_fixed = (
                 bisect.bisect_right(sorted_existing_real, we)
                 - bisect.bisect_left(sorted_existing_real, ws)
             )
             right = bisect.bisect_right(starts_sorted, we)
-            vars_real: list[IntVar] = []
+            weighted_real: list[tuple[IntVar, int]] = []
             for i in range(right):
                 if ends_sorted[i] < ws:
                     continue
                 di = si_duties_sorted[i]
-                if not duty_list[di].is_reserve:
-                    vars_real.append(x[(di, si)])
-            if vars_real or existing_real_fixed:
+                if duty_list[di].is_reserve:
+                    continue
+                overlap = (min(ends_sorted[i], window_end_excl) - max(starts_sorted[i], ws)).days
+                if overlap > 0:
+                    weighted_real.append((x[(di, si)], overlap))
+            if weighted_real or existing_real_fixed:
                 headroom_T = T - existing_real_fixed
                 if headroom_T <= 0:
                     # Existing assignments already fill or exceed the T cap for
@@ -571,34 +577,37 @@ def build_model(
                     # (instead of adding an always-false constraint that makes the
                     # entire model infeasible and prevents assigning unrelated duties
                     # to other soldiers).
-                    if vars_real:
-                        model.Add(sum(vars_real) == 0)
+                    if weighted_real:
+                        model.Add(sum(v for v, _w in weighted_real) == 0)
                 else:
-                    model.Add(sum(vars_real) <= headroom_T)
+                    model.Add(sum(w * v for v, w in weighted_real) <= headroom_T)
             ws += timedelta(days=1)
 
         # ── R cap: all duty-days (reserve + real) per Wr-day rolling window ──
         ws = min_d
         while ws <= max_d:
             we = ws + timedelta(days=Wr - 1)
+            window_end_excl = we + timedelta(days=1)
             existing_all_fixed = (
                 bisect.bisect_right(sorted_existing_all, we)
                 - bisect.bisect_left(sorted_existing_all, ws)
             )
             right = bisect.bisect_right(starts_sorted, we)
-            vars_all: list[IntVar] = []
+            weighted_all: list[tuple[IntVar, int]] = []
             for i in range(right):
                 if ends_sorted[i] < ws:
                     continue
                 di = si_duties_sorted[i]
-                vars_all.append(x[(di, si)])
-            if vars_all or existing_all_fixed:
+                overlap = (min(ends_sorted[i], window_end_excl) - max(starts_sorted[i], ws)).days
+                if overlap > 0:
+                    weighted_all.append((x[(di, si)], overlap))
+            if weighted_all or existing_all_fixed:
                 headroom_R = R - existing_all_fixed
                 if headroom_R <= 0:
-                    if vars_all:
-                        model.Add(sum(vars_all) == 0)
+                    if weighted_all:
+                        model.Add(sum(v for v, _w in weighted_all) == 0)
                 else:
-                    model.Add(sum(vars_all) <= headroom_R)
+                    model.Add(sum(w * v for v, w in weighted_all) <= headroom_R)
             ws += timedelta(days=1)
 
     terms = FairnessTerms(

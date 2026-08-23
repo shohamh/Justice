@@ -206,6 +206,10 @@ def create_assignment(
             "end_date": end_date.isoformat(),
         },
     )
+    if a.status == "published":
+        from app.services.score_projection import refresh_projection_for_assignment_change
+
+        refresh_projection_for_assignment_change(session, assignment=a)
     return a
 
 
@@ -231,6 +235,9 @@ def cancel_assignment(
         after={"status": "cancelled"},
         context={"reason": reason},
     )
+    from app.services.score_projection import refresh_projection_for_assignment_change
+
+    refresh_projection_for_assignment_change(session, assignment=assignment)
     return assignment
 
 
@@ -344,6 +351,15 @@ def set_day_override(
             old_effective_id=old_effective_id, new_effective_id=effective_soldier_id,
             actor_id=actor_id,
         )
+        if assignment.status == "published":
+            from app.services.score_projection import refresh_projection_for_change
+
+            refresh_projection_for_change(
+                session,
+                soldier_ids={assignment.soldier_id, old_effective_id, effective_soldier_id}
+                - {None},
+                affected_dates={date},
+            )
         return existing
     ov = DutyDayOverride(
         duty_assignment_id=assignment.id,
@@ -367,6 +383,14 @@ def set_day_override(
         old_effective_id=None, new_effective_id=effective_soldier_id,
         actor_id=actor_id,
     )
+    if assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_change
+
+        refresh_projection_for_change(
+            session,
+            soldier_ids={assignment.soldier_id, effective_soldier_id} - {None},
+            affected_dates={date},
+        )
     return ov
 
 
@@ -397,7 +421,17 @@ def clear_day_override(
         old_effective_id=ov.effective_soldier_id, new_effective_id=None,
         actor_id=actor_id,
     )
+    old_effective_id = ov.effective_soldier_id
     session.delete(ov)
+    session.flush()
+    if assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_change
+
+        refresh_projection_for_change(
+            session,
+            soldier_ids={assignment.soldier_id, old_effective_id} - {None},
+            affected_dates={date},
+        )
 
 
 def list_assignments(

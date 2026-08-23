@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
+from app.services.sql_arrays import uuid_any
 
 from app.algorithm.availability import analyze_duty_availability
 from app.algorithm.duration import score_days
@@ -128,13 +129,99 @@ def _count_space_stats(
     }
 
 
-def load_soldier_inputs(
-    session: Session, *, as_of: date, eligible_node_ids: list[uuid.UUID] | None = None
-) -> list[SoldierInput]:
-    """Load every active soldier as a SoldierInput for the algorithm."""
+def _soldier_scope(column, soldier_ids: set[uuid.UUID] | None):
+    """Array-bound filter on a soldier-id column, or no filter when None."""
+    if soldier_ids is None:
+        return true()
+    if not soldier_ids:
+        return false()
+    return uuid_any(f"{column.table.name}.{column.key}", soldier_ids)
+
+
+def exempted_duty_type_ids_by_soldier(
+    session: Session, *, as_of: date
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """Per-soldier duty-type ids the soldier is exempt from at `as_of`.
+
+    Resolves the same union as ``SoldierInput.exempted_duty_type_ids`` in
+    :func:`load_soldier_inputs` — exemption mappings plus eligibility
+    exclusions — without loading any duty-day scores. Callers that only need
+    exemption scope (e.g. fairness grouping) avoid the full canonical scoring
+    expansion this way.
+    """
+    etid_to_dtids: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for etid, dtid in session.execute(
+        select(ExemptionDutyTypeMap.exemption_type_id, ExemptionDutyTypeMap.duty_type_id)
+    ).all():
+        etid_to_dtids.setdefault(etid, set()).add(dtid)
+
+    global_etids: set[uuid.UUID] = set(
+        session.execute(
+            select(ExemptionType.id).where(ExemptionType.is_global.is_(True))
+        ).scalars().all()
+    )
+    active_dt_ids: set[uuid.UUID] = set(
+        session.execute(select(DutyType.id).where(DutyType.active.is_(True))).scalars().all()
+    )
+    full_coverage_etids: set[uuid.UUID] = set(global_etids)
+    if active_dt_ids:
+        full_coverage_etids.update(
+            etid for etid, dts in etid_to_dtids.items() if active_dt_ids <= dts
+        )
+        for etid in global_etids:
+            etid_to_dtids[etid] = active_dt_ids
+
+    result: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for ex in session.execute(select(SoldierExemption)).scalars().all():
+        if ex.start_date <= as_of and (ex.end_date is None or ex.end_date >= as_of):
+            result.setdefault(ex.soldier_id, set()).update(
+                etid_to_dtids.get(ex.exemption_type_id, set())
+            )
+
+    from app.services.eligibility import compute_eligibility_exclusions
+    from app.services.settings_loader import get_setting
+
+    def _setting_int(key: str, default: int) -> int:
+        try:
+            return int(get_setting(session, key))
+        except Exception:
+            return default
+
     soldiers = (
         session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     )
+    eligibility_exclusions = compute_eligibility_exclusions(
+        session,
+        soldiers,
+        mitvahim_months=_setting_int("eligibility.mitvahim_months", 6),
+        alal_months=_setting_int("eligibility.alal_months", 3),
+        reference_date=as_of,
+    )
+    for soldier_id, dtids in eligibility_exclusions.items():
+        result.setdefault(soldier_id, set()).update(dtids)
+    return result
+
+
+def load_soldier_inputs(
+    session: Session,
+    *,
+    as_of: date,
+    eligible_node_ids: list[uuid.UUID] | None = None,
+    soldier_ids: set[uuid.UUID] | None = None,
+) -> list[SoldierInput]:
+    """Load active soldiers as SoldierInputs for the algorithm.
+
+    ``soldier_ids`` scopes the result (and all per-soldier computation) to that
+    cohort; callers that only need a small subset — e.g. shift-candidate or
+    reserve-pull flows — should always pass it. ``None`` keeps the historical
+    whole-force behavior.
+    """
+    soldiers_query = select(Soldier).where(Soldier.left_at.is_(None))
+    if soldier_ids is not None:
+        if not soldier_ids:
+            return []
+        soldiers_query = soldiers_query.where(_soldier_scope(Soldier.id, soldier_ids))
+    soldiers = session.execute(soldiers_query).scalars().all()
     node_path_map: dict[uuid.UUID, list[uuid.UUID]] = {
         n.id: list(n.path_ids)
         for n in session.execute(select(HierarchyNode.id, HierarchyNode.path_ids)).all()
@@ -157,9 +244,10 @@ def load_soldier_inputs(
         dt.id: dt.score_per_day
         for dt in session.execute(select(DutyType)).scalars().all()
     }
-    for da in session.execute(
-        select(DutyAssignment).where(DutyAssignment.status == "algorithm_draft")
-    ).scalars().all():
+    draft_query = select(DutyAssignment).where(DutyAssignment.status == "algorithm_draft")
+    if soldier_ids is not None:
+        draft_query = draft_query.where(_soldier_scope(DutyAssignment.soldier_id, soldier_ids))
+    for da in session.execute(draft_query).scalars().all():
         days = (da.end_date - da.start_date).days
         draft_scores[da.soldier_id] = (
             draft_scores.get(da.soldier_id, Decimal("0"))
@@ -201,7 +289,10 @@ def load_soldier_inputs(
             etid_to_dtids[etid] = active_dt_ids
 
     # All exemptions touching [enrolled_at, as_of] — one bulk query for all soldiers
-    all_exemptions = session.execute(select(SoldierExemption)).scalars().all()
+    exemptions_query = select(SoldierExemption)
+    if soldier_ids is not None:
+        exemptions_query = exemptions_query.where(_soldier_scope(SoldierExemption.soldier_id, soldier_ids))
+    all_exemptions = session.execute(exemptions_query).scalars().all()
 
     # Per-soldier: duty-type exemptions and full-coverage exempt date sets
     soldier_exempt_dtype_ids: dict[uuid.UUID, set[uuid.UUID]] = {}
@@ -243,13 +334,10 @@ def load_soldier_inputs(
     )
 
     # Approved personal constraints per soldier (one query)
-    constraints = (
-        session.execute(
-            select(PersonalConstraint).where(PersonalConstraint.status == "approved")
-        )
-        .scalars()
-        .all()
-    )
+    constraints_query = select(PersonalConstraint).where(PersonalConstraint.status == "approved")
+    if soldier_ids is not None:
+        constraints_query = constraints_query.where(_soldier_scope(PersonalConstraint.soldier_id, soldier_ids))
+    constraints = session.execute(constraints_query).scalars().all()
     soldier_constraints: dict[uuid.UUID, list[tuple[date, date]]] = {}
     for c in constraints:
         soldier_constraints.setdefault(c.soldier_id, []).append((c.start_date, c.end_date))
@@ -1708,7 +1796,7 @@ def serialize_solver_inputs(
 def _export_solver_outputs(job: "AlgorithmJob", session: "Session") -> dict:
     """Return the solver outputs for this job: batch results, metadata, and proposals."""
     from app.db.models import DutyAssignment
-    from sqlalchemy import select
+    from sqlalchemy import false, select, true
 
     proposals_q = select(DutyAssignment).where(DutyAssignment.algorithm_job_id == job.id)
     proposals = session.execute(proposals_q).scalars().all()

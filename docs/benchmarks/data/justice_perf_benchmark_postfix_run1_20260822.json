@@ -1,0 +1,73 @@
+{
+  "backfill": {
+    "measurement": {
+      "db_seconds": 0.008539000002201647,
+      "python_seconds": 0.007599700009450316,
+      "query_count": 1,
+      "wall_seconds": 0.016138700011651963
+    },
+    "resume_probe_after_first_partial_batch": null,
+    "state": {
+      "backfill_complete": true,
+      "canonical_version": "1",
+      "completed_at": "2026-08-22T08:06:22.422854+00:00",
+      "resume_after_quarter_start": null,
+      "resume_after_soldier_id": null
+    }
+  },
+  "database_name": "justice_perf",
+  "database_url": "postgresql+psycopg://app:app_pw@localhost:5432/justice_perf",
+  "dataset_after_mutation": {
+    "assignments": 500005,
+    "hierarchy_nodes": 221,
+    "quarter_total_rows": 10,
+    "soldier_quarter_score_projection_rows": 191570,
+    "soldier_score_projection_rows": 10000,
+    "soldiers": 10000
+  },
+  "dataset_before_reads": {
+    "assignments": 500004,
+    "hierarchy_nodes": 221,
+    "quarter_total_rows": 10,
+    "soldier_quarter_score_projection_rows": 191570,
+    "soldier_score_projection_rows": 10000,
+    "soldiers": 10000
+  },
+  "generated_shape": {
+    "synthetic_soldier_count": 9880,
+    "team_count": 200
+  },
+  "migrate_stdout": "",
+  "mutation_refresh": {
+    "db_seconds": 5.741205499973148,
+    "python_seconds": 0.8939446000149474,
+    "query_count": 26,
+    "wall_seconds": 6.6351500999880955
+  },
+  "reads": {
+    "dashboard_summary": {
+      "db_seconds": 50.67015379993245,
+      "python_seconds": 7.295067100087181,
+      "query_count": 58,
+      "wall_seconds": 57.96522090001963
+    },
+    "fairness": {
+      "db_seconds": 127.10558059980394,
+      "python_seconds": 27.119492500205524,
+      "query_count": 70,
+      "wall_seconds": 154.22507310000947
+    },
+    "transparency": {
+      "db_seconds": 238.085273499717,
+      "python_seconds": 31.449152400309686,
+      "query_count": 125,
+      "wall_seconds": 269.5344259000267
+    }
+  },
+  "requested_shape": {
+    "assignments": 500004,
+    "soldiers": 10000,
+    "teams": 200
+  },
+  "seed_stdout": ""
+}

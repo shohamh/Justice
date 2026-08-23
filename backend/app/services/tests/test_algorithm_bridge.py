@@ -440,3 +440,35 @@ def test_bridge_populates_future_ineligible_block_ids_for_future_exemption(admin
     soldier_input = next(s for s in soldiers if s.id == soldier.id)
     assert exempt_block.id in soldier_input.future_ineligible_duty_block_ids
     assert early_block.id not in soldier_input.future_ineligible_duty_block_ids
+
+
+def test_load_soldier_inputs_scopes_to_cohort(admin_session):
+    from datetime import date as _date
+
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_soldier
+
+    kept = create_soldier(admin_session, personal_number="scope-kept")
+    dropped = create_soldier(admin_session, personal_number="scope-dropped")
+    admin_session.flush()
+
+    inputs = load_soldier_inputs(
+        admin_session, as_of=_date(2026, 6, 1), soldier_ids={kept.id}
+    )
+    assert [si.id for si in inputs] == [kept.id]
+
+    empty = load_soldier_inputs(
+        admin_session, as_of=_date(2026, 6, 1), soldier_ids=set()
+    )
+    assert empty == []
+
+    everything = load_soldier_inputs(admin_session, as_of=_date(2026, 6, 1))
+    assert {si.id for si in everything} >= {kept.id, dropped.id}
+
+    scoped_values = load_soldier_inputs(
+        admin_session, as_of=_date(2026, 6, 1), soldier_ids={kept.id}
+    )[0]
+    unscoped_kept = next(si for si in everything if si.id == kept.id)
+    assert scoped_values.cumulative_score == unscoped_kept.cumulative_score
+    assert scoped_values.active_days == unscoped_kept.active_days
+    assert scoped_values.exempted_duty_type_ids == unscoped_kept.exempted_duty_type_ids
