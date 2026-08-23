@@ -29,7 +29,7 @@ from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services.algorithm_bridge import analyze_shift_availability, run_algorithm_job
 from app.services.duty_eligibility_watch import recheck_assignments
-from app.services.score_projection import refresh_projection_for_assignment_change
+from app.services.score_projection import refresh_projection_for_assignment_change, refresh_projections_for_assignments_bulk
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
 
@@ -861,7 +861,9 @@ def reset_published_assignments(
             after={"status": "cancelled"},
             context={"days_ahead": days_ahead},
         )
-        refresh_projection_for_assignment_change(session, assignment=a)
+
+    if assignments:
+        refresh_projections_for_assignments_bulk(session, assignments=assignments)
 
     session.commit()
     return {"cancelled": len(assignments)}
@@ -1001,8 +1003,11 @@ def bulk_accept_proposals(
         accepted_assignments = session.execute(
             select(DutyAssignment).where(DutyAssignment.id.in_(accepted_ids))
         ).scalars().all()
-        for assignment in accepted_assignments:
-            refresh_projection_for_assignment_change(session, assignment=assignment)
+        # One set-based rebuild per affected quarter instead of a per-assignment
+        # refresh loop (publishing an algorithm run accepts hundreds at once).
+        refresh_projections_for_assignments_bulk(
+            session, assignments=list(accepted_assignments)
+        )
 
     _maybe_publish_job(session, job_id)
     session.commit()

@@ -1740,6 +1740,44 @@ def commander_score_totals(
     )
 
 
+def refresh_projections_for_assignments_bulk(
+    session: Session, *, assignments: list[DutyAssignment]
+) -> None:
+    """Rebuild all buckets affected by the given assignments in bulk.
+
+    Equivalent to looping ``refresh_projection_for_assignment_change`` over the
+    assignments, but groups the work by calendar quarter and rebuilds each
+    quarter once through the set-based engine (`score_projection_bulk`),
+    followed by batched soldier/quarter-total recomputation. Use this anywhere
+    more than a handful of assignments change at once (e.g. publishing an
+    algorithm run).
+
+    Relies on request-scoped transaction atomicity: any failure rolls the whole
+    publish back, so no dirty-marker bookkeeping is needed here.
+    """
+    from app.services.score_projection_bulk import (
+        _bulk_upsert_soldier_totals,
+        _rebuild_quarter_buckets_bulk,
+    )
+
+    affected_soldiers: set[uuid.UUID] = set()
+    affected_quarters: set[date] = set()
+    for assignment in assignments:
+        affected_soldiers |= affected_soldier_ids_for_assignment(session, assignment)
+        for day in affected_dates_for_assignment(assignment):
+            affected_quarters.add(quarter_start(day))
+
+    if not affected_soldiers or not affected_quarters:
+        return
+
+    for quarter in sorted(affected_quarters):
+        _rebuild_quarter_buckets_bulk(
+            session, quarter_start_value=quarter, soldier_ids=affected_soldiers
+        )
+        _bulk_upsert_soldier_totals(session, affected_soldiers)
+        _upsert_quarter_total(session, quarter_start_value=quarter)
+
+
 def reconcile_score_projection(session: Session, limit: int = 500) -> dict[str, Any]:
     from app.services.score_projection_reconciliation import reconcile_score_projection as _reconcile
 
