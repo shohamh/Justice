@@ -125,7 +125,9 @@
     "approved_constraints": "אילוצים שאושרו",
     "rejected_constraints": "אילוצים שנדחו",
     "decision_note": "הערת מפקד",
-    "section_bug_reports": "הדיווחים שלי"
+    "section_bug_reports": "הדיווחים שלי",
+    "present": "השתתף",
+    "no_show": "לא הגיע"
   },
   "my_bug_reports": {
     "load_error": "שגיאה בטעינת הדיווחים"
