@@ -11,7 +11,38 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import AuditLog, HierarchyNode, PersonalConstraint, Soldier, SoldierExemption
+from app.db.models import (
+    AuditLog,
+    DutyAssignment,
+    DutyDayOverride,
+    DutyDismissal,
+    DutyLocation,
+    DutyManagerScope,
+    DutyNoShow,
+    DutyReserveLink,
+    DutyShift,
+    DutyType,
+    ExemptionType,
+    HierarchyLevelType,
+    HierarchyNode,
+    HierarchyTransferRequest,
+    Notification,
+    PersonalConstraint,
+    PotentialModifier,
+    RangeAssignment,
+    RangeEvent,
+    RangeLocation,
+    RankAdvancementInterval,
+    RoleDeputy,
+    ScoreAdjustment,
+    ShiftTemplate,
+    Soldier,
+    SoldierEnrollmentRequest,
+    SoldierExemption,
+    SoldierFieldUpdate,
+    SwapRequest,
+    SystemSetting,
+)
 from app.db.session import get_session
 
 router = APIRouter(tags=["audit-logs"])
@@ -132,6 +163,97 @@ def list_audit_logs(
     ]
 
 
+# entity_type -> model used to check whether the audited object still exists
+_ENTITY_MODELS = {
+    "duty_assignment": DutyAssignment,
+    "duty_day_override": DutyDayOverride,
+    "duty_dismissal": DutyDismissal,
+    "duty_location": DutyLocation,
+    "duty_manager_scope": DutyManagerScope,
+    "duty_no_show": DutyNoShow,
+    "duty_reserve_link": DutyReserveLink,
+    "duty_shift": DutyShift,
+    "duty_type": DutyType,
+    "exemption_type": ExemptionType,
+    "hierarchy_level_type": HierarchyLevelType,
+    "hierarchy_node": HierarchyNode,
+    "hierarchy_transfer_request": HierarchyTransferRequest,
+    "notification": Notification,
+    "personal_constraint": PersonalConstraint,
+    "potential_modifier": PotentialModifier,
+    "range_assignment": RangeAssignment,
+    "range_event": RangeEvent,
+    "range_location": RangeLocation,
+    "rank_advancement_interval": RankAdvancementInterval,
+    "role_deputy": RoleDeputy,
+    "score_adjustment": ScoreAdjustment,
+    "shift_template": ShiftTemplate,
+    "soldier": Soldier,
+    "soldier_enrollment_request": SoldierEnrollmentRequest,
+    "soldier_exemption": SoldierExemption,
+    "soldier_field_update": SoldierFieldUpdate,
+    "swap_request": SwapRequest,
+    "system_setting": SystemSetting,
+}
+
+# entity_type -> frontend route that shows the object (only types with a
+# meaningful destination). Types without an entry still get an exists flag
+# but no hyperlink.
+_ENTITY_LINKS = {
+    "duty_type": "/planning/config",
+    "duty_assignment": "/duty-management",
+    "duty_day_override": "/duty-management",
+    "duty_dismissal": "/duty-management",
+    "duty_shift": "/shifts",
+    "shift_template": "/planning/templates",
+    "swap_request": "/swaps",
+    "range_event": "/ranges",
+    "range_assignment": "/ranges",
+    "soldier": "/team",
+    "hierarchy_node": "/team",
+    "system_setting": "/admin/system-settings",
+    "exemption_type": "/planning/config",
+    "potential_modifier": "/planning/potential",
+    "soldier_enrollment_request": "/approvals",
+}
+
+
+def _resolve_entity_existence(
+    session: Session, items: list[dict[str, Any]]
+) -> None:
+    """Set entity_exists/entity_link on each item dict (batched per type)."""
+    by_type: dict[str, set[uuid.UUID]] = {}
+    for item in items:
+        if item["entity_id"] is not None:
+            by_type.setdefault(item["entity_type"], set()).add(item["entity_id"])
+
+    existing: dict[tuple[str, uuid.UUID], bool] = {}
+    for entity_type, ids in by_type.items():
+        model = _ENTITY_MODELS.get(entity_type)
+        if model is None:
+            continue
+        found = {
+            row[0]
+            for row in session.execute(select(model.id).where(model.id.in_(ids))).all()
+        }
+        for entity_id in ids:
+            existing[(entity_type, entity_id)] = entity_id in found
+
+    for item in items:
+        entity_id = item["entity_id"]
+        if entity_id is None:
+            item["entity_exists"] = None
+            item["entity_link"] = None
+            continue
+        key = (item["entity_type"], entity_id)
+        if key not in existing:
+            item["entity_exists"] = None  # unknown entity type
+            item["entity_link"] = None
+        else:
+            item["entity_exists"] = existing[key]
+            item["entity_link"] = _ENTITY_LINKS.get(item["entity_type"])
+
+
 # ── Admin: filterable full audit-log table ─────────────────────────────────
 
 
@@ -143,6 +265,11 @@ class AdminAuditLogEntryOut(BaseModel):
     action: str
     entity_type: str
     entity_id: uuid.UUID | None
+    entity_exists: bool | None
+    entity_link: str | None
+    before: dict[str, Any] | None
+    after: dict[str, Any] | None
+    context: dict[str, Any] | None
     before: dict[str, Any] | None
     after: dict[str, Any] | None
     context: dict[str, Any] | None
@@ -163,6 +290,28 @@ class AdminAuditLogPageOut(BaseModel):
     items: list[AdminAuditLogEntryOut]
     total: int
     facets: AdminAuditLogFacetsOut
+
+
+def _build_admin_audit_items(
+    rows: list[AuditLog], actor_names: dict[uuid.UUID, str], session: Session
+) -> list[dict[str, Any]]:
+    items = [
+        {
+            "id": row.id,
+            "created_at": row.created_at,
+            "actor_id": row.actor_id,
+            "actor_name": actor_names.get(row.actor_id) if row.actor_id else None,
+            "action": row.action,
+            "entity_type": row.entity_type,
+            "entity_id": row.entity_id,
+            "before": row.before,
+            "after": row.after,
+            "context": row.context,
+        }
+        for row in rows
+    ]
+    _resolve_entity_existence(session, items)
+    return items
 
 
 @router.get("/admin/audit-logs", response_model=AdminAuditLogPageOut)
@@ -236,19 +385,8 @@ def admin_list_audit_logs(
 
     return AdminAuditLogPageOut(
         items=[
-            AdminAuditLogEntryOut(
-                id=row.id,
-                created_at=row.created_at,
-                actor_id=row.actor_id,
-                actor_name=actor_names.get(row.actor_id) if row.actor_id else None,
-                action=row.action,
-                entity_type=row.entity_type,
-                entity_id=row.entity_id,
-                before=row.before,
-                after=row.after,
-                context=row.context,
-            )
-            for row in rows
+            AdminAuditLogEntryOut(**item)
+            for item in _build_admin_audit_items(rows, actor_names, session)
         ],
         total=total,
         facets=AdminAuditLogFacetsOut(

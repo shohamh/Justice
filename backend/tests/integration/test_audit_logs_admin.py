@@ -60,6 +60,12 @@ def test_admin_audit_log_returns_entries_and_filters(client, admin_session):
     assert grant["after"]["status"] == "approved"
     assert grant["context"] == {"reason": "בקשה אושרה"}
     assert by_action["duty_config.update"]["before"] is None
+    # entity existence: exemption entity id is random -> reported deleted;
+    # duty_config entity id is also random -> deleted; both have links
+    assert by_action["exemption.grant"]["entity_exists"] is False
+    assert by_action["exemption.grant"]["entity_link"] is None
+    assert by_action["duty_config.update"]["entity_exists"] is False
+    assert by_action["duty_config.update"]["entity_link"] == "/planning/config"
 
     # action substring filter
     r2 = client.get(
@@ -112,3 +118,45 @@ def test_admin_audit_log_pagination(client, admin_session):
     body2 = r2.json()
     assert len(body2["items"]) == 2
     assert body2["items"][0]["id"] != body["items"][0]["id"]
+
+
+def test_admin_audit_log_links_existing_entities(client, admin_session):
+    from tests.helpers import auth_headers
+
+    admin = create_soldier(admin_session, personal_number="audit-admin-4", role="admin")
+    soldier = create_soldier(admin_session, personal_number="audit-soldier-4")
+    admin_session.flush()
+
+    write_audit(
+        admin_session,
+        actor_id=admin.id,
+        action="soldier.update",
+        entity_type="soldier",
+        entity_id=soldier.id,
+    )
+    write_audit(
+        admin_session,
+        actor_id=admin.id,
+        action="duty_type.create",
+        entity_type="duty_type",
+        entity_id=uuid.uuid4(),
+    )
+    admin_session.commit()
+
+    r = client.get(
+        "/api/admin/audit-logs",
+        params={"action": "soldier.update"},
+        headers=auth_headers(admin),
+    )
+    item = r.json()["items"][0]
+    assert item["entity_exists"] is True
+    assert item["entity_link"] == "/team"
+
+    r2 = client.get(
+        "/api/admin/audit-logs",
+        params={"action": "duty_type.create"},
+        headers=auth_headers(admin),
+    )
+    item2 = r2.json()["items"][0]
+    assert item2["entity_exists"] is False
+    assert item2["entity_link"] == "/planning/config"

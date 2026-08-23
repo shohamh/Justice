@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { X } from "lucide-react";
 import { listAdminAuditLogs, type AdminAuditLogEntryDTO } from "../../api/adminAuditLogs";
 import { DataTable, ColDef } from "../../components/DataTable";
@@ -89,8 +90,29 @@ export default function AuditLogContent() {
     {
       id: "entity_id",
       header: t("admin.audit_log.entity_id"),
-      cell: (row) => (row.entity_id ? row.entity_id.slice(0, 8) : "—"),
-      minWidth: 110,
+      cell: (row) => {
+        if (!row.entity_id) return "—";
+        const shortId = row.entity_id.slice(0, 8);
+        if (row.entity_exists === false)
+          return (
+            <span className="text-gray-400 line-through" title={row.entity_id}>
+              {shortId} {t("admin.audit_log.deleted")}
+            </span>
+          );
+        if (row.entity_link)
+          return (
+            <Link
+              to={row.entity_link}
+              data-testid={`audit-log-entity-link-${row.id}`}
+              className="text-indigo-600 dark:text-indigo-300 underline underline-offset-2 hover:text-indigo-800 dark:hover:text-indigo-200"
+              title={row.entity_id}
+            >
+              {shortId}
+            </Link>
+          );
+        return <span title={row.entity_id}>{shortId}</span>;
+      },
+      minWidth: 130,
     },
   ];
 

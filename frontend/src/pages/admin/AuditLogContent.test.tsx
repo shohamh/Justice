@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { vi, beforeEach, test, expect } from "vitest";
 import "../../i18n";
 import AuditLogContent from "./AuditLogContent";
@@ -23,6 +24,8 @@ function makePage(overrides: Partial<AdminAuditLogPageDTO> = {}): AdminAuditLogP
         action: "exemption.grant",
         entity_type: "soldier_exemption",
         entity_id: "ent-1",
+        entity_exists: true,
+        entity_link: "/planning/config",
         before: { status: "pending_commander" },
         after: { status: "approved", exemption_type: "פטור מבחן" },
         context: { reason: "בקשה אושרה" },
@@ -34,7 +37,9 @@ function makePage(overrides: Partial<AdminAuditLogPageDTO> = {}): AdminAuditLogP
         actor_name: null,
         action: "duty_config.update",
         entity_type: "duty_type",
-        entity_id: null,
+        entity_id: "ent-2",
+        entity_exists: false,
+        entity_link: "/planning/config",
         before: null,
         after: null,
         context: null,
@@ -53,9 +58,11 @@ function makePage(overrides: Partial<AdminAuditLogPageDTO> = {}): AdminAuditLogP
 function renderContent() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
-      <AuditLogContent />
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <AuditLogContent />
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
@@ -120,4 +127,16 @@ test("clicking an action opens a detail modal with before/after payloads", async
   // close
   fireEvent.click(screen.getByTestId("audit-log-detail-close"));
   expect(screen.queryByTestId("audit-log-detail-modal")).not.toBeInTheDocument();
+});
+
+
+test("entity id renders as link when it exists and struck-through when deleted", async () => {
+  renderContent();
+  const table = await screen.findByTestId("audit-log-table");
+  const link = within(table).getByTestId("audit-log-entity-link-log-1");
+  expect(link).toHaveAttribute("href", "/planning/config");
+  const deleted = within(table).getByText(/נמחק/);
+  expect(deleted).toBeInTheDocument();
+  expect(within(table).getByText(/ent-1/)).toBeInTheDocument();
+  expect(within(table).getByText(/ent-2/)).toBeInTheDocument();
 });

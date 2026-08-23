@@ -1653,7 +1653,8 @@
       "system": "מערכת",
       "before": "לפני",
       "after": "אחרי",
-      "context": "הקשר"
+      "context": "הקשר",
+      "deleted": "נמחק"
     }
   }
 }
