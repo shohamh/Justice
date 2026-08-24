@@ -29,6 +29,7 @@ from app.db.models import (
     RangeAssignment,
     RangeEvent,
     RangeLocation,
+    RankAdvancementInterval,
     ShiftTemplate,
     Soldier,
 )
@@ -714,11 +715,12 @@ def export_current_data(
                 eligible,
             ])
 
-    ws_rai = wb.create_sheet("rank_advancement_intervals")
-    ws_rai.append(["track", "rank", "months_to_next", "advance_on_career_entry"])
-    for rai in session.execute(select(RankAdvancementInterval)).scalars():
-        ws_rai.append([rai.track, rai.rank, rai.months_to_next,
-                        "true" if rai.advance_on_career_entry else "false"])
+    if "rank_advancement_intervals" in requested:
+        ws_rai = wb.create_sheet("rank_advancement_intervals")
+        ws_rai.append(["track", "rank", "months_to_next", "advance_on_career_entry"])
+        for rai in session.execute(select(RankAdvancementInterval)).scalars():
+            ws_rai.append([rai.track, rai.rank, rai.months_to_next,
+                            "true" if rai.advance_on_career_entry else "false"])
 
     finalize_bilingual_workbook(wb)
 
