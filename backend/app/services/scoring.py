@@ -259,6 +259,7 @@ def _any_dirty_markers(session: Session) -> bool:
                 ScoreProjectionDirtyBucket.status == "dirty",
                 and_(
                     ScoreProjectionDirtyBucket.divergence.is_not(None),
+                    ScoreProjectionDirtyBucket.divergence != text("'null'::jsonb"),
                     ScoreProjectionDirtyBucket.reconciled_at.is_(None),
                 ),
             )

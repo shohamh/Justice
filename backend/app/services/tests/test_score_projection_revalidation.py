@@ -97,3 +97,42 @@ def test_revalidate_repairs_quarter_totals_of_repaired_buckets(
         )
     ).scalars().all()
     assert remaining_bad == []
+
+
+def test_json_null_divergence_is_not_pending_repair(admin_session):
+    """Regression: _mark_dirty_bucket persists divergence=None as the JSON
+    value null (not SQL NULL). The pending-repair predicate must treat JSON
+    null as cleared, or every read re-repairs the bucket forever."""
+    from datetime import date
+
+    from sqlalchemy import text
+
+    from app.db.models import ScoreProjectionDirtyBucket
+    from app.services.scoring import _any_dirty_markers
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="jsonnull-1")
+    soldier_id = soldier.id
+    admin_session.execute(
+        text(
+            "INSERT INTO score_projection_dirty_buckets "
+            "(soldier_id, quarter_start, status, divergence, dirtied_at, updated_at) "
+            "VALUES (:sid, DATE '2026-07-01', 'current', "
+            "'null'::jsonb, now(), now())"
+        ),
+        {"sid": soldier_id},
+    )
+    admin_session.flush()
+
+    assert _any_dirty_markers(admin_session) is False
+
+    # a REAL divergence (object) still counts as pending
+    admin_session.execute(
+        text(
+            "UPDATE score_projection_dirty_buckets "
+            "SET divergence = '{\"before\": 1}'::jsonb WHERE soldier_id = :sid"
+        ),
+        {"sid": soldier_id},
+    )
+    admin_session.flush()
+    assert _any_dirty_markers(admin_session) is True
