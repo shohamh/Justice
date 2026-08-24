@@ -29,6 +29,7 @@ from app.db.models import (
     RangeAssignment,
     RangeEvent,
     RangeLocation,
+    RankAdvancementInterval,
     ShiftTemplate,
     Soldier,
     RankAdvancementInterval,
