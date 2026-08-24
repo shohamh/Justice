@@ -14,7 +14,7 @@ def test_template_includes_all_six_sheets(client, admin_session):
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assert set(wb.sheetnames) >= {
-        "soldiers", "duty_shifts", "duty_locations", "hierarchy", "duty_types", "exemption_types",
+        "חיילים", "משמרות", "מיקומי תורנויות", "היררכיה", "סוגי תפקידים", "סוגי פטורים",
     }
 
 
@@ -25,7 +25,7 @@ def test_template_includes_range_sheets(client, admin_session):
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     for name in (
-        "range_locations", "range_events", "range_assignments",
-        "soldier_range_qualifications", "range_excusal_requests",
+        "מיקומי מטווח", "ימי מטווח", "שיבוצי מטווח",
+        "כשירויות מטווח", "בקשות היעדרות",
     ):
         assert name in wb.sheetnames

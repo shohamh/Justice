@@ -32,8 +32,8 @@ def test_export_returns_only_requested_sheets(client, admin_session):
     )
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["מיקומי תפקיד"]
-    rows = list(wb["מיקומי תפקיד"].iter_rows(min_row=2, values_only=True))
+    assert wb.sheetnames == ["מיקומי תורנויות"]
+    rows = list(wb["מיקומי תורנויות"].iter_rows(min_row=2, values_only=True))
     assert any(r[0] == loc.name for r in rows)
 
 
@@ -46,7 +46,7 @@ def test_export_defaults_to_all_sheets(client, admin_session):
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assert set(wb.sheetnames) == {
         "סוגי תפקידים",
-        "מיקומי תפקיד",
+        "מיקומי תורנויות",
         "היררכיה",
         "סוגי פטורים",
         "הגדרות מערכת",

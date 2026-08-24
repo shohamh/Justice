@@ -720,7 +720,7 @@ def test_exported_workbook_has_hebrew_sheets_and_excel_tables(admin_session):
 
     finalize_bilingual_workbook(wb)
     ws = wb[HE_SHEETS["duty_locations"]]
-    assert ws.title == "מיקומי תפקיד"
+    assert ws.title == "מיקומי תורנויות"
     assert len(ws.tables) == 1
     table = next(iter(ws.tables.values()))
     assert table.tableStyleInfo.showRowStripes is True

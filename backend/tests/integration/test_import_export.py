@@ -161,11 +161,11 @@ def test_range_events_and_assignments_export_import_round_trip(client, admin_ses
     # names rather than assuming index 0 — other tests sharing this worker's
     # DB may have already created their own rows.
     event_row = next(
-        r for r in sess.parsed_state["ימי מטווח"]
+        r for r in sess.parsed_state["range_events"]
         if r["hierarchy_node_name"] == node.name and r["range_location_name"] == loc.name
     )
     assignment_row = next(
-        r for r in sess.parsed_state["שיבוצי מטווח"] if r["personal_number"] == soldier.personal_number
+        r for r in sess.parsed_state["range_assignments"] if r["personal_number"] == soldier.personal_number
     )
     # No "update" path exists for range_events (a fresh import always proposes
     # "new" — see _resolve_range_events), but the re-parsed enum/date/location

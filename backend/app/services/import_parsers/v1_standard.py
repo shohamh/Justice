@@ -257,6 +257,7 @@ class V1StandardParser:
                 is_medical=_parse_bool(r.get("is_medical")),
                 is_commander_exemption=_parse_bool(r.get("is_commander_exemption")),
                 applies_to_duty_type_names=_parse_name_list(r.get("applies_to_duty_types")),
+                forbids_weapons=_parse_bool(r.get("forbids_weapons")),
             )
             for r in _sheet_rows(wb, "exemption_types")
         ]
@@ -296,6 +297,8 @@ class V1StandardParser:
                 end_time=str(r.get("end_time") or "").strip() or None,
                 instructions=str(r.get("instructions") or "").strip() or None,
                 eligible_unit_names=_parse_name_list(r.get("eligible_units")),
+                requires_weapon=_parse_bool(r.get("requires_weapon")),
+                required_range_type=str(r.get("required_range_type") or "").strip() or None,
                 requirements_json=str(r.get("requirements_json") or "").strip() or None,
             )
             for r in _sheet_rows(wb, "duty_types")
