@@ -21,6 +21,7 @@ from app.services.import_parsers.schema import (
     ImportPersonalConstraintRow,
     ImportRangeAssignmentRow,
     ImportRangeEventRow,
+    ImportRankAdvancementIntervalRow,
     ImportRangeExcusalRequestRow,
     ImportRangeLocationRow,
     ImportShiftTemplateRow,
@@ -42,6 +43,7 @@ KNOWN_SHEETS = {
     "system_settings", "bug_reports",
     "range_locations", "range_events", "range_assignments",
     "soldier_range_qualifications", "range_excusal_requests",
+    "rank_advancement_intervals",
 }
 
 
@@ -187,6 +189,7 @@ class V1StandardParser:
                 is_career=_parse_bool(r.get("is_career")),
                 next_rank_date=_parse_date(r.get("next_rank_date")),
                 bahad1_graduate=_parse_bool(r.get("bahad1_graduate")),
+                rank_track=str(r.get("rank_track") or "").strip() or None,
                 has_military_driving_license=_parse_bool(r.get("has_military_driving_license")),
                 military_driving_license_expiry=_parse_date(r.get("military_driving_license_expiry")),
                 mandatory_end_date=_parse_date(r.get("mandatory_end_date")),
@@ -212,6 +215,7 @@ class V1StandardParser:
                     start_time=str(r.get("start_time") or "").strip() or None,
                     end_time=str(r.get("end_time") or "").strip() or None,
                     required_count=int(r.get("required_count") or 1),
+                    reserve_count_override=int(r["reserve_count_override"]) if r.get("reserve_count_override") else None,
                     node_quotas=node_quotas,
                     notes=str(r.get("notes") or "").strip() or None,
                 )
@@ -434,6 +438,18 @@ class V1StandardParser:
             )
             for r in _sheet_rows(wb, "system_settings")
         ]
+        rank_advancement_intervals = [
+            ImportRankAdvancementIntervalRow(
+                source_row=r["_row"],
+                track=str(r.get("track") or "").strip(),
+                rank=str(r.get("rank") or "").strip(),
+                months_to_next=int(r.get("months_to_next") or 0),
+                advance_on_career_entry=_parse_bool(r.get("advance_on_career_entry")),
+            )
+            for r in _sheet_rows(wb, "rank_advancement_intervals")
+            if str(r.get("track") or "").strip()
+        ]
+
 
         bug_reports = [
             ImportBugReportRow(
