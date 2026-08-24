@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-24
+
+### Features
+- New filterable audit-log tab in the admin settings page: view all system actions with filters by action substring, entity type, actor, and date range. Clicking an action opens a detail modal with the before/after diff and context. Entity ids link to the object when it still exists; deleted objects show struck-through.
+- Excel exports now write Hebrew sheet names and Hebrew column headers, styled as real Excel tables with filter buttons and banded alternating-row colors. Imports accept both the new Hebrew layout and the original English one.
+- Added rank-advancement-intervals sheet to the data export.
+
+### Fixes
+- Algorithm window caps now count duty-days inside each rolling window instead of duty starts — a week-long duty consumes 7 units of the per-14-day cap, preventing one range-qualified soldier from being assigned consecutive weekly duties indefinitely.
+- Fixed transparency page taking minutes to load: a JSON-null divergence marker caused every read to re-repair all buckets and fall back to legacy; the pending-repair predicate and writes now handle JSON null correctly.
+- Fixed soldier duty history rendering raw Python enum repr for range types and missing Hebrew translations for range attendance statuses.
+- Fixed a 65,535-parameter database limit crash in fairness components and load_soldier_inputs at deployment scale.
+- Import review page tables now use the full content width on PC instead of being centered in a narrow column.
+
+### Chores
+- Added regression coverage for JSON-null divergence markers, empty effort-history quarter coverage, projected dashboard reads, and bilingual Excel parsing.
+
+
 ## 2026-08-23
 
 ### Features
