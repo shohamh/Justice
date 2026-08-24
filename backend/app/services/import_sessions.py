@@ -932,6 +932,30 @@ def _resolve_duty_shifts(
     return out
 
 
+def _resolve_rank_advancement_intervals(session: Session, data) -> list[dict]:
+    """Resolve rank advancement interval rows by (track, rank) composite key."""
+    from app.db.models import RankAdvancementInterval
+
+    existing = {
+        (r.track, r.rank): r
+        for r in session.execute(select(RankAdvancementInterval)).scalars()
+    }
+    out = []
+    for row in data.rank_advancement_intervals:
+        key = (row.track, row.rank)
+        match = existing.get(key)
+        out.append({
+            "row": row.source_row,
+            "action": "update" if match else "new",
+            "track": row.track,
+            "rank": row.rank,
+            "months_to_next": row.months_to_next,
+            "advance_on_career_entry": row.advance_on_career_entry,
+            "existing_id": str(match.id) if match else None,
+        })
+    return out
+
+
 def _resolve_shift_templates(
     session: Session,
     data: ParsedImportData,
@@ -1246,7 +1270,8 @@ def _resolve_and_score(
         "duty_locations": _resolve_duty_locations(session, data, fo.get("duty_locations", {})),
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row, fo.get("hierarchy", {})),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
-        "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
+        "rank_advancement_intervals": _resolve_rank_advancement_intervals(session, data),
+                "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
         "system_settings": resolve_system_settings(session, data, actor, fo.get("system_settings", {})),
         "bug_reports": resolve_bug_reports(session, data, actor, fo.get("bug_reports", {})),
         "personal_constraints": resolve_personal_constraints(session, data, fo.get("personal_constraints", {})),
@@ -1544,6 +1569,7 @@ def confirm_session(
                     start_date=date_type.fromisoformat(row["start_date"]),
                     end_date=date_type.fromisoformat(row["end_date"]),
                     required_count=row["required_count"],
+                    reserve_count_override=int(row["reserve_count_override"]) if row.get("reserve_count_override") else None,
                     notes=row.get("notes"),
                 )
                 if row.get("start_time"):
@@ -1791,6 +1817,8 @@ def confirm_session(
                         is_external=bool(row.get("is_external")),
                         eligible_node_ids=eligible_ids,
                         requirements=row.get("requirements"),
+                        requires_weapon=bool(row.get("requires_weapon")),
+                        required_range_type=row.get("required_range_type"),
                         actor_id=actor.id,
                     )
                     if row.get("active") is not None:
@@ -1815,6 +1843,8 @@ def confirm_session(
                             is_external=row.get("is_external"),
                             eligible_node_ids=eligible_ids if row.get("resolved_eligible_node_ids") else ...,
                             requirements=row.get("requirements"),
+                            requires_weapon=row.get("requires_weapon"),
+                            required_range_type=row.get("required_range_type"),
                             actor_id=actor.id,
                         )
                         if row.get("active") is not None:
@@ -1857,6 +1887,8 @@ def confirm_session(
                         eligible_node_ids=eligible_ids,
                         actor_id=actor.id,
                     )
+                    if row.get("active") is not None:
+                        tpl.active = row["active"]
                     created += 1
                     created_shift_templates.append(str(tpl.id))
                 elif effective == "update" and row.get("existing_id"):
@@ -1880,6 +1912,8 @@ def confirm_session(
                             eligible_node_ids=eligible_ids if row.get("resolved_eligible_node_ids") else ...,
                             actor_id=actor.id,
                         )
+                        if row.get("active") is not None:
+                            tpl.active = row["active"]
                         updated += 1
                         created_shift_templates.append(str(tpl.id))
                     else:
@@ -1996,6 +2030,7 @@ def confirm_session(
                         is_global=bool(row.get("is_global")),
                         is_medical=bool(row.get("is_medical")),
                         is_commander_exemption=bool(row.get("is_commander_exemption")),
+                        forbids_weapons=bool(row.get("forbids_weapons")),
                         actor_id=actor.id,
                     )
                     if duty_type_ids:
@@ -2014,6 +2049,8 @@ def confirm_session(
                             is_global=row.get("is_global"),
                             is_medical=row.get("is_medical"),
                             is_commander_exemption=row.get("is_commander_exemption"),
+                            active=row.get("active"),
+                            forbids_weapons=row.get("forbids_weapons"),
                             actor_id=actor.id,
                         )
                         set_exemption_duty_types(
@@ -2026,6 +2063,35 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "exemption_types", "error": str(exc)})
+
+    # ── Rank advancement intervals ─────────────────────────────────────
+    from app.db.models import RankAdvancementInterval
+    for row in state.get("rank_advancement_intervals", []):
+        effective = _effective_action(selections, "rank_advancement_intervals", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            if effective == "new":
+                session.add(RankAdvancementInterval(
+                    track=row["track"],
+                    rank=row["rank"],
+                    months_to_next=int(row["months_to_next"]),
+                    advance_on_career_entry=bool(row.get("advance_on_career_entry")),
+                ))
+                created += 1
+            elif effective == "update" and row.get("existing_id"):
+                rai = session.get(RankAdvancementInterval, uuid.UUID(row["existing_id"]))
+                if rai is not None:
+                    rai.months_to_next = int(row["months_to_next"])
+                    rai.advance_on_career_entry = bool(row.get("advance_on_career_entry"))
+                    updated += 1
+                else:
+                    skipped += 1
+            else:
+                skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "rank_advancement_intervals", "error": str(exc)})
 
     # ── System settings ────────────────────────────────────────────────
     for row in state.get("system_settings", []):

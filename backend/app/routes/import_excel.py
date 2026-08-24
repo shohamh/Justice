@@ -31,6 +31,7 @@ from app.db.models import (
     RangeLocation,
     ShiftTemplate,
     Soldier,
+    RankAdvancementInterval,
 )
 from app.db.session import get_session
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
@@ -533,7 +534,7 @@ def download_template():
 
 # ── Export current data ─────────────────────────────────────────────────────────
 
-EXPORT_DATA_SHEETS = ["soldiers", "duty_shifts", "assignments", "shift_templates", "range_events", "range_assignments"]
+EXPORT_DATA_SHEETS = ["soldiers", "duty_shifts", "assignments", "shift_templates", "range_events", "range_assignments", "rank_advancement_intervals"]
 
 
 @router.get("/export")
@@ -714,11 +715,12 @@ def export_current_data(
                 eligible,
             ])
 
-    ws_rai = wb.create_sheet("rank_advancement_intervals")
-    ws_rai.append(["track", "rank", "months_to_next", "advance_on_career_entry"])
-    for rai in session.execute(select(RankAdvancementInterval)).scalars():
-        ws_rai.append([rai.track, rai.rank, rai.months_to_next,
-                        "true" if rai.advance_on_career_entry else "false"])
+    if "rank_advancement_intervals" in requested:
+        ws_rai = wb.create_sheet("rank_advancement_intervals")
+        ws_rai.append(["track", "rank", "months_to_next", "advance_on_career_entry"])
+        for rai in session.execute(select(RankAdvancementInterval)).scalars():
+            ws_rai.append([rai.track, rai.rank, rai.months_to_next,
+                            "true" if rai.advance_on_career_entry else "false"])
 
     finalize_bilingual_workbook(wb)
 
