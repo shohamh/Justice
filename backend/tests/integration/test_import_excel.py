@@ -268,15 +268,15 @@ def test_template_download(client, admin_session):
 
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assert set(wb.sheetnames) == {
-        "soldiers", "duty_shifts", "assignments",
-        "duty_locations", "hierarchy", "duty_types", "exemption_types", "shift_templates",
-        "range_locations", "range_events", "range_assignments",
-        "soldier_range_qualifications", "range_excusal_requests",
+        "חיילים", "משמרות", "שיבוצים",
+        "מיקומי תורנויות", "היררכיה", "סוגי תפקידים", "סוגי פטורים", "תבניות משמרות",
+        "מיקומי מטווח", "ימי מטווח", "שיבוצי מטווח",
+        "כשירויות מטווח", "בקשות היעדרות",
     }
-    headers = [c.value for c in next(wb["assignments"].iter_rows(min_row=1, max_row=1))]
+    headers = [c.value for c in next(wb["שיבוצים"].iter_rows(min_row=1, max_row=1))]
     assert headers == [
-        "personal_number", "full_name", "duty_type_name", "duty_location_name",
-        "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes",
+        "מספר אישי", "שם מלא", "סוג תפקיד", "מיקום",
+        "תאריך התחלה", "תאריך סיום", "שעת התחלה", "שעת סיום", "מילואים", "הערות",
     ]
 
 
@@ -288,12 +288,12 @@ def test_template_download_includes_shift_templates_sheet(client, admin_session)
     assert resp.status_code == 200
 
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert "shift_templates" in wb.sheetnames
-    headers = [c.value for c in next(wb["shift_templates"].iter_rows(min_row=1, max_row=1))]
+    assert "תבניות משמרות" in wb.sheetnames
+    headers = [c.value for c in next(wb["תבניות משמרות"].iter_rows(min_row=1, max_row=1))]
     assert headers == [
-        "name", "duty_type_name", "duty_location_name", "recurrence_type", "weekdays",
-        "start_time", "end_time", "required_count", "auto_roll", "auto_roll_until",
-        "duration_days", "notes", "eligible_units",
+        "שם", "סוג תפקיד", "מיקום", "מחזוריות", "ימים בשבוע",
+        "שעת התחלה", "שעת סיום", "נדרשים", "חידוש אוטומטי", "חידוש אוטומטי עד",
+        "משך בימים", "הערות", "יחידות מותרות",
     ]
 
 
@@ -318,8 +318,8 @@ def test_export_current_data_includes_shift_templates(client, admin_session):
     assert resp.status_code == 200
 
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert "shift_templates" in wb.sheetnames
-    rows = list(wb["shift_templates"].iter_rows(min_row=2, values_only=True))
+    assert "תבניות משמרות" in wb.sheetnames
+    rows = list(wb["תבניות משמרות"].iter_rows(min_row=2, values_only=True))
     names = [r[0] for r in rows]
     assert tpl_name in names
 

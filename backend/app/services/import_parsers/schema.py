@@ -23,6 +23,7 @@ class ImportSoldierRow(BaseModel):
     is_career: bool | None = None
     next_rank_date: str | None = None
     bahad1_graduate: bool | None = None
+    rank_track: str | None = None
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: str | None = None
     mandatory_end_date: str | None = None
@@ -41,6 +42,7 @@ class ImportDutyShiftRow(BaseModel):
     start_time: str | None = None
     end_time: str | None = None
     required_count: int
+    reserve_count_override: int | None = None
     node_quotas: list[ImportNodeQuota] = []
     notes: str | None = None
 
@@ -77,6 +79,8 @@ class ImportDutyTypeRow(BaseModel):
     end_time: str | None = None
     instructions: str | None = None
     eligible_unit_names: list[str] = []
+    requires_weapon: bool | None = None
+    required_range_type: str | None = None
     requirements_json: str | None = None
 
 
@@ -92,6 +96,7 @@ class ImportShiftTemplateRow(BaseModel):
     required_count: int | None = None
     auto_roll: bool | None = None
     auto_roll_until: str | None = None
+    active: bool | None = None
     duration_days: int | None = None
     notes: str | None = None
     eligible_unit_names: list[str] = []
@@ -104,6 +109,8 @@ class ImportExemptionTypeRow(BaseModel):
     is_global: bool | None = None
     is_medical: bool | None = None
     is_commander_exemption: bool | None = None
+    active: bool | None = None
+    forbids_weapons: bool | None = None
     applies_to_duty_type_names: list[str] = []
 
 
@@ -279,6 +286,14 @@ class ImportBugReportRow(BaseModel):
     user_snapshot_json: str | None = None
 
 
+class ImportRankAdvancementIntervalRow(BaseModel):
+    source_row: int
+    track: str
+    rank: str
+    months_to_next: int
+    advance_on_career_entry: bool | None = None
+
+
 class ParsedImportData(BaseModel):
     """Canonical output every import parser implementation must produce.
 
@@ -311,4 +326,5 @@ class ParsedImportData(BaseModel):
     system_settings: list[ImportSystemSettingRow] = []
     bug_reports: list[ImportBugReportRow] = []
     parser_id: str
+    rank_advancement_intervals: list[ImportRankAdvancementIntervalRow] = []
     parser_warnings: list[str] = []

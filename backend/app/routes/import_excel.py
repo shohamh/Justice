@@ -8,6 +8,8 @@ from datetime import date as date_type
 from typing import Any, Literal
 
 import openpyxl
+
+from app.services.excel_bilingual import finalize_bilingual_workbook
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -517,6 +519,8 @@ def download_template():
     ])
     ws_rer.append(["12345", "12345", "מדור א", "live", "20.06.2024", "מטווח דרומי", "חופשה", "pending"])
 
+    finalize_bilingual_workbook(wb)
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -559,17 +563,29 @@ def export_current_data(
 
     if "soldiers" in requested:
         ws_s = wb.create_sheet("soldiers")
-        ws_s.append(["personal_number", "full_name", "rank", "gender", "is_officer",
-                      "hierarchy_node_name", "enrolled_at", "enlistment_date", "phone", "email"])
+        ws_s.append(["personal_number", "full_name", "rank", "rank_track", "gender", "is_officer",
+                      "hierarchy_node_name", "enrolled_at", "enlistment_date", "next_rank_date",
+                      "phone", "email", "mandatory_end_date", "discharge_date",
+                      "has_military_driving_license", "military_driving_license_expiry",
+                      "last_mitvahim_date", "last_alal_date", "left_at"])
         for s in session.execute(select(Soldier)).scalars():
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
             ws_s.append([
-                s.personal_number, s.full_name, s.rank, s.gender,
+                s.personal_number, s.full_name, s.rank,
+                s.rank_track or "", s.gender,
                 "" if s.is_officer is None else ("true" if s.is_officer else "false"),
                 node.name if node else "",
                 s.enrolled_at.strftime("%d.%m.%Y") if s.enrolled_at else "",
                 s.enlistment_date.strftime("%d.%m.%Y") if s.enlistment_date else "",
+                s.next_rank_date.strftime("%d.%m.%Y") if s.next_rank_date else "",
                 s.phone or "", s.email or "",
+                s.mandatory_end_date.strftime("%d.%m.%Y") if s.mandatory_end_date else "",
+                s.discharge_date.strftime("%d.%m.%Y") if s.discharge_date else "",
+                "" if s.has_military_driving_license is None else ("true" if s.has_military_driving_license else "false"),
+                s.military_driving_license_expiry.strftime("%d.%m.%Y") if s.military_driving_license_expiry else "",
+                s.last_mitvahim_date.strftime("%d.%m.%Y") if s.last_mitvahim_date else "",
+                s.last_alal_date.strftime("%d.%m.%Y") if s.last_alal_date else "",
+                s.left_at.strftime("%d.%m.%Y") if s.left_at else "",
             ])
 
     # `assignments` needs shift lookups even when the `duty_shifts` sheet itself isn't requested.
@@ -654,6 +670,7 @@ def export_current_data(
         ws_ra.append([
             "personal_number", "full_name", "hierarchy_node_name", "range_type", "date",
             "range_location_name", "is_reserve", "is_draft", "attendance_status", "note",
+            "assignment_reason_code", "assignment_reason_text",
         ])
         for a in session.execute(select(RangeAssignment)).scalars():
             ev = range_events_by_id.get(a.range_event_id)
@@ -667,6 +684,7 @@ def export_current_data(
                 node.name if node else "", ev.range_type.value, ev.date.strftime("%d.%m.%Y"),
                 loc.name if loc else "", "true" if a.is_reserve else "false",
                 "true" if a.is_draft else "false", a.attendance_status.value, a.note or "",
+                a.assignment_reason_code or "", a.assignment_reason_text or "",
             ])
 
     if "shift_templates" in requested:
@@ -695,6 +713,14 @@ def export_current_data(
                 tpl.notes or "",
                 eligible,
             ])
+
+    ws_rai = wb.create_sheet("rank_advancement_intervals")
+    ws_rai.append(["track", "rank", "months_to_next", "advance_on_career_entry"])
+    for rai in session.execute(select(RankAdvancementInterval)).scalars():
+        ws_rai.append([rai.track, rai.rank, rai.months_to_next,
+                        "true" if rai.advance_on_career_entry else "false"])
+
+    finalize_bilingual_workbook(wb)
 
     buf = io.BytesIO()
     wb.save(buf)

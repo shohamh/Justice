@@ -661,3 +661,70 @@ def test_parses_range_sheets():
 
     assert len(data.range_excusal_requests) == 1
     assert data.range_excusal_requests[0].status == "pending"
+
+
+def _hebrew_workbook():
+    """Hebrew sheet names + Hebrew headers, as the new export produces."""
+    import openpyxl
+
+    from app.services.excel_bilingual import HE_HEADERS, HE_SHEETS
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet(HE_SHEETS["soldiers"])
+    en_headers = ["personal_number", "full_name", "rank", "gender", "is_officer",
+                  "hierarchy_node_name", "enrolled_at", "enlistment_date", "phone", "email"]
+    ws.append([HE_HEADERS[h] for h in en_headers])
+    ws.append(["12345", "ישראל ישראלי", "רבט", "m", "false", "מדור א", "01.01.2022", "01.03.2020", "", ""])
+    return wb
+
+
+def test_parser_accepts_hebrew_sheet_names_and_headers():
+    wb = _hebrew_workbook()
+    parser = V1StandardParser()
+    assert parser.detect(wb) > 0
+    parsed = parser.parse(wb)
+    assert len(parsed.soldiers) == 1
+    row = parsed.soldiers[0]
+    assert row.personal_number == "12345"
+    assert row.full_name == "ישראל ישראלי"
+    assert row.rank == "רבט"
+
+
+def test_parser_still_accepts_english_layout():
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("soldiers")
+    ws.append(["personal_number", "full_name", "rank", "gender", "is_officer",
+               "hierarchy_node_name", "enrolled_at", "enlistment_date", "phone", "email"])
+    ws.append(["67890", "English Name", "sgt", "f", "true", "Squad B", "01.01.2022", "", "", ""])
+    parser = V1StandardParser()
+    assert parser.detect(wb) > 0
+    parsed = parser.parse(wb)
+    assert len(parsed.soldiers) == 1
+    assert parsed.soldiers[0].personal_number == "67890"
+    assert parsed.soldiers[0].is_officer is True
+
+
+def test_exported_workbook_has_hebrew_sheets_and_excel_tables(admin_session):
+    """The config export writes Hebrew sheet names whose used range is a real
+    Excel table with banded-row styling and a header row."""
+    from app.routes.config_export import _write_duty_locations
+
+    from app.services.excel_bilingual import HE_SHEETS
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    _write_duty_locations(wb, admin_session)
+    from app.services.excel_bilingual import finalize_bilingual_workbook
+
+    finalize_bilingual_workbook(wb)
+    ws = wb[HE_SHEETS["duty_locations"]]
+    assert ws.title == "מיקומי תורנויות"
+    assert len(ws.tables) == 1
+    table = next(iter(ws.tables.values()))
+    assert table.tableStyleInfo.showRowStripes is True
+    assert table.ref.startswith("A1:")
+    # header row is Hebrew
+    assert ws["A1"].value == "שם"
+    assert ws["C1"].value == "פעיל"

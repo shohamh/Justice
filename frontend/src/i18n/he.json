@@ -86,7 +86,8 @@
     "admin_bug_reports": "דיווחי באגים",
     "score_adjustments": "שינוי ניקוד ידני",
     "planning_export": "ייצוא לאקסל",
-    "weapon_ineligible": "⚠️ חוסר כשירות"
+    "weapon_ineligible": "⚠️ חוסר כשירות",
+    "admin_audit_log": "יומן פעולות"
   },
   "export": {
     "transparency_title": "ייצוא שקיפות",
@@ -1628,5 +1629,32 @@
     "action_constraint.approve_duty_manager_step": "אושר סופית",
     "action_constraint.reject": "נדחה",
     "action_constraint.cancel": "אילוץ בוטל"
+  },
+  "admin": {
+    "audit_log": {
+      "time": "זמן",
+      "actor": "מבצע",
+      "action": "פעולה",
+      "entity_type": "סוג רשומה",
+      "entity_id": "מזהה",
+      "filter_action": "פעולה מכילה",
+      "filter_action_placeholder": "לדוגמה: exemption",
+      "filter_entity_type": "סוג רשומה",
+      "filter_actor": "משתמש",
+      "filter_from": "מתאריך",
+      "filter_to": "עד תאריך",
+      "filter_all": "הכל",
+      "loading": "טוען...",
+      "load_error": "טעינת יומן הפעולות נכשלה",
+      "empty": "לא נמצאו רשומות",
+      "showing": "מציג {{from}}–{{to}} מתוך {{total}}",
+      "prev": "הקודם",
+      "next": "הבא",
+      "system": "מערכת",
+      "before": "לפני",
+      "after": "אחרי",
+      "context": "הקשר",
+      "deleted": "נמחק"
+    }
   }
 }

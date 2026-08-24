@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, func, null, or_, select, text
 from sqlalchemy.orm import Session
 from app.services.sql_arrays import uuid_any
 
@@ -229,14 +229,14 @@ def _mark_dirty_bucket(
             status="dirty",
             old_node_ids=[str(node_id) for node_id in old_node_ids],
             new_node_ids=[str(node_id) for node_id in new_node_ids],
-            divergence=None,
+            divergence=null(),
         )
         session.add(dirty)
     else:
         dirty.status = "dirty"
         dirty.old_node_ids = _merge_node_ids(dirty.old_node_ids, old_node_ids)
         dirty.new_node_ids = _merge_node_ids(dirty.new_node_ids, new_node_ids)
-        dirty.divergence = None
+        dirty.divergence = null()
         dirty.updated_at = _utcnow()
     session.flush()
     return dirty
@@ -1111,11 +1111,17 @@ def _dirty_or_divergent_projection_keys(
         quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
     elif not soldier_ids:
         return set()
+    # divergence is JSONB: a cleared flag must match BOTH SQL NULL and the
+    # JSON value null (the ORM persists None as JSON null on this column).
+    divergence_cleared = or_(
+        ScoreProjectionDirtyBucket.divergence.is_(None),
+        ScoreProjectionDirtyBucket.divergence == text("'null'::jsonb"),
+    )
     conditions = [
         or_(
             ScoreProjectionDirtyBucket.status == "dirty",
             and_(
-                ScoreProjectionDirtyBucket.divergence.is_not(None),
+                ~divergence_cleared,
                 ScoreProjectionDirtyBucket.reconciled_at.is_(None),
             ),
         )
@@ -1143,7 +1149,7 @@ def _mark_projection_key_current(
     if dirty is None:
         return
     dirty.status = "current"
-    dirty.divergence = None
+    dirty.divergence = null()
     dirty.refreshed_at = _utcnow()
     dirty.updated_at = _utcnow()
     session.flush()

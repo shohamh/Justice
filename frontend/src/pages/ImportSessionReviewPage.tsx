@@ -511,7 +511,7 @@ export default function ImportSessionReviewPage() {
   if (loading || !detail) {
     return (
       <Layout>
-        <div className="max-w-5xl mx-auto p-4" dir="rtl">
+        <div className="w-full p-4" dir="rtl">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
               {error}
@@ -549,7 +549,7 @@ export default function ImportSessionReviewPage() {
 
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto space-y-4 p-4" dir="rtl">
+      <div className="w-full space-y-4 p-4" dir="rtl">
         <h1 className="text-xl font-semibold">{detail.filename}</h1>
 
         {error && (

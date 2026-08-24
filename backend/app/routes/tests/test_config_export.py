@@ -95,9 +95,9 @@ def test_export_by_duty_manager_drops_system_settings_and_bug_reports(client, ad
     resp = client.get("/api/config/export", headers=auth_headers(dm))
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(_io.BytesIO(resp.content))
-    assert "system_settings" not in wb.sheetnames
+    assert "system_settings" not in wb.sheetnames and "הגדרות מערכת" not in wb.sheetnames
     assert "bug_reports" not in wb.sheetnames
-    assert "duty_types" in wb.sheetnames
+    assert "סוגי תפקידים" in wb.sheetnames
 
 
 def test_export_by_duty_manager_explicit_request_still_drops_admin_only_sheets(client, admin_session):
@@ -122,5 +122,5 @@ def test_export_by_admin_includes_system_settings_and_bug_reports(client, admin_
     resp = client.get("/api/config/export", headers=auth_headers(admin))
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(_io.BytesIO(resp.content))
-    assert "system_settings" in wb.sheetnames
-    assert "bug_reports" in wb.sheetnames
+    assert "הגדרות מערכת" in wb.sheetnames
+    assert "דיווחי באגים" in wb.sheetnames

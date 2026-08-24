@@ -56,19 +56,19 @@ def test_export_round_trips_soldiers_duty_shifts_and_assignments(client, admin_s
 
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assert set(wb.sheetnames) == {
-        "soldiers", "duty_shifts", "assignments", "shift_templates",
-        "range_events", "range_assignments",
+        "חיילים", "משמרות", "שיבוצים", "תבניות משמרות",
+        "ימי מטווח", "שיבוצי מטווח",
     }
 
-    soldier_rows = list(wb["soldiers"].iter_rows(min_row=2, values_only=True))
+    soldier_rows = list(wb["חיילים"].iter_rows(min_row=2, values_only=True))
     assert any(r[0] == soldier.personal_number for r in soldier_rows)
 
-    shift_rows = list(wb["duty_shifts"].iter_rows(min_row=2, values_only=True))
+    shift_rows = list(wb["משמרות"].iter_rows(min_row=2, values_only=True))
     matching_shift = next(r for r in shift_rows if r[0] == dt.name and r[1] == loc.name)
     assert matching_shift[6] == 2  # required_count
     assert node.name in matching_shift[7]  # node_quotas string
 
-    assignment_rows = list(wb["assignments"].iter_rows(min_row=2, values_only=True))
+    assignment_rows = list(wb["שיבוצים"].iter_rows(min_row=2, values_only=True))
     assert len(assignment_rows) == 1
     a = assignment_rows[0]
     assert a[0] == soldier.personal_number
@@ -93,7 +93,7 @@ def test_export_omits_assignments_without_linked_shift(client, admin_session):
     token = auth_headers(admin)["Authorization"].split(" ", 1)[1]
     resp = client.get("/api/import/export", headers={"Authorization": f"Bearer {token}"})
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assignment_rows = list(wb["assignments"].iter_rows(min_row=2, values_only=True))
+    assignment_rows = list(wb["שיבוצים"].iter_rows(min_row=2, values_only=True))
     assert not any(r[0] == soldier.personal_number for r in assignment_rows)
 
 
@@ -116,12 +116,12 @@ def test_import_export_includes_range_events_and_assignments(client, admin_sessi
     )
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert set(wb.sheetnames) == {"range_events", "range_assignments"}
+    assert set(wb.sheetnames) == {"ימי מטווח", "שיבוצי מטווח"}
 
-    event_rows = list(wb["range_events"].iter_rows(min_row=2, values_only=True))
+    event_rows = list(wb["ימי מטווח"].iter_rows(min_row=2, values_only=True))
     assert any(r[0] == node.name and r[3] == loc.name for r in event_rows)
 
-    assignment_rows = list(wb["range_assignments"].iter_rows(min_row=2, values_only=True))
+    assignment_rows = list(wb["שיבוצי מטווח"].iter_rows(min_row=2, values_only=True))
     assert any(r[0] == soldier.personal_number for r in assignment_rows)
 
 

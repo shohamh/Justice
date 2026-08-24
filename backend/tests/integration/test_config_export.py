@@ -32,8 +32,8 @@ def test_export_returns_only_requested_sheets(client, admin_session):
     )
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["duty_locations"]
-    rows = list(wb["duty_locations"].iter_rows(min_row=2, values_only=True))
+    assert wb.sheetnames == ["מיקומי תורנויות"]
+    rows = list(wb["מיקומי תורנויות"].iter_rows(min_row=2, values_only=True))
     assert any(r[0] == loc.name for r in rows)
 
 
@@ -45,13 +45,13 @@ def test_export_defaults_to_all_sheets(client, admin_session):
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assert set(wb.sheetnames) == {
-        "duty_types",
-        "duty_locations",
-        "hierarchy",
-        "exemption_types",
-        "system_settings",
-        "bug_reports",
-        "range_locations",
+        "סוגי תפקידים",
+        "מיקומי תורנויות",
+        "היררכיה",
+        "סוגי פטורים",
+        "הגדרות מערכת",
+        "דיווחי באגים",
+        "מיקומי מטווח",
     }
 
 
@@ -66,9 +66,9 @@ def test_export_includes_range_locations(client, admin_session):
     )
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert wb.sheetnames == ["range_locations"]
-    rows = list(wb["range_locations"].iter_rows(values_only=True))
-    assert rows[0] == ("name", "active")
+    assert wb.sheetnames == ["מיקומי מטווח"]
+    rows = list(wb["מיקומי מטווח"].iter_rows(values_only=True))
+    assert rows[0] == ("שם", "פעיל")
     assert any(r[0] == loc.name for r in rows[1:])
 
 
@@ -83,7 +83,7 @@ def test_export_hierarchy_includes_commander_and_duty_managers(client, admin_ses
         "/api/config/export?sheets=hierarchy", headers={"Authorization": f"Bearer {_token(admin)}"}
     )
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    rows = list(wb["hierarchy"].iter_rows(min_row=2, values_only=True))
+    rows = list(wb["היררכיה"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == node.name)
     assert row[3] == commander.personal_number  # commander_personal_number column
 
@@ -99,7 +99,7 @@ def test_export_exemption_types_includes_applies_to(client, admin_session):
         "/api/config/export?sheets=exemption_types", headers={"Authorization": f"Bearer {_token(admin)}"}
     )
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    rows = list(wb["exemption_types"].iter_rows(min_row=2, values_only=True))
+    rows = list(wb["סוגי פטורים"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == et.name)
     assert dt.name in row[-1]
 
@@ -117,6 +117,6 @@ def test_export_duty_type_with_no_requirements_has_blank_json_cell(client, admin
         "/api/config/export?sheets=duty_types", headers={"Authorization": f"Bearer {_token(admin)}"}
     )
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    rows = list(wb["duty_types"].iter_rows(min_row=2, values_only=True))
+    rows = list(wb["סוגי תפקידים"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == dt.name)
     assert row[-1] in (None, "")

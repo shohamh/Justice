@@ -6,6 +6,7 @@ import openpyxl
 
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
+from app.services.excel_bilingual import canonical_headers, canonical_sheet_name, resolve_sheet_name
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportAssignmentRow,
@@ -20,6 +21,7 @@ from app.services.import_parsers.schema import (
     ImportPersonalConstraintRow,
     ImportRangeAssignmentRow,
     ImportRangeEventRow,
+    ImportRankAdvancementIntervalRow,
     ImportRangeExcusalRequestRow,
     ImportRangeLocationRow,
     ImportShiftTemplateRow,
@@ -41,6 +43,7 @@ KNOWN_SHEETS = {
     "system_settings", "bug_reports",
     "range_locations", "range_events", "range_assignments",
     "soldier_range_qualifications", "range_excusal_requests",
+    "rank_advancement_intervals",
 }
 
 
@@ -50,10 +53,14 @@ def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
     Ported convention from app/routes/import_excel.py's per-sheet parsers:
     header row lowercased, data starts at row 2, all-None rows are skipped.
     """
-    if name not in wb.sheetnames:
+    resolved = resolve_sheet_name(wb.sheetnames, name)
+    if resolved is None:
         return []
-    ws = wb[name]
-    headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    ws = wb[resolved]
+    raw_headers = [
+        str(c.value).strip() if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))
+    ]
+    headers = canonical_headers(name, raw_headers)
     out = []
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if all(v is None for v in row):
@@ -157,7 +164,8 @@ class V1StandardParser:
     label = "תבנית סטנדרטית (v1)"
 
     def detect(self, wb: openpyxl.Workbook) -> float:
-        matches = KNOWN_SHEETS & set(wb.sheetnames)
+        canonical = {canonical_sheet_name(name) for name in wb.sheetnames}
+        matches = KNOWN_SHEETS & canonical
         if not matches:
             return 0.0
         return min(1.0, 0.5 + 0.2 * len(matches))
@@ -181,6 +189,7 @@ class V1StandardParser:
                 is_career=_parse_bool(r.get("is_career")),
                 next_rank_date=_parse_date(r.get("next_rank_date")),
                 bahad1_graduate=_parse_bool(r.get("bahad1_graduate")),
+                rank_track=str(r.get("rank_track") or "").strip() or None,
                 has_military_driving_license=_parse_bool(r.get("has_military_driving_license")),
                 military_driving_license_expiry=_parse_date(r.get("military_driving_license_expiry")),
                 mandatory_end_date=_parse_date(r.get("mandatory_end_date")),
@@ -206,6 +215,7 @@ class V1StandardParser:
                     start_time=str(r.get("start_time") or "").strip() or None,
                     end_time=str(r.get("end_time") or "").strip() or None,
                     required_count=int(r.get("required_count") or 1),
+                    reserve_count_override=int(r["reserve_count_override"]) if r.get("reserve_count_override") else None,
                     node_quotas=node_quotas,
                     notes=str(r.get("notes") or "").strip() or None,
                 )
@@ -247,6 +257,7 @@ class V1StandardParser:
                 is_medical=_parse_bool(r.get("is_medical")),
                 is_commander_exemption=_parse_bool(r.get("is_commander_exemption")),
                 applies_to_duty_type_names=_parse_name_list(r.get("applies_to_duty_types")),
+                forbids_weapons=_parse_bool(r.get("forbids_weapons")),
             )
             for r in _sheet_rows(wb, "exemption_types")
         ]
@@ -286,6 +297,8 @@ class V1StandardParser:
                 end_time=str(r.get("end_time") or "").strip() or None,
                 instructions=str(r.get("instructions") or "").strip() or None,
                 eligible_unit_names=_parse_name_list(r.get("eligible_units")),
+                requires_weapon=_parse_bool(r.get("requires_weapon")),
+                required_range_type=str(r.get("required_range_type") or "").strip() or None,
                 requirements_json=str(r.get("requirements_json") or "").strip() or None,
             )
             for r in _sheet_rows(wb, "duty_types")
@@ -428,6 +441,18 @@ class V1StandardParser:
             )
             for r in _sheet_rows(wb, "system_settings")
         ]
+        rank_advancement_intervals = [
+            ImportRankAdvancementIntervalRow(
+                source_row=r["_row"],
+                track=str(r.get("track") or "").strip(),
+                rank=str(r.get("rank") or "").strip(),
+                months_to_next=int(r.get("months_to_next") or 0),
+                advance_on_career_entry=_parse_bool(r.get("advance_on_career_entry")),
+            )
+            for r in _sheet_rows(wb, "rank_advancement_intervals")
+            if str(r.get("track") or "").strip()
+        ]
+
 
         bug_reports = [
             ImportBugReportRow(
