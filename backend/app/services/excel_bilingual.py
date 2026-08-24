@@ -38,7 +38,7 @@ HE_SHEETS: dict[str, str] = {
     "range_assignments": "שיבוצי מטווח",
     "soldier_range_qualifications": "כשירויות מטווח",
     "range_excusal_requests": "בקשות היעדרות",
-    "rank_advancement_intervals": "קידומים",
+    "rank_advancement_intervals": "מועדי קידום",
 }
 
 # ── Column headers (canonical English key → Hebrew) ─────────────────────────

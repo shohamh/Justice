@@ -57,7 +57,7 @@ def test_export_round_trips_soldiers_duty_shifts_and_assignments(client, admin_s
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assert set(wb.sheetnames) == {
         "חיילים", "משמרות", "שיבוצים", "תבניות משמרות",
-        "ימי מטווח", "שיבוצי מטווח",
+        "ימי מטווח", "שיבוצי מטווח", "מועדי קידום",
     }
 
     soldier_rows = list(wb["חיילים"].iter_rows(min_row=2, values_only=True))
