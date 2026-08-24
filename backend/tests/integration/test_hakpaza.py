@@ -236,3 +236,33 @@ def test_dual_role_commander_can_approve_hakpaza(client, admin_session):
 
     r = client.post(f"/api/hakpaza/{h.id}/approve", headers=auth_headers(dual))
     assert r.status_code == 200
+
+
+def test_approve_sets_created_by_on_replacement_assignment(client, admin_session):
+    """The replacement DutyAssignment must record the approver as creator so
+    duty-history can show who assigned it."""
+    dm, commander, pulled, replacement, assignment = _setup(admin_session, "hk007")
+
+    create_resp = client.post(
+        "/api/hakpaza",
+        json={
+            "pulled_assignment_id": str(assignment.id),
+            "pull_date": "2030-01-05",
+            "replacement_soldier_id": str(replacement.id),
+        },
+        headers=auth_headers(commander),
+    )
+    assert create_resp.status_code == 201
+    hakpaza_id = create_resp.json()["id"]
+
+    approve_resp = client.post(
+        f"/api/hakpaza/{hakpaza_id}/approve",
+        headers=auth_headers(dm),
+    )
+    assert approve_resp.status_code == 200
+    replacement_assignment_id = approve_resp.json()["replacement_assignment_id"]
+
+    admin_session.expire_all()
+    replacement_assignment = admin_session.get(DutyAssignment, replacement_assignment_id)
+    assert replacement_assignment is not None
+    assert replacement_assignment.created_by == dm.id

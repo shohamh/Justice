@@ -32,6 +32,8 @@ export interface SoldierDTO {
   direct_commander_id?: string | null;
   direct_commander_name?: string | null;
   profile_picture_url?: string | null;
+  food_type?: string | null;
+  food_constraints?: string | null;
 }
 
 export interface OnboardResult extends SoldierDTO {
@@ -87,7 +89,7 @@ export async function updateSoldier(
 
 export async function updateSoldierProfile(
   soldierId: string,
-  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'rank_track' | 'bahad1_graduate' | 'has_military_driving_license' | 'military_driving_license_expiry' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date' | 'email' | 'profile_picture_url' | 'next_rank_date'>>
+  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'rank_track' | 'bahad1_graduate' | 'has_military_driving_license' | 'military_driving_license_expiry' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date' | 'email' | 'profile_picture_url' | 'next_rank_date' | 'food_type' | 'food_constraints'>>
 ): Promise<SoldierDTO> {
   return (await api.patch<SoldierDTO>(`/soldiers/${soldierId}/profile`, fields)).data;
 }

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyAssignment,
+    DutyDismissal,
     DutyLocation,
     DutyType,
     ExemptionRequest,
@@ -254,6 +255,33 @@ def test_plain_soldier_can_view_another_soldiers_basic_profile(client: TestClien
     assert body["gender"] is None
 
 
+def test_out_of_scope_commander_and_dm_get_public_profile(client: TestClient, admin_session: Session):
+    """Commanders and duty managers without scope over the target still get
+    the redacted public profile instead of a 403 — mirroring the plain-
+    soldier bypass. Private fields (gender) stay redacted."""
+    node = create_node(admin_session, level="branch", name="view_node_3")
+    commander = create_soldier(
+        admin_session, personal_number="view_cmd_001", role="commander", hierarchy_node_id=node.id,
+    )
+    dm = create_soldier(
+        admin_session, personal_number="view_dm_001", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    other_node = create_node(admin_session, level="branch", name="view_other_node_3")
+    target = create_soldier(
+        admin_session, personal_number="view_target_003", hierarchy_node_id=other_node.id,
+    )
+    target.phone = "0501234568"
+    target.gender = "male"
+    admin_session.commit()
+
+    for viewer in (commander, dm):
+        r = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(viewer))
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["full_name"] == target.full_name
+        assert body["phone"] == "0501234568"
+        assert body["gender"] is None
+
 def test_phone_and_email_hidden_when_public_settings_disabled(client: TestClient, admin_session: Session):
     from app.services.settings_loader import set_setting
 
@@ -500,3 +528,71 @@ def test_me_exposes_can_delete_soldier_flag(client: TestClient, admin_session: S
     assert r1.json()["can_delete_soldier"] is True
     r2 = client.get("/api/me", headers=auth_headers(junior))
     assert r2.json()["can_delete_soldier"] is False
+
+
+def test_duty_history_events_include_assigned_by_name(client: TestClient, admin_session: Session):
+    """Assignment, call_up and dismissal events must carry the assigner's name
+    resolved from DutyAssignment.created_by."""
+    admin = create_soldier(admin_session, personal_number="dh_abn_admin", role="admin")
+    target = create_soldier(admin_session, personal_number="dh_abn_target")
+    dt = DutyType(name="שמירה-dh-abn", score_per_day=Decimal("2.00"))
+    loc = DutyLocation(name="מוצב-dh-abn")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    a = DutyAssignment(
+        soldier_id=target.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2030, 1, 1),
+        end_date=date(2030, 1, 5),
+        status="published",
+        created_by=admin.id,
+        called_up_from=date(2030, 1, 2),
+        called_up_to=date(2030, 1, 3),
+    )
+    admin_session.add(a)
+    admin_session.flush()
+    admin_session.add(
+        DutyDismissal(
+            duty_assignment_id=a.id,
+            dismissed_from=date(2030, 1, 3),
+            dismissed_to=date(2030, 1, 4),
+            reason="מחלה",
+            created_by=admin.id,
+        )
+    )
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(admin))
+    assert r.status_code == 200
+    by_type = {e["event_type"]: e for e in r.json()}
+    assert by_type["assignment"]["metadata"]["assigned_by_name"] == admin.full_name
+    assert by_type["call_up"]["metadata"]["assigned_by_name"] == admin.full_name
+    assert by_type["dismissal"]["metadata"]["assigned_by_name"] == admin.full_name
+
+
+def test_duty_history_assigned_by_name_null_for_legacy_rows(client: TestClient, admin_session: Session):
+    """Hakpaza/import legacy assignments have no created_by — the metadata key
+    must be present but null, never crash."""
+    admin = create_soldier(admin_session, personal_number="dh_legacy_admin", role="admin")
+    target = create_soldier(admin_session, personal_number="dh_legacy_target")
+    dt = DutyType(name="שמירה-dh-legacy", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="מוצב-dh-legacy")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=target.id,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            start_date=date(2030, 2, 1),
+            end_date=date(2030, 2, 3),
+            status="published",
+        )
+    )
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}/duty-history", headers=auth_headers(admin))
+    assert r.status_code == 200
+    assignment = next(e for e in r.json() if e["event_type"] == "assignment")
+    assert assignment["metadata"]["assigned_by_name"] is None

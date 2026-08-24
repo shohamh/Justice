@@ -9,7 +9,7 @@ import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import ExemptionTypeFormModal from "../components/ExemptionTypeFormModal";
 import ReasonPromptModal from "../components/ReasonPromptModal";
 import { DataTable, type ColDef } from "../components/DataTable";
-import { type DutyType as DutyTypeT } from "../api/dutyConfig";
+import { type DutyLocation, type DutyType as DutyTypeT } from "../api/dutyConfig";
 import { translateApiError } from "../utils/translateApiError";
 
 type Reqs = NonNullable<DutyTypeT["requirements"]>;
@@ -25,6 +25,17 @@ function rankRange(selected: string[], ordered: string[]): string | null {
   const isContiguous = indexed.every((x, i) => i === 0 || x.idx === indexed[i - 1].idx + 1);
   if (isContiguous) return `${indexed[0].rank}–${indexed[indexed.length - 1].rank}`;
   return indexed.map(x => x.rank).join(", ");
+}
+
+/** True when the backend refused a location delete with `detail: "location_in_use"`. */
+function isLocationInUseError(err: unknown): boolean {
+  if (!err || typeof err !== "object" || !("response" in err)) return false;
+  const response: unknown = err.response;
+  if (!response || typeof response !== "object") return false;
+  if (!("status" in response) || !("data" in response)) return false;
+  if (response.status !== 400) return false;
+  const data: unknown = response.data;
+  return !!data && typeof data === "object" && "detail" in data && data.detail === "location_in_use";
 }
 
 function summarizeReqs(r: Reqs | undefined, rankLists: RankLists): string {
@@ -61,11 +72,13 @@ import {
   DutyTypeUsage,
   deleteDutyType,
   deleteExemptionType,
+  deleteLocation,
   disableExemptionType,
   getAllExemptionDutyTypeMaps,
   getAllExemptionDutyLocationMaps,
   getDutyTypeUsage,
   listDutyTypes,
+  updateLocation,
   listExemptionTypes,
   listLocations,
   setExemptionDutyTypes,
@@ -85,6 +98,8 @@ export function DutyConfigContent() {
   const [deleteModal, setDeleteModal] = useState<{ dt: DutyType; usage: DutyTypeUsage | null; loading: boolean; error: string | null } | null>(null);
   const [etDisableModal, setEtDisableModal] = useState<{ et: ExemptionType } | null>(null);
   const [etDeleteError, setEtDeleteError] = useState<string | null>(null);
+  const [locInUse, setLocInUse] = useState<Record<string, boolean>>({});
+  const [locDeleteError, setLocDeleteError] = useState<string | null>(null);
 
   const rankListsQuery = useQuery({ queryKey: queryKeys.ranks(), queryFn: getRanks });
   const rankLists: RankLists = rankListsQuery.data ?? { enlisted: [], officers: [], officer_academic: [] };
@@ -178,6 +193,25 @@ export function DutyConfigContent() {
     await createLocation({ name: locName });
     setLocName("");
     await refresh();
+  }
+  async function toggleLocationActive(l: { id: string; active: boolean }) {
+    await updateLocation(l.id, { active: !l.active });
+    await refresh();
+  }
+  async function handleDeleteLocation(l: DutyLocation) {
+    setLocDeleteError(null);
+    try {
+      await deleteLocation(l.id);
+      setLocInUse(prev => ({ ...prev, [l.id]: false }));
+      await refresh();
+    } catch (err: unknown) {
+      if (isLocationInUseError(err)) {
+        setLocInUse(prev => ({ ...prev, [l.id]: true }));
+        setLocDeleteError(`לא ניתן למחוק את "${l.name}" — המיקום בשימוש. ניתן להשבית אותו במקום.`);
+      } else {
+        setLocDeleteError(translateApiError(err, t, "שגיאה במחיקה"));
+      }
+    }
   }
   async function toggleMap(etId: string, dtId: string) {
     const current = mapSel[etId] ?? [];
@@ -331,13 +365,13 @@ export function DutyConfigContent() {
               id: "active",
               header: t("duty_config.active"),
               cell: d => (
-                <button
-                  className="text-xs text-indigo-600 dark:text-indigo-300 underline"
-                  onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)}
+                <input
+                  type="checkbox"
+                  checked={d.active}
+                  onChange={() => updateDutyType(d.id, { active: !d.active }).then(refresh)}
                   data-testid={`dt-toggle-${d.name}`}
-                >
-                  {d.active ? t("duty_config.active") : "לא פעיל"}
-                </button>
+                  aria-label={t("duty_config.active")}
+                />
               ),
             },
             {
@@ -384,6 +418,7 @@ export function DutyConfigContent() {
             },
           ] satisfies ColDef<DutyType>[]}
           rowTestId={d => `dt-row-${d.name}`}
+          rowClassName={(d) => !d.active ? "opacity-60 bg-gray-100 dark:bg-gray-700/50" : ""}
         />
       </div>
 
@@ -393,9 +428,34 @@ export function DutyConfigContent() {
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={locName} onChange={(e) => setLocName(e.target.value)} required data-testid="loc-name" placeholder={t("duty_config.name")} />
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="loc-submit">{t("duty_config.add")}</button>
         </form>
-        <ul className="text-sm" data-testid="location-list">
-          {locations.map((l) => <li key={l.id} data-testid={`loc-row-${l.name}`}>{l.name}</li>)}
+        <ul className="text-sm space-y-1" data-testid="location-list">
+          {locations.map((l) => (
+            <li key={l.id} data-testid={`loc-row-${l.name}`} className="flex items-center gap-2 flex-wrap">
+              <span className={!l.active ? "opacity-60" : ""}>{l.name}</span>
+              {!l.active && <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">מושבת</span>}
+              <label className="flex items-center gap-1 text-xs cursor-pointer text-gray-500 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={l.active}
+                  onChange={() => { void toggleLocationActive(l); }}
+                  data-testid={`loc-active-${l.name}`}
+                  aria-label={t("duty_config.active")}
+                />
+                {t("duty_config.active")}
+              </label>
+              <button
+                type="button"
+                disabled={!!locInUse[l.id]}
+                onClick={() => { void handleDeleteLocation(l); }}
+                className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                data-testid={`loc-delete-${l.name}`}
+              >
+                מחק
+              </button>
+            </li>
+          ))}
         </ul>
+        {locDeleteError && <p className="text-red-500 text-xs mt-2" data-testid="loc-delete-error">{locDeleteError}</p>}
       </div>
 
       <div data-testid="exemption-types-section">

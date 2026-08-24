@@ -73,8 +73,7 @@ def preview_adjustment(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> PreviewOut:
-    from app.services.effort_score import compute_effort_breakdown, quarter_start
-    from app.services.settings_loader import get_setting
+    from app.services.effort_score import compute_effort_breakdown
 
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
@@ -105,11 +104,10 @@ def preview_adjustment(
 
     # Compute effort before/after using the breakdown service
     today = date.today()
-    try:
-        reset_raw = get_setting(session, "fairness.reset_date")
-        reset_date = date.fromisoformat(str(reset_raw))
-    except Exception:
-        reset_date = quarter_start(date(today.year - 2, today.month, 1))
+    from app.services.scoring import _effort_reset_date
+
+    reset_date = _effort_reset_date(session)
+
 
     latest_published_end = session.execute(
         select(func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")

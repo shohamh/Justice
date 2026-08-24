@@ -87,6 +87,8 @@ export interface RegisterPayload {
   last_alal_date: string | null;
   has_military_driving_license: boolean;
   military_driving_license_expiry: string | null;
+  food_type?: string | null;
+  food_constraints?: string | null;
   requested_node_id: string;
   exemption_requests: RegisterExemptionRow[];
   personal_constraints: object[];

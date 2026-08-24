@@ -77,6 +77,28 @@ def test_commander_approves_in_subtree(client: TestClient, admin_session: Sessio
     assert r2.json()["status"] == "approved"
 
 
+def test_commander_cannot_approve_duty_manager_step(client: TestClient, admin_session: Session):
+    d = create_node(admin_session, level="department", name="d")
+    b = create_node(admin_session, level="branch", name="b", parent=d)
+    cmd = create_soldier(admin_session, personal_number="7500017", role="commander")
+    b.commander_id = cmd.id
+    admin_session.commit()
+    target = create_soldier(admin_session, personal_number="7500018", hierarchy_node_id=b.id)
+    c = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(target),
+        json={
+            "start_date": (date.today() + timedelta(days=5)).isoformat(),
+            "end_date": (date.today() + timedelta(days=10)).isoformat(),
+            "reason": "חופשה",
+        },
+    ).json()
+    r1 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(cmd), json={})
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["status"] == "pending_duty_manager"
+    r2 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(cmd), json={})
+    assert r2.status_code == 403, r2.text
+
 def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: Session):
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)

@@ -367,6 +367,7 @@ def apply(
                 end_date=date_type.fromisoformat(row.end_date),
                 status="published",
                 is_reserve=row.is_reserve,
+                created_by=actor.id,
             )
             session.add(assignment)
             session.flush()

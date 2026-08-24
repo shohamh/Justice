@@ -214,6 +214,17 @@ def get_duty_history(
             location_cache[loc_id] = loc.name if loc else str(loc_id)
         return location_cache[loc_id]
 
+    assigned_by_cache: dict[uuid.UUID, str] = {}
+
+    def _assigned_by_name(creator_id: uuid.UUID | None) -> str | None:
+        """Resolve DutyAssignment.created_by to the assigner's full name."""
+        if creator_id is None:
+            return None
+        if creator_id not in assigned_by_cache:
+            creator = session.get(Soldier, creator_id)
+            assigned_by_cache[creator_id] = creator.full_name if creator else None
+        return assigned_by_cache[creator_id]
+
     for a in assignments:
         dt_name = _duty_type_name(a.duty_type_id)
         spd = spd_cache.get(a.duty_type_id, Decimal("0"))
@@ -243,6 +254,7 @@ def get_duty_history(
                 "duty_type_name": dt_name,
                 "location_name": loc_name,
                 "duty_assignment_id": str(a.id),
+                "assigned_by_name": _assigned_by_name(a.created_by),
                 "is_reserve": "true",
                 "score_total": cu_total,
                 "score_segments": cu_segments,
@@ -298,6 +310,7 @@ def get_duty_history(
                 "duty_type_name": dt_name,
                 "location_name": loc_name,
                 "duty_assignment_id": str(a.id),
+                "assigned_by_name": _assigned_by_name(a.created_by),
                 "duty_type_id": str(a.duty_type_id),
                 "duty_location_id": str(a.duty_location_id),
                 "is_reserve": "true" if a.is_reserve else "false",
@@ -346,6 +359,7 @@ def get_duty_history(
                 "duty_type_name": dt_name,
                 "location_name": loc_name,
                 "duty_assignment_id": str(a.id),
+                "assigned_by_name": _assigned_by_name(a.created_by),
                 "score_total": dis_total,
                 "score_segments": dis_segments,
             }
@@ -427,6 +441,7 @@ def get_duty_history(
                 "duty_type_name": dt_name,
                 "location_name": loc_name,
                 "duty_assignment_id": str(a.id),
+                "assigned_by_name": _assigned_by_name(a.created_by),
                 "duty_type_id": str(a.duty_type_id),
                 "duty_location_id": str(a.duty_location_id),
                 "is_reserve": "true" if a.is_reserve else "false",

@@ -305,3 +305,94 @@ describe("useModalBackClose", () => {
     expect(location.pathname).toBe("/target");
   });
 });
+
+describe("useModalBackClose — nested modals", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  function Child({ onClose }: { onClose: () => void }) {
+    useModalBackClose(onClose);
+    return null;
+  }
+
+  function delay(ms: number): Promise<void> {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, ms);
+    return promise;
+  }
+  // Mirrors LocationFormModal inside ShiftFormModal: both modals use the
+  // hook, the child is mounted on top of the parent, and closing the child
+  // via its X button unmounts it — whose cleanup defers a history.back()
+  // that pops the CHILD's entry and fires a global popstate while the
+  // parent's own entry is current again.
+  function Harness() {
+    const [childOpen, setChildOpen] = useState(true);
+    const [parentClosed, setParentClosed] = useState(false);
+    useModalBackClose(() => setParentClosed(true));
+    return (
+      <>
+        {parentClosed ? (
+          <div data-testid="parent-closed" />
+        ) : (
+          <div data-testid="parent-open" />
+        )}
+        {childOpen && (
+          <>
+            <Child onClose={() => setChildOpen(false)} />
+            <button onClick={() => setChildOpen(false)}>close-child</button>
+          </>
+        )}
+      </>
+    );
+  }
+
+  test("closing a nested modal does not close the parent via its cleanup's popstate", async () => {
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+
+    expect(screen.getByTestId("parent-open")).toBeInTheDocument();
+
+    // Close the child the way an X button would. The child's cleanup defers
+    // history.back(); that back lands on the PARENT's entry and fires a
+    // popstate — which must not be mistaken for a back-press targeting the
+    // parent.
+    fireEvent.click(screen.getByText("close-child"));
+    await waitFor(() =>
+      expect(screen.queryByText("close-child")).not.toBeInTheDocument(),
+    );
+    // Give the deferred back() and its popstate every chance to land.
+    await delay(50);
+
+    expect(screen.getByTestId("parent-open")).toBeInTheDocument();
+    // The parent still owns the current history entry (its marker survived).
+    expect(isOnModalEntry()).toBe(true);
+
+    // A genuine second back-press now closes the parent.
+    goBack();
+    await waitFor(() =>
+      expect(screen.getByTestId("parent-closed")).toBeInTheDocument(),
+    );
+  });
+
+  test("browser back with a nested modal open closes only the child", async () => {
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+
+    goBack();
+    await waitFor(() =>
+      expect(screen.queryByText("close-child")).not.toBeInTheDocument(),
+    );
+    await delay(50);
+
+    // The pop popped the CHILD's entry onto the parent's; the child closed
+    // via its own popstate, and the parent must stay open.
+    expect(screen.getByTestId("parent-open")).toBeInTheDocument();
+  });
+});

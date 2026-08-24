@@ -37,6 +37,106 @@ class EffortQuarterDetail:
     weighted_share: Decimal  # share × active_frac
     is_partial: bool = False # True if quarter end was clipped (still in progress)
     adjustment_delta: Decimal = field(default_factory=lambda: Decimal("0"))  # sum of manual score adjustments in this quarter
+    # Line items explaining how soldier_score was built: the published duty
+    # spans credited to this soldier in this quarter plus manual adjustments.
+    contributions: list["EffortContribution"] = field(default_factory=list)
+
+
+@dataclass
+class EffortContribution:
+    """One traceable line item behind a quarter's soldier_score."""
+    kind: str                # "duty" or "adjustment"
+    label: str               # duty type name / adjustment reason
+    score: Decimal           # points this item contributed to soldier_score
+    detail: str = ""         # multiplier provenance note, e.g. reserve standby
+    start_date: date | None = None  # first counted day (duty) — inclusive
+    end_date: date | None = None    # last counted day (duty) — inclusive
+    days: int = 0            # counted days in this quarter
+    multiplier: Decimal = field(default_factory=lambda: Decimal("1"))  # average effective day multiplier
+
+
+_MULTIPLIER_SOURCE_LABELS = {
+    "default": "",
+    "reserve_standby": "מקדם רזרבה — כוננות",
+    "reserve_called_up": "מקדם רזרבה — צו 8",
+    "dismissal": "ימי שחרור (מקדם מופחת)",
+    "forced_call_up": "מקדם צו כפוי",
+}
+
+
+def compute_quarter_contributions(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    quarters: set[date],
+) -> dict[date, list[EffortContribution]]:
+    """Traceability for the effort breakdown: per calendar-quarter-start, the
+    published duty spans credited to `soldier_id` (via effective-soldier
+    resolution — overrides/dismissals included) and the manual score
+    adjustments booked to them. Duty scores use exactly the same day-expansion
+    as scoring (`_effective_duty_day_rows`), so Σ contribution scores equals
+    the duty part of that quarter's soldier_score up to projection
+    quantization (<1e-6 per bucket)."""
+    if not quarters:
+        return {}
+
+    from sqlalchemy import select
+
+    from app.db.models import DutyType, ScoreAdjustment
+    from app.services.scoring import _duty_type_scores, _effective_duty_day_rows
+
+    dt_scores = _duty_type_scores(session)
+    dt_names = {
+        dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()
+    }
+    lo = min(quarters)
+    hi = quarter_end(max(quarters))
+    grouped: dict[date, dict[tuple[uuid.UUID, str], dict[str, Any]]] = {}
+    for row in _effective_duty_day_rows(session, statuses=["published"], date_from=lo, date_to=hi):
+        if row["effective_soldier_id"] != soldier_id:
+            continue
+        qs = quarter_start(row["day"])
+        if qs not in quarters:
+            continue
+        key = (row["assignment_id"], row["multiplier_source"], row["duty_type_id"])
+        bucket = grouped.setdefault(qs, {}).setdefault(
+            key,
+            {"days": 0, "weighted_total": Decimal("0"), "start": row["day"], "end": row["day"]},
+        )
+        bucket["days"] += 1
+        bucket["weighted_total"] += row["weighted_multiplier"]
+        bucket["end"] = row["day"]
+
+    out: dict[date, list[EffortContribution]] = {qs: [] for qs in quarters}
+    for qs, buckets in grouped.items():
+        for (_assignment_id, source, duty_type_id), b in sorted(
+            buckets.items(), key=lambda kv: kv[1]["start"]
+        ):
+            score = dt_scores.get(duty_type_id, Decimal("0")) * b["weighted_total"]
+            out[qs].append(EffortContribution(
+                kind="duty",
+                label=dt_names.get(duty_type_id) or "סוג תורנות שנמחק",
+                score=score,
+                detail=_MULTIPLIER_SOURCE_LABELS.get(source, ""),
+                start_date=b["start"],
+                end_date=b["end"],
+                days=b["days"],
+                multiplier=(b["weighted_total"] / Decimal(b["days"])).quantize(Decimal("0.001")),
+            ))
+
+    adj_rows = session.execute(
+        select(ScoreAdjustment).where(ScoreAdjustment.soldier_id == soldier_id)
+    ).scalars().all()
+    for adj in adj_rows:
+        qs = quarter_start(adj.created_at.date())
+        if qs not in quarters:
+            continue
+        out[qs].append(EffortContribution(
+            kind="adjustment",
+            label=adj.reason or "התאמת ניקוד ידנית",
+            score=Decimal(adj.delta),
+        ))
+    return out
 
 
 @dataclass
@@ -456,6 +556,15 @@ def compute_effort_breakdown(
         ))
 
     effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
+
+    if quarter_details:
+        contrib_map = compute_quarter_contributions(
+            session,
+            soldier_id=soldier.id,
+            quarters={quarter_start(d.quarter_start) for d in quarter_details},
+        )
+        for d in quarter_details:
+            d.contributions = contrib_map.get(quarter_start(d.quarter_start), [])
 
     return EffortBreakdown(
         quarters=quarter_details,

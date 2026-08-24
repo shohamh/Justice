@@ -114,6 +114,7 @@ def _can_approve_constraint(
     user: Soldier,
     target_soldier_id: uuid.UUID,
     target_node: HierarchyNode | None,
+    constraint_status: str,
 ) -> bool:
     """Mirror the authorization in approve()/reject(): a pending-list row's approve
     button should only be shown when a click would actually succeed. Most notably,
@@ -126,6 +127,8 @@ def _can_approve_constraint(
         return False
     if user.role == "admin":
         return True
+    if constraint_status == "pending_duty_manager" and user.role not in ("duty_manager", "admin"):
+        return False
     roots = scope_root_ids(session, user)
     return can(
         user,
@@ -289,7 +292,7 @@ def _attach_names(
         include_reason = s is not None and can_see_private(session, user, s)
         nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
         target_node = nodes_by_id.get(s.hierarchy_node_id) if s and s.hierarchy_node_id else None
-        can_approve = _can_approve_constraint(session, user, c.soldier_id, target_node)
+        can_approve = _can_approve_constraint(session, user, c.soldier_id, target_node, c.status)
         result.append(
             _out(
                 c,
@@ -367,10 +370,15 @@ def approve(
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=_node_of(session, s))
     try:
         c = svc.approve_constraint(
-            session, constraint_id=constraint_id, actor_id=user.id, decision_note=body.decision_note
+            session,
+            constraint_id=constraint_id,
+            actor_id=user.id,
+            decision_note=body.decision_note,
+            actor_role=user.role,
         )
     except svc.ConstraintError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        code = status.HTTP_403_FORBIDDEN if str(exc) == "not_duty_manager" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
     session.commit()
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)

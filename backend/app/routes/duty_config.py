@@ -379,6 +379,30 @@ def update_location(
     return _loc_out(loc)
 
 
+@router.delete(
+    "/locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None
+)
+def delete_location(
+    location_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> None:
+    loc = session.get(DutyLocation, location_id)
+    if loc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    # RESTRICT FKs referencing duty_locations: refuse instead of letting the DB
+    # raise. (ExemptionDutyLocationMap rows cascade, so they never block.)
+    for model in (DutyShift, DutyAssignment, ShiftTemplate):
+        if session.execute(
+            select(model.id).where(model.duty_location_id == location_id).limit(1)
+        ).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="location_in_use"
+            )
+    svc.delete_location(session, location=loc, actor_id=user.id)
+    session.commit()
+
+
 # ---- exemption types + map ----
 class ExemptionTypeOut(BaseModel):
     id: uuid.UUID

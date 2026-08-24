@@ -192,6 +192,11 @@ function EventCard({
                 return `${formatDate(e.date)}${end && end !== e.date ? ` – ${formatDate(end)}` : ""}`;
               })()}
             </p>
+            {(e.event_type === "assignment" || e.event_type === "call_up") && e.metadata.assigned_by_name && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                שובץ על ידי {e.metadata.assigned_by_name} בתאריך {formatDate(e.created_at)}
+              </p>
+            )}
             {e.event_type === "range_removed" && e.description && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {e.description}

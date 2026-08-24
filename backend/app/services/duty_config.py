@@ -245,6 +245,21 @@ def set_location_active(
     return location
 
 
+def delete_location(
+    session: Session, *, location: DutyLocation, actor_id: uuid.UUID | None = None
+) -> None:
+    before = {"name": location.name, "base": location.base}
+    session.delete(location)
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="duty_location.delete",
+        entity_type="duty_location",
+        entity_id=location.id,
+        before=before,
+    )
+
+
 def create_exemption_type(
     session: Session,
     *,

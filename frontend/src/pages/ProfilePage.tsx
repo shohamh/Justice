@@ -106,6 +106,104 @@ export default function ProfilePage() {
   const ranksQuery = useQuery({ queryKey: queryKeys.ranks(), queryFn: getRanks });
   const ranks = ranksQuery.data ?? { enlisted: [], officers: [], officer_academic: [] };
 
+  // Effective value per editable field = stored DB value overlaid with the
+  // newest pending field-update's new_value (i.e. what the value will become
+  // once that request is approved).
+  const pendingByField = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of fieldUpdates) {
+      if (u.status === "pending" && u.new_value != null && !m.has(u.field_name)) {
+        m.set(u.field_name, u.new_value);
+      }
+    }
+    return m;
+  }, [fieldUpdates]);
+
+  const rankItems = useMemo(() => [
+    ...ranks.enlisted.map((r) => ({ id: rankSelectionId("enlisted", r), name: r, group: t("soldier_profile.enlisted") })),
+    ...ranks.officers.map((r) => ({ id: rankSelectionId("officer", r), name: r, group: t("soldier_profile.officers") })),
+    ...ranks.officer_academic.map((r) => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
+  ], [ranks, t]);
+
+  const effectiveValues = useMemo(() => {
+    const strPending = (field: string) => {
+      const raw = pendingByField.get(field);
+      if (raw != null && raw.trim() !== "") {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && "rank" in parsed) return String(parsed.rank);
+        } catch { /* plain string */ }
+        return raw;
+      }
+      return null;
+    };
+    const license = (() => {
+      const raw = pendingByField.get("military_driving_license");
+      if (raw != null) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            return {
+              has: !!parsed.has_license,
+              expiry: typeof parsed.expiry_date === "string" ? parsed.expiry_date : "",
+            };
+          }
+        } catch { /* fall back to DB */ }
+      }
+      return {
+        has: !!user?.has_military_driving_license,
+        expiry: user?.military_driving_license_expiry ?? "",
+      };
+    })();
+    const rank = (() => {
+      const dbRank = user?.rank ?? "";
+      const dbTrack = user?.rank_track ?? "";
+      const raw = pendingByField.get("rank");
+      let rankName = dbRank;
+      let track = dbTrack;
+      if (raw != null) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && "rank" in parsed) {
+            rankName = String(parsed.rank ?? dbRank);
+            track = typeof parsed.rank_track === "string" ? parsed.rank_track : dbTrack;
+          }
+        } catch { rankName = raw; }
+      }
+      if (!rankName) return "";
+      const item = rankItems.find((i) => i.name === rankName);
+      if (item) return item.id;
+      return track ? `${track}:${rankName}` : "";
+    })();
+    return {
+      gender: strPending("gender") ?? user?.gender ?? "",
+      phone: strPending("phone") ?? user?.phone ?? "",
+      last_mitvahim_date: strPending("last_mitvahim_date") ?? user?.last_mitvahim_date ?? "",
+      last_alal_date: strPending("last_alal_date") ?? user?.last_alal_date ?? "",
+      mandatory_end_date: strPending("mandatory_end_date") ?? user?.mandatory_end_date ?? "",
+      discharge_date: strPending("discharge_date") ?? user?.discharge_date ?? "",
+      rank_selection_id: rank,
+      license,
+    };
+  }, [pendingByField, user, rankItems]);
+
+  // Seed the editable controls with their effective current value once per
+  // user (after field updates have loaded, so pending overlays are included).
+  const seededUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user || fieldUpdatesQuery.isLoading || seededUserIdRef.current === user.id) return;
+    seededUserIdRef.current = user.id;
+    setGenderReq(effectiveValues.gender);
+    setPhoneReq(effectiveValues.phone);
+    setMitvahimReq(effectiveValues.last_mitvahim_date);
+    setAlalReq(effectiveValues.last_alal_date);
+    setMandatoryEndReq(effectiveValues.mandatory_end_date);
+    setDischargeReq(effectiveValues.discharge_date);
+    setRankReq(effectiveValues.rank_selection_id);
+    setLicenseHasReq(effectiveValues.license.has);
+    setLicenseExpiryReq(effectiveValues.license.expiry);
+  }, [user, fieldUpdatesQuery.isLoading, effectiveValues]);
+
   // Poll while tgPolling is true (i.e. while waiting for the user to confirm
   // the link code via the Telegram bot); stop once verified.
   const tgStatusQuery = useQuery({
@@ -168,14 +266,6 @@ export default function ProfilePage() {
     try {
       await submitFieldUpdate(user.id, field, value);
       await queryClient.invalidateQueries({ queryKey: queryKeys.fieldUpdates(user.id) });
-      if (field === "last_mitvahim_date") setMitvahimReq("");
-      if (field === "last_alal_date") setAlalReq("");
-      if (field === "mandatory_end_date") setMandatoryEndReq("");
-      if (field === "discharge_date") setDischargeReq("");
-      if (field === "gender") setGenderReq("");
-      if (field === "rank") setRankReq("");
-      if (field === "phone") setPhoneReq("");
-      if (field === "military_driving_license") { setLicenseHasReq(false); setLicenseExpiryReq(""); }
     } catch {
       // submission failed silently — backend returns error detail
     }
@@ -282,30 +372,13 @@ export default function ProfilePage() {
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-4" dir="rtl">
         <h3 className="text-lg font-semibold">{t("soldier_profile.section_title")}</h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
-          {user?.gender && <div><span className="font-medium">{t("soldier_profile.gender")}:</span> {user.gender === "male" ? t("soldier_profile.gender_male") : user.gender === "female" ? t("soldier_profile.gender_female") : user.gender}</div>}
-          {user?.rank && <div><span className="font-medium">{t("soldier_profile.rank")}:</span> {user.rank}</div>}
-          {user?.phone && <div><span className="font-medium">{t("soldier_profile.phone")}:</span> <span dir="ltr">{user.phone}</span></div>}
           {user?.is_officer !== null && user?.is_officer !== undefined && (
             <div><span className="font-medium">{t("soldier_profile.is_officer")}:</span> {user.is_officer ? t("common.yes") : t("common.no")}</div>
           )}
           {user?.bahad1_graduate !== undefined && (
             <div><span className="font-medium">{t("soldier_profile.bahad1_graduate")}:</span> {user.bahad1_graduate ? "✓" : "—"}</div>
           )}
-          {user?.has_military_driving_license !== undefined && user?.has_military_driving_license !== null && (
-            <div>
-              <span className="font-medium">{t("soldier_profile.military_driving_license")}:</span>{" "}
-              {user.has_military_driving_license
-                ? (user.military_driving_license_expiry
-                    ? `✓ (${t("soldier_profile.military_driving_license_expiry")}: ${formatDate(user.military_driving_license_expiry)})`
-                    : "✓")
-                : "—"}
-            </div>
-          )}
           {user?.enlistment_date && <div><span className="font-medium">{t("soldier_profile.enlistment_date")}:</span> {formatDate(user.enlistment_date)}</div>}
-          {user?.mandatory_end_date && <div><span className="font-medium">{t("soldier_profile.mandatory_end_date")}:</span> {formatDate(user.mandatory_end_date)}</div>}
-          {user?.discharge_date && <div><span className="font-medium">{t("soldier_profile.discharge_date")}:</span> {formatDate(user.discharge_date)}</div>}
-          {user?.last_mitvahim_date && <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {formatDate(user.last_mitvahim_date)}</div>}
-          {user?.last_alal_date && <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {formatDate(user.last_alal_date)}</div>}
           {rangeStatus && rangeStatus.statuses.length > 0 && (
             <div className="col-span-2">
               <span className="font-medium">{t("range_qualification.status.sectionTitle")}:</span>
@@ -336,7 +409,7 @@ export default function ProfilePage() {
               <option value="female">{t("soldier_profile.gender_female")}</option>
               <option value="other">{t("soldier_profile.gender_other")}</option>
             </select>
-            <button type="button" onClick={() => requestUpdate("gender", genderReq)} disabled={!genderReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => requestUpdate("gender", genderReq)} disabled={genderReq === effectiveValues.gender} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
@@ -344,11 +417,7 @@ export default function ProfilePage() {
             <label className="w-40">{t("soldier_profile.rank")}</label>
             <div className="flex-1">
               <Combobox
-                items={[
-                ...ranks.enlisted.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: t("soldier_profile.enlisted") })),
-                ...ranks.officers.map(r => ({ id: rankSelectionId("officer", r), name: r, group: t("soldier_profile.officers") })),
-                ...ranks.officer_academic.map(r => ({ id: rankSelectionId("officer_academic", r), name: r, group: "קצינים אקדמאים" })),
-              ]}
+                items={rankItems}
               value={rankReq}
               onChange={setRankReq}
                 placeholder="—"
@@ -357,14 +426,14 @@ export default function ProfilePage() {
             <button type="button" onClick={() => {
               const selection = parseRankSelectionId(rankReq);
               if (selection) void requestUpdate("rank", JSON.stringify({ rank: selection.rank, rank_track: selection.rankTrack }));
-            }} disabled={!rankReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            }} disabled={!rankReq || rankReq === effectiveValues.rank_selection_id} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.phone")}</label>
             <input type="tel" value={phoneReq} onChange={e => setPhoneReq(e.target.value)} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder="05X-XXXXXXX" dir="ltr" />
-            <button type="button" onClick={() => requestUpdate("phone", phoneReq)} disabled={!phoneReq || !isValidIsraeliPhone(phoneReq)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => requestUpdate("phone", phoneReq)} disabled={!phoneReq || !isValidIsraeliPhone(phoneReq) || phoneReq.trim() === effectiveValues.phone.trim()} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
@@ -374,28 +443,28 @@ export default function ProfilePage() {
           <div id="last-mitvahim-field" className="flex gap-2 items-center scroll-mt-24">
             <label className="w-40">{t("soldier_profile.last_mitvahim_date")}</label>
             <DateInput value={mitvahimReq} onChange={setMitvahimReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
-            <button type="button" onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)} disabled={!mitvahimReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)} disabled={!mitvahimReq || mitvahimReq === effectiveValues.last_mitvahim_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div id="last-alal-field" className="flex gap-2 items-center scroll-mt-24">
             <label className="w-40">{t("soldier_profile.last_alal_date")}</label>
             <DateInput value={alalReq} onChange={setAlalReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
-            <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq || alalReq === effectiveValues.last_alal_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.mandatory_end_date")}</label>
             <DateInput value={mandatoryEndReq} onChange={setMandatoryEndReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
-            <button type="button" onClick={() => requestUpdate("mandatory_end_date", mandatoryEndReq)} disabled={!mandatoryEndReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => requestUpdate("mandatory_end_date", mandatoryEndReq)} disabled={!mandatoryEndReq || mandatoryEndReq === effectiveValues.mandatory_end_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.discharge_date")}</label>
             <DateInput value={dischargeReq} onChange={setDischargeReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
-            <button type="button" onClick={() => requestUpdate("discharge_date", dischargeReq)} disabled={!dischargeReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => requestUpdate("discharge_date", dischargeReq)} disabled={!dischargeReq || dischargeReq === effectiveValues.discharge_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
@@ -418,7 +487,7 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={() => requestUpdate("military_driving_license", militaryLicensePayload(licenseHasReq, licenseExpiryReq))}
-              className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
+              disabled={militaryLicensePayload(licenseHasReq, licenseExpiryReq) === militaryLicensePayload(effectiveValues.license.has, effectiveValues.license.expiry)}
             >
               {t("soldier_profile.submit_update")}
             </button>

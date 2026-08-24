@@ -204,3 +204,39 @@ def test_effort_breakdown_403_for_unrelated_plain_soldier(client: TestClient, ad
     b = create_soldier(admin_session, personal_number="5600051", role="soldier")
     r = client.get(f"/api/scoring/soldiers/{b.id}/effort-breakdown", headers=auth_headers(a))
     assert r.status_code == 403
+
+
+def test_effort_breakdown_exposes_contributions(client: TestClient, admin_session: Session):
+    """The effort-breakdown API must expose the per-quarter traceability line
+    items (duty spans + manual adjustments) behind each quarter's score."""
+    from datetime import date, datetime
+
+    from app.db.models import DutyAssignment, ScoreAdjustment
+
+    s = create_soldier(admin_session, personal_number="5600052", role="soldier")
+    s.enrolled_at = date(2026, 1, 1)
+    dt = DutyType(name="שמירה-contrib", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="מוצב-contrib")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    # A published past duty in Q2 2026 (direct insert; no future-planning needed).
+    admin_session.add(DutyAssignment(
+        soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 5, 1), end_date=date(2026, 5, 4), status="published",
+    ))
+    adj = ScoreAdjustment(soldier_id=s.id, delta=Decimal("1.50"), reason="בדיקת מעקב")
+    adj.created_at = datetime(2026, 5, 10, 12, 0, 0)
+    admin_session.add(adj)
+    admin_session.commit()
+
+    r = client.get(f"/api/scoring/soldiers/{s.id}/effort-breakdown", headers=auth_headers(s))
+    assert r.status_code == 200
+    body = r.json()
+    q2 = next(q for q in body["quarters"] if q["quarter_label"] == "Q2 2026")
+    duty_items = [c for c in q2["contributions"] if c["kind"] == "duty"]
+    assert len(duty_items) == 1
+    assert duty_items[0]["label"] == "שמירה-contrib"
+    assert duty_items[0]["days"] == 3
+    assert Decimal(duty_items[0]["score"]) == Decimal("3.000")
+    adjustments = [c for c in q2["contributions"] if c["kind"] == "adjustment"]
+    assert len(adjustments) == 1 and Decimal(adjustments[0]["score"]) == Decimal("1.50")

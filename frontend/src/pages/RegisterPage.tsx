@@ -60,6 +60,7 @@ interface FormData {
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
   has_military_driving_license: boolean; military_driving_license_expiry: string;
+  food_type: string; food_constraints: string;
   requested_node_id: string;
   exemption_requests: ExemptionRow[];
   personal_constraints: ConstraintRow[];
@@ -71,6 +72,7 @@ const INITIAL: FormData = {
   enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   has_military_driving_license: false, military_driving_license_expiry: "",
+  food_type: "", food_constraints: "",
   requested_node_id: "", exemption_requests: [], personal_constraints: [],
 };
 
@@ -162,8 +164,10 @@ export default function RegisterPage() {
         discharge_date: form.discharge_date || null,
         last_mitvahim_date: form.last_mitvahim_date || null,
         last_alal_date: form.last_alal_date || null,
-        has_military_driving_license: form.has_military_driving_license,
         military_driving_license_expiry: form.has_military_driving_license ? (form.military_driving_license_expiry || null) : null,
+        food_type: form.food_type || null,
+        food_constraints: form.food_constraints || null,
+        has_military_driving_license: form.has_military_driving_license,
         requested_node_id: form.requested_node_id,
         exemption_requests: validRows.map(er => ({
           exemption_type_id: er.exemption_type_id,

@@ -278,6 +278,7 @@ PROFILE_FIELDS = {
     "enlistment_date", "mandatory_end_date", "discharge_date",
     "last_mitvahim_date", "last_alal_date", "email", "phone",
     "profile_picture_url", "next_rank_date",
+    "food_type", "food_constraints",
 }
 
 # Fields that feed rank/track compatibility (directly, or via is_career's
@@ -399,6 +400,57 @@ def _get_current_value(soldier: Soldier, field_name: str) -> str | None:
         return raw.isoformat()
     return str(raw)
 
+
+def _normalize_optional_str(value) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None
+
+
+def _is_same_value(soldier: Soldier, field_name: str, new_value: str) -> bool:
+    """True when the normalized requested value equals the currently stored value."""
+    raw = (new_value or "").strip()
+    if field_name == "rank":
+        rank_value = raw
+        rank_track_value: str | None = None
+        has_track_component = False
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict) and "rank" in payload:
+            rank_value = payload["rank"]
+            rank_track_value = payload.get("rank_track")
+            has_track_component = True
+        if rank_value != soldier.rank:
+            return False
+        return not has_track_component or rank_track_value == soldier.rank_track
+    if field_name == "military_driving_license":
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(payload, dict):
+            return False
+        expiry = _normalize_optional_str(payload.get("expiry_date"))
+        current_expiry = (
+            soldier.military_driving_license_expiry.isoformat()
+            if soldier.military_driving_license_expiry else None
+        )
+        return (
+            bool(payload.get("has_license")) == bool(soldier.has_military_driving_license)
+            and expiry == current_expiry
+        )
+    if field_name in {
+        "last_mitvahim_date", "last_alal_date", "mandatory_end_date", "discharge_date",
+    }:
+        current = getattr(soldier, field_name, None)
+        return _normalize_optional_str(raw) == (current.isoformat() if current else None)
+    # Plain string fields (gender, phone, rank_track): strip both sides.
+    return raw == (_normalize_optional_str(getattr(soldier, field_name, None)) or "")
+
+
 def submit_field_update(
     session: Session,
     *,
@@ -413,6 +465,8 @@ def submit_field_update(
     soldier = session.get(Soldier, soldier_id)
     if soldier is None:
         raise SoldierError("soldier_not_found")
+    if _is_same_value(soldier, field_name, new_value):
+        raise SoldierError("same_value")
     # Cancel any existing pending update for the same field to avoid spamming commanders
     existing = session.execute(
         select(SoldierFieldUpdate).where(

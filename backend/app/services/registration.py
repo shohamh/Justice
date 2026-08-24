@@ -66,6 +66,8 @@ def register(
     has_military_driving_license: bool = False,
     military_driving_license_expiry: date | None = None,
     rank_track: str | None = None,
+    food_type: str | None = None,
+    food_constraints: str | None = None,
 ) -> tuple[Soldier, list[ExemptionRequest]]:
     try:
         validate_full_name(full_name)
@@ -140,6 +142,8 @@ def register(
         last_alal_date=last_alal_date,
         has_military_driving_license=has_military_driving_license,
         military_driving_license_expiry=military_driving_license_expiry,
+        food_type=food_type,
+        food_constraints=food_constraints,
     )
     if rank is not None:
         soldier.current_rank_since = enlistment_date or date.today()

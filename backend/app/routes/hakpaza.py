@@ -236,6 +236,7 @@ def approve(
         status="published",
         is_reserve=False,
         forced_call_up_multiplier=h.callup_multiplier,
+        created_by=actor.id,
         notes=f"הקפצה פיקודית — מחליף {session.get(Soldier, h.pulled_soldier_id).full_name if session.get(Soldier, h.pulled_soldier_id) else ''}",
     )
     session.add(new_assignment)

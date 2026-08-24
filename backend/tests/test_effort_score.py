@@ -530,3 +530,206 @@ def test_run_algorithm_job_passes_pending_duties_to_compute_effort_data():
     assert "pending_duties=duties" in src, (
         "run_algorithm_job's compute_effort_data(...) call must pass pending_duties=duties"
     )
+
+
+
+# ---------------------------------------------------------------------------
+# Frame of reference: default history window starts at the earliest published
+# duty of ANY soldier; fairness.reset_date overrides it.
+# ---------------------------------------------------------------------------
+
+def _seed_duty_type(session, name: str):
+    from decimal import Decimal
+
+    from app.db.models import DutyLocation, DutyType
+
+
+    dt = DutyType(name=name, score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc-{name}")
+    session.add_all([dt, loc])
+    session.flush()
+    return dt, loc
+
+
+def test_reset_date_defaults_to_earliest_published_duty(admin_session):
+    """Without fairness.reset_date, the frame of reference is the calendar
+    quarter containing the earliest duty assigned to any soldier — however old."""
+    from datetime import date as date_cls
+
+    from sqlalchemy import select
+
+    from app.db.models import DutyAssignment
+    from app.services.assignments import create_assignment
+    from app.services.scoring import _effort_reset_date
+    from tests.helpers import create_soldier
+
+    dt, loc = _seed_duty_type(admin_session, "reset-earliest")
+    s = create_soldier(admin_session, personal_number="9800001")
+    admin_session.flush()
+    # An old duty (well beyond the legacy two-year look-back) and a recent one.
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2021, 5, 10), end_date=date_cls(2021, 5, 12), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 7, 1), end_date=date_cls(2026, 7, 2), actor_id=None,
+    )
+    admin_session.flush()
+
+
+    assert _effort_reset_date(admin_session) == date_cls(2021, 4, 1)
+    assert admin_session.execute(select(DutyAssignment)).scalars().all()  # sanity: data exists
+
+
+def test_reset_date_setting_overrides_earliest_duty(admin_session):
+    """A configured fairness.reset_date wins over the earliest-duty default —
+    quarters before it are excluded from the quarterly-load history."""
+    from datetime import date as date_cls
+
+    from app.db.models import SystemSetting
+    from app.services.assignments import create_assignment
+    from app.services.scoring import _effort_reset_date
+    from tests.helpers import create_soldier
+
+    dt, loc = _seed_duty_type(admin_session, "reset-setting")
+    s = create_soldier(admin_session, personal_number="9800002")
+    admin_session.flush()
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2021, 5, 10), end_date=date_cls(2021, 5, 12), actor_id=None,
+    )
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-04-01"))
+    admin_session.flush()
+
+    assert _effort_reset_date(admin_session) == date_cls(2026, 4, 1)
+
+
+def test_default_frame_counts_quarters_before_two_year_window(admin_session):
+    """End-to-end: a duty older than the legacy two-year default must land in
+    the breakdown when no reset date is configured."""
+    from datetime import date as date_cls
+
+    from app.services.assignments import create_assignment
+    from app.services.effort_score import compute_effort_breakdown
+    from app.services.scoring import _effort_planning_start, _effort_reset_date
+    from tests.helpers import create_soldier
+
+
+    dt, loc = _seed_duty_type(admin_session, "reset-frame")
+    s = create_soldier(admin_session, personal_number="9800003")
+    s.enrolled_at = date_cls(2021, 1, 1)
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2021, 5, 10), end_date=date_cls(2021, 5, 13), actor_id=None,
+    )
+    admin_session.flush()
+
+    bd = compute_effort_breakdown(
+        admin_session,
+        soldier=s,
+        planning_start=_effort_planning_start(admin_session),
+        planning_end=_effort_planning_start(admin_session),
+        reset_date=_effort_reset_date(admin_session),
+    )
+    labels = [q.quarter_label for q in bd.quarters]
+    assert "Q2 2021" in labels
+    q2 = next(q for q in bd.quarters if q.quarter_label == "Q2 2021")
+    assert q2.soldier_score == Decimal("3")  # 3 days × score_per_day 1.0
+    assert bd.A_i > 0
+
+
+# ---------------------------------------------------------------------------
+# Traceability: per-quarter contributions behind the effort breakdown
+# ---------------------------------------------------------------------------
+
+def test_breakdown_contributions_reconstruct_scores(admin_session):
+    """Each quarter's contributions (duty spans + manual adjustments) must sum
+    to that quarter's soldier_score, carry the duty type name, day counts and
+    multiplier provenance."""
+    from datetime import date as date_cls
+
+    from app.db.models import ScoreAdjustment
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    dt_a, loc = _seed_duty_type(admin_session, "trace-a")
+    dt_b, _ = _seed_duty_type(admin_session, "trace-b")
+    s = create_soldier(admin_session, personal_number="9800004")
+    s.enrolled_at = date_cls(2026, 1, 1)
+    admin_session.flush()
+    # Q2 2026: 3 days of trace-a; Q3 2026: 2 days of trace-b
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt_a.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 5, 1), end_date=date_cls(2026, 5, 4), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt_b.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 8, 1), end_date=date_cls(2026, 8, 3), actor_id=None,
+    )
+    adj = ScoreAdjustment(soldier_id=s.id, delta=Decimal("2.50"), reason="מבחן התאמה")
+    admin_session.add(adj)
+    admin_session.flush()
+
+    planning_start = max(date_cls.today(), date_cls(2026, 9, 30))
+    bd = compute_effort_breakdown(
+        admin_session,
+        soldier=s,
+        planning_start=planning_start,
+        planning_end=planning_start,
+        reset_date=date_cls(2026, 1, 1),
+    )
+
+    by_label = {q.quarter_label: q for q in bd.quarters}
+    q2 = by_label["Q2 2026"]
+    duties_q2 = [c for c in q2.contributions if c.kind == "duty"]
+    assert len(duties_q2) == 1
+    assert duties_q2[0].label == "trace-a"
+    assert duties_q2[0].days == 3
+    assert duties_q2[0].score == Decimal("3")
+    assert sum(c.score for c in q2.contributions) == q2.soldier_score
+
+    q3 = by_label["Q3 2026"]
+    kinds = {c.kind for c in q3.contributions}
+    assert kinds == {"duty", "adjustment"}
+    adjustment = next(c for c in q3.contributions if c.kind == "adjustment")
+    assert adjustment.score == Decimal("2.50")
+    assert adjustment.label == "מבחן התאמה"
+    assert sum(c.score for c in q3.contributions) == q3.soldier_score
+    assert q3.adjustment_delta == Decimal("2.50")
+
+
+def test_contribution_multiplier_reflects_dismissal(admin_session):
+    """Dismissed days keep their reduced multiplier inside the contribution's
+    average multiplier instead of silently inflating the score."""
+    from datetime import date as date_cls
+
+    from app.db.models import DutyDismissal
+    from app.services.assignments import create_assignment
+    from app.services.effort_score import compute_quarter_contributions
+    from tests.helpers import create_soldier
+    dt, loc = _seed_duty_type(admin_session, "trace-dismissal")
+    s = create_soldier(admin_session, personal_number="9800005")
+    s.enrolled_at = date_cls(2026, 1, 1)
+    admin_session.flush()
+    assignment = create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 5, 1), end_date=date_cls(2026, 5, 5), actor_id=None,
+    )
+    admin_session.add(DutyDismissal(
+        duty_assignment_id=assignment.id,
+        dismissed_from=date_cls(2026, 5, 3),
+        dismissed_to=date_cls(2026, 5, 4),
+        reason="שחרור",
+    ))
+    admin_session.flush()
+
+    contribs = compute_quarter_contributions(
+        admin_session, soldier_id=s.id, quarters={date_cls(2026, 4, 1)}
+    )[date_cls(2026, 4, 1)]
+    # Default multipliers: dismissed_mult=0.0 → May 1–2 paid, May 3–4 zero-weight.
+    paid = [c for c in contribs if c.multiplier > 0]
+    zeroed = [c for c in contribs if c.multiplier == 0]
+    assert len(paid) == 1 and paid[0].days == 2 and paid[0].score == Decimal("2")
+    assert len(zeroed) == 1 and zeroed[0].days == 2 and zeroed[0].score == Decimal("0")
+    assert "שחרור" in (zeroed[0].detail or "")

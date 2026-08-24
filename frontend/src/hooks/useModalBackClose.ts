@@ -90,6 +90,12 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
     }
 
     function handlePopState() {
+      // A nested modal pushed its own entry on top of ours; when it closes,
+      // its cleanup's history.back() pops that entry and lands back on OUR
+      // entry. That popstate isn't a back-press targeting this modal — the
+      // current entry still being our own proves it — so don't close.
+      const state = window.history.state as ModalHistoryState | null;
+      if (state?.__modalId === entryIdRef.current) return;
       ownEntryOnTop = false;
       onCloseRef.current();
     }

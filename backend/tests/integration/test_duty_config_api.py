@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.db.models import Soldier
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -339,3 +340,95 @@ def test_disable_exemption_type_endpoint_bulk_revokes(client: TestClient, admin_
     )
     assert resp.status_code == 200
     assert resp.json()["revoked_count"] == 1
+
+
+def test_delete_location_unused(client: TestClient, admin_session: Session):
+    from app.db.models import AuditLog, DutyLocation
+    from tests.helpers import create_duty_location
+
+    loc = create_duty_location(admin_session, name="מיקום-למחיקה")
+    admin = create_soldier(admin_session, personal_number="5300001", role="admin")
+    admin_session.commit()
+
+    resp = client.delete(f"/api/duty-config/locations/{loc.id}", headers=auth_headers(admin))
+    assert resp.status_code == 204, resp.text
+    admin_session.expunge_all()
+    assert admin_session.get(DutyLocation, loc.id) is None
+    entry = (
+        admin_session.query(AuditLog)
+        .filter(AuditLog.action == "duty_location.delete", AuditLog.entity_id == loc.id)
+        .one_or_none()
+    )
+    assert entry is not None
+
+
+def _create_duty_type(client: TestClient, admin: Soldier, name: str) -> str:
+    r = client.post(
+        "/api/duty-config/duty-types",
+        headers=auth_headers(admin),
+        json={"name": name, "score_per_day": "1.00", "is_external": False},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def test_delete_location_in_use_by_shift(client: TestClient, admin_session: Session):
+    from datetime import date
+
+    from app.db.models import DutyLocation, DutyShift
+    from tests.helpers import create_duty_location
+
+    loc = create_duty_location(admin_session, name="מיקום-בשימוש-משמרת")
+    admin = create_soldier(admin_session, personal_number="5300002", role="admin")
+    admin_session.flush()
+    dt_id = _create_duty_type(client, admin, "סוג-למיקום-בשימוש")
+    admin_session.add(DutyShift(
+        duty_type_id=dt_id, duty_location_id=loc.id,
+        start_date=date(2027, 1, 1), end_date=date(2027, 1, 2),
+    ))
+    admin_session.commit()
+
+    resp = client.delete(f"/api/duty-config/locations/{loc.id}", headers=auth_headers(admin))
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "location_in_use"
+    assert admin_session.get(DutyLocation, loc.id) is not None
+
+
+def test_delete_location_in_use_by_assignment(client: TestClient, admin_session: Session):
+    from datetime import date
+
+    from app.db.models import DutyAssignment, DutyLocation, DutyShift
+    from tests.helpers import create_duty_location, create_soldier
+
+    loc = create_duty_location(admin_session, name="מיקום-בשימוש-שיבוץ")
+    soldier = create_soldier(admin_session, personal_number="5300003")
+    admin = create_soldier(admin_session, personal_number="5300004", role="admin")
+    admin_session.flush()
+    dt_id = _create_duty_type(client, admin, "סוג-למיקום-שיבוץ")
+    shift = DutyShift(
+        duty_type_id=dt_id, duty_location_id=loc.id,
+        start_date=date(2027, 1, 1), end_date=date(2027, 1, 2),
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        duty_shift_id=shift.id, soldier_id=soldier.id, duty_type_id=dt_id,
+        duty_location_id=loc.id, start_date=date(2027, 1, 1), end_date=date(2027, 1, 2),
+    ))
+    admin_session.commit()
+
+    resp = client.delete(f"/api/duty-config/locations/{loc.id}", headers=auth_headers(admin))
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "location_in_use"
+    assert admin_session.get(DutyLocation, loc.id) is not None
+
+
+def test_delete_location_forbidden_for_plain_soldier(client: TestClient, admin_session: Session):
+    from tests.helpers import create_duty_location
+
+    loc = create_duty_location(admin_session, name="מיקום-חסום")
+    s = create_soldier(admin_session, personal_number="5300005")
+    admin_session.commit()
+
+    resp = client.delete(f"/api/duty-config/locations/{loc.id}", headers=auth_headers(s))
+    assert resp.status_code == 403

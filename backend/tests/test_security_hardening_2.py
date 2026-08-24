@@ -178,6 +178,8 @@ def test_phone_not_in_public_soldier_out():
     s.is_career = False
     s.bahad1_graduate = False
     s.has_military_driving_license = None
+    s.food_type = None
+    s.food_constraints = None
     s.military_driving_license_expiry = None
     s.enlistment_date = None
     s.mandatory_end_date = None

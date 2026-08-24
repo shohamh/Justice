@@ -644,15 +644,29 @@ def _iter_calendar_quarters(start: date, end: date) -> list[date]:
 
 
 def _effort_reset_date(session: Session) -> date:
+    """Frame of reference for the quarterly-load history window.
+
+    The `fairness.reset_date` setting overrides everything. Without it, ALL
+    relevant quarters count: history starts at the calendar quarter containing
+    the earliest duty assigned to any soldier (not a fixed look-back window and
+    not per-soldier enrollment). With no published duties at all, falls back to
+    a two-years-back quarter so callers get a sane empty-ish window.
+    """
     from app.services.effort_score import quarter_start
     from app.services.settings_loader import SettingNotFound, get_setting
 
-    today = date.today()
     try:
         reset_raw = get_setting(session, "fairness.reset_date")
         return date.fromisoformat(str(reset_raw))
-    except (SettingNotFound, ValueError, Exception):
-        return quarter_start(date(today.year - 2, today.month, 1))
+    except (SettingNotFound, ValueError, TypeError):
+        pass
+
+    first_start = session.execute(
+        select(func.min(DutyAssignment.start_date)).where(DutyAssignment.status == "published")
+    ).scalar()
+    if first_start is not None:
+        return quarter_start(first_start)
+    return quarter_start(date(date.today().year - 2, date.today().month, 1))
 
 
 def _effort_planning_start(session: Session) -> date:
@@ -1529,6 +1543,18 @@ def _try_projected_effort_breakdown(
         )
 
     effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
+
+    if quarter_details:
+        from app.services.effort_score import compute_quarter_contributions, quarter_start as _qstart
+
+        contrib_map = compute_quarter_contributions(
+            session,
+            soldier_id=soldier.id,
+            quarters={_qstart(d.quarter_start) for d in quarter_details},
+        )
+        for d in quarter_details:
+            d.contributions = contrib_map.get(_qstart(d.quarter_start), [])
+
     return EffortBreakdown(quarters=quarter_details, effort_score=effort_score, A_i=A_i, W_i=W_i)
 
 
@@ -1541,15 +1567,11 @@ def effort_scores_by_soldier(
     if projected is not None:
         return projected
 
-    from app.services.effort_score import compute_effort_data, quarter_start
-    from app.services.settings_loader import SettingNotFound, get_setting
+    from app.services.effort_score import compute_effort_data
+
+    reset_date = _effort_reset_date(session)
 
     today = date.today()
-    try:
-        reset_raw = get_setting(session, "fairness.reset_date")
-        reset_date = date.fromisoformat(str(reset_raw))
-    except (SettingNotFound, ValueError, Exception):
-        reset_date = quarter_start(date(today.year - 2, today.month, 1))
 
     from sqlalchemy import func as sql_func
     latest_published_end = session.execute(
@@ -1728,11 +1750,7 @@ def _legacy_transparency_rows(
 
     # Compute effort scores for all active soldiers
     today = date.today()
-    try:
-        reset_raw = get_setting(session, "fairness.reset_date")
-        reset_date = date.fromisoformat(str(reset_raw))
-    except (SettingNotFound, ValueError, Exception):
-        reset_date = quarter_start(date(today.year - 2, today.month, 1))
+    reset_date = _effort_reset_date(session)
 
     # Include future published assignments by using the day after the latest
     # published assignment as the planning horizon.  Without this, effort_score

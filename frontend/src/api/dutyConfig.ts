@@ -117,6 +117,10 @@ export async function updateLocation(id: string, input: Partial<{ name: string; 
   return (await api.patch<DutyLocation>(`/duty-config/locations/${id}`, input)).data;
 }
 
+export async function deleteLocation(id: string): Promise<void> {
+  await api.delete(`/duty-config/locations/${id}`);
+}
+
 export async function listExemptionTypes(): Promise<ExemptionType[]> {
   return (await api.get<ExemptionType[]>("/duty-config/exemption-types")).data;
 }

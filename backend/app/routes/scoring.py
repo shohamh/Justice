@@ -79,6 +79,17 @@ class BreakdownOut(BaseModel):
     adjustments: list[AdjustmentRow]
 
 
+class EffortContributionOut(BaseModel):
+    kind: str                 # "duty" | "adjustment"
+    label: str
+    detail: str = ""
+    score: Decimal
+    start_date: date | None = None   # inclusive, duty spans only
+    end_date: date | None = None     # inclusive, duty spans only
+    days: int = 0
+    multiplier: Decimal = Decimal("1")
+
+
 class EffortQuarterRow(BaseModel):
     quarter_start: date
     quarter_end: date
@@ -88,8 +99,9 @@ class EffortQuarterRow(BaseModel):
     active_frac: Decimal
     share: Decimal
     weighted_share: Decimal
-    is_partial: bool = False
+    is_partial: bool
     adjustment_delta: Decimal = Decimal("0")
+    contributions: list[EffortContributionOut] = []
 
 
 class EffortBreakdownOut(BaseModel):
@@ -153,8 +165,8 @@ def effort_breakdown(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> EffortBreakdownOut:
-    from app.services.effort_score import compute_effort_breakdown, quarter_start
-    from app.services.settings_loader import SettingNotFound, get_setting
+    from app.services.effort_score import compute_effort_breakdown
+    from app.services.scoring import _effort_reset_date
 
     s = session.get(Soldier, soldier_id)
     if s is None:
@@ -163,12 +175,9 @@ def effort_breakdown(
         if not can_view_soldier_scope(session, user, _node_of(session, s)):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
+    reset_date = _effort_reset_date(session)
+
     today = date.today()
-    try:
-        reset_raw = get_setting(session, "fairness.reset_date")
-        reset_date = date.fromisoformat(str(reset_raw))
-    except Exception:
-        reset_date = quarter_start(date(today.year - 2, today.month, 1))
 
     latest_published_end = session.execute(
         select(func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
@@ -198,6 +207,19 @@ def effort_breakdown(
                 weighted_share=q.weighted_share,
                 is_partial=q.is_partial,
                 adjustment_delta=q.adjustment_delta,
+                contributions=[
+                    EffortContributionOut(
+                        kind=c.kind,
+                        label=c.label,
+                        detail=c.detail,
+                        score=c.score,
+                        start_date=c.start_date,
+                        end_date=c.end_date,
+                        days=c.days,
+                        multiplier=c.multiplier,
+                    )
+                    for c in q.contributions
+                ],
             )
             for q in bd.quarters
         ],

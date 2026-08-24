@@ -210,10 +210,32 @@ def test_approve_pending(admin_session):
     after_commander = approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
     assert after_commander.status == "pending_duty_manager"
     assert after_commander.commander_approved_by == s.id
-    approved = approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
+    approved = approve_constraint(
+        admin_session, constraint_id=c.id, actor_id=s.id, actor_role="admin"
+    )
     admin_session.commit()
     assert approved.status == "approved"
     assert approved.decided_by == s.id
+
+
+def test_approve_duty_manager_step_rejects_commander(admin_session):
+    """A commander may clear the commander step, but the duty-manager step
+    must be reserved for duty managers and admins."""
+    s = create_soldier(admin_session, personal_number=_pn(30))
+    cmd = create_soldier(admin_session, personal_number=_pn(31), role="commander")
+    c = submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=date.today() + timedelta(days=5),
+        end_date=date.today() + timedelta(days=10),
+        reason="חופשה",
+        actor_id=None,
+    )
+    admin_session.flush()
+    after_commander = approve_constraint(admin_session, constraint_id=c.id, actor_id=cmd.id)
+    assert after_commander.status == "pending_duty_manager"
+    with pytest.raises(ConstraintError, match="not_duty_manager"):
+        approve_constraint(admin_session, constraint_id=c.id, actor_id=cmd.id)
 
 
 def test_approve_blocked_when_enrollment_not_approved(admin_session):
@@ -246,7 +268,7 @@ def test_approve_not_pending(admin_session):
     admin_session.flush()
     approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
     admin_session.flush()
-    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
+    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id, actor_role="admin")
     admin_session.flush()
     with pytest.raises(ConstraintError, match="not_pending"):
         approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
@@ -299,7 +321,7 @@ def test_cancel_not_pending_once_fully_approved(admin_session):
     admin_session.flush()
     approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)  # -> pending_duty_manager
     admin_session.flush()
-    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)  # -> approved
+    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id, actor_role="admin")  # -> approved
     admin_session.flush()
     with pytest.raises(ConstraintError, match="not_pending"):
         cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
@@ -379,7 +401,7 @@ def test_get_approved_dates(admin_session):
     admin_session.flush()
     approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
     admin_session.flush()
-    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
+    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id, actor_role="admin")
     admin_session.flush()
     dates = get_approved_constraint_dates(admin_session, soldier_id=s.id)
     assert len(dates) == 1

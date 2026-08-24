@@ -187,6 +187,7 @@ def approve_constraint(
     constraint_id: uuid.UUID,
     actor_id: uuid.UUID | None = None,
     decision_note: str | None = None,
+    actor_role: str | None = None,
 ) -> PersonalConstraint:
     c = session.get(PersonalConstraint, constraint_id)
     if c is None:
@@ -204,6 +205,15 @@ def approve_constraint(
 
     if c.status == "pending_commander":
         return _approve_commander_step(session, c, actor_id=actor_id)
+    # The duty-manager step must only ever be decided by a duty manager or
+    # an admin — CONSTRAINT_APPROVE is granted to commanders too (for the
+    # commander step), so scope authorization alone doesn't protect it.
+    role = actor_role
+    if role is None and actor_id is not None:
+        actor = session.get(Soldier, actor_id)
+        role = actor.role if actor else None
+    if role not in ("duty_manager", "admin"):
+        raise ConstraintError("not_duty_manager")
     return _approve_duty_manager_step(session, c, actor_id=actor_id, decision_note=decision_note)
 
 

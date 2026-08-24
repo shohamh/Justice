@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date as date_type
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -73,7 +73,8 @@ class SoldierOut(BaseModel):
     discharge_date: date_type | None = None
     last_mitvahim_date: date_type | None = None
     last_alal_date: date_type | None = None
-    profile_picture_url: str | None = None
+    food_type: str | None = None
+    food_constraints: str | None = None
     telegram_linked: bool = False
     email: str | None = None
     direct_commander_id: uuid.UUID | None = None
@@ -110,7 +111,8 @@ class UpdateProfileRequest(BaseModel):
     last_mitvahim_date: date_type | None = None
     last_alal_date: date_type | None = None
     email: str | None = None
-    profile_picture_url: str | None = None
+    food_type: Literal["regular", "vegetarian", "vegan", "gluten_free", "kosher_le_mehadrin"] | None = None
+    food_constraints: str | None = Field(default=None, max_length=2000)
     next_rank_date: date_type | None = None
 
 
@@ -240,6 +242,8 @@ def _out(
         discharge_date=s.discharge_date,
         last_mitvahim_date=s.last_mitvahim_date,
         last_alal_date=s.last_alal_date,
+        food_type=s.food_type,
+        food_constraints=s.food_constraints,
         profile_picture_url=s.profile_picture_url,
         telegram_linked=telegram_linked,
         email=s.email if (include_private or email_public) else None,
@@ -627,8 +631,11 @@ def get_soldier(
 ) -> SoldierOut:
     s = _load(session, soldier_id)
     is_self = s.id == user.id
-    is_plain_soldier = user.role == "soldier"
-    if not is_self and not is_plain_soldier:
+    # Soldiers, commanders, and duty managers without scope over this
+    # soldier still get the redacted public profile instead of a 403 —
+    # _out()/can_see_private() already strip private fields for them.
+    is_public_viewer = user.role in ("soldier", "commander", "duty_manager")
+    if not is_self and not is_public_viewer:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
     link = session.execute(
         select(TelegramLink).where(
@@ -723,13 +730,13 @@ def update_profile(
     elif not has_rank_authority:
         # Pure rank-only submission (no ordinary fields): even when nothing in
         # it actually changed, the caller must still hold rank-advancement
-        # authority to use this narrow flow at all — it's the route's only
         # gate in that case, so it can't be skipped just because the values
         # happened to match what's already stored.
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    nullable_fields = {"next_rank_date", "food_type", "food_constraints"}
     fields = {
         k: v for k, v in body.model_dump().items()
-        if v is not None or (k == "next_rank_date" and k in supplied_fields)
+        if v is not None or (k in nullable_fields and k in supplied_fields)
     }
     try:
         update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)

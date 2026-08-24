@@ -45,7 +45,7 @@ from app.db.models import (
     SoldierExemption,
 )
 from app.services import scoring as scoring_svc
-from app.services.effort_score import EFFORT_SCALE, EffortData, compute_effort_data, quarter_start
+from app.services.effort_score import EFFORT_SCALE, EffortData, compute_effort_data
 from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
 
@@ -1389,12 +1389,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 _phase("future_eligibility: done")
 
                 # Compute and inject quarterly effort scores
-                try:
-                    _reset_raw = get_setting(session, "fairness.reset_date")
-                    _reset_date = date.fromisoformat(str(_reset_raw))
-                except Exception:
-                    # Default: 2 years ago aligned to nearest quarter start
-                    _reset_date = quarter_start(date(planning_start.year - 2, planning_start.month, 1))
+                from app.services.scoring import _effort_reset_date
+
+                _reset_date = _effort_reset_date(session)
                 # Count ALL published commitments — past and future — so duties
                 # already published months ahead raise the soldier's effort and
                 # deprioritise them for new work (see effort_history_horizon).
@@ -1875,11 +1872,9 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
         eligible_node_ids=job.settings_json.get("eligible_node_ids"),
     )
 
-    try:
-        _reset_raw = get_setting(session, "fairness.reset_date")
-        _reset_date = date.fromisoformat(str(_reset_raw))
-    except Exception:
-        _reset_date = quarter_start(date(planning_start.year - 2, planning_start.month, 1))
+    from app.services.scoring import _effort_reset_date
+
+    _reset_date = _effort_reset_date(session)
 
     effort_horizon = effort_history_horizon(session, planning_start=planning_start)
     effort_map = compute_effort_data(

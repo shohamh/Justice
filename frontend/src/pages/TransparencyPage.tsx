@@ -1213,6 +1213,49 @@ export default function TransparencyPage() {
                   <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-4 space-y-4 text-xs" dir="rtl">
                     <p className="font-semibold text-gray-700 dark:text-gray-300">כיצד מגיעים למספר הסופי?</p>
 
+                    {/* Step 0: line items — which duties/adjustments fed each quarter */}
+                    {qs.some((q) => (q.contributions ?? []).length > 0) && (
+                      <div>
+                        <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          שלב 0 — מאיפה מגיע ניקוד החייל בכל רבעון
+                        </p>
+                        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                          {qs.filter((q) => (q.contributions ?? []).length > 0).map((q, qi) => (
+                            <div key={q.quarter_label} className={qi > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}>
+                              <div className="px-2 py-1 font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
+                                {q.quarter_label}
+                              </div>
+                              {q.contributions.map((c, ci) => (
+                                <div
+                                  key={`${q.quarter_label}-${ci}`}
+                                  className="flex items-center justify-between gap-2 px-2 py-1 text-gray-600 dark:text-gray-400"
+                                >
+                                  <span className="flex flex-col min-w-0">
+                                    <span className="truncate">
+                                      {c.kind === "adjustment" && <span className="text-green-600 dark:text-green-400 ml-1">✏️</span>}
+                                      {c.label}
+                                      {c.start_date && c.end_date && (
+                                        <span className="text-gray-400 dark:text-gray-500"> ({formatDate(c.start_date)}–{formatDate(c.end_date)})</span>
+                                      )}
+                                    </span>
+                                    {c.detail && <span className="text-xs text-gray-400 dark:text-gray-500">{c.detail}</span>}
+                                  </span>
+                                  <span className="tabular-nums shrink-0">
+                                    {c.kind === "duty" ? `${c.days} ${c.days === 1 ? "יום" : "ימים"} × ${parseFloat(c.multiplier).toFixed(2)} = ` : ""}
+                                    <strong className="text-indigo-600 dark:text-indigo-300">{parseFloat(c.score).toFixed(3)}</strong>
+                                  </span>
+                                </div>
+                              ))}
+                              <div className="flex justify-between px-2 py-1 border-t border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                                <span>סה״כ ניקוד חייל ברבעון</span>
+                                <span className="tabular-nums font-medium">{parseFloat(q.soldier_score).toFixed(3)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Step 1: A — per-row arithmetic */}
                     <div>
                       <p className="font-medium text-indigo-700 dark:text-indigo-300 mb-1">

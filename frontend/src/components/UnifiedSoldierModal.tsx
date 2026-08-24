@@ -105,6 +105,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profilePictureUrl, setProfilePictureUrl] = useState(soldier.profile_picture_url ?? "");
   const [profileHasLicense, setProfileHasLicense] = useState(soldier.has_military_driving_license ?? false);
   const [profileLicenseExpiry, setProfileLicenseExpiry] = useState(soldier.military_driving_license_expiry ?? "");
+  const [profileFoodType, setProfileFoodType] = useState(soldier.food_type ?? "");
+  const [profileFoodConstraints, setProfileFoodConstraints] = useState(soldier.food_constraints ?? "");
+  const [showFoodHelp, setShowFoodHelp] = useState(false);
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[]; officer_academic: string[] }>({ enlisted: [], officers: [], officer_academic: [] });
   // Narrow rank/next-rank-date correction flow, for commanders/duty managers who
   // are authorized to edit rank advancement fields but lack ordinary full-profile
@@ -132,6 +135,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const licenseDirty =
     profileHasLicense !== (soldierData.has_military_driving_license ?? false) ||
     (profileHasLicense && profileLicenseExpiry !== (soldierData.military_driving_license_expiry ?? ""));
+  const foodTypeDirty = profileFoodType !== (soldierData.food_type ?? "");
+  const foodConstraintsDirty = profileFoodConstraints !== (soldierData.food_constraints ?? "");
   // Gates both the Save button and handleProfileSave: a click that changed
   // nothing (opened the editor and immediately saved, or edited a field then
   // reverted it) must not fire a PATCH — the backend writes an audit entry
@@ -140,6 +145,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const profileDirty =
     genderDirty || enlistmentDirty || mandEndDirty || dischargeDirty || mitvahimDirty || alalDirty ||
     emailDirty || pictureDirty || licenseDirty ||
+    foodTypeDirty || foodConstraintsDirty ||
     (soldierData.can_edit_rank_advancement && (rankFieldsDirty || nextRankDateDirty));
 
   const mandatoryEndBeforeEnlistmentError = profileMandEnd && profileEnlistment && profileMandEnd < profileEnlistment
@@ -230,6 +236,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           has_military_driving_license: profileHasLicense,
           military_driving_license_expiry: profileHasLicense ? (profileLicenseExpiry || null) : null,
         } : {}),
+        ...(foodTypeDirty ? { food_type: profileFoodType || null } : {}),
+        ...(foodConstraintsDirty ? { food_constraints: profileFoodConstraints || null } : {}),
       });
       onRefresh();
       onClose();
@@ -503,6 +511,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
             {soldierData.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldierData.last_mitvahim_date)}</span></div>}
             {soldierData.is_officer && soldierData.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldierData.last_alal_date)}</span></div>}
+            {soldierData.food_type && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.food_type")}</span><span>{t(`soldier_profile.food_type_${soldierData.food_type}`)}</span></div>}
+            {soldierData.food_constraints && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.food_constraints")}</span><span className="text-right">{soldierData.food_constraints}</span></div>}
             {rangeStatus && rangeStatus.statuses.length > 0 && (
               <div>
                 <span className="text-gray-500 dark:text-gray-400">{t("range_qualification.status.sectionTitle")}</span>
@@ -650,6 +660,32 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     value={profileLicenseExpiry} onChange={setProfileLicenseExpiry} />
                 </label>
               )}
+              <label className="block">
+                <span className="text-xs flex items-center gap-1">
+                  {t("soldier_profile.food_type")}
+                  <button
+                    type="button"
+                    className="text-gray-400 hover:text-indigo-600 text-xs font-bold border rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0"
+                    onClick={() => setShowFoodHelp(v => !v)}
+                    title={t("soldier_profile.food_constraints_tooltip")}
+                  >
+                    ?
+                  </button>
+                </span>
+                <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileFoodType} onChange={(e) => setProfileFoodType(e.target.value)}>
+                  <option value="">—</option>
+                  <option value="regular">{t("soldier_profile.food_type_regular")}</option>
+                  <option value="vegetarian">{t("soldier_profile.food_type_vegetarian")}</option>
+                  <option value="vegan">{t("soldier_profile.food_type_vegan")}</option>
+                  <option value="gluten_free">{t("soldier_profile.food_type_gluten_free")}</option>
+                  <option value="kosher_le_mehadrin">{t("soldier_profile.food_type_kosher_le_mehadrin")}</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs">{t("soldier_profile.food_constraints")}</span>
+                <textarea rows={2} maxLength={2000} className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileFoodConstraints} onChange={(e) => setProfileFoodConstraints(e.target.value)} />
+              </label>
+              {showFoodHelp && <p className="text-xs text-gray-500 dark:text-gray-400">{t("soldier_profile.food_constraints_tooltip")}</p>}
               {isAdmin && (
                 <label className="block">
                   <span className="text-xs">{t("profile.email")}</span>

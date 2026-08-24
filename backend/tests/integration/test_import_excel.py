@@ -7,7 +7,7 @@ from decimal import Decimal
 import openpyxl
 import pytest
 
-from app.db.models import DutyLocation, DutyType
+from app.db.models import DutyAssignment, DutyLocation, DutyType
 from app.services.duty_config import create_duty_type
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -336,3 +336,38 @@ def test_preview_rejects_oversized_file(client, admin_session):
     )
     assert resp.status_code == 400
     assert resp.json()["detail"] == "file_too_large"
+
+
+def test_apply_sets_created_by_on_imported_assignments(client, admin_session):
+    """Imported assignments must record the importing duty manager as creator
+    so duty-history can show who assigned them."""
+    node = create_node(admin_session, level="branch", name="ie_node_cb")
+    dm = create_soldier(admin_session, personal_number="ie_dm_cb", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_cb", hierarchy_node_id=node.id)
+    dt = create_duty_type(admin_session, name=f"dt_cb_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_cb_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [],
+            "assignments": [{
+                "row": 2, "action": "new",
+                "resolved_soldier_id": str(soldier.id),
+                "resolved_duty_type_id": str(dt.id),
+                "start_date": "2024-06-15", "end_date": "2024-06-16",
+                "is_reserve": False,
+            }],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    admin_session.expire_all()
+    assignment = admin_session.query(DutyAssignment).filter_by(soldier_id=soldier.id).one_or_none()
+    assert assignment is not None
+    assert assignment.created_by == dm.id

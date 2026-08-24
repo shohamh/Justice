@@ -44,6 +44,17 @@ export interface Breakdown {
   adjustments: { id: string; delta: string; reason: string; created_at: string }[];
 }
 
+export interface EffortContribution {
+  kind: "duty" | "adjustment";
+  label: string;
+  detail: string;
+  score: string;
+  start_date: string | null; // inclusive, duty spans only
+  end_date: string | null;   // inclusive, duty spans only
+  days: number;
+  multiplier: string;
+}
+
 export interface EffortQuarterRow {
   quarter_start: string;
   quarter_end: string;
@@ -55,6 +66,7 @@ export interface EffortQuarterRow {
   weighted_share: string;
   is_partial: boolean;
   adjustment_delta: string;
+  contributions: EffortContribution[];
 }
 
 export interface EffortBreakdown {
