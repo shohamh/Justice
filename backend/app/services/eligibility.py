@@ -31,6 +31,7 @@ RANKS_RASAN_AND_ABOVE = OFFICER_RANKS[OFFICER_RANKS.index("רסן"):]
 SOLDIER_EDITABLE_FIELDS = {
     "last_mitvahim_date", "last_alal_date", "gender", "rank", "rank_track", "phone",
     "military_driving_license", "mandatory_end_date", "discharge_date",
+    "food_type", "food_constraints",
 }
 
 # Ranks that structurally cannot exist on the other track, confirmed with

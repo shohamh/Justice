@@ -546,6 +546,10 @@ def approve_field_update(
         _reset_rank_advancement(session, soldier, since=date.today())
     elif field == "phone":
         soldier.phone = raw
+    elif field == "food_type":
+        soldier.food_type = raw if raw else None
+    elif field == "food_constraints":
+        soldier.food_constraints = raw if raw else None
     elif field == "military_driving_license":
         payload = json.loads(raw)
         soldier.has_military_driving_license = payload["has_license"]
