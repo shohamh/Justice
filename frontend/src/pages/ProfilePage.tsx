@@ -490,6 +490,7 @@ export default function ProfilePage() {
               type="button"
               onClick={() => requestUpdate("military_driving_license", militaryLicensePayload(licenseHasReq, licenseExpiryReq))}
               disabled={militaryLicensePayload(licenseHasReq, licenseExpiryReq) === militaryLicensePayload(effectiveValues.license.has, effectiveValues.license.expiry)}
+              className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {t("soldier_profile.submit_update")}
             </button>
