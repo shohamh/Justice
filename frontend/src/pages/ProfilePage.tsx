@@ -442,14 +442,14 @@ export default function ProfilePage() {
           {phoneReq && !isValidIsraeliPhone(phoneReq) && (
             <p className="text-red-600 text-xs">מספר טלפון לא תקין</p>
           )}
-          <div id="last-mitvahim-field" className="flex gap-2 items-center scroll-mt-24">
+          <div id="last-mitvahim-field" className="flex flex-col sm:flex-row gap-2 sm:items-center scroll-mt-24">
             <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.last_mitvahim_date")}</label>
             <DateInput value={mitvahimReq} onChange={setMitvahimReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)} disabled={!mitvahimReq || mitvahimReq === effectiveValues.last_mitvahim_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div id="last-alal-field" className="flex gap-2 items-center scroll-mt-24">
+          <div id="last-alal-field" className="flex flex-col sm:flex-row gap-2 sm:items-center scroll-mt-24">
             <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.last_alal_date")}</label>
             <DateInput value={alalReq} onChange={setAlalReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq || alalReq === effectiveValues.last_alal_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
