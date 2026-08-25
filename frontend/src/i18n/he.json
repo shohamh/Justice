@@ -730,7 +730,17 @@
     "next_rank_date": "תאריך דרגה הבאה",
     "next_rank_date_automatic": "חישוב אוטומטי",
     "next_rank_date_manual": "נקבע ידנית",
-    "rank_correction": "תיקון דרגה ותאריך דרגה הבאה"
+    "rank_correction": "תיקון דרגה ותאריך דרגה הבאה",
+    "food_type": "סוג מזון",
+    "food_type_select": "בחר סוג מזון",
+    "food_regular": "רגיל",
+    "food_vegetarian": "צמחוני",
+    "food_vegan": "טבעוני",
+    "food_gluten_free": "צליאקי",
+    "food_kosher_le_mehadrin": "כשר למהדרין",
+    "food_constraints": "אילוצי מזון",
+    "food_constraints_help": "אלרגיות, רגישויות, העדפות תזונה או מגבלות אחרות שכדאי שנדע עליהן בעת הכנת מזון",
+    "food_constraints_placeholder": "לדוגמה: אלרגי לבוטנים"
   },
   "eligibility": {
     "title": "דרישות כשירות",

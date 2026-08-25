@@ -58,6 +58,8 @@ export default function ProfilePage() {
   const [phoneReq, setPhoneReq] = useState("");
   const [licenseHasReq, setLicenseHasReq] = useState(false);
   const [licenseExpiryReq, setLicenseExpiryReq] = useState("");
+  const [foodTypeReq, setFoodTypeReq] = useState("");
+  const [foodConstraintsReq, setFoodConstraintsReq] = useState("");
   const [emailReq, setEmailReq] = useState(user?.email ?? "");
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
@@ -401,8 +403,8 @@ export default function ProfilePage() {
 
         <div className="space-y-2 text-sm">
           <p className="font-medium">{t("soldier_profile.submit_update")}</p>
-          <div className="flex gap-2 items-center">
-            <label className="w-40">{t("soldier_profile.gender")}</label>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.gender")}</label>
             <select value={genderReq} onChange={e => setGenderReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
               <option value="">—</option>
               <option value="male">{t("soldier_profile.gender_male")}</option>
@@ -413,8 +415,8 @@ export default function ProfilePage() {
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div className="flex gap-2 items-center">
-            <label className="w-40">{t("soldier_profile.rank")}</label>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.rank")}</label>
             <div className="flex-1">
               <Combobox
                 items={rankItems}
@@ -430,8 +432,8 @@ export default function ProfilePage() {
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div className="flex gap-2 items-center">
-            <label className="w-40">{t("soldier_profile.phone")}</label>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.phone")}</label>
             <input type="tel" value={phoneReq} onChange={e => setPhoneReq(e.target.value)} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder="05X-XXXXXXX" dir="ltr" />
             <button type="button" onClick={() => requestUpdate("phone", phoneReq)} disabled={!phoneReq || !isValidIsraeliPhone(phoneReq) || phoneReq.trim() === effectiveValues.phone.trim()} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
@@ -441,35 +443,35 @@ export default function ProfilePage() {
             <p className="text-red-600 text-xs">מספר טלפון לא תקין</p>
           )}
           <div id="last-mitvahim-field" className="flex gap-2 items-center scroll-mt-24">
-            <label className="w-40">{t("soldier_profile.last_mitvahim_date")}</label>
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.last_mitvahim_date")}</label>
             <DateInput value={mitvahimReq} onChange={setMitvahimReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)} disabled={!mitvahimReq || mitvahimReq === effectiveValues.last_mitvahim_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div id="last-alal-field" className="flex gap-2 items-center scroll-mt-24">
-            <label className="w-40">{t("soldier_profile.last_alal_date")}</label>
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.last_alal_date")}</label>
             <DateInput value={alalReq} onChange={setAlalReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq || alalReq === effectiveValues.last_alal_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div className="flex gap-2 items-center">
-            <label className="w-40">{t("soldier_profile.mandatory_end_date")}</label>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.mandatory_end_date")}</label>
             <DateInput value={mandatoryEndReq} onChange={setMandatoryEndReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("mandatory_end_date", mandatoryEndReq)} disabled={!mandatoryEndReq || mandatoryEndReq === effectiveValues.mandatory_end_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div className="flex gap-2 items-center">
-            <label className="w-40">{t("soldier_profile.discharge_date")}</label>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.discharge_date")}</label>
             <DateInput value={dischargeReq} onChange={setDischargeReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("discharge_date", dischargeReq)} disabled={!dischargeReq || dischargeReq === effectiveValues.discharge_date} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div className="flex gap-2 items-center">
-            <label className="w-40">{t("soldier_profile.military_driving_license")}</label>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.military_driving_license")}</label>
             <label className="flex items-center gap-1">
               <input type="checkbox" checked={licenseHasReq} onChange={e => setLicenseHasReq(e.target.checked)} />
               {t("soldier_profile.military_driving_license_has")}
@@ -492,9 +494,58 @@ export default function ProfilePage() {
               {t("soldier_profile.submit_update")}
             </button>
           </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.food_type")}</label>
+            <select
+              data-testid="food-type-select"
+              value={foodTypeReq}
+              onChange={e => setFoodTypeReq(e.target.value)}
+              className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+            >
+              <option value="">{t("soldier_profile.food_type_select")}</option>
+              <option value="regular">{t("soldier_profile.food_regular")}</option>
+              <option value="vegetarian">{t("soldier_profile.food_vegetarian")}</option>
+              <option value="vegan">{t("soldier_profile.food_vegan")}</option>
+              <option value="gluten_free">{t("soldier_profile.food_gluten_free")}</option>
+              <option value="kosher_le_mehadrin">{t("soldier_profile.food_kosher_le_mehadrin")}</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => requestUpdate("food_type", foodTypeReq)}
+              disabled={!foodTypeReq}
+            >
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-40 shrink-0 flex items-center gap-1">
+              {t("soldier_profile.food_constraints")}
+              <span
+                className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-400 text-[10px] text-gray-400 cursor-help"
+                title={t("soldier_profile.food_constraints_help")}
+              >
+                ?
+              </span>
+            </label>
+            <input
+              type="text"
+              data-testid="food-constraints-input"
+              value={foodConstraintsReq}
+              onChange={e => setFoodConstraintsReq(e.target.value)}
+              className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              placeholder={t("soldier_profile.food_constraints_placeholder")}
+            />
+            <button
+              type="button"
+              onClick={() => requestUpdate("food_constraints", foodConstraintsReq)}
+              disabled={!foodConstraintsReq.trim()}
+            >
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
           <div className="space-y-1">
-            <div className="flex gap-2 items-center">
-              <label className="w-40">{t("profile.email")}</label>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <label className="w-full sm:w-40 shrink-0">{t("profile.email")}</label>
               <input type="email" value={emailReq} onChange={e => { setEmailReq(e.target.value); setEmailMsg(null); }} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder={emailPlaceholder} />
               <button type="button" disabled={emailSaving} onClick={async () => {
                 setEmailSaving(true); setEmailMsg(null);

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models import DutyManagerScope, HierarchyNode, RoleDeputy, Soldier
 from app.services.eligibility import RANKS_RASAN_AND_ABOVE
 
-PRIVATE_FIELD_NAMES: frozenset[str] = frozenset({"gender", "phone", "email"})
+PRIVATE_FIELD_NAMES: frozenset[str] = frozenset({"gender", "phone", "email", "food_type", "food_constraints"})
 
 
 def _active_principal_ids(
