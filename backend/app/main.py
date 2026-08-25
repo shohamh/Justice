@@ -34,6 +34,7 @@ from app.routes import health as health_routes
 from app.routes import hierarchy as hierarchy_routes
 from app.routes import hierarchy_transfers as hierarchy_transfer_routes
 from app.routes import me as me_routes
+from app.routes import my_requests as my_request_routes
 from app.routes import score_adjustments as score_adjustment_routes
 from app.routes import scoring as scoring_routes
 from app.routes import soldiers as soldier_routes
@@ -175,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(health_routes.router, prefix="/api")
     app.include_router(auth_routes.router, prefix="/api")
     app.include_router(me_routes.router, prefix="/api")
+    app.include_router(my_request_routes.router, prefix="/api")
     app.include_router(hierarchy_routes.router, prefix="/api")
     app.include_router(hierarchy_transfer_routes.router, prefix="/api")
     # Registered before soldier_routes: soldier_routes has GET /soldiers/{soldier_id}
