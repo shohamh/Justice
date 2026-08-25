@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ProfilePage from "./ProfilePage";
 import { NotificationPref } from "../api/notifications";
-import { listFieldUpdates, FieldUpdateDTO } from "../api/soldiers";
+import { listFieldUpdates } from "../api/soldiers";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),

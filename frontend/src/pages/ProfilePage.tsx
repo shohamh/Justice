@@ -103,10 +103,13 @@ export default function ProfilePage() {
     queryFn: () => listFieldUpdates(user!.id),
     enabled: !!user,
   });
-  const fieldUpdates = fieldUpdatesQuery.data ?? [];
+  const fieldUpdates = useMemo(() => fieldUpdatesQuery.data ?? [], [fieldUpdatesQuery.data]);
 
   const ranksQuery = useQuery({ queryKey: queryKeys.ranks(), queryFn: getRanks });
-  const ranks = ranksQuery.data ?? { enlisted: [], officers: [], officer_academic: [] };
+  const ranks = useMemo(
+    () => ranksQuery.data ?? { enlisted: [], officers: [], officer_academic: [] },
+    [ranksQuery.data],
+  );
 
   // Effective value per editable field = stored DB value overlaid with the
   // newest pending field-update's new_value (i.e. what the value will become
