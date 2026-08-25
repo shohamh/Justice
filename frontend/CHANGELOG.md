@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-25
+
+### Features
+- Redesigned "Requests" page (replaces the constraints & exemptions page): a "New requests" tab with personal-constraint and exemption-request cards, and an "Existing requests" tab grouping every request type the soldier has in flight — personal constraints, exemption requests, field updates, active swaps (full swap cards with actions), hierarchy transfers, enrollment, and range excusals — plus a compact "currently active" panel of active exemptions and constraints.
+- Unseen-status badge on the requests page: a unified counter of requests decided since the last visit; opening the tab marks everything seen.
+- New soldier-facing endpoints for own hierarchy transfers, enrollment status, range-excusal history, and a unified unseen-decisions count with mark-seen.
+- Profile page: food type and food-constraints fields with per-field update requests, and a separate update-request button for holding a military driving license (in addition to the expiry date).
+
+### Fixes
+- Food-type and food-constraints update requests were silently rejected by the backend (missing from the editable-fields allowlist and approval branches) — the profile buttons appeared dead.
+- Submit buttons on the profile page now clearly show disabled vs enabled state (grey-out + cursor) instead of looking clickable while inert.
+- Mitvahim/alal date rows on the profile form no longer overflow the screen on mobile — form rows stack vertically on small screens.
+- Food type and food constraints are now private data: visible only to commanders in scope and duty managers, like phone/email.
+
+### Chores
+- Added requests-and-approvals domain glossary terms (CONTEXT.md) and an implementation plan for the requests-page redesign.
+
+
 ## 2026-08-24
 
 ### Features
