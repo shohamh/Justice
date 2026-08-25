@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, R
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
 import { api, setAccessToken } from "../api/client";
 
-interface AuthContextValue {
+export interface AuthContextValue {
   user: Me | null;
   loggedIn: boolean;
   authLoading: boolean;
