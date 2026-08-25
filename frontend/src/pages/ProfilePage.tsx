@@ -476,6 +476,14 @@ export default function ProfilePage() {
               <input type="checkbox" checked={licenseHasReq} onChange={e => setLicenseHasReq(e.target.checked)} />
               {t("soldier_profile.military_driving_license_has")}
             </label>
+            <button
+              type="button"
+              onClick={() => requestUpdate("military_driving_license", militaryLicensePayload(licenseHasReq, effectiveValues.license.expiry))}
+              disabled={licenseHasReq === effectiveValues.license.has}
+              className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {t("soldier_profile.submit_update")}
+            </button>
             <label htmlFor="military-license-expiry-input" className="text-sm text-gray-500 dark:text-gray-400">
               {t("soldier_profile.military_driving_license_expiry")}
             </label>
