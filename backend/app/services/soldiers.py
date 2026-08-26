@@ -213,6 +213,33 @@ def reset_password(session: Session, *, soldier: Soldier, actor_id: uuid.UUID | 
     return temp
 
 
+def promote_to_admin(
+    session: Session,
+    *,
+    soldier: Soldier,
+    actor_id: uuid.UUID | None,
+) -> Soldier:
+    """Promote a soldier to the administrator display role and audit the change.
+
+    Password reauthentication belongs at the authenticated route boundary, so
+    this service receives neither a plaintext password nor password metadata.
+    """
+    if soldier.role == "admin":
+        return soldier
+    previous_role = soldier.role
+    soldier.role = "admin"
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.role.promote_admin",
+        entity_type="soldier",
+        entity_id=soldier.id,
+        before={"role": previous_role},
+        after={"role": "admin"},
+    )
+    return soldier
+
+
 def soft_delete(
     session: Session,
     *,

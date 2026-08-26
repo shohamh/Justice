@@ -33,3 +33,9 @@ describe("he.json notification type coverage", () => {
     expect(missing).toEqual([]);
   });
 });
+
+describe("he.json admin promotion coverage", () => {
+  it("translates an incorrect acting-admin password", () => {
+    expect(he.errors).toHaveProperty("wrong_current_password", "הסיסמה הנוכחית שגויה.");
+  });
+});

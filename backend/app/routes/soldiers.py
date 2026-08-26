@@ -21,6 +21,7 @@ from app.auth.authz import (
     PRIVATE_FIELD_NAMES,
 )
 from app.auth.deps import require_password_changed
+from app.auth.password import verify_password
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
 from app.audit.writer import write_audit
@@ -115,6 +116,10 @@ class UpdateProfileRequest(BaseModel):
     food_type: Literal["regular", "vegetarian", "vegan", "gluten_free", "kosher_le_mehadrin"] | None = None
     food_constraints: str | None = Field(default=None, max_length=2000)
     next_rank_date: date_type | None = None
+
+
+class PromoteAdminRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
 
 
 class FieldUpdateRequest(BaseModel):
@@ -875,6 +880,32 @@ def reset_password(
     temp = svc.reset_password(session, soldier=s, actor_id=user.id)
     session.commit()
     return {"temp_password": temp}
+
+
+@router.post("/{soldier_id}/promote-admin", response_model=SoldierOut)
+def promote_admin(
+    soldier_id: uuid.UUID,
+    body: PromoteAdminRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierOut:
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="wrong_current_password")
+    soldier = _load(session, soldier_id)
+    svc.promote_to_admin(session, soldier=soldier, actor_id=user.id)
+    session.commit()
+    session.refresh(soldier)
+    phone_public, email_public = _contact_visibility(session)
+    return _out(
+        soldier,
+        session=session,
+        user=user,
+        include_private=can_see_private(session, user, soldier),
+        phone_public=phone_public,
+        email_public=email_public,
+    )
 
 
 @router.delete("/{soldier_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
