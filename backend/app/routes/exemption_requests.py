@@ -783,4 +783,5 @@ def get_soldier_exemption_request_history(
             nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
             can_approve_commander_step=can_commander_step, can_approve_duty_manager_step=can_dm_step,
         )
+        for r in reqs
     ]
