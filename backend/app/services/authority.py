@@ -10,6 +10,9 @@ from app.db.models import HierarchyNode, Soldier
 from app.services.hierarchy import get_level_rank
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 
+REQUEST_CANCELLATION_COMMANDER_MIN_LEVEL_KEY = "מדור"
+REQUEST_CANCELLATION_DUTY_MANAGER_MIN_LEVEL_KEY = "ענף"
+
 COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
 REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY = "מרכז"
 RANGE_ATTENDANCE_EDIT_MIN_LEVEL_KEY = "ענף"  # fallback default if no setting is configured
@@ -89,6 +92,37 @@ def rank_advancement_edit_authorized(
     duty_manager_root_ids = _dm_scope_node_ids_only(session, user.id)
     return dm_scope_covers_target(
         session, scope_root_ids=duty_manager_root_ids, target_node=target_node, required_level_key="מדור",
+    )
+
+
+def request_cancellation_authorized(
+    session: Session, *, user: Soldier, target_node: HierarchyNode | None,
+) -> bool:
+    """Whether a senior commander/duty manager or admin may cancel a request."""
+    if user.role == "admin":
+        return True
+    if target_node is None:
+        return False
+    if dm_scope_covers_target(
+        session, scope_root_ids=_commanded_node_ids_only(session, user.id),
+        target_node=target_node, required_level_key=REQUEST_CANCELLATION_COMMANDER_MIN_LEVEL_KEY,
+    ):
+        return True
+    return dm_scope_covers_target(
+        session, scope_root_ids=_dm_scope_node_ids_only(session, user.id),
+        target_node=target_node, required_level_key=REQUEST_CANCELLATION_DUTY_MANAGER_MIN_LEVEL_KEY,
+    )
+
+
+def senior_commander_approval_authorized(
+    session: Session, *, user: Soldier, target_node: HierarchyNode | None,
+) -> bool:
+    """Whether a commander at מדור or above covers the target node."""
+    if user.role == "admin":
+        return True
+    return target_node is not None and dm_scope_covers_target(
+        session, scope_root_ids=_commanded_node_ids_only(session, user.id),
+        target_node=target_node, required_level_key=REQUEST_CANCELLATION_COMMANDER_MIN_LEVEL_KEY,
     )
 
 

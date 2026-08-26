@@ -21,6 +21,7 @@ from app.db.models import (
 from app.db.session import get_session
 from app.services.authority import (
     commander_can_grant_commander_exemption, dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+    senior_commander_approval_authorized,
 )
 from app.services.exemption_requests import (
     ExemptionRequestError,
@@ -185,10 +186,12 @@ def _exemption_approval_flags(
     roots = scope_root_ids(session, user)
     user_is_commander = is_commander(session, user.id)
     user_is_duty_manager = is_duty_manager(session, user.id)
-    can_commander_step = can(
+    can_commander_step = senior_commander_approval_authorized(
+        session, user=user, target_node=target_node,
+    ) or (user_is_duty_manager and can(
         user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=roots,
         is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
-    )
+    ))
     can_dm_step = user_is_duty_manager and dm_scope_covers_target(
         session, scope_root_ids=roots, target_node=target_node,
         required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
@@ -529,7 +532,9 @@ def approve_exemption_request_commander_step(
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
     forbid_self_target(user, req.soldier_id)
-    authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
+    if not senior_commander_approval_authorized(session, user=user, target_node=target_node):
+        if not (is_duty_manager(session, user.id) and can(user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=scope_root_ids(session, user), is_commander=is_commander(session, user.id), is_duty_manager=True)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
         result = approve_commander_step(session, request_id, approved_by=user.id)
     except ExemptionRequestError as exc:

@@ -3,10 +3,10 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
-import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
+import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks, makeSoldierAdmin } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import { translateApiError } from "../utils/translateApiError";
-import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
+import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint, cancelConstraintForManager } from "../api/constraints";
 import Combobox from "./Combobox";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
@@ -19,6 +19,7 @@ import { useModalBackClose } from "../hooks/useModalBackClose";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import { parseRankSelectionId, rankSelectionId, RankTrack } from "../constants/ranks";
+import ReasonPromptModal from "./ReasonPromptModal";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -89,6 +90,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [hierarchyNodeId, setHierarchyNodeId] = useState(soldier.hierarchy_node_id ?? "");
   const [enrolledAt, setEnrolledAt] = useState(soldier.enrolled_at ?? "");
   const [constraints, setConstraints] = useState<PersonalConstraint[]>([]);
+  const [cancellingConstraintId, setCancellingConstraintId] = useState<string | null>(null);
+  const [promoting, setPromoting] = useState(false);
+  const [promotionPassword, setPromotionPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -282,6 +286,18 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     await refreshConstraints();
   }
 
+  async function handleCancelConstraint(reason?: string) {
+    if (!cancellingConstraintId) return;
+    await cancelConstraintForManager(cancellingConstraintId, reason);
+    setCancellingConstraintId(null);
+    await refreshConstraints();
+  }
+
+  async function handleCancelPendingConstraint(id: string) {
+    await cancelConstraintForManager(id);
+    await refreshConstraints();
+  }
+
   const rankComboItems = [
     ...rankOptions.enlisted.map(r => ({ id: rankSelectionId("enlisted", r), name: r, group: t("soldier_profile.enlisted") })),
     ...rankOptions.officers.map(r => ({ id: rankSelectionId("officer", r), name: r, group: t("soldier_profile.officers") })),
@@ -310,6 +326,16 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 )}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">{soldierData.personal_number} · {t(`role.${soldierData.role}`)}</p>
+              {isAdmin && soldierData.role !== "admin" && !promoting && (
+                <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setPromoting(true)} data-testid="make-admin-button">הפוך למנהל מערכת</button>
+              )}
+              {promoting && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-red-700">האם אתה בטוח? פעולה זו תעניק הרשאות מנהל מערכת.</p>
+                  <input type="password" value={promotionPassword} onChange={e => setPromotionPassword(e.target.value)} placeholder="סיסמת מנהל" className="border rounded p-1 text-xs dark:bg-gray-700" data-testid="admin-password" />
+                  <button type="button" className="text-xs bg-red-600 text-white rounded px-2 py-1 disabled:opacity-50" disabled={!promotionPassword} onClick={async () => { await makeSoldierAdmin(soldierData.id, promotionPassword); setPromoting(false); setPromotionPassword(""); onRefresh(); }} data-testid="confirm-make-admin">אישור</button>
+                </div>
+              )}
             </div>
           </div>
           <button
@@ -738,10 +764,18 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     </button>
                   </div>
                 )}
+                {c.can_cancel && (c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager") && (
+                  <button className="text-xs text-red-600 hover:underline" onClick={() => void handleCancelPendingConstraint(c.id)} data-testid={`cancel-constraint-${c.id}`}>בטל</button>
+                )}
+                {c.can_cancel && c.status === "approved" && (
+                  <button className="text-xs text-red-600 hover:underline" onClick={() => setCancellingConstraintId(c.id)} data-testid={`cancel-constraint-${c.id}`}>בטל</button>
+                )}
               </div>
             ))}
           </div>
         )}
+
+        {cancellingConstraintId && <ReasonPromptModal title="ביטול אילוץ אישי" description="זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול." onConfirm={handleCancelConstraint} onClose={() => setCancellingConstraintId(null)} />}
 
         {tab === "duty_history" && (
           <DutyHistoryPanel

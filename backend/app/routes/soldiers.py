@@ -21,6 +21,7 @@ from app.auth.authz import (
     PRIVATE_FIELD_NAMES,
 )
 from app.auth.deps import require_password_changed
+from app.auth.password import verify_password
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
 from app.audit.writer import write_audit
@@ -115,6 +116,14 @@ class UpdateProfileRequest(BaseModel):
     food_type: Literal["regular", "vegetarian", "vegan", "gluten_free", "kosher_le_mehadrin"] | None = None
     food_constraints: str | None = Field(default=None, max_length=2000)
     next_rank_date: date_type | None = None
+    has_military_driving_license: bool | None = None
+    military_driving_license_expiry: date_type | None = None
+    profile_picture_url: str | None = None
+
+
+class PromoteAdminRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    confirm: bool
 
 
 class FieldUpdateRequest(BaseModel):
@@ -766,6 +775,29 @@ def update_profile(
     session.refresh(s)
     phone_public, email_public = _contact_visibility(session)
     return _out(s, session=session, user=user, include_private=can_see_private(session, user, s), phone_public=phone_public, email_public=email_public)
+
+
+@router.post("/{soldier_id}/make-admin", response_model=SoldierOut)
+def make_admin(
+    soldier_id: uuid.UUID,
+    body: PromoteAdminRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierOut:
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if not body.confirm:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="confirmation_required")
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="wrong_current_password")
+    target = _load(session, soldier_id)
+    if target.role != "admin":
+        before = target.role
+        target.role = "admin"
+        write_audit(session, actor_id=user.id, action="soldier.role.promote_admin", entity_type="soldier", entity_id=target.id, before={"role": before}, after={"role": "admin"})
+    session.commit()
+    session.refresh(target)
+    return _out(target, session=session, user=user, include_private=True)
 
 
 @router.post("/{soldier_id}/field-updates", response_model=FieldUpdateOut, status_code=201)

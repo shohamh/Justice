@@ -176,7 +176,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                       </p>
                       <DaysBadge start={ex.start_date} end={ex.end_date} />
                     </div>
-                    {canManage && (
+                    {(ex.can_cancel || canManage) && (
                       <button
                         className="text-red-500 text-xs shrink-0"
                         onClick={(e) => { e.stopPropagation(); setRevokingId(ex.id); }}
@@ -366,6 +366,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
       {revokingId && (
         <ReasonPromptModal
           title={t("exemptions.revoke")}
+          description="זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול."
           onConfirm={(reason) => onRevoke(revokingId, reason)}
           onClose={() => setRevokingId(null)}
         />
