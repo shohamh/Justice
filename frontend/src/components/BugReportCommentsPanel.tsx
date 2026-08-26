@@ -82,11 +82,21 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, cont
       onClick={isImage ? () => onOpen(URL.createObjectURL(blob), fileName) : undefined}
     />
   );
-  if (isImage) return img;
-  return (
-    <a href={url} target="_blank" rel="noopener noreferrer">
+  if (isImage) return (
+    <div className="flex items-end gap-2">
       {img}
-    </a>
+      <a href={url} download={fileName} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+        {t("bug_reports.download_attachment")}
+      </a>
+    </div>
+  );
+  return (
+    <div className="flex items-end gap-2">
+      <a href={url} target="_blank" rel="noopener noreferrer">{img}</a>
+      <a href={url} download={fileName} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+        {t("bug_reports.download_attachment")}
+      </a>
+    </div>
   );
 }
 

@@ -73,3 +73,25 @@ describe("RangeDetailContent assignment actions", () => {
     expect(screen.queryByText("פעולות שיבוץ")).not.toBeInTheDocument();
   });
 });
+
+describe("RangeDetailContent food summary", () => {
+  it("shows separate primary and reserve food counts and special constraints to duty managers", () => {
+    const foodSummary = {
+      primary: { counts: { regular: 1, vegetarian: 1, vegan: 0, gluten_free: 0, kosher_le_mehadrin: 0, unspecified: 0 }, special_constraints: [{ soldier_id: "s1", soldier_name: "Dana", food_type: "vegetarian", constraint: "Peanut allergy" }] },
+      reserve: { counts: { regular: 0, vegetarian: 0, vegan: 1, gluten_free: 0, kosher_le_mehadrin: 0, unspecified: 0 }, special_constraints: [{ soldier_id: "s2", soldier_name: "Yuval", food_type: "vegan", constraint: "No soy" }] },
+    };
+    renderDetail({ canManage: true, isDutyManager: true, event: event({ food_summary: foodSummary } as Partial<RangeEvent>) });
+    expect(screen.getByTestId("range-food-summary")).toBeInTheDocument();
+    expect(screen.getByTestId("range-food-primary")).toHaveTextContent("1");
+    expect(screen.getByTestId("range-food-reserve")).toHaveTextContent("1");
+    expect(screen.getByText("Dana")).toBeInTheDocument();
+    expect(screen.getByText("Peanut allergy")).toBeInTheDocument();
+    expect(screen.getByText("Yuval")).toBeInTheDocument();
+    expect(screen.getByText("No soy")).toBeInTheDocument();
+  });
+
+  it("does not show the food summary to non-duty managers", () => {
+    renderDetail({ event: event({ food_summary: { primary: { counts: {}, special_constraints: [] }, reserve: { counts: {}, special_constraints: [] } } } as Partial<RangeEvent>), isDutyManager: false });
+    expect(screen.queryByTestId("range-food-summary")).not.toBeInTheDocument();
+  });
+});

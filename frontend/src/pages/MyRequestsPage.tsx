@@ -11,6 +11,7 @@ import TabBar from "../components/TabBar";
 import { DaysBadge } from "../components/DaysBadge";
 import AuditHistoryBlock from "../components/AuditHistoryBlock";
 import { MySwapCard } from "../components/MySwapCard";
+import SoldierLink from "../components/SoldierLink";
 import { useAuth } from "../auth/AuthContext";
 import { listExemptions } from "../api/exemptions";
 import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
@@ -38,19 +39,99 @@ import {
   listMyRangeExcusalRequests,
   markRequestsSeen,
 } from "../api/myRequests";
+import type { SoldierRef, WaitingOnRef } from "../api/myRequests";
 
-function waitingOnLabel(
-  status: string,
-  nearestCommander: { id: string; name: string } | null,
-  nearestDutyManager: { id: string; name: string } | null,
-): string | null {
-  if (status === "pending_commander" || status === "pending") {
-    return nearestCommander?.name ?? null;
-  }
-  if (status === "pending_duty_manager") {
-    return nearestDutyManager?.name ?? null;
-  }
-  return null;
+type StatusBucket = "pending" | "approved" | "rejected" | "cancelled";
+
+const STATUS_BUCKETS: StatusBucket[] = ["pending", "approved", "rejected", "cancelled"];
+
+/** Existing-tab groups in display order; ids double as URL ?type= values. */
+const REQUEST_TYPE_GROUPS = [
+  { id: "constraints", labelKey: "my_requests.section_constraints" },
+  { id: "exemption_requests", labelKey: "exemption_requests.title" },
+  { id: "field_updates", labelKey: "my_requests.group_field_updates" },
+  { id: "swaps", labelKey: "my_requests.group_swaps" },
+  { id: "transfers", labelKey: "my_requests.group_transfers" },
+  { id: "enrollment", labelKey: "my_requests.group_enrollment" },
+  { id: "range_excusals", labelKey: "my_requests.group_range_excusals" },
+] as const;
+
+type TypeFilterId = (typeof REQUEST_TYPE_GROUPS)[number]["id"];
+
+/** Maps any request-row status into a filter bucket — every pending_* variant
+ * counts as ממתין. */
+function statusBucket(status: string): StatusBucket {
+  if (status === "approved" || status === "rejected" || status === "cancelled") return status;
+  return "pending";
+}
+
+interface RequestMetaProps {
+  requestedAt?: string | null;
+  /** Fallback for rows whose backend payload predates requested_at. */
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  waitingOn?: WaitingOnRef | null;
+  decidedBy?: SoldierRef | null;
+  /** Row status — picks אושר ע״י vs נדחה ע״י when decidedBy is present. */
+  status?: string | null;
+  commanderApprovedBy?: SoldierRef | null;
+  testIdPrefix?: string;
+}
+
+/** Compact single metadata row shared by every request card in the existing
+ * tab: request/update dates, who it's waiting on, and who decided. */
+function RequestMetaRow({
+  requestedAt,
+  createdAt,
+  updatedAt,
+  waitingOn,
+  decidedBy,
+  status,
+  commanderApprovedBy,
+  testIdPrefix,
+}: RequestMetaProps) {
+  const { t } = useTranslation();
+  const requestedIso = requestedAt ?? createdAt ?? null;
+  const requestedDay = requestedIso ? formatDate(requestedIso.slice(0, 10)) : null;
+  const updatedDay = updatedAt ? formatDate(updatedAt.slice(0, 10)) : null;
+  // The update line only adds signal when it lands on a different day.
+  const showUpdate = updatedDay !== null && updatedDay !== requestedDay;
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+      data-testid={testIdPrefix ? `${testIdPrefix}-meta` : undefined}
+    >
+      {requestedDay && (
+        <span>
+          {t("my_requests.requested_at")}: <span dir="ltr">{requestedDay}</span>
+        </span>
+      )}
+      {showUpdate && (
+        <span>
+          {t("my_requests.updated_at")}: <span dir="ltr">{updatedDay}</span>
+        </span>
+      )}
+      {waitingOn && (
+        <span data-testid={testIdPrefix ? `${testIdPrefix}-waiting-on` : undefined}>
+          {t("my_requests.waiting_approval")}{" "}
+          <SoldierLink id={waitingOn.soldier_id} name={waitingOn.name} className="text-xs" />
+          {" "}({t(`my_requests.role_${waitingOn.kind}`)})
+        </span>
+      )}
+      {decidedBy && (status === "approved" || status === "rejected") && (
+        <span data-testid={testIdPrefix ? `${testIdPrefix}-decided-by` : undefined}>
+          {t(status === "approved" ? "my_requests.approved_by" : "my_requests.rejected_by")}{" "}
+          <SoldierLink id={decidedBy.soldier_id} name={decidedBy.name} className="text-xs" />
+        </span>
+      )}
+      {commanderApprovedBy && (
+        <span data-testid={testIdPrefix ? `${testIdPrefix}-commander-step` : undefined}>
+          {t("my_requests.commander_step")}:{" "}
+          <SoldierLink id={commanderApprovedBy.soldier_id} name={commanderApprovedBy.name} className="text-xs" />
+        </span>
+      )}
+    </div>
+  );
 }
 
 type RequestsTab = "new" | "existing";
@@ -71,6 +152,25 @@ export default function MyRequestsPage() {
 
   function setTab(next: RequestsTab) {
     setSearchParams((prev) => { prev.set("tab", next); return prev; }, { replace: true });
+  }
+
+  // Existing-tab filters, persisted in the URL alongside ?tab=existing.
+  const rawTypeFilter = searchParams.get("type");
+  const typeFilter: TypeFilterId | "all" =
+    rawTypeFilter && REQUEST_TYPE_GROUPS.some((g) => g.id === rawTypeFilter)
+      ? (rawTypeFilter as TypeFilterId)
+      : "all";
+  const rawStatusFilter = searchParams.get("status");
+  const statusFilter: StatusBucket | "all" =
+    rawStatusFilter && STATUS_BUCKETS.includes(rawStatusFilter as StatusBucket)
+      ? (rawStatusFilter as StatusBucket)
+      : "all";
+
+  function setFilter(key: "type" | "status", value: string) {
+    setSearchParams((prev) => {
+      if (value === "all") prev.delete(key); else prev.set(key, value);
+      return prev;
+    }, { replace: true });
   }
 
   const [constraintFormOpen, setConstraintFormOpen] = useState(false);
@@ -156,6 +256,18 @@ export default function MyRequestsPage() {
 
   const rangeExcusalsQuery = useQuery({ queryKey: queryKeys.myRangeExcusalRequests(), queryFn: listMyRangeExcusalRequests });
   const rangeExcusals = rangeExcusalsQuery.data ?? [];
+
+  // Existing-tab rows after the type/status filters. Swaps never carry an
+  // approved bucket — open/applied both count as ממתין.
+  const matchesStatus = (status: string) =>
+    statusFilter === "all" || statusBucket(status) === statusFilter;
+  const showGroup = (id: TypeFilterId) => typeFilter === "all" || typeFilter === id;
+  const visibleConstraints = items.filter((c) => matchesStatus(c.status));
+  const visibleExemptionRequests = exemptionRequests.filter((er) => matchesStatus(er.status));
+  const visibleFieldUpdates = fieldUpdates.filter((u) => matchesStatus(u.status));
+  const visibleSwaps = inProcessSwaps.filter((s) => matchesStatus(s.status));
+  const visibleTransfers = transfers.filter((tr) => matchesStatus(tr.status));
+  const visibleRangeExcusals = rangeExcusals.filter((r) => matchesStatus(r.status));
 
   // Opening the existing-requests tab marks everything as seen so the badge
   // clears; deep-linking straight to ?tab=existing counts as opening it.
@@ -489,7 +601,41 @@ export default function MyRequestsPage() {
 
         {tab === "existing" && (
           <div className="space-y-6" data-testid="existing-requests-tab">
-            {(activeConstraints.length > 0 || activeExemptions.length > 0) && (
+            {/* Type/status filters — persisted in URL query params alongside ?tab=existing. */}
+            <div className="flex flex-wrap items-end gap-3" data-testid="requests-filters">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="filter-type" className="text-xs text-gray-500 dark:text-gray-400">{t("my_requests.filter_type_label")}</label>
+                <select
+                  id="filter-type"
+                  className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  data-testid="filter-type"
+                  value={typeFilter}
+                  onChange={(e) => setFilter("type", e.target.value)}
+                >
+                  <option value="all">{t("my_requests.filter_all")}</option>
+                  {REQUEST_TYPE_GROUPS.map((g) => (
+                    <option key={g.id} value={g.id}>{t(g.labelKey)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="filter-status" className="text-xs text-gray-500 dark:text-gray-400">{t("my_requests.filter_status_label")}</label>
+                <select
+                  id="filter-status"
+                  className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  data-testid="filter-status"
+                  value={statusFilter}
+                  onChange={(e) => setFilter("status", e.target.value)}
+                >
+                  <option value="all">{t("my_requests.filter_all")}</option>
+                  {STATUS_BUCKETS.map((b) => (
+                    <option key={b} value={b}>{b === "pending" ? t("my_requests.filter_pending") : t(`my_requests.${b}`)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {typeFilter === "all" && (activeConstraints.length > 0 || activeExemptions.length > 0) && (
               <section className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950 p-4 space-y-2" data-testid="active-panel">
                 <h3 className="font-medium text-indigo-800 dark:text-indigo-200">{t("my_requests.active_now")}</h3>
                 <ul className="space-y-1.5 text-sm">
@@ -517,29 +663,22 @@ export default function MyRequestsPage() {
             )}
 
             {/* Personal constraints */}
+            {showGroup("constraints") && (
             <section className="space-y-3" data-testid="group-constraints">
               <h3 className="font-medium">{t("my_requests.section_constraints")}</h3>
-              {items.length === 0 && <p className="text-sm text-gray-500" data-testid="no-constraints">{t("my_requests.none")}</p>}
+              {visibleConstraints.length === 0 && <p className="text-sm text-gray-500" data-testid="no-constraints">{t("my_requests.none")}</p>}
 
-              {items.filter((c) => c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager").length > 0 && (
+              {visibleConstraints.filter((c) => statusBucket(c.status) === "pending").length > 0 && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.pending_constraints")}</h4>
                   <ul className="space-y-2 text-sm" data-testid="constraints-list">
-                    {items.filter((c) => c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager").map((c) => (
+                    {visibleConstraints.filter((c) => statusBucket(c.status) === "pending").map((c) => (
                       <li key={c.id} className="border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-800 flex flex-col gap-2" data-testid={`constraint-row-${c.id}`}>
                         <div className="flex items-center gap-3">
                           <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
                           <DaysBadge start={c.start_date} end={c.end_date} />
                           <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                           {statusBadge(c.status)}
-                          {(() => {
-                            const waitingOn = waitingOnLabel(c.status, c.nearest_commander, c.nearest_duty_manager);
-                            return waitingOn ? (
-                              <span className="text-xs text-gray-500 dark:text-gray-400" data-testid={`constraint-waiting-on-${c.id}`}>
-                                ממתין ל: {waitingOn}
-                              </span>
-                            ) : null;
-                          })()}
                           {/* Either pending step is cancelable — see cancel_constraint
                               in backend/app/services/constraints.py. Once approved or
                               rejected it's final, so hide the button to avoid a call
@@ -550,6 +689,16 @@ export default function MyRequestsPage() {
                             </button>
                           )}
                         </div>
+                        <RequestMetaRow
+                          testIdPrefix={`constraint-${c.id}`}
+                          requestedAt={c.requested_at}
+                          createdAt={c.created_at}
+                          updatedAt={c.updated_at}
+                          waitingOn={c.waiting_on}
+                          decidedBy={c.decided_by}
+                          status={c.status}
+                          commanderApprovedBy={c.commander_approved_by}
+                        />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
                     ))}
@@ -557,11 +706,11 @@ export default function MyRequestsPage() {
                 </div>
               )}
 
-              {items.filter((c) => c.status === "approved").length > 0 && (
+              {visibleConstraints.filter((c) => c.status === "approved").length > 0 && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.approved_constraints")}</h4>
                   <ul className="space-y-2 text-sm">
-                    {items.filter((c) => c.status === "approved").map((c) => (
+                    {visibleConstraints.filter((c) => c.status === "approved").map((c) => (
                       <li key={c.id} className="border border-green-200 dark:border-green-800 rounded-lg p-3 bg-green-50 dark:bg-green-950" data-testid={`constraint-row-${c.id}`}>
                         <div className="flex items-center gap-3">
                           <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
@@ -569,6 +718,16 @@ export default function MyRequestsPage() {
                           <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                           {statusBadge(c.status)}
                         </div>
+                        <RequestMetaRow
+                          testIdPrefix={`constraint-${c.id}`}
+                          requestedAt={c.requested_at}
+                          createdAt={c.created_at}
+                          updatedAt={c.updated_at}
+                          waitingOn={c.waiting_on}
+                          decidedBy={c.decided_by}
+                          status={c.status}
+                          commanderApprovedBy={c.commander_approved_by}
+                        />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
                     ))}
@@ -576,11 +735,11 @@ export default function MyRequestsPage() {
                 </div>
               )}
 
-              {items.filter((c) => c.status === "rejected").length > 0 && (
+              {visibleConstraints.filter((c) => c.status === "rejected").length > 0 && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.rejected_constraints")}</h4>
                   <ul className="space-y-2 text-sm">
-                    {items.filter((c) => c.status === "rejected").map((c) => (
+                    {visibleConstraints.filter((c) => c.status === "rejected").map((c) => (
                       <li key={c.id} className="border border-red-200 dark:border-red-800 rounded-lg p-3 bg-red-50 dark:bg-red-950" data-testid={`constraint-row-${c.id}`}>
                         <div className="flex items-center gap-3">
                           <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
@@ -588,6 +747,16 @@ export default function MyRequestsPage() {
                           <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                           {statusBadge(c.status)}
                         </div>
+                        <RequestMetaRow
+                          testIdPrefix={`constraint-${c.id}`}
+                          requestedAt={c.requested_at}
+                          createdAt={c.created_at}
+                          updatedAt={c.updated_at}
+                          waitingOn={c.waiting_on}
+                          decidedBy={c.decided_by}
+                          status={c.status}
+                          commanderApprovedBy={c.commander_approved_by}
+                        />
                         {c.decision_note && (
                           <p className="text-xs text-red-700 dark:text-red-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
                         )}
@@ -598,13 +767,15 @@ export default function MyRequestsPage() {
                 </div>
               )}
             </section>
+            )}
 
             {/* Exemption requests */}
+            {showGroup("exemption_requests") && (
             <section className="space-y-2" data-testid="group-exemption-requests">
               <h3 className="font-medium">{t("exemption_requests.title")}</h3>
-              {exemptionRequests.length === 0 && <p className="text-sm text-gray-500">{t("exemption_requests.none")}</p>}
+              {visibleExemptionRequests.length === 0 && <p className="text-sm text-gray-500">{t("exemption_requests.none")}</p>}
               <ul className="text-sm space-y-1" data-testid="er-list">
-                {exemptionRequests.map((er) => (
+                {visibleExemptionRequests.map((er) => (
                   <li key={er.id} className="flex flex-col gap-0.5">
                     <div className="flex items-center gap-3">
                       <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
@@ -615,15 +786,17 @@ export default function MyRequestsPage() {
                         er.status === "approved" ? "text-green-600 dark:text-green-400" :
                         er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
                       }`}>{t(`exemption_requests.${er.status}`)}</span>
-                      {(() => {
-                        const waitingOn = waitingOnLabel(er.status, er.nearest_commander, er.nearest_duty_manager);
-                        return waitingOn ? (
-                          <span className="text-xs text-gray-500 dark:text-gray-400" data-testid={`er-waiting-on-${er.id}`}>
-                            ממתין ל: {waitingOn}
-                          </span>
-                        ) : null;
-                      })()}
                     </div>
+                    <RequestMetaRow
+                      testIdPrefix={`er-${er.id}`}
+                      requestedAt={er.requested_at}
+                      createdAt={er.created_at}
+                      updatedAt={er.updated_at}
+                      waitingOn={er.waiting_on}
+                      decidedBy={er.decided_by}
+                      status={er.status}
+                      commanderApprovedBy={er.commander_approved_by}
+                    />
                     {er.status === "rejected" && er.decision_note && (
                       <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {er.decision_note}</p>
                     )}
@@ -631,13 +804,16 @@ export default function MyRequestsPage() {
                 ))}
               </ul>
             </section>
+            )}
+
 
             {/* Profile field updates */}
+            {showGroup("field_updates") && (
             <section className="space-y-2" data-testid="group-field-updates">
               <h3 className="font-medium">{t("my_requests.group_field_updates")}</h3>
-              {fieldUpdates.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_field_updates")}</p>}
+              {visibleFieldUpdates.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_field_updates")}</p>}
               <div className="space-y-2 text-sm">
-                {fieldUpdates.map((u) => (
+                {visibleFieldUpdates.map((u) => (
                   <div key={u.id} data-testid={`field-update-row-${u.id}`} className="border dark:border-gray-600 rounded p-3 space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{t(`soldier_profile.${u.field_name}`)}</span>
@@ -651,6 +827,15 @@ export default function MyRequestsPage() {
                     <div className="text-gray-500">
                       {t("soldier_profile.new_value")}: <span className="font-mono">{formatFieldUpdateValue(u.field_name, u.new_value, t)}</span>
                     </div>
+                    <RequestMetaRow
+                      testIdPrefix={`field-update-${u.id}`}
+                      requestedAt={u.requested_at}
+                      createdAt={u.created_at}
+                      updatedAt={u.updated_at}
+                      waitingOn={u.waiting_on}
+                      decidedBy={u.decided_by}
+                      status={u.status}
+                    />
                     {u.decision_note && (
                       <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {u.decision_note}</p>
                     )}
@@ -658,22 +843,28 @@ export default function MyRequestsPage() {
                 ))}
               </div>
             </section>
+            )}
+
 
             {/* Swaps in process — full reuse of the SwapsPage card incl. actions */}
+            {showGroup("swaps") && (
             <section className="space-y-2" data-testid="group-swaps">
               <h3 className="font-medium">{t("my_requests.group_swaps")}</h3>
-              {inProcessSwaps.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_swaps")}</p>}
+              {visibleSwaps.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_swaps")}</p>}
               <ul className="space-y-2">
-                {inProcessSwaps.map((s) => <MySwapCard key={s.id} swap={s} />)}
+                {visibleSwaps.map((s) => <MySwapCard key={s.id} swap={s} />)}
               </ul>
             </section>
+            )}
+
 
             {/* Hierarchy transfer requests */}
+            {showGroup("transfers") && (
             <section className="space-y-2" data-testid="group-transfers">
               <h3 className="font-medium">{t("my_requests.group_transfers")}</h3>
-              {transfers.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_transfers")}</p>}
+              {visibleTransfers.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_transfers")}</p>}
               <ul className="space-y-2 text-sm">
-                {transfers.map((tr) => (
+                {visibleTransfers.map((tr) => (
                   <li key={tr.id} data-testid={`transfer-row-${tr.id}`} className="border dark:border-gray-600 rounded-lg p-3 space-y-1">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span>
@@ -685,9 +876,15 @@ export default function MyRequestsPage() {
                       </span>
                       {statusBadge(tr.status)}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {t("my_requests.submitted")}: {formatDate(tr.created_at)}
-                    </div>
+                    <RequestMetaRow
+                      testIdPrefix={`transfer-${tr.id}`}
+                      requestedAt={tr.requested_at}
+                      createdAt={tr.created_at}
+                      updatedAt={tr.updated_at}
+                      waitingOn={tr.waiting_on}
+                      decidedBy={tr.decided_by}
+                      status={tr.status}
+                    />
                     {tr.decision_note && (
                       <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {tr.decision_note}</p>
                     )}
@@ -695,34 +892,46 @@ export default function MyRequestsPage() {
                 ))}
               </ul>
             </section>
+            )}
+
 
             {/* Enrollment request */}
+            {showGroup("enrollment") && (
             <section className="space-y-2" data-testid="group-enrollment">
               <h3 className="font-medium">{t("my_requests.group_enrollment")}</h3>
-              {enrollmentRequest ? (
+              {enrollmentRequest && matchesStatus(enrollmentRequest.status) ? (
                 <div data-testid="enrollment-row" className="border dark:border-gray-600 rounded-lg p-3 text-sm space-y-1">
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-medium">{enrollmentRequest.requested_node_name}</span>
                     {statusBadge(enrollmentRequest.status)}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {t("my_requests.submitted")}: {formatDate(enrollmentRequest.created_at)}
-                  </div>
+                  <RequestMetaRow
+                    testIdPrefix={`enrollment-${enrollmentRequest.id}`}
+                    requestedAt={enrollmentRequest.requested_at}
+                    createdAt={enrollmentRequest.created_at}
+                    updatedAt={enrollmentRequest.updated_at}
+                    waitingOn={enrollmentRequest.waiting_on}
+                    decidedBy={enrollmentRequest.decided_by}
+                    status={enrollmentRequest.status}
+                  />
                   {enrollmentRequest.decision_note && (
                     <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {enrollmentRequest.decision_note}</p>
                   )}
                 </div>
-              ) : (
+              ) : !enrollmentRequest ? (
                 <p className="text-sm text-gray-500">{t("my_requests.empty_enrollment")}</p>
-              )}
+              ) : null}
             </section>
+            )}
+
 
             {/* Range excusal requests */}
+            {showGroup("range_excusals") && (
             <section className="space-y-2" data-testid="group-range-excusals">
               <h3 className="font-medium">{t("my_requests.group_range_excusals")}</h3>
-              {rangeExcusals.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_range_excusals")}</p>}
+              {visibleRangeExcusals.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_range_excusals")}</p>}
               <ul className="space-y-2 text-sm">
-                {rangeExcusals.map((r) => (
+                {visibleRangeExcusals.map((r) => (
                   <li key={r.id} data-testid={`range-excusal-row-${r.id}`} className="border dark:border-gray-600 rounded-lg p-3 space-y-1">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span dir="ltr">{r.range_date}</span>
@@ -731,6 +940,15 @@ export default function MyRequestsPage() {
                       <span className="text-gray-700 dark:text-gray-300 flex-1">{r.reason}</span>
                       {statusBadge(r.status)}
                     </div>
+                    <RequestMetaRow
+                      testIdPrefix={`range-excusal-${r.id}`}
+                      requestedAt={r.requested_at}
+                      createdAt={r.created_at}
+                      updatedAt={r.updated_at}
+                      waitingOn={r.waiting_on}
+                      decidedBy={r.decided_by}
+                      status={r.status}
+                    />
                     {r.decision_note && (
                       <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {r.decision_note}</p>
                     )}
@@ -738,6 +956,7 @@ export default function MyRequestsPage() {
                 ))}
               </ul>
             </section>
+            )}
           </div>
         )}
       </section>

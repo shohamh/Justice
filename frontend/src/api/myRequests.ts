@@ -1,8 +1,24 @@
+import { api } from "./client";
 // Wrappers for the soldier-facing "all my requests" endpoints that back
 // MyRequestsPage's existing-requests tab and its unseen-decision badge.
-import { api } from "./client";
+/** { soldier_id, name } reference to a soldier, resolved server-side. */
+export interface SoldierRef {
+  soldier_id: string;
+  name: string;
+}
+
+/** Who a still-pending request is waiting on, resolved server-side while the
+ * request sits at that step (null once decided/cancelled). */
+export interface WaitingOnRef extends SoldierRef {
+  kind: "commander" | "duty_manager";
+}
 
 export interface MyHierarchyTransfer {
+  requested_at: string;
+  updated_at: string;
+  waiting_on: WaitingOnRef | null;
+  decided_by: SoldierRef | null;
+  commander_approved_by: SoldierRef | null;
   id: string;
   status: string;
   created_at: string;
@@ -17,6 +33,11 @@ export async function listMyHierarchyTransfers(): Promise<MyHierarchyTransfer[]>
 }
 
 export interface MyEnrollmentRequest {
+  requested_at: string;
+  updated_at: string;
+  waiting_on: WaitingOnRef | null;
+  decided_by: SoldierRef | null;
+  commander_approved_by: SoldierRef | null;
   id: string;
   status: string;
   requested_node_id: string;
@@ -31,6 +52,11 @@ export async function getMyEnrollment(): Promise<{ request: MyEnrollmentRequest 
 }
 
 export interface MyRangeExcusalRequest {
+  requested_at: string;
+  updated_at: string;
+  waiting_on: WaitingOnRef | null;
+  decided_by: SoldierRef | null;
+  commander_approved_by: SoldierRef | null;
   id: string;
   status: "pending" | "approved" | "rejected";
   reason: string;

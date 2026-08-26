@@ -1649,7 +1649,7 @@ def _try_projected_transparency_rows(
         # Normalisation is computed over the FULL active population (dev
         # behavior) regardless of which rows this viewer may see.
         population_spd.append(cum / Decimal(ad))
-        if viewer is not None and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+        if viewer is not None and s.id != viewer.id and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
             continue
         soldier_exemptions = exemptions_by_soldier.get(s.id, [])
         in_scope = node is not None and any(root in node.path_ids for root in roots)
@@ -1781,7 +1781,7 @@ def _legacy_transparency_rows(
         # Normalisation is computed over the FULL active population (dev
         # behavior) regardless of which rows this viewer may see.
         population_spd.append(cum / Decimal(ad))
-        if viewer is not None and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+        if viewer is not None and s.id != viewer.id and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
             continue
         soldier_exemptions = exemptions_by_soldier.get(s.id, [])
         in_scope = node is not None and any(root in node.path_ids for root in roots)

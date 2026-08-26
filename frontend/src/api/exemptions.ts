@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { SoldierRef, WaitingOnRef } from "./myRequests";
 
 export interface Exemption {
   id: string;
@@ -54,8 +55,11 @@ export interface ExemptionRequest {
   end_date: string | null;
   reason: string | null;
   status: "pending_commander" | "pending_duty_manager" | "approved" | "rejected";
-  enrollment_request_id: string | null;
-  decided_by: string | null;
+  commander_approved_by: SoldierRef | null;
+  waiting_on: WaitingOnRef | null;
+  decided_by: SoldierRef | null;
+  requested_at: string;
+  updated_at: string;
   decision_note: string | null;
   created_at: string;
   files: ExemptionFile[];

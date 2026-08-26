@@ -40,6 +40,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services.settings_loader import SettingNotFound, get_setting, set_setting
+from app.services.request_metadata import latest_activity, person_ref, soldier_names
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -56,10 +57,20 @@ _DECIDED_EXEMPTION_NOTIFICATION_TYPES = (
 # ── Schemas ──
 
 
+class PersonRefOut(BaseModel):
+    soldier_id: uuid.UUID
+    name: str
+
+
+class WaitingOnOut(BaseModel):
+    kind: str  # "commander" | "duty_manager"
+    soldier_id: uuid.UUID
+    name: str
+
+
 class NodeRefOut(BaseModel):
     id: uuid.UUID
     name: str
-
 
 class HierarchyTransferOut(BaseModel):
     id: uuid.UUID
@@ -69,6 +80,11 @@ class HierarchyTransferOut(BaseModel):
     decision_note: str | None
     from_node: NodeRefOut | None
     to_node: NodeRefOut | None
+    requested_at: datetime
+    updated_at: datetime
+    waiting_on: WaitingOnOut | None = None
+    decided_by: PersonRefOut | None = None
+    commander_approved_by: PersonRefOut | None = None
 
 
 class EnrollmentRequestOut(BaseModel):
@@ -79,6 +95,11 @@ class EnrollmentRequestOut(BaseModel):
     created_at: datetime
     decided_at: datetime | None
     decision_note: str | None
+    requested_at: datetime
+    updated_at: datetime
+    waiting_on: WaitingOnOut | None = None
+    decided_by: PersonRefOut | None = None
+    commander_approved_by: PersonRefOut | None = None
 
 
 class EnrollmentOut(BaseModel):
@@ -97,6 +118,11 @@ class RangeExcusalOut(BaseModel):
     range_date: date | None
     range_type: str | None
     range_location_name: str | None
+    requested_at: datetime
+    updated_at: datetime
+    waiting_on: WaitingOnOut | None = None
+    decided_by: PersonRefOut | None = None
+    commander_approved_by: PersonRefOut | None = None
 
 
 class UnseenCountOut(BaseModel):
@@ -147,17 +173,27 @@ def _node_names(session: Session, node_ids: set[uuid.UUID]) -> dict[uuid.UUID, s
     return {n.id: n.name for n in rows}
 
 
-def _transfer_decision_times(session: Session, request_ids: list[uuid.UUID]) -> dict[uuid.UUID, datetime]:
+def _transfer_decisions(
+    session: Session, request_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[datetime, uuid.UUID | None]]:
+    """Latest approve/reject audit entry per transfer → (decision time, actor).
+
+    HierarchyTransferRequest carries no decision columns; the audit log is the
+    single source of truth for both decided_at and decided_by."""
     rows = session.execute(
-        select(AuditLog.entity_id, func.max(AuditLog.created_at))
+        select(AuditLog.entity_id, AuditLog.created_at, AuditLog.actor_id)
         .where(
             AuditLog.entity_type == "hierarchy_transfer_request",
             AuditLog.action.in_(_TRANSFER_DECISION_ACTIONS),
             AuditLog.entity_id.in_(request_ids),
         )
-        .group_by(AuditLog.entity_id)
+        .order_by(AuditLog.created_at.asc())
     ).all()
-    return {entity_id: ts for entity_id, ts in rows}
+    decisions: dict[uuid.UUID, tuple[datetime, uuid.UUID | None]] = {}
+    for entity_id, ts, actor_id in rows:
+        # Ascending order → the last write per entity is its latest decision.
+        decisions[entity_id] = (ts, actor_id)
+    return decisions
 
 
 # ── History views ──
@@ -178,11 +214,12 @@ def my_hierarchy_transfers(
     if not reqs:
         return []
 
-    decided_at = _transfer_decision_times(session, [r.id for r in reqs])
+    decisions = _transfer_decisions(session, [r.id for r in reqs])
     names = _node_names(
         session,
         {r.to_node_id for r in reqs} | {r.from_node_id for r in reqs if r.from_node_id is not None},
     )
+    actor_names = soldier_names(session, {actor for _, actor in decisions.values()})
 
     def _node(node_id: uuid.UUID | None) -> NodeRefOut | None:
         if node_id is None:
@@ -194,12 +231,20 @@ def my_hierarchy_transfers(
             id=r.id,
             status=r.status,
             created_at=r.created_at,
-            decided_at=decided_at.get(r.id),
+            decided_at=decided_at,
             decision_note=r.decision_note,
             from_node=_node(r.from_node_id),
             to_node=_node(r.to_node_id),
+            requested_at=r.created_at,
+            updated_at=latest_activity(r.created_at, decided_at),
+            # Plain "pending" flow with no named commander/duty-manager step.
+            waiting_on=None,
+            # No decided_by column — derived from the decision audit entry.
+            decided_by=person_ref(session, actor_id, actor_names),
+            commander_approved_by=None,
         )
         for r in reqs
+        for decided_at, actor_id in (decisions.get(r.id) or (None, None),)
     ]
 
 
@@ -226,6 +271,12 @@ def my_enrollment(
             created_at=req.created_at,
             decided_at=req.decided_at,
             decision_note=req.decision_note,
+            requested_at=req.created_at,
+            updated_at=latest_activity(req.created_at, req.decided_at),
+            # Plain "pending" flow with no named commander/duty-manager step.
+            waiting_on=None,
+            decided_by=person_ref(session, req.decided_by),
+            commander_approved_by=None,
         )
     )
 
@@ -272,6 +323,7 @@ def my_range_excusal_requests(
     location_names = _range_location_names(
         session, {e.range_location_id for e in events_by_id.values()}
     )
+    decider_names = soldier_names(session, {r.decided_by for r in reqs})
     out: list[RangeExcusalOut] = []
     for r in reqs:
         event: RangeEvent | None = None
@@ -291,6 +343,12 @@ def my_range_excusal_requests(
                 range_date=event.date if event else None,
                 range_type=str(_plain(event.range_type)) if event else None,
                 range_location_name=location_names.get(event.range_location_id) if event else None,
+                requested_at=r.requested_at,
+                updated_at=latest_activity(r.requested_at, r.decided_at),
+                # Plain "pending" flow with no named commander/duty-manager step.
+                waiting_on=None,
+                decided_by=person_ref(session, r.decided_by, decider_names),
+                commander_approved_by=None,
             )
         )
     return out

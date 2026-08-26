@@ -557,7 +557,7 @@ interface CandidateTableProps {
 }
 
 function CandidateTable({ unblocked, blocked, selected, onToggle, full }: CandidateTableProps) {
-  const [blockedOpen, setBlockedOpen] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(true);
   return (
     <div className="border dark:border-gray-600 rounded overflow-x-auto">
       <table className="w-full text-xs">
@@ -606,7 +606,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
               <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
-              <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
+              <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>
           ))}
         </tbody>
@@ -623,7 +623,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
   showDist: boolean;
   full: boolean;
 }) {
-  const [blockedOpen, setBlockedOpen] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(true);
   const cols = showDist ? 6 : 5;
   return (
     <div className="border dark:border-gray-600 rounded overflow-x-auto">
@@ -676,7 +676,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
               <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
               {showDist && <td className="p-2"></td>}
-              <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
+              <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>
           ))}
         </tbody>

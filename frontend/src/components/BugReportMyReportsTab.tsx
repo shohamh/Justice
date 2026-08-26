@@ -88,7 +88,7 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
                   <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">
                     {bugReportStatusLabel(report.status)}
                   </span>
-                  <span className="flex-1 truncate">{report.description}</span>
+                  <span className="flex-1 min-w-0 whitespace-pre-wrap text-right">{report.description}</span>
                   {report.has_unseen_activity && (
                     <span
                       className="w-2 h-2 rounded-full bg-red-500 shrink-0"
@@ -102,7 +102,12 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
                   <span className="text-gray-400 shrink-0">{isExpanded ? "▲" : "▼"}</span>
                 </button>
                 {isExpanded && (
-                  <div className="border-t dark:border-gray-600">
+                  <div className="border-t dark:border-gray-600 p-3 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                      <div><span className="font-medium">{t("bug_reports.report_route")}: </span>{report.route}</div>
+                      <div><span className="font-medium">{t("bug_reports.report_created")}: </span>{new Date(report.created_at).toLocaleString("he-IL", { hour12: false })}</div>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm"><span className="font-medium">{t("bug_reports.description")}: </span>{report.description}</p>
                     <BugReportCommentsPanel reportId={report.id} />
                   </div>
                 )}

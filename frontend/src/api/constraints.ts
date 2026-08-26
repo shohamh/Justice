@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { SoldierRef, WaitingOnRef } from "./myRequests";
 
 export interface PersonalConstraint {
   id: string;
@@ -9,7 +10,11 @@ export interface PersonalConstraint {
   end_date: string;
   reason: string | null;
   status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled";
-  decided_by: string | null;
+  commander_approved_by: SoldierRef | null;
+  waiting_on: WaitingOnRef | null;
+  decided_by: SoldierRef | null;
+  requested_at: string;
+  updated_at: string;
   decided_at: string | null;
   decision_note: string | null;
   created_at: string;

@@ -15,6 +15,14 @@ export function formatDate(d: string | Date): string {
   return `${dd}.${mm}.${yyyy}`;
 }
 
+export function formatDateTimeIsrael(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat("he-IL", {
+    timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(date);
+}
+
 /**
  * True if `from` is not after `to` (ISO yyyy-mm-dd strings compare correctly
  * lexicographically). A missing value on either side is treated as "not yet
