@@ -85,6 +85,7 @@ export async function resetSoldierPassword(id: string): Promise<{ temp_password:
 export async function promoteSoldierToAdmin(id: string, currentPassword: string): Promise<SoldierDTO> {
   return (await api.post<SoldierDTO>(`/soldiers/${id}/promote-admin`, {
     current_password: currentPassword,
+    confirm: true,
   })).data;
 }
 

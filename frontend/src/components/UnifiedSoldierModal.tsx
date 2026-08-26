@@ -96,6 +96,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileError, setProfileError] = useState<string | null>(null);
   // Profile fields
   const [profileGender, setProfileGender] = useState(soldier.gender ?? "");
+  const [profileIsOfficer, setProfileIsOfficer] = useState(soldier.is_officer ?? false);
   const [profileRank, setProfileRank] = useState(soldier.rank ?? "");
   const [profileRankTrack, setProfileRankTrack] = useState<RankTrack>(soldier.rank_track ?? (soldier.is_officer ? "officer" : "enlisted"));
   const [profileEnlistment, setProfileEnlistment] = useState(soldier.enlistment_date ?? "");
@@ -127,6 +128,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     profileRankTrack !== (soldierData.rank_track ?? (soldierData.is_officer ? "officer" : "enlisted"));
   const nextRankDateDirty = nextRankDate !== (soldierData.next_rank_date ?? "");
   const genderDirty = profileGender !== (soldierData.gender ?? "");
+  const isOfficerDirty = profileIsOfficer !== (soldierData.is_officer ?? false);
   const enlistmentDirty = profileEnlistment !== (soldierData.enlistment_date ?? "");
   const mandEndDirty = profileMandEnd !== (soldierData.mandatory_end_date ?? "");
   const dischargeDirty = profileDischarge !== (soldierData.discharge_date ?? "");
@@ -145,7 +147,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   // unconditionally for whatever's in the payload, so a no-op save would
   // otherwise log a misleading "changed" entry for every field it sent.
   const profileDirty =
-    genderDirty || enlistmentDirty || mandEndDirty || dischargeDirty || mitvahimDirty || alalDirty ||
+    genderDirty || isOfficerDirty || enlistmentDirty || mandEndDirty || dischargeDirty || mitvahimDirty || alalDirty ||
     emailDirty || pictureDirty || licenseDirty ||
     foodTypeDirty || foodConstraintsDirty ||
     (soldierData.can_edit_rank_advancement && (rankFieldsDirty || nextRankDateDirty));
@@ -160,6 +162,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     setHierarchyNodeId(soldierData.hierarchy_node_id ?? "");
     setEnrolledAt(soldierData.enrolled_at ?? "");
     setProfileRank(soldierData.rank ?? "");
+    setProfileIsOfficer(soldierData.is_officer ?? false);
     setProfileRankTrack(soldierData.rank_track ?? (soldierData.is_officer ? "officer" : "enlisted"));
     setNextRankDate(soldierData.next_rank_date ?? "");
   }, [soldierData]);
@@ -212,6 +215,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     try {
       await updateSoldierProfile(soldierData.id, {
         ...(genderDirty ? { gender: profileGender || null } : {}),
+        ...(soldierData.can_edit_rank_advancement && isOfficerDirty ? { is_officer: profileIsOfficer } : {}),
         // Rank-advancement fields are omitted entirely (not just left unchanged)
         // when the user isn't authorized to edit them — the backend authorizes
         // by which fields are present in the request body, so including them
@@ -222,7 +226,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         ...(soldierData.can_edit_rank_advancement && rankFieldsDirty ? {
           rank: profileRank || null,
           rank_track: profileRank ? profileRankTrack : null,
-          is_officer: profileRank ? profileRankTrack !== "enlisted" : null,
+          is_officer: profileIsOfficer,
         } : {}),
         ...(soldierData.can_edit_rank_advancement && nextRankDateDirty ? {
           next_rank_date: nextRankDate || null,
@@ -624,9 +628,16 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                       if (!selection) return;
                       setProfileRank(selection.rank);
                       setProfileRankTrack(selection.rankTrack);
+                      setProfileIsOfficer(selection.rankTrack !== "enlisted");
                     }}
                     placeholder="—"
                   />
+                </label>
+              )}
+              {soldierData.can_edit_rank_advancement && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={profileIsOfficer} onChange={(e) => setProfileIsOfficer(e.target.checked)} />
+                  <span className="text-xs">קצין</span>
                 </label>
               )}
               {soldierData.can_edit_rank_advancement && (

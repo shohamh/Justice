@@ -102,7 +102,12 @@ export default function TeamHierarchyPage() {
   }
 
   function closePromotion() {
-    if (!promoting) setPromotionTarget(null);
+    if (!promoting) {
+      setPromotionTarget(null);
+      setPromotionPassword("");
+      setPromotionAcknowledged(false);
+      setPromotionError(null);
+    }
   }
 
   async function confirmPromotion() {
@@ -113,6 +118,8 @@ export default function TeamHierarchyPage() {
       await promoteSoldierToAdmin(promotionTarget.id, promotionPassword);
       await refresh();
       setPromotionTarget(null);
+      setPromotionPassword("");
+      setPromotionAcknowledged(false);
     } catch (err) {
       setPromotionError(translateApiError(err, t));
     } finally {

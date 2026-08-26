@@ -89,12 +89,12 @@ def test_admin_promotion_requires_current_password_and_audits_no_password(client
 
     wrong_password = client.post(
         f"/api/soldiers/{target.id}/promote-admin",
-        json={"current_password": "not-the-acting-password"},
+        json={"current_password": "not-the-acting-password", "confirm": True},
         headers=auth_headers(admin),
     )
     correct_password = client.post(
         f"/api/soldiers/{target.id}/promote-admin",
-        json={"current_password": "ActingAdmin!123"},
+        json={"current_password": "ActingAdmin!123", "confirm": True},
         headers=auth_headers(admin),
     )
 
@@ -114,13 +114,34 @@ def test_admin_promotion_requires_current_password_and_audits_no_password(client
     assert "password" not in str({"before": audit.before, "after": audit.after, "context": audit.context}).lower()
 
 
+def test_admin_promotion_requires_explicit_confirmation(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="4000005-confirm", role="admin", password="ActingAdmin!123")
+    target = create_soldier(admin_session, personal_number="4100005-confirm")
+
+    missing = client.post(
+        f"/api/soldiers/{target.id}/promote-admin",
+        json={"current_password": "ActingAdmin!123"},
+        headers=auth_headers(admin),
+    )
+    false = client.post(
+        f"/api/soldiers/{target.id}/promote-admin",
+        json={"current_password": "ActingAdmin!123", "confirm": False},
+        headers=auth_headers(admin),
+    )
+
+    assert missing.status_code == 422
+    assert false.status_code == 422
+    admin_session.refresh(target)
+    assert target.role == "soldier"
+
+
 def test_non_admin_cannot_promote_a_soldier_to_admin(client: TestClient, admin_session: Session):
     actor = create_soldier(admin_session, personal_number="4000005-nonadmin", password="ActorPassword!123")
     target = create_soldier(admin_session, personal_number="4100005-not-promoted")
 
     response = client.post(
         f"/api/soldiers/{target.id}/promote-admin",
-        json={"current_password": "ActorPassword!123"},
+        json={"current_password": "ActorPassword!123", "confirm": True},
         headers=auth_headers(actor),
     )
 

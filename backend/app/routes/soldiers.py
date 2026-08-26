@@ -123,11 +123,7 @@ class UpdateProfileRequest(BaseModel):
 
 class PromoteAdminRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=200)
-    confirm: bool = True
-
-
-class PromoteAdminRequest(BaseModel):
-    current_password: str = Field(min_length=1, max_length=200)
+    confirm: Literal[True]
 
 
 class FieldUpdateRequest(BaseModel):
