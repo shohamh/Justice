@@ -21,6 +21,12 @@ from app.auth.authz import (
 from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import HierarchyNode, PersonalConstraint, Soldier
 from app.db.session import get_session
+from app.services.request_metadata import (
+    constraint_audit_latest,
+    latest_activity,
+    person_ref,
+    waiting_on as resolve_waiting_on,
+)
 from app.services import constraints as svc
 
 router = APIRouter(tags=["constraints"])
@@ -34,6 +40,17 @@ class NearestApproverOut(BaseModel):
     name: str
 
 
+class PersonRefOut(BaseModel):
+    soldier_id: uuid.UUID
+    name: str
+
+
+class WaitingOnOut(BaseModel):
+    kind: str  # "commander" | "duty_manager"
+    soldier_id: uuid.UUID
+    name: str
+
+
 class ConstraintOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
@@ -43,13 +60,17 @@ class ConstraintOut(BaseModel):
     end_date: date
     reason: str | None  # None when viewer cannot see private field
     status: str
-    decided_by: uuid.UUID | None = None
+    decided_by: PersonRefOut | None = None
     decided_at: datetime | None = None
     decision_note: str | None = None
     created_at: datetime
     nearest_commander: NearestApproverOut | None = None
     nearest_duty_manager: NearestApproverOut | None = None
     can_approve: bool = True
+    requested_at: datetime | None = None
+    updated_at: datetime | None = None
+    waiting_on: WaitingOnOut | None = None
+    commander_approved_by: PersonRefOut | None = None
 
 
 class SubmitRequest(BaseModel):
@@ -80,8 +101,8 @@ class RemainingDaysOut(BaseModel):
 
 # ── Helpers ──
 
-
 def _out(
+    session: Session,
     c: PersonalConstraint,
     soldier_name: str = "",
     node_name: str | None = None,
@@ -89,6 +110,7 @@ def _out(
     nearest_commander: NearestApproverOut | None = None,
     nearest_duty_manager: NearestApproverOut | None = None,
     can_approve: bool = True,
+    audit_times: dict[uuid.UUID, datetime] | None = None,
 ) -> ConstraintOut:
     return ConstraintOut(
         id=c.id,
@@ -99,13 +121,17 @@ def _out(
         end_date=c.end_date,
         reason=c.reason if include_reason else None,
         status=c.status,
-        decided_by=c.decided_by,
+        decided_by=person_ref(session, c.decided_by),
         decided_at=c.decided_at,
         decision_note=c.decision_note,
         created_at=c.created_at,
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
         can_approve=can_approve,
+        requested_at=c.created_at,
+        updated_at=latest_activity(c.created_at, c.decided_at, (audit_times or {}).get(c.id)),
+        waiting_on=resolve_waiting_on(session, soldier_id=c.soldier_id, status=c.status),
+        commander_approved_by=person_ref(session, c.commander_approved_by),
     )
 
 
@@ -177,10 +203,18 @@ def list_own(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ConstraintOut]:
+    rows = svc.list_constraints(session, soldier_id=user.id)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
+    audit_times = constraint_audit_latest(session, [c.id for c in rows])
     return [
-        _out(c, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
-        for c in svc.list_constraints(session, soldier_id=user.id)
+        _out(
+            session,
+            c,
+            nearest_commander=nearest_commander,
+            nearest_duty_manager=nearest_duty_manager,
+            audit_times=audit_times,
+        )
+        for c in rows
     ]
 
 
@@ -212,7 +246,7 @@ def submit(
     session.commit()
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
-    return _out(c, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(session, c, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.delete(
@@ -246,6 +280,7 @@ def list_for_soldier(
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     return [
         _out(
+            session,
             c,
             include_reason=include_reason,
             nearest_commander=nearest_commander,
@@ -295,6 +330,7 @@ def _attach_names(
         can_approve = _can_approve_constraint(session, user, c.soldier_id, target_node, c.status)
         result.append(
             _out(
+                session,
                 c,
                 soldier_name=soldier_name,
                 node_name=node_name,
@@ -383,6 +419,7 @@ def approve(
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
     return _out(
+        session,
         c,
         include_reason=True,
         nearest_commander=nearest_commander,
@@ -413,6 +450,7 @@ def reject(
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
     return _out(
+        session,
         c,
         include_reason=True,
         nearest_commander=nearest_commander,

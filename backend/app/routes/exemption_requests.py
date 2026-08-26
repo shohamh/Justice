@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
@@ -33,10 +33,27 @@ from app.services.exemption_requests import (
     submit_request,
 )
 from app.services.exemptions import ExemptionError
+from app.services.request_metadata import (
+    exemption_decision_latest,
+    latest_activity,
+    person_ref,
+    waiting_on as resolve_waiting_on,
+)
 
 router = APIRouter(tags=["exemption-requests"])
 
 from app.services.file_validation import FileValidationError, validate_exemption_file
+
+
+class PersonRefOut(BaseModel):
+    soldier_id: uuid.UUID
+    name: str
+
+
+class WaitingOnOut(BaseModel):
+    kind: str  # "commander" | "duty_manager"
+    soldier_id: uuid.UUID
+    name: str
 
 
 class NearestApproverOut(BaseModel):
@@ -54,7 +71,7 @@ class ExemptionRequestOut(BaseModel):
     end_date: str | None
     reason: str | None                      # None when viewer cannot see private fields
     status: str
-    decided_by: uuid.UUID | None
+    decided_by: PersonRefOut | None = None
     decision_note: str | None
     created_at: str
     files: list[ExemptionFileOut] = []
@@ -63,6 +80,10 @@ class ExemptionRequestOut(BaseModel):
     nearest_duty_manager: NearestApproverOut | None = None
     can_approve_commander_step: bool = True
     can_approve_duty_manager_step: bool = True
+    requested_at: str | None = None
+    updated_at: str | None = None
+    waiting_on: WaitingOnOut | None = None
+    commander_approved_by: PersonRefOut | None = None
 
 
 class CreateExemptionRequest(BaseModel):
@@ -93,6 +114,7 @@ class ExemptionFileOut(BaseModel):
 
 
 def _out(
+    session: Session,
     req: ExemptionRequest,
     soldier_name: str = "",
     node_name: str | None = None,
@@ -102,7 +124,11 @@ def _out(
     nearest_duty_manager: NearestApproverOut | None = None,
     can_approve_commander_step: bool = True,
     can_approve_duty_manager_step: bool = True,
+    decision_times: dict[uuid.UUID, datetime] | None = None,
 ) -> ExemptionRequestOut:
+    # No decided_at column — the approval/rejection notification written to
+    # the requester marks when (and by whom, via decided_by) it was decided.
+    updated_at = latest_activity(req.created_at, (decision_times or {}).get(req.id))
     return ExemptionRequestOut(
         id=req.id,
         soldier_id=req.soldier_id,
@@ -113,7 +139,7 @@ def _out(
         end_date=req.end_date.isoformat() if req.end_date else None,
         reason=req.reason if include_sensitive else None,
         status=req.status,
-        decided_by=req.decided_by,
+        decided_by=person_ref(session, req.decided_by),
         decision_note=req.decision_note,
         created_at=req.created_at.isoformat(),
         files=files or [],
@@ -122,6 +148,10 @@ def _out(
         nearest_duty_manager=nearest_duty_manager,
         can_approve_commander_step=can_approve_commander_step,
         can_approve_duty_manager_step=can_approve_duty_manager_step,
+        requested_at=req.created_at.isoformat(),
+        updated_at=(updated_at or req.created_at).isoformat(),
+        waiting_on=resolve_waiting_on(session, soldier_id=req.soldier_id, status=req.status),
+        commander_approved_by=person_ref(session, req.commander_approved_by),
     )
 
 
@@ -229,7 +259,7 @@ async def create_exemption_request(
     session.commit()
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
     return _out(
-        req, include_sensitive=True, files=saved_files,
+        session, req, include_sensitive=True, files=saved_files,
         nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
     )
 
@@ -239,10 +269,16 @@ def get_my_exemption_requests(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ExemptionRequestOut]:
+    rows = list_own_requests(session, user.id)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
+    decision_times = exemption_decision_latest(session, [r.id for r in rows])
     return [
-        _out(r, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
-        for r in list_own_requests(session, user.id)
+        _out(
+            session, r, include_sensitive=True,
+            nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+            decision_times=decision_times,
+        )
+        for r in rows
     ]
 
 
@@ -343,7 +379,7 @@ def get_pending_exemption_requests(
         can_commander_step, can_dm_step = _exemption_approval_flags(session, user, node)
         result.append(
             _out(
-                r, soldier_name=soldier_name, node_name=node_name, files=files_by_req.get(r.id, []),
+                session, r, soldier_name=soldier_name, node_name=node_name, files=files_by_req.get(r.id, []),
                 include_sensitive=include_sensitive, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
                 can_approve_commander_step=can_commander_step, can_approve_duty_manager_step=can_dm_step,
             )
@@ -464,7 +500,7 @@ def patch_exemption_request(
         try_activate(session, req.enrollment_request_id)
         session.commit()
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, req.soldier_id)
-    return _out(req, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(session, req, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.post("/exemption-requests/{request_id}/approve-commander", response_model=ExemptionRequestOut)
@@ -486,7 +522,7 @@ def approve_exemption_request_commander_step(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, result.soldier_id)
-    return _out(result, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(session, result, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.post("/exemption-requests/{request_id}/approve-duty-manager", response_model=ExemptionRequestOut)
@@ -520,7 +556,7 @@ def approve_exemption_request_duty_manager_step(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, result.soldier_id)
-    return _out(result, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(session, result, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.post("/exemption-requests/{request_id}/reject", response_model=ExemptionRequestOut)
@@ -543,7 +579,7 @@ def reject_exemption_request(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, result.soldier_id)
-    return _out(result, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(session, result, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.post(
@@ -698,7 +734,7 @@ def escalate_commander_exemption_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
-    return _out(req, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _out(session, req, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.get("/soldiers/{soldier_id}/exemption-requests", response_model=list[ExemptionRequestOut])
@@ -743,9 +779,8 @@ def get_soldier_exemption_request_history(
     can_commander_step, can_dm_step = _exemption_approval_flags(session, user, target_node)
     return [
         _out(
-            r, soldier_name=target_soldier.full_name, files=files_by_req.get(r.id, []), include_sensitive=include_sensitive,
+            session, r, soldier_name=target_soldier.full_name, files=files_by_req.get(r.id, []), include_sensitive=include_sensitive,
             nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
             can_approve_commander_step=can_commander_step, can_approve_duty_manager_step=can_dm_step,
         )
-        for r in reqs
     ]
