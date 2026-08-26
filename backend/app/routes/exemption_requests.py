@@ -113,6 +113,16 @@ class ExemptionFileOut(BaseModel):
     created_at: str
 
 
+def _file_out(session: Session, viewer: Soldier, target: Soldier, f: ExemptionRequestFile) -> ExemptionFileOut:
+    can_view = can_view_medical_document(session, viewer, target)
+    return ExemptionFileOut(
+        id=f.id,
+        file_name=f.file_name if can_view else "מצורף קובץ חסוי",
+        content_type=f.content_type,
+        created_at=f.created_at.isoformat(),
+    )
+
+
 def _out(
     session: Session,
     req: ExemptionRequest,
@@ -362,9 +372,13 @@ def get_pending_exemption_requests(
         select(ExemptionRequestFile).where(ExemptionRequestFile.exemption_request_id.in_(req_ids))
     ).scalars().all()
     files_by_req: dict[uuid.UUID, list[ExemptionFileOut]] = {}
+    request_soldiers = {r.id: soldiers_by_id.get(r.soldier_id) for r in reqs}
     for f in all_files:
+        target = request_soldiers.get(f.exemption_request_id)
+        if target is None:
+            continue
         files_by_req.setdefault(f.exemption_request_id, []).append(
-            ExemptionFileOut(id=f.id, file_name=f.file_name, content_type=f.content_type, created_at=f.created_at.isoformat())
+            _file_out(session, user, target, f)
         )
     result = []
     for r in reqs:
@@ -643,7 +657,7 @@ def list_exemption_files(
         .order_by(ExemptionRequestFile.created_at)
     ).scalars().all()
     return [
-        ExemptionFileOut(id=f.id, file_name=f.file_name, content_type=f.content_type, created_at=f.created_at.isoformat())
+        _file_out(session, user, target_soldier, f)
         for f in files
     ]
 
@@ -770,7 +784,7 @@ def get_soldier_exemption_request_history(
     files_by_req: dict[uuid.UUID, list[ExemptionFileOut]] = {}
     for f in all_files:
         files_by_req.setdefault(f.exemption_request_id, []).append(
-            ExemptionFileOut(id=f.id, file_name=f.file_name, content_type=f.content_type, created_at=f.created_at.isoformat())
+            _file_out(session, user, target_soldier, f)
         )
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     target_node = (

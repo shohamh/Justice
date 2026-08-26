@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.authz import Action, _node_in_scope, authorize, is_commander, scope_root_ids
+from app.auth.authz import Action, _node_in_scope, authorize, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import (
     DutyManagerScope,
@@ -116,6 +116,23 @@ class RangeAssignmentOut(BaseModel):
     assignment_reason_text: str | None
 
 
+class FoodSpecialConstraintOut(BaseModel):
+    soldier_id: uuid.UUID
+    soldier_name: str
+    food_type: str
+    constraint: str
+
+
+class FoodAssignmentSummaryOut(BaseModel):
+    counts: dict[str, int]
+    special_constraints: list[FoodSpecialConstraintOut]
+
+
+class FoodSummaryOut(BaseModel):
+    primary: FoodAssignmentSummaryOut
+    reserve: FoodAssignmentSummaryOut
+
+
 class RangeEventOut(BaseModel):
     start_time: str | None
     end_time: str | None
@@ -138,6 +155,7 @@ class RangeEventOut(BaseModel):
     reserve_filled: int = 0
     assigned_to_me: bool = False
     can_edit_attendance: bool = False
+    food_summary: FoodSummaryOut | None = None
 
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
@@ -153,6 +171,34 @@ def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
     )
 
 
+def _food_summary(session: Session, rows: list[RangeAssignment]) -> FoodSummaryOut:
+    allowed_types = ("regular", "vegetarian", "vegan", "gluten_free", "kosher_le_mehadrin")
+
+    def summarize(assignments: list[RangeAssignment]) -> FoodAssignmentSummaryOut:
+        counts = {food_type: 0 for food_type in allowed_types}
+        counts["unspecified"] = 0
+        special_constraints: list[FoodSpecialConstraintOut] = []
+        for assignment in assignments:
+            soldier = session.get(Soldier, assignment.soldier_id)
+            if soldier is None:
+                continue
+            counts[soldier.food_type or "unspecified"] += 1
+            if soldier.food_constraints and soldier.food_constraints.strip():
+                special_constraints.append(FoodSpecialConstraintOut(
+                    soldier_id=soldier.id,
+                    soldier_name=soldier.full_name,
+                    food_type=soldier.food_type or "unspecified",
+                    constraint=soldier.food_constraints.strip(),
+                ))
+        return FoodAssignmentSummaryOut(counts=counts, special_constraints=special_constraints)
+
+    confirmed = [assignment for assignment in rows if not assignment.is_draft]
+    return FoodSummaryOut(
+        primary=summarize([a for a in confirmed if not a.is_reserve]),
+        reserve=summarize([a for a in confirmed if a.is_reserve]),
+    )
+
+
 def _event_out(
     session: Session,
     event: RangeEvent,
@@ -160,6 +206,7 @@ def _event_out(
     user: Soldier,
     include_assignments: bool = False,
     include_drafts: bool = True,
+    include_food_summary: bool = False,
 ) -> RangeEventOut:
     query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
     if not include_drafts:
@@ -197,6 +244,7 @@ def _event_out(
         reserve_filled=sum(a.is_reserve for a in confirmed_rows),
         assigned_to_me=assigned_to_me,
         can_edit_attendance=can_edit_attendance,
+        food_summary=_food_summary(session, rows) if include_food_summary else None,
     )
 
 
@@ -430,6 +478,7 @@ def get_range_event(
         user=user,
         include_assignments=True,
         include_drafts=can_manage,
+        include_food_summary=user.role == "admin" or is_duty_manager(session, user.id),
     )
 
 

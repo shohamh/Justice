@@ -404,7 +404,8 @@ def test_transparency_normalisation_uses_full_population_for_subset_viewer(admin
 
     result = transparency_rows(admin_session, viewer=cmd)
     visible_row = next(r for r in result["rows"] if r["soldier_id"] == visible.id)
-    assert {r["soldier_id"] for r in result["rows"]} == {visible.id}
+    # A viewer always sees their own score, in addition to their scoped rows.
+    assert {r["soldier_id"] for r in result["rows"]} == {cmd.id, visible.id}
     assert hidden.id not in {r["soldier_id"] for r in result["rows"]}
 
     full_rows = transparency_rows(admin_session)["rows"]

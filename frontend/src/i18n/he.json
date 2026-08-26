@@ -162,6 +162,10 @@
     "load_error": "שגיאה בטעינת הדיווחים"
   },
   "bug_reports": {
+    "description": "תיאור",
+    "report_route": "מסך",
+    "report_created": "נוצר בתאריך",
+    "download_attachment": "הורדה",
     "tab_new": "דיווח חדש",
     "tab_mine": "הדיווחים שלי",
     "comments_title": "תגובות על הדיווח",
@@ -1476,6 +1480,13 @@
     "self_excuse": "אני לא אוכל להגיע",
     "self_excuse_reason": "סיבת היעדרות",
     "send": "שלח",
+    "food_summary_title": "סיכום הזמנת אוכל",
+    "food_primary": "שיבוצים ראשיים",
+    "food_reserve": "רזרבה",
+    "food_unspecified": "לא צוין",
+    "food_soldier": "חייל",
+    "food_type": "סוג מזון",
+    "food_constraint": "אילוץ מיוחד",
     "assignment_reasons": {
       "manual": "שיבוץ ידני",
       "qualified": "כשירות תקפה למטווח",

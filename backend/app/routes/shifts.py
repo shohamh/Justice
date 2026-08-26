@@ -775,8 +775,7 @@ def get_shift_candidates(
     for si in soldier_inputs:
         if si.id in already_on_shift:
             continue
-        if shift.duty_type_id in si.exempted_duty_type_ids:
-            continue
+        exempted = shift.duty_type_id in si.exempted_duty_type_ids
         soldier_node = node_map.get(si.hierarchy_node_id) if si.hierarchy_node_id else None
         soldier_path_ids = list(soldier_node.path_ids) if soldier_node else []
         if not node_in_scope(shift.eligible_node_ids, soldier_path_ids):
@@ -789,9 +788,11 @@ def get_shift_candidates(
             c_start < shift.end_date and c_end >= shift.start_date
             for c_start, c_end in si.approved_constraint_dates
         )
-        blocked = has_constraint or si.id in blocked_by_assignment
+        blocked = exempted or has_constraint or si.id in blocked_by_assignment
         blocked_reason: str | None = None
-        if has_constraint:
+        if exempted:
+            blocked_reason = "ineligible"
+        elif has_constraint:
             blocked_reason = "constraint"
         elif si.id in blocked_by_assignment:
             blocked_reason = "assignment"

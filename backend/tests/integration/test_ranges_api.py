@@ -260,6 +260,44 @@ def test_get_range_event_returns_roster(client: TestClient, admin_session: Sessi
     assert get_resp.json()["assignments"] == []
 
 
+def test_get_range_event_returns_food_summary_to_duty_manager(
+    client: TestClient, admin_session: Session
+) -> None:
+    from app.db.models import RangeType
+    from app.services.ranges import add_range_assignment, create_range_event
+
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="branch", name="food-summary-node")
+    dm = create_soldier(admin_session, personal_number="food-summary-dm", role="duty_manager", hierarchy_node_id=node.id)
+    primary = create_soldier(admin_session, personal_number="food-summary-p", hierarchy_node_id=node.id)
+    primary.food_type = "vegetarian"
+    primary.food_constraints = "Peanut allergy"
+    reserve = create_soldier(admin_session, personal_number="food-summary-r", hierarchy_node_id=node.id)
+    reserve.food_type = "vegan"
+    reserve.food_constraints = "No soy"
+    admin_session.add(DutyType(
+        name="food-summary-weapon-duty", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    ))
+    admin_session.commit()
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(admin_session).id, required_count=1, reserve_count=1,
+    )
+    add_range_assignment(admin_session, event=event, soldier_id=primary.id, is_reserve=False)
+    add_range_assignment(admin_session, event=event, soldier_id=reserve.id, is_reserve=True)
+
+    response = client.get(f"/api/ranges/{event.id}", headers=auth_headers(dm))
+
+    assert response.status_code == 200, response.text
+    summary = response.json()["food_summary"]
+    assert summary["primary"]["counts"]["vegetarian"] == 1
+    assert summary["reserve"]["counts"]["vegan"] == 1
+    assert summary["primary"]["special_constraints"][0]["constraint"] == "Peanut allergy"
+    assert summary["reserve"]["special_constraints"][0]["constraint"] == "No soy"
+
+
 def test_get_range_event_hides_drafts_from_commander_but_not_range_managers(
     client: TestClient, admin_session: Session
 ) -> None:
