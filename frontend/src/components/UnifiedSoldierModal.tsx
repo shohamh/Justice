@@ -774,7 +774,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           </div>
         )}
 
-        {cancellingConstraintId && <ReasonPromptModal title="ביטול אילוץ אישי" description="זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול." onConfirm={handleCancelConstraint} onClose={() => setCancellingConstraintId(null)} />}
+        {cancellingConstraintId && <ReasonPromptModal title={t("team.cancel_constraint")} description={t("team.cancel_constraint_active_warning")} variant="warning" onConfirm={handleCancelConstraint} onClose={() => setCancellingConstraintId(null)} />}
 
         {tab === "duty_history" && (
           <DutyHistoryPanel

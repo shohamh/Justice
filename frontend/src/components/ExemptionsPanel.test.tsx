@@ -106,3 +106,13 @@ test("renders the exemption-request date range in start-then-end order, not reve
   const row = await screen.findByTestId("exemption-request-row-req-1");
   expect(row.textContent).toMatch(/01\.01\.2026[\s\S]*05\.01\.2026/);
 });
+
+test("the revoke confirmation shows the extreme-action warning styling", async () => {
+  render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={false} />);
+  const revokeButton = await screen.findByTestId("revoke-ex1");
+  fireEvent.click(revokeButton);
+  const warning = await screen.findByText((content, element) => {
+    return element?.tagName.toLowerCase() === "p" && content.includes("exemptions.revoke_active_warning");
+  });
+  expect(warning.className).toContain("amber");
+});

@@ -11,10 +11,13 @@ vi.mock("../api/soldiers", () => ({
   updateSoldierProfile: (...args: unknown[]) => mockUpdateSoldierProfile(...args),
   getRanks: (...args: unknown[]) => mockGetRanks(...args),
 }));
+
+const mockListSoldierConstraints = vi.fn().mockResolvedValue([]);
 vi.mock("../api/constraints", () => ({
-  listSoldierConstraints: vi.fn().mockResolvedValue([]),
+  listSoldierConstraints: (...args: unknown[]) => mockListSoldierConstraints(...args),
   approveConstraint: vi.fn(),
   rejectConstraint: vi.fn(),
+  cancelConstraintForManager: vi.fn(),
 }));
 vi.mock("../api/rangeStatus", () => ({
   getSoldierRangeStatus: vi.fn().mockResolvedValue({ soldier_id: "s1", statuses: [] }),
@@ -380,5 +383,54 @@ describe("UnifiedSoldierModal initialTab", () => {
 
     expect(await screen.findByTestId("history-event-assignment")).toBeInTheDocument();
     expect(screen.queryByTestId("history-event-range_assignment")).not.toBeInTheDocument();
+  });
+});
+
+describe("UnifiedSoldierModal constraint cancellation", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ELIGIBLE_COMMANDER_USER });
+    mockListSoldierConstraints.mockReset();
+    mockListSoldierConstraints.mockResolvedValue([
+      {
+        id: "c1",
+        soldier_id: "s1",
+        constraint_type: "personal",
+        start_date: "2026-01-01",
+        end_date: "2026-12-31",
+        status: "approved",
+        reason: "test reason",
+        can_cancel: true,
+      },
+    ]);
+  });
+
+  test("shows the extreme-action warning when cancelling an approved constraint", async () => {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <UnifiedSoldierModal
+          soldier={soldier}
+          score={null}
+          nodes={[]}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    // Click on constraints tab
+    const constraintsTab = await screen.findByTestId("modal-tab-constraints");
+    fireEvent.click(constraintsTab);
+
+    // Find and click the cancel button for the constraint
+    const cancelButton = await screen.findByTestId("cancel-constraint-c1");
+    fireEvent.click(cancelButton);
+
+    // Verify the warning is displayed with amber styling
+    const warning = await screen.findByText((content, element) => {
+      return element?.tagName.toLowerCase() === "p" && content.includes("team.cancel_constraint_active_warning");
+    });
+    expect(warning.className).toContain("amber");
   });
 });

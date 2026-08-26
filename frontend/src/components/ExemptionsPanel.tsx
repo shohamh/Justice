@@ -366,7 +366,8 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
       {revokingId && (
         <ReasonPromptModal
           title={t("exemptions.revoke")}
-          description="זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול."
+          description={t("exemptions.revoke_active_warning")}
+          variant="warning"
           onConfirm={(reason) => onRevoke(revokingId, reason)}
           onClose={() => setRevokingId(null)}
         />

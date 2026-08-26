@@ -273,6 +273,7 @@
     "reason": "סיבה",
     "grant": "הענק פטור",
     "revoke": "בטל",
+    "revoke_active_warning": "זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול.",
     "none": "אין פטורים",
     "forever": "ללא הגבלה",
     "unknown_type": "סוג פטור לא ידוע",
@@ -296,6 +297,8 @@
   "team": {
     "title": "אנשי צוות והיררכיה",
     "soldiers": "אנשי צוות",
+    "cancel_constraint": "ביטול אילוץ אישי",
+    "cancel_constraint_active_warning": "זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול.",
     "add_soldier": "הוסף איש צוות",
     "personal_number": "מספר אישי",
     "full_name": "שם מלא",
