@@ -117,3 +117,38 @@ describe("TeamHierarchyPage - remove button gating", () => {
     });
   });
 });
+
+describe("TeamHierarchyPage - admin promotion", () => {
+  it("requires explicit confirmation and the acting admin password before promotion", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", role: "admin", is_commander: false, can_delete_soldier: false },
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId(`promote-admin-${soldier.personal_number}`));
+    expect(screen.getByTestId("promote-admin-modal")).toBeInTheDocument();
+    vi.mocked(soldiersApi.promoteSoldierToAdmin).mockResolvedValueOnce({ ...soldier, role: "admin" });
+
+    const confirm = screen.getByTestId("promote-admin-confirm") as HTMLButtonElement;
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("team.current_password"), { target: { value: "ActingAdmin!123" } });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(screen.getByTestId("promote-admin-acknowledgement"));
+    expect(confirm).not.toBeDisabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(soldiersApi.promoteSoldierToAdmin).toHaveBeenCalledWith(
+      soldier.id, "ActingAdmin!123",
+    ));
+  });
+
+  it("does not offer promotion to a non-admin actor", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", role: "soldier", is_commander: true, can_delete_soldier: false },
+    });
+    renderPage();
+
+    await screen.findByText("חייל בדיקה");
+    expect(screen.queryByTestId(`promote-admin-${soldier.personal_number}`)).not.toBeInTheDocument();
+  });
+});

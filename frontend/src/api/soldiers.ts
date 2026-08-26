@@ -82,6 +82,12 @@ export async function resetSoldierPassword(id: string): Promise<{ temp_password:
   return (await api.post<{ temp_password: string }>(`/soldiers/${id}/reset-password`)).data;
 }
 
+export async function promoteSoldierToAdmin(id: string, currentPassword: string): Promise<SoldierDTO> {
+  return (await api.post<SoldierDTO>(`/soldiers/${id}/promote-admin`, {
+    current_password: currentPassword,
+  })).data;
+}
+
 export async function softDeleteSoldier(id: string, leftAt: string): Promise<void> {
   await api.delete(`/soldiers/${id}`, { params: { left_at: leftAt } });
 }

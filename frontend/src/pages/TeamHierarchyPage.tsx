@@ -11,11 +11,12 @@ import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { fetchTree } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
-import { SoldierDTO, listSoldiers, onboardSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
+import { SoldierDTO, listSoldiers, onboardSoldier, promoteSoldierToAdmin, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import TelegramBadge from "../components/TelegramBadge";
 import { usePortfolioDialog } from "../hooks/usePortfolioDialog";
 import { translateApiError } from "../utils/translateApiError";
+import PasswordInput from "../components/PasswordInput";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -27,6 +28,11 @@ export default function TeamHierarchyPage() {
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [promotionTarget, setPromotionTarget] = useState<SoldierDTO | null>(null);
+  const [promotionPassword, setPromotionPassword] = useState("");
+  const [promotionAcknowledged, setPromotionAcknowledged] = useState(false);
+  const [promotionError, setPromotionError] = useState<string | null>(null);
+  const [promoting, setPromoting] = useState(false);
   const isAdmin = user?.role === "admin";
   const canManageLevelTypes = user?.role === "admin" || (user?.is_duty_manager ?? false);
   const canDeleteSoldier = user?.can_delete_soldier ?? false;
@@ -85,6 +91,32 @@ export default function TeamHierarchyPage() {
       await refresh();
     } catch (err) {
       setRemoveError(translateApiError(err, t, "אין לך הרשאה למחוק חייל זה"));
+    }
+  }
+
+  function openPromotion(soldier: SoldierDTO) {
+    setPromotionTarget(soldier);
+    setPromotionPassword("");
+    setPromotionAcknowledged(false);
+    setPromotionError(null);
+  }
+
+  function closePromotion() {
+    if (!promoting) setPromotionTarget(null);
+  }
+
+  async function confirmPromotion() {
+    if (!promotionTarget || !promotionAcknowledged || !promotionPassword) return;
+    setPromoting(true);
+    setPromotionError(null);
+    try {
+      await promoteSoldierToAdmin(promotionTarget.id, promotionPassword);
+      await refresh();
+      setPromotionTarget(null);
+    } catch (err) {
+      setPromotionError(translateApiError(err, t));
+    } finally {
+      setPromoting(false);
     }
   }
 
@@ -196,6 +228,11 @@ export default function TeamHierarchyPage() {
                     )}
                     <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600 dark:text-indigo-300" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
                     <button onClick={() => onReset(s.id)} className="text-indigo-600 dark:text-indigo-300" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
+                    {isAdmin && s.role !== "admin" && (
+                      <button onClick={() => openPromotion(s)} className="text-amber-700 dark:text-amber-300" data-testid={`promote-admin-${s.personal_number}`}>
+                        {t("team.promote_admin")}
+                      </button>
+                    )}
                     {canDeleteSoldier && (
                       <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
                     )}
@@ -218,6 +255,35 @@ export default function TeamHierarchyPage() {
         </div>
 
         {portfolioDialog.dialog}
+        {promotionTarget && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={closePromotion} data-testid="promote-admin-modal">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-md w-full" dir="rtl" onClick={(event) => event.stopPropagation()}>
+              <h3 className="font-bold text-lg mb-3">{t("team.promote_admin_title")}</h3>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">{t("team.promote_admin_warning", { name: promotionTarget.full_name })}</p>
+              <label className="block text-sm mb-4">
+                <span className="block mb-1">{t("team.current_password")}</span>
+                <PasswordInput
+                  value={promotionPassword}
+                  onChange={(event) => setPromotionPassword(event.target.value)}
+                  className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  autoComplete="current-password"
+                  dir="ltr"
+                />
+              </label>
+              <label className="flex items-start gap-2 text-sm mb-4 cursor-pointer">
+                <input type="checkbox" checked={promotionAcknowledged} onChange={(event) => setPromotionAcknowledged(event.target.checked)} data-testid="promote-admin-acknowledgement" />
+                <span>{t("team.promote_admin_acknowledgement")}</span>
+              </label>
+              {promotionError && <p className="text-red-600 text-sm mb-3">{promotionError}</p>}
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={closePromotion} disabled={promoting} className="border dark:border-gray-600 rounded px-3 py-1 dark:text-gray-200">{t("team.cancel")}</button>
+                <button type="button" onClick={() => void confirmPromotion()} disabled={promoting || !promotionAcknowledged || !promotionPassword} className="bg-amber-700 text-white rounded px-3 py-1 disabled:opacity-50" data-testid="promote-admin-confirm">
+                  {t("team.promote_admin_confirm")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </Layout>
   );

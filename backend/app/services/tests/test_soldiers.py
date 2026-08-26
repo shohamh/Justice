@@ -308,6 +308,27 @@ def test_update_soldier_profile_manual_next_rank_date_sets_overridden(admin_sess
     assert soldier.next_rank_date_overridden is True
 
 
+def test_promote_to_admin_changes_only_role_and_writes_role_audit(admin_session):
+    from app.db.models import AuditLog
+    from app.services.soldiers import promote_to_admin
+    from tests.helpers import create_soldier
+
+    actor = create_soldier(admin_session, personal_number="7920030-promoter", role="admin")
+    target = create_soldier(admin_session, personal_number="7920030-promote-target", role="duty_manager")
+    original_password_hash = target.password_hash
+
+    promote_to_admin(admin_session, soldier=target, actor_id=actor.id)
+    admin_session.flush()
+
+    assert target.role == "admin"
+    assert target.password_hash == original_password_hash
+    audit = admin_session.query(AuditLog).filter_by(
+        action="soldier.role.promote_admin", entity_id=target.id,
+    ).one()
+    assert audit.before == {"role": "duty_manager"}
+    assert audit.after == {"role": "admin"}
+
+
 def test_clearing_next_rank_date_audits_resulting_automatic_state(admin_session):
     from app.db.models import AuditLog
     from app.services.soldiers import update_soldier_profile

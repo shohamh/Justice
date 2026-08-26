@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    AuditLog,
     DutyAssignment,
     DutyDismissal,
     DutyLocation,
@@ -78,6 +79,54 @@ def test_reset_password_returns_temp_and_sets_flag(client: TestClient, admin_ses
     r = client.post(f"/api/soldiers/{target.id}/reset-password", headers=auth_headers(admin))
     assert r.status_code == 200
     assert len(r.json()["temp_password"]) >= 10
+
+
+def test_admin_promotion_requires_current_password_and_audits_no_password(client: TestClient, admin_session: Session):
+    admin = create_soldier(
+        admin_session, personal_number="4000005-promoter", role="admin", password="ActingAdmin!123",
+    )
+    target = create_soldier(admin_session, personal_number="4100005-promoted")
+
+    wrong_password = client.post(
+        f"/api/soldiers/{target.id}/promote-admin",
+        json={"current_password": "not-the-acting-password"},
+        headers=auth_headers(admin),
+    )
+    correct_password = client.post(
+        f"/api/soldiers/{target.id}/promote-admin",
+        json={"current_password": "ActingAdmin!123"},
+        headers=auth_headers(admin),
+    )
+
+    assert wrong_password.status_code == 400
+    assert wrong_password.json()["detail"] == "wrong_current_password"
+    assert correct_password.status_code == 200, correct_password.text
+    assert correct_password.json()["role"] == "admin"
+    admin_session.refresh(target)
+    assert target.role == "admin"
+
+    audit = admin_session.query(AuditLog).filter_by(
+        action="soldier.role.promote_admin", entity_id=target.id,
+    ).one()
+    assert audit.actor_id == admin.id
+    assert audit.before == {"role": "soldier"}
+    assert audit.after == {"role": "admin"}
+    assert "password" not in str({"before": audit.before, "after": audit.after, "context": audit.context}).lower()
+
+
+def test_non_admin_cannot_promote_a_soldier_to_admin(client: TestClient, admin_session: Session):
+    actor = create_soldier(admin_session, personal_number="4000005-nonadmin", password="ActorPassword!123")
+    target = create_soldier(admin_session, personal_number="4100005-not-promoted")
+
+    response = client.post(
+        f"/api/soldiers/{target.id}/promote-admin",
+        json={"current_password": "ActorPassword!123"},
+        headers=auth_headers(actor),
+    )
+
+    assert response.status_code == 403
+    admin_session.refresh(target)
+    assert target.role == "soldier"
 
 
 def test_commander_in_scope_can_reset_password(client: TestClient, admin_session: Session):
