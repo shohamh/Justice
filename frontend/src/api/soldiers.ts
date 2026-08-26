@@ -106,16 +106,6 @@ export async function updateSoldierProfile(
   return (await api.patch<SoldierDTO>(`/soldiers/${soldierId}/profile`, fields)).data;
 }
 
-export async function makeSoldierAdmin(
-  soldierId: string,
-  currentPassword: string,
-): Promise<SoldierDTO> {
-  return (await api.post<SoldierDTO>(`/soldiers/${soldierId}/make-admin`, {
-    current_password: currentPassword,
-    confirm: true,
-  })).data;
-}
-
 export async function submitFieldUpdate(
   soldierId: string,
   fieldName: string,

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
-import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks, makeSoldierAdmin } from "../api/soldiers";
+import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import { translateApiError } from "../utils/translateApiError";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint, cancelConstraintForManager } from "../api/constraints";
@@ -91,8 +91,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [enrolledAt, setEnrolledAt] = useState(soldier.enrolled_at ?? "");
   const [constraints, setConstraints] = useState<PersonalConstraint[]>([]);
   const [cancellingConstraintId, setCancellingConstraintId] = useState<string | null>(null);
-  const [promoting, setPromoting] = useState(false);
-  const [promotionPassword, setPromotionPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -326,16 +324,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 )}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">{soldierData.personal_number} · {t(`role.${soldierData.role}`)}</p>
-              {isAdmin && soldierData.role !== "admin" && !promoting && (
-                <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setPromoting(true)} data-testid="make-admin-button">הפוך למנהל מערכת</button>
-              )}
-              {promoting && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-red-700">האם אתה בטוח? פעולה זו תעניק הרשאות מנהל מערכת.</p>
-                  <input type="password" value={promotionPassword} onChange={e => setPromotionPassword(e.target.value)} placeholder="סיסמת מנהל" className="border rounded p-1 text-xs dark:bg-gray-700" data-testid="admin-password" />
-                  <button type="button" className="text-xs bg-red-600 text-white rounded px-2 py-1 disabled:opacity-50" disabled={!promotionPassword} onClick={async () => { await makeSoldierAdmin(soldierData.id, promotionPassword); setPromoting(false); setPromotionPassword(""); onRefresh(); }} data-testid="confirm-make-admin">אישור</button>
-                </div>
-              )}
             </div>
           </div>
           <button
