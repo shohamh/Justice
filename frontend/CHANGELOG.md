@@ -1,21 +1,5 @@
 # Changelog
 
-## 2026-08-26
-
-### Features
-- Added a food-constraints summary for range duty managers, separated by primary and reserve assignments, including order-ready food counts and a special-constraints table.
-- Expanded the requests experience with richer request metadata and filters.
-
-### Fixes
-- Improved bug-report details, comments, attachment downloads, and Israeli date/time display.
-- Exemption attachments now hide filenames from viewers without medical-document permission.
-- Soldiers can see their own score even when transparency scope excludes other rows.
-- Shift candidate lists now retain ineligible soldiers at the bottom in a disabled style with an explanation.
-- Shift edit forms consistently display the inclusive final duty date.
-
-### Chores
-- Added regression coverage for food summaries and self-score visibility.
-
 ## 2026-08-25
 
 ### Features
