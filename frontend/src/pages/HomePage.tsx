@@ -19,6 +19,7 @@ import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidg
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
 import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
+import { formatDateTimeIsrael } from "../utils/formatDate";
 
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
@@ -395,7 +396,7 @@ export default function HomePage() {
               <tbody>
                 {breakdown.adjustments.map((a) => (
                   <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
-                    <td className="py-2">{a.created_at.slice(0, 10)}</td>
+                    <td className="py-2">{formatDateTimeIsrael(a.created_at)}</td>
                     <td
                       className={`py-2 font-medium ${
                         Number(a.delta) >= 0 ? "text-green-600" : "text-red-600"

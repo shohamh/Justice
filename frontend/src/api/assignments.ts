@@ -8,6 +8,7 @@ export interface Assignment {
   start_date: string;
   end_date: string;
   status: string;
+  created_at: string;
   notes: string | null;
   weapon_ineligible: boolean;
   weapon_ineligible_reason: string | null;
@@ -53,7 +54,7 @@ export interface ShiftCandidate {
   personal_number: string;
   effort: number;
   blocked: boolean;
-  blocked_reason: "constraint" | "assignment" | null;
+  blocked_reason: "constraint" | "assignment" | "ineligible" | null;
   weapon_warning: boolean;
   hierarchy_path_ids: string[];
 }

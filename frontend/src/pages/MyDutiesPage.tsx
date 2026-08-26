@@ -19,7 +19,7 @@ import { listEffectiveDuties } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
 import { getReserveStats } from "../api/soldiers";
 import { queryKeys } from "../queryKeys";
-import { formatDutyRange } from "../utils/formatDate";
+import { formatDateTimeIsrael, formatDutyRange } from "../utils/formatDate";
 
 function avg(rows: TransparencyRow[], key: "normalised_score" | "active_days" | "shift_count"): number {
   if (rows.length === 0) return 0;
@@ -216,7 +216,7 @@ export default function MyDutiesPage() {
               <tbody>
                 {breakdown.adjustments.map((a) => (
                   <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
-                    <td className="py-2">{a.created_at.slice(0, 10)}</td>
+                    <td className="py-2">{formatDateTimeIsrael(a.created_at)}</td>
                     <td
                       className={`py-2 font-medium ${
                         Number(a.delta) >= 0 ? "text-green-600" : "text-red-600"

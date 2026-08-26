@@ -28,6 +28,7 @@ class AssignmentOut(BaseModel):
     start_date: date
     end_date: date
     status: str
+    created_at: datetime
     notes: str | None
     weapon_ineligible: bool = False
     weapon_ineligible_reason: str | None = None
@@ -82,6 +83,7 @@ def _out(a: DutyAssignment) -> AssignmentOut:
         start_date=a.start_date,
         end_date=a.end_date,
         status=a.status,
+        created_at=a.created_at,
         notes=a.notes,
         weapon_ineligible=a.weapon_ineligible,
         weapon_ineligible_reason=a.weapon_ineligible_reason,
