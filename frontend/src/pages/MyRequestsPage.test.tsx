@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useSearchParams } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import MyRequestsPage from "./MyRequestsPage";
 import * as constraintsApi from "../api/constraints";
@@ -111,19 +112,31 @@ beforeEach(() => {
   vi.mocked(soldiersApi.listFieldUpdates).mockResolvedValue([]);
 });
 
-function renderPage(initialEntries: string[] = ["/requests"]) {
+function renderPage(
+  initialEntries: string[] = ["/requests"],
+  onLocation?: (params: URLSearchParams) => void,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={initialEntries}>
+        {onLocation && <LocationProbe cb={onLocation} />}
         <SoldierModalProvider>
           <MyRequestsPage />
         </SoldierModalProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );
+}
+
+/** Records the live query string so tests can assert URL-param sync of the
+ * existing-tab filters (useSearchParams inside MemoryRouter). */
+function LocationProbe({ cb }: { cb: (params: URLSearchParams) => void }) {
+  const [searchParams] = useSearchParams();
+  useEffect(() => { cb(searchParams); });
+  return null;
 }
 
 /** The constraint/ER forms live behind reveal toggles on the "new requests" tab. */
@@ -520,19 +533,21 @@ describe("MyRequestsPage - retraction through pending_duty_manager", () => {
 });
 
 describe("MyRequestsPage - waiting-on visibility", () => {
-  it("shows who a pending_commander constraint is waiting on", async () => {
+  it("shows who a pending_commander constraint is waiting on via waiting_on", async () => {
     vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
       {
         ...constraint,
         status: "pending_commander",
-        nearest_commander: { id: "cmd-1", name: "רס\"ן לוי" },
-        nearest_duty_manager: { id: "dm-1", name: "סמ\"ר כהן" },
+        waiting_on: { kind: "commander", soldier_id: "cmd-1", name: "רס\"ן לוי" },
       },
     ]);
     renderPage();
     await openExistingTab();
     const row = await screen.findByTestId("constraint-row-c1");
-    expect(within(row).getByTestId("constraint-waiting-on-c1")).toHaveTextContent("רס\"ן לוי");
+    const waiting = within(row).getByTestId("constraint-c1-waiting-on");
+    expect(waiting).toHaveTextContent("my_requests.waiting_approval");
+    expect(waiting).toHaveTextContent("רס\"ן לוי");
+    expect(within(waiting).getByRole("button", { name: "רס\"ן לוי" })).toBeTruthy();
   });
 
   it("shows the duty manager once the commander step is done", async () => {
@@ -540,13 +555,233 @@ describe("MyRequestsPage - waiting-on visibility", () => {
       {
         ...constraint,
         status: "pending_duty_manager",
-        nearest_commander: { id: "cmd-1", name: "רס\"ן לוי" },
-        nearest_duty_manager: { id: "dm-1", name: "סמ\"ר כהן" },
+        waiting_on: { kind: "duty_manager", soldier_id: "dm-1", name: "סמ\"ר כהן" },
       },
     ]);
     renderPage();
     await openExistingTab();
     const row = await screen.findByTestId("constraint-row-c1");
-    expect(within(row).getByTestId("constraint-waiting-on-c1")).toHaveTextContent("סמ\"ר כהן");
+    expect(within(row).getByTestId("constraint-c1-waiting-on")).toHaveTextContent("סמ\"ר כהן");
+  });
+
+  it("hides the waiting-on line once the request is decided", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      { ...constraint, status: "approved" },
+    ]);
+    renderPage();
+    await openExistingTab();
+    const row = await screen.findByTestId("constraint-row-c1");
+    expect(within(row).queryByTestId("constraint-c1-waiting-on")).toBeNull();
+  });
+});
+
+describe("MyRequestsPage - request card metadata", () => {
+  it("shows formatted request/update dates, waiting-on link, and commander step", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      {
+        ...constraint,
+        status: "pending_duty_manager",
+        created_at: "2026-01-02",
+        requested_at: "2026-01-02T09:30:00Z",
+        updated_at: "2026-01-05T12:00:00Z",
+        waiting_on: { kind: "duty_manager", soldier_id: "dm-1", name: 'סמ"ר כהן' },
+        commander_approved_by: { soldier_id: "cmd-1", name: 'רס"ן לוי' },
+      },
+    ]);
+    renderPage();
+    await openExistingTab();
+    const row = await screen.findByTestId("constraint-row-c1");
+    const meta = within(row).getByTestId("constraint-c1-meta");
+    expect(meta.textContent).toContain("my_requests.requested_at");
+    expect(meta.textContent).toContain("02.01.2026");
+    expect(meta.textContent).toContain("my_requests.updated_at");
+    expect(meta.textContent).toContain("05.01.2026");
+
+    const waiting = within(row).getByTestId("constraint-c1-waiting-on");
+    expect(waiting.textContent).toContain("my_requests.waiting_approval");
+    expect(waiting.textContent).toContain("my_requests.role_duty_manager");
+    expect(within(waiting).getByRole("button", { name: 'סמ"ר כהן' })).toBeTruthy();
+
+    const step = within(row).getByTestId("constraint-c1-commander-step");
+    expect(step.textContent).toContain("my_requests.commander_step");
+    expect(within(step).getByRole("button", { name: 'רס"ן לוי' })).toBeTruthy();
+  });
+
+  it("hides the update date when it lands on the request date", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      {
+        ...constraint,
+        requested_at: "2026-01-02T09:30:00Z",
+        updated_at: "2026-01-02T18:00:00Z",
+      },
+    ]);
+    renderPage();
+    await openExistingTab();
+    const row = await screen.findByTestId("constraint-row-c1");
+    expect(row.textContent).not.toContain("my_requests.updated_at");
+  });
+
+  it("shows who approved with a decider link on an approved row", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      {
+        ...constraint,
+        status: "approved",
+        requested_at: "2026-01-02T10:00:00Z",
+        updated_at: "2026-01-04T10:00:00Z",
+        decided_by: { soldier_id: "cmd-9", name: "אבי ג״ל" },
+      },
+    ]);
+    renderPage();
+    await openExistingTab();
+    const row = await screen.findByTestId("constraint-row-c1");
+    const decided = within(row).getByTestId("constraint-c1-decided-by");
+    expect(decided.textContent).toContain("my_requests.approved_by");
+    expect(within(decided).getByRole("button", { name: "אבי ג״ל" })).toBeTruthy();
+  });
+
+  it("labels the decider as rejecter on a rejected exemption request", async () => {
+    vi.mocked(exemptionsApi.listMyExemptionRequests).mockResolvedValue([
+      {
+        ...exemptionRequest,
+        status: "rejected",
+        requested_at: "2026-02-02T08:00:00Z",
+        updated_at: "2026-02-03T09:00:00Z",
+        decided_by: { soldier_id: "cmd-7", name: "דנה לוי" },
+      },
+    ] as unknown as exemptionsApi.ExemptionRequest[]);
+    renderPage();
+    await openExistingTab();
+    const row = (await screen.findByText("y")).closest("li")!;
+    const decided = within(row).getByTestId("er-er1-decided-by");
+    expect(decided.textContent).toContain("my_requests.rejected_by");
+    expect(within(decided).getByRole("button", { name: "דנה לוי" })).toBeTruthy();
+  });
+});
+
+describe("MyRequestsPage - field-update value translation", () => {
+  it("renders food_type values through soldier_profile.food_* keys, not raw enums", async () => {
+    vi.mocked(soldiersApi.listFieldUpdates).mockResolvedValue([
+      {
+        id: "fu-food",
+        soldier_id: "sol-1",
+        soldier_name: "A",
+        node_name: null,
+        field_name: "food_type",
+        previous_value: "regular",
+        new_value: "vegetarian",
+        status: "approved",
+        decided_by: null,
+        decided_at: "2026-01-03T00:00:00Z",
+        decision_note: null,
+        created_at: "2026-01-02T00:00:00Z",
+        requested_at: "2026-01-02T00:00:00Z",
+        updated_at: "2026-01-03T00:00:00Z",
+        waiting_on: null,
+        commander_approved_by: null,
+        nearest_commander: null,
+        nearest_duty_manager: null,
+        can_approve: false,
+      },
+    ]);
+    renderPage();
+    await openExistingTab();
+    const row = await screen.findByTestId("field-update-row-fu-food");
+    // t() passes keys through, so the *translated-key* path is what we assert:
+    // raw enums alone would render as "regular"/"vegetarian" without the prefix.
+    expect(within(row).getByText("soldier_profile.food_regular")).toBeTruthy();
+    expect(within(row).getByText("soldier_profile.food_vegetarian")).toBeTruthy();
+  });
+});
+
+describe("MyRequestsPage - existing-tab filters", () => {
+  const transferRow = {
+    id: "t1",
+    status: "pending",
+    created_at: "2026-01-02T00:00:00Z",
+    requested_at: "2026-01-02T00:00:00Z",
+    updated_at: "2026-01-02T00:00:00Z",
+    decided_at: null,
+    decision_note: null,
+    waiting_on: null,
+    decided_by: null,
+    commander_approved_by: null,
+    from_node: { id: "n1", name: "מסגרת א" },
+    to_node: { id: "n2", name: "מסגרת ב" },
+  };
+
+  async function setupExistingWithTransfer(onLocation?: (params: URLSearchParams) => void) {
+    vi.mocked(myRequestsApi.listMyHierarchyTransfers).mockResolvedValue([transferRow]);
+    renderPage(["/requests?tab=existing"], onLocation);
+    await screen.findByTestId("group-constraints");
+    await screen.findByTestId("transfer-row-t1");
+  }
+
+  it("type select shows only that group's section and syncs ?type=", async () => {
+    let params: URLSearchParams | undefined;
+    await setupExistingWithTransfer((p) => { params = p; });
+    expect(screen.queryByTestId("transfer-row-t1")).not.toBeNull();
+
+    fireEvent.change(screen.getByTestId("filter-type"), { target: { value: "transfers" } });
+
+    expect(screen.queryByTestId("group-constraints")).toBeNull();
+    expect(screen.queryByTestId("group-swaps")).toBeNull();
+    expect(screen.queryByTestId("transfer-row-t1")).not.toBeNull();
+    await waitFor(() => expect(params?.get("type")).toBe("transfers"));
+  });
+
+  it("status select filters rows inside every visible group and syncs ?status=", async () => {
+    let params: URLSearchParams | undefined;
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      constraint, // pending c1
+      { ...constraint, id: "c2", status: "approved" },
+    ]);
+    await setupExistingWithTransfer((p) => { params = p; });
+
+    fireEvent.change(screen.getByTestId("filter-status"), { target: { value: "approved" } });
+
+    expect(screen.queryByTestId("constraint-row-c1")).toBeNull();
+    expect(screen.queryByTestId("constraint-row-c2")).not.toBeNull();
+    // Transfers are pending → filtered out of the still-visible transfers group.
+    expect(screen.queryByTestId("transfer-row-t1")).toBeNull();
+    expect(screen.getByText("my_requests.empty_transfers")).toBeInTheDocument();
+    await waitFor(() => expect(params?.get("status")).toBe("approved"));
+  });
+
+  it("treats pending_* statuses as ממתין for the status filter", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      { ...constraint, status: "pending_duty_manager" },
+    ]);
+    renderPage(["/requests?tab=existing&status=pending"]);
+    await openExistingTab();
+    await screen.findByTestId("constraint-row-c1");
+
+    fireEvent.change(screen.getByTestId("filter-status"), { target: { value: "rejected" } });
+    expect(screen.queryByTestId("constraint-row-c1")).toBeNull();
+    expect(screen.getByText("my_requests.none")).toBeInTheDocument();
+  });
+
+  it("deep-links with preselected filters from URL params", async () => {
+    vi.mocked(myRequestsApi.listMyHierarchyTransfers).mockResolvedValue([transferRow]);
+    renderPage(["/requests?tab=existing&type=transfers&status=pending"]);
+    await screen.findByTestId("transfer-row-t1");
+    expect(screen.queryByTestId("group-constraints")).toBeNull();
+    expect(screen.queryByTestId("group-transfers")).not.toBeNull();
+    expect(screen.getByTestId("transfer-row-t1")).toBeInTheDocument();
+    expect((screen.getByTestId("filter-type") as HTMLSelectElement).value).toBe("transfers");
+    expect((screen.getByTestId("filter-status") as HTMLSelectElement).value).toBe("pending");
+  });
+
+  it("clearing a filter back to הכל removes its URL param and restores all groups", async () => {
+    let params: URLSearchParams | undefined;
+    vi.mocked(myRequestsApi.listMyHierarchyTransfers).mockResolvedValue([transferRow]);
+    renderPage(["/requests?tab=existing&type=transfers"], (p) => { params = p; });
+    await screen.findByTestId("transfer-row-t1");
+    expect(screen.queryByTestId("group-constraints")).toBeNull();
+
+    fireEvent.change(screen.getByTestId("filter-type"), { target: { value: "all" } });
+
+    expect(screen.queryByTestId("group-constraints")).not.toBeNull();
+    expect(screen.queryByTestId("transfer-row-t1")).not.toBeNull();
+    await waitFor(() => expect(params?.get("type")).toBeNull());
   });
 });

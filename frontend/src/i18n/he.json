@@ -144,7 +144,19 @@
     "empty_enrollment": "אין בקשת קליטה",
     "empty_range_excusals": "אין בקשות פטור מטווח",
     "submitted": "הוגשה",
-    "no_show": "לא נכח"
+    "no_show": "לא נכח",
+    "requested_at": "תאריך בקשה",
+    "updated_at": "עדכון אחרון",
+    "waiting_approval": "ממתין לאישור",
+    "role_commander": "מפקד",
+    "role_duty_manager": "אחראי תורנויות",
+    "approved_by": "אושר ע״י",
+    "rejected_by": "נדחה ע״י",
+    "commander_step": "שלב מפקד",
+    "filter_type_label": "סוג בקשה",
+    "filter_status_label": "סטטוס",
+    "filter_all": "הכל",
+    "filter_pending": "ממתין"
   },
   "my_bug_reports": {
     "load_error": "שגיאה בטעינת הדיווחים"
