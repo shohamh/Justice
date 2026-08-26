@@ -257,6 +257,7 @@ def cancel_constraint(
     *,
     constraint_id: uuid.UUID,
     actor_id: uuid.UUID | None = None,
+    reason: str | None = None,
 ) -> None:
     c = session.get(PersonalConstraint, constraint_id)
     if c is None:
@@ -269,19 +270,44 @@ def cancel_constraint(
     # because the FK is ON DELETE SET NULL (a later soldier deletion would
     # silently flip it back to None). Once approved/rejected the request is
     # final and no longer withdrawable unilaterally.
-    cancelable = c.status in ("pending_commander", "pending_duty_manager")
-    if not cancelable:
+    if c.status in ("pending_commander", "pending_duty_manager"):
+        write_audit(
+            session, actor_id=actor_id, action="constraint.cancel",
+            entity_type="personal_constraint", entity_id=c.id,
+            before={"status": c.status}, after={"deleted": True},
+        )
+        session.delete(c)
+        return
+    if c.status != "approved":
         raise ConstraintError("not_pending")
+    if not reason or not reason.strip():
+        raise ConstraintError("cancellation_reason_required")
+    from app.db.models import NotificationType
+    from app.services.notifications import create_notification
+    from app.services.score_projection import affected_dates_for_inclusive_period, refresh_projection_for_change
+    old_status = c.status
+    c.status = "cancelled"
+    c.decided_by = actor_id
+    c.decided_at = datetime.now(timezone.utc)
+    c.decision_note = reason.strip()
     write_audit(
         session,
         actor_id=actor_id,
         action="constraint.cancel",
         entity_type="personal_constraint",
         entity_id=c.id,
-        before={"status": c.status},
-        after={"deleted": True},
+        before={"status": old_status},
+        after={"status": "cancelled", "reason": reason.strip()},
     )
-    session.delete(c)
+    create_notification(
+        session, soldier_id=c.soldier_id, type=NotificationType.constraint_rejected,
+        title="אילוץ אישי בוטל", body=reason.strip(),
+        reference_type="personal_constraint", reference_id=c.id, actor_id=actor_id,
+    )
+    refresh_projection_for_change(
+        session, soldier_ids={c.soldier_id},
+        affected_dates=affected_dates_for_inclusive_period(c.start_date, c.end_date),
+    )
 
 
 def list_constraints(session: Session, *, soldier_id: uuid.UUID) -> list[PersonalConstraint]:

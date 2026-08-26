@@ -26,6 +26,7 @@ class ExemptionOut(BaseModel):
     granted_by: uuid.UUID | None
     revoke_reason: str | None
     revoked_by_name: str | None
+    can_cancel: bool = False
 
 
 class ExemptionDetailOut(BaseModel):
@@ -47,7 +48,7 @@ class GrantRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
-def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True) -> ExemptionOut:
+def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True, can_cancel: bool = False) -> ExemptionOut:
     revoked_by_name = None
     if include_sensitive and ex.revoked_by is not None:
         revoker = session.get(Soldier, ex.revoked_by)
@@ -62,6 +63,7 @@ def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True)
         granted_by=ex.granted_by,
         revoke_reason=ex.revoke_reason if include_sensitive else None,
         revoked_by_name=revoked_by_name,
+        can_cancel=can_cancel,
     )
 
 
@@ -86,8 +88,10 @@ def list_(
     if s.id != user.id:
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
     include_sensitive = can_see_private(session, user, s)
+    from app.services.authority import request_cancellation_authorized
+    can_cancel = request_cancellation_authorized(session, user=user, target_node=_node_of(session, s))
     return [
-        _out(session, ex, include_sensitive=include_sensitive)
+        _out(session, ex, include_sensitive=include_sensitive, can_cancel=can_cancel)
         for ex in svc.list_exemptions(session, soldier_id=soldier_id)
     ]
 
@@ -211,7 +215,10 @@ def revoke(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     s = _load_soldier(session, soldier_id)
-    authorize(session, user, Action.EXEMPTION_GRANT, target_node=_node_of(session, s))
+    from app.services.authority import request_cancellation_authorized
+
+    if not request_cancellation_authorized(session, user=user, target_node=_node_of(session, s)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     ex = session.get(SoldierExemption, exemption_id)
     if ex is None or ex.soldier_id != soldier_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

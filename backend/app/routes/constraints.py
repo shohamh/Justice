@@ -18,6 +18,7 @@ from app.auth.authz import (
     is_duty_manager,
     scope_root_ids,
 )
+from app.services.authority import request_cancellation_authorized, senior_commander_approval_authorized
 from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import HierarchyNode, PersonalConstraint, Soldier
 from app.db.session import get_session
@@ -67,6 +68,7 @@ class ConstraintOut(BaseModel):
     nearest_commander: NearestApproverOut | None = None
     nearest_duty_manager: NearestApproverOut | None = None
     can_approve: bool = True
+    can_cancel: bool = False
     requested_at: datetime | None = None
     updated_at: datetime | None = None
     waiting_on: WaitingOnOut | None = None
@@ -85,6 +87,10 @@ class ApproveRequest(BaseModel):
 
 class RejectRequest(BaseModel):
     decision_note: str = Field(max_length=1000)
+
+
+class CancelRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 class PendingCountOut(BaseModel):
@@ -110,6 +116,7 @@ def _out(
     nearest_commander: NearestApproverOut | None = None,
     nearest_duty_manager: NearestApproverOut | None = None,
     can_approve: bool = True,
+    can_cancel: bool = False,
     audit_times: dict[uuid.UUID, datetime] | None = None,
 ) -> ConstraintOut:
     return ConstraintOut(
@@ -128,6 +135,7 @@ def _out(
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
         can_approve=can_approve,
+        can_cancel=can_cancel,
         requested_at=c.created_at,
         updated_at=latest_activity(c.created_at, c.decided_at, (audit_times or {}).get(c.id)),
         waiting_on=resolve_waiting_on(session, soldier_id=c.soldier_id, status=c.status),
@@ -155,6 +163,12 @@ def _can_approve_constraint(
         return True
     if constraint_status == "pending_duty_manager" and user.role not in ("duty_manager", "admin"):
         return False
+    if constraint_status in ("pending", "pending_commander"):
+        from app.services.authority import senior_commander_approval_authorized
+        if senior_commander_approval_authorized(session, user=user, target_node=target_node):
+            return True
+        if not is_duty_manager(session, user.id):
+            return False
     roots = scope_root_ids(session, user)
     return can(
         user,
@@ -264,6 +278,30 @@ def cancel(
     session.commit()
 
 
+@router.post("/constraints/{constraint_id}/cancel", response_model=ConstraintOut)
+def privileged_cancel(
+    constraint_id: uuid.UUID,
+    body: CancelRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ConstraintOut:
+    c = session.get(PersonalConstraint, constraint_id)
+    if c is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    s = _load_soldier(session, c.soldier_id)
+    if not request_cancellation_authorized(session, user=user, target_node=_node_of(session, s)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    try:
+        svc.cancel_constraint(session, constraint_id=constraint_id, actor_id=user.id, reason=body.reason)
+    except svc.ConstraintError as exc:
+        code = status.HTTP_422_UNPROCESSABLE_ENTITY if str(exc) == "cancellation_reason_required" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    session.commit()
+    session.refresh(c)
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+    return _out(session, c, include_reason=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+
+
 # ── Cross-soldier view ──
 
 
@@ -328,6 +366,7 @@ def _attach_names(
         nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
         target_node = nodes_by_id.get(s.hierarchy_node_id) if s and s.hierarchy_node_id else None
         can_approve = _can_approve_constraint(session, user, c.soldier_id, target_node, c.status)
+        can_cancel = request_cancellation_authorized(session, user=user, target_node=target_node)
         result.append(
             _out(
                 session,
@@ -338,6 +377,7 @@ def _attach_names(
                 nearest_commander=nearest_commander,
                 nearest_duty_manager=nearest_duty_manager,
                 can_approve=can_approve,
+                can_cancel=can_cancel,
             )
         )
     return result
@@ -403,7 +443,13 @@ def approve(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     s = _load_soldier(session, c.soldier_id)
     forbid_self_target(user, s.id)
-    authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=_node_of(session, s))
+    target_node = _node_of(session, s)
+    if c.status in ("pending", "pending_commander"):
+        if not senior_commander_approval_authorized(session, user=user, target_node=target_node):
+            if not (is_duty_manager(session, user.id) and can(user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=scope_root_ids(session, user), is_commander=is_commander(session, user.id), is_duty_manager=True)):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    else:
+        authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
     try:
         c = svc.approve_constraint(
             session,

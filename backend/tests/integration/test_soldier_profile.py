@@ -147,6 +147,34 @@ def test_admin_can_correct_rank_without_hierarchy_node(client, admin_session):
     assert response.status_code == 200, response.text
 
 
+def test_admin_can_patch_all_rank_advancement_fields_but_plain_soldier_cannot(client, admin_session):
+    admin = create_soldier(admin_session, personal_number="rank_admin_all_fields", role="admin")
+    plain_soldier = create_soldier(admin_session, personal_number="rank_plain_actor")
+    target = create_soldier(admin_session, personal_number="rank_admin_all_fields_target")
+
+    admin_response = client.patch(
+        f"/api/soldiers/{target.id}/profile",
+        json={
+            "rank": "סמר",
+            "rank_track": "enlisted",
+            "next_rank_date": "2030-02-03",
+        },
+        headers=auth_headers(admin),
+    )
+    plain_response = client.patch(
+        f"/api/soldiers/{target.id}/profile",
+        json={"rank": "טוראי", "rank_track": "enlisted", "next_rank_date": "2031-04-05"},
+        headers=auth_headers(plain_soldier),
+    )
+
+    assert admin_response.status_code == 200, admin_response.text
+    assert admin_response.json()["rank"] == "סמר"
+    assert admin_response.json()["rank_track"] == "enlisted"
+    assert admin_response.json()["next_rank_date"] == "2030-02-03"
+    assert admin_response.json()["next_rank_date_overridden"] is True
+    assert plain_response.status_code == 403
+
+
 def test_explicit_null_next_rank_date_restores_automatic_schedule(client, admin_session):
     admin = create_soldier(admin_session, personal_number="rank_reset_admin", role="admin")
     soldier = create_soldier(admin_session, personal_number="rank_reset_target")

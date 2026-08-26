@@ -21,6 +21,7 @@ export interface PersonalConstraint {
   nearest_commander: { id: string; name: string } | null;
   nearest_duty_manager: { id: string; name: string } | null;
   can_approve: boolean;
+  can_cancel?: boolean;
 }
 
 export async function listMyConstraints(): Promise<PersonalConstraint[]> {
@@ -35,8 +36,16 @@ export async function submitConstraint(input: {
   return (await api.post<PersonalConstraint>("/me/constraints", input)).data;
 }
 
-export async function cancelConstraint(id: string): Promise<void> {
+export async function cancelConstraint(id: string, reason?: string): Promise<void> {
+  if (reason !== undefined) {
+    await api.post(`/constraints/${id}/cancel`, { reason });
+    return;
+  }
   await api.delete(`/me/constraints/${id}`);
+}
+
+export async function cancelConstraintForManager(id: string, reason?: string): Promise<void> {
+  await api.post(`/constraints/${id}/cancel`, { reason: reason ?? null });
 }
 
 export async function listPendingApprovals(): Promise<PersonalConstraint[]> {
