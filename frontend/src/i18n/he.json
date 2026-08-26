@@ -125,6 +125,7 @@
     "pending_constraints": "אילוצים ממתינים לאישור",
     "approved_constraints": "אילוצים שאושרו",
     "rejected_constraints": "אילוצים שנדחו",
+    "cancelled_constraints": "אילוצים שבוטלו",
     "decision_note": "הערת מפקד",
     "section_bug_reports": "הדיווחים שלי",
     "present": "נכח",

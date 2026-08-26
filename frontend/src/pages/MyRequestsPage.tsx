@@ -352,6 +352,7 @@ export default function MyRequestsPage() {
       pending_duty_manager: "text-amber-600 dark:text-amber-400",
       approved: "text-green-600 dark:text-green-400",
       rejected: "text-red-600 dark:text-red-400",
+      cancelled: "text-gray-500 dark:text-gray-400",
     };
     return <span className={colors[status] ?? ""}>{t(`my_requests.${status}`)}</span>;
   };
@@ -759,6 +760,38 @@ export default function MyRequestsPage() {
                         />
                         {c.decision_note && (
                           <p className="text-xs text-red-700 dark:text-red-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
+                        )}
+                        <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {visibleConstraints.filter((c) => c.status === "cancelled").length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.cancelled_constraints")}</h4>
+                  <ul className="space-y-2 text-sm" data-testid="cancelled-constraints-list">
+                    {visibleConstraints.filter((c) => c.status === "cancelled").map((c) => (
+                      <li key={c.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-900" data-testid={`constraint-row-${c.id}`}>
+                        <div className="flex items-center gap-3">
+                          <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                          <DaysBadge start={c.start_date} end={c.end_date} />
+                          <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
+                          {statusBadge(c.status)}
+                        </div>
+                        <RequestMetaRow
+                          testIdPrefix={`constraint-${c.id}`}
+                          requestedAt={c.requested_at}
+                          createdAt={c.created_at}
+                          updatedAt={c.updated_at}
+                          waitingOn={c.waiting_on}
+                          decidedBy={c.decided_by}
+                          status={c.status}
+                          commanderApprovedBy={c.commander_approved_by}
+                        />
+                        {c.decision_note && (
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
                         )}
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
