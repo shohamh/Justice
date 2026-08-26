@@ -88,7 +88,7 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
                   <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">
                     {bugReportStatusLabel(report.status)}
                   </span>
-                  <span className="flex-1 min-w-0 whitespace-pre-wrap text-right">{report.description}</span>
+                  {!isExpanded && <span className="flex-1 min-w-0 whitespace-pre-wrap text-right">{report.description}</span>}
                   {report.has_unseen_activity && (
                     <span
                       className="w-2 h-2 rounded-full bg-red-500 shrink-0"

@@ -88,7 +88,6 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
       entryIdRef.current = entryId;
       window.history.pushState({ __modal: true, __modalId: entryId }, "");
     }
-
     function handlePopState() {
       // A nested modal pushed its own entry on top of ours; when it closes,
       // its cleanup's history.back() pops that entry and lands back on OUR
