@@ -7,6 +7,7 @@ export function formatFieldUpdateValue(
 ): string {
   if (!value) return "—";
   if (fieldName === "gender") return t(`soldier_profile.gender_${value}`);
+  if (fieldName === "food_type") return t(`soldier_profile.food_${value}`);
   if (fieldName === "rank") {
     try {
       const parsed = JSON.parse(value) as { rank?: string; rank_track?: string };
