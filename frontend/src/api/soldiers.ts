@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
+import type { SoldierRef, WaitingOnRef } from "./myRequests";
 
 export interface SoldierDTO {
   id: string;
@@ -40,7 +41,13 @@ export interface OnboardResult extends SoldierDTO {
   temp_password: string | null;
 }
 
+/** Own field-update history rows share the enriched requests contract. */
 export interface FieldUpdateDTO {
+  requested_at: string;
+  updated_at: string;
+  waiting_on: WaitingOnRef | null;
+  decided_by: SoldierRef | null;
+  commander_approved_by: SoldierRef | null;
   id: string;
   soldier_id: string;
   soldier_name: string;
@@ -49,7 +56,6 @@ export interface FieldUpdateDTO {
   previous_value: string | null;
   new_value: string | null;
   status: "pending" | "approved" | "rejected";
-  decided_by: string | null;
   decided_at: string | null;
   decision_note: string | null;
   created_at: string;

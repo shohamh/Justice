@@ -37,6 +37,7 @@ from app.services.authority import (
     can_view_soldier_scope,
     rank_advancement_edit_authorized,
 )
+from app.services.request_metadata import latest_activity, person_ref
 from app.services.eligibility import ENLISTED_RANKS
 from app.services.rank_advancement import OFFICER_ACADEMIC_LADDER, OFFICER_LADDER
 from app.services.duty_history import get_duty_history
@@ -130,6 +131,17 @@ class NearestApproverOut(BaseModel):
     name: str
 
 
+class PersonRefOut(BaseModel):
+    soldier_id: uuid.UUID
+    name: str
+
+
+class WaitingOnOut(BaseModel):
+    kind: str  # "commander" | "duty_manager"
+    soldier_id: uuid.UUID
+    name: str
+
+
 class FieldUpdateOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
@@ -139,13 +151,17 @@ class FieldUpdateOut(BaseModel):
     previous_value: str | None
     new_value: str | None        # None when viewer cannot see private field values
     status: str
-    decided_by: uuid.UUID | None
+    decided_by: PersonRefOut | None = None
     decided_at: Any
     decision_note: str | None
     created_at: Any
     nearest_commander: NearestApproverOut | None = None
     nearest_duty_manager: NearestApproverOut | None = None
     can_approve: bool = True
+    requested_at: Any | None = None
+    updated_at: Any | None = None
+    waiting_on: WaitingOnOut | None = None
+    commander_approved_by: PersonRefOut | None = None
 
 
 class TimelineEventOut(BaseModel):
@@ -247,12 +263,11 @@ def _out(
         profile_picture_url=s.profile_picture_url,
         telegram_linked=telegram_linked,
         email=s.email if (include_private or email_public) else None,
-        direct_commander_id=direct_commander.id if direct_commander else None,
-        direct_commander_name=direct_commander.full_name if direct_commander else None,
     )
 
 
 def _fu_out(
+    session: Session,
     u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None = None, include_values: bool = True,
     nearest_commander: NearestApproverOut | None = None, nearest_duty_manager: NearestApproverOut | None = None,
     can_approve: bool = True,
@@ -267,13 +282,18 @@ def _fu_out(
         previous_value=None if redact else u.previous_value,
         new_value=None if redact else u.new_value,
         status=u.status,
-        decided_by=u.decided_by,
+        decided_by=person_ref(session, u.decided_by),
         decided_at=u.decided_at,
         decision_note=u.decision_note,
         created_at=u.created_at,
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
         can_approve=can_approve,
+        requested_at=u.created_at,
+        updated_at=latest_activity(u.created_at, u.decided_at),
+        # Plain "pending" flow with no named commander/duty-manager step.
+        waiting_on=None,
+        commander_approved_by=None,
     )
 
 
@@ -456,7 +476,7 @@ def list_all_pending_field_updates(
             nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
             result.append(
                 _fu_out(
-                    upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
+                    session, upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
                     nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
                     can_approve=True,
                 )
@@ -486,7 +506,7 @@ def list_all_pending_field_updates(
                 )
                 result.append(
                     _fu_out(
-                        upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
+                        session, upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
                         nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
                         can_approve=can_approve,
                     )
@@ -768,7 +788,7 @@ def create_field_update(
     session.commit()
     session.refresh(req)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
-    return _fu_out(req, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    return _fu_out(session, req, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.get("/{soldier_id}/field-updates", response_model=list[FieldUpdateOut])
@@ -787,7 +807,7 @@ def list_field_updates(
     include_values = can_see_private(session, user, s)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     return [
-        _fu_out(r, include_values=include_values, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+        _fu_out(session, r, include_values=include_values, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
         for r in rows
     ]
 
@@ -813,7 +833,7 @@ def approve_update(
     session.refresh(upd)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     return _fu_out(
-        upd, include_values=can_see_private(session, user, s),
+        session, upd, include_values=can_see_private(session, user, s),
         nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
     )
 
@@ -839,7 +859,7 @@ def reject_update(
     session.refresh(upd)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     return _fu_out(
-        upd, include_values=can_see_private(session, user, s),
+        session, upd, include_values=can_see_private(session, user, s),
         nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
     )
 
