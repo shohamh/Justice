@@ -472,6 +472,8 @@ def get_range_event(
             is_commander(session, user.id) and _node_in_scope(node, scope_root_ids(session, user))
         ):
             raise
+    if svc.mark_past_range_events_completed(session):
+        session.commit()
     return _event_out(
         session,
         event,
@@ -525,6 +527,8 @@ def list_range_events(
             .all()
         )
         query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id.in_(subtree_node_ids))
+    if svc.mark_past_range_events_completed(session):
+        session.commit()
     if date_from is not None:
         query = query.filter(RangeEvent.date >= date_from)
     if date_to is not None:

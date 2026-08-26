@@ -49,7 +49,7 @@ describe("formatRangeEligibilityExplanation", () => {
   });
 
   it("explains an uncovered weapon duty with its required range and date", () => {
-    expect(formatRangeEligibilityExplanation(fact({ required_range_type: "live" }), t)).toBe("משובץ לתורנות שמירה שדורשת לפחות מטווח מסוג מטווח חי בתאריך 21.08.2026 אין מטווחים בתוקף");
+    expect(formatRangeEligibilityExplanation(fact({ required_range_type: "live" }), t)).toBe("משובץ לתורנות שמירה שדורשת לפחות מטווח מסוג מטווח חי בתאריך 21.08.2026\nאין מטווחים בתוקף");
   });
 
   it("explains planned-range coverage and projected validity instead of an uncovered duty", () => {
@@ -83,7 +83,7 @@ describe("formatRangeEligibilityExplanation", () => {
       }),
       t,
     );
-    expect(result).toContain("מטווח אחרון");
+    expect(result).toBe("משובץ לתורנות שמירה שדורשת לפחות מטווח מסוג מטווח לייזר בתאריך 21.08.2026\nמטווח אחרון - מטווח לייזר (בתוקף עד 01.03.2026)");
   });
 
   it("notes never-qualified when uncovered and no last qualification exists", () => {
@@ -91,7 +91,7 @@ describe("formatRangeEligibilityExplanation", () => {
       fact({ required_range_type: "laser", qualification_source: null, last_qualification_type: null, last_qualification_date: null }),
       t,
     );
-    expect(result).toContain("אין מטווחים בתוקף");
+    expect(result).toBe("משובץ לתורנות שמירה שדורשת לפחות מטווח מסוג מטווח לייזר בתאריך 21.08.2026\nאין מטווחים בתוקף");
   });
 });
 

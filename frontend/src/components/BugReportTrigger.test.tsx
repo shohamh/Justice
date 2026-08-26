@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -28,6 +28,10 @@ function renderTrigger() {
 }
 
 describe("BugReportTrigger", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   test("captures a screenshot of the page BEFORE opening the modal, then opens it", async () => {
     renderTrigger();
 
@@ -35,9 +39,12 @@ describe("BugReportTrigger", () => {
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-    // toPng must be called against document.body while the modal is still absent —
-    // i.e. the capture happens before the modal (and its dimming overlay) mounts.
-    expect(toPng).toHaveBeenCalledWith(document.body, expect.objectContaining({ pixelRatio: 1 }));
+    // toPng must be called against a capture-only representation while the
+    // modal (and its dimming overlay) is still absent.
+    expect(toPng).toHaveBeenCalled();
+    const [captureNode, options] = vi.mocked(toPng).mock.calls[0];
+    expect(captureNode).not.toBe(document.body);
+    expect(options).toEqual(expect.objectContaining({ pixelRatio: 1 }));
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
 
     await waitFor(() =>
@@ -125,7 +132,52 @@ describe("BugReportTrigger", () => {
     document.removeEventListener("mousedown", outsideClickHandler);
   });
 
-  test("captures relative to the current scroll position, not the top of the document", async () => {
+  test("translates only a capture clone while live app scroll content remains unchanged", async () => {
+    const header = document.createElement("header");
+    header.style.transform = "scale(1)";
+    const appScrollContainer = document.createElement("main");
+    appScrollContainer.dataset.bugReportScrollContainer = "";
+    Object.defineProperties(appScrollContainer, {
+      scrollTop: { value: 300, configurable: true },
+      scrollLeft: { value: 40, configurable: true },
+    });
+    const appScrollContent = document.createElement("div");
+    appScrollContent.dataset.bugReportScrollContent = "";
+    appScrollContent.style.transform = "scale(1)";
+    appScrollContainer.append(appScrollContent);
+    document.body.append(header);
+    document.body.append(appScrollContainer);
+
+    try {
+      let capturedNode: HTMLElement | null = null;
+      let releaseCapture: (url: string) => void = () => {};
+      vi.mocked(toPng).mockImplementationOnce((node) => {
+        capturedNode = node as HTMLElement;
+        return new Promise((resolve) => { releaseCapture = resolve; });
+      });
+      renderTrigger();
+
+      fireEvent.click(screen.getByTestId("bug-report-trigger"));
+
+      await waitFor(() => expect(toPng).toHaveBeenCalled());
+      expect(capturedNode).not.toBe(document.body);
+      expect(capturedNode?.querySelector<HTMLElement>("[data-bug-report-scroll-content]")?.style.transform)
+        .toBe("translate(-40px, -300px)");
+      expect(capturedNode?.querySelector<HTMLElement>("header")?.style.transform).toBe("scale(1)");
+      expect(appScrollContent.style.transform).toBe("scale(1)");
+      expect(appScrollContainer.scrollTop).toBe(300);
+      expect(appScrollContainer.scrollLeft).toBe(40);
+      expect(capturedNode?.isConnected).toBe(true);
+
+      releaseCapture("data:image/png;base64,AAA");
+      await waitFor(() => expect(capturedNode?.isConnected).toBe(false));
+    } finally {
+      header.remove();
+      appScrollContainer.remove();
+    }
+  });
+
+  test("falls back to window scroll when the app shell is absent", async () => {
     Object.defineProperty(window, "scrollX", { value: 40, configurable: true });
     Object.defineProperty(window, "scrollY", { value: 300, configurable: true });
 
@@ -134,12 +186,11 @@ describe("BugReportTrigger", () => {
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
     await waitFor(() => expect(toPng).toHaveBeenCalled());
-    expect(toPng).toHaveBeenCalledWith(
-      document.body,
-      expect.objectContaining({
-        style: expect.objectContaining({ transform: "translate(-40px, -300px)" }),
-      }),
-    );
+    const [captureNode, options] = vi.mocked(toPng).mock.calls[0];
+    expect(captureNode).not.toBe(document.body);
+    expect(options).toEqual(expect.objectContaining({
+      style: expect.objectContaining({ transform: "translate(-40px, -300px)" }),
+    }));
 
     Object.defineProperty(window, "scrollX", { value: 0, configurable: true });
     Object.defineProperty(window, "scrollY", { value: 0, configurable: true });

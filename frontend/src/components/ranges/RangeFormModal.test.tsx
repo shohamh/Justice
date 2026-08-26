@@ -1,11 +1,6 @@
 ﻿import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import RangeFormModal from "./RangeFormModal";
-import * as rangeLocationsApi from "../../api/rangeLocations";
-vi.mock("../../api/rangeLocations", async () => {
-  const actual = await vi.importActual<typeof import("../../api/rangeLocations")>("../../api/rangeLocations");
-  return { ...actual, createRangeLocation: vi.fn() };
-});
 const event = { id:"r1", hierarchy_node_id:"n1", range_type:"laser" as const, date:"2026-09-01", range_location_id:"loc1", location:"old", required_count:1, reserve_count:1, status:"planned" as const, assignments:[{id:"a1",soldier_id:"s1",is_reserve:false,is_draft:false,attendance_status:"pending" as const,note:null}] };
 describe("RangeFormModal",()=>{
   it("uses the standard modal form structure with grouped sections and a footer", () => {
@@ -41,28 +36,41 @@ describe("RangeFormModal",()=>{
   });
   it("rejects an end time before the start time",async()=>{ const submit=vi.fn(); render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[{id:"loc1",name:"מטווח דרום",active:true}]} onClose={vi.fn()} onSubmit={submit}/>); fireEvent.focus(screen.getByTestId("new-range-location")); const locationOption = await screen.findByText("מטווח דרום"); fireEvent.pointerDown(locationOption); fireEvent.pointerUp(locationOption); fireEvent.change(screen.getByTestId("new-date"),{target:{value:"2026-09-02"}}); fireEvent.change(screen.getByTestId("new-start-time"),{target:{value:"12:00"}}); fireEvent.change(screen.getByTestId("new-end-time"),{target:{value:"11:00"}}); fireEvent.click(screen.getByRole("button",{name:"שמור"})); expect(screen.getByRole("alert")).toBeInTheDocument(); expect(submit).not.toHaveBeenCalled(); });
   it("shows a specific error when no location is selected",()=>{ const submit=vi.fn(); render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={submit}/>); fireEvent.change(screen.getByTestId("new-date"),{target:{value:"2026-09-02"}}); fireEvent.click(screen.getByRole("button",{name:"שמור"})); expect(screen.getByRole("alert")).toHaveTextContent("יש לבחור מיקום"); expect(submit).not.toHaveBeenCalled(); });
-  it("does not submit the outer range form when saving a new inline location", async () => {
-    vi.mocked(rangeLocationsApi.createRangeLocation).mockResolvedValue({ id: "loc-new", name: "מטווח מזרח", active: true });
-    const submit = vi.fn().mockResolvedValue(undefined);
-    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={submit} />);
+  it("does not expose inactive configured locations in the selector", () => {
+    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[{ id: "loc-inactive", name: "מטווח סגור", active: false }]} onClose={vi.fn()} onSubmit={vi.fn()} />);
 
-    fireEvent.click(screen.getByText("+ הוסף מיקום"));
-    fireEvent.change(screen.getByPlaceholderText("שם המיקום"), { target: { value: "מטווח מזרח" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "שמור" })[0]);
-
-    await waitFor(() => expect(rangeLocationsApi.createRangeLocation).toHaveBeenCalledWith({ name: "מטווח מזרח" }));
-    expect(submit).not.toHaveBeenCalled();
+    fireEvent.focus(screen.getByTestId("new-range-location"));
+    expect(screen.queryByText("מטווח סגור")).not.toBeInTheDocument();
   });
-  it("shows an error when creating an inline location fails", async () => {
-    vi.mocked(rangeLocationsApi.createRangeLocation).mockRejectedValue(new Error("boom"));
-    const submit = vi.fn();
-    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={submit} />);
+  it("does not offer inline range-location creation", () => {
+    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={vi.fn()} />);
 
-    fireEvent.click(screen.getByText("+ הוסף מיקום"));
-    fireEvent.change(screen.getByPlaceholderText("שם המיקום"), { target: { value: "מטווח מזרח" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "שמור" })[0]);
+    expect(screen.queryByText("+ הוסף מיקום")).not.toBeInTheDocument();
+  });
+  it("defaults a new range event to a live range", async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[{ id: "loc1", name: "מטווח דרום", active: true }]} onClose={vi.fn()} onSubmit={submit} />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("יצירת המיקום נכשלה");
-    expect(submit).not.toHaveBeenCalled();
+    fireEvent.focus(screen.getByTestId("new-range-location"));
+    const locationOption = await screen.findByText("מטווח דרום");
+    fireEvent.pointerDown(locationOption);
+    fireEvent.pointerUp(locationOption);
+    fireEvent.click(screen.getByRole("button", { name: "שמור" }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ range_type: "live" })));
+  });
+  it("shows readable range type choices", () => {
+    render(<RangeFormModal open event={null} hierarchyNodeId="n1" locations={[]} onClose={vi.fn()} onSubmit={vi.fn()} />);
+
+    const rangeType = screen.getByTestId("new-range-type");
+    expect(rangeType).toHaveValue("מטווח חי");
+    fireEvent.focus(rangeType);
+
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeInTheDocument();
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    expect(screen.getByText("מטווח לייזר")).toBeInTheDocument();
+    expect(screen.getByText("מטווח חי")).toBeInTheDocument();
+    expect(screen.getByText("אל\"ל")).toBeInTheDocument();
   });
 });

@@ -42,7 +42,7 @@ export function formatRangeEligibilityExplanation(fact: DutyEligibilityFact, t: 
     dutyType: fact.duty_type_name,
     rangeType: RANGE_TYPE_LABELS[fact.required_range_type] ?? fact.required_range_type,
     date: formatDate(fact.start_date),
-  })} ${lastQualificationClause}`;
+  })}\n${lastQualificationClause}`;
 }
 
 /**

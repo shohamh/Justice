@@ -94,6 +94,7 @@ describe("ProfilePage notification preferences", () => {
   it("hides manager-only notification types for a plain soldier", async () => {
     mockUseAuth.mockReturnValue({
       user: { id: "u1", full_name: "חייל", role: "soldier", is_commander: false, is_duty_manager: false },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
     });
 
     renderProfilePage();
@@ -105,6 +106,7 @@ describe("ProfilePage notification preferences", () => {
   it("shows manager-only notification types for a commander", async () => {
     mockUseAuth.mockReturnValue({
       user: { id: "u1", full_name: "מפקד", role: "commander", is_commander: true, is_duty_manager: false },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
     });
 
     renderProfilePage();
@@ -116,6 +118,7 @@ describe("ProfilePage notification preferences", () => {
   it("shows manager-only notification types for a duty manager", async () => {
     mockUseAuth.mockReturnValue({
       user: { id: "u1", full_name: "אחראי", role: "duty_manager", is_commander: false, is_duty_manager: true },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
     });
 
     renderProfilePage();
@@ -136,6 +139,7 @@ describe("ProfilePage unified service-details form", () => {
         mandatory_end_date: null, discharge_date: null,
         has_military_driving_license: false, military_driving_license_expiry: null,
       },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
     });
     renderProfilePage();
 
@@ -171,6 +175,7 @@ describe("ProfilePage unified service-details form", () => {
         mandatory_end_date: null, discharge_date: null,
         has_military_driving_license: false, military_driving_license_expiry: null,
       },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
     });
     renderProfilePage();
 
@@ -181,5 +186,42 @@ describe("ProfilePage unified service-details form", () => {
 
     fireEvent.change(phoneInput, { target: { value: "050-1234567" } });
     await waitFor(() => expect(submitButtons[2]).toBeEnabled());
+  });
+});
+
+describe("ProfilePage profile refresh", () => {
+  it("refreshes the authenticated profile on mount and reflects the approved date", async () => {
+    const refreshMe = vi.fn().mockResolvedValue(undefined);
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "u1", full_name: "חייל", role: "soldier", is_commander: false,
+        is_duty_manager: false, email: null, email_verified: false,
+        gender: "male", rank: null, rank_track: null, phone: null,
+        last_mitvahim_date: "2026-08-01", last_alal_date: null,
+        mandatory_end_date: null, discharge_date: null,
+        has_military_driving_license: false, military_driving_license_expiry: null,
+      },
+      refreshMe,
+    });
+
+    renderProfilePage();
+
+    await waitFor(() => expect(refreshMe).toHaveBeenCalledTimes(1));
+    expect(await screen.findByDisplayValue("01/08/2026")).toBeInTheDocument();
+
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "u1", full_name: "חייל", role: "soldier", is_commander: false,
+        is_duty_manager: false, email: null, email_verified: false,
+        gender: "male", rank: null, rank_track: null, phone: null,
+        last_mitvahim_date: "2026-08-15", last_alal_date: null,
+        mandatory_end_date: null, discharge_date: null,
+        has_military_driving_license: false, military_driving_license_expiry: null,
+      },
+      refreshMe,
+    });
+    renderProfilePage();
+
+    expect(await screen.findByDisplayValue("15/08/2026")).toBeInTheDocument();
   });
 });
