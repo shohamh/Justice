@@ -149,6 +149,24 @@ describe("DutyHistoryPanel event-type filter", () => {
     expect(screen.queryByTestId("history-event-range_removed")).toBeNull();
   });
 });
+
+describe("DutyHistoryPanel personal constraint events", () => {
+  it("shows who cancelled a personal constraint when the card is expanded", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([
+      {
+        id: "pc1", event_type: "personal_constraint", date: "2026-06-20", end_date: "2026-06-21",
+        title: "אילוצים אישיים", description: "אירוע משפחתי", status: "cancelled",
+        metadata: { decision_note: "כבר לא נדרש", cancelled_by_name: "מבטל בדיקה", cancelled_at: "2026-06-19T00:00:00Z" },
+        created_at: "2026-06-01T00:00:00Z",
+      },
+    ]);
+    render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} />);
+    const card = await screen.findByTestId("history-event-personal_constraint");
+    fireEvent.click(within(card).getByText("אילוצים אישיים"));
+    expect(within(card).getByText(/מבטל בדיקה/)).toBeTruthy();
+  });
+});
+
 vi.mock('../api/exemptions', () => ({
   approveExemptionRequestCommanderStep: vi.fn(() => Promise.resolve()),
   approveExemptionRequestDutyManagerStep: vi.fn(() => Promise.resolve()),

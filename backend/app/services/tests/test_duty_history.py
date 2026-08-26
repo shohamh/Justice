@@ -562,6 +562,70 @@ def test_duty_history_hides_revocation_metadata_when_include_sensitive_false(adm
     assert "revoked_at" not in meta
 
 
+def test_duty_history_annotates_cancelled_constraint(admin_session):
+    """A cancelled PersonalConstraint's event metadata includes cancellation details."""
+    from datetime import datetime, timezone
+
+    s = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    canceller = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    canceller.full_name = "מבטל בדיקה"
+    admin_session.add(PersonalConstraint(
+        soldier_id=s.id, start_date=date(2026, 6, 20), end_date=date(2026, 6, 21),
+        reason="אירוע משפחתי", status="cancelled",
+        decided_by=canceller.id, decided_at=datetime.now(timezone.utc),
+        decision_note="כבר לא נדרש",
+    ))
+    admin_session.commit()
+
+    events = get_duty_history(admin_session, s.id)
+    constraint_events = [e for e in events if e.event_type == "personal_constraint"]
+    assert len(constraint_events) == 1
+    meta = constraint_events[0].metadata
+    assert meta["cancelled_by_name"] == "מבטל בדיקה"
+    assert meta["cancelled_at"] is not None
+    assert meta["decision_note"] == "כבר לא נדרש"
+
+
+def test_duty_history_no_cancellation_metadata_when_not_cancelled(admin_session, soldier):
+    """A pending/approved PersonalConstraint's event metadata has no cancellation keys."""
+    admin_session.add(PersonalConstraint(
+        soldier_id=soldier.id, start_date=date(2026, 6, 20), end_date=date(2026, 6, 21),
+        reason="אירוע משפחתי", status="approved",
+    ))
+    admin_session.commit()
+
+    events = get_duty_history(admin_session, soldier.id)
+    constraint_events = [e for e in events if e.event_type == "personal_constraint"]
+    assert len(constraint_events) == 1
+    assert "cancelled_by_name" not in constraint_events[0].metadata
+    assert "cancelled_at" not in constraint_events[0].metadata
+
+
+def test_duty_history_hides_cancellation_metadata_when_include_sensitive_false(admin_session):
+    """Out-of-scope viewers (include_sensitive=False) must not see cancellation
+    attribution — mirroring exemptions.py's can_see_private gate."""
+    from datetime import datetime, timezone
+
+    s = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    canceller = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    canceller.full_name = "מבטל בדיקה"
+    admin_session.add(PersonalConstraint(
+        soldier_id=s.id, start_date=date(2026, 6, 20), end_date=date(2026, 6, 21),
+        reason="אירוע משפחתי", status="cancelled",
+        decided_by=canceller.id, decided_at=datetime.now(timezone.utc),
+        decision_note="כבר לא נדרש",
+    ))
+    admin_session.commit()
+
+    events = get_duty_history(admin_session, s.id, include_sensitive=False)
+    constraint_events = [e for e in events if e.event_type == "personal_constraint"]
+    assert len(constraint_events) == 1
+    meta = constraint_events[0].metadata
+    assert "cancelled_by_name" not in meta
+    assert "cancelled_at" not in meta
+    assert "decision_note" not in meta or meta["decision_note"] is None
+
+
 def test_swap_override_appears_in_receiving_soldiers_history(admin_session, duty_type, location):
     """A day received via swap (DutyDayOverride) appears in the receiving soldier's
     history as an 'assignment' event, even though DutyAssignment.soldier_id still

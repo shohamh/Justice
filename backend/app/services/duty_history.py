@@ -683,6 +683,13 @@ def get_duty_history(
         ).scalars().all()
     )
     for c in constraints:
+        constraint_metadata: dict[str, object] = {
+            "decision_note": c.decision_note if include_sensitive else None,
+        }
+        if c.status == "cancelled" and include_sensitive:
+            canceller = session.get(Soldier, c.decided_by) if c.decided_by else None
+            constraint_metadata["cancelled_at"] = c.decided_at.isoformat() if c.decided_at else None
+            constraint_metadata["cancelled_by_name"] = canceller.full_name if canceller else None
         events.append(
             TimelineEvent(
                 id=c.id,
@@ -692,9 +699,7 @@ def get_duty_history(
                 title="אילוצים אישיים",
                 description=c.reason if include_sensitive else None,
                 status=c.status,
-                metadata={
-                    "decision_note": c.decision_note if include_sensitive else None,
-                },
+                metadata=constraint_metadata,
                 created_at=c.created_at.isoformat(),
             )
         )

@@ -295,6 +295,11 @@ function EventCard({
                 : {e.metadata.revoke_reason}
               </div>
             )}
+            {e.event_type === "personal_constraint" && e.status === "cancelled" && e.metadata.cancelled_by_name && (
+              <p className="text-xs text-red-600 dark:text-red-400 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                <span className="font-medium">בוטל</span> ע״י {e.metadata.cancelled_by_name}
+              </p>
+            )}
             {dutyType && (() => {
               const hasInfo = dutyType.start_time || dutyType.end_time || dutyType.contact_name || dutyType.contact_phone || dutyType.instructions;
               if (!hasInfo && !dutyType) return null;
