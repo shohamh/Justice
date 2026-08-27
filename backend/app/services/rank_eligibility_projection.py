@@ -352,8 +352,9 @@ def bulk_future_ineligible_duty_blocks(
             DutyTypeRequirements(
                 allowed_ranks=reqs.allowed_ranks,
                 allowed_service_types=reqs.allowed_service_types,
+                rank_service_types=reqs.rank_service_types,
             )
-            if (reqs.allowed_ranks or reqs.allowed_service_types)
+            if (reqs.allowed_ranks or reqs.allowed_service_types or reqs.rank_service_types)
             else None
         )
 

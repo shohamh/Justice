@@ -14,6 +14,7 @@ export interface DutyType {
     requires_alal?: boolean;
     allowed_ranks?: string[];
     allowed_service_types?: string[];
+    rank_service_types?: Record<string, string[]>;
     officers_allowed?: boolean;
     enlisted_allowed?: boolean;
     requires_bahad1?: boolean;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DutyType, updateDutyTypeRequirements } from "../api/dutyConfig";
 import { getRanks } from "../api/soldiers";
+import { isRankTrackFlexible } from "../constants/ranks";
 
 type Reqs = NonNullable<DutyType["requirements"]>;
 
@@ -48,6 +49,28 @@ export default function DutyTypeRequirementsEditor(props: Props) {
       ? current.filter((v: string) => v !== value)
       : [...current, value];
     setReqs(prev => ({ ...prev, [key]: next }));
+  }
+
+  function rankServiceTypeOverride(rank: string): "" | "חובה" | "קבע" {
+    const list = reqs.rank_service_types?.[rank];
+    if (list) return list.length === 1 ? (list[0] as "חובה" | "קבע") : "";
+    // No explicit per-rank override: preselect the global service type when
+    // exactly one is chosen, since that's the value this rank actually
+    // inherits — an empty "ללא הגבלה" selection would misrepresent it.
+    const global = reqs.allowed_service_types ?? [];
+    return global.length === 1 ? (global[0] as "חובה" | "קבע") : "";
+  }
+
+  function setRankServiceTypeOverride(rank: string, value: "" | "חובה" | "קבע") {
+    setReqs(prev => {
+      const next = { ...(prev.rank_service_types ?? {}) };
+      // An explicit "" must mean "unrestricted for this rank" even when a
+      // global allowed_service_types filter would otherwise apply — so it
+      // needs to be stored as an explicit empty override, not just removed
+      // (removing it would fall back to inheriting the global filter again).
+      next[rank] = value === "" ? [] : [value];
+      return { ...prev, rank_service_types: next };
+    });
   }
 
   async function save() {
@@ -141,6 +164,30 @@ export default function DutyTypeRequirementsEditor(props: Props) {
           ))}
         </div>
       </div>
+
+      {/* Per-rank service-type override, for ranks that span both tracks (e.g. סמ"ר, סגן) */}
+      {(reqs.allowed_ranks ?? []).filter(isRankTrackFlexible).length > 0 && (
+        <div>
+          <p className="font-medium">{t("eligibility.rank_service_type_override")}</p>
+          <div className="space-y-1">
+            {(reqs.allowed_ranks ?? []).filter(isRankTrackFlexible).map(rank => (
+              <div key={rank} className="flex items-center gap-2 text-xs">
+                <span className="w-10">{rank}</span>
+                <select
+                  className="border rounded px-1 py-0.5 dark:bg-gray-700 dark:border-gray-600"
+                  value={rankServiceTypeOverride(rank)}
+                  onChange={e => setRankServiceTypeOverride(rank, e.target.value as "" | "חובה" | "קבע")}
+                  data-testid={`rank-service-type-${rank}`}
+                >
+                  <option value="">{t("eligibility.rank_service_type_none")}</option>
+                  <option value="חובה">חובה</option>
+                  <option value="קבע">קבע</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Boolean flags */}
       {[

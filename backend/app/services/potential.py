@@ -97,9 +97,11 @@ def _base_eligible_duty_types(
             continue
         if reqs.allowed_ranks and (not rank or rank not in reqs.allowed_ranks):
             continue
-        if reqs.allowed_service_types:
+        per_rank_service_types = reqs.rank_service_types.get(rank) if rank else None
+        active_service_types = per_rank_service_types if per_rank_service_types is not None else reqs.allowed_service_types
+        if active_service_types:
             stype = inferred_service_type(soldier, reference_date)
-            if not stype or stype not in reqs.allowed_service_types:
+            if not stype or stype not in active_service_types:
                 continue
         if not reqs.officers_allowed and soldier.is_officer:
             continue

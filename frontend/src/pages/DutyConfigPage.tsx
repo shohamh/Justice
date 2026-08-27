@@ -63,6 +63,11 @@ function summarizeReqs(r: Reqs | undefined, rankLists: RankLists): string {
     if (oRange) parts.push(oRange);
   }
 
+  const rankOverrides = r.rank_service_types ?? {};
+  for (const [rank, types] of Object.entries(rankOverrides)) {
+    if (types.length === 1) parts.push(`${rank} (${types[0]})`);
+  }
+
   return parts.length > 0 ? parts.join(" | ") : "ללא הגבלה";
 }
 import {
