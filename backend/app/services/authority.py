@@ -21,9 +21,9 @@ REQUEST_CANCELLATION_COMMANDER_MIN_LEVEL_KEY = "group"
 # denial regardless of the actor's actual level.
 REQUEST_CANCELLATION_DUTY_MANAGER_MIN_LEVEL_KEY = "branch"
 
-COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
-REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY = "מרכז"
-RANGE_ATTENDANCE_EDIT_MIN_LEVEL_KEY = "ענף"  # fallback default if no setting is configured
+COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "group"  # fallback default if no setting is configured; seeded key for מדור
+REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY = "department"  # unused today, but the seeded key for מרכז if ever wired up
+RANGE_ATTENDANCE_EDIT_MIN_LEVEL_KEY = "branch"  # fallback default if no setting is configured; seeded key for ענף
 
 
 def _commander_exemption_min_level(session: Session) -> str:
@@ -86,7 +86,7 @@ def rank_advancement_edit_authorized(
     Administrators bypass the hierarchy check. Commanders derive scope only
     from nodes they command; duty managers derive it only from their explicit
     duty-manager scopes. In both cases the covering root must be at ``מדור``
-    level or higher and contain the target node.
+    (seeded key "group") level or higher and contain the target node.
     """
     if user.role == "admin":
         return True
@@ -94,12 +94,12 @@ def rank_advancement_edit_authorized(
         return False
     commander_root_ids = _commanded_node_ids_only(session, user.id)
     if dm_scope_covers_target(
-        session, scope_root_ids=commander_root_ids, target_node=target_node, required_level_key="מדור",
+        session, scope_root_ids=commander_root_ids, target_node=target_node, required_level_key="group",
     ):
         return True
     duty_manager_root_ids = _dm_scope_node_ids_only(session, user.id)
     return dm_scope_covers_target(
-        session, scope_root_ids=duty_manager_root_ids, target_node=target_node, required_level_key="מדור",
+        session, scope_root_ids=duty_manager_root_ids, target_node=target_node, required_level_key="group",
     )
 
 
@@ -159,7 +159,7 @@ class RankAdvancementEditScope:
         all_root_ids = commander_root_ids | duty_manager_root_ids
         if not all_root_ids:
             return
-        mador_rank = get_level_rank(session, "מדור")
+        mador_rank = get_level_rank(session, "group")
         if mador_rank is None:
             return
         rows = session.execute(
@@ -318,7 +318,8 @@ def has_any_commander_delete_scope(session: Session, *, user: Soldier) -> bool:
 
 
 def _min_visible_level(session: Session) -> str:
-    # Default is "מדור", NOT the fully-open "every_soldier" sentinel — a
+    # Default is "group" (the seeded key for מדור — get_level_rank matches
+    # .key, not .label), NOT the fully-open "every_soldier" sentinel — a
     # missing/unset row must still block plain soldiers from seeing an
     # unrelated soldier's data, closing that leak without admin action.
     # "every_soldier" remains a valid value an admin can explicitly set later.
@@ -328,7 +329,7 @@ def _min_visible_level(session: Session) -> str:
             return str(value)
     except SettingNotFound:
         pass
-    return "מדור"
+    return "group"
 
 
 def _commanded_nodes(session: Session, soldier_id: uuid.UUID) -> list[HierarchyNode]:

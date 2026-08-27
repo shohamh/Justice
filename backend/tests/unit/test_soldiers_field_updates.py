@@ -68,7 +68,7 @@ def test_pending_count_excludes_updates_the_commander_cannot_approve(client, adm
 def test_junior_duty_manager_cannot_approve_rank_field_update(client, admin_session):
     from tests.helpers import auth_headers, create_node, create_soldier
 
-    node = create_node(admin_session, level="branch", name="fu_rank_junior")
+    node = create_node(admin_session, level="team", name="fu_rank_junior")
     duty_manager = create_soldier(
         admin_session, personal_number="fu_rank_junior_dm", role="duty_manager", hierarchy_node_id=node.id,
     )
@@ -100,7 +100,7 @@ def test_junior_duty_manager_can_still_reject_rank_field_update(client, admin_se
     request must still be able to, even though they can't approve it."""
     from tests.helpers import auth_headers, create_node, create_soldier
 
-    node = create_node(admin_session, level="branch", name="fu_rank_junior_reject")
+    node = create_node(admin_session, level="team", name="fu_rank_junior_reject")
     duty_manager = create_soldier(
         admin_session, personal_number="fu_rank_junior_dm_reject", role="duty_manager", hierarchy_node_id=node.id,
     )

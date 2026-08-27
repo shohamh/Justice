@@ -44,7 +44,7 @@ def _level(session, key, rank):
 def test_commander_without_mador_command_cannot_grant_regardless_of_rank(app_session):
     _level(app_session, "גדוד", 1)
     _level(app_session, "פלוגה", 2)
-    _level(app_session, "מדור", 3)
+    _level(app_session, "group", 3)
     node = HierarchyNode(level="פלוגה", name="Co", path_ids=[])
     app_session.add(node)
     app_session.flush()
@@ -57,9 +57,9 @@ def test_commander_without_mador_command_cannot_grant_regardless_of_rank(app_ses
 
 def test_commander_of_mador_or_above_can_grant_regardless_of_rank(app_session):
     _level(app_session, "גדוד", 1)
-    _level(app_session, "מדור", 2)
+    _level(app_session, "group", 2)
     _level(app_session, "כיתה", 3)
-    node = HierarchyNode(level="מדור", name="Sector", path_ids=[])
+    node = HierarchyNode(level="group", name="Sector", path_ids=[])
     app_session.add(node)
     app_session.flush()
     node.path_ids = [node.id]
@@ -87,7 +87,7 @@ def test_commander_exemption_min_level_configurable(app_session):
     from app.services.settings_loader import set_setting
 
     _level(app_session, "גדוד", 1)
-    _level(app_session, "מדור", 2)
+    _level(app_session, "group", 2)
     _level(app_session, "צוות", 3)
     team_node = HierarchyNode(level="צוות", name="Team", path_ids=[])
     app_session.add(team_node)
@@ -99,7 +99,7 @@ def test_commander_exemption_min_level_configurable(app_session):
     team_node.commander_id = cmd.id
     app_session.flush()
 
-    # Default threshold ("מדור") — a צוות commander should NOT qualify.
+    # Default threshold ("group") — a צוות commander should NOT qualify.
     assert commander_can_grant_commander_exemption(app_session, commander_id=cmd.id) is False
 
     # Lower the required threshold to "צוות" via setting — now they should qualify.
@@ -151,10 +151,10 @@ def _soldier(session, personal_number, role="soldier"):
 @pytest.mark.parametrize(
     ("role", "root_level", "expected_inside"),
     [
-        ("commander", "מדור", True),
+        ("commander", "group", True),
         ("commander", "אגף", True),
         ("commander", "ענף", False),
-        ("duty_manager", "מדור", True),
+        ("duty_manager", "group", True),
         ("duty_manager", "אגף", True),
         ("duty_manager", "ענף", False),
     ],
@@ -163,7 +163,7 @@ def test_rank_advancement_authority_requires_senior_in_scope_root(
     app_session, role, root_level, expected_inside,
 ):
     _level(app_session, "אגף", 1)
-    _level(app_session, "מדור", 2)
+    _level(app_session, "group", 2)
     _level(app_session, "ענף", 3)
     actor = _soldier(app_session, f"rank_{role}_{root_level}", role=role)
     root = _node(app_session, root_level, name="Root")
@@ -182,10 +182,10 @@ def test_rank_advancement_authority_requires_senior_in_scope_root(
 @pytest.mark.parametrize(
     ("role", "root_level", "expected_inside"),
     [
-        ("commander", "מדור", True),
+        ("commander", "group", True),
         ("commander", "אגף", True),
         ("commander", "ענף", False),
-        ("duty_manager", "מדור", True),
+        ("duty_manager", "group", True),
         ("duty_manager", "אגף", True),
         ("duty_manager", "ענף", False),
     ],
@@ -197,7 +197,7 @@ def test_rank_advancement_edit_scope_matches_per_call_authorization(
     agree with rank_advancement_edit_authorized's per-call result exactly —
     it's a caching layer, not a behavior change."""
     _level(app_session, "אגף", 1)
-    _level(app_session, "מדור", 2)
+    _level(app_session, "group", 2)
     _level(app_session, "ענף", 3)
     actor = _soldier(app_session, f"rank_scope_{role}_{root_level}", role=role)
     root = _node(app_session, root_level, name="Root")
@@ -216,8 +216,8 @@ def test_rank_advancement_edit_scope_matches_per_call_authorization(
 
 
 def test_rank_advancement_edit_scope_admin_bypasses_scope_checks(app_session):
-    _level(app_session, "מדור", 1)
-    target = _node(app_session, "מדור")
+    _level(app_session, "group", 1)
+    target = _node(app_session, "group")
     admin = _soldier(app_session, "rank_scope_admin", role="admin")
 
     scope = RankAdvancementEditScope(app_session, user=admin)
@@ -227,9 +227,9 @@ def test_rank_advancement_edit_scope_admin_bypasses_scope_checks(app_session):
 
 
 def test_rank_advancement_edit_scope_none_target_node(app_session):
-    _level(app_session, "מדור", 1)
+    _level(app_session, "group", 1)
     commander = _soldier(app_session, "rank_scope_none_target", role="commander")
-    _node(app_session, "מדור", commander_id=commander.id)
+    _node(app_session, "group", commander_id=commander.id)
 
     scope = RankAdvancementEditScope(app_session, user=commander)
 
@@ -237,15 +237,15 @@ def test_rank_advancement_edit_scope_none_target_node(app_session):
 
 
 def test_rank_advancement_authority_admin_bypasses_scope_checks(app_session):
-    _level(app_session, "מדור", 1)
-    target = _node(app_session, "מדור")
+    _level(app_session, "group", 1)
+    target = _node(app_session, "group")
     admin = _soldier(app_session, "rank_admin", role="admin")
 
     assert rank_advancement_edit_authorized(app_session, user=admin, target_node=target) is True
 
 
 def test_rank_advancement_authority_ignores_lower_level_scope_when_user_commands_elsewhere(app_session):
-    _level(app_session, "מדור", 1)
+    _level(app_session, "group", 1)
     _level(app_session, "ענף", 2)
     commander = _soldier(app_session, "rank_lower_scope", role="commander")
     junior_root = _node(app_session, "ענף", name="Junior", commander_id=commander.id)
@@ -255,10 +255,10 @@ def test_rank_advancement_authority_ignores_lower_level_scope_when_user_commands
 
 
 def test_rank_advancement_authority_uses_actual_commander_assignment_not_display_role(app_session):
-    _level(app_session, "מדור", 1)
+    _level(app_session, "group", 1)
     actor = _soldier(app_session, "rank_actual_commander")
-    root = _node(app_session, "מדור", commander_id=actor.id)
-    target = _child(app_session, root, "מדור")
+    root = _node(app_session, "group", commander_id=actor.id)
+    target = _child(app_session, root, "group")
 
     assert rank_advancement_edit_authorized(app_session, user=actor, target_node=target) is True
 
@@ -377,17 +377,18 @@ def test_junior_commander_below_threshold_blocked(app_session):
 
 
 def test_default_threshold_is_mador_not_every_soldier(app_session):
-    """Pins the unset-setting fallback to the specific level "מדור", not the
+    """Pins the unset-setting fallback to the specific level "group" (the
+    seeded key for מדור — get_level_rank matches .key, not .label), not the
     fully-open "every_soldier" sentinel -- a מדור commander must see an
     unrelated soldier with NOTHING configured, and a more junior (ענף)
     commander must NOT, purely from the default."""
-    _level(app_session, "מדור", 1)
+    _level(app_session, "group", 1)
     _level(app_session, "ענף", 2)
     senior_cmd = _soldier(app_session, "112", role="commander")
-    _node(app_session, "מדור", commander_id=senior_cmd.id)
+    _node(app_session, "group", commander_id=senior_cmd.id)
     junior_cmd = _soldier(app_session, "113", role="commander")
     _node(app_session, "ענף", commander_id=junior_cmd.id)
-    unrelated = _node(app_session, "מדור", name="Unrelated")
+    unrelated = _node(app_session, "group", name="Unrelated")
     assert can_view_soldier_scope(app_session, senior_cmd, unrelated) is True
     assert can_view_soldier_scope(app_session, junior_cmd, unrelated) is False
 
@@ -515,11 +516,6 @@ def test_has_any_exemption_immediate_apply_scope_true_for_qualifying_dm(app_sess
 
 
 def test_rank_advancement_edit_authorized_extends_to_active_commander_deputy(admin_session):
-    # rank_advancement_edit_authorized hardcodes required_level_key="מדור" (not
-    # the seeded "group" key whose *label* happens to be "מדור" — get_level_rank
-    # matches on .key). Add a level type keyed "מדור" itself, senior enough
-    # ("group"'s rank 6 or above/junior) to cover a "group"-level node.
-    admin_session.add(HierarchyLevelType(key="מדור", label="מדור", rank=100))
     principal = create_soldier(admin_session, personal_number=f"ra1_{uuid.uuid4().hex[:8]}", role="commander")
     node = create_node(admin_session, level="group", name=f"n_{uuid.uuid4().hex[:8]}", commander_id=principal.id)
     deputy = create_soldier(admin_session, personal_number=f"ra2_{uuid.uuid4().hex[:8]}")

@@ -7,7 +7,6 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     DutyManagerScope,
-    HierarchyLevelType,
     HierarchyNode,
     Notification,
     NotificationType,
@@ -109,7 +108,7 @@ def test_junior_commander_cannot_change_rank_on_in_scope_enrollment(client, admi
     holding = _make_holding(admin_session)
     commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
     requested_node = create_node(
-        admin_session, level="branch", name=f"junior_{_uid()}", parent=holding, commander_id=commander.id,
+        admin_session, level="team", name=f"junior_{_uid()}", parent=holding, commander_id=commander.id,
     )
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
     req = _make_req(admin_session, soldier, requested_node)
@@ -132,7 +131,7 @@ def test_junior_commander_can_approve_own_node_without_changing_rank(client, adm
     holding = _make_holding(admin_session)
     commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
     requested_node = create_node(
-        admin_session, level="branch", name=f"junior_{_uid()}", parent=holding, commander_id=commander.id,
+        admin_session, level="team", name=f"junior_{_uid()}", parent=holding, commander_id=commander.id,
     )
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
     req = _make_req(admin_session, soldier, requested_node)
@@ -155,10 +154,7 @@ def test_junior_commander_can_approve_own_node_without_changing_rank(client, adm
 
 def test_rank_change_requires_authority_over_enrollment_destination(client, admin_session):
     holding = _make_holding(admin_session)
-    mador = admin_session.query(HierarchyLevelType).filter_by(key="group").one()
-    mador.key = "מדור"
-    mador.label = "מדור"
-    senior_root = create_node(admin_session, level="מדור", name=f"senior_{_uid()}", parent=holding)
+    senior_root = create_node(admin_session, level="group", name=f"senior_{_uid()}", parent=holding)
     junior_destination = create_node(admin_session, level="team", name=f"junior_{_uid()}", parent=holding)
     duty_manager = create_soldier(
         admin_session, personal_number=f"dm_{_uid()}", role="duty_manager", hierarchy_node_id=senior_root.id,
@@ -374,15 +370,7 @@ def test_below_mador_commander_can_approve_without_editing_rank(client, admin_se
 
 def test_mador_plus_commander_sees_rank_edit_flag_true(client, admin_session):
     from app.db.models import SoldierEnrollmentRequest
-    # `rank_advancement_edit_authorized` compares against the hardcoded Hebrew
-    # level key "מדור" (not the English fixture key "group"), same as
-    # `test_rank_change_requires_authority_over_enrollment_destination` above —
-    # rename the "group" level type's key to match.
-    mador = admin_session.query(HierarchyLevelType).filter_by(key="group").one()
-    mador.key = "מדור"
-    mador.label = "מדור"
-    admin_session.commit()
-    node = create_node(admin_session, level="מדור", name=f"enroll_high_{_uid()}")
+    node = create_node(admin_session, level="group", name=f"enroll_high_{_uid()}")
     cmd = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
     node.commander_id = cmd.id
     admin_session.commit()
@@ -403,13 +391,8 @@ def test_pending_list_computes_rank_edit_flag_per_row_with_shared_scope(client, 
     value from the single scope built once for the request, not a value bled
     over from another row."""
     from app.db.models import SoldierEnrollmentRequest
-    mador = admin_session.query(HierarchyLevelType).filter_by(key="group").one()
-    mador.key = "מדור"
-    mador.label = "מדור"
-    admin_session.commit()
-
     cmd = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
-    high_node = create_node(admin_session, level="מדור", name=f"enroll_shared_high_{_uid()}")
+    high_node = create_node(admin_session, level="group", name=f"enroll_shared_high_{_uid()}")
     high_node.commander_id = cmd.id
     low_node = create_node(admin_session, level="team", name=f"enroll_shared_low_{_uid()}")
     low_node.commander_id = cmd.id

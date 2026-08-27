@@ -17,7 +17,7 @@ from tests.helpers import auth_headers, create_node, create_soldier
 
 def _level(session: Session, key: str, rank: int) -> HierarchyLevelType:
     """Insert a Hebrew-keyed level type, matching the real level keys the
-    exemptions.medical_doc_min_* settings default to ("מדור"/"מרכז"). The
+    exemptions.medical_doc_min_* settings default to ("group"/"department"). The
     shared _truncate_tables fixture pre-seeds English placeholder keys (see
     tests/conftest.py _LEVEL_TYPE_DEFAULTS) which don't match those defaults,
     so callers must clear them first (see _hebrew_levels below)."""
@@ -31,8 +31,8 @@ def _hebrew_levels(session: Session) -> None:
     session.execute(delete(HierarchyLevelType))
     session.flush()
     _level(session, "גדוד", 1)
-    _level(session, "מרכז", 2)
-    _level(session, "מדור", 3)
+    _level(session, "department", 2)
+    _level(session, "group", 3)
     _level(session, "צוות", 4)
     session.commit()
 
@@ -62,11 +62,11 @@ def _make_request_with_file(session: Session, soldier_id, *, is_medical: bool = 
 
 def test_medical_document_requires_minimum_commander_level(client, admin_session: Session):
     """A commander below the configured minimum level (a plain team/צוות
-    commander, by default requiring מדור-and-above) cannot download a
+    commander, by default requiring group-and-above) cannot download a
     medical exemption's attached file, even though they're in the soldier's
     command chain and could otherwise see the exemption's other fields."""
     _hebrew_levels(admin_session)
-    root = create_node(admin_session, level="מרכז", name="root_md")
+    root = create_node(admin_session, level="department", name="root_md")
     team = create_node(admin_session, level="צוות", name="team_md", parent=root)
     team_cmd = create_soldier(admin_session, personal_number="md_team_cmd", role="commander")
     team.commander_id = team_cmd.id
@@ -83,11 +83,11 @@ def test_medical_document_requires_minimum_commander_level(client, admin_session
 
 
 def test_commander_at_minimum_level_can_download(client, admin_session: Session):
-    """A מדור-level commander (at the configured default minimum) in the
+    """A group-level commander (at the configured default minimum) in the
     soldier's own command chain CAN download the file."""
     _hebrew_levels(admin_session)
-    root = create_node(admin_session, level="מרכז", name="root_ok")
-    mador = create_node(admin_session, level="מדור", name="mador_ok", parent=root)
+    root = create_node(admin_session, level="department", name="root_ok")
+    mador = create_node(admin_session, level="group", name="mador_ok", parent=root)
     team = create_node(admin_session, level="צוות", name="team_ok", parent=mador)
     mador_cmd = create_soldier(admin_session, personal_number="md_mador_cmd", role="commander")
     mador.commander_id = mador_cmd.id
@@ -121,8 +121,8 @@ def test_commander_out_of_scope_cannot_download(client, admin_session: Session):
     """A commander whose scope doesn't even contain the soldier's node is
     still rejected — the new level check must not bypass the scope check."""
     _hebrew_levels(admin_session)
-    root = create_node(admin_session, level="מרכז", name="root_oos")
-    other_root = create_node(admin_session, level="מרכז", name="other_root_oos")
+    root = create_node(admin_session, level="department", name="root_oos")
+    other_root = create_node(admin_session, level="department", name="other_root_oos")
     team = create_node(admin_session, level="צוות", name="team_oos", parent=root)
     outside_cmd = create_soldier(admin_session, personal_number="md_outside_cmd", role="commander")
     other_root.commander_id = outside_cmd.id
@@ -139,11 +139,11 @@ def test_commander_out_of_scope_cannot_download(client, admin_session: Session):
 
 
 def test_duty_manager_below_minimum_level_cannot_download(client, admin_session: Session):
-    """A duty manager scoped below the configured minimum (default מרכז)
+    """A duty manager scoped below the configured minimum (default department)
     cannot download the medical file."""
     _hebrew_levels(admin_session)
-    root = create_node(admin_session, level="מרכז", name="root_dm")
-    mador = create_node(admin_session, level="מדור", name="mador_dm", parent=root)
+    root = create_node(admin_session, level="department", name="root_dm")
+    mador = create_node(admin_session, level="group", name="mador_dm", parent=root)
     team = create_node(admin_session, level="צוות", name="team_dm", parent=mador)
     dm = create_soldier(
         admin_session, personal_number="md_dm_low", role="duty_manager", hierarchy_node_id=mador.id,
@@ -162,7 +162,7 @@ def test_duty_manager_below_minimum_level_cannot_download(client, admin_session:
 
 def test_duty_manager_at_minimum_level_can_download(client, admin_session: Session):
     _hebrew_levels(admin_session)
-    root = create_node(admin_session, level="מרכז", name="root_dm_ok")
+    root = create_node(admin_session, level="department", name="root_dm_ok")
     team = create_node(admin_session, level="צוות", name="team_dm_ok", parent=root)
     dm = create_soldier(
         admin_session, personal_number="md_dm_ok", role="duty_manager", hierarchy_node_id=root.id,
@@ -183,7 +183,7 @@ def test_medical_doc_min_commander_level_configurable(client, admin_session: Ses
     """Lowering exemptions.medical_doc_min_commander_level to צוות allows a
     plain team commander (previously rejected) to download the file."""
     _hebrew_levels(admin_session)
-    root = create_node(admin_session, level="מרכז", name="root_cfg")
+    root = create_node(admin_session, level="department", name="root_cfg")
     team = create_node(admin_session, level="צוות", name="team_cfg", parent=root)
     team_cmd = create_soldier(admin_session, personal_number="md_team_cfg", role="commander")
     team.commander_id = team_cmd.id

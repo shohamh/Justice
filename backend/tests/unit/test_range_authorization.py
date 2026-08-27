@@ -55,8 +55,10 @@ def test_range_excusal_decide_allowed_for_commander_in_scope(app_session: Sessio
 
 
 def test_range_excusal_commander_threshold_defaults_to_mador(app_session: Session) -> None:
-    """Changing the migration seed would lower or raise the server-side approval gate."""
-    assert get_setting(app_session, "mitvachim.excusal_approve_min_commander_level") == "מדור"
+    """Changing the migration seed would lower or raise the server-side approval gate.
+    "group" is the seeded key for the מדור level — get_level_rank matches
+    HierarchyLevelType.key, not .label."""
+    assert get_setting(app_session, "mitvachim.excusal_approve_min_commander_level") == "group"
 
 
 def test_range_attendance_edit_authorized_for_dm_at_required_level(app_session: Session) -> None:

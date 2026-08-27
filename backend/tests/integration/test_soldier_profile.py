@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.db.models import HierarchyLevelType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -13,11 +12,10 @@ def _setup_dm(session, pn: str):
 
 
 def _mador_root(session, *, name: str, commander_id=None):
-    level = session.query(HierarchyLevelType).filter_by(key="group").one()
-    level.key = "מדור"
-    level.label = "מדור"
-    session.flush()
-    return create_node(session, level="מדור", name=name, commander_id=commander_id)
+    # "group" is the seeded key for the מדור level (rank 6) — see
+    # alembic/versions/0059_hierarchy_level_types.py. rank_advancement_edit_authorized
+    # matches on HierarchyLevelType.key, not .label, so use the real key directly.
+    return create_node(session, level="group", name=name, commander_id=commander_id)
 
 
 def test_senior_commander_can_override_rank_date_and_receives_capability(client, admin_session):
@@ -61,7 +59,7 @@ def test_senior_duty_manager_can_correct_rank(client, admin_session):
 
 def test_lower_level_commander_cannot_correct_rank_or_edit_ordinary_profile(client, admin_session):
     commander = create_soldier(admin_session, personal_number="rank_junior_cmd", role="commander")
-    root = create_node(admin_session, level="branch", name="rank_junior_root", commander_id=commander.id)
+    root = create_node(admin_session, level="team", name="rank_junior_root", commander_id=commander.id)
     soldier = create_soldier(admin_session, personal_number="rank_junior_target", hierarchy_node_id=root.id)
     admin_session.commit()
 
@@ -85,7 +83,7 @@ def test_junior_duty_manager_can_edit_profile_without_changing_rank(client, admi
     the מדור-or-above bar rank_advancement_edit_authorized requires must
     still be able to save an ordinary field (e.g. gender) as long as the
     resubmitted rank fields match the soldier's current (unset) values."""
-    root = create_node(admin_session, level="branch", name="rank_junior_dm_edit_root")
+    root = create_node(admin_session, level="team", name="rank_junior_dm_edit_root")
     duty_manager = create_soldier(
         admin_session, personal_number="rank_junior_dm_edit", role="duty_manager", hierarchy_node_id=root.id,
     )
@@ -109,7 +107,7 @@ def test_junior_duty_manager_can_edit_profile_without_changing_rank(client, admi
 
 
 def test_lower_level_duty_manager_cannot_correct_rank(client, admin_session):
-    root = create_node(admin_session, level="branch", name="rank_junior_dm_root")
+    root = create_node(admin_session, level="team", name="rank_junior_dm_root")
     duty_manager = create_soldier(
         admin_session, personal_number="rank_junior_dm", role="duty_manager", hierarchy_node_id=root.id,
     )

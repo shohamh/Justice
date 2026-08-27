@@ -682,7 +682,7 @@ def _authorize_excusal_decision(session: Session, user: Soldier, event: RangeEve
     try:
         required_level = str(get_setting(session, "mitvachim.excusal_approve_min_commander_level"))
     except SettingNotFound:
-        required_level = "מדור"
+        required_level = "group"  # seeded key for מדור — get_level_rank matches .key, not .label
     if not dm_scope_covers_target(
         session, scope_root_ids=scope_root_ids(session, user), target_node=node,
         required_level_key=required_level,

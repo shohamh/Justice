@@ -42,10 +42,10 @@ def _soldier(session, **kw):
 
 def test_notifies_dm_whose_scope_meets_rank_but_not_below_rank_dm(app_session):
     _level(app_session, "גדוד", 1)
-    _level(app_session, "מרכז", 2)
+    _level(app_session, "department", 2)
     _level(app_session, "פלוגה", 3)
 
-    center_node = HierarchyNode(level="מרכז", name="Center", path_ids=[])
+    center_node = HierarchyNode(level="department", name="Center", path_ids=[])
     app_session.add(center_node)
     app_session.flush()
     center_node.path_ids = [center_node.id]

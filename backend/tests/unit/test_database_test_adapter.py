@@ -29,7 +29,7 @@ def test_seed_statements_preserve_current_settings_and_hierarchy_defaults() -> N
 
     assert settings["auth.session_minutes"] == "15"
     assert settings["eligibility.mitvahim_months"] == "6"
-    assert settings["mitvachim.excusal_approve_min_commander_level"] == '"מדור"'
+    assert settings["mitvachim.excusal_approve_min_commander_level"] == '"group"'
     assert hierarchy["corps"] == ("אגף", 1)
     assert hierarchy["team"] == ("צוות", 7)
     assert "INSERT INTO system_settings" in database.SYSTEM_SETTINGS_SEED_STATEMENT

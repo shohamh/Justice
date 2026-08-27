@@ -81,7 +81,11 @@ SYSTEM_SETTINGS_DEFAULTS = (
     ("auth.login_rate_limit_per_5m", "5"),
     ("eligibility.mitvahim_months", "6"),
     ("eligibility.alal_months", "3"),
-    ("mitvachim.excusal_approve_min_commander_level", '"מדור"'),
+    # "group" is the seeded key for the מדור level (rank 6) — get_level_rank
+    # matches HierarchyLevelType.key, not .label. See
+    # alembic/versions/0059_hierarchy_level_types.py and the corrective
+    # migration 366b35d4cff5.
+    ("mitvachim.excusal_approve_min_commander_level", '"group"'),
 )
 
 HIERARCHY_LEVEL_TYPE_DEFAULTS = (

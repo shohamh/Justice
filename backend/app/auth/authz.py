@@ -275,16 +275,19 @@ def can_view_medical_document(session: Session, viewer: Soldier, target: Soldier
         except SettingNotFound:
             return default_level
 
+    # Defaults are "group"/"department" — the seeded keys for מדור/מרכז
+    # (get_level_rank matches HierarchyLevelType.key, not .label; see
+    # alembic/versions/0059_hierarchy_level_types.py).
     if is_commander(session, viewer.id):
         commander_roots = commanded_node_ids(session, viewer.id)
-        required_level = _min_level("exemptions.medical_doc_min_commander_level", "מדור")
+        required_level = _min_level("exemptions.medical_doc_min_commander_level", "group")
         if dm_scope_covers_target(
             session, scope_root_ids=commander_roots, target_node=node, required_level_key=required_level
         ):
             return True
     if is_duty_manager(session, viewer.id):
         dm_roots = dm_scope_node_ids(session, viewer.id)
-        required_level = _min_level("exemptions.medical_doc_min_duty_manager_level", "מרכז")
+        required_level = _min_level("exemptions.medical_doc_min_duty_manager_level", "department")
         if dm_scope_covers_target(
             session, scope_root_ids=dm_roots, target_node=node, required_level_key=required_level
         ):
