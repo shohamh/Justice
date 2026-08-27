@@ -785,7 +785,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           />
         )}
 
-        {user?.role === "admin" && (soldierData.role === "commander" || soldierData.role === "duty_manager") && (
+        {tab === "details" && user?.role === "admin" && (soldierData.role === "commander" || soldierData.role === "duty_manager") && (
           <div className="mt-4 pt-4 border-t dark:border-gray-600">
             <DeputiesPanel
               principalId={soldierData.id}
