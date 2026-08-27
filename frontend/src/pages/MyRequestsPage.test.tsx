@@ -215,6 +215,9 @@ describe("MyRequestsPage - existing-tab groups", () => {
     await openExistingTab();
     const list = await screen.findByTestId("cancelled-constraints-list");
     expect(within(list).getByText((content) => content.includes("כבר לא נדרש"))).toBeTruthy();
+    const decided = within(list).getByTestId("constraint-c-cancelled-decided-by");
+    expect(decided.textContent).toContain("my_requests.cancelled_by");
+    expect(within(decided).getByRole("button", { name: "מבטל בדיקה" })).toBeTruthy();
   });
 
   it("renders hierarchy transfer rows with node names and status", async () => {

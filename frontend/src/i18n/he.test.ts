@@ -39,3 +39,24 @@ describe("he.json admin promotion coverage", () => {
     expect(he.errors).toHaveProperty("wrong_current_password", "הסיסמה הנוכחית שגויה.");
   });
 });
+
+describe("he.json cancellation reconciliation coverage", () => {
+  it("translates the cancelled-constraints section heading", () => {
+    expect(he.my_requests).toHaveProperty("cancelled_constraints", "אילוצים שבוטלו");
+  });
+
+  it("translates the active-exemption revocation warning", () => {
+    expect(he.exemptions).toHaveProperty(
+      "revoke_active_warning",
+      "זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול.",
+    );
+  });
+
+  it("translates the cancel-constraint action and its active-constraint warning", () => {
+    expect(he.team).toHaveProperty("cancel_constraint", "ביטול אילוץ אישי");
+    expect(he.team).toHaveProperty(
+      "cancel_constraint_active_warning",
+      "זוהי פעולה קיצונית השמורה למקרים מיוחדים. יש לנמק את הביטול.",
+    );
+  });
+});

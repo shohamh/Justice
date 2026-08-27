@@ -153,6 +153,7 @@
     "role_duty_manager": "אחראי תורנויות",
     "approved_by": "אושר ע״י",
     "rejected_by": "נדחה ע״י",
+    "cancelled_by": "בוטל ע״י",
     "commander_step": "שלב מפקד",
     "filter_type_label": "סוג בקשה",
     "filter_status_label": "סטטוס",

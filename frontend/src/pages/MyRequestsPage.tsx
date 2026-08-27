@@ -118,9 +118,15 @@ function RequestMetaRow({
           {" "}({t(`my_requests.role_${waitingOn.kind}`)})
         </span>
       )}
-      {decidedBy && (status === "approved" || status === "rejected") && (
+      {decidedBy && (status === "approved" || status === "rejected" || status === "cancelled") && (
         <span data-testid={testIdPrefix ? `${testIdPrefix}-decided-by` : undefined}>
-          {t(status === "approved" ? "my_requests.approved_by" : "my_requests.rejected_by")}{" "}
+          {t(
+            status === "approved"
+              ? "my_requests.approved_by"
+              : status === "rejected"
+              ? "my_requests.rejected_by"
+              : "my_requests.cancelled_by",
+          )}{" "}
           <SoldierLink id={decidedBy.soldier_id} name={decidedBy.name} className="text-xs" />
         </span>
       )}
