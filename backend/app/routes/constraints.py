@@ -278,27 +278,32 @@ def cancel(
     session.commit()
 
 
-@router.post("/constraints/{constraint_id}/cancel", response_model=ConstraintOut)
+@router.post("/constraints/{constraint_id}/cancel", response_model=ConstraintOut | None)
 def privileged_cancel(
     constraint_id: uuid.UUID,
     body: CancelRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> ConstraintOut:
+) -> ConstraintOut | None:
     c = session.get(PersonalConstraint, constraint_id)
     if c is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     s = _load_soldier(session, c.soldier_id)
     if not request_cancellation_authorized(session, user=user, target_node=_node_of(session, s)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    soldier_id = c.soldier_id
     try:
         svc.cancel_constraint(session, constraint_id=constraint_id, actor_id=user.id, reason=body.reason)
     except svc.ConstraintError as exc:
         code = status.HTTP_422_UNPROCESSABLE_ENTITY if str(exc) == "cancellation_reason_required" else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=code, detail=str(exc)) from exc
     session.commit()
-    session.refresh(c)
-    nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+    # A pending-stage cancel deletes the row outright (see cancel_constraint) rather than
+    # marking it "cancelled", so there's nothing left to refresh/return in that case.
+    c = session.get(PersonalConstraint, constraint_id)
+    if c is None:
+        return None
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     return _out(session, c, include_reason=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
@@ -316,6 +321,7 @@ def list_for_soldier(
         authorize(session, user, Action.CONSTRAINT_READ, target_node=_node_of(session, s))
     include_reason = can_see_private(session, user, s)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    can_cancel = request_cancellation_authorized(session, user=user, target_node=_node_of(session, s))
     return [
         _out(
             session,
@@ -323,6 +329,7 @@ def list_for_soldier(
             include_reason=include_reason,
             nearest_commander=nearest_commander,
             nearest_duty_manager=nearest_duty_manager,
+            can_cancel=can_cancel,
         )
         for c in svc.list_constraints(session, soldier_id=soldier_id)
     ]
