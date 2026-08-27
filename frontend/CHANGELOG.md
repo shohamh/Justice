@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-08-27
+
+### Features
+- Redesigned "Requests" page (replaces the constraints & exemptions page): a "New requests" tab with personal-constraint and exemption-request cards, and an "Existing requests" tab grouping every request type the soldier has in flight — personal constraints, exemption requests, field updates, active swaps, hierarchy transfers, enrollment, and range excusals — plus a compact "currently active" panel. An unseen-status badge tracks requests decided since the last visit; the page now also carries richer card metadata, decider links, and type/status filters.
+- Profile page: food type and food-constraints fields with per-field update requests, and a separate update-request button for holding a military driving license.
+- Admins can now edit every soldier profile field directly — rank, rank-track, next-rank-date, officer status, food type/constraints, driving license, profile picture — and promote a soldier to admin from the People page with current-password confirmation.
+- Commanders (at מדור/"group" level or above) and duty managers (at ענף/"branch" level or above) can now cancel a soldier's pending or approved personal exemptions and constraints, with a mandatory reason and warning confirmation for approved records; the cancellation reason and who cancelled it now show in duty history and on the soldier's own requests page. Commander approval of exemption/constraint requests now requires מדור-level seniority.
+- Admin settings: copy invite codes; centralized range-location configuration.
+
+### Fixes
+- Food-type and food-constraints update requests were silently rejected by the backend (missing from the editable-fields allowlist) — the profile buttons appeared dead. A related i18n key mismatch also showed raw untranslated keys ("soldier_profile.food_type_regular") in the admin profile editor's food-type dropdown.
+- Deputy date-picker fields now render with the same styling as every other date field in the app (they were the only ones missing it).
+- The profile editor's Save button was invisible for commanders due to an overly broad edit-access condition; full-editor access is now correctly scoped to admins/duty-managers (self-service edits already go through the existing request/approval flow or the narrower rank-correction form).
+- People-page row actions (manage portfolio / edit / reset password / promote admin / remove) now wrap onto multiple lines instead of overflowing off-screen on narrow viewports, so the promote-to-admin action stays reachable on mobile.
+- Fixed a systemic authorization bug: several level-based thresholds (rank-advancement editing, exemption/constraint cancellation, commander exemption grants, range attendance editing, range excusal approval, transparency visibility, medical-document viewing) compared a hierarchy level's Hebrew *label* against its seeded English *key*, which never matches — silently denying every commander/duty-manager below admin regardless of their actual seniority. Corrected across all affected call sites, plus a data migration for settings that had already seeded the broken value.
+- Fixed a StrictMode-only race in the shared modal-back-close hook where a nested modal's mount could adopt a sibling modal's abandoned history token, closing the wrong modal on a browser-back press.
+- Submit buttons on the profile page now clearly show disabled vs. enabled state; mitvahim/alal date rows stack vertically on mobile instead of overflowing.
+- Range: authorize before lifecycle transitions, complete elapsed events, readable range-type choices, corrected locations-tab state, formatted eligibility warnings, and complete/meaningful duty-requirement labels.
+- Restored a dropped list comprehension in the exemption history endpoint; soldiers can now see their own score even when transparency scope excludes other rows.
+- Hardened feedback-screenshot capture (scroll position, CSS serialization, range-transition capture).
+
+### Chores
+- Reconciled two independently-built implementations of the admin-profiles/request-cancellation feature that had been developed in parallel — kept the already-shipped design as the base and ported forward the missing history/self-service visibility, i18n coverage, and test coverage from the other branch; removed the superseded plan/spec docs.
+- Added regression coverage for requests-page metadata, my-requests history/unseen-count, duty-history cancellation attribution, and authority-threshold checks across every area touched by the level-key fix.
+- Added requests-and-approvals domain glossary terms.
+
+
 ## 2026-08-24
 
 ### Features
