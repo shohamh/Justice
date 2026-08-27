@@ -294,6 +294,26 @@ describe("UnifiedSoldierModal full editor rank-field dirty gating and next-rank-
 
     expect(screen.queryByTestId("next-rank-date-input")).not.toBeInTheDocument();
   });
+
+  test("the food-type options use the same i18n keys ProfilePage.tsx defines (soldier_profile.food_*, not food_type_*)", async () => {
+    renderModal({}, true);
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.getByText("soldier_profile.food_regular")).toBeInTheDocument();
+    expect(screen.getByText("soldier_profile.food_vegetarian")).toBeInTheDocument();
+    expect(screen.getByText("soldier_profile.food_vegan")).toBeInTheDocument();
+    expect(screen.getByText("soldier_profile.food_gluten_free")).toBeInTheDocument();
+    expect(screen.getByText("soldier_profile.food_kosher_le_mehadrin")).toBeInTheDocument();
+  });
+
+  test("the read-only profile tab shows the food-type value using the same i18n key family", async () => {
+    renderModal({ food_type: "vegan" }, false);
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.getByText("soldier_profile.food_vegan")).toBeInTheDocument();
+  });
 });
 
 describe("UnifiedSoldierModal duty-history tab visibility for a commander", () => {

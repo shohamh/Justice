@@ -529,7 +529,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
             {soldierData.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldierData.last_mitvahim_date)}</span></div>}
             {soldierData.is_officer && soldierData.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldierData.last_alal_date)}</span></div>}
-            {soldierData.food_type && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.food_type")}</span><span>{t(`soldier_profile.food_type_${soldierData.food_type}`)}</span></div>}
+            {soldierData.food_type && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.food_type")}</span><span>{t(`soldier_profile.food_${soldierData.food_type}`)}</span></div>}
             {soldierData.food_constraints && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.food_constraints")}</span><span className="text-right">{soldierData.food_constraints}</span></div>}
             {rangeStatus && rangeStatus.statuses.length > 0 && (
               <div>
@@ -699,11 +699,11 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 </span>
                 <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileFoodType} onChange={(e) => setProfileFoodType(e.target.value)}>
                   <option value="">—</option>
-                  <option value="regular">{t("soldier_profile.food_type_regular")}</option>
-                  <option value="vegetarian">{t("soldier_profile.food_type_vegetarian")}</option>
-                  <option value="vegan">{t("soldier_profile.food_type_vegan")}</option>
-                  <option value="gluten_free">{t("soldier_profile.food_type_gluten_free")}</option>
-                  <option value="kosher_le_mehadrin">{t("soldier_profile.food_type_kosher_le_mehadrin")}</option>
+                  <option value="regular">{t("soldier_profile.food_regular")}</option>
+                  <option value="vegetarian">{t("soldier_profile.food_vegetarian")}</option>
+                  <option value="vegan">{t("soldier_profile.food_vegan")}</option>
+                  <option value="gluten_free">{t("soldier_profile.food_gluten_free")}</option>
+                  <option value="kosher_le_mehadrin">{t("soldier_profile.food_kosher_le_mehadrin")}</option>
                 </select>
               </label>
               <label className="block">
