@@ -32,6 +32,24 @@ class AssignmentError(Exception):
     """Raised on an invalid assignment operation."""
 
 
+def _lock_soldier(session: Session, soldier_id: uuid.UUID) -> Soldier | None:
+    """SELECT ... FOR UPDATE on the soldier row, taken as the first DB
+    interaction in create_assignment, before the overlap/rest-conflict
+    checks. Locking the soldier's existing DutyAssignment rows wouldn't
+    close this race: FOR UPDATE only locks rows that already exist, so if
+    the soldier currently has zero assignments there's nothing to lock and
+    two concurrent create_assignment calls can both pass _has_overlap before
+    either commits — there's no unique/exclusion constraint on
+    (soldier_id, date range) to catch it at insert time either. Locking the
+    always-existing parent Soldier row instead serializes concurrent
+    create_assignment calls for the same soldier regardless of how many
+    assignments they currently have, closing the double-booking window.
+    """
+    return session.execute(
+        select(Soldier).where(Soldier.id == soldier_id).with_for_update()
+    ).scalar_one_or_none()
+
+
 def _has_overlap(
     session: Session,
     *,
@@ -132,7 +150,7 @@ def create_assignment(
 ) -> DutyAssignment:
     if end_date <= start_date:
         raise AssignmentError("bad_date_range")
-    if session.get(Soldier, soldier_id) is None:
+    if _lock_soldier(session, soldier_id) is None:
         raise AssignmentError("soldier_not_found")
     duty_type = session.get(DutyType, duty_type_id)
     if duty_type is None:

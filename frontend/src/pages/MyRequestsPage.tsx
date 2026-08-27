@@ -12,6 +12,7 @@ import { DaysBadge } from "../components/DaysBadge";
 import AuditHistoryBlock from "../components/AuditHistoryBlock";
 import { MySwapCard } from "../components/MySwapCard";
 import SoldierLink from "../components/SoldierLink";
+import ApprovalStageIcons from "../components/ApprovalStageIcons";
 import { useAuth } from "../auth/AuthContext";
 import { listExemptions } from "../api/exemptions";
 import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
@@ -110,6 +111,9 @@ function RequestMetaRow({
         <span>
           {t("my_requests.updated_at")}: <span dir="ltr">{updatedDay}</span>
         </span>
+      )}
+      {commanderApprovedBy !== undefined && status && (
+        <ApprovalStageIcons request={{ status, commander_approved_by: commanderApprovedBy }} />
       )}
       {waitingOn && (
         <span data-testid={testIdPrefix ? `${testIdPrefix}-waiting-on` : undefined}>

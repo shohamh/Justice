@@ -25,7 +25,17 @@ export function formatDutyRequirements(
   if (requirements?.enlisted_allowed === false) labels.push("קצינים");
 
   const ranks = requirements?.allowed_ranks ?? [];
-  if (ranks.length > 0) labels.push(ranks.join(", "));
+  const rankServiceTypes = requirements?.rank_service_types ?? {};
+  if (ranks.length > 0) {
+    labels.push(
+      ranks
+        .map((r) => {
+          const override = rankServiceTypes[r];
+          return override && override.length === 1 ? `${r} (${override[0]})` : r;
+        })
+        .join(", ")
+    );
+  }
 
   return [...new Set(labels)];
 }

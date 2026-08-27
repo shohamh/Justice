@@ -151,6 +151,48 @@ def test_commander_score_totals_repair_divergent_projection_before_returning(adm
     )
 
 
+def test_commander_score_totals_recovers_cleanly_when_repair_hits_a_db_error(admin_session, monkeypatch):
+    """Regression: if the repair step fails on a genuine DB-level error (not
+    just a Python exception), Postgres aborts the transaction. The except
+    block must roll back before running its canonical-fallback query, or that
+    query raises its own masking PendingRollbackError instead of returning
+    the fallback result."""
+    import app.services.score_projection as sp
+    from sqlalchemy import text
+
+    soldier = _seed_commander_score_history(admin_session)
+    target_quarter = date(2026, 7, 1)
+    rebuild_projection_bucket(admin_session, soldier.id, target_quarter)
+    _enable_commander_projection_rollout(admin_session, backfill_complete=True)
+
+    # Mark the bucket dirty so commander_score_totals actually enters the
+    # try/except-guarded repair path (repair_keys non-empty) this test targets
+    # — not the separate, unguarded mismatched_ids repair path.
+    sp._mark_dirty_bucket(admin_session, soldier_id=soldier.id, quarter_start_value=target_quarter)
+    # Commit the setup so the rollback the fix triggers below only undoes the
+    # failed repair attempt, not this test's own fixture data.
+    admin_session.commit()
+
+    def _boom(session, soldier_id, quarter_start_value, refresh_quarter_total=False):
+        # A real DB-level error (not a plain Python raise) so Postgres marks
+        # the transaction aborted, reproducing the actual failure mode.
+        session.execute(text("SELECT 1/0"))
+
+    monkeypatch.setattr(sp, "rebuild_projection_bucket", _boom)
+
+    result = commander_score_totals(
+        admin_session,
+        soldiers=[soldier],
+        canonical_diagnostic_compare=True,
+    )
+
+    assert result.diagnostics.fallback_reason == "projection_repair_failed"
+    assert result.diagnostics.used_projection is False
+    # This is the crux: if the rollback fix regressed, the fallback query
+    # below would itself raise PendingRollbackError instead of populating this.
+    assert result.score_by_soldier[soldier.id] == Decimal("7.500000")
+
+
 def test_commander_score_totals_use_authoritative_projection_for_override_reserve_and_dismissal_history(
     admin_session,
 ):

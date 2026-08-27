@@ -17,6 +17,23 @@ class ConstraintError(Exception):
     """Raised on an invalid constraint operation."""
 
 
+def _lock_constraint(session: Session, constraint_id: uuid.UUID) -> PersonalConstraint | None:
+    """Fetch a PersonalConstraint with SELECT ... FOR UPDATE.
+
+    Every mutating entry point (approve_constraint, reject_constraint,
+    cancel_constraint) takes this lock as its first DB interaction, so
+    concurrent decisions on the same constraint serialize instead of racing
+    past a status check together — mirrors swaps.py's _lock_request and
+    exemption_requests.py's _lock_request for the same reason.
+    """
+    return session.execute(
+        select(PersonalConstraint)
+        .where(PersonalConstraint.id == constraint_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def _get_setting_with_default(session: Session, key: str, default):
     try:
         return get_setting(session, key)
@@ -189,7 +206,7 @@ def approve_constraint(
     decision_note: str | None = None,
     actor_role: str | None = None,
 ) -> PersonalConstraint:
-    c = session.get(PersonalConstraint, constraint_id)
+    c = _lock_constraint(session, constraint_id)
     if c is None:
         raise ConstraintError("constraint_not_found")
     if c.status not in ("pending_commander", "pending_duty_manager"):
@@ -224,7 +241,7 @@ def reject_constraint(
     actor_id: uuid.UUID | None = None,
     decision_note: str,
 ) -> PersonalConstraint:
-    c = session.get(PersonalConstraint, constraint_id)
+    c = _lock_constraint(session, constraint_id)
     if c is None:
         raise ConstraintError("constraint_not_found")
     if c.status not in ("pending_commander", "pending_duty_manager"):
@@ -259,7 +276,7 @@ def cancel_constraint(
     actor_id: uuid.UUID | None = None,
     reason: str | None = None,
 ) -> None:
-    c = session.get(PersonalConstraint, constraint_id)
+    c = _lock_constraint(session, constraint_id)
     if c is None:
         raise ConstraintError("constraint_not_found")
     # Either pending step (pending_commander or pending_duty_manager) is

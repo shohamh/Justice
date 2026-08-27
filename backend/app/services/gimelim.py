@@ -430,6 +430,15 @@ def preview_gimelim(
 
 # ── Scope helper for commit re-verification ───────────────────────────────────
 
+def consume_preview_token(preview_token: str) -> None:
+    """Remove a preview token after its commit has been durably persisted.
+
+    Callers must only invoke this once session.commit() has succeeded — see
+    commit_gimelim's docstring note on why the token isn't consumed there.
+    """
+    _PREVIEW_STORE.pop(preview_token, None)
+
+
 def resolve_preview_token_assignment(preview_token: str) -> uuid.UUID | None:
     """Return the primary_assignment_id stored in a valid (non-expired) preview token.
 
@@ -712,8 +721,11 @@ def commit_gimelim(
         if n:
             notifications_queued += 1
 
-    # Consume the token
-    del _PREVIEW_STORE[preview_token]
+    # The token is deliberately NOT consumed here — the caller's session.commit()
+    # happens after this function returns, and if that commit fails the caller
+    # must be able to retry with the same token rather than losing it to a DB
+    # error that had nothing to do with the token itself. Call consume_preview_token()
+    # only after the commit actually succeeds (see routes/gimelim.py).
 
     return GimelimCommitResult(
         dismissal_id=dismissal.id,

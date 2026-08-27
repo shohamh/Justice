@@ -1167,6 +1167,12 @@ export default function TransparencyPage() {
                             <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
                               <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
                                 <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
+                                <span
+                                  className="mr-1 text-gray-400 dark:text-gray-500 text-xs cursor-help"
+                                  title={`${formatDate(q.quarter_start)} – ${formatDate(q.quarter_end)}`}
+                                >
+                                  ⓘ
+                                </span>
                                 {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 text-xs font-normal not-italic">(חלקי)</span>}
                               </td>
                               <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">
@@ -1259,15 +1265,15 @@ export default function TransparencyPage() {
                     {/* Step 1: A — per-row arithmetic */}
                     <div>
                       <p className="font-medium text-indigo-700 dark:text-indigo-300 mb-1">
-                        שלב 1 — עומס שנצבר (A): לכל רבעון, חלק ניקוד החייל מניקוד היחידה כפול אחוז הנוכחות
+                        שלב 1 — עומס שנצבר (A): לכל רבעון, ניקוד החייל כפול אחוז הנוכחות
                       </p>
                       <div className="bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 rounded-lg overflow-hidden">
                         {qs.map((q, i) => {
                           const ss = parseFloat(q.soldier_score);
                           const us = parseFloat(q.unit_score);
                           const ap = (parseFloat(q.active_frac) * 100).toFixed(0);
-                          const ws = (parseFloat(q.weighted_share) * 100).toFixed(2);
                           const hasScore = us > 0;
+                          const aTerm = ss * parseFloat(q.active_frac);
                           return (
                             <div
                               key={q.quarter_label}
@@ -1276,20 +1282,25 @@ export default function TransparencyPage() {
                               <span className="font-medium text-gray-600 dark:text-gray-400 shrink-0 w-14">{q.quarter_label}</span>
                               {hasScore ? (
                                 <span className="tabular-nums text-gray-600 dark:text-gray-400">
-                                  <InlineMath math={`${ap}\\% \\times \\dfrac{${ss.toFixed(3)}}{${us.toFixed(3)}} = `} />
-                                  <strong className="text-indigo-600 dark:text-indigo-300">{ws}%</strong>
+                                  <InlineMath math={`${ap}\\% \\times ${ss.toFixed(3)} = `} />
+                                  <strong className="text-indigo-600 dark:text-indigo-300">{aTerm.toFixed(3)}</strong>
                                 </span>
                               ) : (
                                 <span className="text-gray-400 dark:text-gray-500 italic">
-                                  אין תורנויות ביחידה — תרומה 0%
+                                  אין תורנויות ביחידה — תרומה 0
                                 </span>
                               )}
                             </div>
                           );
                         })}
                         <div className="border-t border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 px-2 py-1.5 flex justify-between font-semibold text-indigo-700 dark:text-indigo-300">
-                          <span>סכום = A</span>
-                          <span className="tabular-nums">{(A * 100).toFixed(2)}%</span>
+                          <span
+                            className="cursor-help underline decoration-dotted"
+                            title="סכום התרומות (העמודה הימנית) מכל השורות למעלה — ניקוד גולמי, לא אחוז. עדיין לא מחולק בניקוד היחידה (זה קורה בנוסחה הסופית)."
+                          >
+                            סכום = A
+                          </span>
+                          <span className="tabular-nums">{A.toFixed(3)}</span>
                         </div>
                       </div>
                     </div>
@@ -1297,32 +1308,45 @@ export default function TransparencyPage() {
                     {/* Step 2: W — sum of presences (duty-quarters only) + final formula */}
                     <div>
                       <p className="font-medium text-amber-700 dark:text-amber-300 mb-1">
-                        שלב 2 — היסטוריה כוללת (W): סכום % נוכחות לרבעונות עם תורנויות בלבד
+                        שלב 2 — היסטוריה כוללת (W): לכל רבעון, ניקוד היחידה כפול אחוז הנוכחות
                       </p>
                       <div className="bg-white dark:bg-gray-800 border border-amber-100 dark:border-amber-900 rounded-lg overflow-hidden">
-                        {qs.filter((q) => parseFloat(q.unit_score) > 0).map((q, i) => (
-                          <div
-                            key={q.quarter_label}
-                            className={`flex justify-between px-2 py-1.5 text-gray-600 dark:text-gray-400 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
-                          >
-                            <span className="font-medium text-gray-600 dark:text-gray-400 w-14">{q.quarter_label}</span>
-                            <span className="tabular-nums">{(parseFloat(q.active_frac) * 100).toFixed(0)}%</span>
-                          </div>
-                        ))}
+                        {qs.filter((q) => parseFloat(q.unit_score) > 0).map((q, i) => {
+                          const us = parseFloat(q.unit_score);
+                          const ap = (parseFloat(q.active_frac) * 100).toFixed(0);
+                          const wTerm = us * parseFloat(q.active_frac);
+                          return (
+                            <div
+                              key={q.quarter_label}
+                              className={`flex items-center justify-between gap-2 px-2 py-1.5 text-gray-600 dark:text-gray-400 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
+                            >
+                              <span className="font-medium text-gray-600 dark:text-gray-400 w-14">{q.quarter_label}</span>
+                              <span className="tabular-nums">
+                                <InlineMath math={`${ap}\\% \\times ${us.toFixed(3)} = `} />
+                                <strong>{wTerm.toFixed(3)}</strong>
+                              </span>
+                            </div>
+                          );
+                        })}
                         {qs.some((q) => parseFloat(q.unit_score) === 0) && (
                           <div className="px-2 py-1.5 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 italic">
                             רבעונות ריקים (ללא תורנויות ביחידה) אינם נספרים ב-W
                           </div>
                         )}
                         <div className="border-t border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-2 py-1.5 flex justify-between font-semibold text-amber-700 dark:text-amber-300">
-                          <span>סכום = W</span>
+                          <span
+                            className="cursor-help underline decoration-dotted"
+                            title="סכום התרומות (העמודה הימנית) מכל השורות למעלה — ניקוד גולמי של כל היחידה, לא אחוז."
+                          >
+                            סכום = W
+                          </span>
                           <span className="tabular-nums">{W.toFixed(3)}</span>
                         </div>
                       </div>
                       <div className="mt-2 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5"><InlineMath math="\text{עומס} = \dfrac{A}{W}" /></p>
                         <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums">
-                          <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(3)}} = ${(effort * 100).toFixed(2)}\\%`} />
+                          <InlineMath math={`\\dfrac{${A.toFixed(3)}}{${W.toFixed(3)}} = ${(effort * 100).toFixed(2)}\\%`} />
                         </p>
                       </div>
                     </div>

@@ -167,3 +167,71 @@ def test_enlisted_keva_soldier_is_eligible_for_at_least_one_seeded_duty_type(db_
                 eligible.append(dt.name)
 
         assert len(eligible) > 0, "an enlisted קבע soldier should qualify for at least one seeded duty type"
+
+
+def _soldier(rank: str, mandatory_end_date: date | None) -> "Soldier":
+    from app.db.models import Soldier
+    return Soldier(
+        personal_number="1", full_name="Test", password_hash="x",
+        rank=rank, is_officer=False, mandatory_end_date=mandatory_end_date, discharge_date=None,
+    )
+
+
+def test_rank_service_types_restricts_only_the_named_rank():
+    """A duty open to both סמ"ר and רסל, restricted to career-only for סמ"ר
+    specifically, should reject a mandatory-service Samar but still accept a
+    mandatory-service רס"ל (unaffected by the override)."""
+    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+
+    reqs = DutyTypeRequirements(
+        allowed_ranks=["סמר", "רסל"],
+        rank_service_types={"סמר": ["קבע"]},
+    )
+    today = date(2026, 7, 29)
+
+    mandatory_samar = _soldier("סמר", mandatory_end_date=date(2027, 1, 1))  # still חובה
+    career_samar = _soldier("סמר", mandatory_end_date=date(2020, 1, 1))  # now קבע
+    mandatory_rasal = _soldier("רסל", mandatory_end_date=date(2027, 1, 1))  # still חובה
+
+    assert _is_eligible(mandatory_samar, reqs, mitvahim_months=6, alal_months=3, today=today) is False
+    assert _is_eligible(career_samar, reqs, mitvahim_months=6, alal_months=3, today=today) is True
+    assert _is_eligible(mandatory_rasal, reqs, mitvahim_months=6, alal_months=3, today=today) is True
+
+
+def test_rank_service_types_absent_falls_back_to_global_filter():
+    """A rank with no entry in rank_service_types keeps using the global
+    allowed_service_types filter, unaffected by another rank's override."""
+    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+
+    reqs = DutyTypeRequirements(
+        allowed_ranks=["סמר", "רסל"],
+        allowed_service_types=["חובה"],
+        rank_service_types={"סמר": ["קבע"]},
+    )
+    today = date(2026, 7, 29)
+
+    career_rasal = _soldier("רסל", mandatory_end_date=date(2020, 1, 1))  # now קבע, but רסל not overridden
+    mandatory_rasal = _soldier("רסל", mandatory_end_date=date(2027, 1, 1))  # still חובה
+
+    assert _is_eligible(career_rasal, reqs, mitvahim_months=6, alal_months=3, today=today) is False
+    assert _is_eligible(mandatory_rasal, reqs, mitvahim_months=6, alal_months=3, today=today) is True
+
+
+def test_rank_service_types_explicit_empty_list_exempts_rank_from_global_filter():
+    """An explicit empty override (rank present in rank_service_types with an
+    empty list) means 'no service-type restriction for this rank', overriding
+    a global allowed_service_types filter that would otherwise apply."""
+    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+
+    reqs = DutyTypeRequirements(
+        allowed_ranks=["סמר", "רסל"],
+        allowed_service_types=["קבע"],
+        rank_service_types={"סמר": []},
+    )
+    today = date(2026, 7, 29)
+
+    mandatory_samar = _soldier("סמר", mandatory_end_date=date(2027, 1, 1))  # still חובה, exempted rank
+    mandatory_rasal = _soldier("רסל", mandatory_end_date=date(2027, 1, 1))  # still חובה, not exempted
+
+    assert _is_eligible(mandatory_samar, reqs, mitvahim_months=6, alal_months=3, today=today) is True
+    assert _is_eligible(mandatory_rasal, reqs, mitvahim_months=6, alal_months=3, today=today) is False

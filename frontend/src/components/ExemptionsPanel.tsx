@@ -15,6 +15,7 @@ import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
 import { DaysBadge } from "./DaysBadge";
 import ReasonPromptModal from "./ReasonPromptModal";
 import DateInput from "../components/DateInput";
+import ApprovalStageIcons from "./ApprovalStageIcons";
 
 export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyManagerStep }: { soldierId: string; canManage: boolean; canApproveDutyManagerStep: boolean }) {
   const { t } = useTranslation();
@@ -171,7 +172,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                       <p className="font-medium text-sm text-indigo-900 dark:text-indigo-100">
                         {ex.exemption_type_id ? typeName(ex.exemption_type_id) : "מידע פרטי"}
                       </p>
-                      <p className="text-xs text-indigo-700 dark:text-indigo-300">
+                      <p className="text-xs text-indigo-700 dark:text-indigo-300" dir="ltr">
                         {formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : t("exemptions.forever")}
                       </p>
                       <DaysBadge start={ex.start_date} end={ex.end_date} />
@@ -221,7 +222,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{ex.exemption_type_id ? typeName(ex.exemption_type_id) : "מידע פרטי"}</span>
-                    <span className="text-gray-500 dark:text-gray-400 text-xs">
+                    <span className="text-gray-500 dark:text-gray-400 text-xs" dir="ltr">
                       {formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : ""}
                     </span>
                     <DaysBadge start={ex.start_date} end={ex.end_date} />
@@ -262,8 +263,9 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                 className="border dark:border-gray-600 rounded p-3"
                 data-testid={`exemption-request-row-${req.id}`}
               >
-                <p className="text-xs text-gray-500 mb-1" data-testid={`exemption-request-status-${req.id}`}>
-                  {t(`exemptions.request_status_${req.status}`)}
+                <p className="text-xs text-gray-500 mb-1 flex items-center gap-2" data-testid={`exemption-request-status-${req.id}`}>
+                  <span>{t(`exemptions.request_status_${req.status}`)}</span>
+                  <ApprovalStageIcons request={req} />
                 </p>
                 <p className="text-sm flex items-center gap-2" dir="ltr">
                   <span>{req.start_date ? formatDate(req.start_date) : t("exemption_requests.start_date_pending_approval")} → {req.end_date ? formatDate(req.end_date) : t("exemptions.forever")}</span>

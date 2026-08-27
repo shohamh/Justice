@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   DndContext,
@@ -262,12 +262,22 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
     () => new Set(nodes.filter((n) => n.can_edit).map((n) => n.id)),
     [nodes],
   );
-  const [expanded, setExpanded] = useState<Set<string>>(() => {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const didInitExpand = useRef(false);
+  useEffect(() => {
+    // `nodes` arrives asynchronously (starts as []); seed the default expansion once real data lands.
+    if (didInitExpand.current || nodes.length === 0) return;
+    didInitExpand.current = true;
     const defaultExpanded = new Set(nodes.filter((n) => n.path_ids.length <= 2).map((n) => n.id));
-    if (ownNodeIds.size === 0) return defaultExpanded;
+    if (ownNodeIds.size === 0) {
+      setExpanded(defaultExpanded);
+      return;
+    }
     const ownAncestors = ancestorIdsOf(nodes, ownNodeIds);
-    return new Set([...defaultExpanded, ...ownAncestors]);
-  });
+    // Also expand one level below the user's own node(s), so children are visible without an extra click.
+    const ownChildren = nodes.filter((n) => n.parent_id && ownNodeIds.has(n.parent_id)).map((n) => n.id);
+    setExpanded(new Set([...defaultExpanded, ...ownAncestors, ...ownChildren]));
+  }, [nodes, ownNodeIds]);
   const [addDialog, setAddDialog] = useState<NodeDTO | null>(null);
   const [commanderDialog, setCommanderDialog] = useState<NodeDTO | null>(null);
   const [renameDialog, setRenameDialog] = useState<NodeDTO | null>(null);

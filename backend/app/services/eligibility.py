@@ -75,6 +75,11 @@ class DutyTypeRequirements(BaseModel):
     requires_alal: bool = False
     allowed_ranks: list[str] = []
     allowed_service_types: list[str] = []
+    # Optional per-rank service-type restriction, for ranks that span both
+    # tracks (e.g. סמ"ר, סגן). A rank present here uses this list instead of
+    # `allowed_service_types` when checking that soldier; ranks absent from
+    # this dict keep using the global `allowed_service_types` filter.
+    rank_service_types: dict[str, list[str]] = {}
     officers_allowed: bool = True
     enlisted_allowed: bool = True
     requires_bahad1: bool = False
@@ -140,14 +145,17 @@ def _is_eligible(
         if (today - soldier.last_alal_date) > timedelta(days=alal_months * 30):
             return False
 
+    effective_rank = rank_override if rank_override is not None else soldier.rank
+
     if reqs.allowed_ranks:
-        effective_rank = rank_override if rank_override is not None else soldier.rank
         if not effective_rank or effective_rank not in reqs.allowed_ranks:
             return False
 
-    if reqs.allowed_service_types:
+    per_rank_service_types = reqs.rank_service_types.get(effective_rank) if effective_rank else None
+    active_service_types = per_rank_service_types if per_rank_service_types is not None else reqs.allowed_service_types
+    if active_service_types:
         stype = inferred_service_type(soldier, today)
-        if not stype or stype not in reqs.allowed_service_types:
+        if not stype or stype not in active_service_types:
             return False
 
     if not reqs.officers_allowed and soldier.is_officer:

@@ -793,6 +793,8 @@
     "requires_alal": "נדרש אל\"ל עדכני",
     "allowed_ranks": "דרגות מותרות",
     "allowed_service_types": "סוג שירות מותר",
+    "rank_service_type_override": "החרגת סוג שירות לפי דרגה",
+    "rank_service_type_none": "ללא הגבלה",
     "officers_allowed": "קצינים מותרים",
     "enlisted_allowed": "חוגרים מותרים",
     "requires_bahad1": "נדרש בוגר בה\"ד 1",

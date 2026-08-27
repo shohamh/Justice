@@ -65,6 +65,15 @@ export function isRankTrackCompatible(rank: string, isCareer: boolean): boolean 
   return required === (isCareer ? "קבע" : "חובה");
 }
 
+// A rank is "track-flexible" if it can genuinely be held by both חובה and
+// קבע soldiers (today: סמ"ר, סגן) — i.e. it has no fixed entry in
+// RANK_TRACK_COMPATIBILITY. Duty-type requirements only need a per-rank
+// service-type override for these ranks; a rank already locked to one track
+// can't meaningfully be restricted further.
+export function isRankTrackFlexible(rank: string): boolean {
+  return !(rank in RANK_TRACK_COMPATIBILITY);
+}
+
 const BAHAD1_EXCLUDED_OFFICER_RANKS = ["קמא", "קאב", "קאם"];
 
 // Mirrors backend/app/services/eligibility.py derive_bahad1_graduate.

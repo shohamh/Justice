@@ -1602,6 +1602,12 @@ def commander_score_totals(
                     "fallback_reason": "projection_repair_failed",
                 },
             )
+            # If the failure came from a flush (e.g. a constraint violation),
+            # Postgres has already aborted the transaction — the fallback
+            # SELECT just below would then raise a fresh, unrelated-looking
+            # PendingRollbackError/InFailedSqlTransaction that masks this
+            # real error. Roll back first so the fallback query runs clean.
+            session.rollback()
             return _commander_score_read_result(
                 score_by_soldier=_canonical_commander_score_totals(session, soldier_ids=soldier_ids),
                 gate_enabled=True,

@@ -225,6 +225,10 @@ def commit_gimelim_route(
         raise HTTPException(status_code=code, detail=str(exc)) from exc
 
     session.commit()
+    # Only consume the token once the commit has actually succeeded, so a
+    # failed commit (e.g. a deferred constraint violation) doesn't burn a
+    # valid token the caller could otherwise retry with.
+    svc.consume_preview_token(body.preview_token)
     return GimelimCommitOut(
         dismissal_id=result.dismissal_id,
         call_up_assignment_id=result.call_up_assignment_id,
