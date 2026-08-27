@@ -308,7 +308,12 @@ def test_cancel_pending(admin_session):
     assert admin_session.get(PersonalConstraint, c_id) is None
 
 
-def test_cancel_not_pending_once_fully_approved(admin_session):
+def test_cancel_once_fully_approved_requires_a_reason(admin_session):
+    # Approved constraints ARE cancelable (unlike rejected/already-cancelled
+    # ones, see test_cancel_not_pending_once_rejected below) but only with an
+    # explicit reason — this is the privileged/extreme-action cancellation
+    # path, not the plain pre-decision withdrawal that test_cancel_pending
+    # covers.
     s = create_soldier(admin_session, personal_number="7400010")
     c = submit_constraint(
         admin_session,
@@ -323,8 +328,25 @@ def test_cancel_not_pending_once_fully_approved(admin_session):
     admin_session.flush()
     approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id, actor_role="admin")  # -> approved
     admin_session.flush()
-    with pytest.raises(ConstraintError, match="not_pending"):
+    with pytest.raises(ConstraintError, match="cancellation_reason_required"):
         cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
+
+
+def test_cancel_not_pending_once_rejected(admin_session):
+    s = create_soldier(admin_session, personal_number=_pn(13))
+    c = submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=date.today() + timedelta(days=5),
+        end_date=date.today() + timedelta(days=10),
+        reason="חופשה",
+        actor_id=None,
+    )
+    admin_session.flush()
+    reject_constraint(admin_session, constraint_id=c.id, actor_id=s.id, decision_note="לא מתאים")
+    admin_session.flush()
+    with pytest.raises(ConstraintError, match="not_pending"):
+        cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id, reason="סיבה")
 
 
 def test_cancel_at_pending_duty_manager_succeeds_regardless_of_commander_actor_id(admin_session):

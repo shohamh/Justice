@@ -10,8 +10,16 @@ from app.db.models import HierarchyNode, Soldier
 from app.services.hierarchy import get_level_rank
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 
-REQUEST_CANCELLATION_COMMANDER_MIN_LEVEL_KEY = "מדור"
-REQUEST_CANCELLATION_DUTY_MANAGER_MIN_LEVEL_KEY = "ענף"
+REQUEST_CANCELLATION_COMMANDER_MIN_LEVEL_KEY = "group"
+# ^ get_level_rank matches HierarchyLevelType.key, not .label — the seed
+# migration (alembic/versions/0059_hierarchy_level_types.py) keys "group" to
+# the Hebrew label "מדור" at rank 6, and "branch" to "ענף" at rank 5. Use the
+# seeded keys here, not the labels (see COMMANDER_DELETE_MIN_LEVEL_KEY below
+# for the same pattern already documented for a different action) — a
+# Hebrew label passed to get_level_rank never matches any row and silently
+# resolves to None, which dm_scope_covers_level treats as an unconditional
+# denial regardless of the actor's actual level.
+REQUEST_CANCELLATION_DUTY_MANAGER_MIN_LEVEL_KEY = "branch"
 
 COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
 REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY = "מרכז"
