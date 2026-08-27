@@ -22,6 +22,26 @@ class ExemptionRequestError(ValueError):
     pass
 
 
+def _lock_request(session: Session, request_id: uuid.UUID) -> ExemptionRequest | None:
+    """Fetch an ExemptionRequest with SELECT ... FOR UPDATE.
+
+    Every mutating entry point (approve_commander_step, approve_duty_manager_step,
+    reject_request) takes this lock as its first DB interaction, so concurrent
+    decisions on the same request serialize. Without it, two duty managers
+    approving the same request at once could both read status=='pending_duty_manager'
+    before either commits, and both create a SoldierExemption row for it —
+    silent duplicate-exemption corruption, since there's no unique constraint
+    tying SoldierExemption 1:1 back to its originating request. Mirrors
+    swaps.py's _lock_request for the same reason.
+    """
+    return session.execute(
+        select(ExemptionRequest)
+        .where(ExemptionRequest.id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def submit_request(
     session: Session,
     soldier_id: uuid.UUID,
@@ -160,7 +180,7 @@ def approve_commander_step(
     request_id: uuid.UUID,
     approved_by: uuid.UUID,
 ) -> ExemptionRequest:
-    req = session.get(ExemptionRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise ExemptionRequestError("exemption_request_not_found")
     if req.status != "pending_commander":
@@ -189,7 +209,7 @@ def approve_duty_manager_step(
     decided_by: uuid.UUID,
     decision_note: str | None = None,
 ) -> ExemptionRequest:
-    req = session.get(ExemptionRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise ExemptionRequestError("exemption_request_not_found")
     if req.status != "pending_duty_manager":
@@ -244,7 +264,7 @@ def reject_request(
     decided_by: uuid.UUID,
     decision_note: str | None = None,
 ) -> ExemptionRequest:
-    req = session.get(ExemptionRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise ExemptionRequestError("exemption_request_not_found")
     if req.status not in ("pending_commander", "pending_duty_manager"):

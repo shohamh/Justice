@@ -479,6 +479,17 @@ def test_commit_full_flow(admin_session):
     admin_session.refresh(reserve)
     assert reserve.called_up_from == date.today()
 
+    # commit_gimelim itself deliberately does NOT consume the token — a
+    # caller's session.commit() happens after this returns, and a failed
+    # commit shouldn't burn a token the caller could otherwise retry with.
+    # The token is only removed once the caller explicitly confirms the
+    # commit succeeded (routes/gimelim.py does this after session.commit()).
+    from app.services.gimelim import _PREVIEW_STORE, consume_preview_token
+    assert preview.preview_token in _PREVIEW_STORE
+
+    consume_preview_token(preview.preview_token)
+    assert preview.preview_token not in _PREVIEW_STORE
+
     # Verify token is consumed (second commit should fail)
     with pytest.raises(GimelimError, match="token_not_found"):
         commit_gimelim(
@@ -487,6 +498,48 @@ def test_commit_full_flow(admin_session):
             preview_token=preview.preview_token,
             actor_id=actor.id,
         )
+
+
+def test_commit_does_not_consume_token_on_its_own(admin_session):
+    """Regression: commit_gimelim must leave the token in the store on
+    success, so a failed session.commit() by the caller (e.g. a deferred DB
+    constraint violation) doesn't strand the user with a burned token they
+    can no longer retry with. Only consume_preview_token() (called by the
+    route after a successful commit) may remove it."""
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "act12", "Actor12")
+    soldier_a = _make_soldier(admin_session, "gim12", "A")
+    soldier_b = _make_soldier(admin_session, "gim13", "B")
+
+    shift_start = date.today() - timedelta(days=2)
+    shift_end = date.today() + timedelta(days=2)
+    shift, primary, _reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=shift_start, end=shift_end,
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=7,
+        reason="כאב ראש",
+        actor_id=actor.id,
+    )
+
+    commit_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        preview_token=preview.preview_token,
+        actor_id=actor.id,
+    )
+
+    from app.services.gimelim import _PREVIEW_STORE
+    assert preview.preview_token in _PREVIEW_STORE, (
+        "commit_gimelim must not consume the token itself — that's the caller's "
+        "responsibility, only after its session.commit() actually succeeds"
+    )
 
 
 def test_commit_uses_backdated_from_date(admin_session):
