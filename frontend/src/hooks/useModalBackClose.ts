@@ -4,7 +4,6 @@ type ModalHistoryState = { __modal?: boolean; __modalId?: number };
 type PendingBack = { cancelled: boolean; entryId: number };
 
 let nextModalEntryId = 0;
-let pendingBack: PendingBack | null = null;
 
 /**
  * Makes the mobile/browser back button (or gesture) close an open modal
@@ -45,6 +44,24 @@ let pendingBack: PendingBack | null = null;
  * an arbitrary point relative to a caller's own fake-timer usage instead of
  * within the same microtask-flush every `await` already performs.
  *
+ * The pending-back token above is deliberately kept in a ref scoped to
+ * *this* hook call, not a single module-level slot: with a nested modal
+ * (parent and child both call this hook), React runs both instances'
+ * StrictMode fake-mount → cleanup → real-mount in one synchronous batch,
+ * tree-order (child's effects before its parent's, for both mount and
+ * cleanup). By the time the child's fake cleanup runs, the parent has
+ * already pushed its own fake entry on top, so the child's "is my entry
+ * still current" check fails and it correctly does nothing — but the
+ * parent's fake cleanup *does* still see its own entry on top and defers a
+ * back() for it. A single shared slot would then have the child's
+ * following real mount see that leftover token, match it against the
+ * current (parent's) history state, and wrongly adopt the parent's entry
+ * as its own — leaving the child and parent's `entryIdRef`s pointing at
+ * the same id and silently swapping which one a later back-press closes.
+ * Scoping the slot per hook call (a ref, stable across the same
+ * mount/cleanup/remount cycle since StrictMode reuses the fiber) makes
+ * that adoption impossible between different instances.
+ *
  * Returns `consumeForNavigation()` — call it synchronously, *before*
  * triggering a navigation that will also close the modal (e.g. a nav-sheet
  * `<Link>` whose `onClick` both closes the sheet and routes elsewhere).
@@ -63,6 +80,7 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
   onCloseRef.current = onClose;
   const entryIdRef = useRef<number | null>(null);
   const consumedRef = useRef(false);
+  const pendingBackRef = useRef<PendingBack | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -70,25 +88,26 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
 
     let ownEntryOnTop = true;
     const currentState = window.history.state as ModalHistoryState | null;
+    const myPendingBack = pendingBackRef.current;
 
-    if (pendingBack !== null && currentState?.__modalId === pendingBack.entryId) {
-      // A StrictMode double-invoke or modal handoff: the immediately-
-      // preceding cleanup's deferred back() is still pending. Cancel it and
-      // keep using its entry instead of pushing a second one.
-      entryIdRef.current = pendingBack.entryId;
-      pendingBack.cancelled = true;
-      pendingBack = null;
+    if (myPendingBack !== null && currentState?.__modalId === myPendingBack.entryId) {
+      // A StrictMode double-invoke: the immediately-preceding cleanup's
+      // deferred back() (for THIS SAME hook call — see the ref-scoping note
+      // above) is still pending. Cancel it and keep using its entry instead
+      // of pushing a second one.
+      entryIdRef.current = myPendingBack.entryId;
+      myPendingBack.cancelled = true;
+      pendingBackRef.current = null;
     } else {
       // A pending cleanup can become stale if another history entry was
       // pushed before its microtask ran. It must never consume that newer
       // entry.
-      if (pendingBack !== null) pendingBack.cancelled = true;
-      pendingBack = null;
+      if (myPendingBack !== null) myPendingBack.cancelled = true;
+      pendingBackRef.current = null;
       const entryId = ++nextModalEntryId;
       entryIdRef.current = entryId;
       window.history.pushState({ __modal: true, __modalId: entryId }, "");
     }
-
     function handlePopState() {
       // A nested modal pushed its own entry on top of ours; when it closes,
       // its cleanup's history.back() pops that entry and lands back on OUR
@@ -115,10 +134,10 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
       const stillOnOwnEntry = (window.history.state as ModalHistoryState | null)?.__modalId === entryIdRef.current;
       if (ownEntryOnTop && stillOnOwnEntry) {
         const token: PendingBack = { cancelled: false, entryId: entryIdRef.current! };
-        pendingBack = token;
+        pendingBackRef.current = token;
         queueMicrotask(() => {
-          if (token.cancelled || pendingBack !== token) return;
-          pendingBack = null;
+          if (token.cancelled || pendingBackRef.current !== token) return;
+          pendingBackRef.current = null;
           if ((window.history.state as ModalHistoryState | null)?.__modalId !== entryIdRef.current) return;
           window.history.back();
         });
