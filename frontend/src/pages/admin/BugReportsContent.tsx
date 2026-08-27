@@ -387,7 +387,7 @@ export function BugReportsContent() {
             expandOnRowClick: true,
             content: (report) => (
               <div className="p-4">
-                <p className="mb-2"><strong>תיאור מלא:</strong> {report.description}</p>
+                <p className="mb-2 whitespace-pre-wrap"><strong>תיאור מלא:</strong> {report.description}</p>
                 <p className="mb-2"><strong>מסלול:</strong> {report.route}</p>
                 {report.has_screenshot && screenshotUrlById[report.id] && (
                   <img

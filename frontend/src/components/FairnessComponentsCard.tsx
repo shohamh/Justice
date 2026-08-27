@@ -146,6 +146,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                               ))}
                             </Pie>
                             <Tooltip
+                              wrapperStyle={{ zIndex: 1000 }}
                               formatter={(value, _name, props) =>
                                 [`${value} חיילים`, `${(props.payload as { count?: number })?.count ?? "?"} סוגי תורנות`]
                               }

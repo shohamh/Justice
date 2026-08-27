@@ -20,6 +20,7 @@ import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import { parseRankSelectionId, rankSelectionId, RankTrack } from "../constants/ranks";
 import ReasonPromptModal from "./ReasonPromptModal";
+import ApprovalStageIcons from "./ApprovalStageIcons";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -745,6 +746,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <span className={`text-xs px-1.5 py-0.5 rounded ${c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : c.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
                     {t(`my_requests.${c.status}`)}
                   </span>
+                  <ApprovalStageIcons request={c} />
                 </div>
                 <p className="text-gray-700 dark:text-gray-300">
                   {c.reason ?? "מידע פרטי"}
@@ -761,10 +763,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   </div>
                 )}
                 {c.can_cancel && (c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager") && (
-                  <button className="text-xs text-red-600 hover:underline" onClick={() => void handleCancelPendingConstraint(c.id)} data-testid={`cancel-constraint-${c.id}`}>בטל</button>
+                  <button className="text-xs text-red-600 border border-red-300 dark:border-red-700 rounded px-2 py-0.5" onClick={() => void handleCancelPendingConstraint(c.id)} data-testid={`cancel-constraint-${c.id}`}>בטל</button>
                 )}
                 {c.can_cancel && c.status === "approved" && (
-                  <button className="text-xs text-red-600 hover:underline" onClick={() => setCancellingConstraintId(c.id)} data-testid={`cancel-constraint-${c.id}`}>בטל</button>
+                  <button className="text-xs text-red-600 border border-red-300 dark:border-red-700 rounded px-2 py-0.5" onClick={() => setCancellingConstraintId(c.id)} data-testid={`cancel-constraint-${c.id}`}>בטל</button>
                 )}
               </div>
             ))}
