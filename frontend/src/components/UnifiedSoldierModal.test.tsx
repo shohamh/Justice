@@ -119,6 +119,60 @@ describe("UnifiedSoldierModal profile save error handling", () => {
   });
 });
 
+describe("UnifiedSoldierModal full-editor access is scoped to canManage", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+  });
+
+  test("a commander viewing their own profile does not see the full-editor Edit toggle (only canManage may open it)", async () => {
+    // The full editor direct-PATCHes /soldiers/{id}/profile, which the
+    // backend gates on Action.SOLDIER_UPDATE — a duty-manager/admin-only
+    // action a plain commander never holds, self or not. isSelf used to
+    // grant access to this dead-end form anyway; self-service edits for a
+    // commander go through ProfilePage.tsx's request/approval flow instead,
+    // or the narrow rank-correction form when can_edit_rank_advancement.
+    mockUseAuth.mockReturnValue({
+      user: { personal_number: soldier.personal_number, role: "commander", is_duty_manager: false, is_commander: true },
+    });
+    renderModal({}, false);
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.queryByTestId("modal-edit-toggle")).not.toBeInTheDocument();
+  });
+
+  test("a plain soldier viewing their own profile does not see the full-editor Edit toggle", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { personal_number: soldier.personal_number, role: "soldier", is_duty_manager: false, is_commander: false },
+    });
+    renderModal({}, false);
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.queryByTestId("modal-edit-toggle")).not.toBeInTheDocument();
+  });
+
+  test("an admin viewing someone else's profile still sees the full-editor Edit toggle", async () => {
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    renderModal({}, false);
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.getByTestId("modal-edit-toggle")).toBeInTheDocument();
+  });
+
+  test("a commander with rank-advancement authority over their own record still sees the narrow rank-correction option", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { personal_number: soldier.personal_number, role: "commander", is_duty_manager: false, is_commander: true },
+    });
+    renderModal({ can_edit_rank_advancement: true }, false);
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.getByTestId("rank-correction-toggle")).toBeInTheDocument();
+  });
+});
+
 describe("UnifiedSoldierModal profile editor field layout", () => {
   beforeEach(() => {
     mockUseAuth.mockReset();

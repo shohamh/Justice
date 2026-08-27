@@ -207,7 +207,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
   async function handleProfileSave(e: FormEvent) {
     e.preventDefault();
-    if (isCommander) return;  // UI hides button, but guard against keyboard submit
     if (mandatoryEndBeforeEnlistmentError) return;
     if (!profileDirty) { setEditing(false); onClose(); return; }
     setSavingProfile(true);
@@ -315,7 +314,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold">{soldierData.full_name}</h3>
-                {(canManage || isSelf) && !editing && (
+                {canManage && !editing && (
                   <button
                     onClick={() => { setRankEditing(false); setEditing(true); }}
                     className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 text-sm leading-none"
@@ -723,12 +722,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
             </div>
             {profileError && <p className="text-red-500 text-xs">{profileError}</p>}
-            {!isCommander && (
-              <div className="flex justify-end gap-2">
-                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => { setProfileError(null); setEditing(false); }}>{t("team.cancel")}</button>
-                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile || !profileDirty || !!mandatoryEndBeforeEnlistmentError}>{t("duty_config.save")}</button>
-              </div>
-            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => { setProfileError(null); setEditing(false); }}>{t("team.cancel")}</button>
+              <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={savingProfile || !profileDirty || !!mandatoryEndBeforeEnlistmentError}>{t("duty_config.save")}</button>
+            </div>
           </form>
         )}
 
