@@ -44,10 +44,14 @@ const MANAGER_ONLY_NOTIFICATION_TYPES = new Set([
 export default function ProfilePage() {
   const { t } = useTranslation();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, refreshMe } = useAuth();
   const queryClient = useQueryClient();
   const publicSettings = usePublicSettings();
   const telegramEnabled = publicSettings?.["telegram.enabled"] === true;
+
+  useEffect(() => {
+    refreshMe().catch(() => {});
+  }, [refreshMe]);
 
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");

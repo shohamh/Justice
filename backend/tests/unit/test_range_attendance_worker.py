@@ -40,37 +40,59 @@ def _capture_worker_log():
 
 
 def test_auto_mark_helper_calls_service_and_logs_when_marked(monkeypatch) -> None:
-    calls: list[object] = []
+    calls: list[tuple[str, object]] = []
+
+    class FakeSession:
+        def commit(self) -> None:
+            calls.append(("commit", self))
+
+    session = FakeSession()
 
     @contextmanager
     def fake_session_scope():
-        yield object()
+        yield session
 
-    def fake_auto_mark(session) -> int:
-        calls.append(session)
+    def fake_complete(current_session) -> int:
+        calls.append(("complete", current_session))
+        return 2
+
+    def fake_auto_mark(current_session) -> int:
+        calls.append(("attendance", current_session))
         return 3
 
     monkeypatch.setattr(worker, "session_scope", fake_session_scope)
+    monkeypatch.setattr(worker, "mark_past_range_events_completed", fake_complete)
     monkeypatch.setattr(worker, "auto_mark_present_for_elapsed_events", fake_auto_mark)
 
     with _capture_worker_log() as records:
         worker._auto_mark_present_for_elapsed_events()
 
-    assert len(calls) == 1
+    assert calls == [("complete", session), ("attendance", session), ("commit", session)]
+    assert any("completed 2" in record.getMessage() for record in records)
     assert any("auto-marked 3" in record.getMessage() for record in records)
 
 
 def test_auto_mark_helper_does_not_log_when_nothing_marked(monkeypatch) -> None:
+    commits: list[object] = []
+
+    class FakeSession:
+        def commit(self) -> None:
+            commits.append(self)
+
+    session = FakeSession()
+
     @contextmanager
     def fake_session_scope():
-        yield object()
+        yield session
 
     monkeypatch.setattr(worker, "session_scope", fake_session_scope)
-    monkeypatch.setattr(worker, "auto_mark_present_for_elapsed_events", lambda session: 0)
+    monkeypatch.setattr(worker, "mark_past_range_events_completed", lambda current_session: 0)
+    monkeypatch.setattr(worker, "auto_mark_present_for_elapsed_events", lambda current_session: 0)
 
     with _capture_worker_log() as records:
         worker._auto_mark_present_for_elapsed_events()
 
+    assert commits == [session]
     assert not records
 
 

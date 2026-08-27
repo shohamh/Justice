@@ -14,6 +14,46 @@ import { queryKeys } from "../queryKeys";
 // always non-fatal, matching the rest of this feature's error handling.
 const CAPTURE_TIMEOUT_MS = 6000;
 
+function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boolean) {
+  // This installed html-to-image release has no onClone hook. Stage our own
+  // connected, off-screen copy so computed styles remain available while every
+  // scroll adjustment is confined to the representation handed to toPng.
+  const captureRoot = document.body.cloneNode(true) as HTMLBodyElement;
+  const host = document.createElement("div");
+  host.dataset.bugReportCaptureHost = "";
+  host.setAttribute("aria-hidden", "true");
+  host.setAttribute("inert", "");
+  Object.assign(host.style, {
+    position: "fixed",
+    inset: "0",
+    width: `${window.innerWidth}px`,
+    height: `${window.innerHeight}px`,
+    overflow: "hidden",
+    pointerEvents: "none",
+    transform: "translateX(-100000px)",
+    zIndex: "-2147483648",
+  });
+
+  if (hasAppShell) {
+    const captureScrollContent = captureRoot.querySelector<HTMLElement>(
+      "[data-bug-report-scroll-content]",
+    );
+    if (captureScrollContent) {
+      captureScrollContent.style.transform = `translate(${-scrollX}px, ${-scrollY}px)`;
+    }
+  }
+
+  // Test hooks are not visual content and duplicate selectors while the
+  // connected staging copy exists.
+  captureRoot.querySelectorAll("[data-testid]").forEach((node) => {
+    node.removeAttribute("data-testid");
+  });
+
+  host.append(captureRoot);
+  document.body.append(host);
+  return { captureRoot, remove: () => host.remove() };
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("screenshot capture timed out")), ms);
@@ -49,8 +89,10 @@ export default function BugReportTrigger() {
 
   async function handleClick() {
     // Freeze the current scroll position before any async work.
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
+    const appScrollContainer = document.querySelector<HTMLElement>("[data-bug-report-scroll-container]");
+    const appScrollContent = appScrollContainer?.querySelector<HTMLElement>("[data-bug-report-scroll-content]") ?? null;
+    const scrollX = appScrollContainer?.scrollLeft ?? window.scrollX;
+    const scrollY = appScrollContainer?.scrollTop ?? window.scrollY;
     setCapturing(true);
     let screenshot: string | null = null;
     try {
@@ -59,22 +101,28 @@ export default function BugReportTrigger() {
       // displays. width/height clamp the capture to the viewport instead of the
       // full document — but clamping alone would always crop starting at the top
       // of the document (a previously-seen bug: scrolled pages showed only the
-      // header). The clone is shifted up by the current scroll offset via
-      // `style.transform` so the SVG foreignObject (which clips to width/height)
-      // reveals the section of the page actually on screen, not the top of it.
+      // header). This html-to-image version has no onClone hook, so shell pages
+      // use a connected off-screen copy whose marked content is shifted before
+      // the library makes its own rendering clone. The live shell and fixed
+      // header are untouched; non-shell pages retain the window-scroll fallback.
       // Capture happens BEFORE the modal opens/mounts, so the modal's own
       // dimming overlay and empty form are never present in document.body while
       // toPng reads it — otherwise the screenshot would show the modal itself
       // instead of the page the user is reporting a bug about.
-      screenshot = await withTimeout(
-        toPng(document.body, {
-          pixelRatio: 1,
-          width: window.innerWidth,
-          height: window.innerHeight,
-          style: { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
-        }),
-        CAPTURE_TIMEOUT_MS,
-      );
+      const capture = createCaptureClone(scrollX, scrollY, appScrollContent !== null);
+      try {
+        screenshot = await withTimeout(
+          toPng(capture.captureRoot, {
+            pixelRatio: 1,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            style: appScrollContent ? undefined : { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
+          }),
+          CAPTURE_TIMEOUT_MS,
+        );
+      } finally {
+        capture.remove();
+      }
     } catch {
       // non-fatal (rejection or timeout): submission proceeds without a screenshot
       screenshot = null;

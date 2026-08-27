@@ -500,3 +500,21 @@ def test_update_soldier_profile_enlistment_date_does_not_touch_overridden_schedu
 
     assert soldier.next_rank_date == date(2030, 1, 1)
     assert soldier.next_rank_date_overridden is True
+
+
+def test_approve_field_update_writes_last_mitvahim_date(admin_session):
+    from app.services.soldiers import approve_field_update, submit_field_update
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920006")
+    update = submit_field_update(
+        admin_session,
+        soldier_id=soldier.id,
+        field_name="last_mitvahim_date",
+        new_value="2026-08-15",
+        actor_id=soldier.id,
+    )
+
+    approve_field_update(admin_session, update=update, actor_id=soldier.id)
+
+    assert soldier.last_mitvahim_date == date(2026, 8, 15)

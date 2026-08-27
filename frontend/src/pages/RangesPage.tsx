@@ -16,8 +16,9 @@ import RangeCancelDialog from "../components/ranges/RangeCancelDialog";
 import RangeBulkCancelDialog from "../components/ranges/RangeBulkCancelDialog";
 import ConfirmDialog from "../components/ranges/ConfirmDialog";
 import { IneligibleSoldiersTable } from "../components/ranges/IneligibleSoldiersTable";
+import RangeLocationsContent from "../components/ranges/RangeLocationsContent";
 import { listSoldiers } from "../api/soldiers";
-import { listRangeLocations } from "../api/rangeLocations";
+import { createRangeLocation, listRangeLocations } from "../api/rangeLocations";
 import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
 import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../utils/rangeLabels";
 
@@ -26,6 +27,8 @@ export default function RangesPage() {
   const [params, setParams] = useSearchParams();
   const [selected, setSelected] = useState<string | null>(params.get("event"));
   const showIneligible = params.get("tab") === "ineligible";
+  const showLocations = params.get("tab") === "locations";
+  const showSchedule = !showIneligible && !showLocations;
   const [editAssignments, setEditAssignments] = useState<RangeEvent | null>(null);
   const [formEvent, setFormEvent] = useState<RangeEvent | null | undefined>(undefined);
   const [cancelId, setCancelId] = useState<string | null>(null);
@@ -47,7 +50,7 @@ export default function RangesPage() {
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
   const manage = canPlan(user);
-  const ranges = useQuery({ queryKey: queryKeys.ranges(), queryFn: () => getRanges(nodeId as string), enabled: !!nodeId });
+  const ranges = useQuery({ queryKey: queryKeys.ranges(), queryFn: () => getRanges(nodeId as string), enabled: !!nodeId && !showLocations });
   const ineligibleSoldiers = useQuery({ queryKey: queryKeys.ineligibleSoldiers("planning"), queryFn: () => getIneligibleSoldiers("planning"), enabled: showIneligible });
   const event = useQuery({ queryKey: queryKeys.rangeEvent(selected as string), queryFn: () => getRangeEvent(selected as string), enabled: !!selected });
   const excusal = useQuery({ queryKey: queryKeys.rangeExcusalRequests(selected as string), queryFn: () => getRangeExcusalRequests(selected as string), enabled: !!selected && !!user?.is_duty_manager });
@@ -128,15 +131,18 @@ export default function RangesPage() {
     await invalidate(formEvent?.id);
   }
   async function attendance() { await invalidate(selected ?? undefined); }
+  async function createLocation(name: string) { await createRangeLocation({ name }); await qc.invalidateQueries({ queryKey: queryKeys.rangeLocations() }); }
 
   return <Layout><section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="ranges-page">
-    <div className="flex flex-wrap justify-between items-center gap-2"><h1 className="text-xl font-semibold">{t("ranges.page_title")}</h1><div className="flex items-center gap-3">{manage && <><Link to="/planning/export" className="text-indigo-600 hover:underline text-sm">{t("ranges.export_link")}</Link><Link to="/import" className="text-indigo-600 hover:underline text-sm">{t("ranges.import_link")}</Link></>}{!showIneligible && manage && <button type="button" data-testid="create-event-button" onClick={() => setFormEvent(null)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">{t("ranges.create_button")}</button>}</div></div>
+    <div className="flex flex-wrap justify-between items-center gap-2"><h1 className="text-xl font-semibold">{t("ranges.page_title")}</h1><div className="flex items-center gap-3">{manage && <><Link to="/planning/export" className="text-indigo-600 hover:underline text-sm">{t("ranges.export_link")}</Link><Link to="/import" className="text-indigo-600 hover:underline text-sm">{t("ranges.import_link")}</Link></>}{showSchedule && manage && <button type="button" data-testid="create-event-button" onClick={() => setFormEvent(null)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">{t("ranges.create_button")}</button>}</div></div>
      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700" role="tablist" aria-label={t("range_qualification.tablistLabel")}>
-       <button type="button" role="tab" aria-selected={!showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete("tab"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${!showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>{t("range_qualification.tabs.schedule")}</button>
+       <button type="button" role="tab" aria-selected={showSchedule} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete("tab"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${showSchedule ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>{t("range_qualification.tabs.schedule")}</button>
        <button type="button" role="tab" aria-selected={showIneligible} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set("tab", "ineligible"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${showIneligible ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>{t("range_qualification.tabs.qualification")}</button>
+       <button type="button" role="tab" aria-selected={showLocations} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set("tab", "locations"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${showLocations ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>מיקומי מטווחים</button>
     </div>
     {showIneligible && <IneligibleSoldiersTable data={ineligibleSoldiers.data} loading={ineligibleSoldiers.isLoading} error={ineligibleSoldiers.isError} />}
-    <div className={showIneligible ? "hidden" : undefined}>
+    {showLocations && <RangeLocationsContent locations={rangeLocations.data ?? []} loading={rangeLocations.isLoading} error={rangeLocations.isError} canManage={manage} onCreate={createLocation} />}
+    <div className={showSchedule ? undefined : "hidden"}>
     {manage && selectedIds.size > 0 && <div data-testid="range-bulk-action-bar" className="flex flex-col gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 dark:border-indigo-800 dark:bg-indigo-950" dir="rtl">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{t("ranges.bulk_selected_count", { count: selectedIds.size })}</span>
