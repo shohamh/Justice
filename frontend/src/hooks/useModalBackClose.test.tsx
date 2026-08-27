@@ -326,8 +326,22 @@ describe("useModalBackClose — nested modals", () => {
   // via its X button unmounts it — whose cleanup defers a history.back()
   // that pops the CHILD's entry and fires a global popstate while the
   // parent's own entry is current again.
+  //
+  // The child starts closed and is opened via a later, separate render
+  // (matching how a real nested modal actually opens — the parent settles
+  // first, and only then does a user action mount the child) rather than
+  // both mounting together on the very first render. That distinction
+  // matters: StrictMode's mount→cleanup→mount double-invoke runs
+  // tree-order for every component with a *freshly mounted* effect in the
+  // same commit. If parent and child both mount for the first time
+  // together, their double-invokes interleave in that one commit — the
+  // parent's own StrictMode dance hasn't settled yet when the child's
+  // begins. Opening the child afterward, in its own commit, lets the
+  // parent's effect (whose dependency array didn't change) sit out
+  // entirely while the child runs its double-invoke in isolation, exactly
+  // as it will in the app.
   function Harness() {
-    const [childOpen, setChildOpen] = useState(true);
+    const [childOpen, setChildOpen] = useState(false);
     const [parentClosed, setParentClosed] = useState(false);
     useModalBackClose(() => setParentClosed(true));
     return (
@@ -337,6 +351,7 @@ describe("useModalBackClose — nested modals", () => {
         ) : (
           <div data-testid="parent-open" />
         )}
+        {!childOpen && <button onClick={() => setChildOpen(true)}>open-child</button>}
         {childOpen && (
           <>
             <Child onClose={() => setChildOpen(false)} />
@@ -355,6 +370,8 @@ describe("useModalBackClose — nested modals", () => {
     );
 
     expect(screen.getByTestId("parent-open")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("open-child"));
+    await screen.findByText("close-child");
 
     // Close the child the way an X button would. The child's cleanup defers
     // history.back(); that back lands on the PARENT's entry and fires a
@@ -384,6 +401,8 @@ describe("useModalBackClose — nested modals", () => {
         <Harness />
       </StrictMode>,
     );
+    fireEvent.click(screen.getByText("open-child"));
+    await screen.findByText("close-child");
 
     goBack();
     await waitFor(() =>
