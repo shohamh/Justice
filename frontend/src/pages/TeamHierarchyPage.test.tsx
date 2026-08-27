@@ -151,4 +151,14 @@ describe("TeamHierarchyPage - admin promotion", () => {
     await screen.findByText("חייל בדיקה");
     expect(screen.queryByTestId(`promote-admin-${soldier.personal_number}`)).not.toBeInTheDocument();
   });
+
+  it("wraps the row's action buttons onto multiple lines instead of forcing horizontal overflow, so promote_admin stays reachable on narrow screens", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", role: "admin", is_commander: false, can_delete_soldier: true },
+    });
+    renderPage();
+
+    const actionsCell = (await screen.findByTestId(`promote-admin-${soldier.personal_number}`)).closest("span");
+    expect(actionsCell?.className).toContain("flex-wrap");
+  });
 });

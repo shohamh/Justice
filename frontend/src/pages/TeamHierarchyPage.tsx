@@ -223,7 +223,7 @@ export default function TeamHierarchyPage() {
                 id: "actions",
                 header: "",
                 cell: (s) => (
-                  <span className="space-x-2 space-x-reverse">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     {(isAdmin || (user?.is_commander ?? false)) && (
                       <button
                         onClick={() => portfolioDialog.open(s.id, s.full_name)}
