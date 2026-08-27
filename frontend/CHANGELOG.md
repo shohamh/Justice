@@ -8,6 +8,8 @@
 - Admins can now edit every soldier profile field directly — rank, rank-track, next-rank-date, officer status, food type/constraints, driving license, profile picture — and promote a soldier to admin from the People page with current-password confirmation.
 - Commanders (at מדור/"group" level or above) and duty managers (at ענף/"branch" level or above) can now cancel a soldier's pending or approved personal exemptions and constraints, with a mandatory reason and warning confirmation for approved records; the cancellation reason and who cancelled it now show in duty history and on the soldier's own requests page. Commander approval of exemption/constraint requests now requires מדור-level seniority.
 - Admin settings: copy invite codes; centralized range-location configuration.
+- Duty types can now restrict a specific rank's service type (e.g. requiring career-only Samar for הגנ"ש) independently of other allowed ranks on the same duty, via a new per-rank override in the duty-type eligibility editor.
+- Two-stage approval requests (personal constraints, exemption requests) now show a ✓/…/✗ icon per stage (commander, duty manager) instead of only a generic status badge, on the soldier's own requests page and in the soldier-detail view.
 
 ### Fixes
 - Food-type and food-constraints update requests were silently rejected by the backend (missing from the editable-fields allowlist) — the profile buttons appeared dead. A related i18n key mismatch also showed raw untranslated keys ("soldier_profile.food_type_regular") in the admin profile editor's food-type dropdown.
@@ -20,6 +22,9 @@
 - Range: authorize before lifecycle transitions, complete elapsed events, readable range-type choices, corrected locations-tab state, formatted eligibility warnings, and complete/meaningful duty-requirement labels.
 - Restored a dropped list comprehension in the exemption history endpoint; soldiers can now see their own score even when transparency scope excludes other rows.
 - Hardened feedback-screenshot capture (scroll position, CSS serialization, range-transition capture).
+- A commander could not actually cancel a soldier's pending constraint: the soldier-detail view never computed cancel eligibility for constraints (unlike exemptions), and once that was fixed, cancelling crashed because the code tried to re-read a row it had just deleted.
+- Fixed the constraint cancel button, hierarchy tree default-expand (silently never expanded because it was computed before the tree data loaded), reversed exemption date-range arrow under RTL, missing newlines in bug report descriptions, a clipped pie-chart tooltip on the transparency page, and a quarterly effort-breakdown display that was off by ~300x (it summed the wrong intermediate values).
+- Hardened several backend race conditions found in a transaction-safety review: concurrent duty-manager approvals of the same exemption/constraint request could create duplicate records; concurrent assignment creation could double-book a soldier; a projection-repair failure on the commander dashboard could mask itself behind an unrelated database error; and a failed gimelim commit could burn a reusable preview token.
 
 ### Chores
 - Reconciled two independently-built implementations of the admin-profiles/request-cancellation feature that had been developed in parallel — kept the already-shipped design as the base and ported forward the missing history/self-service visibility, i18n coverage, and test coverage from the other branch; removed the superseded plan/spec docs.
