@@ -6,12 +6,13 @@ import { useModalBackClose } from "../hooks/useModalBackClose";
 interface Props {
   title: string;
   description?: string;
+  variant?: "default" | "warning";
   confirmLabel?: string;
   onConfirm: (reason: string) => Promise<void>;
   onClose: () => void;
 }
 
-export default function ReasonPromptModal({ title, description, confirmLabel, onConfirm, onClose }: Props) {
+export default function ReasonPromptModal({ title, description, variant = "default", confirmLabel, onConfirm, onClose }: Props) {
   useModalBackClose(onClose);
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
@@ -41,7 +42,14 @@ export default function ReasonPromptModal({ title, description, confirmLabel, on
           <h3 className="text-lg font-semibold">{title}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700" data-testid="reason-modal-close">✕</button>
         </div>
-        {description && <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">{description}</p>}
+        {description && variant === "warning" && (
+          <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2 mb-3">
+            ⚠️ {description}
+          </p>
+        )}
+        {description && variant === "default" && (
+          <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">{description}</p>
+        )}
         <textarea
           className="w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
           rows={3}

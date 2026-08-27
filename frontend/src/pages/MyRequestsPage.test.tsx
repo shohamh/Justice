@@ -199,6 +199,27 @@ describe("MyRequestsPage - tabs and unseen badge", () => {
 });
 
 describe("MyRequestsPage - existing-tab groups", () => {
+  it("shows a cancelled personal constraint with its cancellation reason", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+      {
+        id: "c-cancelled", soldier_id: "s1", soldier_name: "x", node_name: null,
+        start_date: "2026-06-20", end_date: "2026-06-21", reason: "אירוע משפחתי",
+        status: "cancelled", commander_approved_by: null, waiting_on: null,
+        decided_by: { id: "d1", name: "מבטל בדיקה" }, requested_at: "2026-06-01T00:00:00Z",
+        updated_at: "2026-06-19T00:00:00Z", decided_at: "2026-06-19T00:00:00Z",
+        decision_note: "כבר לא נדרש", created_at: "2026-06-01T00:00:00Z",
+        nearest_commander: null, nearest_duty_manager: null, can_approve: false, can_cancel: false,
+      },
+    ]);
+    renderPage();
+    await openExistingTab();
+    const list = await screen.findByTestId("cancelled-constraints-list");
+    expect(within(list).getByText((content) => content.includes("כבר לא נדרש"))).toBeTruthy();
+    const decided = within(list).getByTestId("constraint-c-cancelled-decided-by");
+    expect(decided.textContent).toContain("my_requests.cancelled_by");
+    expect(within(decided).getByRole("button", { name: "מבטל בדיקה" })).toBeTruthy();
+  });
+
   it("renders hierarchy transfer rows with node names and status", async () => {
     vi.mocked(myRequestsApi.listMyHierarchyTransfers).mockResolvedValue([
       {
