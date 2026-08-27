@@ -160,11 +160,11 @@ export default function DeputiesPanel({ principalId, principalRoles }: Props) {
 
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500" htmlFor="deputy-start-date">{t("deputies.start_date", "מתאריך")}</label>
-          <DateInput id="deputy-start-date" value={startDate} onChange={setStartDate} />
+          <DateInput id="deputy-start-date" className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={startDate} onChange={setStartDate} />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500" htmlFor="deputy-end-date">{t("deputies.end_date", "עד תאריך")}</label>
-          <DateInput id="deputy-end-date" value={endDate} onChange={setEndDate} min={startDate} />
+          <DateInput id="deputy-end-date" className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={endDate} onChange={setEndDate} min={startDate} />
         </div>
 
         <button

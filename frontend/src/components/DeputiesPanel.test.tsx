@@ -77,6 +77,20 @@ test("creates a new deputy grant", async () => {
   );
 });
 
+test("start/end date fields are styled consistently with every other date input in the app", async () => {
+  render(<DeputiesPanel principalId="p1" principalRoles={{ isCommander: true, isDutyManager: false }} />);
+  await screen.findByText("יוסי כהן");
+
+  const start = screen.getByLabelText("מתאריך");
+  const end = screen.getByLabelText("עד תאריך");
+  expect(start.className).toContain("border");
+  expect(start.className).toContain("rounded");
+  expect(start.className).toContain("dark:bg-gray-700");
+  expect(end.className).toContain("border");
+  expect(end.className).toContain("rounded");
+  expect(end.className).toContain("dark:bg-gray-700");
+});
+
 test("revokes an existing grant", async () => {
   const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
   mockRevokeDeputy.mockResolvedValue(undefined);
