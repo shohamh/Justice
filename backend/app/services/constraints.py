@@ -139,10 +139,11 @@ def submit_constraint(
 
 
 def _approve_commander_step(
-    session: Session, c: PersonalConstraint, *, actor_id: uuid.UUID | None,
+    session: Session, c: PersonalConstraint, *, actor_id: uuid.UUID | None, decision_note: str | None,
 ) -> PersonalConstraint:
     c.commander_approved_by = actor_id
     c.commander_approved_at = datetime.now(UTC)
+    c.commander_approval_note = decision_note
     require_dm = bool(
         _get_setting_with_default(session, "constraints.require_duty_manager_approval", True)
     )
@@ -222,7 +223,7 @@ def approve_constraint(
         raise ConstraintError("enrollment_not_approved")
 
     if c.status == "pending_commander":
-        return _approve_commander_step(session, c, actor_id=actor_id)
+        return _approve_commander_step(session, c, actor_id=actor_id, decision_note=decision_note)
     # The duty-manager step must only ever be decided by a duty manager or
     # an admin — CONSTRAINT_APPROVE is granted to commanders too (for the
     # commander step), so scope authorization alone doesn't protect it.

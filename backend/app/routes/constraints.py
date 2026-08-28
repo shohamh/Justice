@@ -75,6 +75,7 @@ class ConstraintOut(BaseModel):
     waiting_on: WaitingOnOut | None = None
     commander_approved_by: PersonRefOut | None = None
     commander_approved_at: datetime | None = None
+    commander_approval_note: str | None = None
     crossed_holidays: list[HolidayHit] = []
 
 
@@ -145,6 +146,7 @@ def _out(
         waiting_on=resolve_waiting_on(session, soldier_id=c.soldier_id, status=c.status),
         commander_approved_by=person_ref(session, c.commander_approved_by),
         commander_approved_at=c.commander_approved_at,
+        commander_approval_note=c.commander_approval_note,
         crossed_holidays=crossed_holidays,
     )
 

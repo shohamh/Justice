@@ -77,6 +77,9 @@ interface RequestMetaProps {
   status?: string | null;
   commanderApprovedBy?: SoldierRef | null;
   commanderApprovedAt?: string | null;
+  commanderApprovalNote?: string | null;
+  decidedAt?: string | null;
+  decisionNote?: string | null;
   testIdPrefix?: string;
 }
 
@@ -91,6 +94,9 @@ function RequestMetaRow({
   status,
   commanderApprovedBy,
   commanderApprovedAt,
+  commanderApprovalNote,
+  decidedAt,
+  decisionNote,
   testIdPrefix,
 }: RequestMetaProps) {
   const { t } = useTranslation();
@@ -115,7 +121,7 @@ function RequestMetaRow({
         </span>
       )}
       {commanderApprovedBy !== undefined && status && (
-        <ApprovalStageIcons request={{ status, commander_approved_by: commanderApprovedBy, commander_approved_at: commanderApprovedAt }} />
+        <ApprovalStageIcons request={{ status, commander_approved_by: commanderApprovedBy, commander_approved_at: commanderApprovedAt, commander_approval_note: commanderApprovalNote, decision_by: decidedBy, decision_at: decidedAt, decision_note: decisionNote }} />
       )}
       {waitingOn && (
         <span data-testid={testIdPrefix ? `${testIdPrefix}-waiting-on` : undefined}>
@@ -716,9 +722,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
                           commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
@@ -746,9 +755,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
                           commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
@@ -776,9 +788,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
                           commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         {c.decision_note && (
                           <p className="text-xs text-red-700 dark:text-red-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
@@ -809,9 +824,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
                           commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         {c.decision_note && (
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
@@ -850,9 +868,12 @@ export default function MyRequestsPage() {
                       updatedAt={er.updated_at}
                       waitingOn={er.waiting_on}
                       decidedBy={er.decided_by}
+                      decidedAt={er.decided_at}
+                      decisionNote={er.decision_note}
                       status={er.status}
                       commanderApprovedBy={er.commander_approved_by}
                       commanderApprovedAt={er.commander_approved_at}
+                      commanderApprovalNote={er.commander_approval_note}
                     />
                     {er.status === "rejected" && er.decision_note && (
                       <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {er.decision_note}</p>

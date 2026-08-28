@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import "../i18n";
 import DirectCommanderApproval from "./DirectCommanderApproval";
@@ -35,6 +35,7 @@ describe("DirectCommanderApproval decisions", () => {
             approved: true,
             approved_by_name: "המפקד הבכיר",
             approved_at: "2026-08-28T17:31:00Z",
+            decision_note: "אושר לאחר בדיקה",
           },
         ]}
       />,
@@ -46,5 +47,18 @@ describe("DirectCommanderApproval decisions", () => {
     expect(check).toHaveTextContent("✓");
     expect(check).toHaveAttribute("title", expect.stringContaining("המפקד הבכיר"));
     expect(check).toHaveAttribute("title", expect.stringContaining("2026"));
+    fireEvent.click(check);
+    expect(screen.getByTestId("approval-decision-details")).toHaveTextContent("אושר לאחר בדיקה");
+  });
+
+  test("opens rejection details when the x is tapped", () => {
+    render(<DirectCommanderApproval approvals={[{
+      commander_id: "near", commander_name: "המפקד הישיר", approved: false,
+      rejected: true, rejected_by_name: "מפקד דוחה", rejected_at: "2026-08-28T18:00:00Z",
+      decision_note: "חסר אישור רפואי",
+    }]} />);
+
+    fireEvent.click(screen.getByTestId("approval-rejection"));
+    expect(screen.getByTestId("approval-decision-details")).toHaveTextContent("חסר אישור רפואי");
   });
 });

@@ -58,8 +58,10 @@ export interface ExemptionRequest {
   status: "pending_commander" | "pending_duty_manager" | "approved" | "rejected";
   commander_approved_by: SoldierRef | null;
   commander_approved_at: string | null;
+  commander_approval_note?: string | null;
   waiting_on: WaitingOnRef | null;
   decided_by: SoldierRef | null;
+  decided_at: string | null;
   requested_at: string;
   updated_at: string;
   decision_note: string | null;

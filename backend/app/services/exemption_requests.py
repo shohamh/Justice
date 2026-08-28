@@ -179,6 +179,7 @@ def approve_commander_step(
     session: Session,
     request_id: uuid.UUID,
     approved_by: uuid.UUID,
+    decision_note: str | None = None,
 ) -> ExemptionRequest:
     req = _lock_request(session, request_id)
     if req is None:
@@ -188,6 +189,7 @@ def approve_commander_step(
     req.status = "pending_duty_manager"
     req.commander_approved_by = approved_by
     req.commander_approved_at = datetime.now(UTC)
+    req.commander_approval_note = decision_note
     session.flush()
 
     from app.services.notifications import notify_duty_managers_of_request

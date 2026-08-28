@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import SoldierLink from "./SoldierLink";
 
@@ -7,8 +8,11 @@ export interface DirectCommanderApprovalRow {
   approved: boolean;
   approved_by_name?: string | null;
   approved_at?: string | null;
+  decision_note?: string | null;
   rejected?: boolean;
   rejected_by_name?: string | null;
+  rejected_at?: string | null;
+  rejected_note?: string | null;
   approver_kind?: "commander" | "duty_manager";
 }
 
@@ -28,13 +32,16 @@ function approvalTime(value: string | null | undefined): string | undefined {
   return new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
-function ApprovalDot({ value, approvedBy, approvedAt }: { value: boolean | null; approvedBy?: string | null; approvedAt?: string | null }) {
+function ApprovalDot({ value, approvedBy, approvedAt, note, testId }: { value: boolean | null; approvedBy?: string | null; approvedAt?: string | null; note?: string | null; testId?: string }) {
+  const [open, setOpen] = useState(false);
+  const when = approvalTime(approvedAt);
+  const verb = value === false ? "נדחה" : "אושר";
+  const title = approvedBy && when ? `${verb} על ידי ${approvedBy} בתאריך ${when}` : approvedBy ? `${verb} על ידי ${approvedBy}` : when ? `${verb} בתאריך ${when}` : verb;
+  const details = [approvedBy && `${verb} על ידי: ${approvedBy}`, when && `מתי: ${when}`, note && `סיבה: ${note}`].filter(Boolean).join(" · ");
   if (value === true) {
-    const when = approvalTime(approvedAt);
-    const title = approvedBy && when ? `אושר על ידי ${approvedBy} בתאריך ${when}` : approvedBy ? `אושר על ידי ${approvedBy}` : when ? `אושר בתאריך ${when}` : "אושר";
-    return <button type="button" data-testid="approval-checkmark" className="text-green-600 font-bold" title={title} aria-label={title}>✓</button>;
+    return <span className="relative inline-flex"><button type="button" data-testid={testId ?? "approval-checkmark"} className="text-green-600 font-bold" title={title} aria-label={title} aria-expanded={open} onClick={() => setOpen((v) => !v)}>✓</button>{open && <span role="status" data-testid="approval-decision-details" className="absolute z-10 top-full right-0 mt-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">{details || "אושר"}</span>}</span>;
   }
-  if (value === false) return <span className="text-red-500 font-bold">×</span>;
+  if (value === false) return <span className="relative inline-flex"><button type="button" data-testid={testId ?? "approval-rejection"} className="text-red-500 font-bold" title={title} aria-label={title} aria-expanded={open} onClick={() => setOpen((v) => !v)}>×</button>{open && <span role="status" data-testid="approval-decision-details" className="absolute z-10 top-full right-0 mt-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">{details || "נדחה"}</span>}</span>;
   return <span className="text-gray-400">—</span>;
 }
 
@@ -60,7 +67,7 @@ export default function DirectCommanderApproval({
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
       <SoldierLink id={displayedApprover.commander_id} name={displayedApprover.approved_by_name ?? displayedApprover.commander_name ?? displayedApprover.commander_id.slice(0, 8)} />
-      <ApprovalDot value={dotValue} approvedBy={displayedApprover.approved_by_name ?? displayedApprover.commander_name} approvedAt={displayedApprover.approved_at} />
+      <ApprovalDot testId={dotValue === false ? "approval-rejection" : undefined} value={dotValue} approvedBy={dotValue === false ? rejectedRow?.rejected_by_name ?? rejectedRow?.commander_name : displayedApprover.approved_by_name ?? displayedApprover.commander_name} approvedAt={dotValue === false ? rejectedRow?.rejected_at : displayedApprover.approved_at} note={dotValue === false ? rejectedRow?.rejected_note ?? rejectedRow?.decision_note : displayedApprover.decision_note} />
       {rejectedRow && <span className="text-red-500 text-xs">{t("swaps.rejected_by", { name: rejectedRow.rejected_by_name ?? rejectedRow.commander_name ?? rejectedRow.commander_id.slice(0, 8) })}</span>}
     </span>
   );
