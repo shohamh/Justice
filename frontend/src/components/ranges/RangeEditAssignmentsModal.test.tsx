@@ -296,6 +296,32 @@ describe("RangeEditAssignmentsModal", () => {
     expect(await screen.findByTestId("candidate-checkbox-s1")).toBeInTheDocument();
   });
 
+  it("requires an override reason before batch-assigning a soldier with a conflict_warning", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(candidateResponse([
+      {
+        soldier_id: "s1", full_name: "חייל אחד", personal_number: "1111111", reason_code: "manual",
+        explanation: "", conflict_warning: "אילוץ מאושר 01.09.2026–05.09.2026",
+      },
+    ]));
+    vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
+      { id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "manual", assignment_reason_text: null },
+    ]);
+    renderModal({ event: { ...event([]), required_count: 1 } });
+
+    fireEvent.click(await screen.findByTestId("candidate-checkbox-s1"));
+    fireEvent.click(screen.getByTestId("save-assignments"));
+
+    expect(await screen.findByText(/נדרש נימוק/)).toBeInTheDocument();
+    expect(rangesApi.batchAssignRange).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("נימוק העקיפה..."), { target: { value: "צורך מבצעי" } });
+    fireEvent.click(screen.getByRole("button", { name: "אישור" }));
+
+    await waitFor(() => expect(rangesApi.batchAssignRange).toHaveBeenCalledWith(
+      "event-1", expect.objectContaining({ override_reason: "צורך מבצעי" }),
+    ));
+  });
+
   it("reports full primary and reserve capacity and closes explicitly", () => {
     const { props } = renderModal({ event: event([assignment("a1", "s1"), assignment("a2", "s2"), assignment("a3", "s3", true)]) });
     expect(screen.getAllByTestId("range-capacity-full").length).toBe(2);
