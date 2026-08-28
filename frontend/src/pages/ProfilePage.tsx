@@ -492,7 +492,9 @@ export default function ProfilePage() {
             >
               {t("soldier_profile.submit_update")}
             </button>
-            <label htmlFor="military-license-expiry-input" className="text-sm text-gray-500 dark:text-gray-400">
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label htmlFor="military-license-expiry-input" className="w-full sm:w-40 shrink-0">
               {t("soldier_profile.military_driving_license_expiry")}
             </label>
             <DateInput
