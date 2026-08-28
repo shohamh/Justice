@@ -24,7 +24,7 @@ export interface RangeCandidate { soldier_id:string; full_name:string; personal_
 export interface ExcludedRangeCandidate { soldier_id:string; soldier_name:string; reason:"weapon_exempt"|"structurally_ineligible"|"assigned_elsewhere_same_day"|"personal_constraint"; }
 export interface RangeCandidatesResponse { candidates:RangeCandidate[]; excluded:ExcludedRangeCandidate[]; }
 export function getRangeCandidates(eventId:string):Promise<RangeCandidatesResponse>{return api.get(`/ranges/${eventId}/candidates`).then(r=>r.data);}
-export function batchAssignRange(eventId:string,input:{primaries:string[];reserves:string[]}):Promise<RangeAssignment[]>{return api.post(`/ranges/${eventId}/assignments/batch`,input).then(r=>r.data);}
+export function batchAssignRange(eventId:string,input:{primaries:string[];reserves:string[];override_reason?:string}):Promise<RangeAssignment[]>{return api.post(`/ranges/${eventId}/assignments/batch`,input).then(r=>r.data);}
 export interface RangeExcusalRequest { id:string; range_assignment_id:string; requested_by:string|null; reason:string; status:"pending"|"approved"|"rejected"; decided_by:string|null; decided_at:string|null; decision_note:string|null; promoted_assignment_id:string|null; }
 export function excuseRangeAssignment(eventId:string,assignmentId:string,reason:string):Promise<RangeExcusalRequest>{return api.post(`/ranges/${eventId}/assignments/${assignmentId}/excuse`,{reason}).then(r=>r.data);}
 export function getRangeExcusalRequests(eventId:string):Promise<RangeExcusalRequest[]>{return api.get(`/ranges/${eventId}/excusal-requests`).then(r=>r.data);}

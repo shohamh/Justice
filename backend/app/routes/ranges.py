@@ -103,6 +103,7 @@ class AddAssignmentBody(BaseModel):
     is_reserve: bool = False
     assignment_reason_code: str = Field(default="manual", min_length=1, max_length=100)
     assignment_reason_text: str | None = Field(default="שיבוץ ידני", max_length=1000)
+    override_reason: str | None = Field(default=None, max_length=1000)
 
 
 class RangeAssignmentOut(BaseModel):
@@ -346,6 +347,7 @@ def add_assignment(
                 body.assignment_reason_text.strip() if body.assignment_reason_text is not None else None
             ),
             user=user,
+            override_reason=body.override_reason,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -355,6 +357,7 @@ def add_assignment(
 class BatchAssignBody(BaseModel):
     primaries: list[uuid.UUID] = []
     reserves: list[uuid.UUID] = []
+    override_reason: str | None = Field(default=None, max_length=1000)
 
 
 @router.post("/{event_id}/assignments/batch", response_model=list[RangeAssignmentOut])
@@ -371,7 +374,7 @@ def batch_assign(
         created = svc.assign_batch(
             session, event=event,
             primary_soldier_ids=body.primaries, reserve_soldier_ids=body.reserves,
-            actor_id=user.id, user=user,
+            actor_id=user.id, user=user, override_reason=body.override_reason,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
