@@ -41,7 +41,7 @@ function StageIcon({ value, label, title, testId, details }: { value: StageValue
     <span className="relative inline-flex"><button type="button" className={`inline-flex items-center gap-0.5 text-xs font-bold ${colorClass}`} title={title ?? label} data-testid={testId} aria-expanded={open} onClick={() => (value === "approved" || value === "rejected") && setOpen((v) => !v)}>
       {symbol}
       <span className="font-normal">{label}</span>
-    </button>{open && details && <span role="status" data-testid="approval-decision-details" className="absolute z-10 top-full right-0 mt-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">{details}</span>}</span>
+    </button>{open && details && <span role="status" data-testid="approval-decision-details" className="absolute z-10 top-full right-0 mt-1 w-max max-w-[calc(100vw-1rem)] whitespace-normal break-words rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">{details}</span>}</span>
   );
 }
 

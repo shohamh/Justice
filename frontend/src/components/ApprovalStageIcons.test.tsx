@@ -20,6 +20,7 @@ describe("ApprovalStageIcons", () => {
     expect(check).toHaveAttribute("title", expect.stringContaining("מפקד בכיר"));
     expect(check).toHaveAttribute("title", expect.stringContaining("2026"));
     fireEvent.click(check);
+    expect(screen.getByTestId("approval-decision-details")).toHaveClass("max-w-[calc(100vw-1rem)]", "whitespace-normal", "break-words");
     expect(screen.getByTestId("approval-decision-details")).toHaveTextContent("נבדק ואושר");
   });
 });
