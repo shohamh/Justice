@@ -6,6 +6,8 @@ import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import ConstraintWarningIcon from "./ConstraintWarningIcon";
+import OverrideReasonModal from "./OverrideReasonModal";
 
 interface Props {
   shift: DutyShift;
@@ -40,6 +42,7 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
   const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingOverride, setPendingOverride] = useState<{ primaries: string[]; reserves: string[] } | null>(null);
 
   const dutyTypeName = dutyTypes.find(d => d.id === shift.duty_type_id)?.name ?? "";
   const primarySlotsLeft = Math.max(0, shift.required_count - shift.assigned_count);
@@ -54,7 +57,12 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
       .finally(() => setLoading(false));
   }, [shift.id]);
 
-  const unblockedCandidates = useMemo(() => candidates.filter(c => !c.blocked), [candidates]);
+  const unblockedCandidates = useMemo(
+    () => [...candidates.filter(c => !c.blocked)].sort(
+      (a, b) => Number(!!a.personal_constraint_warning) - Number(!!b.personal_constraint_warning)
+    ),
+    [candidates]
+  );
   const blockedCandidates = useMemo(() => candidates.filter(c => c.blocked), [candidates]);
 
   const selectedPrimaryCandidates = useMemo(
@@ -88,6 +96,9 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
 
     withDist.sort((a, b) => {
       if (a.dist !== b.dist) return a.dist - b.dist;
+      const aWarn = Number(!!a.personal_constraint_warning);
+      const bWarn = Number(!!b.personal_constraint_warning);
+      if (aWarn !== bWarn) return aWarn - bWarn;
       return a.effort - b.effort;
     });
 
@@ -143,12 +154,22 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
       );
       if (!confirmed) return;
     }
+    const hasConstraintWarning = candidates.some(c => selectedIds.has(c.soldier_id) && c.personal_constraint_warning);
+    if (hasConstraintWarning) {
+      setPendingOverride({ primaries: [...primarySelected], reserves: [...reserveSelected] });
+      return;
+    }
+    await doAssign();
+  }
+
+  async function doAssign(overrideReason?: string) {
     setSaving(true);
     setError(null);
     try {
       await assignBatch(shift.id, {
         primaries: [...primarySelected],
         reserves: [...reserveSelected],
+        ...(overrideReason ? { override_reason: overrideReason } : {}),
       });
       onSaved();
     } catch (e: unknown) {
@@ -244,6 +265,13 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
 
         {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
 
+        <OverrideReasonModal
+          open={pendingOverride !== null}
+          count={pendingOverride ? pendingOverride.primaries.length + pendingOverride.reserves.length : 0}
+          onCancel={() => setPendingOverride(null)}
+          onConfirm={(reason) => { setPendingOverride(null); void doAssign(reason); }}
+        />
+
         <div className="flex justify-end gap-2 mt-4 pt-3 border-t dark:border-gray-600 flex-wrap">
           <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">
             {t("shifts.dismiss")}
@@ -295,6 +323,9 @@ function PrimaryTable({ unblocked, blocked, selected, onToggle }: PrimaryTablePr
                 {c.full_name}
                 {c.weapon_warning && (
                   <span title={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</span>
+                )}
+                {c.personal_constraint_warning && (
+                  <ConstraintWarningIcon warning={c.personal_constraint_warning} />
                 )}
               </td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
@@ -363,6 +394,9 @@ function ReserveTable({ unblocked, blocked, selected, onToggle, showDist }: Rese
                 {c.full_name}
                 {c.weapon_warning && (
                   <span title={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</span>
+                )}
+                {c.personal_constraint_warning && (
+                  <ConstraintWarningIcon warning={c.personal_constraint_warning} />
                 )}
               </td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
