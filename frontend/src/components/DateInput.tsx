@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { listHolidays } from "../api/calendarHolidays";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 /**
  * Chromium ignores the `lang` attribute on <input type="date"> and always
@@ -95,6 +96,7 @@ export default function DateInput({
   const popoverRef = useRef<HTMLDivElement>(null);
   const [holidayDates, setHolidayDates] = useState<Set<string>>(new Set());
   const fetchedHolidayYearsRef = useRef<Set<number>>(new Set());
+  useModalBackClose(() => setPickerOpen(false), pickerOpen);
 
   function ensureHolidaysFetched(year: number) {
     if (!showHolidays || fetchedHolidayYearsRef.current.has(year)) return;

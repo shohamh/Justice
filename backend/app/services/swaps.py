@@ -177,7 +177,7 @@ def _add_invited_candidate(
 ) -> SwapCandidate:
     if target_soldier_id == requesting_soldier_id:
         raise SwapError("cannot_target_self")
-    eligible, reason = check_soldier_for_assignment(session, target_soldier_id, req.duty_assignment_id)
+    eligible, reason, _warning = check_soldier_for_assignment(session, target_soldier_id, req.duty_assignment_id)
     if not eligible:
         raise SwapError(f"cover_not_eligible:{reason}")
     _enforce_hierarchy_level_restriction(
@@ -960,7 +960,7 @@ def claim_request(
     if existing_candidate is None:
         if not req.open_to_marketplace:
             raise SwapError("not_targeted_at_you")
-        eligible, reason = check_soldier_for_assignment(session, covering_soldier_id, req.duty_assignment_id)
+        eligible, reason, _warning = check_soldier_for_assignment(session, covering_soldier_id, req.duty_assignment_id)
         if not eligible:
             raise SwapError(f"cover_not_eligible:{reason}")
         _enforce_hierarchy_level_restriction(
@@ -1121,7 +1121,7 @@ def take_free(
         if 0 <= headroom <= 3:
             warnings.append(f"reserve_cap_near:{current}/{max_days}/{window}")
 
-    eligible, reason = check_soldier_for_assignment(
+    eligible, reason, _warning = check_soldier_for_assignment(
         session, covering_soldier_id, assignment_id
     )
     if not eligible:
@@ -1188,7 +1188,7 @@ def cover_offer(
         raise SwapError("swap_not_open")
     if req.requesting_soldier_id == covering_soldier_id:
         raise SwapError("cannot_cover_own_swap")
-    eligible, reason = check_soldier_for_assignment(session, covering_soldier_id, req.duty_assignment_id)
+    eligible, reason, _warning = check_soldier_for_assignment(session, covering_soldier_id, req.duty_assignment_id)
     if not eligible:
         raise SwapError(f"cover_not_eligible:{reason}")
     _enforce_hierarchy_level_restriction(

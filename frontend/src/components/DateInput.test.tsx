@@ -252,4 +252,20 @@ describe("DateInput", () => {
     fireEvent.click(screen.getAllByRole("button")[0]);
     expect(document.querySelector(".date-picker-calendar")).toBeInTheDocument();
   });
+
+  it("closes only the picker on browser back, leaving its parent modal mounted", async () => {
+    window.history.replaceState(null, "", "/date-picker-test");
+    render(
+      <div data-testid="parent-modal">
+        <DateInput data-testid="date-input" />
+      </div>,
+    );
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+
+    window.history.back();
+
+    await waitFor(() => expect(screen.queryByRole("grid")).not.toBeInTheDocument());
+    expect(screen.getByTestId("parent-modal")).toBeInTheDocument();
+  });
 });

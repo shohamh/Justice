@@ -18,6 +18,7 @@ from app.db.models import (
 )
 from app.services.range_auto_assign import rank_candidates, rank_candidates_with_excluded
 from app.services.ranges import add_range_assignment, create_range_event
+from app.services.settings_loader import set_setting
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
 
 
@@ -178,7 +179,10 @@ def test_hard_excludes_soldier_with_weapons_forbidding_exemption_even_with_urgen
     assert soldier.id not in {c.soldier.id for c in ranked}
 
 
-def test_hard_excludes_constrained_soldier_with_no_urgent_duty(app_session: Session) -> None:
+def test_constrained_soldier_with_no_urgent_duty_gets_unconditional_warning_when_override_allowed(app_session: Session) -> None:
+    """Manual override is allowed by default, so an approved personal constraint no
+    longer needs a near-term weapon duty to justify keeping the soldier eligible —
+    it always surfaces as a conflict_warning."""
     node = create_node(app_session, level="פלוגה", name="פלוגה אילוץ")
     _weapon_duty_type(app_session, node=node, name="weapon-constraint")
     dm = _dm_for(app_session, node, personal_number="6000004a")
@@ -188,15 +192,44 @@ def test_hard_excludes_constrained_soldier_with_no_urgent_duty(app_session: Sess
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
+    constraint_start = event_date - timedelta(days=1)
+    constraint_end = event_date + timedelta(days=1)
     app_session.add(PersonalConstraint(
-        soldier_id=soldier.id, start_date=event_date - timedelta(days=1),
-        end_date=event_date + timedelta(days=1), reason="חופשה", status="approved",
+        soldier_id=soldier.id, start_date=constraint_start,
+        end_date=constraint_end, reason="חופשה", status="approved",
     ))
     app_session.flush()
 
     ranked = rank_candidates(app_session, event=event, user=dm)
 
+    mine = next(c for c in ranked if c.soldier.id == soldier.id)
+    assert mine.conflict_warning == (
+        f"אילוץ מאושר {constraint_start.strftime('%d.%m.%Y')}–{constraint_end.strftime('%d.%m.%Y')}"
+    )
+    assert mine.personal_constraint_conflict is True
+
+
+def test_constrained_soldier_hard_excluded_when_override_disallowed(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אילוץ ללא-עקיפה")
+    _weapon_duty_type(app_session, node=node, name="weapon-constraint-no-override")
+    dm = _dm_for(app_session, node, personal_number="6000004f")
+    soldier = create_soldier(app_session, personal_number="6000004g", hierarchy_node_id=node.id)
+    event_date = date.today() + timedelta(days=5)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
+    )
+    app_session.add(PersonalConstraint(
+        soldier_id=soldier.id, start_date=event_date - timedelta(days=1),
+        end_date=event_date + timedelta(days=1), reason="חופשה", status="approved",
+    ))
+    set_setting(app_session, "constraints.allow_manual_override", False, actor_id=None)
+    app_session.flush()
+
+    ranked, excluded = rank_candidates_with_excluded(app_session, event=event, user=dm)
+
     assert soldier.id not in {c.soldier.id for c in ranked}
+    assert any(e.soldier_id == soldier.id and e.reason == "personal_constraint" for e in excluded)
 
 
 def test_keeps_constrained_soldier_with_urgent_upcoming_duty_and_shows_conflict_warning(app_session: Session) -> None:
@@ -288,9 +321,16 @@ def test_keeps_soldier_on_duty_that_day_with_urgent_upcoming_duty_and_shows_conf
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.conflict_warning == f"משובץ לתורנות 'שמירה' ב-{event_date.strftime('%d.%m.%Y')}"
+    # This warning is a plain duty-conflict notice, not an overridable personal
+    # constraint — there is no PersonalConstraint row here, so the frontend must
+    # not offer (and the backend must not honor) an override-reason flow for it.
+    assert mine.personal_constraint_conflict is False
 
 
-def test_urgent_duty_outside_30_day_window_does_not_rescue_constrained_soldier(app_session: Session) -> None:
+def test_constrained_soldier_gets_warning_regardless_of_duty_window(app_session: Session) -> None:
+    """The NEAR_DUTY_WINDOW_DAYS gate only applies to the duty-conflict-without-
+    constraint case now — a personal constraint warns unconditionally (when
+    override is allowed) whether or not there's a nearby weapon duty at all."""
     node = create_node(app_session, level="פלוגה", name="פלוגה חלון-זמן")
     weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-window")
     dm = _dm_for(app_session, node, personal_number="6000004d")
@@ -300,9 +340,11 @@ def test_urgent_duty_outside_30_day_window_does_not_rescue_constrained_soldier(a
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
+    constraint_start = event_date - timedelta(days=1)
+    constraint_end = event_date + timedelta(days=1)
     app_session.add(PersonalConstraint(
-        soldier_id=soldier.id, start_date=event_date - timedelta(days=1),
-        end_date=event_date + timedelta(days=1), reason="חופשה", status="approved",
+        soldier_id=soldier.id, start_date=constraint_start,
+        end_date=constraint_end, reason="חופשה", status="approved",
     ))
     location = create_duty_location(app_session)
     far_duty_date = date.today() + timedelta(days=31)
@@ -314,7 +356,10 @@ def test_urgent_duty_outside_30_day_window_does_not_rescue_constrained_soldier(a
 
     ranked = rank_candidates(app_session, event=event, user=dm)
 
-    assert soldier.id not in {c.soldier.id for c in ranked}
+    mine = next(c for c in ranked if c.soldier.id == soldier.id)
+    assert mine.conflict_warning == (
+        f"אילוץ מאושר {constraint_start.strftime('%d.%m.%Y')}–{constraint_end.strftime('%d.%m.%Y')}"
+    )
 
 
 def test_does_not_exclude_soldier_when_duty_ends_on_event_date(app_session: Session) -> None:
@@ -383,6 +428,9 @@ def test_applies_all_eligibility_filters_independently_before_ranking(app_sessio
         soldier_id=constrained.id, start_date=event_date, end_date=event_date,
         reason="approved leave", status="approved",
     ))
+    # Manual override disallowed so the constraint hard-excludes this soldier,
+    # exercising it alongside the other independent hard-exclusion reasons below.
+    set_setting(app_session, "constraints.allow_manual_override", False, actor_id=None)
     non_weapon_dt = DutyType(name="שמירה מטריקס", score_per_day=Decimal("1.00"), requires_weapon=False)
     app_session.add(non_weapon_dt)
     app_session.flush()

@@ -17,9 +17,12 @@ from app.db.models import (
     DutyType,
     ExemptionDutyTypeMap,
     NotificationType,
+    PersonalConstraint,
+    PersonalConstraintOverride,
     Soldier,
     SoldierExemption,
 )
+from app.services.constraint_override_settings import manual_override_allowed
 from app.services.notifications import create_notification
 from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
@@ -147,6 +150,7 @@ def create_assignment(
     duty_shift_id: uuid.UUID | None = None,
     is_reserve: bool = False,
     actor_id: uuid.UUID | None = None,
+    override_reason: str | None = None,
 ) -> DutyAssignment:
     if end_date <= start_date:
         raise AssignmentError("bad_date_range")
@@ -182,6 +186,19 @@ def create_assignment(
         end_date=end_date,
     ):
         raise AssignmentError("exempted")
+    constraint = session.execute(
+        select(PersonalConstraint).where(
+            PersonalConstraint.soldier_id == soldier_id,
+            PersonalConstraint.status == "approved",
+            PersonalConstraint.start_date < end_date,
+            PersonalConstraint.end_date >= start_date,
+        )
+    ).scalars().first()
+    if constraint is not None:
+        if not manual_override_allowed(session):
+            raise AssignmentError("personal_constraint_blocked")
+        if not override_reason or not override_reason.strip():
+            raise AssignmentError("override_reason_required")
     a = DutyAssignment(
         soldier_id=soldier_id,
         duty_type_id=duty_type_id,
@@ -206,6 +223,21 @@ def create_assignment(
             a.weapon_ineligible_detected_at = datetime.now(UTC)
     session.add(a)
     session.flush()
+    if constraint is not None:
+        session.add(PersonalConstraintOverride(
+            personal_constraint_id=constraint.id,
+            soldier_id=soldier_id,
+            overridden_by=actor_id,
+            assignment_kind="duty",
+            reference_id=a.id,
+            reason=override_reason.strip(),
+        ))
+        from app.services.notifications import notify_personal_constraint_overridden
+
+        notify_personal_constraint_overridden(
+            session, soldier_id=soldier_id, assignment_kind="duty",
+            reason=override_reason.strip(), actor_id=actor_id,
+        )
     create_notification(session, soldier_id=a.soldier_id,
                         type=NotificationType.assignment_created,
                         title="שיבוץ חדש נוצר עבורך",

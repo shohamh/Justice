@@ -1181,6 +1181,7 @@
     "filter_exemptions": "פטורים",
     "filter_exemption_requests": "בקשות פטור",
     "filter_constraints": "אילוצים אישיים",
+    "filter_constraint_overrides": "עקיפת אילוץ אישי",
     "filter_ranges": "מטווחים",
     "filter_drafts": "טיוטות",
     "empty": "אין אירועים להצגה",
@@ -1254,6 +1255,7 @@
     "type_exemption_rejected": "פטור נדחה",
     "type_constraint_approved": "אילוץ אושר",
     "type_constraint_rejected": "אילוץ נדחה",
+    "type_personal_constraint_overridden": "אילוץ אישי נדרס",
     "type_assignment_created": "תורנות חדשה",
     "type_assignment_removed": "תורנות בוטלה",
     "type_score_adjusted": "ניקוד עודכן",
@@ -1495,7 +1497,8 @@
     "excluded_reason": {
       "weapon_exempt": "פטור מנשק",
       "structurally_ineligible": "לא כשיר מבנית לתפקידי נשק",
-      "assigned_elsewhere_same_day": "משובץ למטווח אחר באותו יום"
+      "assigned_elsewhere_same_day": "משובץ למטווח אחר באותו יום",
+      "personal_constraint": "אילוץ אישי מאושר"
     },
     "close": "סגור",
     "self_excuse": "אני לא אוכל להגיע",

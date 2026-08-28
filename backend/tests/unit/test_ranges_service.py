@@ -12,6 +12,8 @@ from app.db.models import (
     DutyType,
     Notification,
     NotificationType,
+    PersonalConstraint,
+    PersonalConstraintOverride,
     RangeAssignment,
     RangeEventStatus,
     RangeType,
@@ -20,12 +22,23 @@ from app.services.ranges import (
     RangeValidationError,
     _validity_days,
     add_range_assignment,
+    assign_batch,
     cancel_range_event,
     create_range_event,
     remove_range_assignment,
     update_range_event,
 )
+from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_range_location, create_soldier
+
+
+def _approved_constraint(session: Session, soldier_id, event_date: date) -> PersonalConstraint:
+    c = PersonalConstraint(
+        soldier_id=soldier_id, start_date=event_date, end_date=event_date, reason="r", status="approved",
+    )
+    session.add(c)
+    session.flush()
+    return c
 
 
 def test_create_range_event_success(app_session: Session) -> None:
@@ -466,3 +479,124 @@ def test_remove_range_assignment_writes_audit_log(app_session: Session) -> None:
     assert audit.before["range_event_id"] == str(event.id)
     assert audit.context["reason"] == "חייל שוחרר מהיחידה"
     assert audit.actor_id == manager.id
+
+
+def test_range_assignment_blocked_when_setting_off(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="pco-node-1")
+    soldier = create_soldier(app_session, personal_number="pco-001", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="שמירה עם נשק pco-1", score_per_day=Decimal("1.00"),
+                              requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    _approved_constraint(app_session, soldier.id, event.date)
+    set_setting(app_session, "constraints.allow_manual_override", False, actor_id=None)
+
+    with pytest.raises(RangeValidationError, match="personal_constraint_blocked"):
+        add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+
+def test_range_assignment_requires_reason(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="pco-node-2")
+    soldier = create_soldier(app_session, personal_number="pco-002", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="שמירה עם נשק pco-2", score_per_day=Decimal("1.00"),
+                              requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    _approved_constraint(app_session, soldier.id, event.date)
+
+    with pytest.raises(RangeValidationError, match="override_reason_required"):
+        add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+
+def test_range_assignment_succeeds_with_reason(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="pco-node-3")
+    soldier = create_soldier(app_session, personal_number="pco-003", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="שמירה עם נשק pco-3", score_per_day=Decimal("1.00"),
+                              requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    constraint = _approved_constraint(app_session, soldier.id, event.date)
+
+    assignment = add_range_assignment(
+        app_session, event=event, soldier_id=soldier.id, is_reserve=False,
+        override_reason="צורך מבצעי",
+    )
+
+    override = app_session.query(PersonalConstraintOverride).filter(
+        PersonalConstraintOverride.personal_constraint_id == constraint.id,
+    ).one()
+    assert override.reference_id == assignment.id
+    assert override.assignment_kind == "range"
+    assert override.soldier_id == soldier.id
+    assert override.reason == "צורך מבצעי"
+
+
+def test_range_assignment_without_constraint_unaffected(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="pco-node-4")
+    soldier = create_soldier(app_session, personal_number="pco-004", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="שמירה עם נשק pco-4", score_per_day=Decimal("1.00"),
+                              requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    assert assignment.id is not None
+    assert app_session.query(PersonalConstraintOverride).filter(
+        PersonalConstraintOverride.soldier_id == soldier.id,
+    ).first() is None
+
+
+def test_range_batch_assign_requires_reason_and_writes_override(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="pco-node-5")
+    blocked_soldier = create_soldier(app_session, personal_number="pco-005", hierarchy_node_id=node.id)
+    free_soldier = create_soldier(app_session, personal_number="pco-006", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="שמירה עם נשק pco-5", score_per_day=Decimal("1.00"),
+                              requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=2,
+    )
+    constraint = _approved_constraint(app_session, blocked_soldier.id, event.date)
+
+    with pytest.raises(RangeValidationError, match="override_reason_required"):
+        assign_batch(
+            app_session, event=event,
+            primary_soldier_ids=[blocked_soldier.id, free_soldier.id], reserve_soldier_ids=[],
+        )
+
+    rows = assign_batch(
+        app_session, event=event,
+        primary_soldier_ids=[blocked_soldier.id, free_soldier.id], reserve_soldier_ids=[],
+        override_reason="צורך מבצעי",
+    )
+
+    assert len(rows) == 2
+    override = app_session.query(PersonalConstraintOverride).filter(
+        PersonalConstraintOverride.personal_constraint_id == constraint.id,
+    ).one()
+    blocked_row = next(r for r in rows if r.soldier_id == blocked_soldier.id)
+    assert override.reference_id == blocked_row.id
+    assert override.assignment_kind == "range"
+    # The soldier without a constraint gets no override row at all.
+    assert app_session.query(PersonalConstraintOverride).filter(
+        PersonalConstraintOverride.soldier_id == free_soldier.id,
+    ).first() is None

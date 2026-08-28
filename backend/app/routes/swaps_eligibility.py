@@ -46,6 +46,6 @@ def eligible_duties(
 
     results = []
     for a in my_assignments:
-        eligible, reason = check_soldier_for_assignment(session, target_soldier_id, a.id)
+        eligible, reason, _warning = check_soldier_for_assignment(session, target_soldier_id, a.id)
         results.append(EligibilityResult(assignment_id=a.id, eligible=eligible, reason=reason))
     return results

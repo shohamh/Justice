@@ -342,12 +342,14 @@ def _soldier_in_authorized_scope(session: Session, *, node: HierarchyNode, user:
 
 def _validate_and_build_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
-    user: Soldier | None = None,
-) -> RangeAssignment:
+    user: Soldier | None = None, override_reason: str | None = None,
+) -> tuple[RangeAssignment, "PersonalConstraint | None"]:
     """Same validation as add_range_assignment (subtree membership, exemption,
-    same-date conflict) but only constructs the row — does not add/commit/notify.
-    Shared by add_range_assignment (single, notifies) and assign_batch (many, one
-    commit + one notification pass at the end)."""
+    same-date conflict, personal constraint) but only constructs the row — does
+    not add/commit/notify. Shared by add_range_assignment (single, notifies) and
+    assign_batch (many, one commit + one notification pass at the end). Returns
+    the built assignment plus the PersonalConstraint it overrode, if any — callers
+    use the second element to decide whether to write an audit row and notify."""
     soldier = session.get(Soldier, soldier_id)
     if soldier is None:
         raise RangeValidationError("soldier_not_found")
@@ -371,7 +373,25 @@ def _validate_and_build_assignment(
     ).scalar_one_or_none()
     if existing_same_date is not None:
         raise RangeValidationError("soldier_already_assigned_on_date")
-    return RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
+
+    from app.db.models import PersonalConstraint
+    from app.services.constraint_override_settings import manual_override_allowed
+
+    constraint = session.execute(
+        select(PersonalConstraint).where(
+            PersonalConstraint.soldier_id == soldier_id,
+            PersonalConstraint.status == "approved",
+            PersonalConstraint.start_date <= event.date,
+            PersonalConstraint.end_date >= event.date,
+        )
+    ).scalars().first()
+    if constraint is not None:
+        if not manual_override_allowed(session):
+            raise RangeValidationError("personal_constraint_blocked")
+        if not override_reason or not override_reason.strip():
+            raise RangeValidationError("override_reason_required")
+
+    return RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve), constraint
 
 
 def _check_capacity(session: Session, *, event: RangeEvent, new_primary: int, new_reserve: int) -> None:
@@ -391,7 +411,7 @@ def _check_capacity(session: Session, *, event: RangeEvent, new_primary: int, ne
 def add_range_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
     assignment_reason_code: str = "manual", assignment_reason_text: str | None = "שיבוץ ידני",
-    user: Soldier | None = None,
+    user: Soldier | None = None, override_reason: str | None = None,
 ) -> RangeAssignment:
     _acquire_range_assignment_date_lock(session, event_date=event.date)
     session.refresh(event)
@@ -402,8 +422,9 @@ def add_range_assignment(
         new_primary=0 if is_reserve else 1,
         new_reserve=1 if is_reserve else 0,
     )
-    assignment = _validate_and_build_assignment(
+    assignment, overridden_constraint = _validate_and_build_assignment(
         session, event=event, soldier_id=soldier_id, is_reserve=is_reserve, user=user,
+        override_reason=override_reason,
     )
 
     existing_soldier_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
@@ -413,6 +434,21 @@ def add_range_assignment(
     assignment.assignment_reason_text = assignment_reason_text
     session.add(assignment)
     session.flush()
+    if overridden_constraint is not None:
+        from app.db.models import PersonalConstraintOverride
+        session.add(PersonalConstraintOverride(
+            personal_constraint_id=overridden_constraint.id,
+            soldier_id=soldier_id,
+            overridden_by=user.id if user else None,
+            assignment_kind="range",
+            reference_id=assignment.id,
+            reason=override_reason.strip(),
+        ))
+        from app.services.notifications import notify_personal_constraint_overridden
+        notify_personal_constraint_overridden(
+            session, soldier_id=soldier_id, assignment_kind="range",
+            reason=override_reason.strip(), actor_id=user.id if user else None,
+        )
     _notify_roster_change(session, event=event, soldier_ids=existing_soldier_ids)
     _range_notification(
         session,
@@ -432,6 +468,7 @@ def assign_batch(
     session: Session, *, event: RangeEvent,
     primary_soldier_ids: list[uuid.UUID], reserve_soldier_ids: list[uuid.UUID],
     actor_id: uuid.UUID | None = None, user: Soldier | None = None,
+    override_reason: str | None = None,
 ) -> list[RangeAssignment]:
     """All-or-nothing: validates every soldier before adding any row, so a single
     invalid soldier in the batch fails the whole call with no partial writes.
@@ -450,26 +487,49 @@ def assign_batch(
 
     from app.services.range_auto_assign import _rank_candidate
 
-    rows = [
-        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=False, user=user)
+    rows_with_constraints = [
+        _validate_and_build_assignment(
+            session, event=event, soldier_id=sid, is_reserve=False, user=user,
+            override_reason=override_reason,
+        )
         for sid in primary_soldier_ids
     ] + [
-        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=True, user=user)
+        _validate_and_build_assignment(
+            session, event=event, soldier_id=sid, is_reserve=True, user=user,
+            override_reason=override_reason,
+        )
         for sid in reserve_soldier_ids
     ]
-    for row in rows:
+    for row, _constraint in rows_with_constraints:
         soldier = session.get(Soldier, row.soldier_id)
         _, reason_code, _explanation = _rank_candidate(session, soldier=soldier, event=event)
         row.assignment_reason_code = reason_code
         session.add(row)
     session.flush()
-    for row in rows:
+    from app.db.models import PersonalConstraintOverride
+    from app.services.notifications import notify_personal_constraint_overridden
+
+    for row, constraint in rows_with_constraints:
         _range_notification(
             session, soldier_id=row.soldier_id, type=NotificationType.range_assignment_confirmed,
             title="שובצת למטווח", body=_range_assignment_body(event),
             reference_type="range_event", reference_id=event.id,
         )
+        if constraint is not None:
+            session.add(PersonalConstraintOverride(
+                personal_constraint_id=constraint.id,
+                soldier_id=row.soldier_id,
+                overridden_by=user.id if user else None,
+                assignment_kind="range",
+                reference_id=row.id,
+                reason=override_reason.strip(),
+            ))
+            notify_personal_constraint_overridden(
+                session, soldier_id=row.soldier_id, assignment_kind="range",
+                reason=override_reason.strip(), actor_id=user.id if user else None,
+            )
     session.commit()
+    rows = [row for row, _constraint in rows_with_constraints]
     for row in rows:
         session.refresh(row)
     return rows

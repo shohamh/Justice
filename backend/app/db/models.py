@@ -695,6 +695,29 @@ class PersonalConstraint(Base):
     )
 
 
+class PersonalConstraintOverride(Base):
+    __tablename__ = "personal_constraint_overrides"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    personal_constraint_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("personal_constraints.id", ondelete="CASCADE")
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    assignment_kind: Mapped[str] = mapped_column(Text)
+    reference_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    reason: Mapped[str] = mapped_column(Text)
+    overridden_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    overridden_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class ExemptionRequest(Base):
     __tablename__ = "exemption_requests"
 
@@ -1373,6 +1396,7 @@ class NotificationType(str, _enum.Enum):
     exemption_rejected = "exemption_rejected"
     constraint_approved = "constraint_approved"
     constraint_rejected = "constraint_rejected"
+    personal_constraint_overridden = "personal_constraint_overridden"
     assignment_created = "assignment_created"
     assignment_removed = "assignment_removed"
     score_adjusted = "score_adjusted"

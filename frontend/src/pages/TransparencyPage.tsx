@@ -602,6 +602,7 @@ export default function TransparencyPage() {
         const label = isNaN(n) ? r.cumulative_score : n.toFixed(3);
         return (
           <button
+            data-testid={`transparency-cumulative-score-${r.soldier_id}`}
             className="text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
             onClick={() => openSoldierModal(r.soldier_id, undefined, "duty_history", SCORE_AFFECTING_TYPES)}
             title="לחץ לצפייה באירועים שמשפיעים על הניקוד"

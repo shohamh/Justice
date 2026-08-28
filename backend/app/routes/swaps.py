@@ -313,7 +313,7 @@ def cover_eligibility(
     assignment = session.get(DutyAssignment, assignment_id)
     if assignment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
-    eligible, reason = check_soldier_for_assignment(session, user.id, assignment_id)
+    eligible, reason, _warning = check_soldier_for_assignment(session, user.id, assignment_id)
     return CoverEligibilityOut(eligible=eligible, reason=reason)
 
 

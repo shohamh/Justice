@@ -1,4 +1,5 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -15,6 +16,16 @@ vi.mock("../api/potential");
 
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("../components/DataTable", () => ({
+  DataTable: ({ columns, data }: {
+    columns: Array<{ id: string; cell: (row: unknown) => ReactNode }>;
+    data: unknown[];
+  }) => {
+    const cumulative = columns.find((column) => column.id === "cumulative");
+    return <div>{data.length > 0 && cumulative?.cell(data[0])}</div>;
+  },
 }));
 
 vi.mock("../auth/AuthContext", () => ({
@@ -69,6 +80,7 @@ describe("TransparencyPage cumulative score button", () => {
       can_see_exemption_aggregates: true,
     };
     vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
+    vi.mocked(scoringApi.getFairnessComponents).mockImplementation(() => new Promise(() => {}));
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -77,20 +89,13 @@ describe("TransparencyPage cumulative score button", () => {
       </QueryClientProvider>,
     );
 
-    // Re-query and click inside waitFor: DataTable recreates its cell renderers
-    // on every parent re-render (React Table's flexRender treats the inline
-    // `cell` closure as a new component each time), so a button reference
-    // captured before the surrounding async queries settle can go stale
-    // between being found and being clicked. Retrying the click against a
-    // freshly-queried node sidesteps that race.
-    await waitFor(() => {
-      fireEvent.click(screen.getByRole("button", { name: "1.000" }));
-      expect(mockOpenSoldierModal).toHaveBeenCalledWith(
-        "s1",
-        undefined,
-        "duty_history",
-        ["assignment", "cancellation", "call_up", "dismissal"],
-      );
-    });
+    const scoreButton = await screen.findByTestId("transparency-cumulative-score-s1");
+    scoreButton.click();
+    await waitFor(() => expect(mockOpenSoldierModal).toHaveBeenCalledWith(
+      "s1",
+      undefined,
+      "duty_history",
+      ["assignment", "cancellation", "call_up", "dismissal"],
+    ));
   });
 });
