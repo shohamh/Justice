@@ -22,6 +22,7 @@ from app.services.authority import request_cancellation_authorized, senior_comma
 from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import HierarchyNode, PersonalConstraint, Soldier
 from app.db.session import get_session
+from app.services.holidays import HolidayHit, holidays_in_range
 from app.services.request_metadata import (
     constraint_audit_latest,
     latest_activity,
@@ -73,6 +74,7 @@ class ConstraintOut(BaseModel):
     updated_at: datetime | None = None
     waiting_on: WaitingOnOut | None = None
     commander_approved_by: PersonRefOut | None = None
+    crossed_holidays: list[HolidayHit] = []
 
 
 class SubmitRequest(BaseModel):
@@ -119,6 +121,7 @@ def _out(
     can_cancel: bool = False,
     audit_times: dict[uuid.UUID, datetime] | None = None,
 ) -> ConstraintOut:
+    crossed_holidays = holidays_in_range(c.start_date, c.end_date, end_inclusive=True)
     return ConstraintOut(
         id=c.id,
         soldier_id=c.soldier_id,
@@ -140,6 +143,7 @@ def _out(
         updated_at=latest_activity(c.created_at, c.decided_at, (audit_times or {}).get(c.id)),
         waiting_on=resolve_waiting_on(session, soldier_id=c.soldier_id, status=c.status),
         commander_approved_by=person_ref(session, c.commander_approved_by),
+        crossed_holidays=crossed_holidays,
     )
 
 
