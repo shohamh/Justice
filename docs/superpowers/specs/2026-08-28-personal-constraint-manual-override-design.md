@@ -144,7 +144,10 @@ once per overridden soldier, even under a shared batch reason.
   a constrained-but-overridable candidate (setting ON) moves out of the
   disabled "חסומים" section into the normal selectable list, with a
   warning icon next to their name — same visual language as the existing
-  `weapon_warning` amber icon.
+  `weapon_warning` amber icon. Within the selectable list, constrained
+  candidates sort to the bottom, below all unconstrained candidates
+  (existing secondary sort order, e.g. by score/name, still applies
+  within each of the two groups).
 - New shared component `ConstraintWarningIcon` (there is no existing
   popover component in the codebase to reuse — the only precedent is a
   native `title` tooltip on `weapon_warning`): hover shows a tooltip
