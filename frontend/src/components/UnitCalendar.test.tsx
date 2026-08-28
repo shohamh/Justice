@@ -30,7 +30,10 @@ vi.mock("../api/calendarData", () => ({
 }));
 
 vi.mock("../api/calendarHolidays", () => ({
-  listHolidays: vi.fn().mockResolvedValue([{ date: "2026-09-12", name: "Rosh Hashanah" }]),
+  listHolidays: vi.fn().mockResolvedValue([
+    { date: "2026-09-11", name: "Eve of Rosh Hashanah" },
+    { date: "2026-09-12", name: "Rosh Hashanah" },
+  ]),
 }));
 
 vi.mock("@fullcalendar/react", () => ({
@@ -378,5 +381,14 @@ describe("UnitCalendar holidays", () => {
 
     expect(await screen.findByRole("dialog")).toHaveTextContent("Rosh Hashanah");
     expect(screen.getByRole("dialog")).toHaveTextContent("12.09.2026");
+  });
+
+  test("renders the eve of a holiday as its own calendar event", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("calendar-event-holiday-2026-09-11")).toHaveTextContent("Eve of Rosh Hashanah");
   });
 });
