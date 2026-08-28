@@ -15,8 +15,6 @@ import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
-import BurdenShareCard from "../components/dashboard/BurdenShareCard";
-import BurdenShareTrendChart from "../components/dashboard/BurdenShareTrendChart";
 import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
 import { formatDateTimeIsrael } from "../utils/formatDate";
 
@@ -307,6 +305,9 @@ export default function HomePage() {
           myRow={myRow}
           allRows={transparencyRows}
           canViewTransparency={user?.can_view_transparency !== false}
+          burdenShare={burdenShareQuery.data}
+          burdenShareBreakdown={burdenShareBreakdownQuery.data}
+          soldierName={user?.full_name}
         />
 
         {/* Reserve days this month */}
@@ -332,16 +333,8 @@ export default function HomePage() {
           />
         </div>
 
-        {/* חלק בנטל — rank, anonymized peer distribution, breakdown */}
-        {burdenShareQuery.data && (
-          <BurdenShareCard share={burdenShareQuery.data} breakdown={burdenShareBreakdownQuery.data ?? null} />
-        )}
-
         {/* Breakdown by duty type */}
         <DutyTypeBreakdownChart perType={breakdown?.per_type ?? []} mirrored />
-
-        {/* Burden share trend over time */}
-        <BurdenShareTrendChart quarters={burdenShareBreakdownQuery.data?.quarters ?? []} />
 
         {/* Manual score adjustments */}
         {breakdown && breakdown.adjustments.length > 0 && (
