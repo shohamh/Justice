@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import HierarchyTree from "./HierarchyTree";
 import type { NodeDTO } from "../api/hierarchy";
 import type { SoldierDTO } from "../api/soldiers";
@@ -7,9 +7,15 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+const LOADED_LEVEL_TYPES = { levelTypes: [{ id: "lt1", key: "department", label: "מרכז", rank: 1 }], loading: false };
+const mockUseLevelTypes = vi.fn(() => LOADED_LEVEL_TYPES);
 vi.mock("../hooks/useLevelTypes", () => ({
-  useLevelTypes: () => ({ levelTypes: [{ id: "lt1", key: "department", label: "מרכז", rank: 1 }] }),
+  useLevelTypes: () => mockUseLevelTypes(),
 }));
+
+afterEach(() => {
+  mockUseLevelTypes.mockReturnValue(LOADED_LEVEL_TYPES);
+});
 
 vi.mock("../api/dmScope", () => ({
   assignDmScope: vi.fn(),
@@ -35,37 +41,69 @@ function node(overrides: Partial<NodeDTO> = {}): NodeDTO {
 
 const soldiers: SoldierDTO[] = [];
 
-test("does not show the assign-duty-managers button when dm_manageable is false and viewer cannot edit the node", () => {
+function openActionsMenu(nodeId: string) {
+  fireEvent.click(screen.getByTestId(`tree-actions-menu-${nodeId}`));
+}
+
+test("shows the translated level badge once level types have loaded", () => {
+  render(
+    <HierarchyTree nodes={[node()]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />
+  );
+  expect(screen.getByText("מרכז")).toBeInTheDocument();
+});
+
+test("hides the level badge (never shows the raw level key) while level types are still loading", () => {
+  mockUseLevelTypes.mockReturnValue({ levelTypes: [], loading: true });
+  render(
+    <HierarchyTree nodes={[node()]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />
+  );
+  expect(screen.queryByText("department")).not.toBeInTheDocument();
+  expect(screen.queryByText("מרכז")).not.toBeInTheDocument();
+});
+
+test("does not show an actions menu when dm_manageable is false and viewer cannot edit the node", () => {
   render(
     <HierarchyTree nodes={[node({ dm_manageable: false, can_edit: false })]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />
   );
-  expect(screen.queryByTestId("tree-dm-btn-node-1")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("tree-actions-menu-node-1")).not.toBeInTheDocument();
 });
 
-test("shows the assign-duty-managers button when dm_manageable is true, even for a non-admin commander", () => {
+test("shows the actions menu when dm_manageable is true, even for a non-admin commander, and it contains the duty-managers action", () => {
   render(
     <HierarchyTree nodes={[node({ dm_manageable: true, can_edit: false })]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />
   );
+  openActionsMenu("node-1");
   expect(screen.getByTestId("tree-dm-btn-node-1")).toBeInTheDocument();
 });
 
-test("does not show can_edit-gated buttons for a non-admin commander even when dm_manageable is true", () => {
+test("does not show can_edit-gated actions for a non-admin commander even when dm_manageable is true", () => {
   render(
     <HierarchyTree nodes={[node({ dm_manageable: true, can_edit: false })]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />
   );
+  openActionsMenu("node-1");
   expect(screen.queryByTestId("tree-commander-btn-node-1")).not.toBeInTheDocument();
   expect(screen.queryByTestId("tree-rename-node-1")).not.toBeInTheDocument();
 });
 
-test("shows can_edit-gated buttons when the node's can_edit flag is true", () => {
+test("shows can_edit-gated actions when the node's can_edit flag is true", () => {
   render(
     <HierarchyTree nodes={[node({ dm_manageable: false, can_edit: true })]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />
   );
+  openActionsMenu("node-1");
   expect(screen.getByTestId("tree-commander-btn-node-1")).toBeInTheDocument();
   expect(screen.getByTestId("tree-rename-node-1")).toBeInTheDocument();
 });
 
-test("renders duty manager names as clickable links", () => {
+test("closes the actions menu after an action is clicked", () => {
+  render(
+    <HierarchyTree nodes={[node({ can_edit: true })]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />
+  );
+  openActionsMenu("node-1");
+  fireEvent.click(screen.getByTestId("tree-rename-node-1"));
+  expect(screen.queryByTestId("tree-rename-node-1")).not.toBeInTheDocument();
+});
+
+test("renders duty manager names as clickable links outside the actions menu", () => {
   render(
     <HierarchyTree
       nodes={[node({ duty_managers: [{ scope_id: "scope-1", soldier_id: "s1", name: "דני כהן" }], can_edit: true })]}
@@ -93,6 +131,6 @@ test("auto-expands down to and highlights the viewer's own commanded node, beyon
   );
   // "b" is at depth 3, past the default two-level auto-expand, so its child ("child")
   // only renders if the tree specifically auto-expanded down to the viewer's own node.
-  expect(screen.getByTestId("tree-rename-child")).toBeInTheDocument();
+  expect(screen.getByTestId("tree-name-child")).toBeInTheDocument();
   expect(screen.getByTestId("tree-name-child").closest("li")).toHaveClass("bg-indigo-50");
 });

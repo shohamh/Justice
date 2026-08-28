@@ -11,6 +11,7 @@ import {
   useDraggable,
 } from "@dnd-kit/core";
 import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
+import PopoverDropdown from "./PopoverDropdown";
 import { SoldierDTO, onboardSoldier } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
@@ -138,7 +139,7 @@ function DroppableNodeRow({
   hasSoldiers: boolean;
   isExpanded: boolean;
   onToggle: () => void;
-  levelLabel: string;
+  levelLabel: string | null;
   t: (k: string) => string;
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -156,90 +157,139 @@ function DroppableNodeRow({
     setDragRef(el);
   }, [setDropRef, setDragRef]);
 
+  const hasSecondaryInfo = !!node.commander_name || node.duty_managers.length > 0;
+
   return (
     <div
       ref={setRef}
-      className={`flex items-center gap-2 py-1 px-2 rounded ${depth > 0 ? "mr-4" : ""} ${
+      className={`py-1 px-2 rounded ${depth > 0 ? "mr-4" : ""} ${
         isDragging ? "opacity-40" : ""
       } ${isOver ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950" : "hover:bg-gray-50 dark:hover:bg-gray-700"}`}
     >
-      <button
-        className={`w-4 h-4 flex items-center justify-center text-xs ${hasChildren || hasSoldiers ? "visible" : "invisible"}`}
-        onClick={onToggle}
-        data-testid={`tree-toggle-${node.id}`}
-      >
-        {isExpanded ? "▼" : "▶"}
-      </button>
-      {node.can_edit && (
-        <span
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 text-xs select-none"
-          title="גרור להזזה"
+      <div className="flex items-center gap-2">
+        <button
+          className={`w-4 h-4 shrink-0 flex items-center justify-center text-xs ${hasChildren || hasSoldiers ? "visible" : "invisible"}`}
+          onClick={onToggle}
+          data-testid={`tree-toggle-${node.id}`}
         >
-          ⠿
-        </span>
-      )}
-      <span className={`text-xs px-1.5 py-0.5 rounded ${LEVEL_COLORS[node.level] ?? DEFAULT_LEVEL_COLOR}`}>
-        {levelLabel}
-      </span>
-      <span className="font-medium" data-testid={`tree-name-${node.id}`}>{node.name}</span>
-      {node.commander_name && (
-        <span className="text-xs text-gray-400" data-testid={`tree-commander-${node.id}`}>
-          ({t("team.commander")}: {node.commander_name})
-        </span>
-      )}
-      {node.duty_managers.length > 0 && (
-        <span className="text-xs text-gray-400" data-testid={`tree-dm-list-${node.id}`}>
-          ({t("team.duty_managers")}:{" "}
-          {node.duty_managers.map((dm, i) => (
-            <span key={dm.scope_id}>
-              {i > 0 && ", "}
-              <button
-                type="button"
-                className="hover:underline text-indigo-600 dark:text-indigo-300"
-                onClick={() => onOpenPortfolio(dm.soldier_id, dm.name)}
-                data-testid={`tree-dm-link-${dm.scope_id}`}
-              >
-                {dm.name}
-              </button>
+          {isExpanded ? "▼" : "▶"}
+        </button>
+        {node.can_edit && (
+          <span
+            {...attributes}
+            {...listeners}
+            className="shrink-0 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 text-xs select-none"
+            title="גרור להזזה"
+          >
+            ⠿
+          </span>
+        )}
+        {levelLabel && (
+          <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded ${LEVEL_COLORS[node.level] ?? DEFAULT_LEVEL_COLOR}`}>
+            {levelLabel}
+          </span>
+        )}
+        <span className="font-medium truncate" data-testid={`tree-name-${node.id}`}>{node.name}</span>
+        {(node.can_edit || node.dm_manageable) && (
+          <div className="ml-auto shrink-0">
+            <PopoverDropdown
+              triggerLabel=""
+              badgeCount={0}
+              title={t("team.actions")}
+              triggerClassName="text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center"
+              panelDir="rtl"
+              panelClassName="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-40 flex flex-col py-1"
+              triggerTestId={`tree-actions-menu-${node.id}`}
+            >
+              {(close) => (
+                <>
+                  {node.can_edit && canHaveChildren && (
+                    <button
+                      className="text-sm px-3 py-1.5 text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      onClick={() => { onAddChild(); close(); }}
+                      data-testid={`tree-add-child-${node.id}`}
+                    >
+                      +{t("team.add_node")}
+                    </button>
+                  )}
+                  {node.can_edit && (
+                    <button
+                      className="text-sm px-3 py-1.5 text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      onClick={() => { onAddSoldier(); close(); }}
+                      data-testid={`tree-add-soldier-${node.id}`}
+                    >
+                      +{t("team.add_soldier")}
+                    </button>
+                  )}
+                  {node.can_edit && (
+                    <button
+                      className="text-sm px-3 py-1.5 text-green-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      onClick={() => { onAssignCommander(); close(); }}
+                      data-testid={`tree-commander-btn-${node.id}`}
+                    >
+                      {t("team.assign_commander")}
+                    </button>
+                  )}
+                  {node.dm_manageable && (
+                    <button
+                      className="text-sm px-3 py-1.5 text-green-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      onClick={() => { onManageDutyManagers(); close(); }}
+                      data-testid={`tree-dm-btn-${node.id}`}
+                    >
+                      {t("team.assign_duty_managers")}
+                    </button>
+                  )}
+                  {node.can_edit && (
+                    <button
+                      className="text-sm px-3 py-1.5 text-amber-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      onClick={() => { onRename(); close(); }}
+                      data-testid={`tree-rename-${node.id}`}
+                    >
+                      {t("team.edit")}
+                    </button>
+                  )}
+                  {node.can_edit && !node.commander_id && !hasChildren && (
+                    <button
+                      className="text-sm px-3 py-1.5 text-red-500 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      onClick={() => { onDelete(); close(); }}
+                      data-testid={`tree-delete-${node.id}`}
+                    >
+                      {t("duty_config.delete")}
+                    </button>
+                  )}
+                </>
+              )}
+            </PopoverDropdown>
+          </div>
+        )}
+      </div>
+
+      {hasSecondaryInfo && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 pr-6 text-xs text-gray-400">
+          {node.commander_name && (
+            <span data-testid={`tree-commander-${node.id}`}>
+              {t("team.commander")}: {node.commander_name}
             </span>
-          ))})
-        </span>
-      )}
-      {(node.can_edit || node.dm_manageable) && (
-        <span className="flex gap-1 ml-auto">
-          {node.can_edit && canHaveChildren && (
-            <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddChild} data-testid={`tree-add-child-${node.id}`}>
-              +{t("team.add_node")}
-            </button>
           )}
-          {node.can_edit && (
-            <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddSoldier} data-testid={`tree-add-soldier-${node.id}`}>
-              +{t("team.add_soldier")}
-            </button>
+          {node.duty_managers.length > 0 && (
+            <span data-testid={`tree-dm-list-${node.id}`}>
+              {t("team.duty_managers")}:{" "}
+              {node.duty_managers.map((dm, i) => (
+                <span key={dm.scope_id}>
+                  {i > 0 && ", "}
+                  <button
+                    type="button"
+                    className="hover:underline text-indigo-600 dark:text-indigo-300"
+                    onClick={() => onOpenPortfolio(dm.soldier_id, dm.name)}
+                    data-testid={`tree-dm-link-${dm.scope_id}`}
+                  >
+                    {dm.name}
+                  </button>
+                </span>
+              ))}
+            </span>
           )}
-          {node.can_edit && (
-            <button className="text-xs text-green-600 hover:underline" onClick={onAssignCommander} data-testid={`tree-commander-btn-${node.id}`}>
-              {t("team.assign_commander")}
-            </button>
-          )}
-          {node.dm_manageable && (
-            <button className="text-xs text-green-700 hover:underline" onClick={onManageDutyManagers} data-testid={`tree-dm-btn-${node.id}`}>
-              {t("team.assign_duty_managers")}
-            </button>
-          )}
-          {node.can_edit && (
-            <button className="text-xs text-amber-600 hover:underline" onClick={onRename} data-testid={`tree-rename-${node.id}`}>
-              {t("team.edit")}
-            </button>
-          )}
-          {node.can_edit && !node.commander_id && !hasChildren && (
-            <button className="text-xs text-red-500 hover:underline" onClick={onDelete} data-testid={`tree-delete-${node.id}`}>
-              {t("duty_config.delete")}
-            </button>
-          )}
-        </span>
+        </div>
       )}
     </div>
   );
@@ -287,7 +337,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
   const [dmDialogNodeId, setDmDialogNodeId] = useState<string | null>(null);
   const portfolioDialog = usePortfolioDialog(nodes, onChanged);
 
-  const { levelTypes } = useLevelTypes();
+  const { levelTypes, loading: levelTypesLoading } = useLevelTypes();
   const { rankByKey, maxRank, labelByKey } = useMemo(() => {
     const rankByKey = new Map(levelTypes.map((lt) => [lt.key, lt.rank]));
     const maxRank = levelTypes.length > 0 ? Math.max(...levelTypes.map((lt) => lt.rank)) : 0;
@@ -432,7 +482,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
           hasSoldiers={nodeSoldiers.length > 0}
           isExpanded={isExpanded}
           onToggle={() => toggle(node.id)}
-          levelLabel={labelByKey.get(node.level) ?? node.level}
+          levelLabel={levelTypesLoading ? null : (labelByKey.get(node.level) ?? node.level)}
           t={t}
         />
 
