@@ -83,7 +83,7 @@ function formatDateDigits(digits: string, expandShortYear = true): string {
 }
 
 export default function DateInput({
-  value, defaultValue, onChange, onBlur, className, disabled, required, autoFocus, min, max, id, showHolidays, ...rest
+  value, defaultValue, onChange, onBlur, className, disabled, required, autoFocus, min, max, id, showHolidays = true, ...rest
 }: DateInputProps) {
   const isControlled = value !== undefined;
   const [text, setText] = useState(() => isoToDisplay(value ?? defaultValue));

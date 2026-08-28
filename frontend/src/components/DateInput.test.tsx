@@ -216,9 +216,15 @@ describe("DateInput", () => {
     });
   });
 
-  it("does not fetch holidays when showHolidays is not set", () => {
-    vi.mocked(listHolidays).mockClear();
+  it("shades holiday days by default", async () => {
     render(<DateInput value="2026-08-01" data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "15" }).className).toMatch(/holiday-date-tile/));
+  });
+
+  it("does not fetch holidays when showHolidays is explicitly false", () => {
+    vi.mocked(listHolidays).mockClear();
+    render(<DateInput value="2026-08-01" showHolidays={false} data-testid="date-input" />);
     fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
     expect(listHolidays).not.toHaveBeenCalled();
   });
