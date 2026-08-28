@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.services.holidays import HolidayHit, holidays_in_range
+from app.services.holidays import HolidayHit, calendar_holidays_for_year, holidays_in_range
 
 
 def test_inclusive_range_includes_holiday_on_end_date():
@@ -44,3 +44,18 @@ def test_end_before_start_after_exclusive_adjustment_returns_empty_list():
     # days — must not raise or invert the range.
     hits = holidays_in_range(date(2026, 6, 1), date(2026, 6, 1), end_inclusive=False)
     assert hits == []
+
+
+def test_calendar_holidays_include_the_explicit_eve_holiday_list():
+    holidays = calendar_holidays_for_year(2026)
+
+    assert holidays[date(2026, 9, 11)] == "ערב ראש השנה"
+    assert holidays[date(2026, 9, 20)] == "ערב יום כיפור"
+    assert holidays[date(2026, 9, 25)] == "ערב סוכות"
+    assert holidays[date(2026, 10, 2)] == "ערב שמחת תורה/שמיני עצרת"
+    assert holidays[date(2026, 4, 1)] == "ערב פסח"
+    assert holidays[date(2026, 4, 7)] == "ערב שביעי של פסח"
+    assert holidays[date(2026, 5, 21)] == "ערב שבועות"
+
+    assert date(2026, 4, 21) not in holidays  # יום העצמאות has no ערב חג.
+    assert date(2026, 3, 2) not in holidays  # פורים is not in the approved list.
