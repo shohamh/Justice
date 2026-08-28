@@ -27,6 +27,7 @@ type EventTypeFilter =
   | "exemption"
   | "exemption_request"
   | "personal_constraint"
+  | "personal_constraint_override"
   | "range";
 
 type StatusFilter = "all" | "published" | "draft" | "reserve" | "cancelled";
@@ -40,6 +41,7 @@ const EVENT_TYPE_FILTER_KEYS: { type: EventTypeFilter; i18nKey: string }[] = [
   { type: "exemption", i18nKey: "duty_history.filter_exemptions" },
   { type: "exemption_request", i18nKey: "duty_history.filter_exemption_requests" },
   { type: "personal_constraint", i18nKey: "duty_history.filter_constraints" },
+  { type: "personal_constraint_override", i18nKey: "duty_history.filter_constraint_overrides" },
   { type: "range", i18nKey: "duty_history.filter_ranges" },
 ];
 
@@ -59,6 +61,7 @@ const TYPE_COLORS: Record<string, string> = {
   exemption: "border-teal-400 bg-teal-50 dark:bg-teal-950",
   exemption_request: "border-blue-400 bg-blue-50 dark:bg-blue-950",
   personal_constraint: "border-purple-400 bg-purple-50 dark:bg-purple-950",
+  personal_constraint_override: "border-amber-400 bg-amber-50 dark:bg-amber-950",
   range_assignment: "border-cyan-500 bg-cyan-50 dark:bg-cyan-950",
   range_removed: "border-gray-400 bg-gray-50 dark:bg-gray-800 border-dashed",
 };
@@ -71,6 +74,7 @@ const DOT_COLORS: Record<string, string> = {
   exemption: "bg-teal-400",
   exemption_request: "bg-blue-400",
   personal_constraint: "bg-purple-400",
+  personal_constraint_override: "bg-amber-400",
   range_assignment: "bg-cyan-500",
   range_removed: "bg-gray-400",
 };
@@ -298,6 +302,11 @@ function EventCard({
             {e.event_type === "personal_constraint" && e.status === "cancelled" && e.metadata.cancelled_by_name && (
               <p className="text-xs text-red-600 dark:text-red-400 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
                 <span className="font-medium">בוטל</span> ע״י {e.metadata.cancelled_by_name}
+              </p>
+            )}
+            {e.event_type === "personal_constraint_override" && e.metadata.overridden_by_name && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                <span className="font-medium">נדרס</span> ע״י {e.metadata.overridden_by_name}
               </p>
             )}
             {dutyType && (() => {

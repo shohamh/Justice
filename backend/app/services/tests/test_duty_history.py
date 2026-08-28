@@ -16,6 +16,7 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    PersonalConstraintOverride,
 )
 from app.services.duty_history import get_duty_history
 from tests.helpers import create_soldier
@@ -239,6 +240,71 @@ def test_personal_constraint_reason_hidden_when_not_sensitive(admin_session, sol
     assert ev.event_type == "personal_constraint"
     assert ev.title == "אילוצים אישיים"
     assert ev.description is None
+
+
+def test_constraint_override_appears(admin_session, soldier):
+    """A PersonalConstraintOverride produces a 'personal_constraint_override' event."""
+    overrider = create_soldier(admin_session, personal_number=f"99{_uid()}", role="commander")
+    c = PersonalConstraint(
+        soldier_id=soldier.id,
+        start_date=date(2026, 6, 20),
+        end_date=date(2026, 6, 21),
+        reason="אירוע משפחתי",
+        status="approved",
+    )
+    admin_session.add(c)
+    admin_session.flush()
+    o = PersonalConstraintOverride(
+        personal_constraint_id=c.id,
+        soldier_id=soldier.id,
+        overridden_by=overrider.id,
+        assignment_kind="range",
+        reference_id=c.id,
+        reason="צורך מבצעי",
+    )
+    admin_session.add(o)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id, include_sensitive=True)
+    override_events = [e for e in events if e.event_type == "personal_constraint_override"]
+
+    assert len(override_events) == 1
+    ev = override_events[0]
+    assert ev.description == "צורך מבצעי"
+    assert ev.metadata["overridden_by_name"] == overrider.full_name
+
+
+def test_constraint_override_reason_hidden_when_not_sensitive(admin_session, soldier):
+    """A viewer without private-info visibility must not see the override's
+    reason or overrider name via duty history."""
+    overrider = create_soldier(admin_session, personal_number=f"99{_uid()}", role="commander")
+    c = PersonalConstraint(
+        soldier_id=soldier.id,
+        start_date=date(2026, 6, 20),
+        end_date=date(2026, 6, 21),
+        reason="אירוע משפחתי",
+        status="approved",
+    )
+    admin_session.add(c)
+    admin_session.flush()
+    o = PersonalConstraintOverride(
+        personal_constraint_id=c.id,
+        soldier_id=soldier.id,
+        overridden_by=overrider.id,
+        assignment_kind="duty",
+        reference_id=c.id,
+        reason="צורך מבצעי",
+    )
+    admin_session.add(o)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id, include_sensitive=False)
+    override_events = [e for e in events if e.event_type == "personal_constraint_override"]
+
+    assert len(override_events) == 1
+    ev = override_events[0]
+    assert ev.description is None
+    assert ev.metadata == {}
 
 
 def test_sorted_descending(admin_session, soldier, duty_type, location):

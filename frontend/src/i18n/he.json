@@ -1174,6 +1174,7 @@
     "filter_exemptions": "פטורים",
     "filter_exemption_requests": "בקשות פטור",
     "filter_constraints": "אילוצים אישיים",
+    "filter_constraint_overrides": "עקיפת אילוץ אישי",
     "filter_ranges": "מטווחים",
     "filter_drafts": "טיוטות",
     "empty": "אין אירועים להצגה",
