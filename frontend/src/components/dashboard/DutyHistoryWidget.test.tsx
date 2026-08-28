@@ -109,10 +109,10 @@ describe("DutyHistoryWidget", () => {
 
   it("opens the burden-share breakdown modal when the detail button is clicked", async () => {
     renderWidget({ burdenShare: share(), burdenShareBreakdown: breakdown, soldierName: "דני כהן" });
-    expect(screen.queryByText(/פירוט עומס רבעוני/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/פירוט חישוב חלק בנטל/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByText("הצג פירוט חישוב"));
-    expect(screen.getByText(/פירוט עומס רבעוני — דני כהן/)).toBeInTheDocument();
+    expect(screen.getByText(/פירוט חישוב חלק בנטל — דני כהן/)).toBeInTheDocument();
   });
 
   it("renders the burden-share trend chart when breakdown quarters exist", () => {
