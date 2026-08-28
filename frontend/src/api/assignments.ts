@@ -48,6 +48,14 @@ export async function createAssignment(input: {
   return (await api.post<Assignment>(`/assignments`, input)).data;
 }
 
+export interface PersonalConstraintWarning {
+  reason: string;
+  start_date: string;
+  end_date: string;
+  decided_by: string | null;
+  decided_at: string | null;
+}
+
 export interface ShiftCandidate {
   soldier_id: string;
   full_name: string;
@@ -57,6 +65,7 @@ export interface ShiftCandidate {
   blocked_reason: "constraint" | "assignment" | "ineligible" | null;
   weapon_warning: boolean;
   hierarchy_path_ids: string[];
+  personal_constraint_warning: PersonalConstraintWarning | null;
 }
 
 export async function getShiftCandidates(shiftId: string): Promise<ShiftCandidate[]> {
