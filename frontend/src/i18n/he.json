@@ -1248,6 +1248,7 @@
     "type_exemption_rejected": "פטור נדחה",
     "type_constraint_approved": "אילוץ אושר",
     "type_constraint_rejected": "אילוץ נדחה",
+    "type_personal_constraint_overridden": "אילוץ אישי נדרס",
     "type_assignment_created": "תורנות חדשה",
     "type_assignment_removed": "תורנות בוטלה",
     "type_score_adjusted": "ניקוד עודכן",

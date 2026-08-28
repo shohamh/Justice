@@ -168,7 +168,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   function saveSelection() {
     if (!editable || saving || totalSelected === 0) return;
     const selectedIds = new Set([...primarySelected, ...reserveSelected]);
-    const hasConflictWarning = rangeCandidates.some(c => selectedIds.has(c.soldier_id) && c.conflict_warning);
+    const hasConflictWarning = rangeCandidates.some(c => selectedIds.has(c.soldier_id) && c.personal_constraint_conflict === true);
     if (hasConflictWarning) {
       setPendingOverride({ primaries: [...primarySelected], reserves: [...reserveSelected] });
       return;

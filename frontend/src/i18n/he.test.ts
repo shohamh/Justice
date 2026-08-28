@@ -25,6 +25,7 @@ const NOTIFICATION_TYPES = [
   "bug_report_comment", "weapon_ineligible_detected", "range_covers_duty_info",
   "range_absence_reported_to_commander", "range_attendance_corrected_to_present",
   "rank_advanced", "rank_advancement_soon", "mitvahim_expiring_soon", "mitvahim_expired", "alal_expiring_soon", "alal_expired",
+  "personal_constraint_overridden",
 ];
 
 describe("he.json notification type coverage", () => {

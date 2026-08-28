@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Props {
   open: boolean;
@@ -9,6 +9,13 @@ interface Props {
 
 export default function OverrideReasonModal({ open, count, onCancel, onConfirm }: Props) {
   const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setReason("");
+    }
+  }, [open]);
+
   if (!open) return null;
 
   return (

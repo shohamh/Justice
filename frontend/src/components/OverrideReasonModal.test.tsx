@@ -16,4 +16,20 @@ describe("OverrideReasonModal", () => {
     fireEvent.click(confirmButton);
     expect(onConfirm).toHaveBeenCalledWith("צורך מבצעי");
   });
+
+  it("clears a previously-typed reason when closed and reopened, so a stale reason can't leak to a different action", () => {
+    const onConfirm = vi.fn();
+    const { rerender } = render(
+      <OverrideReasonModal open count={1} onCancel={() => {}} onConfirm={onConfirm} />
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "נימוק ישן" } });
+    expect(screen.getByRole("textbox")).toHaveValue("נימוק ישן");
+
+    rerender(<OverrideReasonModal open={false} count={1} onCancel={() => {}} onConfirm={onConfirm} />);
+    rerender(<OverrideReasonModal open count={1} onCancel={() => {}} onConfirm={onConfirm} />);
+
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    expect(screen.getByRole("button", { name: /אישור/ })).toBeDisabled();
+  });
 });

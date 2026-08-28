@@ -625,6 +625,7 @@ class RangeCandidateOut(BaseModel):
     reason_code: str
     explanation: str
     conflict_warning: str | None = None
+    personal_constraint_conflict: bool = False
 
 
 class ExcludedSoldierOut(BaseModel):
@@ -659,6 +660,7 @@ def get_range_candidates(
             RangeCandidateOut(
                 soldier_id=c.soldier.id, full_name=c.soldier.full_name, personal_number=c.soldier.personal_number,
                 reason_code=c.reason_code, explanation=c.explanation, conflict_warning=c.conflict_warning,
+                personal_constraint_conflict=c.personal_constraint_conflict,
             )
             for c in ranked
         ],

@@ -123,6 +123,7 @@ class RankedCandidate:
     reason_code: str
     explanation: str
     conflict_warning: str | None
+    personal_constraint_conflict: bool = False
 
 
 @dataclass(frozen=True)
@@ -183,7 +184,7 @@ def _bulk_duty_start_by_soldier(
 def _bulk_eligibility(
     session: Session, *, soldiers: list[Soldier], event: RangeEvent,
     duty_start_by_soldier: dict[tuple[uuid.UUID, bool], date],
-) -> tuple[dict[uuid.UUID, str | None], list[ExcludedSoldier]]:
+) -> tuple[dict[uuid.UUID, str | None], list[ExcludedSoldier], set[uuid.UUID]]:
     """({soldier_id: conflict_warning}, excluded) for soldiers who may appear in
     the candidate list at all. Uses the same eligibility rules as
     range_exemption.is_range_exempt and _validate_and_build_assignment's other
@@ -271,6 +272,7 @@ def _bulk_eligibility(
 
     excluded: list[ExcludedSoldier] = []
     result: dict[uuid.UUID, str | None] = {}
+    constraint_conflict_ids: set[uuid.UUID] = set()
     for soldier in soldiers:
         node = nodes_by_id.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
         structurally_exempt = node is None or not any(
@@ -307,6 +309,7 @@ def _bulk_eligibility(
                 duty, duty_type_name = duty_conflict
                 parts.append(f"משובץ לתורנות '{duty_type_name}' ב-{duty.start_date.strftime('%d.%m.%Y')}")
             result[soldier.id] = " · ".join(parts)
+            constraint_conflict_ids.add(soldier.id)
             continue
 
         # No constraint — keep the existing near-duty-gated duty_conflict warning.
@@ -321,7 +324,7 @@ def _bulk_eligibility(
             continue
         duty, duty_type_name = duty_conflict
         result[soldier.id] = f"משובץ לתורנות '{duty_type_name}' ב-{duty.start_date.strftime('%d.%m.%Y')}"
-    return result, excluded
+    return result, excluded, constraint_conflict_ids
 
 
 def _bulk_rank(
@@ -388,7 +391,7 @@ def rank_candidates_with_excluded(
         return [], []
 
     duty_start_by_soldier = _bulk_duty_start_by_soldier(session, soldier_ids=[s.id for s in soldiers])
-    eligibility, excluded = _bulk_eligibility(
+    eligibility, excluded, constraint_conflict_ids = _bulk_eligibility(
         session, soldiers=soldiers, event=event, duty_start_by_soldier=duty_start_by_soldier,
     )
     eligible_soldiers = [s for s in soldiers if s.id in eligibility]
@@ -401,6 +404,7 @@ def rank_candidates_with_excluded(
         RankedCandidate(
             soldier=soldier, reason_code=ranks[soldier.id][1], explanation=ranks[soldier.id][2],
             conflict_warning=eligibility[soldier.id],
+            personal_constraint_conflict=soldier.id in constraint_conflict_ids,
         )
         for soldier in eligible_soldiers
     ]

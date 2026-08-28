@@ -314,3 +314,36 @@ def test_constraint_becomes_warning_when_override_allowed(admin_session):
         "decided_by": None,
         "decided_at": c.decided_at,
     }
+
+
+def test_multiple_overlapping_constraints_does_not_raise_and_blocks(admin_session):
+    """Nothing in the submit/approval flow prevents a soldier from ending up with
+    two overlapping approved PersonalConstraint rows. check_soldier_for_assignment
+    must tolerate that data state (not raise sqlalchemy.exc.MultipleResultsFound)
+    regardless of allow_constraint_override."""
+    from app.services.eligibility import check_soldier_for_assignment
+
+    soldier, _dt, _loc, a = _constraint_base(admin_session)
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 9), date(2026, 8, 12))
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 10), date(2026, 8, 11))
+
+    eligible, reason, warning = check_soldier_for_assignment(admin_session, soldier.id, a.id)
+    assert eligible is False
+    assert reason == "אילוץ אישי מאושר בתאריך זה"
+    assert warning is None
+
+
+def test_multiple_overlapping_constraints_does_not_raise_with_override_allowed(admin_session):
+    from app.services.eligibility import check_soldier_for_assignment
+
+    soldier, _dt, _loc, a = _constraint_base(admin_session)
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 9), date(2026, 8, 12))
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 10), date(2026, 8, 11))
+
+    eligible, reason, warning = check_soldier_for_assignment(
+        admin_session, soldier.id, a.id, allow_constraint_override=True,
+    )
+    assert eligible is True
+    assert reason is None
+    assert warning is not None
+    assert warning["reason"] == "r"

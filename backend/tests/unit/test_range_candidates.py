@@ -206,6 +206,7 @@ def test_constrained_soldier_with_no_urgent_duty_gets_unconditional_warning_when
     assert mine.conflict_warning == (
         f"אילוץ מאושר {constraint_start.strftime('%d.%m.%Y')}–{constraint_end.strftime('%d.%m.%Y')}"
     )
+    assert mine.personal_constraint_conflict is True
 
 
 def test_constrained_soldier_hard_excluded_when_override_disallowed(app_session: Session) -> None:
@@ -320,6 +321,10 @@ def test_keeps_soldier_on_duty_that_day_with_urgent_upcoming_duty_and_shows_conf
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.conflict_warning == f"משובץ לתורנות 'שמירה' ב-{event_date.strftime('%d.%m.%Y')}"
+    # This warning is a plain duty-conflict notice, not an overridable personal
+    # constraint — there is no PersonalConstraint row here, so the frontend must
+    # not offer (and the backend must not honor) an override-reason flow for it.
+    assert mine.personal_constraint_conflict is False
 
 
 def test_constrained_soldier_gets_warning_regardless_of_duty_window(app_session: Session) -> None:

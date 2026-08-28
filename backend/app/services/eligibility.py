@@ -300,7 +300,7 @@ def check_soldier_for_assignment(
             PersonalConstraint.start_date < assignment.end_date,
             PersonalConstraint.end_date >= assignment.start_date,
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
     if constraint is not None:
         if not allow_constraint_override:
             return False, "אילוץ אישי מאושר בתאריך זה", None
