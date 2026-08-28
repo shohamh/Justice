@@ -193,7 +193,7 @@ def create_assignment(
             PersonalConstraint.start_date < end_date,
             PersonalConstraint.end_date >= start_date,
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
     if constraint is not None:
         if not manual_override_allowed(session):
             raise AssignmentError("personal_constraint_blocked")
