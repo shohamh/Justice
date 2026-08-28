@@ -40,6 +40,7 @@ const constraint = {
   decided_at: null,
   decision_note: null,
   created_at: "2026-01-01",
+  crossed_holidays: [],
 } as constraintsApi.PersonalConstraint;
 
 const exemptionRequest = {
@@ -209,6 +210,7 @@ describe("MyRequestsPage - existing-tab groups", () => {
         updated_at: "2026-06-19T00:00:00Z", decided_at: "2026-06-19T00:00:00Z",
         decision_note: "כבר לא נדרש", created_at: "2026-06-01T00:00:00Z",
         nearest_commander: null, nearest_duty_manager: null, can_approve: false, can_cancel: false,
+        crossed_holidays: [],
       },
     ]);
     renderPage();

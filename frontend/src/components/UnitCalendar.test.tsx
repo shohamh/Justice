@@ -107,6 +107,7 @@ function shift(
       range_eligibility: null,
       ...assigneeOverrides,
     }],
+    crossed_holidays: [],
   };
 }
 
@@ -157,6 +158,7 @@ function shiftWithPlannedRangeAssignee(id: string): CalendarShift {
         last_qualification_date: null,
       },
     }],
+    crossed_holidays: [],
   };
 }
 
