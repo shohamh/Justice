@@ -64,6 +64,7 @@ export default function ProfilePage() {
   const [licenseExpiryReq, setLicenseExpiryReq] = useState("");
   const [foodTypeReq, setFoodTypeReq] = useState("");
   const [foodConstraintsReq, setFoodConstraintsReq] = useState("");
+  const [showFoodConstraintsHelp, setShowFoodConstraintsHelp] = useState(false);
   const [emailReq, setEmailReq] = useState(user?.email ?? "");
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
@@ -537,12 +538,15 @@ export default function ProfilePage() {
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             <label className="w-40 shrink-0 flex items-center gap-1">
               {t("soldier_profile.food_constraints")}
-              <span
-                className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-400 text-[10px] text-gray-400 cursor-help"
-                title={t("soldier_profile.food_constraints_help")}
+              <button
+                type="button"
+                data-testid="food-constraints-help-toggle"
+                onClick={() => setShowFoodConstraintsHelp(v => !v)}
+                className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-400 text-[10px] text-gray-400 hover:border-indigo-500 hover:text-indigo-600"
+                aria-label={t("soldier_profile.food_constraints_help")}
               >
                 ?
-              </span>
+              </button>
             </label>
             <input
               type="text"
@@ -561,6 +565,11 @@ export default function ProfilePage() {
               {t("soldier_profile.submit_update")}
             </button>
           </div>
+          {showFoodConstraintsHelp && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 sm:mr-40">
+              {t("soldier_profile.food_constraints_help")}
+            </p>
+          )}
           <div className="space-y-1">
             <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <label className="w-full sm:w-40 shrink-0">{t("profile.email")}</label>

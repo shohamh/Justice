@@ -187,6 +187,30 @@ describe("ProfilePage unified service-details form", () => {
     fireEvent.change(phoneInput, { target: { value: "050-1234567" } });
     await waitFor(() => expect(submitButtons[2]).toBeEnabled());
   });
+
+  it("reveals the food-constraints explanation when its help icon is clicked", async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "u1", full_name: "חייל", role: "soldier", is_commander: false,
+        is_duty_manager: false, email: null, email_verified: false,
+        gender: null, rank: null, rank_track: null, phone: null,
+        last_mitvahim_date: null, last_alal_date: null,
+        mandatory_end_date: null, discharge_date: null,
+        has_military_driving_license: false, military_driving_license_expiry: null,
+      },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    renderProfilePage();
+
+    await screen.findByTestId("food-constraints-input");
+    expect(screen.queryByText("soldier_profile.food_constraints_help")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("food-constraints-help-toggle"));
+    expect(screen.getByText("soldier_profile.food_constraints_help")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("food-constraints-help-toggle"));
+    expect(screen.queryByText("soldier_profile.food_constraints_help")).not.toBeInTheDocument();
+  });
 });
 
 describe("ProfilePage profile refresh", () => {
