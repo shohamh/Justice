@@ -680,7 +680,7 @@ class ShiftCandidateOut(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
     personal_number: str
-    score_per_day: float
+    burden_share: float
     blocked: bool
     blocked_reason: str | None = None
     weapon_warning: bool = False
@@ -693,7 +693,7 @@ def get_shift_candidates(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftCandidateOut]:
-    """Return eligible soldiers for a shift, sorted by score-per-day ascending. Blocked soldiers (conflict/constraint) appear at end."""
+    """Return eligible soldiers for a shift, sorted by burden-share ascending. Blocked soldiers (conflict/constraint) appear at end."""
     shift = _load(session, shift_id)
     authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
 
@@ -757,6 +757,11 @@ def get_shift_candidates(
         session, as_of=shift.start_date, soldier_ids=candidate_soldier_ids
     )
 
+    from app.services.scoring import burden_shares_by_soldier
+
+    candidate_soldiers = [soldier_map[si.id] for si in soldier_inputs if si.id in soldier_map]
+    burden_share_by_id = burden_shares_by_soldier(session, candidate_soldiers)
+
     weapon_ineligible: dict[uuid.UUID, set[uuid.UUID]] = {}
     if required_range_type is not None:
         from app.algorithm.types import DutyBlock
@@ -797,7 +802,7 @@ def get_shift_candidates(
         elif si.id in blocked_by_assignment:
             blocked_reason = "assignment"
 
-        score_per_day = float(si.cumulative_score) / float(si.active_days)
+        burden_share = burden_share_by_id.get(si.id, 0.0)
 
         weapon_warning = synthetic_block.id in weapon_ineligible.get(si.id, set()) if required_range_type is not None else False
 
@@ -807,14 +812,14 @@ def get_shift_candidates(
             soldier_id=si.id,
             full_name=soldier.full_name,
             personal_number=soldier.personal_number,
-            score_per_day=round(score_per_day, 3),
+            burden_share=round(burden_share, 3),
             blocked=blocked,
             blocked_reason=blocked_reason,
             weapon_warning=weapon_warning,
             hierarchy_path_ids=path_ids,
         ))
 
-    result.sort(key=lambda x: (x.blocked, x.weapon_warning, x.score_per_day))
+    result.sort(key=lambda x: (x.blocked, x.weapon_warning, x.burden_share))
     return result
 
 
