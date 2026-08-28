@@ -2,6 +2,7 @@ import { useState } from "react";
 import { InlineMath } from "react-katex";
 import type { BurdenShareBreakdown } from "../api/scoring";
 import { formatDate } from "../utils/formatDate";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   soldierName: string;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function BurdenShareBreakdownModal({ soldierName, breakdown, onClose }: Props) {
+  useModalBackClose(onClose);
   const [openQuarterInfo, setOpenQuarterInfo] = useState<string | null>(null);
 
   return (
@@ -25,7 +27,7 @@ export default function BurdenShareBreakdownModal({ soldierName, breakdown, onCl
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-700">
           <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-            📊 פירוט עומס רבעוני — {soldierName}
+            📊 פירוט חישוב חלק בנטל — {soldierName}
           </h2>
           <button
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
@@ -270,7 +272,7 @@ export default function BurdenShareBreakdownModal({ soldierName, breakdown, onCl
                     </div>
                   </div>
                   <div className="mt-2 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5"><InlineMath math="\text{עומס} = \dfrac{A}{W}" /></p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5"><InlineMath math="\text{חלק בנטל} = \dfrac{A}{W}" /></p>
                     <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums">
                       <InlineMath math={`\\dfrac{${A.toFixed(3)}}{${W.toFixed(3)}} = ${(effort * 100).toFixed(2)}\\%`} />
                     </p>
@@ -283,7 +285,7 @@ export default function BurdenShareBreakdownModal({ soldierName, breakdown, onCl
 
         {/* Footer */}
         <div className="px-5 py-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between text-sm">
-          <span className="text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>
+          <span className="text-gray-500 dark:text-gray-400">חלק בנטל מצטבר:</span>
           <span className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
             {(parseFloat(breakdown.burden_share) * 100).toFixed(2)}%
           </span>
