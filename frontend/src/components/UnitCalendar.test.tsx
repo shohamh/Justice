@@ -29,11 +29,16 @@ vi.mock("../api/calendarData", () => ({
   loadCalendarData: vi.fn(),
 }));
 
+vi.mock("../api/calendarHolidays", () => ({
+  listHolidays: vi.fn().mockResolvedValue([{ date: "2026-09-12", name: "Rosh Hashanah" }]),
+}));
+
 vi.mock("@fullcalendar/react", () => ({
-  default: ({ datesSet, events, eventContent }: {
+  default: ({ datesSet, events, eventContent, dayCellClassNames }: {
     datesSet: (arg: unknown) => void;
     events: Array<{ id: string; title: string; classNames: string[]; extendedProps?: Record<string, unknown> }>;
     eventContent?: (arg: { event: { extendedProps: Record<string, unknown> } }) => ReactNode;
+    dayCellClassNames?: (arg: { date: Date }) => string[];
   }) => (
     <div>
       <button
@@ -56,6 +61,14 @@ vi.mock("@fullcalendar/react", () => ({
       >
         set next dates
       </button>
+      {["2026-08-01", "2026-09-12"].map((iso) => (
+        <div
+          key={iso}
+          data-testid={`day-cell-${iso}`}
+          data-date={iso}
+          className={(dayCellClassNames?.({ date: new Date(`${iso}T00:00:00Z`) }) ?? []).join(" ")}
+        />
+      ))}
       {events.map((event) => (
         <button key={event.id} data-testid={`calendar-event-${event.id}`} className={event.classNames.join(" ")}>
           {event.title}
@@ -281,3 +294,36 @@ vi.mock('../api/ranges', () => ({
 vi.mock('../api/dutyConfig', () => ({
   listDutyTypes: vi.fn(() => Promise.resolve([])),
 }));
+
+describe("UnitCalendar holidays", () => {
+  afterEach(() => {
+    vi.mocked(useAuth).mockReturnValue({ user: null } as ReturnType<typeof useAuth>);
+  });
+
+  test("applies a holiday day-cell class to a known holiday date", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await waitFor(() => {
+      const cell = document.querySelector('[data-date="2026-09-12"]');
+      expect(cell?.className).toMatch(/holiday-day-cell/);
+    });
+  });
+
+  test("shows a holiday badge on a shift event that crosses a holiday", async () => {
+    const testShift: CalendarShift = {
+      ...shift("holiday-shift", "guard", false),
+      crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }],
+    };
+    loadCalendarWith([testShift]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`shift-holiday-badge-${testShift.id}`)).toBeInTheDocument();
+    });
+  });
+});
