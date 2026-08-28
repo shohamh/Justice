@@ -21,6 +21,7 @@ import { canApprove } from "../auth/permissions";
 import { formatDate, formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
+import EventDetailModal from "./planning/EventDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
 import { shiftToCalendarEvent, shiftSpansMultipleDays, shiftEdgeLabels } from "../utils/shiftCalendarEvent";
 import CheckboxListDropdown from "./CheckboxListDropdown";
@@ -73,6 +74,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
   const [selectedRangeId, setSelectedRangeId] = useState<string | null>(null);
+  const [selectedHoliday, setSelectedHoliday] = useState<{ date: string; name: string } | null>(null);
   // null means "no manual selection yet" — everything currently known is
   // treated as selected. Once the user touches the dropdown, this becomes a
   // concrete array reflecting exactly what's checked, including an empty
@@ -208,6 +210,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
       const event = shiftToCalendarEvent(shift);
       return {
         ...event,
+        holidayOrder: 1,
         classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES, ...event.classNames],
       };
     }),
@@ -223,6 +226,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
         start: hasTime ? `${r.date}T${r.start_time}` : r.date,
         end: hasTime ? `${r.date}T${r.end_time}` : r.date,
         allDay: !hasTime,
+        holidayOrder: 1,
         backgroundColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
         borderColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
         classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES],
@@ -252,9 +256,16 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
 
   function handleDateClick() {
     setSelectedShift(null);
+    setSelectedHoliday(null);
   }
 
   function handleEventClick(arg: EventClickArg) {
+    const holidayDate = arg.event.extendedProps.holidayDate as string | undefined;
+    const holidayName = arg.event.extendedProps.holidayName as string | undefined;
+    if (holidayDate && holidayName) {
+      setSelectedHoliday({ date: holidayDate, name: holidayName });
+      return;
+    }
     const rangeId = arg.event.extendedProps.rangeId as string | undefined;
     if (rangeId) {
       setSelectedRangeId(rangeId);
@@ -463,6 +474,21 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
 
       {selectedRangeId && (
         <RangeDetailModal rangeId={selectedRangeId} onClose={() => setSelectedRangeId(null)} />
+      )}
+
+      {selectedHoliday && (
+        <EventDetailModal
+          open
+          title={<><span aria-hidden="true">✡️</span> {selectedHoliday.name}</>}
+          subtitle={formatDate(selectedHoliday.date)}
+          onClose={() => setSelectedHoliday(null)}
+          metadata={[{ label: "תאריך", value: formatDate(selectedHoliday.date) }]}
+        >
+          <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="font-semibold">{selectedHoliday.name}</p>
+            <p>{formatDate(selectedHoliday.date)}</p>
+          </div>
+        </EventDetailModal>
       )}
     </div>
   );

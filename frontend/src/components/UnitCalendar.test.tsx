@@ -34,11 +34,12 @@ vi.mock("../api/calendarHolidays", () => ({
 }));
 
 vi.mock("@fullcalendar/react", () => ({
-  default: ({ datesSet, events, eventContent, dayCellClassNames }: {
+  default: ({ datesSet, events, eventContent, dayCellClassNames, eventClick }: {
     datesSet: (arg: unknown) => void;
     events: Array<{ id: string; title: string; classNames: string[]; extendedProps?: Record<string, unknown> }>;
     eventContent?: (arg: { event: { extendedProps: Record<string, unknown> } }) => ReactNode;
     dayCellClassNames?: (arg: { date: Date }) => string[];
+    eventClick?: (arg: { event: { extendedProps: Record<string, unknown>; title: string; start: Date } }) => void;
   }) => (
     <div>
       <button
@@ -77,7 +78,12 @@ vi.mock("@fullcalendar/react", () => ({
         );
       })}
       {events.map((event) => (
-        <button key={event.id} data-testid={`calendar-event-${event.id}`} className={event.classNames.join(" ")}>
+        <button
+          key={event.id}
+          data-testid={`calendar-event-${event.id}`}
+          className={event.classNames.join(" ")}
+          onClick={() => eventClick?.({ event: { extendedProps: event.extendedProps ?? {}, title: event.title, start: new Date(`${event.id.slice(-10)}T00:00:00`) } })}
+        >
           {event.title}
           {eventContent && eventContent({ event: { extendedProps: event.extendedProps ?? {} } })}
         </button>
@@ -360,5 +366,17 @@ describe("UnitCalendar holidays", () => {
 
     fireEvent.click(screen.getByLabelText("unit_calendar.show_holidays"));
     expect(await screen.findByTestId("calendar-event-holiday-2026-09-12")).toBeInTheDocument();
+  });
+
+  test("opens holiday details when the holiday event is clicked", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    const holidayEvent = await screen.findByTestId("calendar-event-holiday-2026-09-12");
+    fireEvent.click(holidayEvent);
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Rosh Hashanah");
+    expect(screen.getByRole("dialog")).toHaveTextContent("12.09.2026");
   });
 });
