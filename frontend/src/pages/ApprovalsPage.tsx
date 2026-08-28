@@ -48,6 +48,7 @@ import {
   rejectTransferRequest,
 } from "../api/hierarchyTransfers";
 import { DaysBadge } from "../components/DaysBadge";
+import HolidayBadge from "../components/HolidayBadge";
 import i18n from "../i18n";
 import { translateApiError } from "../utils/translateApiError";
 import { usePagePagination } from "../hooks/usePagePagination";
@@ -571,6 +572,7 @@ export default function ApprovalsPage() {
                   <p className="text-sm flex items-center gap-2" dir="ltr">
                     <span>{c.start_date} → {c.end_date ?? "—"}</span>
                     <DaysBadge start={c.start_date} end={c.end_date} />
+                    <HolidayBadge holidays={c.crossed_holidays} />
                   </p>
                   <p className="text-xs text-gray-500 mb-2">{c.reason ?? "מידע פרטי"}</p>
                   <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap mb-2">

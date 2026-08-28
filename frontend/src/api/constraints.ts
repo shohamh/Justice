@@ -22,6 +22,7 @@ export interface PersonalConstraint {
   nearest_duty_manager: { id: string; name: string } | null;
   can_approve: boolean;
   can_cancel?: boolean;
+  crossed_holidays: { date: string; name: string }[];
 }
 
 export async function listMyConstraints(): Promise<PersonalConstraint[]> {

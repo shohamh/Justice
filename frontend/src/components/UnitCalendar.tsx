@@ -11,6 +11,7 @@ import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalendarShift, getCalendarShifts } from "../api/calendar";
 import { loadCalendarData } from "../api/calendarData";
+import { listHolidays } from "../api/calendarHolidays";
 import { RangeEvent, getRanges, getMyRanges } from "../api/ranges";
 import { listDutyTypes } from "../api/dutyConfig";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
@@ -80,8 +81,10 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
   const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
+  const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
+  const fetchedHolidayYearsRef = useRef<Set<number>>(new Set());
 
   const fetchData = useCallback(async (from: string, to: string) => {
     if (!nodeId && !soldierId) return;
@@ -139,6 +142,28 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
     if (prev && prev.from === from && prev.to === to) return;
     dateRangeRef.current = { from, to };
     fetchData(from, to);
+
+    const fromYear = arg.start.getFullYear();
+    const toYear = arg.end.getFullYear();
+    const yearsToFetch: number[] = [];
+    for (let y = fromYear; y <= toYear; y++) {
+      if (!fetchedHolidayYearsRef.current.has(y)) yearsToFetch.push(y);
+    }
+    if (yearsToFetch.length === 0) return;
+    yearsToFetch.forEach((y) => fetchedHolidayYearsRef.current.add(y));
+    Promise.all(yearsToFetch.map((y) => listHolidays(y)))
+      .then((results) => {
+        setHolidaysByDate((prevMap) => {
+          const next = new Map(prevMap);
+          results.flat().forEach((h) => next.set(h.date, h.name));
+          return next;
+        });
+      })
+      .catch(() => {
+        // Holiday shading is purely informational — a failed fetch just means
+        // no shading this time, not an error state for the whole calendar.
+        yearsToFetch.forEach((y) => fetchedHolidayYearsRef.current.delete(y));
+      });
   }
 
   const dutyTypesInView = useMemo(() => {
@@ -261,6 +286,10 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
           dateClick={handleDateClick}
           eventClick={handleEventClick}
           datesSet={handleDatesSet}
+          dayCellClassNames={(arg) => {
+            const iso = `${arg.date.getFullYear()}-${String(arg.date.getMonth() + 1).padStart(2, "0")}-${String(arg.date.getDate()).padStart(2, "0")}`;
+            return holidaysByDate.has(iso) ? ["holiday-day-cell"] : [];
+          }}
           locales={[heLocale]}
           locale="he"
           height="auto"
@@ -352,6 +381,16 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
                       className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-shrink-0"
                     >
                       ℹ<span className="text-[10px] leading-4">{plannedCoverageAssignees.length}</span>
+                    </span>
+                  )}
+                  {shift.crossed_holidays.length > 0 && (
+                    <span
+                      data-testid={`shift-holiday-badge-${shift.id}`}
+                      aria-label={t("holidays.badge_label", { count: shift.crossed_holidays.length })}
+                      title={shift.crossed_holidays.map((h) => h.name).join(", ")}
+                      className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 text-amber-700 dark:bg-amber-950 dark:text-amber-300 flex-shrink-0"
+                    >
+                      📅<span className="text-[10px] leading-4">{shift.crossed_holidays.length}</span>
                     </span>
                   )}
                   {swapCount > 0 && (

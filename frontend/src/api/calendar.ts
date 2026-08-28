@@ -80,6 +80,7 @@ export interface CalendarShift {
   reserve_count: number;
   assignees: CalendarShiftAssignee[];
   swap_request_count?: number;
+  crossed_holidays: { date: string; name: string }[];
 }
 
 export interface CalendarShiftsResponse {

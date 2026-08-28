@@ -29,11 +29,16 @@ vi.mock("../api/calendarData", () => ({
   loadCalendarData: vi.fn(),
 }));
 
+vi.mock("../api/calendarHolidays", () => ({
+  listHolidays: vi.fn().mockResolvedValue([{ date: "2026-09-12", name: "Rosh Hashanah" }]),
+}));
+
 vi.mock("@fullcalendar/react", () => ({
-  default: ({ datesSet, events, eventContent }: {
+  default: ({ datesSet, events, eventContent, dayCellClassNames }: {
     datesSet: (arg: unknown) => void;
     events: Array<{ id: string; title: string; classNames: string[]; extendedProps?: Record<string, unknown> }>;
     eventContent?: (arg: { event: { extendedProps: Record<string, unknown> } }) => ReactNode;
+    dayCellClassNames?: (arg: { date: Date }) => string[];
   }) => (
     <div>
       <button
@@ -56,6 +61,21 @@ vi.mock("@fullcalendar/react", () => ({
       >
         set next dates
       </button>
+      {["2026-08-01", "2026-09-12"].map((iso) => {
+        const [year, month, day] = iso.split("-").map(Number);
+        // Local-time midnight, matching how FullCalendar's default
+        // timeZone: 'local' mode hands dates to dayCellClassNames — NOT
+        // UTC midnight, which would mask a UTC-conversion bug in timezones
+        // ahead of UTC (e.g. Asia/Jerusalem, this app's primary locale).
+        return (
+          <div
+            key={iso}
+            data-testid={`day-cell-${iso}`}
+            data-date={iso}
+            className={(dayCellClassNames?.({ date: new Date(year, month - 1, day) }) ?? []).join(" ")}
+          />
+        );
+      })}
       {events.map((event) => (
         <button key={event.id} data-testid={`calendar-event-${event.id}`} className={event.classNames.join(" ")}>
           {event.title}
@@ -107,6 +127,7 @@ function shift(
       range_eligibility: null,
       ...assigneeOverrides,
     }],
+    crossed_holidays: [],
   };
 }
 
@@ -157,6 +178,7 @@ function shiftWithPlannedRangeAssignee(id: string): CalendarShift {
         last_qualification_date: null,
       },
     }],
+    crossed_holidays: [],
   };
 }
 
@@ -279,3 +301,36 @@ vi.mock('../api/ranges', () => ({
 vi.mock('../api/dutyConfig', () => ({
   listDutyTypes: vi.fn(() => Promise.resolve([])),
 }));
+
+describe("UnitCalendar holidays", () => {
+  afterEach(() => {
+    vi.mocked(useAuth).mockReturnValue({ user: null } as ReturnType<typeof useAuth>);
+  });
+
+  test("applies a holiday day-cell class to a known holiday date", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await waitFor(() => {
+      const cell = document.querySelector('[data-date="2026-09-12"]');
+      expect(cell?.className).toMatch(/holiday-day-cell/);
+    });
+  });
+
+  test("shows a holiday badge on a shift event that crosses a holiday", async () => {
+    const testShift: CalendarShift = {
+      ...shift("holiday-shift", "guard", false),
+      crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }],
+    };
+    loadCalendarWith([testShift]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`shift-holiday-badge-${testShift.id}`)).toBeInTheDocument();
+    });
+  });
+});

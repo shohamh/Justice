@@ -1,7 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import DateInput from "./DateInput";
+import { listHolidays } from "../api/calendarHolidays";
+
+vi.mock("../api/calendarHolidays", () => ({
+  listHolidays: vi.fn().mockResolvedValue([{ date: "2026-08-15", name: "חג" }]),
+}));
 
 describe("DateInput", () => {
   it("interprets two-digit years with a pivot year of 50", () => {
@@ -172,5 +177,49 @@ describe("DateInput", () => {
   it("hides the built-in clear button when the field is empty", () => {
     render(<DateInput data-testid="date-input" />);
     expect(screen.queryByLabelText("נקה")).not.toBeInTheDocument();
+  });
+
+  it("opens an in-app calendar grid when the calendar button is clicked", () => {
+    render(<DateInput data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+  });
+
+  it("commits the picked date and closes the grid when a day is clicked", () => {
+    const onChange = vi.fn();
+    render(<DateInput value="2026-08-14" onChange={onChange} data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    fireEvent.click(screen.getByRole("button", { name: "15" }));
+    expect(onChange).toHaveBeenLastCalledWith("2026-08-15");
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+
+  it("closes the grid when clicking outside it", () => {
+    render(
+      <div>
+        <DateInput data-testid="date-input" />
+        <button>outside</button>
+      </div>
+    );
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByText("outside"));
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+
+  it("shades holiday days in the grid when showHolidays is set", async () => {
+    render(<DateInput value="2026-08-01" showHolidays data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    await waitFor(() => expect(listHolidays).toHaveBeenCalledWith(2026));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "15" }).className).toMatch(/holiday-date-tile/);
+    });
+  });
+
+  it("does not fetch holidays when showHolidays is not set", () => {
+    vi.mocked(listHolidays).mockClear();
+    render(<DateInput value="2026-08-01" data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    expect(listHolidays).not.toHaveBeenCalled();
   });
 });

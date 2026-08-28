@@ -18,8 +18,84 @@ from app.db.models import (
     SoldierRangeQualification,
     SystemSetting,
 )
+from app.services.duty_config import create_duty_type
 from app.services.settings_loader import set_setting
+from app.services.shifts import create_shift
 from tests.helpers import auth_headers, create_node, create_range_location, create_soldier
+
+
+def _make_duty_type_and_location(session, name_suffix: str):
+    dt = create_duty_type(session, name=f"dt_cal_{name_suffix}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_cal_{name_suffix}")
+    session.add(loc)
+    session.flush()
+    return dt, loc
+
+
+def test_shift_detail_includes_crossed_holidays(client: TestClient, admin_session: Session):
+    dt, loc = _make_duty_type_and_location(admin_session, "1")
+    # end_date is EXCLUSIVE: this shift covers 2026-09-11 only, the day
+    # before Rosh Hashanah (2026-09-12) — so it should cross zero holidays.
+    shift = create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 11), end_date=date(2026, 9, 12),
+    )
+    admin_session.commit()
+    s = create_soldier(admin_session, personal_number="7500030")
+    r = client.get(f"/api/calendar/shifts/{shift.id}", headers=auth_headers(s))
+    assert r.status_code == 200, r.text
+    assert r.json()["crossed_holidays"] == []
+
+
+def test_shift_detail_includes_crossed_holidays_when_shift_covers_holiday(
+    client: TestClient, admin_session: Session
+):
+    dt, loc = _make_duty_type_and_location(admin_session, "2")
+    # Covers 2026-09-11 through 2026-09-12 inclusive (end_date exclusive of 09-13).
+    shift = create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 11), end_date=date(2026, 9, 13),
+    )
+    admin_session.commit()
+    s = create_soldier(admin_session, personal_number="7500031")
+    r = client.get(f"/api/calendar/shifts/{shift.id}", headers=auth_headers(s))
+    assert r.status_code == 200, r.text
+    dates = [h["date"] for h in r.json()["crossed_holidays"]]
+    assert dates == ["2026-09-12"]
+
+
+def test_calendar_shift_list_includes_crossed_holidays(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="division", name="div_cal1")
+    dt, loc = _make_duty_type_and_location(admin_session, "3")
+    s = create_soldier(admin_session, personal_number="7500032", hierarchy_node_id=node.id)
+    shift = create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 11), end_date=date(2026, 9, 13),
+    )
+    # The list endpoint's hierarchy-scoped view only shows a duty that has an
+    # assignee within the queried subtree (open duties are only shown for a
+    # framework-wide/root query) — so give this shift an assignee in `node`.
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=s.id,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            duty_shift_id=shift.id,
+            start_date=date(2026, 9, 11),
+            end_date=date(2026, 9, 13),
+            status="published",
+        )
+    )
+    admin_session.commit()
+    r = client.get(
+        "/api/calendar/shifts",
+        params={"node_id": str(node.id), "date_from": "2026-09-01", "date_to": "2026-09-30"},
+        headers=auth_headers(s),
+    )
+    assert r.status_code == 200, r.text
+    shifts = r.json()["shifts"]
+    assert len(shifts) == 1
+    assert [h["date"] for h in shifts[0]["crossed_holidays"]] == ["2026-09-12"]
 
 
 def test_calendar_weapon_ineligible_count_is_scoped_unique_and_projects_duty_dates(

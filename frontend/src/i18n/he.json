@@ -1060,6 +1060,11 @@
     "filter_eligible_only": "רק תורנויות שאני כשיר ופנוי",
     "filter_clear": "נקה סינון"
   },
+  "holidays": {
+    "badge_label": "חוצה חג ({{count}})",
+    "calendar_legend": "חגים בטווח:",
+    "crossed_note": "טווח הבקשה חוצה חג/ים: {{names}}"
+  },
   "command_dashboard": {
     "title": "דף מפקד",
     "calendar": "יומן יחידה",

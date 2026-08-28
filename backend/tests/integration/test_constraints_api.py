@@ -282,3 +282,34 @@ def test_pending_list_marks_admins_own_request_as_not_approvable(
     pending_items = client.get("/api/constraints/pending", headers=auth_headers(admin)).json()
     own_row = next(i for i in pending_items if i["id"] == own["id"])
     assert own_row["can_approve"] is False
+
+
+def test_submit_response_includes_crossed_holidays(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7500020")
+    r = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(s),
+        json={
+            # Rosh Hashanah is 2026-09-12 to 2026-09-13 in the IL holiday calendar.
+            "start_date": "2026-09-10",
+            "end_date": "2026-09-14",
+            "reason": "חופשה",
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert len(body["crossed_holidays"]) == 2
+    assert body["crossed_holidays"][0]["date"] == "2026-09-12"
+    assert body["crossed_holidays"][1]["date"] == "2026-09-13"
+    assert body["crossed_holidays"][0]["name"] == body["crossed_holidays"][1]["name"] == "ראש השנה"
+
+
+def test_submit_response_has_empty_crossed_holidays_when_no_holiday_in_range(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7500021")
+    r = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(s),
+        json={"start_date": "2026-08-29", "end_date": "2026-09-11", "reason": "חופשה"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["crossed_holidays"] == []
