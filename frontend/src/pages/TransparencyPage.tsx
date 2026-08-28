@@ -6,6 +6,7 @@ import { isAxiosError } from "axios";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
+import HelpModal from "../components/HelpModal";
 import Combobox from "../components/Combobox";
 import { useAuth } from "../auth/AuthContext";
 import { TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
@@ -295,6 +296,8 @@ export default function TransparencyPage() {
   const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
   const [effortBreakdownFor, setEffortBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
+  const [openQuarterInfo, setOpenQuarterInfo] = useState<string | null>(null);
+  const [showFairnessHelp, setShowFairnessHelp] = useState(false);
 
   const canViewTransparency = user?.can_view_transparency ?? true; // true until /me loads, avoids a flash-then-hide for allowed users
   const transparencyQuery = useQuery({
@@ -338,6 +341,7 @@ export default function TransparencyPage() {
 
   function closeEffortBreakdown() {
     setEffortBreakdownFor(null);
+    setOpenQuarterInfo(null);
   }
 
   // ── flat node list & lookup map ──
@@ -635,7 +639,7 @@ export default function TransparencyPage() {
     },
     {
       id: "effort_score", header: "עומס רבעוני",
-      headerTooltip: "חלקך מסך ניקוד היחידה: Σ(ניקודך × נוכחות) ÷ Σ(ניקוד היחידה × נוכחות). ערך הוגן = 1/N. עולה ומתכנס ככל שמצטברים רבעונות. לחץ לפירוט רבעוני.",
+      onHeaderHelpClick: () => setShowFairnessHelp(true),
       cell: (r) => {
         const n = r.effort_score;
         const label = isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
@@ -731,7 +735,12 @@ export default function TransparencyPage() {
       {
         id: "c_over_d",
         header: "C/D (1/Wᵢ)",
-        headerTooltip: "C_over_D = 1/Wᵢ — משקל הכנסת תורנות חדשה לעומס. חייל חדש → גבוה; ותיק → נמוך.",
+        headerTooltip: (
+          <div className="space-y-1">
+            <p><InlineMath math="\text{C\_over\_D} = 1/W_i" /> — משקל הכנסת תורנות חדשה לעומס.</p>
+            <p>חייל חדש ← גבוה; ותיק ← נמוך.</p>
+          </div>
+        ),
         cell: (r: NumberedRow) => r.c_over_d.toFixed(4),
         sortValue: (r: NumberedRow) => r.c_over_d,
       },
@@ -1165,14 +1174,27 @@ export default function TransparencyPage() {
                           const adjDelta = parseFloat(q.adjustment_delta ?? "0");
                           return (
                             <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
-                              <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
+                              <td className="py-2 text-gray-700 dark:text-gray-300 font-medium relative">
                                 <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
-                                <span
+                                <button
+                                  type="button"
                                   className="mr-1 text-gray-400 dark:text-gray-500 text-xs cursor-help"
                                   title={`${formatDate(q.quarter_start)} – ${formatDate(q.quarter_end)}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenQuarterInfo((prev) => (prev === q.quarter_label ? null : q.quarter_label));
+                                  }}
                                 >
                                   ⓘ
-                                </span>
+                                </button>
+                                {openQuarterInfo === q.quarter_label && (
+                                  <div
+                                    className="absolute z-10 top-full right-0 mt-1 whitespace-nowrap bg-gray-900 text-white text-xs rounded px-2 py-1 shadow-lg"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {formatDate(q.quarter_start)} – {formatDate(q.quarter_end)}
+                                  </div>
+                                )}
                                 {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 text-xs font-normal not-italic">(חלקי)</span>}
                               </td>
                               <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">
@@ -1364,6 +1386,9 @@ export default function TransparencyPage() {
             </div>
           </div>
         </div>
+      )}
+      {showFairnessHelp && (
+        <HelpModal onClose={() => setShowFairnessHelp(false)} initialTab="fairness" />
       )}
     </Layout>
   );

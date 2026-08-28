@@ -12,7 +12,7 @@ import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import CheckboxListDropdown from "./CheckboxListDropdown";
 import { useAuth } from "../auth/AuthContext";
-import { formatDate, lastDutyDay } from "../utils/formatDate";
+import { formatDate, formatDateTimeIsrael, lastDutyDay } from "../utils/formatDate";
 
 // Only "assignment"/"cancellation" events carry DutyAssignment's exclusive end_date;
 // every other event type (dismissal, call_up, exemption, constraint) is already inclusive.
@@ -194,7 +194,7 @@ function EventCard({
             </p>
             {(e.event_type === "assignment" || e.event_type === "call_up") && e.metadata.assigned_by_name && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                שובץ על ידי {e.metadata.assigned_by_name} בתאריך {formatDate(e.created_at)}
+                שובץ על ידי {e.metadata.assigned_by_name} בתאריך {formatDateTimeIsrael(e.created_at)}
               </p>
             )}
             {e.event_type === "range_removed" && e.description && (
