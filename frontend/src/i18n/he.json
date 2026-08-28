@@ -487,6 +487,7 @@
     "duty_detail": "פרטי תורנות",
     "duty_type_filter_label": "סוגי תורנויות",
     "range_filter_label": "סוגי מטווחים",
+    "show_holidays": "הצג חגים ומועדים 🔯",
     "eventWarningBadge": "{{count}} חיילים לא כשירים למטווח",
     "eventInfoBadge": "צפוי לעשות {{rangeType}} ב{{date}}",
     "eventInfoBadgeCount": "{{count}} חיילים צפויים להיות כשירים לאחר מטווח מתוכנן",

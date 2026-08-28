@@ -333,4 +333,32 @@ describe("UnitCalendar holidays", () => {
       expect(screen.getByTestId(`shift-holiday-badge-${testShift.id}`)).toBeInTheDocument();
     });
   });
+
+  test("renders holiday events before duties with the holiday name and special styling", async () => {
+    const testShift = shift("holiday-order-shift", "guard", false);
+    loadCalendarWith([testShift]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    const holidayEvent = await screen.findByTestId("calendar-event-holiday-2026-09-12");
+    expect(holidayEvent).toHaveTextContent("✡️ Rosh Hashanah");
+    expect(holidayEvent.className).toMatch(/holiday-calendar-event/);
+    expect(holidayEvent.className).toMatch(/holiday-sparkle-border/);
+    expect(holidayEvent.compareDocumentPosition(screen.getByTestId(`calendar-event-${testShift.id}`)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test("can hide and show holiday events with the holiday filter", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    await screen.findByTestId("calendar-event-holiday-2026-09-12");
+
+    fireEvent.click(screen.getByLabelText("unit_calendar.show_holidays"));
+    expect(screen.queryByTestId("calendar-event-holiday-2026-09-12")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("unit_calendar.show_holidays"));
+    expect(await screen.findByTestId("calendar-event-holiday-2026-09-12")).toBeInTheDocument();
+  });
 });

@@ -215,6 +215,22 @@ body {
   background-color: rgb(76 29 149 / 0.25); /* violet-900 @ 25% */
 }
 
+.holiday-calendar-event {
+  color: #78350f;
+  background: linear-gradient(135deg, #fde68a, #fbbf24) !important;
+  border-width: 2px !important;
+}
+
+.holiday-sparkle-border {
+  animation: holiday-sparkle 1.8s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgb(245 158 11 / 0.35), 0 0 8px rgb(251 191 36 / 0.7);
+}
+
+@keyframes holiday-sparkle {
+  0%, 100% { box-shadow: 0 0 0 1px rgb(245 158 11 / 0.35), 0 0 5px rgb(251 191 36 / 0.45); }
+  50% { box-shadow: 0 0 0 2px rgb(217 119 6 / 0.8), 0 0 12px rgb(251 191 36 / 0.95); }
+}
+
 .holiday-date-tile {
   background-color: rgb(253 230 138 / 0.5) !important;
 }

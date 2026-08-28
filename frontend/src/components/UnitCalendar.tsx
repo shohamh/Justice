@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, Crosshair } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -80,6 +80,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string[] | null>(null);
   const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
+  const [showHolidays, setShowHolidays] = useState(true);
   const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
   const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
 
@@ -230,7 +231,24 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
     }),
   [filteredRanges]);
 
-  const events = useMemo(() => [...shiftEvents, ...rangeCalEvents], [shiftEvents, rangeCalEvents]);
+  const holidayCalEvents = useMemo(() =>
+    Array.from(holidaysByDate.entries()).map(([date, name]) => ({
+      id: `holiday-${date}`,
+      title: name,
+      start: date,
+      allDay: true,
+      holidayOrder: 0,
+      backgroundColor: "#f59e0b",
+      borderColor: "#b45309",
+      classNames: ["holiday-calendar-event", "holiday-sparkle-border"],
+      extendedProps: { holidayDate: date, holidayName: name },
+    })),
+  [holidaysByDate]);
+
+  const events = useMemo(
+    () => [...(showHolidays ? holidayCalEvents : []), ...shiftEvents, ...rangeCalEvents],
+    [showHolidays, holidayCalEvents, shiftEvents, rangeCalEvents],
+  );
 
   function handleDateClick() {
     setSelectedShift(null);
@@ -258,6 +276,16 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
               triggerLabel={t("unit_calendar.duty_type_filter_label") || "סוגי תורנויות"}
               panelDir="rtl"
             />
+            <label className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showHolidays}
+                onChange={(event) => setShowHolidays(event.target.checked)}
+                className="accent-amber-600"
+                aria-label={t("unit_calendar.show_holidays")}
+              />
+              <span>{t("unit_calendar.show_holidays")}</span>
+            </label>
           {rangesEnabled && (
             <CheckboxListDropdown
               items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}
@@ -282,6 +310,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
           initialView="dayGridMonth"
           firstDay={0}
           eventDisplay="block"
+          eventOrder="holidayOrder,start,title"
           events={events}
           dateClick={handleDateClick}
           eventClick={handleEventClick}
@@ -310,6 +339,14 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
             timeGridThreeDay: { type: "timeGrid", duration: { days: 3 }, displayEventTime: true },
           }}
           eventContent={(arg) => {
+            const holidayName = arg.event.extendedProps.holidayName as string | undefined;
+            if (holidayName) {
+              return (
+                <div className="text-xs leading-tight px-1 overflow-hidden w-full font-semibold">
+                  <span aria-hidden="true">✡️</span> {holidayName}
+                </div>
+              );
+            }
             const rangeId = arg.event.extendedProps.rangeId as string | undefined;
             if (rangeId) {
               const range = ranges.find(r => r.id === rangeId);
@@ -317,6 +354,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
               return (
                 <div className="text-xs leading-tight px-1 overflow-hidden w-full">
                   <span className="font-semibold truncate">
+                    <Crosshair size={12} className="inline-block align-text-bottom ml-1" aria-hidden="true" />
                     {RANGE_TYPE_LABELS[range.range_type] ?? range.range_type} — {range.location}
                   </span>
                   <div className="truncate">
