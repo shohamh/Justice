@@ -218,20 +218,25 @@ def check_soldier_for_assignment(
     assignment_id: uuid.UUID,
     *,
     exclude_assignment_id: uuid.UUID | None = None,
-) -> tuple[bool, str | None]:
-    """Return (True, None) if soldier is eligible and available, or (False, Hebrew reason)."""
+    allow_constraint_override: bool = False,
+) -> tuple[bool, str | None, dict | None]:
+    """Return (True, None, None) if eligible and available.
+    Return (False, Hebrew reason, None) if blocked.
+    Return (True, None, constraint_warning) if the only issue is an approved
+    personal constraint AND allow_constraint_override=True — the caller is
+    responsible for collecting an override reason before actually assigning."""
     assignment = session.get(DutyAssignment, assignment_id)
     if assignment is None:
-        return False, "שיבוץ לא נמצא"
+        return False, "שיבוץ לא נמצא", None
 
     soldier = session.get(Soldier, soldier_id)
     if soldier is None:
-        return False, "חייל לא נמצא"
+        return False, "חייל לא נמצא", None
 
     from app.services.rank_eligibility_projection import project_soldier_state
     projected = project_soldier_state(session, soldier=soldier, as_of=assignment.start_date)
     if projected.departed:
-        return False, "החייל סיים שירות עד תאריך זה"
+        return False, "החייל סיים שירות עד תאריך זה", None
     today = assignment.start_date
 
     def _setting_int(key: str, default: int) -> int:
@@ -251,7 +256,7 @@ def check_soldier_for_assignment(
                 alal_months = _setting_int("eligibility.alal_months", 3)
                 if not _is_eligible(soldier, reqs, mitvahim_months=mitvahim_months,
                                     alal_months=alal_months, today=today, rank_override=projected.rank):
-                    return False, "אי-כשירות לסוג תורנות זה"
+                    return False, "אי-כשירות לסוג תורנות זה", None
             except Exception:
                 pass
 
@@ -270,32 +275,43 @@ def check_soldier_for_assignment(
     for ex in exemptions:
         et = session.get(ExemptionType, ex.exemption_type_id)
         if et and et.is_global:
-            return False, "פטור מסוג תורנות זו"
+            return False, "פטור מסוג תורנות זו", None
         dtype_ids = session.execute(
             select(ExemptionDutyTypeMap.duty_type_id).where(
                 ExemptionDutyTypeMap.exemption_type_id == ex.exemption_type_id
             )
         ).scalars().all()
         if assignment.duty_type_id in dtype_ids:
-            return False, "פטור מסוג תורנות זו"
+            return False, "פטור מסוג תורנות זו", None
         loc_ids = session.execute(
             select(ExemptionDutyLocationMap.duty_location_id).where(
                 ExemptionDutyLocationMap.exemption_type_id == ex.exemption_type_id
             )
         ).scalars().all()
         if assignment.duty_location_id in loc_ids:
-            return False, "פטור ממיקום תורנות זה"
+            return False, "פטור ממיקום תורנות זה", None
 
     # 3. Approved personal constraint overlapping the duty date range
-    if session.execute(
+    constraint_warning: dict | None = None
+    constraint = session.execute(
         select(PersonalConstraint).where(
             PersonalConstraint.soldier_id == soldier_id,
             PersonalConstraint.status == "approved",
             PersonalConstraint.start_date < assignment.end_date,
             PersonalConstraint.end_date >= assignment.start_date,
         )
-    ).first() is not None:
-        return False, "אילוץ אישי מאושר בתאריך זה"
+    ).scalar_one_or_none()
+    if constraint is not None:
+        if not allow_constraint_override:
+            return False, "אילוץ אישי מאושר בתאריך זה", None
+        decider = session.get(Soldier, constraint.decided_by) if constraint.decided_by else None
+        constraint_warning = {
+            "reason": constraint.reason,
+            "start_date": constraint.start_date,
+            "end_date": constraint.end_date,
+            "decided_by": decider.full_name if decider else None,
+            "decided_at": constraint.decided_at,
+        }
 
     # 4. Scheduling conflict — existing published assignment for this soldier on these dates
     conflict_q = select(DutyAssignment).where(
@@ -307,6 +323,6 @@ def check_soldier_for_assignment(
     if exclude_assignment_id is not None:
         conflict_q = conflict_q.where(DutyAssignment.id != exclude_assignment_id)
     if session.execute(conflict_q).first() is not None:
-        return False, "שיבוץ קיים בתאריכים אלו"
+        return False, "שיבוץ קיים בתאריכים אלו", None
 
-    return True, None
+    return True, None, constraint_warning

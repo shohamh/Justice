@@ -764,7 +764,7 @@ def test_bulk_future_ineligible_agrees_with_check_soldier_for_assignment(app_ses
         )
         app_session.add(assignment)
         app_session.flush()
-        manual_ok, _reason = check_soldier_for_assignment(app_session, s.id, assignment.id)
+        manual_ok, _reason, _warning = check_soldier_for_assignment(app_session, s.id, assignment.id)
 
         assert manual_ok is expected_eligible, personal_number
         assert bulk_excluded is not expected_eligible, personal_number
