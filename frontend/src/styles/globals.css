@@ -214,3 +214,7 @@ body {
 :is([data-theme="dark"], .dark) .holiday-day-cell {
   background-color: rgb(76 29 149 / 0.25); /* violet-900 @ 25% */
 }
+
+.holiday-date-tile {
+  background-color: rgb(253 230 138 / 0.5) !important;
+}

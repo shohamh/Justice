@@ -326,7 +326,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
             placeholder={t("exemptions.type")}
             testId="grant-type"
           />
-          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(v) => setStart(v)} max={!indefinite && end ? end : undefined} required data-testid="grant-start" />
+          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(v) => setStart(v)} max={!indefinite && end ? end : undefined} required showHolidays data-testid="grant-start" />
           <div className="flex items-center gap-2">
             <DateInput
               className={`border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${indefinite ? "opacity-40 cursor-not-allowed" : ""}`}
@@ -334,6 +334,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
               onChange={(v) => setEnd(v)}
               min={start || undefined}
               disabled={indefinite}
+              showHolidays
               data-testid="grant-end"
             />
             <label className="flex items-center gap-1 text-sm whitespace-nowrap cursor-pointer">
