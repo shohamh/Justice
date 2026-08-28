@@ -40,6 +40,7 @@ _FRONTEND_PATHS: dict[str, str] = {
     "constraint_pending": "/constraints",
     "constraint_approved": "/constraints",
     "constraint_rejected": "/constraints",
+    "personal_constraint_overridden": "/constraints",
     "exemption_request_pending": "/exemption-requests",
     "exemption_approved": "/exemption-requests",
     "exemption_rejected": "/exemption-requests",
@@ -1003,4 +1004,31 @@ def notify_alal_expired(
         title='תוקף האל"ל פג',
         actor_id=actor_id,
         metadata={"expiry_date": expiry_date.isoformat()},
+    )
+
+
+_ASSIGNMENT_KIND_LABEL = {"duty": "תורנות", "range": "מטווח"}
+
+
+def notify_personal_constraint_overridden(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    assignment_kind: str,
+    reason: str,
+    actor_id: uuid.UUID | None,
+) -> None:
+    """Notify the soldier (and, via create_notification's built-in cascade, their
+    commander(s)) that a duty manager overrode their approved personal constraint
+    to manually assign them. One call per overridden soldier, even when the
+    triggering UI action was a shared-reason batch submission."""
+    kind_label = _ASSIGNMENT_KIND_LABEL[assignment_kind]
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.personal_constraint_overridden,
+        title=f"אילוץ אישי נדרס בשיבוץ ל{kind_label}",
+        body=reason,
+        reference_type="personal_constraint",
+        actor_id=actor_id,
     )

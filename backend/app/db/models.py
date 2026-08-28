@@ -1392,6 +1392,7 @@ class NotificationType(str, _enum.Enum):
     exemption_rejected = "exemption_rejected"
     constraint_approved = "constraint_approved"
     constraint_rejected = "constraint_rejected"
+    personal_constraint_overridden = "personal_constraint_overridden"
     assignment_created = "assignment_created"
     assignment_removed = "assignment_removed"
     score_adjusted = "score_adjusted"
