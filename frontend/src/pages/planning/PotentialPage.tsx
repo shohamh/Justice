@@ -12,7 +12,7 @@ import {
   listModifiers,
   createModifier,
   deleteModifier,
-  getEffortGap,
+  getBurdenShareGap,
   PotentialResult,
   SoldierPotentialDetail,
 } from "../../api/potential";
@@ -122,13 +122,13 @@ export default function PotentialPage() {
   });
   const modifiers = useMemo(() => modifiersQuery.data ?? [], [modifiersQuery.data]);
 
-  const effortGapQuery = useQuery({
-    queryKey: queryKeys.effortGapNodes(referenceDate),
-    queryFn: () => getEffortGap(referenceDate),
+  const burdenShareGapQuery = useQuery({
+    queryKey: queryKeys.burdenShareGapNodes(referenceDate),
+    queryFn: () => getBurdenShareGap(referenceDate),
   });
-  const effortGapByNode = useMemo(
-    () => new Map((effortGapQuery.data ?? []).map((r) => [r.node_id, r])),
-    [effortGapQuery.data],
+  const burdenShareGapByNode = useMemo(
+    () => new Map((burdenShareGapQuery.data ?? []).map((r) => [r.node_id, r])),
+    [burdenShareGapQuery.data],
   );
 
   async function handleAddModifier() {
@@ -284,16 +284,16 @@ export default function PotentialPage() {
     {
       id: "sibling_gap",
       header: t("potential.sibling_gap"),
-      cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.sibling_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.sibling_gap ?? null)}</span>,
-      sortValue: (n) => effortGapByNode.get(n.id)?.sibling_gap ?? -1,
-      exportValue: (n) => formatGap(effortGapByNode.get(n.id)?.sibling_gap ?? null),
+      cell: (n) => <span className={gapColor(burdenShareGapByNode.get(n.id)?.sibling_gap ?? null)}>{formatGap(burdenShareGapByNode.get(n.id)?.sibling_gap ?? null)}</span>,
+      sortValue: (n) => burdenShareGapByNode.get(n.id)?.sibling_gap ?? -1,
+      exportValue: (n) => formatGap(burdenShareGapByNode.get(n.id)?.sibling_gap ?? null),
     },
     {
       id: "global_gap",
       header: t("potential.global_gap"),
-      cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.global_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.global_gap ?? null)}</span>,
-      sortValue: (n) => effortGapByNode.get(n.id)?.global_gap ?? -1,
-      exportValue: (n) => formatGap(effortGapByNode.get(n.id)?.global_gap ?? null),
+      cell: (n) => <span className={gapColor(burdenShareGapByNode.get(n.id)?.global_gap ?? null)}>{formatGap(burdenShareGapByNode.get(n.id)?.global_gap ?? null)}</span>,
+      sortValue: (n) => burdenShareGapByNode.get(n.id)?.global_gap ?? -1,
+      exportValue: (n) => formatGap(burdenShareGapByNode.get(n.id)?.global_gap ?? null),
     },
     {
       id: "pct_of_parent",

@@ -55,21 +55,21 @@ export async function deleteModifier(modifierId: string): Promise<void> {
   await api.delete(`/potential/modifiers/${modifierId}`);
 }
 
-export interface NodeEffortPotential {
+export interface NodeBurdenSharePotential {
   node_id: string;
   node_name: string;
   final_potential: number;
-  total_effort: number;
+  total_burden_share: number;
   sibling_potential_share: number | null;
-  sibling_effort_share: number | null;
+  sibling_burden_share: number | null;
   sibling_gap: number | null;
   global_potential_share: number | null;
-  global_effort_share: number | null;
+  global_burden_share: number | null;
   global_gap: number | null;
 }
 
-export async function getEffortGap(referenceDate?: string): Promise<NodeEffortPotential[]> {
-  const r = await api.get<{ nodes: NodeEffortPotential[] }>("/potential/effort-gap", {
+export async function getBurdenShareGap(referenceDate?: string): Promise<NodeBurdenSharePotential[]> {
+  const r = await api.get<{ nodes: NodeBurdenSharePotential[] }>("/potential/burden-share-gap", {
     params: { reference_date: referenceDate },
   });
   return r.data.nodes;

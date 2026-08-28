@@ -21,8 +21,8 @@ export interface AdjustmentPreview {
   cumulative_score_after: string;
   normalised_score_before: string;
   normalised_score_after: string;
-  effort_score_before: string;
-  effort_score_after: string;
+  burden_share_before: string;
+  burden_share_after: string;
 }
 
 export async function previewAdjustment(soldierId: string, delta: string): Promise<AdjustmentPreview> {

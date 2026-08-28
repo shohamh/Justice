@@ -199,15 +199,15 @@ def test_transparency_exemptions_array_empty_when_redacted(client: TestClient, a
     assert row["exemptions"] == []
 
 
-def test_effort_breakdown_403_for_unrelated_plain_soldier(client: TestClient, admin_session: Session):
+def test_burden_share_breakdown_403_for_unrelated_plain_soldier(client: TestClient, admin_session: Session):
     a = create_soldier(admin_session, personal_number="5600050", role="soldier")
     b = create_soldier(admin_session, personal_number="5600051", role="soldier")
-    r = client.get(f"/api/scoring/soldiers/{b.id}/effort-breakdown", headers=auth_headers(a))
+    r = client.get(f"/api/scoring/soldiers/{b.id}/burden-share-breakdown", headers=auth_headers(a))
     assert r.status_code == 403
 
 
-def test_effort_breakdown_exposes_contributions(client: TestClient, admin_session: Session):
-    """The effort-breakdown API must expose the per-quarter traceability line
+def test_burden_share_breakdown_exposes_contributions(client: TestClient, admin_session: Session):
+    """The burden-share-breakdown API must expose the per-quarter traceability line
     items (duty spans + manual adjustments) behind each quarter's score."""
     from datetime import date, datetime
 
@@ -229,7 +229,7 @@ def test_effort_breakdown_exposes_contributions(client: TestClient, admin_sessio
     admin_session.add(adj)
     admin_session.commit()
 
-    r = client.get(f"/api/scoring/soldiers/{s.id}/effort-breakdown", headers=auth_headers(s))
+    r = client.get(f"/api/scoring/soldiers/{s.id}/burden-share-breakdown", headers=auth_headers(s))
     assert r.status_code == 200
     body = r.json()
     q2 = next(q for q in body["quarters"] if q["quarter_label"] == "Q2 2026")

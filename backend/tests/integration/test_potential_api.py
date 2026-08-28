@@ -10,11 +10,11 @@ from app.db.models import DutyType, ExemptionType, SoldierExemption
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
-def test_effort_gap_endpoint_returns_all_nodes(client: TestClient, admin_session: Session):
+def test_burden_share_gap_endpoint_returns_all_nodes(client: TestClient, admin_session: Session):
     node = create_node(admin_session, level="unit", name="Effort Gap API Co")
     admin = create_soldier(admin_session, personal_number="5700001", role="admin")
 
-    resp = client.get("/api/potential/effort-gap", headers=auth_headers(admin))
+    resp = client.get("/api/potential/burden-share-gap", headers=auth_headers(admin))
     assert resp.status_code == 200
     body = resp.json()
     node_ids = {n["node_id"] for n in body["nodes"]}
@@ -24,7 +24,7 @@ def test_effort_gap_endpoint_returns_all_nodes(client: TestClient, admin_session
     assert "global_gap" in entry
 
 
-def test_effort_gap_endpoint_scopes_to_duty_manager(client: TestClient, admin_session: Session):
+def test_burden_share_gap_endpoint_scopes_to_duty_manager(client: TestClient, admin_session: Session):
     in_scope_node = create_node(admin_session, level="unit", name="In Scope Co")
     out_of_scope_node = create_node(admin_session, level="unit", name="Out Of Scope Co")
     dm = create_soldier(
@@ -34,7 +34,7 @@ def test_effort_gap_endpoint_scopes_to_duty_manager(client: TestClient, admin_se
         hierarchy_node_id=in_scope_node.id,
     )
 
-    resp = client.get("/api/potential/effort-gap", headers=auth_headers(dm))
+    resp = client.get("/api/potential/burden-share-gap", headers=auth_headers(dm))
     assert resp.status_code == 200
     body = resp.json()
     node_ids = {n["node_id"] for n in body["nodes"]}

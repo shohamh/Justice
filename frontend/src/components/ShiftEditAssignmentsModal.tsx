@@ -135,7 +135,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
       return {
         unblocked: unblocked
           .slice()
-          .sort((a, b) => a.effort - b.effort)
+          .sort((a, b) => a.score_per_day - b.score_per_day)
           .map(c => ({ ...c, dist: Infinity, coveringNames: [], coveringPrimarySoldierId: null })),
         blocked,
       };
@@ -144,12 +144,12 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
     // Greedy bipartite matching: repeatedly pick the (primary, reserve) pair with
     // the smallest hierarchy distance, assign it, remove both, repeat.
     const remainingPrimaries = [...allPrimariesForMatching];
-    const remainingReserves = unblocked.slice().sort((a, b) => a.effort - b.effort);
+    const remainingReserves = unblocked.slice().sort((a, b) => a.score_per_day - b.score_per_day);
     const matched: ReserveCandidate[] = [];
 
     while (remainingPrimaries.length > 0 && remainingReserves.length > 0) {
       let bestDist = Infinity;
-      let bestEffort = Infinity;
+      let bestScorePerDay = Infinity;
       let bestPrimaryIdx = -1;
       let bestReserveIdx = -1;
 
@@ -159,10 +159,10 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
             remainingReserves[ri].hierarchy_path_ids,
             remainingPrimaries[pi].hierarchy_path_ids,
           );
-          const effort = remainingReserves[ri].effort;
-          if (dist < bestDist || (dist === bestDist && effort < bestEffort)) {
+          const scorePerDay = remainingReserves[ri].score_per_day;
+          if (dist < bestDist || (dist === bestDist && scorePerDay < bestScorePerDay)) {
             bestDist = dist;
-            bestEffort = effort;
+            bestScorePerDay = scorePerDay;
             bestPrimaryIdx = pi;
             bestReserveIdx = ri;
           }
@@ -176,9 +176,9 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
       remainingPrimaries.splice(bestPrimaryIdx, 1);
     }
 
-    // Any leftover reserves (more reserves than primaries) sorted by effort
+    // Any leftover reserves (more reserves than primaries) sorted by score-per-day
     const unmatched: ReserveCandidate[] = remainingReserves
-      .sort((a, b) => a.effort - b.effort)
+      .sort((a, b) => a.score_per_day - b.score_per_day)
       .map(c => ({ ...c, dist: Infinity, coveringNames: [], coveringPrimarySoldierId: null }));
 
     return { unblocked: [...matched, ...unmatched], blocked };
@@ -584,7 +584,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
                 <td className="p-2">{c.full_name}</td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-                <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+                <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
                 <td className="p-2"></td>
               </tr>
             );
@@ -605,7 +605,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
               <td className="p-2"><input type="checkbox" disabled /></td>
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
               <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>
           ))}
@@ -652,7 +652,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
                 <td className="p-2">{c.full_name}</td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-                <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+                <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
                 {showDist && <td className="p-2 text-gray-600 dark:text-gray-300 max-w-[160px]">{c.coveringNames.join(", ") || "–"}</td>}
                 <td className="p-2"></td>
               </tr>
@@ -674,7 +674,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
               <td className="p-2"><input type="checkbox" disabled /></td>
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
               {showDist && <td className="p-2"></td>}
               <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>

@@ -25,7 +25,7 @@ class EffortData:
 
 
 @dataclass
-class EffortQuarterDetail:
+class BurdenShareQuarterDetail:
     """Per-quarter breakdown for a single soldier."""
     quarter_start: date
     quarter_end: date
@@ -39,11 +39,11 @@ class EffortQuarterDetail:
     adjustment_delta: Decimal = field(default_factory=lambda: Decimal("0"))  # sum of manual score adjustments in this quarter
     # Line items explaining how soldier_score was built: the published duty
     # spans credited to this soldier in this quarter plus manual adjustments.
-    contributions: list["EffortContribution"] = field(default_factory=list)
+    contributions: list["BurdenShareContribution"] = field(default_factory=list)
 
 
 @dataclass
-class EffortContribution:
+class BurdenShareContribution:
     """One traceable line item behind a quarter's soldier_score."""
     kind: str                # "duty" or "adjustment"
     label: str               # duty type name / adjustment reason
@@ -69,8 +69,8 @@ def compute_quarter_contributions(
     *,
     soldier_id: uuid.UUID,
     quarters: set[date],
-) -> dict[date, list[EffortContribution]]:
-    """Traceability for the effort breakdown: per calendar-quarter-start, the
+) -> dict[date, list[BurdenShareContribution]]:
+    """Traceability for the burden-share breakdown: per calendar-quarter-start, the
     published duty spans credited to `soldier_id` (via effective-soldier
     resolution — overrides/dismissals included) and the manual score
     adjustments booked to them. Duty scores use exactly the same day-expansion
@@ -107,13 +107,13 @@ def compute_quarter_contributions(
         bucket["weighted_total"] += row["weighted_multiplier"]
         bucket["end"] = row["day"]
 
-    out: dict[date, list[EffortContribution]] = {qs: [] for qs in quarters}
+    out: dict[date, list[BurdenShareContribution]] = {qs: [] for qs in quarters}
     for qs, buckets in grouped.items():
         for (_assignment_id, source, duty_type_id), b in sorted(
             buckets.items(), key=lambda kv: kv[1]["start"]
         ):
             score = dt_scores.get(duty_type_id, Decimal("0")) * b["weighted_total"]
-            out[qs].append(EffortContribution(
+            out[qs].append(BurdenShareContribution(
                 kind="duty",
                 label=dt_names.get(duty_type_id) or "סוג תורנות שנמחק",
                 score=score,
@@ -131,7 +131,7 @@ def compute_quarter_contributions(
         qs = quarter_start(adj.created_at.date())
         if qs not in quarters:
             continue
-        out[qs].append(EffortContribution(
+        out[qs].append(BurdenShareContribution(
             kind="adjustment",
             label=adj.reason or "התאמת ניקוד ידנית",
             score=Decimal(adj.delta),
@@ -140,11 +140,11 @@ def compute_quarter_contributions(
 
 
 @dataclass
-class EffortBreakdown:
+class BurdenShareBreakdown:
     """Full per-quarter breakdown for one soldier, plus the aggregate result."""
-    quarters: list[EffortQuarterDetail] = field(default_factory=list)
-    effort_score: Decimal = Decimal("0")
-    # Raw components: effort_score = A_i / W_i
+    quarters: list[BurdenShareQuarterDetail] = field(default_factory=list)
+    burden_share: Decimal = Decimal("0")
+    # Raw components: burden_share = A_i / W_i
     A_i: Decimal = Decimal("0")   # Σ(s_q × active_frac_q)  — personal weighted score
     W_i: Decimal = Decimal("0")   # Σ(U_q × active_frac_q)  — unit weighted score
 
@@ -409,7 +409,7 @@ def compute_effort_data(
     )
 
 
-def compute_effort_breakdown(
+def compute_burden_share_breakdown(
     session: Session,
     *,
     soldier: Any,   # object with .id (UUID) and .enrolled_at (date)
@@ -418,20 +418,20 @@ def compute_effort_breakdown(
     reset_date: date,
     extra_adj_delta: Decimal = Decimal("0"),
     extra_adj_date: date | None = None,
-) -> EffortBreakdown:
+) -> BurdenShareBreakdown:
     """
-    Compute a full per-quarter effort breakdown for a single soldier.
+    Compute a full per-quarter burden-share breakdown for a single soldier.
 
     Includes manual score adjustments (ScoreAdjustment records) in the calculation.
     Pass extra_adj_delta + extra_adj_date to simulate a hypothetical future adjustment
     (used by the preview endpoint).
 
-    Returns EffortBreakdown with one EffortQuarterDetail per historical quarter
-    (past and future beyond planning window) plus the aggregate effort_score and C_over_D.
+    Returns BurdenShareBreakdown with one BurdenShareQuarterDetail per historical quarter
+    (past and future beyond planning window) plus the aggregate burden_share and C_over_D.
     """
-    from app.services.scoring import _try_projected_effort_breakdown
+    from app.services.scoring import _try_projected_burden_share_breakdown
 
-    projected = _try_projected_effort_breakdown(
+    projected = _try_projected_burden_share_breakdown(
         session,
         soldier=soldier,
         planning_start=planning_start,
@@ -461,13 +461,13 @@ def compute_effort_breakdown(
 
     # Fetch ALL published duties from reset_date onwards (covers past and future),
     # then derive future quarters the SAME way compute_effort_data does, so the
-    # breakdown's quarters and effort_score match the algorithm's exactly.
+    # breakdown's quarters and burden_share match the algorithm's exactly.
     days_data = effective_duty_days(session, date_from=reset_date, date_to=date(2099, 12, 31))
     future_quarters = _build_future_quarters(days_data, planning_end)
     quarters = past_quarters + future_quarters
 
     if not quarters:
-        return EffortBreakdown(quarters=[], effort_score=Decimal("0"), A_i=Decimal("0"), W_i=Decimal("0"))
+        return BurdenShareBreakdown(quarters=[], burden_share=Decimal("0"), A_i=Decimal("0"), W_i=Decimal("0"))
 
     # Fetch duty type scores
     dt_scores: dict[uuid.UUID, Decimal] = {
@@ -519,7 +519,7 @@ def compute_effort_breakdown(
             q_s_map[soldier.id] = q_s_map.get(soldier.id, Decimal("0")) + extra_adj_delta
 
     # Compute per-quarter detail for this soldier
-    quarter_details: list[EffortQuarterDetail] = []
+    quarter_details: list[BurdenShareQuarterDetail] = []
     A_i = Decimal("0")  # Σ(s_q × active_frac_q)
     W_i = Decimal("0")  # Σ(U_q × active_frac_q)
 
@@ -542,7 +542,7 @@ def compute_effort_breakdown(
             W_i += unit_score * active_frac
 
         true_q_end = quarter_end(q_start_d)
-        quarter_details.append(EffortQuarterDetail(
+        quarter_details.append(BurdenShareQuarterDetail(
             quarter_start=q_start_d,
             quarter_end=q_end_d,
             quarter_label=_quarter_label(q_start_d),
@@ -555,7 +555,7 @@ def compute_effort_breakdown(
             adjustment_delta=q_adj_scores.get(q_start_d, Decimal("0")),
         ))
 
-    effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
+    burden_share = A_i / W_i if W_i > Decimal("0") else Decimal("0")
 
     if quarter_details:
         contrib_map = compute_quarter_contributions(
@@ -566,9 +566,9 @@ def compute_effort_breakdown(
         for d in quarter_details:
             d.contributions = contrib_map.get(quarter_start(d.quarter_start), [])
 
-    return EffortBreakdown(
+    return BurdenShareBreakdown(
         quarters=quarter_details,
-        effort_score=effort_score,
+        burden_share=burden_share,
         A_i=A_i,
         W_i=W_i,
     )

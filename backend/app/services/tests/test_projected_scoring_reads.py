@@ -19,7 +19,7 @@ from app.db.models import (
     SoldierScoreProjection,
 )
 from app.services import commander_dashboard, effort_score, score_projection, scoring
-from app.services.effort_score import compute_effort_breakdown
+from app.services.effort_score import compute_burden_share_breakdown
 from app.services.score_projection import backfill_score_projection
 from app.services.tests.test_score_projection import _seed_projection_scenario
 from app.services.settings_loader import set_setting
@@ -67,7 +67,7 @@ def _canonical_breakdown(breakdown) -> dict[str, Any]:
                 }
                 for quarter in breakdown.quarters
             ],
-            "effort_score": breakdown.effort_score,
+            "burden_share": breakdown.burden_share,
             "A_i": breakdown.A_i,
             "W_i": breakdown.W_i,
         }
@@ -125,7 +125,7 @@ def test_transparency_rows_match_legacy_from_projection_without_expanding_duty_d
     assert primary["cumulative_score"] == Decimal("8.700000")
 
 
-def test_fairness_components_use_projected_effort_without_calling_transparency_rows(
+def test_fairness_components_use_projected_burden_share_without_calling_transparency_rows(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
     _scenario, admin = _build_projected_scenario(admin_session)
@@ -144,12 +144,12 @@ def test_fairness_components_use_projected_effort_without_calling_transparency_r
     assert _canonical(projected) == _canonical(legacy)
 
 
-def test_effort_breakdown_matches_legacy_from_projection_and_keeps_preview_in_memory(
+def test_burden_share_breakdown_matches_legacy_from_projection_and_keeps_preview_in_memory(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
     scenario, _admin = _build_projected_scenario(admin_session)
     soldier = scenario["primary"]
-    legacy = compute_effort_breakdown(
+    legacy = compute_burden_share_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -164,7 +164,7 @@ def test_effort_breakdown_matches_legacy_from_projection_and_keeps_preview_in_me
     monkeypatch.setattr(effort_score, "effective_duty_days", _fail_if_expands_duty_days)
     _forbid_normal_projection_expansion(monkeypatch)
 
-    projected = compute_effort_breakdown(
+    projected = compute_burden_share_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -252,7 +252,7 @@ def test_transparency_rebuilds_missing_soldier_total_before_projected_read(
     assert _canonical(projected) == _canonical(legacy)
 
 
-def test_effort_breakdown_self_heals_missing_quarter_total(
+def test_burden_share_breakdown_self_heals_missing_quarter_total(
     admin_session,
 ):
     scenario, _admin = _build_projected_scenario(admin_session)
@@ -273,7 +273,7 @@ def test_effort_breakdown_self_heals_missing_quarter_total(
     )
     admin_session.flush()
     soldier = scenario["primary"]
-    legacy = compute_effort_breakdown(
+    legacy = compute_burden_share_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -290,7 +290,7 @@ def test_effort_breakdown_self_heals_missing_quarter_total(
     )
     admin_session.flush()
 
-    projected = compute_effort_breakdown(
+    projected = compute_burden_share_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -304,7 +304,7 @@ def test_effort_breakdown_self_heals_missing_quarter_total(
     assert _canonical_breakdown(projected) == _canonical_breakdown(legacy)
 
 
-def test_effort_breakdown_serves_from_projection_when_partition_row_goes_missing(
+def test_burden_share_breakdown_serves_from_projection_when_partition_row_goes_missing(
     admin_session,
 ):
     # Read-path contract: with a clean marker table the stored quarter total is
@@ -328,7 +328,7 @@ def test_effort_breakdown_serves_from_projection_when_partition_row_goes_missing
     )
     admin_session.flush()
     soldier = scenario["primary"]
-    legacy = compute_effort_breakdown(
+    legacy = compute_burden_share_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -349,7 +349,7 @@ def test_effort_breakdown_serves_from_projection_when_partition_row_goes_missing
     )
     admin_session.flush()
 
-    projected = compute_effort_breakdown(
+    projected = compute_burden_share_breakdown(
         admin_session,
         soldier=soldier,
         planning_start=scenario["planning_start"],
@@ -500,7 +500,7 @@ def test_projected_transparency_scale_read_does_not_expand_projection_history(
     assert _canonical(projected) == _canonical(legacy)
 
 
-def test_backfill_covers_empty_effort_history_quarters_so_reads_serve_from_projections(
+def test_backfill_covers_empty_burden_share_history_quarters_so_reads_serve_from_projections(
     admin_session,
 ):
     # No fairness.reset_date setting is written here, so reads derive their
