@@ -122,7 +122,7 @@ export async function getAutoAssignResponsibilityPreview(shiftIds: string[]): Pr
 
 export async function assignBatch(
   shiftId: string,
-  input: { primaries: string[]; reserves: string[] },
+  input: { primaries: string[]; reserves: string[]; override_reason?: string },
 ): Promise<{ primary_assignment_ids: string[]; reserve_assignment_ids: string[]; reserve_links_created: number }> {
   return (await api.post(`/shifts/${shiftId}/assign-batch`, input)).data;
 }

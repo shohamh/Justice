@@ -887,6 +887,7 @@ def list_shift_assignments(
 class BatchAssignRequest(BaseModel):
     primaries: list[uuid.UUID] = Field(default_factory=list)
     reserves: list[uuid.UUID] = Field(default_factory=list)
+    override_reason: str | None = Field(default=None, max_length=1000)
 
 
 class BatchAssignOut(BaseModel):
@@ -949,6 +950,7 @@ def assign_batch(
                 duty_shift_id=shift.id,
                 is_reserve=False,
                 actor_id=user.id,
+                override_reason=body.override_reason,
             )
             primary_assignments.append(a)
         except asvc.AssignmentError as exc:
@@ -967,6 +969,7 @@ def assign_batch(
                 duty_shift_id=shift.id,
                 is_reserve=True,
                 actor_id=user.id,
+                override_reason=body.override_reason,
             )
             reserve_assignments.append(a)
         except asvc.AssignmentError as exc:
