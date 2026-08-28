@@ -234,3 +234,54 @@ body {
 .holiday-date-tile {
   background-color: rgb(253 230 138 / 0.5) !important;
 }
+
+/* In-app DateInput calendar */
+.date-picker-calendar {
+  width: 100%;
+  max-width: 280px;
+  font-family: inherit;
+}
+
+.date-picker-calendar button {
+  font-family: inherit;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar,
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__viewContainer {
+  background: #1f2937;
+  color: #f3f4f6;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__navigation button {
+  color: #f3f4f6;
+  background: #1f2937;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__navigation button:enabled:hover,
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__navigation button:enabled:focus {
+  background: #374151;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__month-view__weekdays {
+  color: #9ca3af;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__tile {
+  color: #e5e7eb;
+  background: #1f2937;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__tile:enabled:hover,
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__tile:enabled:focus {
+  background: #374151;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__tile--now {
+  background: #4b5563;
+}
+
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__tile--active,
+:is([data-theme="dark"], .dark) .date-picker-calendar .react-calendar__tile--hasActive {
+  background: #4f46e5;
+  color: #fff;
+}

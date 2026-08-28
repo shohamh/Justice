@@ -222,4 +222,28 @@ describe("DateInput", () => {
     fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
     expect(listHolidays).not.toHaveBeenCalled();
   });
+  it("opens above the field when the calendar would extend below the mobile viewport", () => {
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
+      if (this.tagName === "BUTTON") {
+        return { top: 520, bottom: 552, left: 20, right: 52, width: 32, height: 32, x: 20, y: 520, toJSON: () => ({}) } as DOMRect;
+      }
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+
+    render(<DateInput data-testid="date-input" />);
+    fireEvent.click(screen.getAllByRole("button")[0]);
+
+    expect(Number.parseFloat(screen.getByTestId("date-picker-popover").style.top)).toBeLessThan(520);
+
+    bounds.mockRestore();
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
+  });
+
+  it("marks the calendar for the shared dark-mode calendar theme", () => {
+    render(<DateInput data-testid="date-input" />);
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    expect(document.querySelector(".date-picker-calendar")).toBeInTheDocument();
+  });
 });

@@ -122,9 +122,19 @@ export default function DateInput({
       if (!btn) return;
       const rect = btn.getBoundingClientRect();
       const POPOVER_WIDTH = 280;
+      const POPOVER_HEIGHT = 340;
       const MARGIN = 8;
-      const left = Math.min(Math.max(rect.right - POPOVER_WIDTH, MARGIN), window.innerWidth - POPOVER_WIDTH - MARGIN);
-      setPopoverStyle({ position: "fixed", top: rect.bottom + 4, left });
+      const width = Math.min(POPOVER_WIDTH, Math.max(0, window.innerWidth - MARGIN * 2));
+      const height = popoverRef.current?.getBoundingClientRect().height || POPOVER_HEIGHT;
+      const fitsBelow = rect.bottom + 4 + height <= window.innerHeight - MARGIN;
+      const fitsAbove = rect.top - 4 - height >= MARGIN;
+      const top = fitsBelow
+        ? rect.bottom + 4
+        : fitsAbove
+          ? rect.top - 4 - height
+          : Math.max(MARGIN, window.innerHeight - height - MARGIN);
+      const left = Math.min(Math.max(rect.right - width, MARGIN), window.innerWidth - width - MARGIN);
+      setPopoverStyle({ position: "fixed", top, left, width, maxWidth: "calc(100vw - 16px)" });
     }
     reposition();
     window.addEventListener("resize", reposition);
@@ -318,8 +328,10 @@ export default function DateInput({
         📅
       </button>
       {pickerOpen && (
-        <div ref={popoverRef} role="grid" style={popoverStyle} className="z-[70] rounded border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-600 dark:bg-gray-800">
+        <div ref={popoverRef} data-testid="date-picker-popover" role="grid" style={popoverStyle} className="date-picker-popover z-[70] rounded border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-600 dark:bg-gray-800">
           <Calendar
+            data-testid="date-picker-calendar"
+            className="date-picker-calendar"
             onChange={(v) => handleGridPick(Array.isArray(v) ? v[0]! : (v as Date))}
             value={isoToJsDate(displayToIso(text) ?? undefined) ?? null}
             minDate={isoToJsDate(min)}
