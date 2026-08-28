@@ -235,3 +235,115 @@ def test_rank_service_types_explicit_empty_list_exempts_rank_from_global_filter(
 
     assert _is_eligible(mandatory_samar, reqs, mitvahim_months=6, alal_months=3, today=today) is True
     assert _is_eligible(mandatory_rasal, reqs, mitvahim_months=6, alal_months=3, today=today) is False
+
+
+def _constraint_base(session):
+    """Return (soldier, dt, loc, assignment) with an assignment on 2026-08-10..08-11."""
+    from app.db.models import DutyAssignment, DutyLocation, DutyType
+    from tests.helpers import create_soldier
+
+    dt = DutyType(name="שמירה-override", score_per_day=1)
+    loc = DutyLocation(name="עמדה-override")
+    soldier = create_soldier(session, personal_number="override-1")
+    session.add_all([dt, loc])
+    session.flush()
+    # Not "published" — the assignment under evaluation must not count as its
+    # own scheduling conflict in step 4 (which only excludes overlapping
+    # *other* published assignments when exclude_assignment_id is passed).
+    a = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 8, 10), end_date=date(2026, 8, 11), status="algorithm_draft",
+    )
+    session.add(a)
+    session.flush()
+    return soldier, dt, loc, a
+
+
+def _approved_constraint(session, soldier_id, start, end):
+    from app.db.models import PersonalConstraint
+
+    c = PersonalConstraint(
+        soldier_id=soldier_id, start_date=start, end_date=end,
+        reason="r", status="approved",
+    )
+    session.add(c)
+    session.flush()
+    return c
+
+
+def test_constraint_blocks_by_default(admin_session):
+    from app.services.eligibility import check_soldier_for_assignment
+
+    soldier, _dt, _loc, a = _constraint_base(admin_session)
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 10), date(2026, 8, 11))
+
+    eligible, reason, warning = check_soldier_for_assignment(admin_session, soldier.id, a.id)
+    assert eligible is False
+    assert reason == "אילוץ אישי מאושר בתאריך זה"
+    assert warning is None
+
+
+def test_constraint_blocks_even_with_override_flag_if_flag_false(admin_session):
+    from app.services.eligibility import check_soldier_for_assignment
+
+    soldier, _dt, _loc, a = _constraint_base(admin_session)
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 10), date(2026, 8, 11))
+
+    eligible, reason, warning = check_soldier_for_assignment(
+        admin_session, soldier.id, a.id, allow_constraint_override=False,
+    )
+    assert eligible is False
+    assert warning is None
+
+
+def test_constraint_becomes_warning_when_override_allowed(admin_session):
+    from app.services.eligibility import check_soldier_for_assignment
+
+    soldier, _dt, _loc, a = _constraint_base(admin_session)
+    c = _approved_constraint(admin_session, soldier.id, date(2026, 8, 10), date(2026, 8, 11))
+
+    eligible, reason, warning = check_soldier_for_assignment(
+        admin_session, soldier.id, a.id, allow_constraint_override=True,
+    )
+    assert eligible is True
+    assert reason is None
+    assert warning == {
+        "reason": c.reason,
+        "start_date": c.start_date,
+        "end_date": c.end_date,
+        "decided_by": None,
+        "decided_at": c.decided_at,
+    }
+
+
+def test_multiple_overlapping_constraints_does_not_raise_and_blocks(admin_session):
+    """Nothing in the submit/approval flow prevents a soldier from ending up with
+    two overlapping approved PersonalConstraint rows. check_soldier_for_assignment
+    must tolerate that data state (not raise sqlalchemy.exc.MultipleResultsFound)
+    regardless of allow_constraint_override."""
+    from app.services.eligibility import check_soldier_for_assignment
+
+    soldier, _dt, _loc, a = _constraint_base(admin_session)
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 9), date(2026, 8, 12))
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 10), date(2026, 8, 11))
+
+    eligible, reason, warning = check_soldier_for_assignment(admin_session, soldier.id, a.id)
+    assert eligible is False
+    assert reason == "אילוץ אישי מאושר בתאריך זה"
+    assert warning is None
+
+
+def test_multiple_overlapping_constraints_does_not_raise_with_override_allowed(admin_session):
+    from app.services.eligibility import check_soldier_for_assignment
+
+    soldier, _dt, _loc, a = _constraint_base(admin_session)
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 9), date(2026, 8, 12))
+    _approved_constraint(admin_session, soldier.id, date(2026, 8, 10), date(2026, 8, 11))
+
+    eligible, reason, warning = check_soldier_for_assignment(
+        admin_session, soldier.id, a.id, allow_constraint_override=True,
+    )
+    assert eligible is True
+    assert reason is None
+    assert warning is not None
+    assert warning["reason"] == "r"

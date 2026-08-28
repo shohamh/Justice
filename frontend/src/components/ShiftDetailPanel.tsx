@@ -20,6 +20,7 @@ import { formatDutyRange } from "../utils/formatDate";
 import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
 import { formatDutyRequirements } from "../utils/dutyRequirements";
 import { EventDetailModal, RosterSection } from "./planning";
+import HolidayBadge from "./HolidayBadge";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -269,7 +270,12 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
     <EventDetailModal
       open
       title={`${shift.duty_type_name} — ${shift.duty_location_name}`}
-      subtitle={formatDutyRange(shift.start_date, shift.end_date)}
+      subtitle={
+        <span className="flex items-center gap-2 flex-wrap">
+          {formatDutyRange(shift.start_date, shift.end_date)}
+          <HolidayBadge holidays={shift.crossed_holidays} />
+        </span>
+      }
       onClose={onClose}
     >
         {dutyRequirements.length > 0 && (

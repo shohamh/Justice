@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.db.models import PersonalConstraint, PersonalConstraintOverride
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -75,6 +76,34 @@ def test_commander_approves_in_subtree(client: TestClient, admin_session: Sessio
     r2 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(dm), json={})
     assert r2.status_code == 200, r2.text
     assert r2.json()["status"] == "approved"
+
+
+def test_constraint_out_includes_overrides(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number="7500019")
+    overrider = create_soldier(admin_session, personal_number="7500020", role="commander")
+    constraint = PersonalConstraint(
+        soldier_id=soldier.id,
+        start_date=date.today() + timedelta(days=5),
+        end_date=date.today() + timedelta(days=10),
+        reason="חופשה",
+        status="approved",
+    )
+    admin_session.add(constraint)
+    admin_session.flush()
+    admin_session.add(PersonalConstraintOverride(
+        personal_constraint_id=constraint.id, soldier_id=soldier.id,
+        overridden_by=overrider.id, assignment_kind="duty",
+        reference_id=constraint.id, reason="צורך מבצעי",
+    ))
+    admin_session.commit()
+
+    resp = client.get(f"/api/soldiers/{soldier.id}/constraints", headers=auth_headers(soldier))
+    assert resp.status_code == 200, resp.text
+    row = next(c for c in resp.json() if c["id"] == str(constraint.id))
+    assert len(row["overrides"]) == 1
+    assert row["overrides"][0]["reason"] == "צורך מבצעי"
+    assert row["overrides"][0]["assignment_kind"] == "duty"
+    assert row["overrides"][0]["overridden_by"]["name"] == overrider.full_name
 
 
 def test_commander_cannot_approve_duty_manager_step(client: TestClient, admin_session: Session):
@@ -282,3 +311,34 @@ def test_pending_list_marks_admins_own_request_as_not_approvable(
     pending_items = client.get("/api/constraints/pending", headers=auth_headers(admin)).json()
     own_row = next(i for i in pending_items if i["id"] == own["id"])
     assert own_row["can_approve"] is False
+
+
+def test_submit_response_includes_crossed_holidays(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7500020")
+    r = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(s),
+        json={
+            # Rosh Hashanah is 2026-09-12 to 2026-09-13 in the IL holiday calendar.
+            "start_date": "2026-09-10",
+            "end_date": "2026-09-14",
+            "reason": "חופשה",
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert len(body["crossed_holidays"]) == 2
+    assert body["crossed_holidays"][0]["date"] == "2026-09-12"
+    assert body["crossed_holidays"][1]["date"] == "2026-09-13"
+    assert body["crossed_holidays"][0]["name"] == body["crossed_holidays"][1]["name"] == "ראש השנה"
+
+
+def test_submit_response_has_empty_crossed_holidays_when_no_holiday_in_range(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7500021")
+    r = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(s),
+        json={"start_date": "2026-08-29", "end_date": "2026-09-11", "reason": "חופשה"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["crossed_holidays"] == []

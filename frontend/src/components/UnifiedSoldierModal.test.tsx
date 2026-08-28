@@ -475,6 +475,7 @@ describe("UnifiedSoldierModal constraint cancellation", () => {
         status: "approved",
         reason: "test reason",
         can_cancel: true,
+        overrides: [],
       },
     ]);
   });

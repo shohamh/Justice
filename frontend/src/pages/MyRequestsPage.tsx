@@ -76,6 +76,10 @@ interface RequestMetaProps {
   /** Row status — picks אושר ע״י vs נדחה ע״י when decidedBy is present. */
   status?: string | null;
   commanderApprovedBy?: SoldierRef | null;
+  commanderApprovedAt?: string | null;
+  commanderApprovalNote?: string | null;
+  decidedAt?: string | null;
+  decisionNote?: string | null;
   testIdPrefix?: string;
 }
 
@@ -89,6 +93,10 @@ function RequestMetaRow({
   decidedBy,
   status,
   commanderApprovedBy,
+  commanderApprovedAt,
+  commanderApprovalNote,
+  decidedAt,
+  decisionNote,
   testIdPrefix,
 }: RequestMetaProps) {
   const { t } = useTranslation();
@@ -113,7 +121,7 @@ function RequestMetaRow({
         </span>
       )}
       {commanderApprovedBy !== undefined && status && (
-        <ApprovalStageIcons request={{ status, commander_approved_by: commanderApprovedBy }} />
+        <ApprovalStageIcons request={{ status, commander_approved_by: commanderApprovedBy, commander_approved_at: commanderApprovedAt, commander_approval_note: commanderApprovalNote, decision_by: decidedBy, decision_at: decidedAt, decision_note: decisionNote }} />
       )}
       {waitingOn && (
         <span data-testid={testIdPrefix ? `${testIdPrefix}-waiting-on` : undefined}>
@@ -192,6 +200,7 @@ export default function MyRequestsPage() {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submittedHolidays, setSubmittedHolidays] = useState<{ date: string; name: string }[]>([]);
 
   // Exemption request form state
   const [erTypeId, setErTypeId] = useState("");
@@ -305,12 +314,13 @@ export default function MyRequestsPage() {
     }
     setSubmitting(true);
     try {
-      await submitConstraint({
+      const created = await submitConstraint({
         start_date: start,
         end_date: end,
         reason,
       });
       setStart(""); setEnd(""); setReason("");
+      setSubmittedHolidays(created.crossed_holidays);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.remainingConstraintDays() });
     } catch (err: unknown) {
@@ -412,6 +422,11 @@ export default function MyRequestsPage() {
               {constraintFormOpen && (
                 <div className="p-4 space-y-3 border-t dark:border-gray-600" data-testid="constraint-form-card">
                   {error && <div className="text-red-600 text-sm" data-testid="req-error">{error}</div>}
+                  {submittedHolidays.length > 0 && (
+                    <div className="text-amber-700 dark:text-amber-400 text-sm" data-testid="req-holiday-note">
+                      {t("holidays.crossed_note", { names: submittedHolidays.map((h) => h.name).join(", ") })}
+                    </div>
+                  )}
                   {remaining && (
                     <p className="text-sm text-gray-600 dark:text-gray-400" data-testid="constraints-remaining">
                       {t("constraints.remaining_summary", {
@@ -424,11 +439,11 @@ export default function MyRequestsPage() {
                   <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2">
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-gray-500 dark:text-gray-400">{t("my_requests.start_date")}</label>
-                      <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(iso) => setStart(iso)} min={todayIso()} max={end || undefined} required data-testid="req-start" />
+                      <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(iso) => setStart(iso)} min={todayIso()} max={end || undefined} required showHolidays data-testid="req-start" />
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-gray-500 dark:text-gray-400">{t("my_requests.end_date")}</label>
-                      <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(iso) => setEnd(iso)} min={start || undefined} required data-testid="req-end" />
+                      <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(iso) => setEnd(iso)} min={start || undefined} required showHolidays data-testid="req-end" />
                     </div>
                     <div className="flex flex-col gap-1 flex-1 min-w-32">
                       <label className="text-xs text-gray-500 dark:text-gray-400">{t("my_requests.reason")}</label>
@@ -476,11 +491,11 @@ export default function MyRequestsPage() {
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.start_date")}</label>
-                        <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erPermanent ? "" : erStart} onChange={(iso) => setErStart(iso)} max={erEnd || undefined} disabled={erPermanent} required={!erPermanent} data-testid="er-start" />
+                      <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erPermanent ? "" : erStart} onChange={(iso) => setErStart(iso)} max={erEnd || undefined} disabled={erPermanent} required={!erPermanent} showHolidays data-testid="er-start" />
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.end_date")}</label>
-                        <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erPermanent ? "" : erEnd} onChange={(iso) => setErEnd(iso)} min={erStart || undefined} disabled={erPermanent} required={!erPermanent} data-testid="er-end" />
+                      <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erPermanent ? "" : erEnd} onChange={(iso) => setErEnd(iso)} min={erStart || undefined} disabled={erPermanent} required={!erPermanent} showHolidays data-testid="er-end" />
                         <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mt-1">
                           <input
                             type="checkbox"
@@ -707,8 +722,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
@@ -736,8 +755,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
@@ -765,8 +788,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         {c.decision_note && (
                           <p className="text-xs text-red-700 dark:text-red-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
@@ -797,8 +824,12 @@ export default function MyRequestsPage() {
                           updatedAt={c.updated_at}
                           waitingOn={c.waiting_on}
                           decidedBy={c.decided_by}
+                          decidedAt={c.decided_at}
+                          decisionNote={c.decision_note}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
+                          commanderApprovalNote={c.commander_approval_note}
                         />
                         {c.decision_note && (
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
@@ -837,8 +868,12 @@ export default function MyRequestsPage() {
                       updatedAt={er.updated_at}
                       waitingOn={er.waiting_on}
                       decidedBy={er.decided_by}
+                      decidedAt={er.decided_at}
+                      decisionNote={er.decision_note}
                       status={er.status}
                       commanderApprovedBy={er.commander_approved_by}
+                      commanderApprovedAt={er.commander_approved_at}
+                      commanderApprovalNote={er.commander_approval_note}
                     />
                     {er.status === "rejected" && er.decision_note && (
                       <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {er.decision_note}</p>

@@ -34,7 +34,7 @@ def _base(session):
 
 def test_eligible_when_no_restrictions(admin_session):
     _owner, cover, _dt, _loc, a = _base(admin_session)
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is True
     assert reason is None
 
@@ -43,7 +43,7 @@ def test_blocked_by_duty_type_eligibility(admin_session):
     _owner, cover, dt, _loc, a = _base(admin_session)
     dt.requirements = {"requires_mitvahim": True}  # cover has no last_mitvahim_date
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
     assert reason == "אי-כשירות לסוג תורנות זה"
 
@@ -58,7 +58,7 @@ def test_blocked_by_global_exemption(admin_session):
         start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
     assert reason == "פטור מסוג תורנות זו"
 
@@ -74,7 +74,7 @@ def test_blocked_by_duty_type_exemption(admin_session):
         start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
     assert reason == "פטור מסוג תורנות זו"
 
@@ -90,7 +90,7 @@ def test_blocked_by_duty_location_exemption(admin_session):
         start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
     assert reason == "פטור ממיקום תורנות זה"
 
@@ -105,7 +105,7 @@ def test_not_blocked_by_expired_exemption(admin_session):
         start_date=date(2026, 6, 1), end_date=date(2026, 7, 9),  # ends before duty
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is True
 
 
@@ -116,7 +116,7 @@ def test_blocked_by_approved_constraint(admin_session):
         reason="חופש", status="approved",
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
     assert reason == "אילוץ אישי מאושר בתאריך זה"
 
@@ -128,7 +128,7 @@ def test_not_blocked_by_pending_constraint(admin_session):
         reason="חופש", status="pending_commander",
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is True
 
 
@@ -140,7 +140,7 @@ def test_blocked_by_scheduling_conflict(admin_session):
         start_date=date(2026, 7, 9), end_date=date(2026, 7, 11), status="published",
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
     assert reason == "שיבוץ קיים בתאריכים אלו"
 
@@ -152,7 +152,7 @@ def test_not_blocked_by_non_published_assignment(admin_session):
         start_date=date(2026, 7, 9), end_date=date(2026, 7, 11), status="algorithm_draft",
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is True
 
 
@@ -171,7 +171,7 @@ def test_not_blocked_by_back_to_back_assignment(admin_session):
         start_date=date(2026, 7, 9), end_date=date(2026, 7, 10), status="published",
     ))
     admin_session.flush()
-    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is True
     assert reason is None
 
@@ -185,7 +185,7 @@ def test_exclude_assignment_id_skips_conflict(admin_session):
     admin_session.add(conflict)
     admin_session.flush()
     # With exclusion — should pass
-    ok, reason = check_soldier_for_assignment(
+    ok, reason, _warning = check_soldier_for_assignment(
         admin_session, cover.id, a.id, exclude_assignment_id=conflict.id
     )
     assert ok is True
@@ -214,11 +214,11 @@ def test_check_soldier_for_assignment_uses_projected_rank_for_future_assignment_
     admin_session.add_all([early, late])
     admin_session.flush()
 
-    ok, reason = check_soldier_for_assignment(admin_session, soldier.id, early.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, soldier.id, early.id)
     assert ok is False
     assert reason == "אי-כשירות לסוג תורנות זה"
 
-    ok2, reason2 = check_soldier_for_assignment(admin_session, soldier.id, late.id)
+    ok2, reason2, _warning2 = check_soldier_for_assignment(admin_session, soldier.id, late.id)
     assert ok2 is True
     assert reason2 is None
 
@@ -239,6 +239,6 @@ def test_check_soldier_for_assignment_excludes_departed_soldier(admin_session):
     admin_session.add(a)
     admin_session.flush()
 
-    ok, reason = check_soldier_for_assignment(admin_session, soldier.id, a.id)
+    ok, reason, _warning = check_soldier_for_assignment(admin_session, soldier.id, a.id)
     assert ok is False
     assert reason == "החייל סיים שירות עד תאריך זה"

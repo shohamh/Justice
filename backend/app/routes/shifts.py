@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,7 +14,7 @@ from app.audit.writer import write_audit
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from sqlalchemy import delete as sa_delete, func
-from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, HierarchyNode, NotificationType, ShiftTemplate, Soldier, SwapRequest
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, HierarchyNode, NotificationType, PersonalConstraint, ShiftTemplate, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services.notifications import create_notification
 from app.services import shifts as svc
@@ -676,6 +676,14 @@ def delete_shift(
     session.commit()
 
 
+class PersonalConstraintWarningOut(BaseModel):
+    reason: str
+    start_date: date
+    end_date: date
+    decided_by: str | None
+    decided_at: datetime | None
+
+
 class ShiftCandidateOut(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
@@ -685,6 +693,7 @@ class ShiftCandidateOut(BaseModel):
     blocked_reason: str | None = None
     weapon_warning: bool = False
     hierarchy_path_ids: list[str] = []
+    personal_constraint_warning: PersonalConstraintWarningOut | None = None
 
 
 @router.get("/{shift_id}/candidates", response_model=list[ShiftCandidateOut])
@@ -699,6 +708,9 @@ def get_shift_candidates(
 
     from app.db.models import DutyType as _DutyType
     from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
+    from app.services.constraint_override_settings import manual_override_allowed
+
+    override_allowed = manual_override_allowed(session)
 
     shift_duty_type = session.get(_DutyType, shift.duty_type_id)
     required_range_type = shift_duty_type.required_range_type if shift_duty_type else None
@@ -793,11 +805,31 @@ def get_shift_candidates(
             c_start < shift.end_date and c_end >= shift.start_date
             for c_start, c_end in si.approved_constraint_dates
         )
-        blocked = exempted or has_constraint or si.id in blocked_by_assignment
+        personal_constraint_warning: PersonalConstraintWarningOut | None = None
+        if has_constraint and override_allowed:
+            constraint_row = session.execute(
+                select(PersonalConstraint).where(
+                    PersonalConstraint.soldier_id == si.id,
+                    PersonalConstraint.status == "approved",
+                    PersonalConstraint.start_date < shift.end_date,
+                    PersonalConstraint.end_date >= shift.start_date,
+                )
+            ).scalars().first()
+            if constraint_row is not None:
+                decider = session.get(Soldier, constraint_row.decided_by) if constraint_row.decided_by else None
+                personal_constraint_warning = PersonalConstraintWarningOut(
+                    reason=constraint_row.reason,
+                    start_date=constraint_row.start_date,
+                    end_date=constraint_row.end_date,
+                    decided_by=decider.full_name if decider else None,
+                    decided_at=constraint_row.decided_at,
+                )
+        effective_constraint_block = has_constraint and not override_allowed
+        blocked = exempted or effective_constraint_block or si.id in blocked_by_assignment
         blocked_reason: str | None = None
         if exempted:
             blocked_reason = "ineligible"
-        elif has_constraint:
+        elif effective_constraint_block:
             blocked_reason = "constraint"
         elif si.id in blocked_by_assignment:
             blocked_reason = "assignment"
@@ -817,9 +849,10 @@ def get_shift_candidates(
             blocked_reason=blocked_reason,
             weapon_warning=weapon_warning,
             hierarchy_path_ids=path_ids,
+            personal_constraint_warning=personal_constraint_warning,
         ))
 
-    result.sort(key=lambda x: (x.blocked, x.weapon_warning, x.burden_share))
+    result.sort(key=lambda x: (x.blocked, x.personal_constraint_warning is not None, x.weapon_warning, x.burden_share))
     return result
 
 
@@ -859,6 +892,7 @@ def list_shift_assignments(
 class BatchAssignRequest(BaseModel):
     primaries: list[uuid.UUID] = Field(default_factory=list)
     reserves: list[uuid.UUID] = Field(default_factory=list)
+    override_reason: str | None = Field(default=None, max_length=1000)
 
 
 class BatchAssignOut(BaseModel):
@@ -921,6 +955,7 @@ def assign_batch(
                 duty_shift_id=shift.id,
                 is_reserve=False,
                 actor_id=user.id,
+                override_reason=body.override_reason,
             )
             primary_assignments.append(a)
         except asvc.AssignmentError as exc:
@@ -939,6 +974,7 @@ def assign_batch(
                 duty_shift_id=shift.id,
                 is_reserve=True,
                 actor_id=user.id,
+                override_reason=body.override_reason,
             )
             reserve_assignments.append(a)
         except asvc.AssignmentError as exc:

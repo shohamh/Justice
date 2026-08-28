@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, Crosshair } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -11,6 +11,7 @@ import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalendarShift, getCalendarShifts } from "../api/calendar";
 import { loadCalendarData } from "../api/calendarData";
+import { listHolidays } from "../api/calendarHolidays";
 import { RangeEvent, getRanges, getMyRanges } from "../api/ranges";
 import { listDutyTypes } from "../api/dutyConfig";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
@@ -20,6 +21,7 @@ import { canApprove } from "../auth/permissions";
 import { formatDate, formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
+import EventDetailModal from "./planning/EventDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
 import { shiftToCalendarEvent, shiftSpansMultipleDays, shiftEdgeLabels } from "../utils/shiftCalendarEvent";
 import CheckboxListDropdown from "./CheckboxListDropdown";
@@ -72,6 +74,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
   const [selectedRangeId, setSelectedRangeId] = useState<string | null>(null);
+  const [selectedHoliday, setSelectedHoliday] = useState<{ date: string; name: string } | null>(null);
   // null means "no manual selection yet" — everything currently known is
   // treated as selected. Once the user touches the dropdown, this becomes a
   // concrete array reflecting exactly what's checked, including an empty
@@ -79,9 +82,12 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string[] | null>(null);
   const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
+  const [showHolidays, setShowHolidays] = useState(true);
   const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
+  const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
+  const fetchedHolidayYearsRef = useRef<Set<number>>(new Set());
 
   const fetchData = useCallback(async (from: string, to: string) => {
     if (!nodeId && !soldierId) return;
@@ -139,6 +145,28 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
     if (prev && prev.from === from && prev.to === to) return;
     dateRangeRef.current = { from, to };
     fetchData(from, to);
+
+    const fromYear = arg.start.getFullYear();
+    const toYear = arg.end.getFullYear();
+    const yearsToFetch: number[] = [];
+    for (let y = fromYear; y <= toYear; y++) {
+      if (!fetchedHolidayYearsRef.current.has(y)) yearsToFetch.push(y);
+    }
+    if (yearsToFetch.length === 0) return;
+    yearsToFetch.forEach((y) => fetchedHolidayYearsRef.current.add(y));
+    Promise.all(yearsToFetch.map((y) => listHolidays(y)))
+      .then((results) => {
+        setHolidaysByDate((prevMap) => {
+          const next = new Map(prevMap);
+          results.flat().forEach((h) => next.set(h.date, h.name));
+          return next;
+        });
+      })
+      .catch(() => {
+        // Holiday shading is purely informational — a failed fetch just means
+        // no shading this time, not an error state for the whole calendar.
+        yearsToFetch.forEach((y) => fetchedHolidayYearsRef.current.delete(y));
+      });
   }
 
   const dutyTypesInView = useMemo(() => {
@@ -182,6 +210,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
       const event = shiftToCalendarEvent(shift);
       return {
         ...event,
+        holidayOrder: 1,
         classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES, ...event.classNames],
       };
     }),
@@ -197,6 +226,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
         start: hasTime ? `${r.date}T${r.start_time}` : r.date,
         end: hasTime ? `${r.date}T${r.end_time}` : r.date,
         allDay: !hasTime,
+        holidayOrder: 1,
         backgroundColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
         borderColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
         classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES],
@@ -205,13 +235,37 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
     }),
   [filteredRanges]);
 
-  const events = useMemo(() => [...shiftEvents, ...rangeCalEvents], [shiftEvents, rangeCalEvents]);
+  const holidayCalEvents = useMemo(() =>
+    Array.from(holidaysByDate.entries()).map(([date, name]) => ({
+      id: `holiday-${date}`,
+      title: name,
+      start: date,
+      allDay: true,
+      holidayOrder: 0,
+      backgroundColor: "#f59e0b",
+      borderColor: "#b45309",
+      classNames: ["holiday-calendar-event", "holiday-sparkle-border"],
+      extendedProps: { holidayDate: date, holidayName: name },
+    })),
+  [holidaysByDate]);
+
+  const events = useMemo(
+    () => [...(showHolidays ? holidayCalEvents : []), ...shiftEvents, ...rangeCalEvents],
+    [showHolidays, holidayCalEvents, shiftEvents, rangeCalEvents],
+  );
 
   function handleDateClick() {
     setSelectedShift(null);
+    setSelectedHoliday(null);
   }
 
   function handleEventClick(arg: EventClickArg) {
+    const holidayDate = arg.event.extendedProps.holidayDate as string | undefined;
+    const holidayName = arg.event.extendedProps.holidayName as string | undefined;
+    if (holidayDate && holidayName) {
+      setSelectedHoliday({ date: holidayDate, name: holidayName });
+      return;
+    }
     const rangeId = arg.event.extendedProps.rangeId as string | undefined;
     if (rangeId) {
       setSelectedRangeId(rangeId);
@@ -233,6 +287,16 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
               triggerLabel={t("unit_calendar.duty_type_filter_label") || "סוגי תורנויות"}
               panelDir="rtl"
             />
+            <label className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showHolidays}
+                onChange={(event) => setShowHolidays(event.target.checked)}
+                className="accent-amber-600"
+                aria-label={t("unit_calendar.show_holidays")}
+              />
+              <span>{t("unit_calendar.show_holidays")}</span>
+            </label>
           {rangesEnabled && (
             <CheckboxListDropdown
               items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}
@@ -257,10 +321,15 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
           initialView="dayGridMonth"
           firstDay={0}
           eventDisplay="block"
+          eventOrder="holidayOrder,start,title"
           events={events}
           dateClick={handleDateClick}
           eventClick={handleEventClick}
           datesSet={handleDatesSet}
+          dayCellClassNames={(arg) => {
+            const iso = `${arg.date.getFullYear()}-${String(arg.date.getMonth() + 1).padStart(2, "0")}-${String(arg.date.getDate()).padStart(2, "0")}`;
+            return holidaysByDate.has(iso) ? ["holiday-day-cell"] : [];
+          }}
           locales={[heLocale]}
           locale="he"
           height="auto"
@@ -281,6 +350,14 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
             timeGridThreeDay: { type: "timeGrid", duration: { days: 3 }, displayEventTime: true },
           }}
           eventContent={(arg) => {
+            const holidayName = arg.event.extendedProps.holidayName as string | undefined;
+            if (holidayName) {
+              return (
+                <div className="text-xs leading-tight px-1 overflow-hidden w-full font-semibold">
+                  <span aria-hidden="true">✡️</span> {holidayName}
+                </div>
+              );
+            }
             const rangeId = arg.event.extendedProps.rangeId as string | undefined;
             if (rangeId) {
               const range = ranges.find(r => r.id === rangeId);
@@ -288,6 +365,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
               return (
                 <div className="text-xs leading-tight px-1 overflow-hidden w-full">
                   <span className="font-semibold truncate">
+                    <Crosshair size={12} className="inline-block align-text-bottom ml-1" aria-hidden="true" />
                     {RANGE_TYPE_LABELS[range.range_type] ?? range.range_type} — {range.location}
                   </span>
                   <div className="truncate">
@@ -354,6 +432,16 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
                       ℹ<span className="text-[10px] leading-4">{plannedCoverageAssignees.length}</span>
                     </span>
                   )}
+                  {shift.crossed_holidays.length > 0 && (
+                    <span
+                      data-testid={`shift-holiday-badge-${shift.id}`}
+                      aria-label={t("holidays.badge_label", { count: shift.crossed_holidays.length })}
+                      title={shift.crossed_holidays.map((h) => h.name).join(", ")}
+                      className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 text-amber-700 dark:bg-amber-950 dark:text-amber-300 flex-shrink-0"
+                    >
+                      📅<span className="text-[10px] leading-4">{shift.crossed_holidays.length}</span>
+                    </span>
+                  )}
                   {swapCount > 0 && (
                     <span className="inline-flex items-center gap-0.5 bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
                       <ArrowLeftRight size={10} />
@@ -386,6 +474,21 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
 
       {selectedRangeId && (
         <RangeDetailModal rangeId={selectedRangeId} onClose={() => setSelectedRangeId(null)} />
+      )}
+
+      {selectedHoliday && (
+        <EventDetailModal
+          open
+          title={<><span aria-hidden="true">✡️</span> {selectedHoliday.name}</>}
+          subtitle={formatDate(selectedHoliday.date)}
+          onClose={() => setSelectedHoliday(null)}
+          metadata={[{ label: "תאריך", value: formatDate(selectedHoliday.date) }]}
+        >
+          <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="font-semibold">{selectedHoliday.name}</p>
+            <p>{formatDate(selectedHoliday.date)}</p>
+          </div>
+        </EventDetailModal>
       )}
     </div>
   );

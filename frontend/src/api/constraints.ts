@@ -1,6 +1,14 @@
 import { api } from "./client";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
 
+export interface ConstraintOverride {
+  id: string;
+  overridden_by: SoldierRef | null;
+  assignment_kind: "duty" | "range";
+  reason: string;
+  overridden_at: string;
+}
+
 export interface PersonalConstraint {
   id: string;
   soldier_id: string;
@@ -11,6 +19,8 @@ export interface PersonalConstraint {
   reason: string | null;
   status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled";
   commander_approved_by: SoldierRef | null;
+  commander_approved_at: string | null;
+  commander_approval_note?: string | null;
   waiting_on: WaitingOnRef | null;
   decided_by: SoldierRef | null;
   requested_at: string;
@@ -22,6 +32,8 @@ export interface PersonalConstraint {
   nearest_duty_manager: { id: string; name: string } | null;
   can_approve: boolean;
   can_cancel?: boolean;
+  crossed_holidays: { date: string; name: string }[];
+  overrides: ConstraintOverride[];
 }
 
 export async function listMyConstraints(): Promise<PersonalConstraint[]> {

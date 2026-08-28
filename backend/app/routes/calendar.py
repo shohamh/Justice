@@ -18,6 +18,7 @@ from app.services.calendar_shifts import (
     get_calendar_shifts,
     get_single_shift,
 )
+from app.services.holidays import HolidayHit, holidays_in_range
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -99,6 +100,7 @@ class CalendarShiftOut(BaseModel):
     reserve_count: int
     assignees: list[CalendarShiftAssignee]
     swap_request_count: int = 0
+    crossed_holidays: list[HolidayHit] = []
 
 
 class CalendarShiftsResponse(BaseModel):
@@ -180,7 +182,8 @@ def get_shift_detail(
     if raw is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     swap_count = _swap_counts_for_shifts(session, [shift_id]).get(shift_id, 0)
-    shift = CalendarShiftOut(**raw, swap_request_count=swap_count)
+    crossed_holidays = holidays_in_range(raw["start_date"], raw["end_date"], end_inclusive=False)
+    shift = CalendarShiftOut(**raw, swap_request_count=swap_count, crossed_holidays=crossed_holidays)
     roots = scope_root_ids(session, user)
     _redact_shift_reasons(shift, user, roots)
     return shift
@@ -280,7 +283,12 @@ def calendar_shifts(
     swap_counts = _swap_counts_for_shifts(session, [s["id"] for s in raw])
     shifts = []
     for s in raw:
-        shift = CalendarShiftOut(**s, swap_request_count=swap_counts.get(s["id"], 0))
+        crossed_holidays = holidays_in_range(s["start_date"], s["end_date"], end_inclusive=False)
+        shift = CalendarShiftOut(
+            **s,
+            swap_request_count=swap_counts.get(s["id"], 0),
+            crossed_holidays=crossed_holidays,
+        )
         _redact_shift_reasons(shift, user, roots)
         shifts.append(shift)
     return CalendarShiftsResponse(shifts=shifts)

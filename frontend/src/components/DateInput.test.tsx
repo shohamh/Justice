@@ -1,7 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import DateInput from "./DateInput";
+import { listHolidays } from "../api/calendarHolidays";
+
+vi.mock("../api/calendarHolidays", () => ({
+  listHolidays: vi.fn().mockResolvedValue([{ date: "2026-08-15", name: "חג" }]),
+}));
 
 describe("DateInput", () => {
   it("interprets two-digit years with a pivot year of 50", () => {
@@ -172,5 +177,95 @@ describe("DateInput", () => {
   it("hides the built-in clear button when the field is empty", () => {
     render(<DateInput data-testid="date-input" />);
     expect(screen.queryByLabelText("נקה")).not.toBeInTheDocument();
+  });
+
+  it("opens an in-app calendar grid when the calendar button is clicked", () => {
+    render(<DateInput data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+  });
+
+  it("commits the picked date and closes the grid when a day is clicked", () => {
+    const onChange = vi.fn();
+    render(<DateInput value="2026-08-14" onChange={onChange} data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    fireEvent.click(screen.getByRole("button", { name: "15" }));
+    expect(onChange).toHaveBeenLastCalledWith("2026-08-15");
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+
+  it("closes the grid when clicking outside it", () => {
+    render(
+      <div>
+        <DateInput data-testid="date-input" />
+        <button>outside</button>
+      </div>
+    );
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByText("outside"));
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+
+  it("shades holiday days in the grid when showHolidays is set", async () => {
+    render(<DateInput value="2026-08-01" showHolidays data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    await waitFor(() => expect(listHolidays).toHaveBeenCalledWith(2026));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "15" }).className).toMatch(/holiday-date-tile/);
+    });
+  });
+
+  it("shades holiday days by default", async () => {
+    render(<DateInput value="2026-08-01" data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "15" }).className).toMatch(/holiday-date-tile/));
+  });
+
+  it("does not fetch holidays when showHolidays is explicitly false", () => {
+    vi.mocked(listHolidays).mockClear();
+    render(<DateInput value="2026-08-01" showHolidays={false} data-testid="date-input" />);
+    fireEvent.click(screen.getByLabelText("פתח לוח שנה"));
+    expect(listHolidays).not.toHaveBeenCalled();
+  });
+  it("opens above the field when the calendar would extend below the mobile viewport", () => {
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
+      if (this.tagName === "BUTTON") {
+        return { top: 520, bottom: 552, left: 20, right: 52, width: 32, height: 32, x: 20, y: 520, toJSON: () => ({}) } as DOMRect;
+      }
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+
+    render(<DateInput data-testid="date-input" />);
+    fireEvent.click(screen.getAllByRole("button")[0]);
+
+    expect(Number.parseFloat(screen.getByTestId("date-picker-popover").style.top)).toBeLessThan(520);
+
+    bounds.mockRestore();
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
+  });
+
+  it("marks the calendar for the shared dark-mode calendar theme", () => {
+    render(<DateInput data-testid="date-input" />);
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    expect(document.querySelector(".date-picker-calendar")).toBeInTheDocument();
+  });
+
+  it("closes only the picker on browser back, leaving its parent modal mounted", async () => {
+    window.history.replaceState(null, "", "/date-picker-test");
+    render(
+      <div data-testid="parent-modal">
+        <DateInput data-testid="date-input" />
+      </div>,
+    );
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+
+    window.history.back();
+
+    await waitFor(() => expect(screen.queryByRole("grid")).not.toBeInTheDocument());
+    expect(screen.getByTestId("parent-modal")).toBeInTheDocument();
   });
 });

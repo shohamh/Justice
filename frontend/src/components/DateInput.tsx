@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import Calendar from "react-calendar";
+import "react-calendar/dist/Calendar.css";
+import { listHolidays } from "../api/calendarHolidays";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 /**
  * Chromium ignores the `lang` attribute on <input type="date"> and always
  * formats the text field using the browser/OS locale, so a Hebrew page still
  * shows mm/dd/yyyy on an en-US machine. This wraps a real dd/mm/yyyy text
- * field (always correct, in our control) with a hidden native date input
- * that only supplies the calendar-picker popup, triggered via the button.
+ * field (always correct, in our control) with an in-app calendar grid.
  */
 interface DateInputProps {
   value?: string;
@@ -19,6 +23,7 @@ interface DateInputProps {
   min?: string;
   max?: string;
   id?: string;
+  showHolidays?: boolean;
   "data-testid"?: string;
 }
 
@@ -36,6 +41,19 @@ function isoToDigits(iso: string | undefined): string {
 function expandTwoDigitYear(yearDigits: string): string {
   const year = Number(yearDigits) < 50 ? 2000 + Number(yearDigits) : 1900 + Number(yearDigits);
   return String(year);
+}
+
+function dateToIso(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function isoToJsDate(iso: string | undefined): Date | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+  if (!m) return undefined;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
 function displayToIso(display: string): string | null {
@@ -66,13 +84,31 @@ function formatDateDigits(digits: string, expandShortYear = true): string {
 }
 
 export default function DateInput({
-  value, defaultValue, onChange, onBlur, className, disabled, required, autoFocus, min, max, id, ...rest
+  value, defaultValue, onChange, onBlur, className, disabled, required, autoFocus, min, max, id, showHolidays = true, ...rest
 }: DateInputProps) {
   const isControlled = value !== undefined;
   const [text, setText] = useState(() => isoToDisplay(value ?? defaultValue));
   const rawDigitsRef = useRef(isoToDigits(value ?? defaultValue));
   const isTypingRef = useRef(false);
-  const nativeRef = useRef<HTMLInputElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [popoverStyle, setPopoverStyle] = useState<CSSProperties>({});
+  const calendarBtnRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [holidayDates, setHolidayDates] = useState<Set<string>>(new Set());
+  const fetchedHolidayYearsRef = useRef<Set<number>>(new Set());
+  useModalBackClose(() => setPickerOpen(false), pickerOpen);
+
+  function ensureHolidaysFetched(year: number) {
+    if (!showHolidays || fetchedHolidayYearsRef.current.has(year)) return;
+    fetchedHolidayYearsRef.current.add(year);
+    listHolidays(year).then((holidays) => {
+      setHolidayDates((previous) => {
+        const next = new Set(previous);
+        holidays.forEach((holiday) => next.add(holiday.date));
+        return next;
+      });
+    }).catch(() => fetchedHolidayYearsRef.current.delete(year));
+  }
 
   useEffect(() => {
     if (isControlled && !isTypingRef.current) {
@@ -80,6 +116,58 @@ export default function DateInput({
       rawDigitsRef.current = isoToDigits(value);
     }
   }, [isControlled, value]);
+
+  useLayoutEffect(() => {
+    if (!pickerOpen) return;
+    function reposition() {
+      const btn = calendarBtnRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const POPOVER_WIDTH = 280;
+      const POPOVER_HEIGHT = 340;
+      const MARGIN = 8;
+      const width = Math.min(POPOVER_WIDTH, Math.max(0, window.innerWidth - MARGIN * 2));
+      const height = popoverRef.current?.getBoundingClientRect().height || POPOVER_HEIGHT;
+      const fitsBelow = rect.bottom + 4 + height <= window.innerHeight - MARGIN;
+      const fitsAbove = rect.top - 4 - height >= MARGIN;
+      const top = fitsBelow
+        ? rect.bottom + 4
+        : fitsAbove
+          ? rect.top - 4 - height
+          : Math.max(MARGIN, window.innerHeight - height - MARGIN);
+      const left = Math.min(Math.max(rect.right - width, MARGIN), window.innerWidth - width - MARGIN);
+      setPopoverStyle({ position: "fixed", top, left, width, maxWidth: "calc(100vw - 16px)" });
+    }
+    reposition();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [pickerOpen]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (
+        calendarBtnRef.current && !calendarBtnRef.current.contains(e.target as Node) &&
+        popoverRef.current && !popoverRef.current.contains(e.target as Node)
+      ) {
+        setPickerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [pickerOpen]);
+
+  useEffect(() => {
+    if (!pickerOpen || !showHolidays) return;
+    const iso = displayToIso(text);
+    ensureHolidaysFetched(iso ? Number(iso.slice(0, 4)) : new Date().getFullYear());
+    // Fetching is intentionally tied to the open picker and active input year.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerOpen, showHolidays]);
 
   function commit(iso: string) {
     if (onChange) onChange(iso);
@@ -136,11 +224,13 @@ export default function DateInput({
     onBlur?.(iso ?? "");
   }
 
-  function handleNativePick(raw: string) {
-    setText(isoToDisplay(raw));
-    rawDigitsRef.current = isoToDigits(raw);
+  function handleGridPick(picked: Date) {
+    const iso = dateToIso(picked);
+    setText(isoToDisplay(iso));
+    rawDigitsRef.current = isoToDigits(iso);
     isTypingRef.current = false;
-    commit(raw);
+    commit(iso);
+    setPickerOpen(false);
   }
 
   function handleClear() {
@@ -229,30 +319,36 @@ export default function DateInput({
         )}
       </span>
       <button
+        ref={calendarBtnRef}
         type="button"
         tabIndex={-1}
         disabled={disabled}
         aria-label="פתח לוח שנה"
-        onClick={() => {
-          const el = nativeRef.current;
-          if (!el) return;
-          if (typeof el.showPicker === "function") el.showPicker();
-          else el.focus();
-        }}
+        onClick={() => setPickerOpen((o) => !o)}
         className="shrink-0 text-gray-400 hover:text-gray-600 disabled:opacity-40 text-xs leading-none"
       >
         📅
       </button>
-      <input
-        ref={nativeRef}
-        type="date"
-        tabIndex={-1}
-        min={min}
-        max={max}
-        value={displayToIso(text) ?? ""}
-        onChange={e => handleNativePick(e.target.value)}
-        className="sr-only"
-      />
+      {pickerOpen && (
+        <div ref={popoverRef} data-testid="date-picker-popover" role="grid" style={popoverStyle} className="date-picker-popover z-[70] rounded border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-600 dark:bg-gray-800">
+          <Calendar
+            data-testid="date-picker-calendar"
+            className="date-picker-calendar"
+            onChange={(v) => handleGridPick(Array.isArray(v) ? v[0]! : (v as Date))}
+            value={isoToJsDate(displayToIso(text) ?? undefined) ?? null}
+            minDate={isoToJsDate(min)}
+            maxDate={isoToJsDate(max)}
+            locale="he-IL"
+            formatLongDate={(_, date) => String(date.getDate())}
+            onActiveStartDateChange={({ activeStartDate }) => {
+              if (activeStartDate) ensureHolidaysFetched(activeStartDate.getFullYear());
+            }}
+            tileClassName={({ date: tileDate, view }) =>
+              view === "month" && holidayDates.has(dateToIso(tileDate)) ? "holiday-date-tile" : null
+            }
+          />
+        </div>
+      )}
     </span>
   );
 }

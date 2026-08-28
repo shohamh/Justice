@@ -11,6 +11,7 @@ export interface TimelineEvent {
     | "exemption"
     | "exemption_request"
     | "personal_constraint"
+    | "personal_constraint_override"
     | "range_assignment"
     | "range_removed";
   date: string;

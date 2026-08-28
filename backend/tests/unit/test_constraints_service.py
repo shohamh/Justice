@@ -16,6 +16,37 @@ from app.services.constraints import (
 )
 from tests.helpers import create_node, create_soldier
 
+
+def test_commander_approval_records_approval_time(admin_session):
+    from app.services.settings_loader import set_setting
+
+    soldier = create_soldier(admin_session, personal_number=_pn(5))
+    commander = create_soldier(admin_session, personal_number=_pn(6))
+    set_setting(admin_session, "constraints.personal_cap_days", 10000, actor_id=None)
+    admin_session.commit()
+
+    start = date.today() + timedelta(days=1)
+    constraint = submit_constraint(
+        admin_session, soldier_id=soldier.id, start_date=start,
+        end_date=start, reason="test",
+    )
+    approved = approve_constraint(admin_session, constraint_id=constraint.id, actor_id=commander.id)
+
+    assert approved.commander_approved_by == commander.id
+    assert approved.commander_approved_at is not None
+
+
+def test_commander_approval_preserves_decision_note(admin_session):
+    set_setting = __import__("app.services.settings_loader", fromlist=["set_setting"]).set_setting
+    soldier = create_soldier(admin_session, personal_number=_pn(7))
+    commander = create_soldier(admin_session, personal_number=_pn(8))
+    set_setting(admin_session, "constraints.personal_cap_days", 10000, actor_id=None)
+    admin_session.commit()
+    start = date.today() + timedelta(days=1)
+    constraint = submit_constraint(admin_session, soldier_id=soldier.id, start_date=start, end_date=start, reason="test")
+    approved = approve_constraint(admin_session, constraint_id=constraint.id, actor_id=commander.id, decision_note="בדקתי")
+    assert approved.commander_approval_note == "בדקתי"
+
 _PREFIX = str(uuid.uuid4())[:8]
 
 

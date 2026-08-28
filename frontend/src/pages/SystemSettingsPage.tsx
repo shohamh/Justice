@@ -71,6 +71,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       },
       { key: "constraints.require_commander_approval", label: "דורש אישור מפקד", description: "האם בקשות אילוץ דורשות אישור מפקד", type: "boolean", defaultValue: true },
       { key: "constraints.require_duty_manager_approval", label: "דורש אישור אחראי תורנויות", description: "האם בקשות אילוץ דורשות אישור אחראי תורנויות (בנוסף לאישור מפקד)", type: "boolean", defaultValue: true },
+      { key: "constraints.allow_manual_override", label: "אפשר עקיפת אילוצים בשיבוץ ידני", description: "האם אחראי תורנויות יכול לשבץ ידנית חייל עם אילוץ אישי מאושר, לאחר מתן נימוק", type: "boolean", defaultValue: true },
     ],
   },
   {

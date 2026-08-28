@@ -21,6 +21,7 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    PersonalConstraintOverride,
     RangeAssignment,
     RangeEvent,
     RangeExcusalRequest,
@@ -701,6 +702,29 @@ def get_duty_history(
                 status=c.status,
                 metadata=constraint_metadata,
                 created_at=c.created_at.isoformat(),
+            )
+        )
+
+    # --- PersonalConstraintOverride events ---
+    overrides = list(
+        session.execute(
+            select(PersonalConstraintOverride).where(PersonalConstraintOverride.soldier_id == soldier_id)
+        ).scalars().all()
+    )
+    for o in overrides:
+        overrider = session.get(Soldier, o.overridden_by) if o.overridden_by else None
+        kind_label = "תורנות" if o.assignment_kind == "duty" else "מטווח"
+        events.append(
+            TimelineEvent(
+                id=o.id,
+                event_type="personal_constraint_override",
+                date=o.overridden_at.date().isoformat(),
+                end_date=None,
+                title=f"אילוץ אישי נדרס בשיבוץ ל{kind_label}",
+                description=o.reason if include_sensitive else None,
+                status=None,
+                metadata={"overridden_by_name": overrider.full_name if overrider else None} if include_sensitive else {},
+                created_at=o.overridden_at.isoformat(),
             )
         )
 

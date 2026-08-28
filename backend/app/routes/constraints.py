@@ -20,8 +20,9 @@ from app.auth.authz import (
 )
 from app.services.authority import request_cancellation_authorized, senior_commander_approval_authorized
 from app.auth.deps import require_enrolled, require_password_changed
-from app.db.models import HierarchyNode, PersonalConstraint, Soldier
+from app.db.models import HierarchyNode, PersonalConstraint, PersonalConstraintOverride, Soldier
 from app.db.session import get_session
+from app.services.holidays import HolidayHit, holidays_in_range
 from app.services.request_metadata import (
     constraint_audit_latest,
     latest_activity,
@@ -52,6 +53,14 @@ class WaitingOnOut(BaseModel):
     name: str
 
 
+class ConstraintOverrideOut(BaseModel):
+    id: uuid.UUID
+    overridden_by: PersonRefOut | None = None
+    assignment_kind: str
+    reason: str
+    overridden_at: datetime
+
+
 class ConstraintOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
@@ -73,6 +82,10 @@ class ConstraintOut(BaseModel):
     updated_at: datetime | None = None
     waiting_on: WaitingOnOut | None = None
     commander_approved_by: PersonRefOut | None = None
+    commander_approved_at: datetime | None = None
+    commander_approval_note: str | None = None
+    crossed_holidays: list[HolidayHit] = []
+    overrides: list[ConstraintOverrideOut] = []
 
 
 class SubmitRequest(BaseModel):
@@ -118,7 +131,9 @@ def _out(
     can_approve: bool = True,
     can_cancel: bool = False,
     audit_times: dict[uuid.UUID, datetime] | None = None,
+    overrides: list[ConstraintOverrideOut] | None = None,
 ) -> ConstraintOut:
+    crossed_holidays = holidays_in_range(c.start_date, c.end_date, end_inclusive=True)
     return ConstraintOut(
         id=c.id,
         soldier_id=c.soldier_id,
@@ -140,7 +155,37 @@ def _out(
         updated_at=latest_activity(c.created_at, c.decided_at, (audit_times or {}).get(c.id)),
         waiting_on=resolve_waiting_on(session, soldier_id=c.soldier_id, status=c.status),
         commander_approved_by=person_ref(session, c.commander_approved_by),
+        commander_approved_at=c.commander_approved_at,
+        commander_approval_note=c.commander_approval_note,
+        crossed_holidays=crossed_holidays,
+        overrides=overrides or [],
     )
+
+
+def _overrides_by_constraint(
+    session: Session, constraint_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[ConstraintOverrideOut]]:
+    """Batched personal_constraint_id → overrides lookup, mirroring
+    constraint_audit_latest's batch-fetch pattern."""
+    if not constraint_ids:
+        return {}
+    rows = session.execute(
+        select(PersonalConstraintOverride)
+        .where(PersonalConstraintOverride.personal_constraint_id.in_(constraint_ids))
+        .order_by(PersonalConstraintOverride.overridden_at.desc())
+    ).scalars().all()
+    result: dict[uuid.UUID, list[ConstraintOverrideOut]] = {}
+    for o in rows:
+        result.setdefault(o.personal_constraint_id, []).append(
+            ConstraintOverrideOut(
+                id=o.id,
+                overridden_by=person_ref(session, o.overridden_by),
+                assignment_kind=o.assignment_kind,
+                reason=o.reason,
+                overridden_at=o.overridden_at,
+            )
+        )
+    return result
 
 
 def _can_approve_constraint(
@@ -220,6 +265,7 @@ def list_own(
     rows = svc.list_constraints(session, soldier_id=user.id)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
     audit_times = constraint_audit_latest(session, [c.id for c in rows])
+    overrides_by_constraint = _overrides_by_constraint(session, [c.id for c in rows])
     return [
         _out(
             session,
@@ -227,6 +273,7 @@ def list_own(
             nearest_commander=nearest_commander,
             nearest_duty_manager=nearest_duty_manager,
             audit_times=audit_times,
+            overrides=overrides_by_constraint.get(c.id, []),
         )
         for c in rows
     ]
@@ -304,7 +351,15 @@ def privileged_cancel(
     if c is None:
         return None
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
-    return _out(session, c, include_reason=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+    overrides = _overrides_by_constraint(session, [c.id]).get(c.id, [])
+    return _out(
+        session,
+        c,
+        include_reason=True,
+        nearest_commander=nearest_commander,
+        nearest_duty_manager=nearest_duty_manager,
+        overrides=overrides,
+    )
 
 
 # ── Cross-soldier view ──
@@ -322,6 +377,8 @@ def list_for_soldier(
     include_reason = can_see_private(session, user, s)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     can_cancel = request_cancellation_authorized(session, user=user, target_node=_node_of(session, s))
+    rows = svc.list_constraints(session, soldier_id=soldier_id)
+    overrides_by_constraint = _overrides_by_constraint(session, [c.id for c in rows])
     return [
         _out(
             session,
@@ -330,8 +387,9 @@ def list_for_soldier(
             nearest_commander=nearest_commander,
             nearest_duty_manager=nearest_duty_manager,
             can_cancel=can_cancel,
+            overrides=overrides_by_constraint.get(c.id, []),
         )
-        for c in svc.list_constraints(session, soldier_id=soldier_id)
+        for c in rows
     ]
 
 
@@ -360,6 +418,7 @@ def _attach_names(
         if node_ids
         else {}
     )
+    overrides_by_constraint = _overrides_by_constraint(session, [c.id for c in rows])
     result = []
     for c in rows:
         s = soldiers_by_id.get(c.soldier_id)
@@ -385,6 +444,7 @@ def _attach_names(
                 nearest_duty_manager=nearest_duty_manager,
                 can_approve=can_approve,
                 can_cancel=can_cancel,
+                overrides=overrides_by_constraint.get(c.id, []),
             )
         )
     return result
@@ -471,12 +531,14 @@ def approve(
     session.commit()
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+    overrides = _overrides_by_constraint(session, [c.id]).get(c.id, [])
     return _out(
         session,
         c,
         include_reason=True,
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
+        overrides=overrides,
     )
 
 
@@ -502,10 +564,12 @@ def reject(
     session.commit()
     session.refresh(c)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+    overrides = _overrides_by_constraint(session, [c.id]).get(c.id, [])
     return _out(
         session,
         c,
         include_reason=True,
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
+        overrides=overrides,
     )

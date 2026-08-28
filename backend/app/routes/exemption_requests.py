@@ -85,6 +85,8 @@ class ExemptionRequestOut(BaseModel):
     updated_at: str | None = None
     waiting_on: WaitingOnOut | None = None
     commander_approved_by: PersonRefOut | None = None
+    commander_approved_at: datetime | None = None
+    commander_approval_note: str | None = None
 
 
 class CreateExemptionRequest(BaseModel):
@@ -163,6 +165,8 @@ def _out(
         updated_at=(updated_at or req.created_at).isoformat(),
         waiting_on=resolve_waiting_on(session, soldier_id=req.soldier_id, status=req.status),
         commander_approved_by=person_ref(session, req.commander_approved_by),
+        commander_approved_at=req.commander_approved_at,
+        commander_approval_note=req.commander_approval_note,
     )
 
 
@@ -536,7 +540,7 @@ def approve_exemption_request_commander_step(
         if not (is_duty_manager(session, user.id) and can(user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=scope_root_ids(session, user), is_commander=is_commander(session, user.id), is_duty_manager=True)):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
-        result = approve_commander_step(session, request_id, approved_by=user.id)
+        result = approve_commander_step(session, request_id, approved_by=user.id, decision_note=body.decision_note)
     except ExemptionRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()

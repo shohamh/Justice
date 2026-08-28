@@ -39,10 +39,12 @@ class SwapManagerApprovalOut(BaseModel):
     approved_by: uuid.UUID | None = None
     approved_by_name: str | None = None
     approved_at: datetime | None = None
+    decision_note: str | None = None
     rejected: bool = False
     rejected_by: uuid.UUID | None = None
     rejected_by_name: str | None = None
     rejected_at: datetime | None = None
+    rejected_note: str | None = None
     approver_kind: str
 
 
@@ -167,10 +169,12 @@ def _manager_approvals_out(
             approved_by=row.approved_by if row else None,
             approved_by_name=approved_by.full_name if approved_by else None,
             approved_at=row.approved_at if row else None,
+            decision_note=row.decision_note if row else None,
             rejected=bool(row.rejected) if row else False,
             rejected_by=row.rejected_by if row else None,
             rejected_by_name=rejected_by.full_name if rejected_by else None,
             rejected_at=row.rejected_at if row else None,
+            rejected_note=row.decision_note if row else None,
             approver_kind=kind,
         ))
 
@@ -201,10 +205,12 @@ def _manager_approvals_out(
             approved_by=row.approved_by,
             approved_by_name=approved_by.full_name if approved_by else None,
             approved_at=row.approved_at,
+            decision_note=row.decision_note,
             rejected=bool(row.rejected),
             rejected_by=row.rejected_by,
             rejected_by_name=rejected_by.full_name if rejected_by else None,
             rejected_at=row.rejected_at,
+            rejected_note=row.decision_note,
             approver_kind=row.approver_kind,
         ))
     return out
@@ -307,7 +313,7 @@ def cover_eligibility(
     assignment = session.get(DutyAssignment, assignment_id)
     if assignment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
-    eligible, reason = check_soldier_for_assignment(session, user.id, assignment_id)
+    eligible, reason, _warning = check_soldier_for_assignment(session, user.id, assignment_id)
     return CoverEligibilityOut(eligible=eligible, reason=reason)
 
 

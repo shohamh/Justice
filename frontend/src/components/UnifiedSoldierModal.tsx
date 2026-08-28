@@ -752,6 +752,15 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   {c.reason ?? "מידע פרטי"}
                 </p>
                 {c.decision_note && <p className="text-gray-500 dark:text-gray-400 text-xs">{t("approvals.decision_note")}: {c.decision_note}</p>}
+                {c.overrides.length > 0 && (
+                  <ul className="mt-1 text-xs text-amber-600 dark:text-amber-400 space-y-0.5">
+                    {c.overrides.map(o => (
+                      <li key={o.id}>
+                        נדרס ע&quot;י {o.overridden_by?.name ?? "?"} · {o.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {(isAdmin || isDutyManager) && (c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager") && (
                   <div className="flex gap-2 mt-1">
                     <button className="text-xs text-green-600 hover:underline" onClick={() => handleApprove(c.id)} data-testid={`approve-constraint-${c.id}`}>

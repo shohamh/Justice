@@ -112,6 +112,7 @@ function makeShift(assignees: CalendarShiftAssignee[], overrides: Partial<Calend
     reserve_count: 1,
     required_range_type: "laser",
     assignees,
+    crossed_holidays: [],
     ...overrides,
   };
 }
@@ -518,5 +519,21 @@ describe("ShiftDetailPanel Replace action", () => {
       expect(shiftsApi.removeShiftAssignment).toHaveBeenCalledWith("shift-1", "a-called-up");
       expect(shiftsApi.getShift).toHaveBeenCalledWith("shift-1");
     });
+  });
+});
+
+describe("ShiftDetailPanel holiday badge", () => {
+  it("shows a holiday badge when the shift crosses a holiday", () => {
+    renderPanel(
+      makeShift([], { crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }] })
+    );
+
+    expect(screen.getByTestId("holiday-badge")).toBeInTheDocument();
+  });
+
+  it("shows no holiday badge when the shift crosses no holiday", () => {
+    renderPanel(makeShift([], { crossed_holidays: [] }));
+
+    expect(screen.queryByTestId("holiday-badge")).not.toBeInTheDocument();
   });
 });

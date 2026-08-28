@@ -6,6 +6,7 @@ import { EventDetailModal } from "../planning";
 import TableSearchInput from "../TableSearchInput";
 import { translateApiError } from "../../utils/translateApiError";
 import { formatDate } from "../../utils/formatDate";
+import OverrideReasonModal from "../OverrideReasonModal";
 
 export interface RangeEditAssignmentsModalProps {
   open: boolean;
@@ -50,6 +51,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const [primarySelected, setPrimarySelected] = useState<Set<string>>(new Set());
   const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [pendingOverride, setPendingOverride] = useState<{ primaries: string[]; reserves: string[] } | null>(null);
   const [primaryPanelOpen, setPrimaryPanelOpen] = useState(true);
   const [reservePanelOpen, setReservePanelOpen] = useState(true);
   const [summarySearch, setSummarySearch] = useState("");
@@ -131,7 +133,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 
   const totalSelected = primarySelected.size + reserveSelected.size;
 
-  async function saveSelection() {
+  async function doSave(overrideReason?: string) {
     if (!editable || saving || totalSelected === 0) return;
     if (primary.length + pendingPrimaries.length > event.required_count) {
       setError(text("ranges.errors.primary_full", "אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף"));
@@ -144,7 +146,11 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     setSaving(true);
     setError("");
     try {
-      const created = await batchAssignRange(event.id, { primaries: [...primarySelected], reserves: [...reserveSelected] });
+      const created = await batchAssignRange(event.id, {
+        primaries: [...primarySelected],
+        reserves: [...reserveSelected],
+        ...(overrideReason ? { override_reason: overrideReason } : {}),
+      });
       setAssignments(current => [...current, ...created]);
       setPrimarySelected(new Set());
       setReserveSelected(new Set());
@@ -157,6 +163,17 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     } finally {
       setSaving(false);
     }
+  }
+
+  function saveSelection() {
+    if (!editable || saving || totalSelected === 0) return;
+    const selectedIds = new Set([...primarySelected, ...reserveSelected]);
+    const hasConflictWarning = rangeCandidates.some(c => selectedIds.has(c.soldier_id) && c.personal_constraint_conflict === true);
+    if (hasConflictWarning) {
+      setPendingOverride({ primaries: [...primarySelected], reserves: [...reserveSelected] });
+      return;
+    }
+    void doSave();
   }
 
   async function remove(assignmentId: string) {
@@ -411,7 +428,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 
         {error && <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-        <button type="button" data-testid="save-assignments" disabled={saving || totalSelected === 0} onClick={() => void saveSelection()} className={`${actionClass} border-green-600 bg-green-600 text-white`}>
+        <button type="button" data-testid="save-assignments" disabled={saving || totalSelected === 0} onClick={saveSelection} className={`${actionClass} border-green-600 bg-green-600 text-white`}>
           {saving ? text("ranges.saving", "שומר...") : `${text("ranges.save_assignments", "שמור שיבוצים")}${totalSelected > 0 ? ` (${totalSelected})` : ""}`}
         </button>
       </>}
@@ -420,6 +437,12 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
         <button type="button" onClick={onClose} className="rounded border px-3 py-1.5 text-sm dark:border-gray-600 dark:text-gray-100">{text("ranges.close", "סגור")}</button>
       </div>
     </div>
+    <OverrideReasonModal
+      open={pendingOverride !== null}
+      count={pendingOverride ? pendingOverride.primaries.length + pendingOverride.reserves.length : 0}
+      onCancel={() => setPendingOverride(null)}
+      onConfirm={(reason) => { setPendingOverride(null); void doSave(reason); }}
+    />
   </EventDetailModal>;
 }
 

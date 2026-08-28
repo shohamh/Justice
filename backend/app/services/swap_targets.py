@@ -35,7 +35,7 @@ def list_eligible_targets(
 
     out: list[dict] = []
     for c in candidates:
-        eligible, _reason = check_soldier_for_assignment(session, c.id, duty_assignment_id)
+        eligible, _reason, _warning = check_soldier_for_assignment(session, c.id, duty_assignment_id)
         if not eligible:
             continue
         try:

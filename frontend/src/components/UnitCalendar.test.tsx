@@ -29,11 +29,20 @@ vi.mock("../api/calendarData", () => ({
   loadCalendarData: vi.fn(),
 }));
 
+vi.mock("../api/calendarHolidays", () => ({
+  listHolidays: vi.fn().mockResolvedValue([
+    { date: "2026-09-11", name: "Eve of Rosh Hashanah" },
+    { date: "2026-09-12", name: "Rosh Hashanah" },
+  ]),
+}));
+
 vi.mock("@fullcalendar/react", () => ({
-  default: ({ datesSet, events, eventContent }: {
+  default: ({ datesSet, events, eventContent, dayCellClassNames, eventClick }: {
     datesSet: (arg: unknown) => void;
     events: Array<{ id: string; title: string; classNames: string[]; extendedProps?: Record<string, unknown> }>;
     eventContent?: (arg: { event: { extendedProps: Record<string, unknown> } }) => ReactNode;
+    dayCellClassNames?: (arg: { date: Date }) => string[];
+    eventClick?: (arg: { event: { extendedProps: Record<string, unknown>; title: string; start: Date } }) => void;
   }) => (
     <div>
       <button
@@ -56,8 +65,28 @@ vi.mock("@fullcalendar/react", () => ({
       >
         set next dates
       </button>
+      {["2026-08-01", "2026-09-12"].map((iso) => {
+        const [year, month, day] = iso.split("-").map(Number);
+        // Local-time midnight, matching how FullCalendar's default
+        // timeZone: 'local' mode hands dates to dayCellClassNames — NOT
+        // UTC midnight, which would mask a UTC-conversion bug in timezones
+        // ahead of UTC (e.g. Asia/Jerusalem, this app's primary locale).
+        return (
+          <div
+            key={iso}
+            data-testid={`day-cell-${iso}`}
+            data-date={iso}
+            className={(dayCellClassNames?.({ date: new Date(year, month - 1, day) }) ?? []).join(" ")}
+          />
+        );
+      })}
       {events.map((event) => (
-        <button key={event.id} data-testid={`calendar-event-${event.id}`} className={event.classNames.join(" ")}>
+        <button
+          key={event.id}
+          data-testid={`calendar-event-${event.id}`}
+          className={event.classNames.join(" ")}
+          onClick={() => eventClick?.({ event: { extendedProps: event.extendedProps ?? {}, title: event.title, start: new Date(`${event.id.slice(-10)}T00:00:00`) } })}
+        >
           {event.title}
           {eventContent && eventContent({ event: { extendedProps: event.extendedProps ?? {} } })}
         </button>
@@ -107,6 +136,7 @@ function shift(
       range_eligibility: null,
       ...assigneeOverrides,
     }],
+    crossed_holidays: [],
   };
 }
 
@@ -157,6 +187,7 @@ function shiftWithPlannedRangeAssignee(id: string): CalendarShift {
         last_qualification_date: null,
       },
     }],
+    crossed_holidays: [],
   };
 }
 
@@ -279,3 +310,85 @@ vi.mock('../api/ranges', () => ({
 vi.mock('../api/dutyConfig', () => ({
   listDutyTypes: vi.fn(() => Promise.resolve([])),
 }));
+
+describe("UnitCalendar holidays", () => {
+  afterEach(() => {
+    vi.mocked(useAuth).mockReturnValue({ user: null } as ReturnType<typeof useAuth>);
+  });
+
+  test("applies a holiday day-cell class to a known holiday date", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await waitFor(() => {
+      const cell = document.querySelector('[data-date="2026-09-12"]');
+      expect(cell?.className).toMatch(/holiday-day-cell/);
+    });
+  });
+
+  test("shows a holiday badge on a shift event that crosses a holiday", async () => {
+    const testShift: CalendarShift = {
+      ...shift("holiday-shift", "guard", false),
+      crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }],
+    };
+    loadCalendarWith([testShift]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`shift-holiday-badge-${testShift.id}`)).toBeInTheDocument();
+    });
+  });
+
+  test("renders holiday events before duties with the holiday name and special styling", async () => {
+    const testShift = shift("holiday-order-shift", "guard", false);
+    loadCalendarWith([testShift]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    const holidayEvent = await screen.findByTestId("calendar-event-holiday-2026-09-12");
+    expect(holidayEvent).toHaveTextContent("✡️ Rosh Hashanah");
+    expect(holidayEvent.className).toMatch(/holiday-calendar-event/);
+    expect(holidayEvent.className).toMatch(/holiday-sparkle-border/);
+    expect(holidayEvent.compareDocumentPosition(screen.getByTestId(`calendar-event-${testShift.id}`)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test("can hide and show holiday events with the holiday filter", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    await screen.findByTestId("calendar-event-holiday-2026-09-12");
+
+    fireEvent.click(screen.getByLabelText("unit_calendar.show_holidays"));
+    expect(screen.queryByTestId("calendar-event-holiday-2026-09-12")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("unit_calendar.show_holidays"));
+    expect(await screen.findByTestId("calendar-event-holiday-2026-09-12")).toBeInTheDocument();
+  });
+
+  test("opens holiday details when the holiday event is clicked", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    const holidayEvent = await screen.findByTestId("calendar-event-holiday-2026-09-12");
+    fireEvent.click(holidayEvent);
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Rosh Hashanah");
+    expect(screen.getByRole("dialog")).toHaveTextContent("12.09.2026");
+  });
+
+  test("renders the eve of a holiday as its own calendar event", async () => {
+    loadCalendarWith([]);
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("calendar-event-holiday-2026-09-11")).toHaveTextContent("Eve of Rosh Hashanah");
+  });
+});

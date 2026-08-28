@@ -47,3 +47,37 @@ describe("ShiftAssignModal weapon eligibility warning", () => {
     confirmSpy.mockRestore();
   });
 });
+
+describe("ShiftAssignModal personal constraint override", () => {
+  beforeEach(() => {
+    vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
+      {
+        soldier_id: "s1", full_name: "חייל אחד", personal_number: "1111111", burden_share: 0.2,
+        blocked: false, blocked_reason: null, weapon_warning: false, hierarchy_path_ids: [],
+        personal_constraint_warning: {
+          reason: "בקשה אישית", start_date: "2026-09-01", end_date: "2026-09-05",
+          decided_by: "רב\"ט כהן", decided_at: "2026-08-20T10:00:00Z",
+        },
+      },
+    ]);
+    vi.mocked(shiftsApi.assignBatch).mockResolvedValue({
+      primary_assignment_ids: [], reserve_assignment_ids: [], reserve_links_created: 0,
+    });
+  });
+
+  it("shows a warning icon for a constrained candidate and requires a reason before assigning them", async () => {
+    render(<ShiftAssignModal shift={baseShift} dutyTypes={[]} onSaved={vi.fn()} onClose={vi.fn()} />);
+    await screen.findByText("חייל אחד");
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByText(/שבץ/));
+
+    expect(await screen.findByText(/נדרש נימוק/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "צורך מבצעי" } });
+    fireEvent.click(screen.getByRole("button", { name: /אישור/ }));
+
+    await waitFor(() => expect(shiftsApi.assignBatch).toHaveBeenCalledWith(
+      baseShift.id, expect.objectContaining({ override_reason: "צורך מבצעי" }),
+    ));
+  });
+});

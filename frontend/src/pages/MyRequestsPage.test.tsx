@@ -40,6 +40,7 @@ const constraint = {
   decided_at: null,
   decision_note: null,
   created_at: "2026-01-01",
+  crossed_holidays: [],
 } as constraintsApi.PersonalConstraint;
 
 const exemptionRequest = {
@@ -209,6 +210,7 @@ describe("MyRequestsPage - existing-tab groups", () => {
         updated_at: "2026-06-19T00:00:00Z", decided_at: "2026-06-19T00:00:00Z",
         decision_note: "כבר לא נדרש", created_at: "2026-06-01T00:00:00Z",
         nearest_commander: null, nearest_duty_manager: null, can_approve: false, can_cancel: false,
+        crossed_holidays: [],
       },
     ]);
     renderPage();
@@ -466,6 +468,32 @@ describe("MyRequestsPage - constraint start date cannot be in the past", () => {
     expect(constraintsApi.submitConstraint).toHaveBeenCalledWith(
       expect.objectContaining({ start_date: "2030-12-31" }),
     );
+  });
+
+  it("shows a note listing crossed holidays after a successful submit", async () => {
+    vi.mocked(constraintsApi.submitConstraint).mockResolvedValue({
+      ...constraint,
+      crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }],
+    });
+    renderPage();
+    await openConstraintForm();
+
+    const future = "31122030";
+    fireEvent.change(screen.getByTestId("req-start"), { target: { value: future } });
+    fireEvent.change(screen.getByTestId("req-end"), { target: { value: future } });
+    fireEvent.change(screen.getByTestId("req-reason"), { target: { value: "סיבה" } });
+
+    fireEvent.click(screen.getByTestId("req-submit"));
+
+    // react-i18next is mocked in this file to return raw keys, ignoring
+    // interpolation params (t = (key) => key) — see other tests in this file
+    // asserting on translation keys rather than interpolated text. So the
+    // holiday names passed into t("holidays.crossed_note", { names }) don't
+    // surface in the mocked render; assert on the note's presence instead.
+    // Real i18next (he.json: holidays.crossed_note) does interpolate {{names}}.
+    await waitFor(() => {
+      expect(screen.getByTestId("req-holiday-note")).toBeInTheDocument();
+    });
   });
 });
 
