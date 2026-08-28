@@ -52,7 +52,7 @@ export interface ShiftCandidate {
   soldier_id: string;
   full_name: string;
   personal_number: string;
-  effort: number;
+  burden_share: number;
   blocked: boolean;
   blocked_reason: "constraint" | "assignment" | "ineligible" | null;
   weapon_warning: boolean;

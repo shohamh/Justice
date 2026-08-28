@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from app.db.models import DutyType, Soldier
 from app.services.hierarchy import create_node
-from app.services.node_effort_potential import compute_node_effort_potential
+from app.services.node_burden_share_potential import compute_node_burden_share_potential
 from app.services.potential import create_modifier
 
 
@@ -37,7 +37,7 @@ def test_sibling_shares_sum_to_one(app_session):
     app_session.add(DutyType(name="שמירה גאפ", score_per_day=Decimal("1.0"), requirements={}))
     app_session.commit()
 
-    results = compute_node_effort_potential(app_session, reference_date=date(2026, 7, 4))
+    results = compute_node_burden_share_potential(app_session, reference_date=date(2026, 7, 4))
 
     a = results[child_a.id]
     b = results[child_b.id]
@@ -54,7 +54,7 @@ def test_gap_is_none_when_potential_share_is_zero(app_session):
     app_session.flush()
     app_session.commit()
 
-    results = compute_node_effort_potential(app_session, reference_date=date(2026, 7, 4))
+    results = compute_node_burden_share_potential(app_session, reference_date=date(2026, 7, 4))
 
     r = results[child.id]
     # no soldiers anywhere under this parent -> zero total potential among siblings
@@ -72,7 +72,7 @@ def test_global_share_relative_to_top_level_roots(app_session):
     app_session.add(DutyType(name="שמירה גלובלי", score_per_day=Decimal("1.0"), requirements={}))
     app_session.commit()
 
-    results = compute_node_effort_potential(app_session, reference_date=date(2026, 7, 4))
+    results = compute_node_burden_share_potential(app_session, reference_date=date(2026, 7, 4))
 
     a = results[root_a.id]
     b = results[root_b.id]
@@ -101,7 +101,7 @@ def test_negative_final_potential_is_clamped_to_zero_in_shares(app_session):
     )
     app_session.commit()
 
-    results = compute_node_effort_potential(app_session, reference_date=date(2026, 7, 4))
+    results = compute_node_burden_share_potential(app_session, reference_date=date(2026, 7, 4))
 
     neg = results[child_neg.id]
     pos = results[child_pos.id]

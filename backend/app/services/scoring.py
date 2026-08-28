@@ -643,7 +643,7 @@ def _iter_calendar_quarters(start: date, end: date) -> list[date]:
     return quarters
 
 
-def _effort_reset_date(session: Session) -> date:
+def _burden_share_reset_date(session: Session) -> date:
     """Frame of reference for the quarterly-load history window.
 
     The `fairness.reset_date` setting overrides everything. Without it, ALL
@@ -669,7 +669,7 @@ def _effort_reset_date(session: Session) -> date:
     return quarter_start(date(date.today().year - 2, date.today().month, 1))
 
 
-def _effort_planning_start(session: Session) -> date:
+def _burden_share_planning_start(session: Session) -> date:
     today = date.today()
     latest_published_end = session.execute(
         select(func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
@@ -679,7 +679,7 @@ def _effort_planning_start(session: Session) -> date:
     return today
 
 
-def _effort_quarter_windows(
+def _burden_share_quarter_windows(
     session: Session, *, reset_date: date, planning_start: date, planning_end: date
 ) -> list[tuple[date, date, date]]:
     """Return (tracked_start, tracked_end, calendar_quarter_start) like effort_score legacy code."""
@@ -1332,7 +1332,7 @@ def _ensure_projection_ready(
     return True
 
 
-def _projection_effort_inputs(
+def _projection_burden_share_inputs(
     session: Session,
     *,
     soldiers: list[Soldier],
@@ -1352,7 +1352,7 @@ def _projection_effort_inputs(
         logger.warning("score projection read fell back because reset_date is not quarter-aligned")
         return None
 
-    windows = _effort_quarter_windows(
+    windows = _burden_share_quarter_windows(
         session, reset_date=reset_date, planning_start=planning_start, planning_end=planning_end
     )
     if not windows:
@@ -1396,9 +1396,9 @@ def _try_projected_effort_data(
 ) -> dict[uuid.UUID, Any] | None:
     from app.services.effort_score import _compute_effort_data
 
-    reset_date = _effort_reset_date(session)
-    planning_start = _effort_planning_start(session)
-    projection_inputs = _projection_effort_inputs(
+    reset_date = _burden_share_reset_date(session)
+    planning_start = _burden_share_planning_start(session)
+    projection_inputs = _projection_burden_share_inputs(
         session,
         soldiers=soldiers,
         reset_date=reset_date,
@@ -1423,7 +1423,7 @@ def _try_projected_effort_data(
     return data
 
 
-def _try_projected_effort_scores(
+def _try_projected_burden_shares(
     session: Session, soldiers: list[Soldier]
 ) -> dict[uuid.UUID, float] | None:
     data = _try_projected_effort_data(session, soldiers)
@@ -1432,7 +1432,7 @@ def _try_projected_effort_scores(
     return {sid: float(item.effort_score) for sid, item in data.items()}
 
 
-def _try_projected_effort_breakdown(
+def _try_projected_burden_share_breakdown(
     session: Session,
     *,
     soldier: Any,
@@ -1443,8 +1443,8 @@ def _try_projected_effort_breakdown(
     extra_adj_date: date | None = None,
 ) -> Any | None:
     from app.services.effort_score import (
-        EffortBreakdown,
-        EffortQuarterDetail,
+        BurdenShareBreakdown,
+        BurdenShareQuarterDetail,
         _quarter_label,
         quarter_end,
         quarter_start,
@@ -1454,11 +1454,11 @@ def _try_projected_effort_breakdown(
         logger.warning("effort breakdown fell back because reset_date is not quarter-aligned")
         return None
 
-    windows = _effort_quarter_windows(
+    windows = _burden_share_quarter_windows(
         session, reset_date=reset_date, planning_start=planning_start, planning_end=planning_end
     )
     if not windows:
-        return EffortBreakdown(quarters=[], effort_score=Decimal("0"), A_i=Decimal("0"), W_i=Decimal("0"))
+        return BurdenShareBreakdown(quarters=[], burden_share=Decimal("0"), A_i=Decimal("0"), W_i=Decimal("0"))
 
     quarter_starts = {calendar_qs for _q_start, _q_end, calendar_qs in windows}
     keys = {
@@ -1493,7 +1493,7 @@ def _try_projected_effort_breakdown(
         q_soldier_scores[row.quarter_start] += _q6(row.duty_score) + _q6(row.adjustment_score)
         q_adj_scores[row.quarter_start] += _q6(row.adjustment_score)
 
-    # Legacy compute_effort_breakdown includes this soldier's adjustments in the
+    # Legacy compute_burden_share_breakdown includes this soldier's adjustments in the
     # displayed unit score, not every soldier's adjustments. Keep that contract.
     for quarter_start_value, adjustment_score in q_adj_scores.items():
         q_unit_scores[quarter_start_value] = q_unit_scores.get(quarter_start_value, Decimal("0")) + adjustment_score
@@ -1506,7 +1506,7 @@ def _try_projected_effort_breakdown(
             q_unit_scores[extra_qs] = q_unit_scores.get(extra_qs, Decimal("0")) + delta
             q_soldier_scores[extra_qs] += delta
 
-    quarter_details: list[EffortQuarterDetail] = []
+    quarter_details: list[BurdenShareQuarterDetail] = []
     A_i = Decimal("0")
     W_i = Decimal("0")
     for q_start_d, q_end_d, calendar_qs in windows:
@@ -1528,7 +1528,7 @@ def _try_projected_effort_breakdown(
 
         true_q_end = quarter_end(q_start_d)
         quarter_details.append(
-            EffortQuarterDetail(
+            BurdenShareQuarterDetail(
                 quarter_start=q_start_d,
                 quarter_end=q_end_d,
                 quarter_label=_quarter_label(q_start_d),
@@ -1542,7 +1542,7 @@ def _try_projected_effort_breakdown(
             )
         )
 
-    effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
+    burden_share = A_i / W_i if W_i > Decimal("0") else Decimal("0")
 
     if quarter_details:
         from app.services.effort_score import compute_quarter_contributions, quarter_start as _qstart
@@ -1555,21 +1555,21 @@ def _try_projected_effort_breakdown(
         for d in quarter_details:
             d.contributions = contrib_map.get(_qstart(d.quarter_start), [])
 
-    return EffortBreakdown(quarters=quarter_details, effort_score=effort_score, A_i=A_i, W_i=W_i)
+    return BurdenShareBreakdown(quarters=quarter_details, burden_share=burden_share, A_i=A_i, W_i=W_i)
 
 
-def effort_scores_by_soldier(
+def burden_shares_by_soldier(
     session: Session, soldiers: list[Soldier]
 ) -> dict[uuid.UUID, float]:
-    """Effort score (scale-invariant A_i/W_i ratio) per soldier id, using the
+    """Burden share (scale-invariant A_i/W_i ratio) per soldier id, using the
     same reset-date/planning-horizon rules as the transparency page."""
-    projected = _try_projected_effort_scores(session, soldiers)
+    projected = _try_projected_burden_shares(session, soldiers)
     if projected is not None:
         return projected
 
     from app.services.effort_score import compute_effort_data
 
-    reset_date = _effort_reset_date(session)
+    reset_date = _burden_share_reset_date(session)
 
     today = date.today()
 
@@ -1597,9 +1597,9 @@ def _try_projected_transparency_rows(
 ) -> dict[str, Any] | None:
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     soldier_ids = {soldier.id for soldier in soldiers}
-    reset_date = _effort_reset_date(session)
-    planning_start = _effort_planning_start(session)
-    effort_windows = _effort_quarter_windows(
+    reset_date = _burden_share_reset_date(session)
+    planning_start = _burden_share_planning_start(session)
+    effort_windows = _burden_share_quarter_windows(
         session,
         reset_date=reset_date,
         planning_start=planning_start,
@@ -1674,9 +1674,9 @@ def _try_projected_transparency_rows(
         has_partial = any(not ex_type.is_global for _, ex_type in soldier_exemptions)
         has_temporary = any(exemption.end_date is not None for exemption, _ in soldier_exemptions)
         effort_data = effort_map.get(s.id)
-        effort_score = float(effort_data.effort_score) if effort_data else 0.0
+        burden_share = float(effort_data.effort_score) if effort_data else 0.0
         c_over_d = float(effort_data.C_over_D) if effort_data else 0.0
-        effort_offset_raw = effort_data.effort_offset if effort_data else 0
+        burden_share_offset_raw = effort_data.effort_offset if effort_data else 0
         rows.append(
             {
                 "soldier_id": s.id,
@@ -1698,9 +1698,9 @@ def _try_projected_transparency_rows(
                 "has_global_exemption": has_global if can_see_exemption_aggregates else None,
                 "has_partial_exemption": has_partial if can_see_exemption_aggregates else None,
                 "has_temporary_exemption": has_temporary if can_see_exemption_aggregates else None,
-                "effort_score": effort_score,
+                "burden_share": burden_share,
                 "c_over_d": c_over_d,
-                "effort_offset_raw": effort_offset_raw,
+                "burden_share_offset_raw": burden_share_offset_raw,
             }
         )
     if population_spd:
@@ -1711,7 +1711,7 @@ def _try_projected_transparency_rows(
         r["normalised_score"] = (
             r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
         )
-    rows.sort(key=lambda r: r["effort_score"], reverse=True)
+    rows.sort(key=lambda r: r["burden_share"], reverse=True)
     return {
         "rows": rows,
         "can_see_exemption_aggregates": can_see_exemption_aggregates,
@@ -1722,7 +1722,7 @@ def _try_projected_transparency_rows(
 def transparency_rows(
     session: Session, *, viewer: Soldier | None = None
 ) -> dict[str, Any]:
-    # Both projected and legacy builders preserve the public "effort_score" key.
+    # Both projected and legacy builders preserve the public "burden_share" key.
     projected = _try_projected_transparency_rows(session, viewer=viewer)
     if projected is not None:
         return projected
@@ -1750,7 +1750,7 @@ def _legacy_transparency_rows(
 
     # Compute effort scores for all active soldiers
     today = date.today()
-    reset_date = _effort_reset_date(session)
+    reset_date = _burden_share_reset_date(session)
 
     # Include future published assignments by using the day after the latest
     # published assignment as the planning horizon.  Without this, effort_score
@@ -1806,9 +1806,9 @@ def _legacy_transparency_rows(
         has_partial = any(not ex_type.is_global for _, ex_type in soldier_exemptions)
         has_temporary = any(exemption.end_date is not None for exemption, _ in soldier_exemptions)
         effort_data = effort_map.get(s.id)
-        effort_score = float(effort_data.effort_score) if effort_data else 0.0
+        burden_share = float(effort_data.effort_score) if effort_data else 0.0
         c_over_d = float(effort_data.C_over_D) if effort_data else 0.0
-        effort_offset_raw = effort_data.effort_offset if effort_data else 0
+        burden_share_offset_raw = effort_data.effort_offset if effort_data else 0
         rows.append(
             {
                 "soldier_id": s.id,
@@ -1830,9 +1830,9 @@ def _legacy_transparency_rows(
                 "has_global_exemption": has_global if can_see_exemption_aggregates else None,
                 "has_partial_exemption": has_partial if can_see_exemption_aggregates else None,
                 "has_temporary_exemption": has_temporary if can_see_exemption_aggregates else None,
-                "effort_score": effort_score,
+                "burden_share": burden_share,
                 "c_over_d": c_over_d,
-                "effort_offset_raw": effort_offset_raw,
+                "burden_share_offset_raw": burden_share_offset_raw,
             }
         )
     if population_spd:
@@ -1843,7 +1843,7 @@ def _legacy_transparency_rows(
         r["normalised_score"] = (
             r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
         )
-    rows.sort(key=lambda r: r["effort_score"], reverse=True)
+    rows.sort(key=lambda r: r["burden_share"], reverse=True)
     return {
         "rows": rows,
         "can_see_exemption_aggregates": can_see_exemption_aggregates,
@@ -1953,7 +1953,7 @@ def _legacy_soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) 
     return {"per_type": per_type, "adjustments": list(adjustments)}
 
 
-def _effort_stats(values: list[float]) -> dict[str, Any] | None:
+def _burden_share_stats(values: list[float]) -> dict[str, Any] | None:
     """mean / stddev / cv / min / max for a list of effort scores (population stddev)."""
     if len(values) < 2:
         return None
@@ -1969,14 +1969,14 @@ def _effort_stats(values: list[float]) -> dict[str, Any] | None:
 def _build_fairness_components(
     eligible_types: dict[uuid.UUID, set[uuid.UUID]],
     type_names: dict[uuid.UUID, str],
-    effort_by_id: dict[uuid.UUID, float],
+    burden_share_by_id: dict[uuid.UUID, float],
     name_by_id: dict[uuid.UUID, str],
     soldier_eligible_types: dict[uuid.UUID, set[uuid.UUID]] | None = None,
 ) -> dict[str, Any]:
     """Group soldiers into connected components of the soldier↔duty-type eligibility
     graph: two soldiers connect if they share a doable duty type (transitively).
     Soldiers eligible for no active type go in the 'exempt_from_all' bucket. Each
-    component reports the duty types that connect it and its effort spread (פיזור)."""
+    component reports the duty types that connect it and its burden-share spread (פיזור)."""
     parent: dict[str, str] = {}
 
     def find(x: str) -> str:
@@ -2016,20 +2016,20 @@ def _build_fairness_components(
     def soldier_obj(sid: uuid.UUID, component_type_ids: set[uuid.UUID] | None = None) -> dict[str, Any]:
         eligible_count = len(elig.get(sid, set()) & component_type_ids) if component_type_ids is not None else 0
         return {"soldier_id": sid, "full_name": name_by_id.get(sid, ""),
-                "effort_score": effort_by_id.get(sid, 0.0),
+                "burden_share": burden_share_by_id.get(sid, 0.0),
                 "eligible_type_count": eligible_count}
 
     components = []
     for g in groups.values():
-        effs = [effort_by_id.get(sid, 0.0) for sid in g["soldiers"]]
+        shares = [burden_share_by_id.get(sid, 0.0) for sid in g["soldiers"]]
         comp_type_ids: set[uuid.UUID] = g["type_ids"]
         components.append({
             "duty_type_ids": sorted(str(tid) for tid in comp_type_ids),
             "duty_type_names": sorted(type_names[tid] for tid in comp_type_ids if tid in type_names),
             "soldier_count": len(g["soldiers"]),
-            "effort": _effort_stats(effs),
+            "burden_share": _burden_share_stats(shares),
             "soldiers": sorted((soldier_obj(s, comp_type_ids) for s in g["soldiers"]),
-                               key=lambda o: o["effort_score"], reverse=True),
+                               key=lambda o: o["burden_share"], reverse=True),
         })
     components.sort(key=lambda c: c["soldier_count"], reverse=True)
 
@@ -2043,8 +2043,56 @@ def _build_fairness_components(
     }
 
 
+def _soldier_burden_share(built: dict[str, Any], soldier_id: uuid.UUID) -> dict[str, Any] | None:
+    """Anonymized rank/spread summary for one soldier, derived from an already-built
+    _build_fairness_components() result. Carries no other soldier's identity — only
+    the peer effort-score values, for drawing a distribution without exposing names.
+    Returns None if the soldier is exempt from every duty type (no group to compare against)."""
+    for c in built["components"]:
+        for idx, s in enumerate(c["soldiers"]):
+            if s["soldier_id"] == soldier_id:
+                stats = c["burden_share"]
+                return {
+                    "burden_share": s["burden_share"],
+                    "rank": idx + 1,
+                    "group_size": c["soldier_count"],
+                    "duty_type_names": c["duty_type_names"],
+                    "peer_scores": [o["burden_share"] for o in c["soldiers"]],
+                    "mean": stats["mean"] if stats else None,
+                    "stddev": stats["stddev"] if stats else None,
+                    "cv": stats["cv"] if stats else None,
+                    "low_sample": c["soldier_count"] < 3,
+                }
+    return None
+
+
+def soldier_burden_share(session: Session, soldier_id: uuid.UUID) -> dict[str, Any] | None:
+    """Anonymized rank + spread for one soldier within their duty-type eligibility
+    component, computed org-wide (unscoped by viewer visibility, since the result
+    carries no other soldier's identity — see _soldier_burden_share)."""
+    from app.services.algorithm_bridge import exempted_duty_type_ids_by_soldier
+
+    soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
+    burden_share_by_id = burden_shares_by_soldier(session, soldiers)
+
+    active_type_ids = _active_duty_type_ids(session)
+    type_names = {
+        dt.id: dt.name
+        for dt in session.execute(
+            select(DutyType).where(DutyType.id.in_(active_type_ids))
+        ).scalars().all()
+    }
+    exempt_map = exempted_duty_type_ids_by_soldier(session, as_of=date.today())
+    eligible_types = {
+        s.id: (active_type_ids - exempt_map.get(s.id, set()))
+        for s in soldiers
+    }
+    built = _build_fairness_components(eligible_types, type_names, burden_share_by_id, {}, soldier_eligible_types=eligible_types)
+    return _soldier_burden_share(built, soldier_id)
+
+
 def fairness_components(session: Session, *, viewer: Soldier | None = None) -> dict[str, Any]:
-    """Effort spread (פיזור) split by connected components of soldiers who share
+    """Burden-share spread (פיזור) split by connected components of soldiers who share
     duty-type eligibility, plus the soldiers exempt from every active duty type.
     Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope)."""
     from app.services.algorithm_bridge import load_soldier_inputs
@@ -2063,7 +2111,7 @@ def fairness_components(session: Session, *, viewer: Soldier | None = None) -> d
         )
     ]
     visible_ids = {soldier.id for soldier in visible_soldiers}
-    effort_by_id = effort_scores_by_soldier(session, visible_soldiers)
+    burden_share_by_id = burden_shares_by_soldier(session, visible_soldiers)
     name_by_id = {soldier.id: soldier.full_name for soldier in visible_soldiers}
 
     active_type_ids = _active_duty_type_ids(session)
@@ -2080,4 +2128,4 @@ def fairness_components(session: Session, *, viewer: Soldier | None = None) -> d
         soldier_id: (active_type_ids - exempt_map.get(soldier_id, set()))
         for soldier_id in visible_ids
     }
-    return _build_fairness_components(eligible_types, type_names, effort_by_id, name_by_id, soldier_eligible_types=eligible_types)
+    return _build_fairness_components(eligible_types, type_names, burden_share_by_id, name_by_id, soldier_eligible_types=eligible_types)

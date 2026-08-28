@@ -7,9 +7,9 @@ test("formats a military_driving_license JSON payload with a license and expiry"
   expect(formatFieldUpdateValue("military_driving_license", value, t)).toContain("✓");
 });
 
-test("formats a military_driving_license payload with no license as a dash", () => {
+test("formats a military_driving_license payload with no license as an explicit ✗, not a bare dash", () => {
   const value = JSON.stringify({ has_license: false, expiry_date: null });
-  expect(formatFieldUpdateValue("military_driving_license", value, t)).toBe("—");
+  expect(formatFieldUpdateValue("military_driving_license", value, t)).toBe("✗");
 });
 
 test("returns the raw string unchanged for non-JSON fields", () => {

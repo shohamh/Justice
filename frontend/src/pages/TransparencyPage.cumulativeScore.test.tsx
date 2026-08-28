@@ -42,9 +42,9 @@ function makeRow(overrides: Partial<TransparencyRow> = {}): TransparencyRow {
     score_per_day: "0.10",
     normalised_score: "1.00",
     is_globally_exempted: false,
-    effort_score: 0.1,
+    burden_share: 0.1,
     c_over_d: 0,
-    effort_offset_raw: 0,
+    burden_share_offset_raw: 0,
     exemptions_display: "",
     exemptions_visible: true,
     exemptions: [],
@@ -59,7 +59,7 @@ beforeEach(() => {
   mockOpenSoldierModal.mockReset();
   vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
   vi.mocked(scoringApi.getFairnessComponents).mockRejectedValue(new Error("not needed"));
-  vi.mocked(potentialApi.getEffortGap).mockResolvedValue([]);
+  vi.mocked(potentialApi.getBurdenShareGap).mockResolvedValue([]);
 });
 
 describe("TransparencyPage cumulative score button", () => {

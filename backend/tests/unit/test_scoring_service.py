@@ -560,20 +560,20 @@ def test_effective_spans_do_not_copy_weapon_ineligibility_to_replacement(admin_s
     assert replacement["weapon_ineligible_reason"] is None
 
 
-def test_effort_scores_by_soldier_matches_transparency_rows(admin_session):
+def test_burden_shares_by_soldier_matches_transparency_rows(admin_session):
     from tests.helpers import create_node
 
-    from app.services.scoring import effort_scores_by_soldier
+    from app.services.scoring import burden_shares_by_soldier
 
-    node = create_node(admin_session, level="division", name="div-effort-extraction")
+    node = create_node(admin_session, level="division", name="div-burden-share-extraction")
     s1 = create_soldier(admin_session, personal_number="8700001", hierarchy_node_id=node.id)
     s2 = create_soldier(admin_session, personal_number="8700002", hierarchy_node_id=node.id)
     admin_session.commit()
 
     soldiers = [s1, s2]
-    direct = effort_scores_by_soldier(admin_session, soldiers)
+    direct = burden_shares_by_soldier(admin_session, soldiers)
     via_transparency = {
-        r["soldier_id"]: r["effort_score"] for r in transparency_rows(admin_session)["rows"]
+        r["soldier_id"]: r["burden_share"] for r in transparency_rows(admin_session)["rows"]
     }
     assert direct.get(s1.id) == via_transparency.get(s1.id)
     assert direct.get(s2.id) == via_transparency.get(s2.id)

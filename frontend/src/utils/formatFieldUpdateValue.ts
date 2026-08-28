@@ -28,7 +28,7 @@ export function formatFieldUpdateValue(
   if (fieldName === "military_driving_license") {
     try {
       const parsed = JSON.parse(value) as { has_license: boolean; expiry_date: string | null };
-      if (!parsed.has_license) return "—";
+      if (!parsed.has_license) return "✗";
       return parsed.expiry_date ? `✓ (${formatDate(parsed.expiry_date)})` : "✓";
     } catch {
       return value;

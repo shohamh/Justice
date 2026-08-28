@@ -9,10 +9,10 @@ def test_groups_by_shared_duty_types_and_isolates_exempt():
     type_names = {A: "גדר", B: "שער", C: "מטבח"}
     # s1,s2 do {A,B}; s3,s4 do {C}; s5 exempt from everything
     eligible = {s1: {A, B}, s2: {A, B}, s3: {C}, s4: {C}, s5: set()}
-    effort = {s1: 0.1, s2: 0.3, s3: 0.2, s4: 0.25, s5: 0.0}
+    burden_share = {s1: 0.1, s2: 0.3, s3: 0.2, s4: 0.25, s5: 0.0}
     names = {s1: "a", s2: "b", s3: "c", s4: "d", s5: "e"}
 
-    res = _build_fairness_components(eligible, type_names, effort, names)
+    res = _build_fairness_components(eligible, type_names, burden_share, names)
 
     assert res["exempt_from_all"]["count"] == 1
     assert res["exempt_from_all"]["soldiers"][0]["soldier_id"] == s5
@@ -22,7 +22,7 @@ def test_groups_by_shared_duty_types_and_isolates_exempt():
     by_types = {tuple(c["duty_type_names"]): c for c in comps}
     ab = by_types[("גדר", "שער")]
     assert ab["soldier_count"] == 2
-    assert ab["effort"]["min"] == 0.1 and ab["effort"]["max"] == 0.3
+    assert ab["burden_share"]["min"] == 0.1 and ab["burden_share"]["max"] == 0.3
     assert by_types[("מטבח",)]["soldier_count"] == 2
 
 
@@ -44,7 +44,7 @@ def test_single_soldier_component_has_no_stats():
     A = uuid4()
     s1 = uuid4()
     res = _build_fairness_components({s1: {A}}, {A: "A"}, {s1: 0.5}, {s1: "x"})
-    assert res["components"][0]["effort"] is None  # <2 soldiers -> no spread
+    assert res["components"][0]["burden_share"] is None  # <2 soldiers -> no spread
 
 
 def test_fairness_components_includes_duty_type_ids():
@@ -53,10 +53,10 @@ def test_fairness_components_includes_duty_type_ids():
     type_names = {A: "גדר", B: "שער"}
     # s1,s2 do {A,B}
     eligible = {s1: {A, B}, s2: {A, B}}
-    effort = {s1: 0.1, s2: 0.3}
+    burden_share = {s1: 0.1, s2: 0.3}
     names = {s1: "a", s2: "b"}
 
-    res = _build_fairness_components(eligible, type_names, effort, names)
+    res = _build_fairness_components(eligible, type_names, burden_share, names)
 
     assert len(res["components"]) == 1
     component = res["components"][0]

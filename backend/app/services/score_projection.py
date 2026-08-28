@@ -1404,7 +1404,7 @@ def projection_is_current(session: Session, required_quarters: set[Any] | list[A
 
 
 def _read_required_quarters(session: Session) -> set[date]:
-    """Calendar quarters the projected transparency/effort reads validate totals for.
+    """Calendar quarters the projected transparency/burden-share reads validate totals for.
 
     Mirrors the window math used by scoring._try_projected_transparency_rows, so a
     completed backfill guarantees every quarter a read can demand — including
@@ -1412,14 +1412,14 @@ def _read_required_quarters(session: Session) -> set[date]:
     has a quarter-total row.
     """
     from app.services.scoring import (
-        _effort_planning_start,
-        _effort_quarter_windows,
-        _effort_reset_date,
+        _burden_share_planning_start,
+        _burden_share_quarter_windows,
+        _burden_share_reset_date,
     )
 
-    reset_date = _effort_reset_date(session)
-    planning_start = _effort_planning_start(session)
-    windows = _effort_quarter_windows(
+    reset_date = _burden_share_reset_date(session)
+    planning_start = _burden_share_planning_start(session)
+    windows = _burden_share_quarter_windows(
         session,
         reset_date=reset_date,
         planning_start=planning_start,

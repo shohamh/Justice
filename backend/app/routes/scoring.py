@@ -42,9 +42,9 @@ class TransparencyRow(BaseModel):
     score_per_day: Decimal
     normalised_score: Decimal
     is_globally_exempted: bool = False
-    effort_score: float = 0.0
+    burden_share: float = 0.0
     c_over_d: float = 0.0
-    effort_offset_raw: int = 0
+    burden_share_offset_raw: int = 0
     exemptions_display: str = ""
     exemptions_visible: bool = False
     exemptions: list[ExemptionSummaryItem] = []
@@ -79,7 +79,7 @@ class BreakdownOut(BaseModel):
     adjustments: list[AdjustmentRow]
 
 
-class EffortContributionOut(BaseModel):
+class BurdenShareContributionOut(BaseModel):
     kind: str                 # "duty" | "adjustment"
     label: str
     detail: str = ""
@@ -90,7 +90,7 @@ class EffortContributionOut(BaseModel):
     multiplier: Decimal = Decimal("1")
 
 
-class EffortQuarterRow(BaseModel):
+class BurdenShareQuarterRow(BaseModel):
     quarter_start: date
     quarter_end: date
     quarter_label: str
@@ -101,12 +101,12 @@ class EffortQuarterRow(BaseModel):
     weighted_share: Decimal
     is_partial: bool
     adjustment_delta: Decimal = Decimal("0")
-    contributions: list[EffortContributionOut] = []
+    contributions: list[BurdenShareContributionOut] = []
 
 
-class EffortBreakdownOut(BaseModel):
-    quarters: list[EffortQuarterRow]
-    effort_score: Decimal
+class BurdenShareBreakdownOut(BaseModel):
+    quarters: list[BurdenShareQuarterRow]
+    burden_share: Decimal
     A_i: Decimal   # Σ(s_q × active_frac_q) — personal weighted score
     W_i: Decimal   # Σ(U_q × active_frac_q) — unit weighted score
 
@@ -134,7 +134,7 @@ def fairness_components(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    """Effort spread (פיזור) split per connected component of soldiers who share
+    """Burden-share spread (פיזור) split per connected component of soldiers who share
     duty-type eligibility, plus the count of soldiers exempt from every duty."""
     if not has_any_visibility(session, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
@@ -159,14 +159,14 @@ def eligibility_groups(
     ]
 
 
-@router.get("/soldiers/{soldier_id}/effort-breakdown", response_model=EffortBreakdownOut)
-def effort_breakdown(
+@router.get("/soldiers/{soldier_id}/burden-share-breakdown", response_model=BurdenShareBreakdownOut)
+def burden_share_breakdown(
     soldier_id: uuid.UUID,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> EffortBreakdownOut:
-    from app.services.effort_score import compute_effort_breakdown
-    from app.services.scoring import _effort_reset_date
+) -> BurdenShareBreakdownOut:
+    from app.services.effort_score import compute_burden_share_breakdown
+    from app.services.scoring import _burden_share_reset_date
 
     s = session.get(Soldier, soldier_id)
     if s is None:
@@ -175,7 +175,7 @@ def effort_breakdown(
         if not can_view_soldier_scope(session, user, _node_of(session, s)):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
-    reset_date = _effort_reset_date(session)
+    reset_date = _burden_share_reset_date(session)
 
     today = date.today()
 
@@ -187,16 +187,16 @@ def effort_breakdown(
     else:
         planning_start = today
 
-    bd = compute_effort_breakdown(
+    bd = compute_burden_share_breakdown(
         session,
         soldier=s,
         planning_start=planning_start,
         planning_end=planning_start,
         reset_date=reset_date,
     )
-    return EffortBreakdownOut(
+    return BurdenShareBreakdownOut(
         quarters=[
-            EffortQuarterRow(
+            BurdenShareQuarterRow(
                 quarter_start=q.quarter_start,
                 quarter_end=q.quarter_end,
                 quarter_label=q.quarter_label,
@@ -208,7 +208,7 @@ def effort_breakdown(
                 is_partial=q.is_partial,
                 adjustment_delta=q.adjustment_delta,
                 contributions=[
-                    EffortContributionOut(
+                    BurdenShareContributionOut(
                         kind=c.kind,
                         label=c.label,
                         detail=c.detail,
@@ -223,10 +223,45 @@ def effort_breakdown(
             )
             for q in bd.quarters
         ],
-        effort_score=bd.effort_score,
+        burden_share=bd.burden_share,
         A_i=bd.A_i,
         W_i=bd.W_i,
     )
+
+
+class BurdenShareOut(BaseModel):
+    has_group: bool
+    burden_share: Decimal | None = None
+    rank: int | None = None
+    group_size: int | None = None
+    duty_type_names: list[str] = []
+    peer_scores: list[Decimal] = []
+    mean: Decimal | None = None
+    stddev: Decimal | None = None
+    cv: Decimal | None = None
+    low_sample: bool = False
+
+
+@router.get("/soldiers/{soldier_id}/burden-share", response_model=BurdenShareOut)
+def burden_share(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> BurdenShareOut:
+    """A soldier's own rank + anonymized peer distribution within their duty-type
+    eligibility group. Never exposes other soldiers' names or ids — see
+    scoring.soldier_burden_share / _soldier_burden_share."""
+    s = session.get(Soldier, soldier_id)
+    if s is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if s.id != user.id:
+        if not can_view_soldier_scope(session, user, _node_of(session, s)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    result = svc.soldier_burden_share(session, soldier_id)
+    if result is None:
+        return BurdenShareOut(has_group=False)
+    return BurdenShareOut(has_group=True, **result)
 
 
 @router.get("/soldiers/{soldier_id}", response_model=BreakdownOut)

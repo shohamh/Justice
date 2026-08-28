@@ -2,9 +2,6 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-} from "recharts";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
@@ -28,7 +25,7 @@ import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { listMySwaps, listPendingSwaps } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { SettingsMap, getSystemSettings } from "../api/systemSettings";
-import { getTransparency, getBreakdown } from "../api/scoring";
+import { getTransparency, getBreakdown, getBurdenShare, getBurdenShareBreakdown } from "../api/scoring";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
@@ -110,6 +107,18 @@ export default function HomePage() {
   });
   const breakdown = breakdownQuery.data ?? null;
 
+  const burdenShareQuery = useQuery({
+    queryKey: user ? queryKeys.burdenShare(user.id) : ["burdenShare", "anonymous"],
+    queryFn: () => getBurdenShare(user!.id),
+    enabled: !!user,
+  });
+
+  const burdenShareBreakdownQuery = useQuery({
+    queryKey: user ? queryKeys.burdenShareBreakdown(user.id) : ["burdenShareBreakdown", "anonymous"],
+    queryFn: () => getBurdenShareBreakdown(user!.id),
+    enabled: !!user,
+  });
+
   const enrollQuery = useQuery({
     queryKey: queryKeys.pendingEnrollments(),
     queryFn: listPendingEnrollments,
@@ -180,11 +189,6 @@ export default function HomePage() {
     [pastDuties],
   );
 
-  const unitAvgNormRaw = useMemo(() => {
-    if (transparencyRows.length === 0) return 0;
-    return transparencyRows.reduce((s, r) => s + Number(r.normalised_score), 0) / transparencyRows.length;
-  }, [transparencyRows]);
-
   const unitAvgDays = useMemo(() => {
     if (transparencyRows.length === 0) return 0;
     return Math.round(transparencyRows.reduce((s, r) => s + Number(r.active_days), 0) / transparencyRows.length);
@@ -194,15 +198,6 @@ export default function HomePage() {
     if (transparencyRows.length === 0) return 0;
     return Math.round(transparencyRows.reduce((s, r) => s + Number(r.shift_count), 0) / transparencyRows.length);
   }, [transparencyRows]);
-
-  const rank = useMemo(() => {
-    if (!myRow || transparencyRows.length === 0) return null;
-    const sorted = [...transparencyRows].sort(
-      (a, b) => Number(b.normalised_score) - Number(a.normalised_score),
-    );
-    const pos = sorted.findIndex((r) => r.soldier_id === myRow.soldier_id) + 1;
-    return { pos, total: transparencyRows.length };
-  }, [myRow, transparencyRows]);
 
   const currentMonthStart = useMemo(() => {
     const d = new Date();
@@ -254,17 +249,6 @@ export default function HomePage() {
         return sum + Math.max(0, days);
       }, 0);
   }, [duties]);
-
-  const comparisonData = useMemo(
-    () => [
-      // recharts always lays categories out left-to-right regardless of page
-      // dir, so "average" (read second in RTL) goes first in the array —
-      // that puts "my score" on the visual right, where RTL reading starts.
-      { name: "ממוצע יחידה", value: unitAvgNormRaw },
-      { name: "הניקוד שלי", value: Number(myRow?.normalised_score ?? 0) },
-    ],
-    [myRow, unitAvgNormRaw],
-  );
 
   return (
     <Layout>
@@ -321,6 +305,9 @@ export default function HomePage() {
           myRow={myRow}
           allRows={transparencyRows}
           canViewTransparency={user?.can_view_transparency !== false}
+          burdenShare={burdenShareQuery.data}
+          burdenShareBreakdown={burdenShareBreakdownQuery.data}
+          soldierName={user?.full_name}
         />
 
         {/* Reserve days this month */}
@@ -333,7 +320,7 @@ export default function HomePage() {
         </div>
 
         {/* היומן שלי — stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <StatCard
             label="תורנויות שביצעתי"
             value={pastCount}
@@ -344,42 +331,10 @@ export default function HomePage() {
             value={pastDays}
             sub={`ממוצע יחידה: ${unitAvgDays}`}
           />
-          <StatCard
-            label="ניקוד מנורמל"
-            value={Number(myRow?.normalised_score ?? 0).toFixed(3)}
-            sub={`ממוצע יחידה: ${unitAvgNormRaw.toFixed(3)}`}
-          />
-          <StatCard
-            label="דירוג ביחידה"
-            value={rank ? `${rank.pos} מתוך ${rank.total}` : "—"}
-            sub="מיקום 1 = הניקוד המנורמל הגבוה ביותר ביחידה (הכי הרבה תורנויות ביחס לימים הפעילים)"
-          />
         </div>
 
         {/* Breakdown by duty type */}
         <DutyTypeBreakdownChart perType={breakdown?.per_type ?? []} mirrored />
-
-        {/* Score vs unit average */}
-        {transparencyRows.length > 1 && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
-            <h3 className="font-medium text-sm">ניקוד מנורמל — אני מול הממוצע</h3>
-            <ResponsiveContainer width="100%" height={140}>
-              <BarChart
-                data={comparisonData}
-                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => [Number(v ?? 0).toFixed(3), "ניקוד מנורמל"]} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  <Cell fill="#9ca3af" />
-                  <Cell fill="#6366f1" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
 
         {/* Manual score adjustments */}
         {breakdown && breakdown.adjustments.length > 0 && (

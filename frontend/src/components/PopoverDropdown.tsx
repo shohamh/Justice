@@ -10,6 +10,8 @@ interface Props {
   triggerClassName?: string;
   /** Optional `dir` attribute applied to the panel (e.g. "rtl" for right-edge-anchored panels). */
   panelDir?: "rtl" | "ltr";
+  /** Optional test id applied to the trigger button, for tests that need to open the panel directly. */
+  triggerTestId?: string;
   children: (close: () => void) => ReactNode;
 }
 
@@ -20,6 +22,7 @@ export default function PopoverDropdown({
   title,
   triggerClassName,
   panelDir,
+  triggerTestId,
   children,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -46,6 +49,7 @@ export default function PopoverDropdown({
       <button
         type="button"
         title={title}
+        data-testid={triggerTestId}
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((o) => !o)}

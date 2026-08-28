@@ -16,7 +16,7 @@ from app.db.models import (
 )
 from app.services.adjustments import create_adjustment
 from app.services.duty_config import map_exemption_to_duty_type
-from app.services.effort_score import compute_effort_breakdown, quarter_end
+from app.services.effort_score import compute_burden_share_breakdown, quarter_end
 from app.services.scoring import active_days, cumulative_score, effective_duty_spans
 from app.services.score_projection import (
     project_all_buckets,
@@ -88,7 +88,7 @@ def _canonical_bucket_summary(
     planning_start: date,
     reset_date: date,
 ) -> tuple[Decimal, Decimal, int]:
-    breakdown = compute_effort_breakdown(
+    breakdown = compute_burden_share_breakdown(
         session,
         soldier=soldier,
         planning_start=planning_start,

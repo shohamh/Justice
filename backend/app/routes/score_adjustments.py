@@ -51,8 +51,8 @@ class PreviewOut(BaseModel):
     cumulative_score_after: str
     normalised_score_before: str
     normalised_score_after: str
-    effort_score_before: str
-    effort_score_after: str
+    burden_share_before: str
+    burden_share_after: str
 
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
@@ -73,7 +73,7 @@ def preview_adjustment(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> PreviewOut:
-    from app.services.effort_score import compute_effort_breakdown
+    from app.services.effort_score import compute_burden_share_breakdown
 
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
@@ -102,11 +102,11 @@ def preview_adjustment(
     else:
         normalised_after = Decimal("0")
 
-    # Compute effort before/after using the breakdown service
+    # Compute burden share before/after using the breakdown service
     today = date.today()
-    from app.services.scoring import _effort_reset_date
+    from app.services.scoring import _burden_share_reset_date
 
-    reset_date = _effort_reset_date(session)
+    reset_date = _burden_share_reset_date(session)
 
 
     latest_published_end = session.execute(
@@ -117,14 +117,14 @@ def preview_adjustment(
     else:
         planning_start = today
 
-    bd_before = compute_effort_breakdown(
+    bd_before = compute_burden_share_breakdown(
         session,
         soldier=s,
         planning_start=planning_start,
         planning_end=planning_start,
         reset_date=reset_date,
     )
-    bd_after = compute_effort_breakdown(
+    bd_after = compute_burden_share_breakdown(
         session,
         soldier=s,
         planning_start=planning_start,
@@ -139,8 +139,8 @@ def preview_adjustment(
         cumulative_score_after=f"{cum_after:.3f}",
         normalised_score_before=f"{normalised_before:.4f}",
         normalised_score_after=f"{normalised_after:.4f}",
-        effort_score_before=f"{bd_before.effort_score:.4f}",
-        effort_score_after=f"{bd_after.effort_score:.4f}",
+        burden_share_before=f"{bd_before.burden_share:.4f}",
+        burden_share_after=f"{bd_after.burden_share:.4f}",
     )
 
 

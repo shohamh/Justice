@@ -21,7 +21,7 @@ describe("ShiftAssignModal weapon eligibility warning", () => {
     vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
       {
         soldier_id: "s1", full_name: "לוחם לא כשיר", personal_number: "111",
-        effort: 0.5, blocked: false, blocked_reason: null, weapon_warning: true,
+        burden_share: 0.5, blocked: false, blocked_reason: null, weapon_warning: true,
         hierarchy_path_ids: [],
       },
     ]);

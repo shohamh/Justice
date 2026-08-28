@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-28
+
+### Features
+- Added the soldier-facing requests hub with new/existing request tabs, unseen-decision badges, request metadata, and unified history across constraints, exemptions, swaps, enrollment, hierarchy transfers, and range excusals.
+- Added food type and food-constraint profile fields with private-data visibility rules and per-field update requests, plus a separate military-driving-license update flow.
+- Added range-location configuration and lifecycle management, range eligibility guidance, ineligible-soldier visibility, attendance/history improvements, and range export/import support.
+- Added rank-based duty eligibility overrides, deputy management, clickable cumulative-score history, and burden-share metrics and candidate ranking across dashboards and assignment flows.
+
+### Fixes
+- Hardened request, profile, range, approval, and hierarchy authorization and transaction behavior, including administrator profile editing/promotion and cancellation authority.
+- Fixed mobile layouts and interactions across profile, hierarchy, range, requests, and burden-share views, including modal back-button handling and overflow.
+- Fixed Hebrew labels, seeded hierarchy-level keys, duty requirements, date handling, feedback capture, and soldier-modal tab visibility.
+
+### Chores
+- Added the associated API, service, migration, integration, frontend, performance, and UX regression coverage and implementation reports.
+
 ## 2026-08-27
 
 ### Features

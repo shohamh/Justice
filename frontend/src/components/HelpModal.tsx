@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
 import { authenticated, canApprove, canPlan, PermissionUser } from "../auth/permissions";
-import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
+import { BurdenShareBreakdown, getBurdenShareBreakdown } from "../api/scoring";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
@@ -190,13 +190,13 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
         <Arrow />
         <FlowStep icon="0️⃣" text="שלב 0: ניסיון לכסות את כל הרכיב בבת אחת" color="blue" />
         <Arrow />
-        <FlowStep icon="1️⃣" text="שלב 1: חיילים ממוינים לפי עומס, נפתרים קבוצה-קבוצה" color="indigo" />
+        <FlowStep icon="1️⃣" text="שלב 1: חיילים ממוינים לפי חלק בנטל, נפתרים קבוצה-קבוצה" color="indigo" />
         <Arrow />
         <FlowStep icon="2️⃣" text="שלב 2: כל החיילים — כיסוי רך על מה שנשאר" color="indigo" />
         <Arrow />
         <FlowStep icon="🪜" text="עדיין חסרות? חיפוש בינארי על סולם ההרפיה (R/T)" color="amber" />
         <Arrow />
-        <FlowStep icon="🎯" text="שבירת שוויון: פינוי L1 → מזעור טווח עומסים" color="blue" />
+        <FlowStep icon="🎯" text="שבירת שוויון: פינוי L1 → מזעור טווח חלקי בנטל" color="blue" />
         <Arrow />
         <FlowStep icon="🔄" text="מעבר החלפות גריד'י — העברת תורנויות לשיפור הוגנות" color="indigo" />
         <Arrow />
@@ -206,17 +206,17 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
       <div className="space-y-2">
         <p className="font-medium text-gray-800 dark:text-gray-200">🔎 מה האלגוריתם לוקח בחשבון?</p>
         {[
-          { icon: "📊", title: "עומס רבעוני", desc: "מי שחלקו בתורנויות ברבעונים האחרונים נמוך מחבריו מקבל עדיפות. חייל חדש בעל עומס אפס יזכה בתורנויות עד שישתווה לשאר. ראו הסבר מלא בטאב הוגנות." },
+          { icon: "📊", title: "חלק בנטל", desc: "מי שחלקו בתורנויות ברבעונים האחרונים נמוך מחבריו מקבל עדיפות. חייל חדש בעל חלק בנטל אפס יזכה בתורנויות עד שישתווה לשאר. ראו הסבר מלא בטאב הוגנות." },
           { icon: "🚫", title: "פטורים ואילוצים", desc: "חיילים עם פטור רלוונטי מוסרים. אילוצים אישיים (תאריכים) גם מסננים." },
           { icon: "🎖️", title: "דרישות המשמרת", desc: "חוגרים/קצינים, בה\"ד 1, מין — כל משמרת מגדירה את הדרישות שלה." },
           { icon: "🌳", title: "תת-יחידה כשירה", desc: "כל משמרת יכולה להיות מוגבלת לתת-עץ יחידה ספציפי. האלגוריתם בודק אם הצומת של החייל נמצא בתוך עץ המשנה של הצמתים הכשירים — בדיקת עצמו או אב-קדמון. משמרת ללא הגבלה פתוחה לכולם." },
-          { icon: "🔒", title: "איזון עומסים", desc: "האלגוריתם ממזער את סכום הסטיות המוחלטות מהממוצע (נורמת L1): כל חייל תורם |עומסו הצפוי − ממוצע| למטרה. פתרון שמפזר תורנויות בהפרשים שווים תמיד מנצח פתרון שיוצר חריגים. אם אין מספיק חיילים כשירים, האלגוריתם עושה מיטבו בתוך האילוצים." },
+          { icon: "🔒", title: "איזון חלקי בנטל", desc: "האלגוריתם ממזער את סכום הסטיות המוחלטות מהממוצע (נורמת L1): כל חייל תורם |חלקו הצפוי − ממוצע| למטרה. פתרון שמפזר תורנויות בהפרשים שווים תמיד מנצח פתרון שיוצר חריגים. אם אין מספיק חיילים כשירים, האלגוריתם עושה מיטבו בתוך האילוצים." },
           { icon: "⏱️", title: "מגבלת עומס (T/W)", desc: "חייל לא יכול לקבל יותר מ-T ימי תורנות בכל חלון W ימים ברצף. זה מונע עומס יתר על חייל אחד." },
           { icon: "🗺️", title: "רזרבה", desc: "חיילי רזרבה משובצים כגיבוי לאותה משמרת — האלגוריתם מעדיף רזרבה מהיחידה הקרובה ביותר בהיררכיה." },
           { icon: "🎖️", title: "פטור פיקודי", desc: "פטור שניתן בשלב אחד בלבד על ידי מפקד בדרגת רס\"ן ומעלה, מפקד תת-יחידה ברמת מדור ומעלה, או קצין תורן. הפטור פוטר את החייל הבודד מתורנויות מסוימות, אך לא מפחית את הפוטנציאל של יחידתו — כלומר אותה כמות תורנויות תתחלק על פחות חיילים ביחידה. יש להשתמש בכלי זה בצמצום ובמקרים חריגים בלבד." },
           { icon: "📈", title: "פוטנציאל", desc: "מספר החיילים הכשירים לפחות לסוג תורנות אחד בכל תת-יחידה. פטורים רשמיים מפחיתים פוטנציאל אם הם מכסים את כל סוגי התורנות של החייל; פטורים פיקודיים ואילוצים אישיים לא משפיעים על הפוטנציאל. הפוטנציאל קובע את חלוקת האחריות היחסית בין תת-יחידות במשמרות חדשות, וניתן לבקר אותו לפי חייל ולראות התאמות ידניות מתועדות." },
           { icon: "🔁", title: "רענון מכסות תת-יחידה", desc: "אם סולם ההרפיה הרגיל (R/T) כבר הצליח למצוא פתרון (מלא או חלקי), האלגוריתם מנסה בנוסף לרענן את מכסות תת-היחידה — כדי לנצל עוד קצת גמישות, כשההגדרה auto_relax_node_quotas מופעלת." },
-          { icon: "🧩", title: "אסטרטגיות פתרון חלופיות", desc: "בנוסף לפירוק הרגיל לפי סבבי-עומס, קיימות אסטרטגיות פתרון חלופיות (למשל פתרון משולב על פני כמה משמרות בבת אחת) שהפותר עשוי להשתמש בהן במקרים מסוימים." },
+          { icon: "🧩", title: "אסטרטגיות פתרון חלופיות", desc: "בנוסף לפירוק הרגיל לפי סבבי-חלק-בנטל, קיימות אסטרטגיות פתרון חלופיות (למשל פתרון משולב על פני כמה משמרות בבת אחת) שהפותר עשוי להשתמש בהן במקרים מסוימים." },
           { icon: "⏹️", title: "עצירה מוקדמת", desc: "אם הפותר לא משפר את הפתרון במשך כ-15 שניות רצופות, הוא עוצר ומחזיר את הטוב ביותר שנמצא — במקום לנצל את כל זמן הריצה המוקצב." },
           { icon: "♻️", title: "גורל הרזרבה בגימלים", desc: "הגדרת מערכת קובעת מה קורה לרזרבה המקורית של חייל שעבר גימלים: נשארת משויכת אליו (\"keep\") או משוחררת (\"release\")." },
         ].map(({ icon, title, desc }) => (
@@ -240,25 +240,25 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
         <p className="text-indigo-700 dark:text-indigo-300 text-xs leading-relaxed">
-          נניח שיש 3 חיילים: דן (עומס 3%), יעל (5%), ורוני (8%).
+          נניח שיש 3 חיילים: דן (חלק בנטל 3%), יעל (5%), ורוני (8%).
           משמרת חדשה צריכה מישהו — יעל פטורה ממנה.
-          האלגוריתם בוחר מדן ורוני; מכיוון שדן בעל עומס נמוך יותר הוא יקבל עדיפות.
+          האלגוריתם בוחר מדן ורוני; מכיוון שדן בעל חלק בנטל נמוך יותר הוא יקבל עדיפות.
           כך ברמה העולמית, ההפרש בין רוני (8%) לדן ייצטמצם עם הזמן.
         </p>
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-indigo-200 dark:border-indigo-700">
             <p className="font-bold text-indigo-700 dark:text-indigo-300">דן</p>
-            <p>עומס: 3%</p>
+            <p>חלק בנטל: 3%</p>
             <p className="text-green-600">⬆ עדיפות גבוהה</p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-indigo-200 dark:border-indigo-700">
             <p className="font-bold text-purple-700 dark:text-purple-300">יעל</p>
-            <p>עומס: 5%</p>
+            <p>חלק בנטל: 5%</p>
             <p className="text-gray-500">✗ פטור חל</p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-indigo-200 dark:border-indigo-700">
             <p className="font-bold text-orange-700 dark:text-orange-300">רוני</p>
-            <p>עומס: 8%</p>
+            <p>חלק בנטל: 8%</p>
             <p className="text-orange-600">⬇ עדיפות נמוכה</p>
           </div>
         </div>
@@ -320,7 +320,7 @@ function ScoringTab() {
       </div>
 
       <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
-        📌 הניקוד שנצבר מכל התורנויות משמש לחישוב העומס הרבעוני שלך, שקובע את סדר העדיפויות
+        📌 הניקוד שנצבר מכל התורנויות משמש לחישוב חלק הבנטל שלך, שקובע את סדר העדיפויות
         בשיבוץ הבא — ראו טאב &quot;⚖️ הוגנות ושקיפות&quot; להסבר המלא.
       </div>
     </div>
@@ -329,14 +329,14 @@ function ScoringTab() {
 
 function FairnessTab() {
   const { user } = useAuth();
-  const [myBreakdown, setMyBreakdown] = useState<EffortBreakdown | null>(null);
+  const [myBreakdown, setMyBreakdown] = useState<BurdenShareBreakdown | null>(null);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
   const [extraDuties, setExtraDuties] = useState(0);
 
   useEffect(() => {
     if (!user) return;
     setLoadingBreakdown(true);
-    getEffortBreakdown(user.id)
+    getBurdenShareBreakdown(user.id)
       .then(setMyBreakdown)
       .catch(() => setMyBreakdown(null))
       .finally(() => setLoadingBreakdown(false));
@@ -346,11 +346,11 @@ function FairnessTab() {
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">הוגנות ושקיפות</h3>
       <p className="text-gray-700 dark:text-gray-300">
-        המערכת מודדת הוגנות על פי <strong>עומס רבעוני</strong> — כמה מסך תורנויות היחידה ברבעון נשא כל חייל, בממוצע על פני הרבעונים שבהם שירת.
+        המערכת מודדת הוגנות על פי <strong>חלק בנטל</strong> — כמה מסך תורנויות היחידה ברבעון נשא כל חייל, בממוצע על פני הרבעונים שבהם שירת.
       </p>
 
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
-        <p className="font-semibold text-indigo-800 dark:text-indigo-200">📊 איך מחשבים את העומס הרבעוני?</p>
+        <p className="font-semibold text-indigo-800 dark:text-indigo-200">📊 איך מחשבים את חלק הבנטל?</p>
 
         <div className="space-y-2 text-indigo-700 dark:text-indigo-300">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-1">
@@ -385,7 +385,7 @@ function FairnessTab() {
               </div>
             </div>
             <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-indigo-800 dark:text-indigo-200">
-              <BlockMath math="\text{עומס} = \dfrac{A}{W} = \dfrac{\sum_{q:\,U_q>0} s_q \times f_q}{\sum_{q:\,U_q>0} U_q \times f_q}" />
+              <BlockMath math="\text{חלק בנטל} = \dfrac{A}{W} = \dfrac{\sum_{q:\,U_q>0} s_q \times f_q}{\sum_{q:\,U_q>0} U_q \times f_q}" />
               <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-1" dir="rtl">
                 לכל רבעון <InlineMath math="q" /> : <InlineMath math="s_q" /> = ניקוד החייל, <InlineMath math="U_q" /> = ניקוד כלל היחידה, <InlineMath math="f_q" /> = אחוז הנוכחות ברבעון
               </p>
@@ -402,10 +402,10 @@ function FairnessTab() {
       <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-200 dark:border-gray-700 space-y-2 text-xs text-gray-700 dark:text-gray-300">
         <p className="font-semibold text-gray-800 dark:text-gray-200">🗓️ מה זה &quot;ימים פעילים&quot; בדף השקיפות?</p>
         <p>
-          <strong>ניקוד ליום</strong> בדף השקיפות מחושב כ<em>ניקוד מצטבר ÷ ימים פעילים</em>. &quot;ימים פעילים&quot; הם הימים שחלפו מאז שהצטרפת ליחידה, בניכוי ימים שבהם היית פטור לגמרי מתורנויות. זה מדד שונה מה<strong>עומס הרבעוני</strong> שמוסבר למעלה — האלגוריתם עצמו משבץ לפי עומס רבעוני, וניקוד-ליום משמש רק להשוואה מהירה בדף השקיפות.
+          <strong>ניקוד ליום</strong> בדף השקיפות מחושב כ<em>ניקוד מצטבר ÷ ימים פעילים</em>. &quot;ימים פעילים&quot; הם הימים שחלפו מאז שהצטרפת ליחידה, בניכוי ימים שבהם היית פטור לגמרי מתורנויות. זה מדד שונה מה<strong>חלק הבנטל</strong> שמוסבר למעלה — האלגוריתם עצמו משבץ לפי חלק בנטל, וניקוד-ליום משמש רק להשוואה מהירה בדף השקיפות.
         </p>
         <p>
-          <strong>חייל שבדיוק הצטרף</strong> מתחיל עם מספר ימים פעילים קטן מאוד (מינימום יום אחד) — כך שאפילו תורנות בודדת יכולה להראות ניקוד-ליום גבוה יחסית בימיו הראשונים. זה צפוי ולא מעיד על אי-הוגנות: המספר מתייצב ככל שצוברים עוד ימים פעילים, ובכל מקרה סדר העדיפויות בשיבוץ נקבע על ידי העומס הרבעוני (A/W) ולא על ידי המדד הזה.
+          <strong>חייל שבדיוק הצטרף</strong> מתחיל עם מספר ימים פעילים קטן מאוד (מינימום יום אחד) — כך שאפילו תורנות בודדת יכולה להראות ניקוד-ליום גבוה יחסית בימיו הראשונים. זה צפוי ולא מעיד על אי-הוגנות: המספר מתייצב ככל שצוברים עוד ימים פעילים, ובכל מקרה סדר העדיפויות בשיבוץ נקבע על ידי חלק הבנטל (A/W) ולא על ידי המדד הזה.
         </p>
       </div>
 
@@ -416,7 +416,7 @@ function FairnessTab() {
           <p className="text-xs text-gray-500 dark:text-gray-400">טוען...</p>
         )}
         {!loadingBreakdown && myBreakdown && myBreakdown.quarters.length === 0 && (
-          <p className="text-xs text-gray-600 dark:text-gray-400">אין היסטוריה — חייל חדש. העומס שלך הוא 0%.</p>
+          <p className="text-xs text-gray-600 dark:text-gray-400">אין היסטוריה — חייל חדש. חלק הבנטל שלך הוא 0%.</p>
         )}
         {!loadingBreakdown && myBreakdown && myBreakdown.quarters.length > 0 && (
           <>
@@ -473,11 +473,11 @@ function FairnessTab() {
             {(() => {
               const A = parseFloat(myBreakdown.A_i);
               const W = parseFloat(myBreakdown.W_i);
-              const effort = parseFloat(myBreakdown.effort_score);
+              const effort = parseFloat(myBreakdown.burden_share);
               return (
                 <div className="mt-1 pt-2 border-t border-green-200 dark:border-green-800 space-y-1 text-xs">
                   {[
-                    { label: "עומס שנצבר (A)", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
+                    { label: "חלק בנטל שנצבר (A)", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
                     { label: "היסטוריה כוללת (W)", sub: "סכום % נוכחות לרבעונות עם תורנויות", value: W.toFixed(3), cls: "text-amber-700 dark:text-amber-300" },
                   ].map(({ label, sub, value, cls }) => (
                     <div key={label} className="flex items-start justify-between gap-2">
@@ -489,7 +489,7 @@ function FairnessTab() {
                     </div>
                   ))}
                   <div className="border-t border-green-200 dark:border-green-800 pt-1">
-                    <p className="text-gray-600 dark:text-gray-400 font-medium"><InlineMath math="\text{עומס} = \dfrac{A}{W}" /></p>
+                    <p className="text-gray-600 dark:text-gray-400 font-medium"><InlineMath math="\text{חלק בנטל} = \dfrac{A}{W}" /></p>
                     <p className="font-bold text-green-700 dark:text-green-300 tabular-nums">
                       <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(3)}} = ${(effort * 100).toFixed(2)}\\%`} />
                     </p>
@@ -498,9 +498,9 @@ function FairnessTab() {
               );
             })()}
             <div className="flex justify-between items-center pt-1 border-t border-green-200 dark:border-green-800">
-              <span className="text-xs text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">חלק בנטל מצטבר:</span>
               <span className="text-lg font-bold text-green-700 dark:text-green-300">
-                {(parseFloat(myBreakdown.effort_score) * 100).toFixed(2)}%
+                {(parseFloat(myBreakdown.burden_share) * 100).toFixed(2)}%
               </span>
             </div>
           </>
@@ -529,7 +529,7 @@ function FairnessTab() {
             const projected = W + extraDuties > 0 ? (A + extraDuties) / (W + extraDuties) : 0;
             return (
               <p className="text-xs text-blue-700 dark:text-blue-300">
-                עומס לאחר התוספת (הערכה): <span className="font-bold">{(projected * 100).toFixed(2)}%</span>
+                חלק בנטל לאחר התוספת (הערכה): <span className="font-bold">{(projected * 100).toFixed(2)}%</span>
               </p>
             );
           })()}
@@ -543,25 +543,25 @@ function FairnessTab() {
             <p className="font-bold text-indigo-700 dark:text-indigo-300">דן — 3 שנים בשירות</p>
             <p>ניקוד ממוצע ברבעון: 4</p>
             <p>ניקוד יחידה ממוצע: 100</p>
-            <p className="text-green-700 dark:text-green-400 font-medium">עומס: 4% לרבעון</p>
+            <p className="text-green-700 dark:text-green-400 font-medium">חלק בנטל: 4% לרבעון</p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-lg p-2 border border-indigo-200 dark:border-indigo-700 space-y-1">
             <p className="font-bold text-purple-700 dark:text-purple-300">יעל — חדשה, רבעון ראשון</p>
             <p>ניקוד ברבעון עד כה: 0</p>
             <p>ניקוד יחידה: 100</p>
-            <p className="text-red-600 dark:text-red-400 font-medium">עומס: 0% — תקבל עדיפות!</p>
+            <p className="text-red-600 dark:text-red-400 font-medium">חלק בנטל: 0% — תקבל עדיפות!</p>
           </div>
         </div>
-        <p className="text-xs text-indigo-700 dark:text-indigo-300">האלגוריתם יעדיף את יעל כי יש לה עומס אפסי — היא תצבור תורנויות עד שהיא מגיעה לרמת דן.</p>
+        <p className="text-xs text-indigo-700 dark:text-indigo-300">האלגוריתם יעדיף את יעל כי יש לה חלק בנטל אפסי — היא תצבור תורנויות עד שהיא מגיעה לרמת דן.</p>
       </div>
 
       <div className="space-y-2">
         <p className="font-medium text-gray-800 dark:text-gray-200">🔎 שקיפות</p>
         {[
-          { icon: "📊", title: "דף השקיפות", desc: "כל חייל רואה את העומס הרבעוני שלו ושל שאר חברי היחידה — כולל טבלה שניתן למיין לפי עומס. לחץ על הערך לפירוט רבעוני." },
+          { icon: "📊", title: "דף השקיפות", desc: "כל חייל רואה את חלק הבנטל שלו ושל שאר חברי היחידה — כולל טבלה שניתן למיין לפי חלק בנטל. לחץ על הערך לפירוט רבעוני." },
           { icon: "📅", title: "טווח ההיסטוריה ותאריך איפוס", desc: "כברירת מחדל החישוב כולל את כל הרבעונים הרלוונטיים — החל מהרבעון שבו בוצעה התורנות הראשונה של כל חיילי היחידה. מנהל המערכת יכול לקבוע תאריך איפוס שמצמצם את ההיסטוריה: אז רק רבעונים מתאריך זה ואילך נחשבים. מומלץ: תחילת רבעון." },
           { icon: "⚖️", title: "הגינות לחדשים", desc: "חייל שהצטרף לאחרונה מושווה רק לתקופה שבה שירת — הוא לא נפגע מכך שהיחידה הייתה פחות עסוקה לפני שהצטרף." },
-          { icon: "✏️", title: "התאמות ניקוד ידניות", desc: "מפקד רשאי להוסיף התאמה ידנית לניקוד חייל (חיובית או שלילית). ההתאמה משפיעה גם על ניקוד העומס הרבעוני — היא מתווספת לניקוד החייל וליחידה באותו רבעון, ומשפיעה בהתאם על חלקו היחסי. הפירוט הרבעוני מציין מה מגיע מהתאמה ידנית." },
+          { icon: "✏️", title: "התאמות ניקוד ידניות", desc: "מפקד רשאי להוסיף התאמה ידנית לניקוד חייל (חיובית או שלילית). ההתאמה משפיעה גם על ניקוד חלק הבנטל — היא מתווספת לניקוד החייל וליחידה באותו רבעון, ומשפיעה בהתאם על חלקו היחסי. הפירוט הרבעוני מציין מה מגיע מהתאמה ידנית." },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
             <span className="text-xl flex-shrink-0">{icon}</span>
@@ -621,7 +621,7 @@ function DeepDiveTab() {
         <p className="text-gray-700 dark:text-gray-300">
           נניח ששני חיילים עשו כל אחד 10 תורנויות השנה. האם הם שוויוניים?
           לא בהכרח — אחד שירת 300 ימים, השני רק 30. ביחס לזמן שכל אחד היה זמין,
-          השני נשא עומס כפול פי 10.
+          השני נשא חלק בנטל כפול פי 10.
         </p>
         <p className="text-gray-700 dark:text-gray-300">
           ספירת תורנויות גולמית מתעלמת משלושה גורמים:
@@ -632,16 +632,16 @@ function DeepDiveTab() {
           <li><strong>גודל היחידה</strong> — אם היחידה צמחה, מאגר התורנויות גדל איתה.</li>
         </ul>
         <p className="text-gray-700 dark:text-gray-300">
-          הפתרון: במקום לספור, מודדים <strong>חלק יחסי</strong> — איזה אחוז מסך עומס היחידה נשא החייל,
+          הפתרון: במקום לספור, מודדים <strong>חלק יחסי</strong> — איזה אחוז מסך חלק בנטל היחידה נשא החייל,
           יחסית לכמה זמן הוא היה פעיל.
         </p>
       </section>
 
-      {/* ── Section 2: effort_score ── */}
+      {/* ── Section 2: burden_share ── */}
       <section className="space-y-3">
-        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📐 ניקוד עומס — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_score = A / W</code></h3>
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📐 חלק בנטל — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">burden_share = A / W</code></h3>
         <p className="text-gray-700 dark:text-gray-300">
-          לכל חייל מחושב ציון אחד — <strong>עומס רבעוני</strong>. הוא מייצג: מה חלקך מסך כל הניקוד שצברה היחידה,
+          לכל חייל מחושב ציון אחד — <strong>חלק בנטל</strong>. הוא מייצג: מה חלקך מסך כל הניקוד שצברה היחידה,
           משוקלל לפי שיעור הנוכחות שלך בכל רבעון. ערך הוגן = 1/N (N = מספר החיילים).
         </p>
 
@@ -662,7 +662,7 @@ function DeepDiveTab() {
                 { sym: "active_fracq", name: "שבר נוכחות", def: "חלק הרבעון שבו החייל היה פעיל (0–1). רבעון מלא = 1." },
                 { sym: "A", name: "ניקוד אישי משוקלל", def: <><InlineMath math="\sum_q (s_q \times \text{active\_frac}_q)" /> — ניקוד החייל משוקלל לפי נוכחות.</> },
                 { sym: "W", name: "ניקוד יחידה משוקלל", def: <><InlineMath math="\sum_{q:\,U_q>0} (U_q \times \text{active\_frac}_q)" /> — ניקוד היחידה משוקלל, <strong>רק ברבעונות שבהם הייתה פעילות</strong>.</> },
-                { sym: "effort_score", name: "עומס רבעוני", def: <><InlineMath math="\dfrac{A}{W}" /> — חלקך מסך הניקוד המשוקלל של היחידה. עולה כשרבעונות חדשים נצברים — ממיר עיוותי-סקאלה של הנוסחה הישנה.</> },
+                { sym: "burden_share", name: "חלק בנטל", def: <><InlineMath math="\dfrac{A}{W}" /> — חלקך מסך הניקוד המשוקלל של היחידה. עולה כשרבעונות חדשים נצברים — ממיר עיוותי-סקאלה של הנוסחה הישנה.</> },
               ].map(({ sym, name, def }) => (
                 <tr key={sym} className="border-b border-gray-100 dark:border-gray-700">
                   <td className="py-1.5 pr-2 font-mono text-indigo-700 dark:text-indigo-300">{sym}</td>
@@ -677,12 +677,12 @@ function DeepDiveTab() {
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-xs space-y-1">
           <p className="font-medium text-gray-800 dark:text-gray-200">📝 דוגמה</p>
           <p className="text-gray-600 dark:text-gray-300">
-            חייל שירת 4 רבעונות מלאים, ותמיד נשא 5% מעומס היחידה:
+            חייל שירת 4 רבעונות מלאים, ותמיד נשא 5% מחלק בנטל היחידה:
           </p>
           <ul className="list-none space-y-0.5 text-gray-600 dark:text-gray-300 pr-2">
             <li>A = 4 × 0.05 = 0.20</li>
             <li>W = 4.0</li>
-            <li className="font-semibold text-indigo-700 dark:text-indigo-300">effort_score = 0.20 / 4.0 = 0.05 (5%)</li>
+            <li className="font-semibold text-indigo-700 dark:text-indigo-300">burden_share = 0.20 / 4.0 = 0.05 (5%)</li>
           </ul>
         </div>
       </section>
@@ -692,13 +692,13 @@ function DeepDiveTab() {
         <h3 className="font-semibold text-gray-800 dark:text-gray-200">🛡️ תיקון רבעון דק — ניפוח המכנה</h3>
         <p className="text-gray-700 dark:text-gray-300">
           <strong>הבעיה:</strong> בתחילת רבעון, אם היחידה עדיין ביצעה מעט תורנויות, המכנה <InlineMath math="U_q" /> (ניקוד יחידה ברבעון) קטן מאוד.
-          כתוצאה, חלקו היחסי של כל חייל (<InlineMath math="s_q / U_q" />) מתנפח — ויוצר רושם שהם כבר נשאו עומס גדול, גם אם עשו כמה תורנויות בלבד.
+          כתוצאה, חלקו היחסי של כל חייל (<InlineMath math="s_q / U_q" />) מתנפח — ויוצר רושם שהם כבר נשאו חלק בנטל גדול, גם אם עשו כמה תורנויות בלבד.
           הפותר יקבל אות מוטעה ויימנע מלשבץ את אותם חיילים לתורנויות שלפניו — בעוד שבמציאות הרבעון עוד רחוק מסיומו.
         </p>
         <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs space-y-2">
           <p className="font-medium text-amber-800 dark:text-amber-200">🔑 הפתרון: ניפוח מוקדם של המכנה</p>
           <p className="text-amber-700 dark:text-amber-300">
-            לפני חישוב ניקוד העומס ההיסטורי (<code>effort_score</code>) של כל חייל, המערכת מוסיפה לניקוד היחידה ברבעון הנוכחי (<InlineMath math="U_q" />) את סך ניקוד התורנויות שהפותר עומד לשבץ בסיבוב הנוכחי.
+            לפני חישוב ניקוד חלק הבנטל ההיסטורי (<code>effort_score</code>) של כל חייל, המערכת מוסיפה לניקוד היחידה ברבעון הנוכחי (<InlineMath math="U_q" />) את סך ניקוד התורנויות שהפותר עומד לשבץ בסיבוב הנוכחי.
             כלומר: גם אם הרבעון עדיין דק, המכנה כבר &quot;יודע&quot; שעוד תורנויות עומדות להגיע — והחלק היחסי נשאר הוגן.
           </p>
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-amber-200 dark:border-amber-700 space-y-1 font-mono text-amber-700 dark:text-amber-300">
@@ -738,7 +738,7 @@ function DeepDiveTab() {
                 {
                   name: "effort_offset",
                   formula: "int(effort_score × EFFORT_SCALE)",
-                  meaning: "ניקוד העומס ההיסטורי כשלם קבוע — כולל תיקון ניפוח מכנה לרבעון הנוכחי. לא משתנה בזמן הפתרון.",
+                  meaning: "ניקוד חלק הבנטל ההיסטורי כשלם קבוע — כולל תיקון ניפוח מכנה לרבעון הנוכחי. לא משתנה בזמן הפתרון.",
                 },
                 {
                   name: "unit_score_milli",
@@ -753,7 +753,7 @@ function DeepDiveTab() {
                 {
                   name: "effort_per_milli",
                   formula: "int(C_over_D / unit_score_milli × EFFORT_SCALE)",
-                  meaning: "כמה כל מילי-ניקוד אחד של תורנות מזיז את עומס החייל. קבוע — מחושב לפני הפתרון.",
+                  meaning: "כמה כל מילי-ניקוד אחד של תורנות מזיז את חלק בנטל החייל. קבוע — מחושב לפני הפתרון.",
                 },
               ].map(({ name, formula, meaning }) => (
                 <tr key={name} className="border-b border-gray-100 dark:border-gray-700">
@@ -781,7 +781,7 @@ function DeepDiveTab() {
       <section className="space-y-3">
         <h3 className="font-semibold text-gray-800 dark:text-gray-200">🎯 הניקוד הצפוי — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">projected_effort</code></h3>
         <p className="text-gray-700 dark:text-gray-300">
-          בתוך הפותר, לכל חייל נבנית <strong>ביטוי לינארי</strong> שמחשב מה יהיה ניקוד העומס שלו
+          בתוך הפותר, לכל חייל נבנית <strong>ביטוי לינארי</strong> שמחשב מה יהיה ניקוד חלק הבנטל שלו
           לאחר שיבוץ:
         </p>
 
@@ -861,7 +861,7 @@ function DeepDiveTab() {
           <p className="font-medium text-indigo-800 dark:text-indigo-200 mb-1">💡 μ — ממוצע קבוע שנקבע מראש</p>
           <p className="text-indigo-700 dark:text-indigo-300">
             המטרה <code>μ</code> אינה משתנה חופשי — היא מחושבת לפני הפעלת הפותר כ<strong>ממוצע</strong> של הניקודים הצפויים
-            (סכום ה-effort_offset של כל החיילים הכשירים, בתוספת אומדן העומס מהתורנויות החדשות, חלקי מספר החיילים).
+            (סכום ה-effort_offset של כל החיילים הכשירים, בתוספת אומדן חלק הבנטל מהתורנויות החדשות, חלקי מספר החיילים).
             הפותר לא &quot;מגלה&quot; את המטרה — היא קבועה מראש, והוא רק מחפש שיבוץ שממזמינם את הסטיות ממנה.
           </p>
         </div>
@@ -948,7 +948,7 @@ function DeepDiveTab() {
           <table className="w-full text-xs border-collapse" style={{ minWidth: "460px" }}>
             <thead>
               <tr className="border-b dark:border-gray-600 text-gray-500 dark:text-gray-400">
-                {["חייל", "effort_score", "effort_offset", "C_over_D", "effort_per_milli"].map(h => (
+                {["חייל", "burden_share", "effort_offset", "C_over_D", "effort_per_milli"].map(h => (
                   <th key={h} className="text-right py-1 pr-3 font-medium">{h}</th>
                 ))}
               </tr>
@@ -1060,12 +1060,12 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
           </div>
 
           <div className="bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3 text-xs space-y-1.5">
-            <p className="font-semibold text-indigo-800 dark:text-indigo-200">שלב ב׳ — חיילים לפי תור, עומס נמוך ראשון</p>
+            <p className="font-semibold text-indigo-800 dark:text-indigo-200">שלב ב׳ — חיילים לפי תור, חלק בנטל נמוך ראשון</p>
             <p className="text-indigo-700 dark:text-indigo-300">
               שלב א׳ נכשל, כלומר אי אפשר לכסות הכל בבת אחת.
-              כדי שלא לוותר סתם, האלגוריתם ממיין את החיילים לפי עומסם ההיסטורי — מי שעשה הכי פחות ראשון — ומחלק אותם לקבוצות קטנות.
+              כדי שלא לוותר סתם, האלגוריתם ממיין את החיילים לפי חלק בנטלם ההיסטורי — מי שעשה הכי פחות ראשון — ומחלק אותם לקבוצות קטנות.
               כל קבוצה מקבלת הזדמנות לקחת את המשמרות שנשארו פתוחות עד כה, כשהפותר מנסה לכסות כמה שיותר אך אינו מחויב לכסות הכל.
-              כך החיילים שנשאו פחות עומס ב&quot;תור&quot; הראשון ולא &quot;יפלו בין הכיסאות&quot; אחרי ששאר הקבוצות לקחו את המשמרות הנגישות להן.
+              כך החיילים שנשאו פחות חלק בנטל ב&quot;תור&quot; הראשון ולא &quot;יפלו בין הכיסאות&quot; אחרי ששאר הקבוצות לקחו את המשמרות הנגישות להן.
             </p>
           </div>
 
@@ -1080,10 +1080,10 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
         </div>
 
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-xs space-y-1">
-          <p className="font-medium text-gray-800 dark:text-gray-200">📌 עומס עובר בין השלבים</p>
+          <p className="font-medium text-gray-800 dark:text-gray-200">📌 חלק בנטל עובר בין השלבים</p>
           <p className="text-gray-600 dark:text-gray-300">
-            כל שיבוץ שנעשה בשלב מסוים מיד מעדכן את עומס החייל שקיבל אותו, וגם חוסם את התאריכים שלו לשלבים הבאים.
-            כך, חייל שקיבל תורנות בשלב א׳ לא יוכל לקבל תורנות חופפת בשלב ב׳ — וגם העומס שלו ייחשב גבוה יותר בחישוב ההוגנות.
+            כל שיבוץ שנעשה בשלב מסוים מיד מעדכן את חלק בנטל החייל שקיבל אותו, וגם חוסם את התאריכים שלו לשלבים הבאים.
+            כך, חייל שקיבל תורנות בשלב א׳ לא יוכל לקבל תורנות חופפת בשלב ב׳ — וגם חלק הבנטל שלו ייחשב גבוה יותר בחישוב ההוגנות.
           </p>
         </div>
       </section>
@@ -1183,13 +1183,13 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
         </p>
 
         <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1 text-sm">
-          <FlowStep icon="📊" text="מחשבים עומס סופי לכל חייל על פי כל מה שקיבל" color="gray" />
+          <FlowStep icon="📊" text="מחשבים חלק בנטל סופי לכל חייל על פי כל מה שקיבל" color="gray" />
           <Arrow />
-          <FlowStep icon="🔝" text="מזהים תורמים (עומס מעל ממוצע) וקולטים (עומס מתחת ממוצע)" color="indigo" />
+          <FlowStep icon="🔝" text="מזהים תורמים (חלק בנטל מעל ממוצע) וקולטים (חלק בנטל מתחת ממוצע)" color="indigo" />
           <Arrow />
           <FlowStep icon="🔍" text="לכל תורם: מחפשים את התורנות הכבדה ביותר שניתן להעביר לקולט כשיר" color="blue" />
           <Arrow />
-          <FlowStep icon="✅" text="מעבירים רק אם ההעברה מקטינה את פער העומסים הכולל" color="green" />
+          <FlowStep icon="✅" text="מעבירים רק אם ההעברה מקטינה את פער חלקי הבנטל הכולל" color="green" />
           <Arrow />
           <FlowStep icon="🔁" text="חוזרים עד שאין עוד העברה שמשפרת, עד לתקרה של 3 × מספר חיילים" color="gray" />
         </div>
@@ -1255,8 +1255,8 @@ function ApprovalsTab() {
           { icon: "🔄", title: "בקשות החלפה", desc: "אישור מבצע את ההחלפה בפועל: מעביר את התורנות בין שני החיילים. דחייה משאירה את השיבוץ המקורי כפי שהיה — שני הצדדים מקבלים הודעה." },
           { icon: "🚫", title: "בקשות פטור", desc: "אישור מסיר את החייל משיבוץ עתידי לסוגי התורנות שבפטור. פטור רשמי גם מפחית את פוטנציאל היחידה (ראו טאב האלגוריתם) — כלומר אותו מספר תורנויות מתחלק בין פחות חיילים ביחידה." },
           { icon: "✏️", title: "עדכוני פרופיל", desc: "חייל ביקש לשנות פרט אישי (למשל טלפון או דרגה). אישור מעדכן את הרשומה מיד; דחייה משאירה את הערך הישן." },
-          { icon: "🎓", title: "הצטרפויות/קליטה", desc: "חייל חדש שממתין לשיבוץ ליחידה. אישור קובע את היחידה שלו וממנו והלאה הוא נכנס לחישובי העומס וההוגנות." },
-          { icon: "🔀", title: "העברות", desc: "העברת חייל בין תתי-יחידות. אישור מעביר את החייל וההיסטוריה שלו נשארת אך העומס העתידי נספר תחת היחידה החדשה." },
+          { icon: "🎓", title: "הצטרפויות/קליטה", desc: "חייל חדש שממתין לשיבוץ ליחידה. אישור קובע את היחידה שלו וממנו והלאה הוא נכנס לחישובי חלק הבנטל וההוגנות." },
+          { icon: "🔀", title: "העברות", desc: "העברת חייל בין תתי-יחידות. אישור מעביר את החייל וההיסטוריה שלו נשארת אך חלק הבנטל העתידי נספר תחת היחידה החדשה." },
           { icon: "📅", title: "בקשות אילוץ אישי", desc: "חייל ביקש שלא לשבץ אותו בתאריכים מסוימים. אישור מחריג אותו מהתאריכים שביקש; דחייה משאירה אותו זמין לשיבוץ כרגיל. זהו הטאב שנפתח כברירת מחדל בעמוד האישורים." },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">

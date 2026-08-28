@@ -14,6 +14,9 @@ export interface ColDef<T> {
   id: string;
   header: string;
   headerTooltip?: React.ReactNode;
+  /** When set, the header "?" button calls this instead of showing the
+   * default headerTooltip popup — e.g. to open a fuller help modal. */
+  onHeaderHelpClick?: () => void;
   cell: (row: T) => React.ReactNode;
   sortValue?: (row: T) => string | number | null | undefined;
   filterValue?: (row: T) => string;
@@ -213,7 +216,6 @@ export function DataTable<T>({
       columns.map((col) => ({
         id: col.id,
         header: col.header,
-        meta: { tooltip: col.headerTooltip } as { tooltip?: React.ReactNode },
         cell: ({ row }) => col.cell(row.original),
         enableSorting: !!col.sortValue,
         enableGlobalFilter: !!col.filterValue,
@@ -300,10 +302,14 @@ export function DataTable<T>({
                   >
                     <span className="inline-flex items-center gap-1">
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      {(header.column.columnDef.meta as { tooltip?: React.ReactNode })?.tooltip && (
+                      {(colDef?.headerTooltip || colDef?.onHeaderHelpClick) && (
                         <button
                           type="button"
-                          onClick={() => setTooltipModal((header.column.columnDef.meta as { tooltip?: React.ReactNode }).tooltip!)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (colDef?.onHeaderHelpClick) colDef.onHeaderHelpClick();
+                            else setTooltipModal(colDef!.headerTooltip!);
+                          }}
                           className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer"
                         >
                           ?
