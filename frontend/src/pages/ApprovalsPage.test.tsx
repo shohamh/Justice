@@ -634,7 +634,7 @@ describe("ApprovalsPage - exemption file links", () => {
 });
 
 describe("ApprovalsPage - approve button authority", () => {
-  it("moves a self-requested constraint to the waiting tab without approval controls", async () => {
+  it("keeps a non-actionable personal constraint visible in the constraints tab without approval controls", async () => {
     vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([
       { ...constraint, soldier_id: "viewer-1", soldier_name: "אני", can_approve: false },
     ]);
@@ -649,10 +649,30 @@ describe("ApprovalsPage - approve button authority", () => {
       </QueryClientProvider>
     );
     fireEvent.click(await screen.findByTestId("approvals-tab-constraints"));
-    expect(screen.queryByTestId("approval-row-c1")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("approval-row-c1")).toBeInTheDocument();
     fireEvent.click(await screen.findByTestId("approvals-tab-waiting"));
     expect(await screen.findByText("אני")).toBeInTheDocument();
     expect(screen.queryByTestId("approve-c1")).not.toBeInTheDocument();
+  });
+
+  it("shows non-actionable personal constraints in the constraints list without action controls", async () => {
+    vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([
+      { ...constraint, id: "c2", soldier_id: "soldier-2", soldier_name: "Scoped soldier", can_approve: false },
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    fireEvent.click(await screen.findByTestId("approvals-tab-constraints"));
+    expect(await screen.findByTestId("approval-row-c2")).toBeInTheDocument();
+    expect(screen.queryByTestId("approve-c2")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reject-c2")).not.toBeInTheDocument();
   });
 
   it("moves a duty-manager exemption the viewer can't approve to the waiting tab instead of the exemptions tab", async () => {

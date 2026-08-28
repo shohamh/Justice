@@ -282,7 +282,7 @@ export default function ApprovalsPage() {
   const constraintsPaging = usePagePagination({ limit: APPROVALS_PAGE_SIZE, paramName: "cpage" });
   const exemptionsPaging = usePagePagination({ limit: APPROVALS_PAGE_SIZE, paramName: "epage" });
   const swapsPaging = usePagePagination({ limit: APPROVALS_PAGE_SIZE, paramName: "spage" });
-  const itemsPageItems = actionableConstraints.slice(constraintsPaging.offset, constraintsPaging.offset + constraintsPaging.limit);
+  const itemsPageItems = items.slice(constraintsPaging.offset, constraintsPaging.offset + constraintsPaging.limit);
   const erActionablePageItems = erActionable.slice(exemptionsPaging.offset, exemptionsPaging.offset + exemptionsPaging.limit);
   const swapsActionablePageItems = swapsActionable.slice(swapsPaging.offset, swapsPaging.offset + swapsPaging.limit);
 
@@ -575,7 +575,7 @@ export default function ApprovalsPage() {
 
         {tab === "constraints" && (
           <>
-            {actionableConstraints.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
+            {items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
               {itemsPageItems.map((c) => {
                 const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status, c.commander_approved_by, c.commander_approved_at, c.commander_approval_note, c.decided_by, c.decided_at, c.decision_note) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
@@ -600,7 +600,7 @@ export default function ApprovalsPage() {
                     {grouped.commander.length > 0 && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={grouped.commander} /></span>}
                     {grouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={grouped.duty_manager} /></span>}
                   </div>
-                  <div className="flex items-center gap-2">
+                  {c.can_approve && <div className="flex items-center gap-2">
                     <button
                       className="bg-green-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
                       onClick={() => onApprove(c.id)}
@@ -624,7 +624,7 @@ export default function ApprovalsPage() {
                     >
                       {t("approvals.reject_constraint")}
                     </button>
-                  </div>
+                  </div>}
                 </li>
                 );
               })}
