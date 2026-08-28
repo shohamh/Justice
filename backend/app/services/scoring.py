@@ -2043,6 +2043,54 @@ def _build_fairness_components(
     }
 
 
+def _soldier_burden_share(built: dict[str, Any], soldier_id: uuid.UUID) -> dict[str, Any] | None:
+    """Anonymized rank/spread summary for one soldier, derived from an already-built
+    _build_fairness_components() result. Carries no other soldier's identity — only
+    the peer effort-score values, for drawing a distribution without exposing names.
+    Returns None if the soldier is exempt from every duty type (no group to compare against)."""
+    for c in built["components"]:
+        for idx, s in enumerate(c["soldiers"]):
+            if s["soldier_id"] == soldier_id:
+                stats = c["burden_share"]
+                return {
+                    "burden_share": s["burden_share"],
+                    "rank": idx + 1,
+                    "group_size": c["soldier_count"],
+                    "duty_type_names": c["duty_type_names"],
+                    "peer_scores": [o["burden_share"] for o in c["soldiers"]],
+                    "mean": stats["mean"] if stats else None,
+                    "stddev": stats["stddev"] if stats else None,
+                    "cv": stats["cv"] if stats else None,
+                    "low_sample": c["soldier_count"] < 3,
+                }
+    return None
+
+
+def soldier_burden_share(session: Session, soldier_id: uuid.UUID) -> dict[str, Any] | None:
+    """Anonymized rank + spread for one soldier within their duty-type eligibility
+    component, computed org-wide (unscoped by viewer visibility, since the result
+    carries no other soldier's identity — see _soldier_burden_share)."""
+    from app.services.algorithm_bridge import exempted_duty_type_ids_by_soldier
+
+    soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
+    burden_share_by_id = burden_shares_by_soldier(session, soldiers)
+
+    active_type_ids = _active_duty_type_ids(session)
+    type_names = {
+        dt.id: dt.name
+        for dt in session.execute(
+            select(DutyType).where(DutyType.id.in_(active_type_ids))
+        ).scalars().all()
+    }
+    exempt_map = exempted_duty_type_ids_by_soldier(session, as_of=date.today())
+    eligible_types = {
+        s.id: (active_type_ids - exempt_map.get(s.id, set()))
+        for s in soldiers
+    }
+    built = _build_fairness_components(eligible_types, type_names, burden_share_by_id, {}, soldier_eligible_types=eligible_types)
+    return _soldier_burden_share(built, soldier_id)
+
+
 def fairness_components(session: Session, *, viewer: Soldier | None = None) -> dict[str, Any]:
     """Burden-share spread (פיזור) split by connected components of soldiers who share
     duty-type eligibility, plus the soldiers exempt from every active duty type.

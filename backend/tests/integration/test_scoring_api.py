@@ -240,3 +240,58 @@ def test_burden_share_breakdown_exposes_contributions(client: TestClient, admin_
     assert Decimal(duty_items[0]["score"]) == Decimal("3.000")
     adjustments = [c for c in q2["contributions"] if c["kind"] == "adjustment"]
     assert len(adjustments) == 1 and Decimal(adjustments[0]["score"]) == Decimal("1.50")
+
+
+def test_burden_share_403_for_unrelated_plain_soldier(client: TestClient, admin_session: Session):
+    a = create_soldier(admin_session, personal_number="5600060", role="soldier")
+    b = create_soldier(admin_session, personal_number="5600061", role="soldier")
+    r = client.get(f"/api/scoring/soldiers/{b.id}/burden-share", headers=auth_headers(a))
+    assert r.status_code == 403
+
+
+def test_burden_share_never_exposes_other_soldier_identity(client: TestClient, admin_session: Session):
+    """The whole point of this endpoint: a soldier can see their own rank and an
+    anonymized peer distribution, but never another soldier's name or id."""
+    dt = DutyType(name="שמירה-burden", score_per_day=Decimal("1.00"))
+    admin_session.add(dt)
+    admin_session.flush()
+
+    s = create_soldier(admin_session, personal_number="5600062", role="soldier", full_name="חייל ראשי")
+    peer = create_soldier(admin_session, personal_number="5600063", role="soldier", full_name="חייל שכן")
+    admin_session.commit()
+
+    r = client.get(f"/api/scoring/soldiers/{s.id}/burden-share", headers=auth_headers(s))
+    assert r.status_code == 200
+    body = r.json()
+    raw = r.text
+    assert body["has_group"] is True
+    assert body["group_size"] == 2
+    assert body["rank"] in (1, 2)
+    assert peer.full_name not in raw
+    assert str(peer.id) not in raw
+    assert "soldier_id" not in raw
+    assert "full_name" not in raw
+
+
+def test_burden_share_has_group_false_when_exempt_from_everything(client: TestClient, admin_session: Session):
+    from datetime import date
+
+    from app.db.models import ExemptionType, SoldierExemption
+
+    dt = DutyType(name="שמירה-exempt", score_per_day=Decimal("1.00"))
+    admin_session.add(dt)
+    admin_session.flush()
+    etype = ExemptionType(name="פטור-גורף", is_global=True)
+    admin_session.add(etype)
+    admin_session.flush()
+
+    s = create_soldier(admin_session, personal_number="5600064", role="soldier")
+    admin_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=etype.id, start_date=date(2020, 1, 1), end_date=None,
+    ))
+    admin_session.commit()
+
+    r = client.get(f"/api/scoring/soldiers/{s.id}/burden-share", headers=auth_headers(s))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["has_group"] is False

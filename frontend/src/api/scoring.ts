@@ -115,3 +115,23 @@ export async function getBreakdown(soldierId: string): Promise<Breakdown> {
 export async function getBurdenShareBreakdown(soldierId: string): Promise<BurdenShareBreakdown> {
   return (await api.get<BurdenShareBreakdown>(`/scoring/soldiers/${soldierId}/burden-share-breakdown`)).data;
 }
+
+// Anonymized rank + peer distribution within a soldier's duty-type eligibility
+// group. peer_scores carries only burden_share values — never other soldiers'
+// names or ids (see backend/app/services/scoring.py::_soldier_burden_share).
+export interface BurdenShare {
+  has_group: boolean;
+  burden_share: number | null;
+  rank: number | null;
+  group_size: number | null;
+  duty_type_names: string[];
+  peer_scores: number[];
+  mean: number | null;
+  stddev: number | null;
+  cv: number | null;
+  low_sample: boolean;
+}
+
+export async function getBurdenShare(soldierId: string): Promise<BurdenShare> {
+  return (await api.get<BurdenShare>(`/scoring/soldiers/${soldierId}/burden-share`)).data;
+}

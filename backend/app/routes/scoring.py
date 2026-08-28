@@ -229,6 +229,41 @@ def burden_share_breakdown(
     )
 
 
+class BurdenShareOut(BaseModel):
+    has_group: bool
+    burden_share: Decimal | None = None
+    rank: int | None = None
+    group_size: int | None = None
+    duty_type_names: list[str] = []
+    peer_scores: list[Decimal] = []
+    mean: Decimal | None = None
+    stddev: Decimal | None = None
+    cv: Decimal | None = None
+    low_sample: bool = False
+
+
+@router.get("/soldiers/{soldier_id}/burden-share", response_model=BurdenShareOut)
+def burden_share(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> BurdenShareOut:
+    """A soldier's own rank + anonymized peer distribution within their duty-type
+    eligibility group. Never exposes other soldiers' names or ids — see
+    scoring.soldier_burden_share / _soldier_burden_share."""
+    s = session.get(Soldier, soldier_id)
+    if s is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if s.id != user.id:
+        if not can_view_soldier_scope(session, user, _node_of(session, s)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    result = svc.soldier_burden_share(session, soldier_id)
+    if result is None:
+        return BurdenShareOut(has_group=False)
+    return BurdenShareOut(has_group=True, **result)
+
+
 @router.get("/soldiers/{soldier_id}", response_model=BreakdownOut)
 def breakdown(
     soldier_id: uuid.UUID,

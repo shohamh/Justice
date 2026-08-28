@@ -19,6 +19,7 @@ export const queryKeys = {
   systemSettings: () => ["systemSettings"] as const,
   transparency: () => ["scoring", "transparency"] as const,
   breakdown: (soldierId: string) => ["scoring", "breakdown", soldierId] as const,
+  burdenShare: (soldierId: string) => ["scoring", "burdenShare", soldierId] as const,
   reserveStats: () => ["soldiers", "reserveStats"] as const,
   pendingConstraintsCount: () => ["constraints", "pendingCount"] as const,
   pendingExemptionsCount: () => ["exemptions", "pendingCount"] as const,
