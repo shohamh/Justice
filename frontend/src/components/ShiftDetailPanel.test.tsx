@@ -429,7 +429,7 @@ describe("ShiftDetailPanel Replace action", () => {
         soldier_id: "s1",
         full_name: "מועמד חלופי",
         personal_number: "111",
-        score_per_day: 0.5,
+        burden_share: 0.5,
         blocked: false,
         blocked_reason: null,
         weapon_warning: false,

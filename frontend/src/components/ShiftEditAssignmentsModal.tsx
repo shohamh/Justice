@@ -135,7 +135,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
       return {
         unblocked: unblocked
           .slice()
-          .sort((a, b) => a.score_per_day - b.score_per_day)
+          .sort((a, b) => a.burden_share - b.burden_share)
           .map(c => ({ ...c, dist: Infinity, coveringNames: [], coveringPrimarySoldierId: null })),
         blocked,
       };
@@ -144,12 +144,12 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
     // Greedy bipartite matching: repeatedly pick the (primary, reserve) pair with
     // the smallest hierarchy distance, assign it, remove both, repeat.
     const remainingPrimaries = [...allPrimariesForMatching];
-    const remainingReserves = unblocked.slice().sort((a, b) => a.score_per_day - b.score_per_day);
+    const remainingReserves = unblocked.slice().sort((a, b) => a.burden_share - b.burden_share);
     const matched: ReserveCandidate[] = [];
 
     while (remainingPrimaries.length > 0 && remainingReserves.length > 0) {
       let bestDist = Infinity;
-      let bestScorePerDay = Infinity;
+      let bestBurdenShare = Infinity;
       let bestPrimaryIdx = -1;
       let bestReserveIdx = -1;
 
@@ -159,10 +159,10 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
             remainingReserves[ri].hierarchy_path_ids,
             remainingPrimaries[pi].hierarchy_path_ids,
           );
-          const scorePerDay = remainingReserves[ri].score_per_day;
-          if (dist < bestDist || (dist === bestDist && scorePerDay < bestScorePerDay)) {
+          const burdenShare = remainingReserves[ri].burden_share;
+          if (dist < bestDist || (dist === bestDist && burdenShare < bestBurdenShare)) {
             bestDist = dist;
-            bestScorePerDay = scorePerDay;
+            bestBurdenShare = burdenShare;
             bestPrimaryIdx = pi;
             bestReserveIdx = ri;
           }
@@ -176,9 +176,9 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
       remainingPrimaries.splice(bestPrimaryIdx, 1);
     }
 
-    // Any leftover reserves (more reserves than primaries) sorted by score-per-day
+    // Any leftover reserves (more reserves than primaries) sorted by burden share
     const unmatched: ReserveCandidate[] = remainingReserves
-      .sort((a, b) => a.score_per_day - b.score_per_day)
+      .sort((a, b) => a.burden_share - b.burden_share)
       .map(c => ({ ...c, dist: Infinity, coveringNames: [], coveringPrimarySoldierId: null }));
 
     return { unblocked: [...matched, ...unmatched], blocked };
@@ -566,7 +566,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
             <th className="p-2 w-8"></th>
             <th className="text-right p-2 font-medium">שם</th>
             <th className="text-right p-2 font-medium">מ&quot;א</th>
-            <th className="text-right p-2 font-medium">מאמץ</th>
+            <th className="text-right p-2 font-medium">חלק בנטל</th>
             <th className="p-2"></th>
           </tr>
         </thead>
@@ -584,7 +584,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
                 <td className="p-2">{c.full_name}</td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-                <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
+                <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
                 <td className="p-2"></td>
               </tr>
             );
@@ -605,7 +605,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
               <td className="p-2"><input type="checkbox" disabled /></td>
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
               <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>
           ))}
@@ -633,7 +633,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
             <th className="p-2 w-8"></th>
             <th className="text-right p-2 font-medium">שם</th>
             <th className="text-right p-2 font-medium">מ&quot;א</th>
-            <th className="text-right p-2 font-medium">מאמץ</th>
+            <th className="text-right p-2 font-medium">חלק בנטל</th>
             {showDist && <th className="text-right p-2 font-medium">מחפה על</th>}
             <th className="p-2"></th>
           </tr>
@@ -652,7 +652,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
                 <td className="p-2">{c.full_name}</td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-                <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
+                <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
                 {showDist && <td className="p-2 text-gray-600 dark:text-gray-300 max-w-[160px]">{c.coveringNames.join(", ") || "–"}</td>}
                 <td className="p-2"></td>
               </tr>
@@ -674,7 +674,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
               <td className="p-2"><input type="checkbox" disabled /></td>
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
               {showDist && <td className="p-2"></td>}
               <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>
