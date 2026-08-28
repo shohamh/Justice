@@ -28,9 +28,10 @@ function approvalTime(value: string | null | undefined): string | undefined {
   return new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
-function ApprovalDot({ value, approvedAt }: { value: boolean | null; approvedAt?: string | null }) {
+function ApprovalDot({ value, approvedBy, approvedAt }: { value: boolean | null; approvedBy?: string | null; approvedAt?: string | null }) {
   if (value === true) {
-    const title = approvalTime(approvedAt) ?? "אושר";
+    const when = approvalTime(approvedAt);
+    const title = approvedBy && when ? `אושר על ידי ${approvedBy} בתאריך ${when}` : approvedBy ? `אושר על ידי ${approvedBy}` : when ? `אושר בתאריך ${when}` : "אושר";
     return <button type="button" data-testid="approval-checkmark" className="text-green-600 font-bold" title={title} aria-label={title}>✓</button>;
   }
   if (value === false) return <span className="text-red-500 font-bold">×</span>;
@@ -59,7 +60,7 @@ export default function DirectCommanderApproval({
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
       <SoldierLink id={displayedApprover.commander_id} name={displayedApprover.approved_by_name ?? displayedApprover.commander_name ?? displayedApprover.commander_id.slice(0, 8)} />
-      <ApprovalDot value={dotValue} approvedAt={displayedApprover.approved_at} />
+      <ApprovalDot value={dotValue} approvedBy={displayedApprover.approved_by_name ?? displayedApprover.commander_name} approvedAt={displayedApprover.approved_at} />
       {rejectedRow && <span className="text-red-500 text-xs">{t("swaps.rejected_by", { name: rejectedRow.rejected_by_name ?? rejectedRow.commander_name ?? rejectedRow.commander_id.slice(0, 8) })}</span>}
     </span>
   );

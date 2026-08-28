@@ -7,7 +7,8 @@ import { useTranslation } from "react-i18next";
  * and at which step. */
 export interface ApprovalStageStatus {
   status: string;
-  commander_approved_by?: unknown;
+  commander_approved_by?: { name: string } | null;
+  commander_approved_at?: string | null;
 }
 
 type StageValue = "approved" | "rejected" | "pending" | "skipped";
@@ -25,13 +26,13 @@ function dutyManagerStage(r: ApprovalStageStatus): StageValue {
   return "skipped";
 }
 
-function StageIcon({ value, label }: { value: StageValue; label: string }) {
+function StageIcon({ value, label, title, testId }: { value: StageValue; label: string; title?: string; testId?: string }) {
   if (value === "skipped") return null;
   const symbol = value === "approved" ? "✓" : value === "rejected" ? "✗" : "…";
   const colorClass =
     value === "approved" ? "text-green-600" : value === "rejected" ? "text-red-500" : "text-gray-400";
   return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-bold ${colorClass}`} title={label}>
+    <span className={`inline-flex items-center gap-0.5 text-xs font-bold ${colorClass}`} title={title ?? label} data-testid={testId}>
       {symbol}
       <span className="font-normal">{label}</span>
     </span>
@@ -46,7 +47,14 @@ export default function ApprovalStageIcons({ request }: { request: ApprovalStage
   if (request.status === "cancelled") return null;
   return (
     <span className="inline-flex items-center gap-2">
-      <StageIcon value={commanderStage(request)} label={t("deputies.role_commander")} />
+      <StageIcon
+        value={commanderStage(request)}
+        label={t("deputies.role_commander")}
+        title={request.commander_approved_by && request.commander_approved_at
+          ? `אושר על ידי ${request.commander_approved_by.name} בתאריך ${new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(request.commander_approved_at))}`
+          : request.commander_approved_by ? `אושר על ידי ${request.commander_approved_by.name}` : undefined}
+        testId={request.commander_approved_by ? "commander-approval-checkmark" : undefined}
+      />
       <StageIcon value={dutyManagerStage(request)} label={t("deputies.role_duty_manager")} />
     </span>
   );

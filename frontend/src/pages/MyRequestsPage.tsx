@@ -76,6 +76,7 @@ interface RequestMetaProps {
   /** Row status — picks אושר ע״י vs נדחה ע״י when decidedBy is present. */
   status?: string | null;
   commanderApprovedBy?: SoldierRef | null;
+  commanderApprovedAt?: string | null;
   testIdPrefix?: string;
 }
 
@@ -89,6 +90,7 @@ function RequestMetaRow({
   decidedBy,
   status,
   commanderApprovedBy,
+  commanderApprovedAt,
   testIdPrefix,
 }: RequestMetaProps) {
   const { t } = useTranslation();
@@ -113,7 +115,7 @@ function RequestMetaRow({
         </span>
       )}
       {commanderApprovedBy !== undefined && status && (
-        <ApprovalStageIcons request={{ status, commander_approved_by: commanderApprovedBy }} />
+        <ApprovalStageIcons request={{ status, commander_approved_by: commanderApprovedBy, commander_approved_at: commanderApprovedAt }} />
       )}
       {waitingOn && (
         <span data-testid={testIdPrefix ? `${testIdPrefix}-waiting-on` : undefined}>
@@ -716,6 +718,7 @@ export default function MyRequestsPage() {
                           decidedBy={c.decided_by}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
                         />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
@@ -745,6 +748,7 @@ export default function MyRequestsPage() {
                           decidedBy={c.decided_by}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
                         />
                         <AuditHistoryBlock entityType="personal_constraint" entityId={c.id} />
                       </li>
@@ -774,6 +778,7 @@ export default function MyRequestsPage() {
                           decidedBy={c.decided_by}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
                         />
                         {c.decision_note && (
                           <p className="text-xs text-red-700 dark:text-red-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
@@ -806,6 +811,7 @@ export default function MyRequestsPage() {
                           decidedBy={c.decided_by}
                           status={c.status}
                           commanderApprovedBy={c.commander_approved_by}
+                          commanderApprovedAt={c.commander_approved_at}
                         />
                         {c.decision_note && (
                           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
@@ -846,6 +852,7 @@ export default function MyRequestsPage() {
                       decidedBy={er.decided_by}
                       status={er.status}
                       commanderApprovedBy={er.commander_approved_by}
+                      commanderApprovedAt={er.commander_approved_at}
                     />
                     {er.status === "rejected" && er.decision_note && (
                       <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {er.decision_note}</p>

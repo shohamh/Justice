@@ -44,6 +44,7 @@ describe("DirectCommanderApproval decisions", () => {
     expect(screen.queryByText("המפקד הישיר")).not.toBeInTheDocument();
     const check = screen.getByTestId("approval-checkmark");
     expect(check).toHaveTextContent("✓");
+    expect(check).toHaveAttribute("title", expect.stringContaining("המפקד הבכיר"));
     expect(check).toHaveAttribute("title", expect.stringContaining("2026"));
   });
 });
