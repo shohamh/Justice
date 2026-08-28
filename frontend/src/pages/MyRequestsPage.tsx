@@ -192,6 +192,7 @@ export default function MyRequestsPage() {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submittedHolidays, setSubmittedHolidays] = useState<{ date: string; name: string }[]>([]);
 
   // Exemption request form state
   const [erTypeId, setErTypeId] = useState("");
@@ -305,12 +306,13 @@ export default function MyRequestsPage() {
     }
     setSubmitting(true);
     try {
-      await submitConstraint({
+      const created = await submitConstraint({
         start_date: start,
         end_date: end,
         reason,
       });
       setStart(""); setEnd(""); setReason("");
+      setSubmittedHolidays(created.crossed_holidays);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.remainingConstraintDays() });
     } catch (err: unknown) {
@@ -412,6 +414,11 @@ export default function MyRequestsPage() {
               {constraintFormOpen && (
                 <div className="p-4 space-y-3 border-t dark:border-gray-600" data-testid="constraint-form-card">
                   {error && <div className="text-red-600 text-sm" data-testid="req-error">{error}</div>}
+                  {submittedHolidays.length > 0 && (
+                    <div className="text-amber-700 dark:text-amber-400 text-sm" data-testid="req-holiday-note">
+                      {t("holidays.crossed_note", { names: submittedHolidays.map((h) => h.name).join(", ") })}
+                    </div>
+                  )}
                   {remaining && (
                     <p className="text-sm text-gray-600 dark:text-gray-400" data-testid="constraints-remaining">
                       {t("constraints.remaining_summary", {

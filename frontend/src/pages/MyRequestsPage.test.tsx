@@ -469,6 +469,32 @@ describe("MyRequestsPage - constraint start date cannot be in the past", () => {
       expect.objectContaining({ start_date: "2030-12-31" }),
     );
   });
+
+  it("shows a note listing crossed holidays after a successful submit", async () => {
+    vi.mocked(constraintsApi.submitConstraint).mockResolvedValue({
+      ...constraint,
+      crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }],
+    });
+    renderPage();
+    await openConstraintForm();
+
+    const future = "31122030";
+    fireEvent.change(screen.getByTestId("req-start"), { target: { value: future } });
+    fireEvent.change(screen.getByTestId("req-end"), { target: { value: future } });
+    fireEvent.change(screen.getByTestId("req-reason"), { target: { value: "סיבה" } });
+
+    fireEvent.click(screen.getByTestId("req-submit"));
+
+    // react-i18next is mocked in this file to return raw keys, ignoring
+    // interpolation params (t = (key) => key) — see other tests in this file
+    // asserting on translation keys rather than interpolated text. So the
+    // holiday names passed into t("holidays.crossed_note", { names }) don't
+    // surface in the mocked render; assert on the note's presence instead.
+    // Real i18next (he.json: holidays.crossed_note) does interpolate {{names}}.
+    await waitFor(() => {
+      expect(screen.getByTestId("req-holiday-note")).toBeInTheDocument();
+    });
+  });
 });
 
 describe("MyRequestsPage - permanent exemption checkbox", () => {

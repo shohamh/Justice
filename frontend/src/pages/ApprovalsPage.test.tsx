@@ -104,6 +104,7 @@ const constraint = {
   decision_note: null,
   created_at: "2026-01-01",
   can_approve: true,
+  crossed_holidays: [],
 } as constraintsApi.PersonalConstraint;
 
 const exemptionRequestWithFile = {
@@ -843,6 +844,30 @@ describe("ApprovalsPage - pagination clamp on shrinking list", () => {
       expect(screen.getByTestId("approve-c0")).toBeInTheDocument();
     });
     expect(screen.queryByText("2")).not.toBeInTheDocument();
+  });
+});
+
+describe("ApprovalsPage - holiday badge", () => {
+  it("shows a holiday badge on a constraint approval card that crosses a holiday", async () => {
+    vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([
+      { ...constraint, crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }] },
+    ]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await screen.findByTestId("approval-row-c1");
+    await waitFor(() => {
+      expect(screen.getByTestId("holiday-badge")).toBeInTheDocument();
+    });
   });
 });
 
