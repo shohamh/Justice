@@ -9,6 +9,7 @@ import { useSoldierModal } from "../../contexts/SoldierModalContext";
 import ShiftDetailPanel from "../ShiftDetailPanel";
 import { useModalBackClose } from "../../hooks/useModalBackClose";
 import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
+import HolidayBadge from "../HolidayBadge";
 
 interface Props {
   duty: EffectiveDuty | null;
@@ -91,9 +92,10 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
               <h3 id="duty-detail-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 {typeNames[duty.duty_type_id] ?? "—"}
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1 flex-wrap">
                 {formatDutyRange(duty.start_date, duty.end_date)}
                 {time && <span className="mr-2 text-xs">· {time}</span>}
+                {shift && <HolidayBadge holidays={shift.crossed_holidays} />}
               </p>
             </div>
             <button onClick={onClose} aria-label="סגור" className="text-gray-400 hover:text-gray-600 text-xl leading-none mt-0.5">×</button>
