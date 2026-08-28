@@ -24,6 +24,7 @@ from app.db.models import (
     SoldierExemption,
     SoldierRangeQualification,
 )
+from app.services.constraint_override_settings import manual_override_allowed
 
 
 def _qualification_types_at_or_above(range_type: str) -> list[str]:
@@ -127,7 +128,7 @@ class RankedCandidate:
 @dataclass(frozen=True)
 class ExcludedSoldier:
     soldier_id: uuid.UUID
-    reason: Literal["weapon_exempt", "structurally_ineligible", "assigned_elsewhere_same_day"]
+    reason: Literal["weapon_exempt", "structurally_ineligible", "assigned_elsewhere_same_day", "personal_constraint"]
 
 
 NEAR_DUTY_WINDOW_DAYS = 30
@@ -195,14 +196,21 @@ def _bulk_eligibility(
     of these also fail actual assignment, so there's never a reason to show them
     as a candidate.
 
-    A soldier blocked only by a personal constraint or an overlapping duty
-    assignment is a softer, schedule-level conflict that _validate_and_build_
+    A soldier with an approved personal constraint overlapping the event date is
+    handled according to the constraints.allow_manual_override system setting: if
+    overriding is allowed, they stay eligible with an unconditional conflict_warning
+    (no near-duty condition — a commander can consciously override); if overriding
+    is disallowed, they're hard-excluded with reason "personal_constraint".
+
+    A soldier blocked only by an overlapping duty assignment (no personal
+    constraint) is a softer, schedule-level conflict that _validate_and_build_
     assignment does NOT reject — so they stay eligible, UNLESS they also have a
     weapon-requiring duty within NEAR_DUTY_WINDOW_DAYS days that needs this
     qualification, in which case they're kept (with a conflict_warning describing
     what needs resolving) so a commander can consciously override rather than have
     them silently disappear from the pool for someone who urgently needs this range."""
     soldier_ids = [s.id for s in soldiers]
+    override_allowed = manual_override_allowed(session)
 
     weapon_duty_types = session.execute(
         select(DutyType).where(DutyType.requires_weapon.is_(True), DutyType.active.is_(True))
@@ -280,10 +288,28 @@ def _bulk_eligibility(
 
         constraint = constraint_by_soldier.get(soldier.id)
         duty_conflict = duty_conflict_by_soldier.get(soldier.id)
+
+        if constraint is not None and not override_allowed:
+            excluded.append(ExcludedSoldier(soldier.id, "personal_constraint"))
+            continue
+
         if constraint is None and duty_conflict is None:
             result[soldier.id] = None
             continue
 
+        if constraint is not None:
+            # Setting ON: always warn (dropping the previous near-duty gate).
+            parts: list[str] = [
+                f"אילוץ מאושר {constraint.start_date.strftime('%d.%m.%Y')}"
+                f"–{constraint.end_date.strftime('%d.%m.%Y')}"
+            ]
+            if duty_conflict is not None:
+                duty, duty_type_name = duty_conflict
+                parts.append(f"משובץ לתורנות '{duty_type_name}' ב-{duty.start_date.strftime('%d.%m.%Y')}")
+            result[soldier.id] = " · ".join(parts)
+            continue
+
+        # No constraint — keep the existing near-duty-gated duty_conflict warning.
         has_near_duty = any(
             start is not None and start <= near_duty_cutoff
             for start in (
@@ -293,17 +319,8 @@ def _bulk_eligibility(
         )
         if not has_near_duty:
             continue
-
-        parts: list[str] = []
-        if constraint is not None:
-            parts.append(
-                f"אילוץ מאושר {constraint.start_date.strftime('%d.%m.%Y')}"
-                f"–{constraint.end_date.strftime('%d.%m.%Y')}"
-            )
-        if duty_conflict is not None:
-            duty, duty_type_name = duty_conflict
-            parts.append(f"משובץ לתורנות '{duty_type_name}' ב-{duty.start_date.strftime('%d.%m.%Y')}")
-        result[soldier.id] = " · ".join(parts)
+        duty, duty_type_name = duty_conflict
+        result[soldier.id] = f"משובץ לתורנות '{duty_type_name}' ב-{duty.start_date.strftime('%d.%m.%Y')}"
     return result, excluded
 
 

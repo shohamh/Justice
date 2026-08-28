@@ -1488,7 +1488,8 @@
     "excluded_reason": {
       "weapon_exempt": "פטור מנשק",
       "structurally_ineligible": "לא כשיר מבנית לתפקידי נשק",
-      "assigned_elsewhere_same_day": "משובץ למטווח אחר באותו יום"
+      "assigned_elsewhere_same_day": "משובץ למטווח אחר באותו יום",
+      "personal_constraint": "אילוץ אישי מאושר"
     },
     "close": "סגור",
     "self_excuse": "אני לא אוכל להגיע",
