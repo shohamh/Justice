@@ -1,21 +1,17 @@
 import { useTranslation } from "react-i18next";
 import SoldierLink from "./SoldierLink";
 
-/** Minimal shape needed from SwapManagerApproval (see api/swaps.ts) to render
- * the direct-commander-approval widget, kept structural so callers don't
- * need to import the full SwapManagerApproval type. */
 export interface DirectCommanderApprovalRow {
   commander_id: string;
   commander_name?: string | null;
   approved: boolean;
   approved_by_name?: string | null;
+  approved_at?: string | null;
   rejected?: boolean;
   rejected_by_name?: string | null;
   approver_kind?: "commander" | "duty_manager";
 }
 
-/** Splits a flat list of approval rows into per-kind groups so callers can
- * render commander and duty-manager approval status as separate rows. */
 export function groupByKind(approvals: (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]) {
   return {
     commander: approvals.filter((a) => a.approver_kind === "commander"),
@@ -23,27 +19,24 @@ export function groupByKind(approvals: (DirectCommanderApprovalRow & { approver_
   };
 }
 
-/** A side (requester/covering) is satisfied if it has no required chain
- * commanders at all, or if any one of them has approved — matching the
- * backend's "any single chain commander suffices" semantics. */
 export function isSideSatisfied(approvals: DirectCommanderApprovalRow[]): boolean {
   return approvals.length === 0 || approvals.some((a) => a.approved);
 }
 
-function ApprovalDot({ value }: { value: boolean | null }) {
-  if (value === true) return <span className="text-green-600 font-bold">✓</span>;
-  if (value === false) return <span className="text-red-500 font-bold">✗</span>;
+function approvalTime(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  return new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+}
+
+function ApprovalDot({ value, approvedAt }: { value: boolean | null; approvedAt?: string | null }) {
+  if (value === true) {
+    const title = approvalTime(approvedAt) ?? "אושר";
+    return <button type="button" data-testid="approval-checkmark" className="text-green-600 font-bold" title={title} aria-label={title}>✓</button>;
+  }
+  if (value === false) return <span className="text-red-500 font-bold">×</span>;
   return <span className="text-gray-400">—</span>;
 }
 
-/**
- * Shows only the soldier's direct (nearest) commander for one side of a swap
- * — approvals[0] is guaranteed nearest-first by the backend — while still
- * reflecting whether the side as a whole is satisfied (any chain commander
- * approving counts, not just the direct one). If someone other than the
- * direct commander was the one who actually approved, a small note names
- * them.
- */
 export default function DirectCommanderApproval({
   approvals,
   approverKind = "commander",
@@ -59,25 +52,15 @@ export default function DirectCommanderApproval({
   const direct = approvals[0];
   const satisfied = isSideSatisfied(approvals);
   const approvedByOther = !direct.approved ? approvals.find((a) => a.approved) : undefined;
+  const displayedApprover = approvedByOther ?? direct;
   const rejectedRow = approvals.find((a) => a.rejected);
   const dotValue = rejectedRow ? false : satisfied ? true : null;
 
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
-      <SoldierLink id={direct.commander_id} name={direct.commander_name ?? direct.commander_id.slice(0, 8)} />
-      <ApprovalDot value={dotValue} />
-      {rejectedRow && (
-        <span className="text-red-500 text-xs">
-          {t("swaps.rejected_by", { name: rejectedRow.rejected_by_name ?? rejectedRow.commander_name ?? rejectedRow.commander_id.slice(0, 8) })}
-        </span>
-      )}
-      {approvedByOther && (
-        <span className="text-gray-400 text-xs">
-          {t("swaps.approved_by_other", {
-            name: approvedByOther.approved_by_name ?? approvedByOther.commander_name ?? approvedByOther.commander_id.slice(0, 8),
-          })}
-        </span>
-      )}
+      <SoldierLink id={displayedApprover.commander_id} name={displayedApprover.approved_by_name ?? displayedApprover.commander_name ?? displayedApprover.commander_id.slice(0, 8)} />
+      <ApprovalDot value={dotValue} approvedAt={displayedApprover.approved_at} />
+      {rejectedRow && <span className="text-red-500 text-xs">{t("swaps.rejected_by", { name: rejectedRow.rejected_by_name ?? rejectedRow.commander_name ?? rejectedRow.commander_id.slice(0, 8) })}</span>}
     </span>
   );
 }

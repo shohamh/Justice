@@ -11,6 +11,7 @@ export interface PersonalConstraint {
   reason: string | null;
   status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled";
   commander_approved_by: SoldierRef | null;
+  commander_approved_at: string | null;
   waiting_on: WaitingOnRef | null;
   decided_by: SoldierRef | null;
   requested_at: string;

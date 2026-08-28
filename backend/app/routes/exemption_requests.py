@@ -85,6 +85,7 @@ class ExemptionRequestOut(BaseModel):
     updated_at: str | None = None
     waiting_on: WaitingOnOut | None = None
     commander_approved_by: PersonRefOut | None = None
+    commander_approved_at: datetime | None = None
 
 
 class CreateExemptionRequest(BaseModel):
@@ -163,6 +164,7 @@ def _out(
         updated_at=(updated_at or req.created_at).isoformat(),
         waiting_on=resolve_waiting_on(session, soldier_id=req.soldier_id, status=req.status),
         commander_approved_by=person_ref(session, req.commander_approved_by),
+        commander_approved_at=req.commander_approved_at,
     )
 
 

@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import "../i18n";
 import DirectCommanderApproval from "./DirectCommanderApproval";
+
+vi.mock("./SoldierLink", () => ({ default: ({ name }: { name: string }) => <span>{name}</span> }));
 
 describe("DirectCommanderApproval empty state", () => {
   test("shows the commander-flavored text when no commander chain exists", () => {
@@ -18,5 +20,30 @@ describe("DirectCommanderApproval empty state", () => {
   test("defaults to the commander-flavored text when approverKind is omitted", () => {
     render(<DirectCommanderApproval approvals={[]} />);
     expect(screen.getByText("לא נדרש אישור מפקד")).toBeInTheDocument();
+  });
+});
+
+describe("DirectCommanderApproval decisions", () => {
+  test("shows the approving higher commander as the approver and exposes its approval time", () => {
+    render(
+      <DirectCommanderApproval
+        approvals={[
+          { commander_id: "near", commander_name: "המפקד הישיר", approved: false },
+          {
+            commander_id: "senior",
+            commander_name: "המפקד הבכיר",
+            approved: true,
+            approved_by_name: "המפקד הבכיר",
+            approved_at: "2026-08-28T17:31:00Z",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("המפקד הבכיר")).toBeInTheDocument();
+    expect(screen.queryByText("המפקד הישיר")).not.toBeInTheDocument();
+    const check = screen.getByTestId("approval-checkmark");
+    expect(check).toHaveTextContent("✓");
+    expect(check).toHaveAttribute("title", expect.stringContaining("2026"));
   });
 });

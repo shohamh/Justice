@@ -142,6 +142,7 @@ def _approve_commander_step(
     session: Session, c: PersonalConstraint, *, actor_id: uuid.UUID | None,
 ) -> PersonalConstraint:
     c.commander_approved_by = actor_id
+    c.commander_approved_at = datetime.now(UTC)
     require_dm = bool(
         _get_setting_with_default(session, "constraints.require_duty_manager_approval", True)
     )

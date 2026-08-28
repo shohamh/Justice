@@ -138,10 +138,16 @@ function nearestApproversToRows(
   nearestCommander: { id: string; name: string } | null,
   nearestDutyManager: { id: string; name: string } | null,
   status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled",
+  commanderApprovedBy?: { soldier_id: string; name: string } | null,
+  commanderApprovedAt?: string | null,
 ): DirectCommanderApprovalRow[] {
   const rows: DirectCommanderApprovalRow[] = [];
   if (nearestCommander) {
-    rows.push({
+    rows.push(commanderApprovedBy ? {
+      commander_id: commanderApprovedBy.soldier_id, commander_name: commanderApprovedBy.name,
+      approved: true, approved_by_name: commanderApprovedBy.name, approved_at: commanderApprovedAt,
+      rejected: false, approver_kind: "commander",
+    } : {
       commander_id: nearestCommander.id, commander_name: nearestCommander.name,
       approved: status === "approved", rejected: status === "rejected", approver_kind: "commander",
     });
@@ -557,7 +563,7 @@ export default function ApprovalsPage() {
             {actionableConstraints.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
               {itemsPageItems.map((c) => {
-                const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
+                const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status, c.commander_approved_by, c.commander_approved_at) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={c.id} className="border dark:border-gray-600 rounded p-3" data-testid={`approval-row-${c.id}`}>
                   <div className="flex items-center gap-2 mb-1">
@@ -619,7 +625,7 @@ export default function ApprovalsPage() {
               {erActionablePageItems.map((er) => {
                 const erGrouped = groupByKind(nearestApproversToRows(
                   er.nearest_commander, er.nearest_duty_manager,
-                  er.status === "approved" ? "approved" : er.status === "rejected" ? "rejected" : "pending",
+                  er.status === "approved" ? "approved" : er.status === "rejected" ? "rejected" : "pending", er.commander_approved_by, er.commander_approved_at,
                 ) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={er.id} className="border dark:border-gray-600 rounded p-3" data-testid={`er-approval-row-${er.id}`}>
