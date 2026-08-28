@@ -5,7 +5,7 @@ import Layout from "../../components/Layout";
 import { queryKeys } from "../../queryKeys";
 import { AdjustmentPreview, createAdjustment, listAdjustments, previewAdjustment } from "../../api/scoreAdjustments";
 import { getSoldierScore, listSoldiers, SoldierDTO } from "../../api/soldiers";
-import { getEffortBreakdown } from "../../api/scoring";
+import { getBurdenShareBreakdown } from "../../api/scoring";
 import { translateApiError } from "../../utils/translateApiError";
 import { formatDateTimeIsrael } from "../../utils/formatDate";
 
@@ -51,12 +51,12 @@ export default function ScoreAdjustmentPage() {
   });
   const soldierScore = soldierScoreQuery.data ?? null;
 
-  const effortBreakdownQuery = useQuery({
-    queryKey: queryKeys.effortBreakdown(soldierId),
-    queryFn: () => getEffortBreakdown(soldierId),
+  const burdenShareBreakdownQuery = useQuery({
+    queryKey: queryKeys.burdenShareBreakdown(soldierId),
+    queryFn: () => getBurdenShareBreakdown(soldierId),
     enabled: !!soldierId,
   });
-  const effortData = effortBreakdownQuery.data ?? null;
+  const burdenShareData = burdenShareBreakdownQuery.data ?? null;
 
   useEffect(() => {
     setPreview(null);
@@ -77,7 +77,7 @@ export default function ScoreAdjustmentPage() {
       setReason("");
       void queryClient.invalidateQueries({ queryKey: queryKeys.scoreAdjustments(soldierId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.soldierScore(soldierId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.effortBreakdown(soldierId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.burdenShareBreakdown(soldierId) });
     },
     onError: (err: unknown) => {
       setError(translateApiError(err, t, t("score_adjustment.generic_error")));
@@ -215,9 +215,9 @@ export default function ScoreAdjustmentPage() {
                   note: "לחץ תצוגה מקדימה",
                 },
                 {
-                  label: "עומס",
-                  before: preview ? preview.effort_score_before : (effortData ? Number(effortData.effort_score).toFixed(3) : "—"),
-                  after: preview ? preview.effort_score_after : null,
+                  label: "חלק בנטל",
+                  before: preview ? preview.burden_share_before : (burdenShareData ? Number(burdenShareData.burden_share).toFixed(3) : "—"),
+                  after: preview ? preview.burden_share_after : null,
                   note: "לחץ תצוגה מקדימה",
                 },
               ].map(({ label, before, after, note }) => (

@@ -66,9 +66,9 @@ function makeRow(overrides: Partial<TransparencyRow> = {}): TransparencyRow {
     score_per_day: "0.10",
     normalised_score: "1.00",
     is_globally_exempted: false,
-    effort_score: 0.1,
+    burden_share: 0.1,
     c_over_d: 0,
-    effort_offset_raw: 0,
+    burden_share_offset_raw: 0,
     exemptions_display: "",
     exemptions_visible: true,
     exemptions: [],
@@ -82,7 +82,7 @@ function makeRow(overrides: Partial<TransparencyRow> = {}): TransparencyRow {
 beforeEach(() => {
   vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
   vi.mocked(scoringApi.getFairnessComponents).mockRejectedValue(new Error("not needed"));
-  vi.mocked(potentialApi.getEffortGap).mockResolvedValue([]);
+  vi.mocked(potentialApi.getBurdenShareGap).mockResolvedValue([]);
 });
 
 describe("TransparencyPage 403 handling", () => {
@@ -137,12 +137,12 @@ describe("TransparencyPage exemptions column", () => {
 });
 
 describe("TransparencyPage default sort order", () => {
-  it("defaults to load (effort_score) descending, not rank", async () => {
+  it("defaults to load (burden_share) descending, not rank", async () => {
     const out: TransparencyOut = {
       rows: [
-        makeRow({ soldier_id: "s-low", full_name: "עומס נמוך", effort_score: 0.1 }),
-        makeRow({ soldier_id: "s-high", full_name: "עומס גבוה", effort_score: 0.9 }),
-        makeRow({ soldier_id: "s-mid", full_name: "עומס בינוני", effort_score: 0.5 }),
+        makeRow({ soldier_id: "s-low", full_name: "חלק בנטל נמוך", burden_share: 0.1 }),
+        makeRow({ soldier_id: "s-high", full_name: "חלק בנטל גבוה", burden_share: 0.9 }),
+        makeRow({ soldier_id: "s-mid", full_name: "חלק בנטל בינוני", burden_share: 0.5 }),
       ],
       can_see_exemption_aggregates: true,
     };
@@ -156,9 +156,9 @@ describe("TransparencyPage default sort order", () => {
     });
 
     const rowTexts = Array.from(table.querySelectorAll("tbody tr")).map((r) => r.textContent ?? "");
-    const highIdx = rowTexts.findIndex((t) => t.includes("עומס גבוה"));
-    const midIdx = rowTexts.findIndex((t) => t.includes("עומס בינוני"));
-    const lowIdx = rowTexts.findIndex((t) => t.includes("עומס נמוך"));
+    const highIdx = rowTexts.findIndex((t) => t.includes("חלק בנטל גבוה"));
+    const midIdx = rowTexts.findIndex((t) => t.includes("חלק בנטל בינוני"));
+    const lowIdx = rowTexts.findIndex((t) => t.includes("חלק בנטל נמוך"));
     expect(highIdx).toBeLessThan(midIdx);
     expect(midIdx).toBeLessThan(lowIdx);
   });

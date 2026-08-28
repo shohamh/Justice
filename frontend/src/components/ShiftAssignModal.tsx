@@ -88,7 +88,7 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
 
     withDist.sort((a, b) => {
       if (a.dist !== b.dist) return a.dist - b.dist;
-      return a.effort - b.effort;
+      return a.score_per_day - b.score_per_day;
     });
 
     return { unblocked: withDist, blocked };
@@ -298,7 +298,7 @@ function PrimaryTable({ unblocked, blocked, selected, onToggle }: PrimaryTablePr
                 )}
               </td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
               <td className="p-2"></td>
             </tr>
           ))}
@@ -318,7 +318,7 @@ function PrimaryTable({ unblocked, blocked, selected, onToggle }: PrimaryTablePr
               <td className="p-2"><input type="checkbox" disabled /></td>
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
               <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>
           ))}
@@ -366,7 +366,7 @@ function ReserveTable({ unblocked, blocked, selected, onToggle, showDist }: Rese
                 )}
               </td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
               {showDist && (
                 <td className="p-2 text-gray-600 dark:text-gray-300 max-w-[160px]">
                   {c.coveringNames.length > 0 ? c.coveringNames.join(", ") : "–"}
@@ -391,7 +391,7 @@ function ReserveTable({ unblocked, blocked, selected, onToggle, showDist }: Rese
               <td className="p-2"><input type="checkbox" disabled /></td>
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+              <td className="p-2 font-mono">{c.score_per_day.toFixed(3)}</td>
               {showDist && <td className="p-2"></td>}
               <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
             </tr>

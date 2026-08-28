@@ -379,7 +379,7 @@ def can_view_soldier_scope(
 ) -> bool:
     """True iff `viewer` may see transparency/duty-history data belonging to a
     soldier assigned to `target_node`. Single source of truth for the
-    transparency page, its fairness-components/effort-breakdown cards, and the
+    transparency page, its fairness-components/burden-share-breakdown cards, and the
     other-soldier branch of GET /soldiers/{id}/duty-history."""
     if viewer.role == "admin":
         return True

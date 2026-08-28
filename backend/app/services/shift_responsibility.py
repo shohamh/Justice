@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import DutyShift, HierarchyNode
-from app.services.node_effort_potential import compute_node_effort_potential
+from app.services.node_burden_share_potential import compute_node_burden_share_potential
 
 
 @dataclass
@@ -24,7 +24,7 @@ def auto_assign_responsibility(
 ) -> list[ShiftResponsibilityAssignment]:
     """For each shift (processed in start_date order), pick exactly one
     candidate unit = union of direct children of the shift's eligible_node_ids,
-    scored by final_potential - (total_effort + running_batch_load), where
+    scored by final_potential - (total_burden_share + running_batch_load), where
     running_batch_load accumulates required_count for whichever unit was
     picked by earlier shifts in this same batch (fair-share within the batch).
     Shifts with no eligible_node_ids, or whose eligible nodes have no direct
@@ -35,7 +35,7 @@ def auto_assign_responsibility(
     )
     ordered_shifts = sorted(shifts, key=lambda s: (s.start_date, s.id))
 
-    effort_potential = compute_node_effort_potential(session, reference_date=ref)
+    burden_share_potential = compute_node_burden_share_potential(session, reference_date=ref)
     running_batch_load: dict[uuid.UUID, float] = defaultdict(float)
 
     results: list[ShiftResponsibilityAssignment] = []
@@ -52,10 +52,10 @@ def auto_assign_responsibility(
             continue
 
         def score(node_id: uuid.UUID) -> float:
-            ep = effort_potential.get(node_id)
+            ep = burden_share_potential.get(node_id)
             potential = ep.final_potential if ep else 0
-            past_effort = ep.total_effort if ep else 0.0
-            return potential - (past_effort + running_batch_load[node_id])
+            past_burden_share = ep.total_burden_share if ep else 0.0
+            return potential - (past_burden_share + running_batch_load[node_id])
 
         best_id = max(candidate_ids, key=lambda nid: (score(nid), str(nid)))
         best_node = session.get(HierarchyNode, best_id)

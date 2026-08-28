@@ -17,7 +17,7 @@ from app.services.effort_score import (
     quarter_start,
     _compute_effort_data,
     compute_effort_data,
-    compute_effort_breakdown,
+    compute_burden_share_breakdown,
 )
 
 
@@ -221,12 +221,12 @@ def test_inject_effort_scores_zero_when_no_duties():
     assert s.effort_per_milli == 0
 
 
-def test_transparency_rows_has_effort_score_key():
-    """transparency_rows() output dicts must contain an 'effort_score' key."""
+def test_transparency_rows_has_burden_share_key():
+    """transparency_rows() output dicts must contain a 'burden_share' key."""
     import inspect
     from app.services import scoring as sc
     src = inspect.getsource(sc.transparency_rows)
-    assert "effort_score" in src, "transparency_rows must include effort_score in output"
+    assert "burden_share" in src, "transparency_rows must include burden_share in output"
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +367,7 @@ def test_planning_window_duties_excluded_from_offset(admin_session):
 
 def test_future_quarters_appear_in_breakdown(admin_session):
     """
-    compute_effort_breakdown should include future quarters in the returned
+    compute_burden_share_breakdown should include future quarters in the returned
     quarter_details list when there are published assignments after planning_end.
     """
     from decimal import Decimal
@@ -401,7 +401,7 @@ def test_future_quarters_appear_in_breakdown(admin_session):
     )
     admin_session.flush()
 
-    breakdown = compute_effort_breakdown(
+    breakdown = compute_burden_share_breakdown(
         admin_session,
         soldier=s,
         planning_start=planning_start,
@@ -418,7 +418,7 @@ def test_future_quarters_appear_in_breakdown(admin_session):
     # The future quarter should have a non-zero soldier score
     assert any(q.soldier_score > 0 for q in future_quarters)
     # effort_score should be nonzero since the soldier has future duties
-    assert breakdown.effort_score > Decimal("0")
+    assert breakdown.burden_share > Decimal("0")
 
 
 def test_pending_quarter_scores_apportions_by_day():
@@ -522,7 +522,7 @@ def test_run_algorithm_job_passes_pending_duties_to_compute_effort_data():
     compute_effort_data, so the algorithm's fairness input accounts for the
     workload it is about to assign (see test_pending_duties_dilute_thin_quarter_share
     for why this matters). Source-inspection style matches
-    test_transparency_rows_has_effort_score_key in this same file."""
+    test_transparency_rows_has_burden_share_key in this same file."""
     import inspect
     from app.services import algorithm_bridge as ab
 
@@ -560,7 +560,7 @@ def test_reset_date_defaults_to_earliest_published_duty(admin_session):
 
     from app.db.models import DutyAssignment
     from app.services.assignments import create_assignment
-    from app.services.scoring import _effort_reset_date
+    from app.services.scoring import _burden_share_reset_date
     from tests.helpers import create_soldier
 
     dt, loc = _seed_duty_type(admin_session, "reset-earliest")
@@ -578,7 +578,7 @@ def test_reset_date_defaults_to_earliest_published_duty(admin_session):
     admin_session.flush()
 
 
-    assert _effort_reset_date(admin_session) == date_cls(2021, 4, 1)
+    assert _burden_share_reset_date(admin_session) == date_cls(2021, 4, 1)
     assert admin_session.execute(select(DutyAssignment)).scalars().all()  # sanity: data exists
 
 
@@ -589,7 +589,7 @@ def test_reset_date_setting_overrides_earliest_duty(admin_session):
 
     from app.db.models import SystemSetting
     from app.services.assignments import create_assignment
-    from app.services.scoring import _effort_reset_date
+    from app.services.scoring import _burden_share_reset_date
     from tests.helpers import create_soldier
 
     dt, loc = _seed_duty_type(admin_session, "reset-setting")
@@ -602,7 +602,7 @@ def test_reset_date_setting_overrides_earliest_duty(admin_session):
     admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-04-01"))
     admin_session.flush()
 
-    assert _effort_reset_date(admin_session) == date_cls(2026, 4, 1)
+    assert _burden_share_reset_date(admin_session) == date_cls(2026, 4, 1)
 
 
 def test_default_frame_counts_quarters_before_two_year_window(admin_session):
@@ -611,8 +611,8 @@ def test_default_frame_counts_quarters_before_two_year_window(admin_session):
     from datetime import date as date_cls
 
     from app.services.assignments import create_assignment
-    from app.services.effort_score import compute_effort_breakdown
-    from app.services.scoring import _effort_planning_start, _effort_reset_date
+    from app.services.effort_score import compute_burden_share_breakdown
+    from app.services.scoring import _burden_share_planning_start, _burden_share_reset_date
     from tests.helpers import create_soldier
 
 
@@ -625,12 +625,12 @@ def test_default_frame_counts_quarters_before_two_year_window(admin_session):
     )
     admin_session.flush()
 
-    bd = compute_effort_breakdown(
+    bd = compute_burden_share_breakdown(
         admin_session,
         soldier=s,
-        planning_start=_effort_planning_start(admin_session),
-        planning_end=_effort_planning_start(admin_session),
-        reset_date=_effort_reset_date(admin_session),
+        planning_start=_burden_share_planning_start(admin_session),
+        planning_end=_burden_share_planning_start(admin_session),
+        reset_date=_burden_share_reset_date(admin_session),
     )
     labels = [q.quarter_label for q in bd.quarters]
     assert "Q2 2021" in labels
@@ -672,7 +672,7 @@ def test_breakdown_contributions_reconstruct_scores(admin_session):
     admin_session.flush()
 
     planning_start = max(date_cls.today(), date_cls(2026, 9, 30))
-    bd = compute_effort_breakdown(
+    bd = compute_burden_share_breakdown(
         admin_session,
         soldier=s,
         planning_start=planning_start,

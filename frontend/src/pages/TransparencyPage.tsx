@@ -9,7 +9,7 @@ import Layout from "../components/Layout";
 import HelpModal from "../components/HelpModal";
 import Combobox from "../components/Combobox";
 import { useAuth } from "../auth/AuthContext";
-import { TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
+import { TransparencyRow, getBurdenShareBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import { ExcelExportButton } from "../components/ExcelExportButton";
 import SoldierLink from "../components/SoldierLink";
@@ -20,9 +20,9 @@ import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
 import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../components/FairnessComponentsCard";
 import { InlineMath, BlockMath } from "react-katex";
-import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
+import { computeBurdenShareStats, getBurdenShareColor, type BurdenShareStats } from "../utils/burdenShareStats";
 import { WHOLE_ORG_ID } from "../utils/wholeOrg";
-import { getEffortGap } from "../api/potential";
+import { getBurdenShareGap } from "../api/potential";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ function FilterPills<T extends string>({
 
 interface SoldierGroupInfo {
   compIndex: number;      // 0-based component index; -1 = exempt from all
-  rank: number;           // 1 = lowest effort (assigned first); 0 for exempt
+  rank: number;           // 1 = lowest burden share (assigned first); 0 for exempt
   groupSize: number;
   groupMean: number | null;
   groupCV: number | null;
@@ -133,8 +133,8 @@ interface SubRow {
   total_score_per_day: number;
   avg_active_days: number;
   avg_normalised: number;
-  avg_effort: number;
-  cv_effort: number | null;
+  avg_burden_share: number;
+  cv_burden_share: number | null;
   count_global_exemption: number | null;
   count_partial_exemption: number | null;
   count_temporary_exemption: number | null;
@@ -215,7 +215,7 @@ function FairnessHelpModal({ variant, onClose }: { variant: "soldiers" | "subuni
   );
 }
 
-function FairnessCard({ stats, helpVariant }: { stats: EffortStats | null; helpVariant?: "soldiers" | "subunits" }) {
+function FairnessCard({ stats, helpVariant }: { stats: BurdenShareStats | null; helpVariant?: "soldiers" | "subunits" }) {
   const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -234,7 +234,7 @@ function FairnessCard({ stats, helpVariant }: { stats: EffortStats | null; helpV
       <>
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
           <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-            {t("transparency.effort_spread")}
+            {t("transparency.burden_share_spread")}
             {helpButton}
           </p>
           <p className="text-lg font-semibold text-gray-400">—</p>
@@ -255,14 +255,14 @@ function FairnessCard({ stats, helpVariant }: { stats: EffortStats | null; helpV
       <div className={`rounded-lg p-3 border text-center ${cardClass}`}>
         <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
           <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
-          {t("transparency.effort_spread")}
+          {t("transparency.burden_share_spread")}
           {helpButton}
         </p>
         <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
         <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
-          <p>{t("transparency.effort_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
-          <p>{t("transparency.effort_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
-          <p>{t("transparency.effort_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
+          <p>{t("transparency.burden_share_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
+          <p>{t("transparency.burden_share_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
+          <p>{t("transparency.burden_share_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
         </div>
       </div>
       {modalOpen && helpVariant && <FairnessHelpModal variant={helpVariant} onClose={() => setModalOpen(false)} />}
@@ -295,7 +295,7 @@ export default function TransparencyPage() {
   const [groupSoldiersMap, setGroupSoldiersMap] = useState<Map<GroupKey, string[]>>(new Map());
   const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
-  const [effortBreakdownFor, setEffortBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
+  const [burdenShareBreakdownFor, setBurdenShareBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
   const [openQuarterInfo, setOpenQuarterInfo] = useState<string | null>(null);
   const [showFairnessHelp, setShowFairnessHelp] = useState(false);
 
@@ -321,26 +321,26 @@ export default function TransparencyPage() {
   });
   const fairnessComponents = fairnessComponentsQuery.data ?? null;
 
-  const effortGapQuery = useQuery({ queryKey: queryKeys.effortGapNodes(), queryFn: () => getEffortGap() });
-  const effortGapByNode = useMemo(
-    () => new Map((effortGapQuery.data ?? []).map((r) => [r.node_id, r])),
-    [effortGapQuery.data],
+  const burdenShareGapQuery = useQuery({ queryKey: queryKeys.burdenShareGapNodes(), queryFn: () => getBurdenShareGap() });
+  const burdenShareGapByNode = useMemo(
+    () => new Map((burdenShareGapQuery.data ?? []).map((r) => [r.node_id, r])),
+    [burdenShareGapQuery.data],
   );
 
-  const effortBreakdownQuery = useQuery({
-    queryKey: effortBreakdownFor ? queryKeys.effortBreakdown(effortBreakdownFor.soldierId) : ["scoring", "effortBreakdown", "none"],
-    queryFn: () => getEffortBreakdown(effortBreakdownFor!.soldierId),
-    enabled: !!effortBreakdownFor,
+  const burdenShareBreakdownQuery = useQuery({
+    queryKey: burdenShareBreakdownFor ? queryKeys.burdenShareBreakdown(burdenShareBreakdownFor.soldierId) : ["scoring", "burdenShareBreakdown", "none"],
+    queryFn: () => getBurdenShareBreakdown(burdenShareBreakdownFor!.soldierId),
+    enabled: !!burdenShareBreakdownFor,
   });
-  const effortBreakdown = effortBreakdownFor ? effortBreakdownQuery.data ?? null : null;
-  const effortBreakdownSoldierName = effortBreakdownFor?.soldierName ?? null;
+  const burdenShareBreakdown = burdenShareBreakdownFor ? burdenShareBreakdownQuery.data ?? null : null;
+  const burdenShareBreakdownSoldierName = burdenShareBreakdownFor?.soldierName ?? null;
 
-  function openEffortBreakdown(soldierId: string, soldierName: string) {
-    setEffortBreakdownFor({ soldierId, soldierName });
+  function openBurdenShareBreakdown(soldierId: string, soldierName: string) {
+    setBurdenShareBreakdownFor({ soldierId, soldierName });
   }
 
-  function closeEffortBreakdown() {
-    setEffortBreakdownFor(null);
+  function closeBurdenShareBreakdown() {
+    setBurdenShareBreakdownFor(null);
     setOpenQuarterInfo(null);
   }
 
@@ -368,14 +368,14 @@ export default function TransparencyPage() {
     const map = new Map<string, SoldierGroupInfo>();
     if (!fairnessComponents) return map;
     fairnessComponents.components.forEach((comp, compIndex) => {
-      const sorted = [...comp.soldiers].sort((a, b) => a.effort_score - b.effort_score);
+      const sorted = [...comp.soldiers].sort((a, b) => a.burden_share - b.burden_share);
       sorted.forEach((s, i) => {
         map.set(s.soldier_id, {
           compIndex,
           rank: i + 1,
           groupSize: comp.soldier_count,
-          groupMean: comp.effort?.mean ?? null,
-          groupCV: comp.effort?.cv ?? null,
+          groupMean: comp.burden_share?.mean ?? null,
+          groupCV: comp.burden_share?.cv ?? null,
           dutyTypeNames: comp.duty_type_names,
         });
       });
@@ -415,8 +415,8 @@ export default function TransparencyPage() {
   }, [rows, subtreeIds, officerFilter, serviceFilter, activeGroupKeys, groupSoldiersMap, soldierGroupMap]);
 
   // ── auto-range bounds (approximated from all rows — real run also adds per-milli headroom) ──
-  const effortRange = useMemo(() => {
-    const offsets = rows.map((r) => r.effort_offset_raw).filter((v) => v > 0);
+  const burdenShareRange = useMemo(() => {
+    const offsets = rows.map((r) => r.burden_share_offset_raw).filter((v) => v > 0);
     if (offsets.length === 0) return null;
     const min = Math.min(...offsets);
     const max = Math.max(...offsets);
@@ -447,13 +447,13 @@ export default function TransparencyPage() {
         total_score_per_day: nodeRows.reduce((s, r) => s + Number(r.score_per_day), 0),
         avg_active_days: Math.round(avg(nodeRows.map((r) => r.active_days))),
         avg_normalised: avg(nodeRows.map((r) => Number(r.normalised_score))),
-        avg_effort: (() => {
-          const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
+        avg_burden_share: (() => {
+          const efforts = nodeRows.map((r) => r.burden_share).filter((v) => !isNaN(v));
           return efforts.length > 0 ? efforts.reduce((a, b) => a + b, 0) / efforts.length : 0;
         })(),
-        cv_effort: (() => {
-          const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
-          const stats = computeEffortStats(efforts);
+        cv_burden_share: (() => {
+          const efforts = nodeRows.map((r) => r.burden_share).filter((v) => !isNaN(v));
+          const stats = computeBurdenShareStats(efforts);
           return stats ? stats.cv : null;
         })(),
         count_global_exemption: canSeeExemptionAggregates
@@ -465,8 +465,8 @@ export default function TransparencyPage() {
         count_temporary_exemption: canSeeExemptionAggregates
           ? nodeRows.filter((r) => r.has_temporary_exemption === true).length
           : null,
-        sibling_gap: effortGapByNode.get(nodeId)?.sibling_gap ?? null,
-        global_gap: effortGapByNode.get(nodeId)?.global_gap ?? null,
+        sibling_gap: burdenShareGapByNode.get(nodeId)?.sibling_gap ?? null,
+        global_gap: burdenShareGapByNode.get(nodeId)?.global_gap ?? null,
       };
     }
 
@@ -498,7 +498,7 @@ export default function TransparencyPage() {
     // top-level roots currently exist.
     if (showWholeOrgRow && rows.length > 0) result.unshift(buildSubRow(WHOLE_ORG_ID, t("common.whole_org"), 0, rows));
     return result;
-  }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates, t, effortGapByNode]);
+  }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates, t, burdenShareGapByNode]);
 
   // ── summary stats (reflect current tab's visible data) ──
   const statsRows = tab === 0 ? visibleRows : null;
@@ -515,12 +515,12 @@ export default function TransparencyPage() {
     ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.normalised_score), 0) / statsRows.length
     : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.avg_normalised, 0) / subRows.length;
 
-  const effortStats: EffortStats | null = tab === 0
-    ? computeEffortStats(visibleRows.map((r) => r.effort_score).filter((v) => !isNaN(v)))
+  const burdenShareStats: BurdenShareStats | null = tab === 0
+    ? computeBurdenShareStats(visibleRows.map((r) => r.burden_share).filter((v) => !isNaN(v)))
     : null;
 
-  const subEffortStats: EffortStats | null = tab === 1
-    ? computeEffortStats(subRows.map((r) => r.avg_effort).filter((v) => !isNaN(v) && v > 0))
+  const subBurdenShareStats: BurdenShareStats | null = tab === 1
+    ? computeBurdenShareStats(subRows.map((r) => r.avg_burden_share).filter((v) => !isNaN(v) && v > 0))
     : null;
 
   function handleSelectNode(id: string) {
@@ -638,17 +638,17 @@ export default function TransparencyPage() {
       sortValue: (r) => Number(r.normalised_score),
     },
     {
-      id: "effort_score", header: "עומס רבעוני",
+      id: "burden_share", header: "חלק בנטל",
       onHeaderHelpClick: () => setShowFairnessHelp(true),
       cell: (r) => {
-        const n = r.effort_score;
+        const n = r.burden_share;
         const label = isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
-        const colorClass = effortStats ? getEffortColor(n, effortStats.mean, effortStats.stddev) : "";
+        const colorClass = burdenShareStats ? getBurdenShareColor(n, burdenShareStats.mean, burdenShareStats.stddev) : "";
         return (
           <span className={`inline-block w-full rounded px-0.5 ${colorClass}`}>
             <button
               className="text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
-              onClick={() => openEffortBreakdown(r.soldier_id, r.full_name)}
+              onClick={() => openBurdenShareBreakdown(r.soldier_id, r.full_name)}
               title="לחץ לפירוט רבעוני"
             >
               {label}
@@ -656,9 +656,9 @@ export default function TransparencyPage() {
           </span>
         );
       },
-      sortValue: (r) => r.effort_score,
+      sortValue: (r) => r.burden_share,
       exportValue: (r) => {
-        const n = r.effort_score;
+        const n = r.burden_share;
         return isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
       },
     },
@@ -710,8 +710,8 @@ export default function TransparencyPage() {
       ),
       cell: (r: NumberedRow) => {
         const mean = r._group?.groupMean;
-        if (mean == null || isNaN(r.effort_score) || r._group?.compIndex === -1) return <span className="text-gray-400">—</span>;
-        const dev = r.effort_score - mean;
+        if (mean == null || isNaN(r.burden_share) || r._group?.compIndex === -1) return <span className="text-gray-400">—</span>;
+        const dev = r.burden_share - mean;
         const sign = dev >= 0 ? "+" : "";
         const cls = dev > 0.005
           ? "text-red-600 dark:text-red-400"
@@ -722,12 +722,12 @@ export default function TransparencyPage() {
       },
       sortValue: (r: NumberedRow) => {
         const mean = r._group?.groupMean;
-        return mean != null && !isNaN(r.effort_score) ? r.effort_score - mean : 9999;
+        return mean != null && !isNaN(r.burden_share) ? r.burden_share - mean : 9999;
       },
       exportValue: (r: NumberedRow) => {
         const mean = r._group?.groupMean;
-        if (mean == null || isNaN(r.effort_score) || r._group?.compIndex === -1) return "—";
-        const dev = r.effort_score - mean;
+        if (mean == null || isNaN(r.burden_share) || r._group?.compIndex === -1) return "—";
+        const dev = r.burden_share - mean;
         return (dev >= 0 ? "+" : "") + (dev * 100).toFixed(2) + "%";
       },
     } as ColDef<NumberedRow>,
@@ -745,19 +745,19 @@ export default function TransparencyPage() {
         sortValue: (r: NumberedRow) => r.c_over_d,
       },
       {
-        id: "effort_offset_raw",
+        id: "burden_share_offset_raw",
         header: "effort_offset (×10⁹)",
-        headerTooltip: "int(effort_score × 10⁹) — ה-offset ההיסטורי שמוזרק למודל ה-CP-SAT.",
-        cell: (r: NumberedRow) => r.effort_offset_raw.toLocaleString(),
-        sortValue: (r: NumberedRow) => r.effort_offset_raw,
+        headerTooltip: "int(burden_share × 10⁹) — ה-offset ההיסטורי שמוזרק למודל ה-CP-SAT.",
+        cell: (r: NumberedRow) => r.burden_share_offset_raw.toLocaleString(),
+        sortValue: (r: NumberedRow) => r.burden_share_offset_raw,
       },
       {
         id: "count_offset",
         header: "count_offset",
         headerTooltip: "הערך שה-CP-SAT מבצע עליו אופטימיזציה: (effort_offset − range_min) × 1000 ÷ range_size. כל החיילים ממופים ל-[0, 1000] כך שכל 1000 הטיקים נופלים בטווח הפעיל. ערך ≈ מוצג כאן — הריצה האמיתית מוסיפה headroom לצבירה.",
         cell: (r: NumberedRow) => {
-          if (!effortRange || effortRange.size <= 0) return <span className="text-gray-400">—</span>;
-          const val = Math.max(0, Math.min(1000, Math.round((r.effort_offset_raw - effortRange.min) * 1000 / effortRange.size)));
+          if (!burdenShareRange || burdenShareRange.size <= 0) return <span className="text-gray-400">—</span>;
+          const val = Math.max(0, Math.min(1000, Math.round((r.burden_share_offset_raw - burdenShareRange.min) * 1000 / burdenShareRange.size)));
           const frac = val / 1000;
           const barColor = frac < 0.33 ? "#10b981" : frac < 0.67 ? "#f59e0b" : "#ef4444";
           return (
@@ -769,7 +769,7 @@ export default function TransparencyPage() {
             </span>
           );
         },
-        sortValue: (r: NumberedRow) => effortRange ? (r.effort_offset_raw - effortRange.min) * 1000 / effortRange.size : 0,
+        sortValue: (r: NumberedRow) => burdenShareRange ? (r.burden_share_offset_raw - burdenShareRange.min) * 1000 / burdenShareRange.size : 0,
       },
     ] as ColDef<NumberedRow>[] : []),
   ];
@@ -863,18 +863,18 @@ export default function TransparencyPage() {
       sortValue: (r) => r.avg_normalised,
     },
     {
-      id: "avg_effort",
-      header: t("transparency.subunit_avg_effort"),
-      cell: (r) => r.avg_effort > 0 ? (r.avg_effort * 100).toFixed(1) + "%" : "—",
-      sortValue: (r) => r.avg_effort,
-      exportValue: (r) => r.avg_effort > 0 ? (r.avg_effort * 100).toFixed(1) + "%" : "—",
+      id: "avg_burden_share",
+      header: t("transparency.subunit_avg_burden_share"),
+      cell: (r) => r.avg_burden_share > 0 ? (r.avg_burden_share * 100).toFixed(1) + "%" : "—",
+      sortValue: (r) => r.avg_burden_share,
+      exportValue: (r) => r.avg_burden_share > 0 ? (r.avg_burden_share * 100).toFixed(1) + "%" : "—",
     },
     {
-      id: "cv_effort",
-      header: t("transparency.subunit_cv_effort"),
+      id: "cv_burden_share",
+      header: t("transparency.subunit_cv_burden_share"),
       cell: (r) => {
-        if (r.cv_effort === null) return "—";
-        const pct = r.cv_effort * 100;
+        if (r.cv_burden_share === null) return "—";
+        const pct = r.cv_burden_share * 100;
         const colorClass = pct < 25
           ? "text-green-600 dark:text-green-400"
           : pct < 50
@@ -882,10 +882,10 @@ export default function TransparencyPage() {
             : "text-red-600 dark:text-red-400 font-medium";
         return <span className={colorClass}>{pct.toFixed(1)}%</span>;
       },
-      sortValue: (r) => r.cv_effort ?? -1,
+      sortValue: (r) => r.cv_burden_share ?? -1,
       exportValue: (r) => {
-        if (r.cv_effort === null) return "—";
-        return (r.cv_effort * 100).toFixed(1) + "%";
+        if (r.cv_burden_share === null) return "—";
+        return (r.cv_burden_share * 100).toFixed(1) + "%";
       },
     },
     {
@@ -996,8 +996,8 @@ export default function TransparencyPage() {
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_normalised")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgNormalised.toFixed(3)}</p>
           </div>
-          {tab === 0 && <FairnessCard stats={effortStats} helpVariant="soldiers" />}
-          {tab === 1 && <FairnessCard stats={subEffortStats} helpVariant="subunits" />}
+          {tab === 0 && <FairnessCard stats={burdenShareStats} helpVariant="soldiers" />}
+          {tab === 1 && <FairnessCard stats={subBurdenShareStats} helpVariant="subunits" />}
         </div>
 
         {tab === 0 && (
@@ -1012,11 +1012,11 @@ export default function TransparencyPage() {
           <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2 space-y-1" dir="rtl">
             <p><strong>מצב דיבאג count-space (ערכי CP-SAT):</strong></p>
             <p><strong>C/D</strong> = 1/Wᵢ — משקל תורנות חדשה בחישוב עומס: חייל חדש → C/D גבוה (כל תורנות &ldquo;שוקלת&rdquo; יותר). ותיק → C/D נמוך.</p>
-            <p><strong>effort_offset</strong> = int(עומס_רבעוני × 10⁹) — הערך ההיסטורי שמוזרק למודל ה-CP-SAT כנקודת התחלה לחישוב ההוגנות.</p>
+            <p><strong>effort_offset</strong> = int(חלק_בנטל × 10⁹) — הערך ההיסטורי שמוזרק למודל ה-CP-SAT כנקודת התחלה לחישוב ההוגנות.</p>
             <p><strong>ה-μ</strong> שהאלגוריתם מכוון אליו = (Σ effort_offset + total_new_weight) / n_eligible — מחושב per-run על-פי הכשירויות הספציפיות של כל ריצה.</p>
             <p className="text-amber-600 dark:text-amber-400">האלגוריתם ממזער את שונות ה-effort בתוך כל קבוצת כשירות. חיילים עם effort נמוך מהממוצע יקבלו עדיפות בהקצאה הבאה.</p>
-            {effortRange ? (
-              <p><strong>Auto-range:</strong> min={effortRange.min.toLocaleString()} | max={effortRange.max.toLocaleString()} | range={effortRange.size.toLocaleString()} — דיוק לטיק: ~{effortRange.precisionPct.toFixed(4)}%</p>
+            {burdenShareRange ? (
+              <p><strong>Auto-range:</strong> min={burdenShareRange.min.toLocaleString()} | max={burdenShareRange.max.toLocaleString()} | range={burdenShareRange.size.toLocaleString()} — דיוק לטיק: ~{burdenShareRange.precisionPct.toFixed(4)}%</p>
             ) : (
               <p className="text-gray-400">Auto-range: אין נתוני effort_offset</p>
             )}
@@ -1076,7 +1076,7 @@ export default function TransparencyPage() {
               columns={soldierCols}
               data={visibleRows}
               filterPlaceholder={t("table.filter_placeholder")}
-              defaultSort={[{ id: "effort_score", desc: true }]}
+              defaultSort={[{ id: "burden_share", desc: true }]}
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
               rowStyle={(r) => {
                 const g = r._group;
@@ -1107,11 +1107,11 @@ export default function TransparencyPage() {
 
       {treeOpen && <div className="fixed inset-0 z-10" onClick={() => setTreeOpen(false)} />}
 
-      {/* Effort breakdown modal */}
-      {effortBreakdown && (
+      {/* Burden-share breakdown modal */}
+      {burdenShareBreakdown && (
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-          onClick={closeEffortBreakdown}
+          onClick={closeBurdenShareBreakdown}
         >
           <div
             className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden"
@@ -1121,11 +1121,11 @@ export default function TransparencyPage() {
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-700">
               <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                📊 פירוט עומס רבעוני — {effortBreakdownSoldierName}
+                📊 פירוט עומס רבעוני — {burdenShareBreakdownSoldierName}
               </h2>
               <button
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
-                onClick={closeEffortBreakdown}
+                onClick={closeBurdenShareBreakdown}
               >
                 ✕
               </button>
@@ -1135,7 +1135,7 @@ export default function TransparencyPage() {
             <div className="overflow-y-auto flex-1">
               {/* Table */}
               <div className="py-3">
-                {effortBreakdown.quarters.length === 0 ? (
+                {burdenShareBreakdown.quarters.length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">אין נתוני היסטוריה — חייל חדש.</p>
                 ) : (
                   <div className="overflow-x-auto px-4">
@@ -1166,7 +1166,7 @@ export default function TransparencyPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {effortBreakdown.quarters.map((q) => {
+                        {burdenShareBreakdown.quarters.map((q) => {
                           const sharePct = (parseFloat(q.share) * 100).toFixed(2);
                           const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
                           const unitScore = parseFloat(q.unit_score);
@@ -1217,7 +1217,7 @@ export default function TransparencyPage() {
                       </tbody>
                     </table>
                     {(() => {
-                      const partialQ = effortBreakdown.quarters.find((q) => q.is_partial);
+                      const partialQ = burdenShareBreakdown.quarters.find((q) => q.is_partial);
                       if (!partialQ) return null;
                       const endFormatted = new Date(partialQ.quarter_end + "T00:00:00").toLocaleDateString("he-IL");
                       return (
@@ -1231,11 +1231,11 @@ export default function TransparencyPage() {
               </div>
 
               {/* Derivation — inside the scrollable area */}
-              {effortBreakdown.quarters.length > 0 && (() => {
-                const A = parseFloat(effortBreakdown.A_i);
-                const W = parseFloat(effortBreakdown.W_i);
-                const effort = parseFloat(effortBreakdown.effort_score);
-                const qs = effortBreakdown.quarters;
+              {burdenShareBreakdown.quarters.length > 0 && (() => {
+                const A = parseFloat(burdenShareBreakdown.A_i);
+                const W = parseFloat(burdenShareBreakdown.W_i);
+                const effort = parseFloat(burdenShareBreakdown.burden_share);
+                const qs = burdenShareBreakdown.quarters;
 
                 return (
                   <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-4 space-y-4 text-xs" dir="rtl">
@@ -1381,7 +1381,7 @@ export default function TransparencyPage() {
             <div className="px-5 py-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between text-sm">
               <span className="text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>
               <span className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
-                {(parseFloat(effortBreakdown.effort_score) * 100).toFixed(2)}%
+                {(parseFloat(burdenShareBreakdown.burden_share) * 100).toFixed(2)}%
               </span>
             </div>
           </div>

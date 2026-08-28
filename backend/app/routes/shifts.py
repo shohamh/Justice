@@ -680,7 +680,7 @@ class ShiftCandidateOut(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
     personal_number: str
-    effort: float
+    score_per_day: float
     blocked: bool
     blocked_reason: str | None = None
     weapon_warning: bool = False
@@ -693,7 +693,7 @@ def get_shift_candidates(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftCandidateOut]:
-    """Return eligible soldiers for a shift, sorted by effort ascending. Blocked soldiers (conflict/constraint) appear at end."""
+    """Return eligible soldiers for a shift, sorted by score-per-day ascending. Blocked soldiers (conflict/constraint) appear at end."""
     shift = _load(session, shift_id)
     authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
 
@@ -797,7 +797,7 @@ def get_shift_candidates(
         elif si.id in blocked_by_assignment:
             blocked_reason = "assignment"
 
-        effort = float(si.cumulative_score) / float(si.active_days)
+        score_per_day = float(si.cumulative_score) / float(si.active_days)
 
         weapon_warning = synthetic_block.id in weapon_ineligible.get(si.id, set()) if required_range_type is not None else False
 
@@ -807,14 +807,14 @@ def get_shift_candidates(
             soldier_id=si.id,
             full_name=soldier.full_name,
             personal_number=soldier.personal_number,
-            effort=round(effort, 3),
+            score_per_day=round(score_per_day, 3),
             blocked=blocked,
             blocked_reason=blocked_reason,
             weapon_warning=weapon_warning,
             hierarchy_path_ids=path_ids,
         ))
 
-    result.sort(key=lambda x: (x.blocked, x.weapon_warning, x.effort))
+    result.sort(key=lambda x: (x.blocked, x.weapon_warning, x.score_per_day))
     return result
 
 

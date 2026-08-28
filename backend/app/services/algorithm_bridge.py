@@ -1389,9 +1389,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 _phase("future_eligibility: done")
 
                 # Compute and inject quarterly effort scores
-                from app.services.scoring import _effort_reset_date
+                from app.services.scoring import _burden_share_reset_date
 
-                _reset_date = _effort_reset_date(session)
+                _reset_date = _burden_share_reset_date(session)
                 # Count ALL published commitments — past and future — so duties
                 # already published months ahead raise the soldier's effort and
                 # deprioritise them for new work (see effort_history_horizon).
@@ -1872,9 +1872,9 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
         eligible_node_ids=job.settings_json.get("eligible_node_ids"),
     )
 
-    from app.services.scoring import _effort_reset_date
+    from app.services.scoring import _burden_share_reset_date
 
-    _reset_date = _effort_reset_date(session)
+    _reset_date = _burden_share_reset_date(session)
 
     effort_horizon = effort_history_horizon(session, planning_start=planning_start)
     effort_map = compute_effort_data(

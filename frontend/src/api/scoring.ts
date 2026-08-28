@@ -16,9 +16,9 @@ export interface TransparencyRow {
   score_per_day: string;
   normalised_score: string;
   is_globally_exempted: boolean;
-  effort_score: number;
+  burden_share: number;
   c_over_d: number;
-  effort_offset_raw: number;
+  burden_share_offset_raw: number;
   exemptions_display: string;
   exemptions_visible: boolean;
   exemptions: ExemptionSummaryItem[];
@@ -44,7 +44,7 @@ export interface Breakdown {
   adjustments: { id: string; delta: string; reason: string; created_at: string }[];
 }
 
-export interface EffortContribution {
+export interface BurdenShareContribution {
   kind: "duty" | "adjustment";
   label: string;
   detail: string;
@@ -55,7 +55,7 @@ export interface EffortContribution {
   multiplier: string;
 }
 
-export interface EffortQuarterRow {
+export interface BurdenShareQuarterRow {
   quarter_start: string;
   quarter_end: string;
   quarter_label: string;
@@ -66,12 +66,12 @@ export interface EffortQuarterRow {
   weighted_share: string;
   is_partial: boolean;
   adjustment_delta: string;
-  contributions: EffortContribution[];
+  contributions: BurdenShareContribution[];
 }
 
-export interface EffortBreakdown {
-  quarters: EffortQuarterRow[];
-  effort_score: string;
+export interface BurdenShareBreakdown {
+  quarters: BurdenShareQuarterRow[];
+  burden_share: string;
   A_i: string;  // Σ(share_q × active_frac_q)
   W_i: string;  // Σ(active_frac_q) — historical weight
 }
@@ -80,14 +80,14 @@ export async function getTransparency(): Promise<TransparencyOut> {
   return (await api.get<TransparencyOut>(`/scoring/transparency`)).data;
 }
 
-export interface FairnessEffort {
+export interface FairnessBurdenShare {
   mean: number; stddev: number; cv: number; min: number; max: number; count: number;
 }
-export interface FairnessSoldier { soldier_id: string; full_name: string; effort_score: number; eligible_type_count: number; }
+export interface FairnessSoldier { soldier_id: string; full_name: string; burden_share: number; eligible_type_count: number; }
 export interface FairnessComponent {
   duty_type_names: string[];
   soldier_count: number;
-  effort: FairnessEffort | null;
+  burden_share: FairnessBurdenShare | null;
   soldiers: FairnessSoldier[];
 }
 export interface FairnessComponents {
@@ -112,6 +112,6 @@ export async function listEligibilityGroups(): Promise<EligibilityGroup[]> {
 export async function getBreakdown(soldierId: string): Promise<Breakdown> {
   return (await api.get<Breakdown>(`/scoring/soldiers/${soldierId}`)).data;
 }
-export async function getEffortBreakdown(soldierId: string): Promise<EffortBreakdown> {
-  return (await api.get<EffortBreakdown>(`/scoring/soldiers/${soldierId}/effort-breakdown`)).data;
+export async function getBurdenShareBreakdown(soldierId: string): Promise<BurdenShareBreakdown> {
+  return (await api.get<BurdenShareBreakdown>(`/scoring/soldiers/${soldierId}/burden-share-breakdown`)).data;
 }

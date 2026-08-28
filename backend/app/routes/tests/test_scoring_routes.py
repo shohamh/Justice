@@ -46,7 +46,7 @@ def test_eligibility_groups_returns_summary_without_soldier_list(
 
     # Verify the group does NOT have per-soldier details
     assert "soldiers" not in group
-    assert "effort" not in group
+    assert "burden_share" not in group
 
     # Verify the soldier count is at least 1
     assert group["soldier_count"] >= 1

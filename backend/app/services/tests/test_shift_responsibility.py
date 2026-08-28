@@ -25,7 +25,7 @@ def _make_shift(session, name_suffix: str, *, required_count: int, eligible_node
     return shift
 
 
-def test_picks_candidate_with_higher_potential_and_no_past_effort(admin_session):
+def test_picks_candidate_with_higher_potential_and_no_past_burden_share(admin_session):
     parent = create_node(admin_session, level="unit", name="resp_parent_1")
     strong = create_node(admin_session, level="branch", name="resp_strong", parent=parent)
     weak = create_node(admin_session, level="branch", name="resp_weak", parent=parent)

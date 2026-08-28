@@ -31,7 +31,7 @@ export interface FairnessComponentsCardProps {
 }
 
 /**
- * פיזור עומס per connected component of soldiers who do the same duties.
+ * פיזור חלק בנטל per connected component of soldiers who do the same duties.
  * Splits the single global CV — which is inflated by soldiers exempt from
  * everything and by mixing groups that can't substitute for each other — into a
  * per-group spread plus the count of soldiers exempt from all duties.
@@ -55,7 +55,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
   return (
     <div dir="rtl" className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h3 className="font-semibold text-gray-800 dark:text-gray-100">פיזור עומס לפי קבוצות כשירות</h3>
+        <h3 className="font-semibold text-gray-800 dark:text-gray-100">פיזור חלק בנטל לפי קבוצות כשירות</h3>
         {anyActive && onClearGroups && (
           <button className="text-xs text-red-500 hover:underline" onClick={onClearGroups}>
             הצג כל החיילים ✕
@@ -71,11 +71,11 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
         {data.components.map((c, i) => {
           const key: GroupKey = `comp_${i}`;
           const isActive = activeGroupKeys?.has(key) ?? false;
-          const sortedSoldiers = [...c.soldiers].sort((a, b) => a.effort_score - b.effort_score);
-          const mean = c.effort?.mean ?? null;
-          const effortMin = sortedSoldiers[0]?.effort_score ?? 0;
-          const effortMax = sortedSoldiers[sortedSoldiers.length - 1]?.effort_score ?? 1;
-          const effortRange = effortMax - effortMin || 1;
+          const sortedSoldiers = [...c.soldiers].sort((a, b) => a.burden_share - b.burden_share);
+          const mean = c.burden_share?.mean ?? null;
+          const burdenShareMin = sortedSoldiers[0]?.burden_share ?? 0;
+          const burdenShareMax = sortedSoldiers[sortedSoldiers.length - 1]?.burden_share ?? 1;
+          const burdenShareRange = burdenShareMax - burdenShareMin || 1;
           const dist = eligibilityDistribution(c.soldiers);
           const typeCountColor = new Map(dist.map((d, idx) => [d.count, PIE_COLORS[idx % PIE_COLORS.length]]));
           return (
@@ -101,16 +101,16 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                     {isActive && <span className="mr-2 text-xs text-indigo-600 dark:text-indigo-300 font-normal">✓ נבחר — לחץ לסינון בטבלה</span>}
                   </span>
                   <div className="flex items-center gap-2">
-                    {c.effort ? (
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${cvBadge(c.effort.cv)}`}>
-                        פיזור CV {(c.effort.cv * 100).toFixed(0)}%
+                    {c.burden_share ? (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${cvBadge(c.burden_share.cv)}`}>
+                        פיזור CV {(c.burden_share.cv * 100).toFixed(0)}%
                       </span>
                     ) : (
                       <span className="text-xs text-gray-400">פחות מ-2 חיילים</span>
                     )}
-                    {c.effort && (
+                    {c.burden_share && (
                       <span className="text-xs text-gray-400">
-                        טווח: {(effortMin * 100).toFixed(1)}%–{(effortMax * 100).toFixed(1)}%
+                        טווח: {(burdenShareMin * 100).toFixed(1)}%–{(burdenShareMax * 100).toFixed(1)}%
                       </span>
                     )}
                   </div>
@@ -174,12 +174,12 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
               {isActive && sortedSoldiers.length > 0 && (
                 <div className="border-t border-indigo-200 dark:border-indigo-700 px-3 pb-3 pt-2 overflow-x-auto">
                   <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">
-                    סדר עדיפויות לתורנות הבאה (עומס עולה — מקום 1 מועמד ראשי):
+                    סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):
                   </p>
                   <div className="space-y-1 min-w-[260px]">
                     {sortedSoldiers.map((s, rank) => {
-                      const effortPct = (s.effort_score * 100).toFixed(2);
-                      const dev = mean != null ? s.effort_score - mean : null;
+                      const burdenSharePct = (s.burden_share * 100).toFixed(2);
+                      const dev = mean != null ? s.burden_share - mean : null;
                       const devStr = dev != null
                         ? (dev >= 0 ? `+${(dev * 100).toFixed(1)}%` : `${(dev * 100).toFixed(1)}%`)
                         : null;
@@ -188,7 +188,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                         : dev != null && dev < -0.005
                           ? "text-green-600 dark:text-green-400"
                           : "text-gray-400";
-                      const barWidth = Math.round(((s.effort_score - effortMin) / effortRange) * 100);
+                      const barWidth = Math.round(((s.burden_share - burdenShareMin) / burdenShareRange) * 100);
                       const isCandidate = rank < 3;
                       return (
                         <div key={s.soldier_id} className="flex items-center gap-2 pr-1 border-r-2" style={{ borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent" }}>
@@ -205,7 +205,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                             />
                           </div>
                           <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-12 text-left shrink-0">
-                            {effortPct}%
+                            {burdenSharePct}%
                           </span>
                           {devStr && (
                             <span className={`text-xs tabular-nums w-12 text-left shrink-0 ${devCls}`}>
@@ -218,7 +218,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                   </div>
                   {mean != null && (
                     <p className="text-xs text-gray-400 mt-2">
-                      ממוצע קבוצה: {(mean * 100).toFixed(2)}% · סטיית תקן: {c.effort ? (c.effort.stddev * 100).toFixed(2) : "—"}%
+                      ממוצע קבוצה: {(mean * 100).toFixed(2)}% · סטיית תקן: {c.burden_share ? (c.burden_share.stddev * 100).toFixed(2) : "—"}%
                     </p>
                   )}
                 </div>

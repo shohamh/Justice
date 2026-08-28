@@ -22,7 +22,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, PotentialModifier, Soldier
 from app.db.session import get_session
 from app.services import potential as svc
-from app.services.node_effort_potential import compute_node_effort_potential
+from app.services.node_burden_share_potential import compute_node_burden_share_potential
 
 router = APIRouter(prefix="/potential", tags=["potential"])
 
@@ -126,35 +126,35 @@ def get_potential(
     return _out(result, can_view_exemptions=_can_view_exemptions(session, user, node))
 
 
-class NodeEffortPotentialOut(BaseModel):
+class NodeBurdenSharePotentialOut(BaseModel):
     node_id: uuid.UUID
     node_name: str
     final_potential: int
-    total_effort: float
+    total_burden_share: float
     sibling_potential_share: float | None
-    sibling_effort_share: float | None
+    sibling_burden_share: float | None
     sibling_gap: float | None
     global_potential_share: float | None
-    global_effort_share: float | None
+    global_burden_share: float | None
     global_gap: float | None
 
 
-class EffortGapOut(BaseModel):
-    nodes: list[NodeEffortPotentialOut]
+class BurdenShareGapOut(BaseModel):
+    nodes: list[NodeBurdenSharePotentialOut]
 
 
-@router.get("/effort-gap", response_model=EffortGapOut)
-def get_effort_gap(
+@router.get("/burden-share-gap", response_model=BurdenShareGapOut)
+def get_burden_share_gap(
     reference_date: str | None = Query(default=None),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> EffortGapOut:
+) -> BurdenShareGapOut:
     is_admin = user.role == "admin"
     if not is_admin and not is_commander(session, user.id) and not is_duty_manager(session, user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     ref = date.fromisoformat(reference_date) if reference_date else date.today()
-    results = compute_node_effort_potential(session, reference_date=ref)
+    results = compute_node_burden_share_potential(session, reference_date=ref)
 
     if is_admin:
         allowed_node_ids = None
@@ -167,18 +167,18 @@ def get_effort_gap(
             if any(root in node.path_ids for root in roots)
         }
 
-    return EffortGapOut(
+    return BurdenShareGapOut(
         nodes=[
-            NodeEffortPotentialOut(
+            NodeBurdenSharePotentialOut(
                 node_id=r.node_id,
                 node_name=r.node_name,
                 final_potential=r.final_potential,
-                total_effort=r.total_effort,
+                total_burden_share=r.total_burden_share,
                 sibling_potential_share=r.sibling_potential_share,
-                sibling_effort_share=r.sibling_effort_share,
+                sibling_burden_share=r.sibling_burden_share,
                 sibling_gap=r.sibling_gap,
                 global_potential_share=r.global_potential_share,
-                global_effort_share=r.global_effort_share,
+                global_burden_share=r.global_burden_share,
                 global_gap=r.global_gap,
             )
             for r in results.values()

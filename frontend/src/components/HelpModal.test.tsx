@@ -6,7 +6,7 @@ vi.mock("../auth/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-vi.mock("../api/scoring", () => ({ getEffortBreakdown: vi.fn() }));
+vi.mock("../api/scoring", () => ({ getBurdenShareBreakdown: vi.fn() }));
 vi.mock("../api/dutyConfig", () => ({ listDutyTypes: vi.fn() }));
 
 vi.mock("../api/hierarchy", () => ({
@@ -122,22 +122,22 @@ it("Import tab is visible to duty_manager, hidden from commander", () => {
   expect(screen.queryByText(/ייבוא מקובץ אקסל/)).not.toBeInTheDocument();
 });
 
-it("fairness tab recomputes effort_score live when the what-if slider changes", async () => {
-  const { getEffortBreakdown } = await import("../api/scoring");
-  (getEffortBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue({
-    quarters: [], effort_score: "0.05", A_i: "0.20", W_i: "4.0",
+it("fairness tab recomputes burden_share live when the what-if slider changes", async () => {
+  const { getBurdenShareBreakdown } = await import("../api/scoring");
+  (getBurdenShareBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    quarters: [], burden_share: "0.05", A_i: "0.20", W_i: "4.0",
   });
   setUser("soldier");
   render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="fairness" />);
   const slider = await screen.findByLabelText("תורנויות נוספות היפותטיות");
   fireEvent.change(slider, { target: { value: "2" } });
-  expect(await screen.findByText(/עומס לאחר התוספת/)).toBeInTheDocument();
+  expect(await screen.findByText(/חלק בנטל לאחר התוספת/)).toBeInTheDocument();
 });
 
 it("fairness tab explains active days and why a new soldier's score-per-day starts high", async () => {
-  const { getEffortBreakdown } = await import("../api/scoring");
-  (getEffortBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue({
-    quarters: [], effort_score: "0.05", A_i: "0.20", W_i: "4.0",
+  const { getBurdenShareBreakdown } = await import("../api/scoring");
+  (getBurdenShareBreakdown as ReturnType<typeof vi.fn>).mockResolvedValue({
+    quarters: [], burden_share: "0.05", A_i: "0.20", W_i: "4.0",
   });
   setUser("soldier");
   render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="fairness" />);
