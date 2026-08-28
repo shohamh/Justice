@@ -48,7 +48,7 @@ describe("DirectCommanderApproval decisions", () => {
     expect(check).toHaveAttribute("title", expect.stringContaining("המפקד הבכיר"));
     expect(check).toHaveAttribute("title", expect.stringContaining("2026"));
     fireEvent.click(check);
-    expect(screen.getByTestId("approval-decision-details")).toHaveClass("max-w-[calc(100vw-1rem)]", "whitespace-normal", "break-words");
+    expect(screen.getByTestId("approval-decision-details")).toHaveClass("fixed", "w-[calc(100vw-1rem)]", "max-w-[20rem]", "whitespace-normal", "break-words");
     expect(screen.getByTestId("approval-decision-details")).toHaveTextContent("אושר לאחר בדיקה");
   });
 

@@ -34,14 +34,15 @@ function approvalTime(value: string | null | undefined): string | undefined {
 
 function ApprovalDot({ value, approvedBy, approvedAt, note, testId }: { value: boolean | null; approvedBy?: string | null; approvedAt?: string | null; note?: string | null; testId?: string }) {
   const [open, setOpen] = useState(false);
+  const [detailsTop, setDetailsTop] = useState<number | null>(null);
   const when = approvalTime(approvedAt);
   const verb = value === false ? "נדחה" : "אושר";
   const title = approvedBy && when ? `${verb} על ידי ${approvedBy} בתאריך ${when}` : approvedBy ? `${verb} על ידי ${approvedBy}` : when ? `${verb} בתאריך ${when}` : verb;
   const details = [approvedBy && `${verb} על ידי: ${approvedBy}`, when && `מתי: ${when}`, note && `סיבה: ${note}`].filter(Boolean).join(" · ");
   if (value === true) {
-    return <span className="relative inline-flex"><button type="button" data-testid={testId ?? "approval-checkmark"} className="text-green-600 font-bold" title={title} aria-label={title} aria-expanded={open} onClick={() => setOpen((v) => !v)}>✓</button>{open && <span role="status" data-testid="approval-decision-details" className="absolute z-10 top-full right-0 mt-1 w-max max-w-[calc(100vw-1rem)] whitespace-normal break-words rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">{details || "אושר"}</span>}</span>;
+    return <span className="relative inline-flex"><button type="button" data-testid={testId ?? "approval-checkmark"} className="text-green-600 font-bold" title={title} aria-label={title} aria-expanded={open} onClick={(event) => setOpen((v) => { const next = !v; setDetailsTop(next ? event.currentTarget.getBoundingClientRect().bottom + 4 : null); return next; })}>✓</button>{open && <span role="status" data-testid="approval-decision-details" style={{ top: detailsTop ?? 0, left: "50%", transform: "translateX(-50%)" }} className="fixed z-50 w-[calc(100vw-1rem)] max-w-[20rem] whitespace-normal break-words rounded bg-gray-900 px-2 py-1 text-right text-xs text-white shadow-lg">{details || "אושר"}</span>}</span>;
   }
-  if (value === false) return <span className="relative inline-flex"><button type="button" data-testid={testId ?? "approval-rejection"} className="text-red-500 font-bold" title={title} aria-label={title} aria-expanded={open} onClick={() => setOpen((v) => !v)}>×</button>{open && <span role="status" data-testid="approval-decision-details" className="absolute z-10 top-full right-0 mt-1 w-max max-w-[calc(100vw-1rem)] whitespace-normal break-words rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">{details || "נדחה"}</span>}</span>;
+  if (value === false) return <span className="relative inline-flex"><button type="button" data-testid={testId ?? "approval-rejection"} className="text-red-500 font-bold" title={title} aria-label={title} aria-expanded={open} onClick={(event) => setOpen((v) => { const next = !v; setDetailsTop(next ? event.currentTarget.getBoundingClientRect().bottom + 4 : null); return next; })}>×</button>{open && <span role="status" data-testid="approval-decision-details" style={{ top: detailsTop ?? 0, left: "50%", transform: "translateX(-50%)" }} className="fixed z-50 w-[calc(100vw-1rem)] max-w-[20rem] whitespace-normal break-words rounded bg-gray-900 px-2 py-1 text-right text-xs text-white shadow-lg">{details || "נדחה"}</span>}</span>;
   return <span className="text-gray-400">—</span>;
 }
 

@@ -33,15 +33,16 @@ function dutyManagerStage(r: ApprovalStageStatus): StageValue {
 
 function StageIcon({ value, label, title, testId, details }: { value: StageValue; label: string; title?: string; testId?: string; details?: string }) {
   const [open, setOpen] = useState(false);
+  const [detailsTop, setDetailsTop] = useState<number | null>(null);
   if (value === "skipped") return null;
   const symbol = value === "approved" ? "✓" : value === "rejected" ? "✗" : "…";
   const colorClass =
     value === "approved" ? "text-green-600" : value === "rejected" ? "text-red-500" : "text-gray-400";
   return (
-    <span className="relative inline-flex"><button type="button" className={`inline-flex items-center gap-0.5 text-xs font-bold ${colorClass}`} title={title ?? label} data-testid={testId} aria-expanded={open} onClick={() => (value === "approved" || value === "rejected") && setOpen((v) => !v)}>
+    <span className="relative inline-flex"><button type="button" className={`inline-flex items-center gap-0.5 text-xs font-bold ${colorClass}`} title={title ?? label} data-testid={testId} aria-expanded={open} onClick={(event) => (value === "approved" || value === "rejected") && setOpen((v) => { const next = !v; setDetailsTop(next ? event.currentTarget.getBoundingClientRect().bottom + 4 : null); return next; })}>
       {symbol}
       <span className="font-normal">{label}</span>
-    </button>{open && details && <span role="status" data-testid="approval-decision-details" className="absolute z-10 top-full right-0 mt-1 w-max max-w-[calc(100vw-1rem)] whitespace-normal break-words rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">{details}</span>}</span>
+    </button>{open && details && <span role="status" data-testid="approval-decision-details" style={{ top: detailsTop ?? 0, left: "50%", transform: "translateX(-50%)" }} className="fixed z-50 w-[calc(100vw-1rem)] max-w-[20rem] whitespace-normal break-words rounded bg-gray-900 px-2 py-1 text-right text-xs text-white shadow-lg">{details}</span>}</span>
   );
 }
 
