@@ -61,14 +61,21 @@ vi.mock("@fullcalendar/react", () => ({
       >
         set next dates
       </button>
-      {["2026-08-01", "2026-09-12"].map((iso) => (
-        <div
-          key={iso}
-          data-testid={`day-cell-${iso}`}
-          data-date={iso}
-          className={(dayCellClassNames?.({ date: new Date(`${iso}T00:00:00Z`) }) ?? []).join(" ")}
-        />
-      ))}
+      {["2026-08-01", "2026-09-12"].map((iso) => {
+        const [year, month, day] = iso.split("-").map(Number);
+        // Local-time midnight, matching how FullCalendar's default
+        // timeZone: 'local' mode hands dates to dayCellClassNames — NOT
+        // UTC midnight, which would mask a UTC-conversion bug in timezones
+        // ahead of UTC (e.g. Asia/Jerusalem, this app's primary locale).
+        return (
+          <div
+            key={iso}
+            data-testid={`day-cell-${iso}`}
+            data-date={iso}
+            className={(dayCellClassNames?.({ date: new Date(year, month - 1, day) }) ?? []).join(" ")}
+          />
+        );
+      })}
       {events.map((event) => (
         <button key={event.id} data-testid={`calendar-event-${event.id}`} className={event.classNames.join(" ")}>
           {event.title}

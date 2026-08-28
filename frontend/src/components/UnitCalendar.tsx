@@ -287,7 +287,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
           eventClick={handleEventClick}
           datesSet={handleDatesSet}
           dayCellClassNames={(arg) => {
-            const iso = arg.date.toISOString().slice(0, 10);
+            const iso = `${arg.date.getFullYear()}-${String(arg.date.getMonth() + 1).padStart(2, "0")}-${String(arg.date.getDate()).padStart(2, "0")}`;
             return holidaysByDate.has(iso) ? ["holiday-day-cell"] : [];
           }}
           locales={[heLocale]}
