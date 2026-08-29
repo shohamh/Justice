@@ -19,6 +19,7 @@ from app.db.models import (
     RangeEventStatus,
     RangeExcusalRequest,
     RangeExcusalStatus,
+    RangeType,
     SoldierRangeQualification,
 )
 from app.services.ranges import _validity_days
@@ -26,22 +27,28 @@ from app.services.ranges import _validity_days
 
 def relevant_duty_types(session: Session, *, range_type: str) -> list[DutyType]:
     """Active DutyTypes a range event of `range_type` is relevant to: those whose
-    `required_range_type` is exactly `range_type` (mirrors `alal_relevance.py`'s
-    `active_alal_duty_types`, generalized to every tier — a soldier needing only a
-    lower tier, e.g. laser, is not thereby relevant to a higher-tier event like
-    alal), plus generic weapon duty types with no specific tier at all
-    (`required_range_type IS NULL`), which apply to any range type — this is the
-    single authority for "does this soldier's duty load make them a candidate for
-    this specific range type," shared by structural eligibility and candidate
-    ranking so neither can drift from the other."""
+    `required_range_type` is exactly `range_type`, plus — for every tier except
+    alal — generic weapon duty types with no specific tier at all
+    (`required_range_type IS NULL`), which apply to any non-alal range type.
+
+    Alal gets no generic fallback, matching `alal_relevance.py`'s
+    `active_alal_duty_types` exactly (which only ever matches
+    `required_range_type == alal`): alal is a specialized qualification that
+    only duty types explicitly requiring it should make a soldier relevant to,
+    not every weapon-carrying duty in the unit. Laser/live keep the fallback
+    because most duty types in this codebase never set a tier at all (e.g.
+    escort duty) and have always counted as basic weapon-range eligibility —
+    dropping the fallback for them too would make most units structurally
+    ineligible for their own laser/live ranges.
+
+    This is the single authority for "does this soldier's duty load make them
+    a candidate for this specific range type," shared by structural
+    eligibility and candidate ranking so neither can drift from the other."""
+    conditions = [DutyType.required_range_type == range_type]
+    if range_type != RangeType.alal:
+        conditions.append(and_(DutyType.required_range_type.is_(None), DutyType.requires_weapon.is_(True)))
     return list(session.execute(
-        select(DutyType).where(
-            DutyType.active.is_(True),
-            or_(
-                DutyType.required_range_type == range_type,
-                and_(DutyType.required_range_type.is_(None), DutyType.requires_weapon.is_(True)),
-            ),
-        )
+        select(DutyType).where(DutyType.active.is_(True), or_(*conditions))
     ).scalars())
 
 

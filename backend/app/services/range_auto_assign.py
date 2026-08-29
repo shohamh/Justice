@@ -49,14 +49,15 @@ def _earliest_future_weapon_duty_start(
 
 
 def _earliest_future_range_relevant_duty_start(
-    session: Session, *, soldier_id: uuid.UUID, is_reserve: bool, after_date: date, range_type: str,
+    session: Session, *, soldier_id: uuid.UUID, is_reserve: bool, after_date: date,
+    relevant_duty_type_ids: list[uuid.UUID],
 ) -> date | None:
-    """Like `_earliest_future_weapon_duty_start`, but scoped to duty types this
-    `range_type` is actually relevant to (see `relevant_duty_types`) — used for
-    candidate ranking, where a soldier's urgent laser-tier duty must not boost
-    their priority for an alal event they don't structurally need."""
-    duty_type_ids = [dt.id for dt in relevant_duty_types(session, range_type=range_type)]
-    if not duty_type_ids:
+    """Like `_earliest_future_weapon_duty_start`, but scoped to `relevant_duty_type_ids`
+    (see `relevant_duty_types`) — used for candidate ranking, where a soldier's
+    urgent laser-tier duty must not boost their priority for an alal event they
+    don't structurally need. Takes the id list rather than a range_type so callers
+    checking both `is_reserve` kinds for the same event compute it once."""
+    if not relevant_duty_type_ids:
         return None
     return session.execute(
         select(func.min(DutyAssignment.start_date)).where(
@@ -64,7 +65,7 @@ def _earliest_future_range_relevant_duty_start(
             DutyAssignment.status == "published",
             DutyAssignment.start_date > after_date,
             DutyAssignment.is_reserve == is_reserve,
-            DutyAssignment.duty_type_id.in_(duty_type_ids),
+            DutyAssignment.duty_type_id.in_(relevant_duty_type_ids),
         )
     ).scalar_one_or_none()
 
@@ -120,14 +121,17 @@ def _rank_candidate(session: Session, *, soldier: Soldier, event: RangeEvent) ->
     coverage = get_range_coverage(
         session, soldier_id=soldier.id, required_range_type=event.range_type, as_of=event.date,
     )
+    relevant_duty_type_ids = [dt.id for dt in relevant_duty_types(session, range_type=event.range_type)]
     return _rank_from_coverage(
         soldier_id=soldier.id,
         coverage=coverage,
         duty_start=_earliest_future_range_relevant_duty_start(
-            session, soldier_id=soldier.id, is_reserve=False, after_date=event.date, range_type=event.range_type,
+            session, soldier_id=soldier.id, is_reserve=False, after_date=event.date,
+            relevant_duty_type_ids=relevant_duty_type_ids,
         ),
         reserve_duty_start=_earliest_future_range_relevant_duty_start(
-            session, soldier_id=soldier.id, is_reserve=True, after_date=event.date, range_type=event.range_type,
+            session, soldier_id=soldier.id, is_reserve=True, after_date=event.date,
+            relevant_duty_type_ids=relevant_duty_type_ids,
         ),
         last_valid_until=_last_qualification_valid_until(
             session, soldier_id=soldier.id, range_type=event.range_type,
@@ -277,7 +281,7 @@ def _bulk_eligibility(
     soldier_ids = [s.id for s in soldiers]
     override_allowed = manual_override_allowed(session)
 
-    weapon_duty_types = relevant_duty_types(session, range_type=event.range_type)
+    range_relevant_types = relevant_duty_types(session, range_type=event.range_type)
     node_ids = {s.hierarchy_node_id for s in soldiers if s.hierarchy_node_id is not None}
     nodes_by_id = {
         n.id: n for n in session.execute(
@@ -338,7 +342,7 @@ def _bulk_eligibility(
     for soldier in soldiers:
         node = nodes_by_id.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
         structurally_exempt = node is None or not any(
-            node_in_scope(dt.eligible_node_ids, node.path_ids) for dt in weapon_duty_types
+            node_in_scope(dt.eligible_node_ids, node.path_ids) for dt in range_relevant_types
         )
         if soldier.id in exempted:
             excluded.append(ExcludedSoldier(soldier.id, "weapon_exempt"))

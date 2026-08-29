@@ -177,7 +177,14 @@ def test_soldier_needing_alal_is_not_exempt_from_alal_event(app_session: Session
     assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="alal") is False
 
 
-def test_generic_untiered_weapon_duty_is_relevant_to_any_range_type(app_session: Session) -> None:
+def test_generic_untiered_weapon_duty_is_relevant_to_laser_and_live_but_not_alal(app_session: Session) -> None:
+    """Most duty types in this codebase (e.g. escort duty) never set a tier at
+    all and have always counted as basic weapon-range eligibility, so the
+    generic fallback must keep covering laser/live. Alal is the one tier with
+    its own dedicated relevance rule (`alal_relevance.py`), which never treats
+    an untiered duty as alal-relevant — this must match that exactly, or a
+    soldier who never structurally needs alal would still show up as an alal
+    candidate through this fallback alone."""
     node = create_node(app_session, level="פלוגה", name="פלוגה כללי")
     soldier = create_soldier(app_session, personal_number="2000013", hierarchy_node_id=node.id)
     generic_duty = DutyType(
@@ -188,4 +195,5 @@ def test_generic_untiered_weapon_duty_is_relevant_to_any_range_type(app_session:
     app_session.flush()
 
     assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="alal") is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="live") is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="alal") is True

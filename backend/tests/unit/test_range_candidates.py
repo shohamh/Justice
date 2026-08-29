@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,7 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.range_auto_assign import excluded_candidates, rank_candidates, rank_candidates_with_excluded
-from app.services.ranges import add_range_assignment, create_range_event
+from app.services.ranges import RangeValidationError, add_range_assignment, create_range_event
 from app.services.settings_loader import set_setting
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
 
@@ -815,15 +816,15 @@ def test_reason_code_reserve_duty_priority_for_future_reserve_weapon_duty(app_se
     assert mine.explanation == f"תורנות רזרבה קרובה ב-{future_duty_date.strftime('%d.%m.%Y')}"
 
 
-def test_candidate_ranking_ignores_urgent_duty_needing_a_lower_range_tier(app_session: Session) -> None:
+def test_candidate_ranking_ignores_urgent_duty_needing_a_different_range_tier(app_session: Session) -> None:
     """A soldier's upcoming duty must only boost their priority for a range event
     whose range_type it actually needs — an urgent laser-tier duty must not make
-    a soldier look urgent for an alal event they don't structurally need it for."""
+    a soldier look urgent for an alal event. Both soldiers here are structurally
+    eligible for the alal event via the alal-tier duty type being in scope at
+    their node (eligibility is about the duty type's scope, not who's actually
+    assigned to it) — isolating this test to ranking priority, not the hard gate."""
     node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות לפי סוג מטווח")
     dm = _dm_for(app_session, node, personal_number="7020001")
-    # A generic, untiered weapon duty keeps both soldiers structurally eligible for
-    # any range type, isolating this test to ranking priority, not the hard gate.
-    _weapon_duty_type(app_session, node=node, name="ליווים עדיפות מטווח")
     laser_duty = DutyType(
         name="שמירה לייזר עדיפות מטווח", score_per_day=Decimal("1.00"),
         requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
@@ -836,16 +837,16 @@ def test_candidate_ranking_ignores_urgent_duty_needing_a_lower_range_tier(app_se
     app_session.flush()
     location = create_duty_location(app_session)
 
-    laser_only_soldier = create_soldier(app_session, personal_number="7020002", hierarchy_node_id=node.id)
-    alal_soldier = create_soldier(app_session, personal_number="7020003", hierarchy_node_id=node.id)
+    off_tier_soldier = create_soldier(app_session, personal_number="7020002", hierarchy_node_id=node.id)
+    on_tier_soldier = create_soldier(app_session, personal_number="7020003", hierarchy_node_id=node.id)
     future_duty_date = date.today() + timedelta(days=7)
     app_session.add_all([
         DutyAssignment(
-            soldier_id=laser_only_soldier.id, duty_type_id=laser_duty.id, duty_location_id=location.id,
+            soldier_id=off_tier_soldier.id, duty_type_id=laser_duty.id, duty_location_id=location.id,
             start_date=future_duty_date, end_date=future_duty_date, status="published",
         ),
         DutyAssignment(
-            soldier_id=alal_soldier.id, duty_type_id=alal_duty.id, duty_location_id=location.id,
+            soldier_id=on_tier_soldier.id, duty_type_id=alal_duty.id, duty_location_id=location.id,
             start_date=future_duty_date, end_date=future_duty_date, status="published",
         ),
     ])
@@ -859,10 +860,10 @@ def test_candidate_ranking_ignores_urgent_duty_needing_a_lower_range_tier(app_se
 
     ranked = rank_candidates(app_session, event=event, user=dm)
 
-    laser_candidate = next(c for c in ranked if c.soldier.id == laser_only_soldier.id)
-    alal_candidate = next(c for c in ranked if c.soldier.id == alal_soldier.id)
-    assert laser_candidate.reason_code == "available_and_balanced"
-    assert alal_candidate.reason_code == "duty_priority"
+    off_tier_candidate = next(c for c in ranked if c.soldier.id == off_tier_soldier.id)
+    on_tier_candidate = next(c for c in ranked if c.soldier.id == on_tier_soldier.id)
+    assert off_tier_candidate.reason_code == "available_and_balanced"
+    assert on_tier_candidate.reason_code == "duty_priority"
 
 
 def test_regular_duty_outranks_reserve_duty(app_session: Session) -> None:
@@ -1002,6 +1003,29 @@ def test_candidates_exclude_soldier_needing_only_a_lower_range_tier_from_alal_ev
     assert laser_only_soldier.id not in {c.soldier.id for c in ranked}
     reasons_by_id = {x.soldier_id: x.reason for x in excluded}
     assert reasons_by_id[laser_only_soldier.id] == "structurally_ineligible"
+
+
+def test_add_range_assignment_rejects_soldier_needing_only_a_lower_range_tier_for_alal_event(
+    app_session: Session,
+) -> None:
+    """Direct regression test for the reported bug: the write path itself
+    (not just the candidate list) must reject assigning a soldier to an alal
+    event when their only duty type needs a lower tier."""
+    node = create_node(app_session, level="פלוגה", name="פלוגת דחיית שיבוץ אלל")
+    laser_only_soldier = create_soldier(app_session, personal_number="7030005", hierarchy_node_id=node.id)
+    app_session.add(DutyType(
+        name="שמירה לייזר דחיית שיבוץ", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח אלל דחיית שיבוץ").id, required_count=1,
+    )
+
+    with pytest.raises(RangeValidationError, match="soldier_range_exempt"):
+        add_range_assignment(app_session, event=event, soldier_id=laser_only_soldier.id, is_reserve=False)
 
 
 def test_candidates_include_soldier_needing_alal_for_alal_event(app_session: Session) -> None:
