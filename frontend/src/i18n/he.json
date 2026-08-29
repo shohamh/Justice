@@ -27,6 +27,9 @@
   "common": {
     "yes": "כן",
     "no": "לא",
+    "confirm": "אישור",
+    "cancel": "ביטול",
+    "close": "סגור",
     "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש.",
     "no_permission": "אין הרשאה להציג מידע זה",
     "whole_org": "כלל המסגרת"

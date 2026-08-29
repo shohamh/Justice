@@ -1,4 +1,5 @@
 import { useState } from "react";
+import SharedConfirmDialog from "../ConfirmDialog";
 import { EventDetailModal } from "../planning";
 
 interface Props {
@@ -20,6 +21,10 @@ export default function ConfirmDialog({
   danger = false, onConfirm, onClose,
 }: Props) {
   const [reason, setReason] = useState("");
+  if (reasonLabel === undefined) {
+    return <SharedConfirmDialog open={open} title={title} message={message} confirmLabel={confirmLabel} cancelLabel={cancelLabel} danger={danger} onConfirm={() => onConfirm()} onClose={onClose} />;
+  }
+
   const needsReason = reasonLabel !== undefined;
   const canConfirm = !needsReason || reason.trim().length > 0;
   function handleClose() { setReason(""); onClose(); }
