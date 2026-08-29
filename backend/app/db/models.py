@@ -1159,6 +1159,9 @@ class RangeAssignmentRequest(Base):
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
     decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    approved_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_assignments.id", ondelete="SET NULL"), nullable=True, default=None
+    )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False

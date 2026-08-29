@@ -47,11 +47,13 @@ def upgrade() -> None:
         sa.Column("decided_by", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("decision_reason", sa.Text(), nullable=True),
         sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("approved_assignment_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.ForeignKeyConstraint(["range_event_id"], ["range_events.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["soldier_id"], ["soldiers.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["requested_by"], ["soldiers.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["decided_by"], ["soldiers.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["approved_assignment_id"], ["range_assignments.id"], ondelete="SET NULL"),
     )
     op.create_index(
         "ix_range_assignment_requests_event_status",

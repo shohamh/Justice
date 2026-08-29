@@ -145,3 +145,58 @@ def test_responsible_manager_can_add_off_scope_official_assignment(
 
     assert assignment_response.status_code == 201, assignment_response.text
     assert assignment_response.json()["is_draft"] is False
+
+
+def test_responsible_manager_approves_request_into_selected_tier(
+    client: TestClient, admin_session: Session,
+) -> None:
+    _enable_mitvachim(admin_session)
+    owner_node = create_node(admin_session, level="×¤×œ×•×’×”", name="owner-4")
+    proposer_node = create_node(admin_session, level="×¤×œ×•×’×”", name="proposer-4")
+    owner = create_soldier(
+        admin_session, personal_number="7000031", role="duty_manager", hierarchy_node_id=owner_node.id,
+    )
+    proposer = create_soldier(
+        admin_session, personal_number="7000032", role="duty_manager", hierarchy_node_id=proposer_node.id,
+    )
+    soldier = create_soldier(
+        admin_session, personal_number="7000033", hierarchy_node_id=proposer_node.id,
+    )
+    admin_session.add(DutyType(
+        name="weapon duty 4",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        eligible_node_ids=[proposer_node.id],
+    ))
+    location = create_range_location(admin_session, name="test range 4")
+    admin_session.commit()
+    response = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(owner_node.id),
+            "range_type": "live",
+            "date": "2026-09-18",
+            "range_location_id": str(location.id),
+            "required_count": 1,
+            "reserve_count": 1,
+            "responsible_duty_manager_id": str(owner.id),
+        },
+        headers=auth_headers(owner),
+    )
+    event_id = response.json()["id"]
+    request_response = client.post(
+        f"/api/ranges/{event_id}/assignment-requests",
+        json={"soldier_id": str(soldier.id), "reason": "fill reserve coverage"},
+        headers=auth_headers(proposer),
+    )
+    request_id = request_response.json()["id"]
+
+    approve_response = client.patch(
+        f"/api/ranges/{event_id}/assignment-requests/{request_id}/approve",
+        json={"is_reserve": True},
+        headers=auth_headers(owner),
+    )
+
+    assert approve_response.status_code == 200, approve_response.text
+    assert approve_response.json()["is_reserve"] is True
+    assert approve_response.json()["is_draft"] is False

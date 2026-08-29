@@ -155,6 +155,7 @@ class RangeAssignmentRequestOut(BaseModel):
     system_reason_code: str | None
     system_reason_text: str | None
     status: str
+    approved_assignment_id: uuid.UUID | None = None
 
 
 def _assignment_request_out(request: RangeAssignmentRequest) -> RangeAssignmentRequestOut:
@@ -167,7 +168,12 @@ def _assignment_request_out(request: RangeAssignmentRequest) -> RangeAssignmentR
         system_reason_code=request.system_reason_code,
         system_reason_text=request.system_reason_text,
         status=request.status,
+        approved_assignment_id=request.approved_assignment_id,
     )
+
+
+class ApproveRangeAssignmentRequestBody(BaseModel):
+    is_reserve: bool
 
 
 @router.post(
@@ -197,6 +203,32 @@ def create_assignment_request(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden") from exc
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
     return _assignment_request_out(request)
+
+
+@router.patch(
+    "/{event_id}/assignment-requests/{request_id}/approve",
+    response_model=RangeAssignmentOut,
+)
+def approve_assignment_request(
+    event_id: uuid.UUID,
+    request_id: uuid.UUID,
+    body: ApproveRangeAssignmentRequestBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeAssignmentOut:
+    _require_enabled(session)
+    request = session.get(RangeAssignmentRequest, request_id)
+    if request is None or request.range_event_id != event_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    try:
+        assignment = assignment_request_svc.approve_assignment_request(
+            session, request=request, actor=user, is_reserve=body.is_reserve,
+        )
+    except assignment_request_svc.RangeAssignmentRequestError as exc:
+        detail = str(exc)
+        code = status.HTTP_403_FORBIDDEN if detail == "not_responsible_manager" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=detail) from exc
+    return _assignment_out(assignment)
 
 
 class FoodSpecialConstraintOut(BaseModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,9 +14,11 @@ from app.db.models import (
     RangeAssignmentRequestStatus,
     RangeEvent,
     RangeEventStatus,
+    RangeAssignment,
     Soldier,
 )
 from app.services.notifications import create_notification
+from app.services.ranges import _check_capacity, _validate_and_build_assignment
 
 
 class RangeAssignmentRequestError(Exception):
@@ -82,3 +85,70 @@ def create_assignment_request(
     session.commit()
     session.refresh(request)
     return request
+
+
+def approve_assignment_request(
+    session: Session,
+    *,
+    request: RangeAssignmentRequest,
+    actor: Soldier,
+    is_reserve: bool,
+) -> RangeAssignment:
+    if request.status != RangeAssignmentRequestStatus.pending:
+        raise RangeAssignmentRequestError("request_not_pending")
+    event = session.get(RangeEvent, request.range_event_id)
+    if event is None:
+        raise RangeAssignmentRequestError("event_not_found")
+    if event.status != RangeEventStatus.planned:
+        raise RangeAssignmentRequestError("event_not_planned")
+    from app.auth.authz import responsible_range_manager_authorized
+    if not responsible_range_manager_authorized(
+        session,
+        user=actor,
+        responsible_duty_manager_id=event.responsible_duty_manager_id,
+    ):
+        raise RangeAssignmentRequestError("not_responsible_manager")
+    _check_capacity(
+        session,
+        event=event,
+        new_primary=0 if is_reserve else 1,
+        new_reserve=1 if is_reserve else 0,
+    )
+    assignment, overridden_constraint = _validate_and_build_assignment(
+        session,
+        event=event,
+        soldier_id=request.soldier_id,
+        is_reserve=is_reserve,
+        user=actor,
+    )
+    assignment.assignment_reason_code = request.system_reason_code or "assignment_request"
+    assignment.assignment_reason_text = request.reason
+    session.add(assignment)
+    session.flush()
+    request.status = RangeAssignmentRequestStatus.approved
+    request.decided_by = actor.id
+    request.decided_at = datetime.now(UTC)
+    request.approved_assignment_id = assignment.id
+    create_notification(
+        session,
+        soldier_id=request.soldier_id,
+        type=NotificationType.range_assignment_confirmed,
+        title="Range assignment confirmed",
+        body="Your range assignment is official; attendance is mandatory.",
+        reference_type="range_event",
+        reference_id=event.id,
+        actor_id=actor.id,
+    )
+    create_notification(
+        session,
+        soldier_id=request.requested_by,
+        type=NotificationType.range_roster_changed,
+        title="Range assignment request decided",
+        body="Your assignment request was approved.",
+        reference_type="range_assignment_request",
+        reference_id=request.id,
+        actor_id=actor.id,
+    )
+    session.commit()
+    session.refresh(assignment)
+    return assignment
