@@ -118,14 +118,24 @@ def _notify_roster_change(
         f"primary={sum(1 for a in assignments if not a.is_reserve and not a.is_draft)}/{event.required_count}"
         f" | reserve={sum(1 for a in assignments if a.is_reserve and not a.is_draft)}/{event.reserve_count}"
     )
+    location = session.get(RangeLocation, event.range_location_id)
+    metadata = {
+        "range_date": event.date.isoformat(),
+        "range_type": event.range_type.value,
+        "range_location": location.name if location else str(event.range_location_id),
+        "primary_filled": sum(1 for a in assignments if not a.is_reserve and not a.is_draft),
+        "primary_capacity": event.required_count,
+        "reserve_filled": sum(1 for a in assignments if a.is_reserve and not a.is_draft),
+        "reserve_capacity": event.reserve_count,
+    }
     for soldier_id in soldier_ids:
         _range_notification(
             session, soldier_id=soldier_id, type=NotificationType.range_roster_changed,
             title="Range roster changed", body=f"{_range_context(session, event)} | {fill}",
-            reference_type="range_event", reference_id=event.id, actor_id=actor_id,
+            reference_type="range_event", reference_id=event.id, actor_id=actor_id, metadata=metadata,
         )
     if soldier_ids and _mitvachim_enabled(session):
-        notify_duty_managers_in_scope(session, soldier_id=next(iter(soldier_ids)), type=NotificationType.range_roster_changed, title="Range roster changed", body=f"{_range_context(session, event)} | {fill}", reference_type="range_event", reference_id=event.id, actor_id=actor_id)
+        notify_duty_managers_in_scope(session, soldier_id=next(iter(soldier_ids)), type=NotificationType.range_roster_changed, title="Range roster changed", body=f"{_range_context(session, event)} | {fill}", reference_type="range_event", reference_id=event.id, actor_id=actor_id, metadata=metadata)
 
 def create_range_event(
     session: Session,

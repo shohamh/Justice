@@ -8,8 +8,9 @@ import { usePagePagination } from "../hooks/usePagePagination";
 import { listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS, isQuickDecisionNotification } from "../api/notifications";
 import { soldierApproveSwap, soldierRejectSwap } from "../api/swaps";
 import { decideRangeExcusal } from "../api/ranges";
-import { Check, Eye, X, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Eye, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
+import { getNotificationTitle, NotificationDetails } from "../components/notifications/NotificationDetails";
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
@@ -17,6 +18,7 @@ export default function NotificationsPage() {
   const { openBugReportModal } = useBugReportModal();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>("all");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
 
   const notificationsQuery = useQuery({
@@ -104,13 +106,27 @@ export default function NotificationsPage() {
                 <span className="text-xl" aria-label={t(`notifications.type_${n.type}`, { defaultValue: n.type })}>{NOTIFICATION_TYPE_ICONS[n.type] || "🔔"}</span>
                 <div className="flex-1">
                   {getNotificationLink(n) || (n.reference_type === "bug_report" && n.reference_id) ? (
-                    <button className={`text-right ${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`} onClick={() => handleNotificationClick(n)}>{n.title}</button>
+                    <button className={`text-right ${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`} onClick={() => handleNotificationClick(n)}>{getNotificationTitle(n, t)}</button>
                   ) : (
-                    <p className={`${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`}>{n.title}</p>
+                    <p className={`${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`}>{getNotificationTitle(n, t)}</p>
                   )}
-                  {n.body && <p className="text-sm text-gray-500 dark:text-gray-400">{n.body}</p>}
+                  <NotificationDetails notification={n} expanded={expandedIds.has(n.id)} t={t} />
                   {n.sender_name && <p className="text-xs text-gray-400 mt-0.5">{t("notifications.sent_by", { name: n.sender_name })}</p>}
                   <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleString("he-IL")}</p>
+                  {n.body && <button
+                    type="button"
+                    className="mt-1 text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-300"
+                    aria-expanded={expandedIds.has(n.id)}
+                    aria-label={expandedIds.has(n.id) ? t("notifications.collapse_details") : t("notifications.expand_details")}
+                    onClick={() => setExpandedIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
+                      return next;
+                    })}
+                  >
+                    {expandedIds.has(n.id) ? <><ChevronUp size={14} className="inline" /> {t("notifications.collapse_details")}</>
+                      : <><ChevronDown size={14} className="inline" /> {t("notifications.expand_details")}</>}
+                  </button>}
                 </div>
                 <div className="flex gap-1">
                   {isQuickDecisionNotification(n) && (
