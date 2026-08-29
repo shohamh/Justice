@@ -1,6 +1,11 @@
 import { render, screen, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+function renderLayout(ui: React.ReactNode) {
+  return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
+}
 
 const mockCycleTheme = vi.fn();
 let mockTheme = "light";
@@ -33,11 +38,7 @@ describe("Layout theme toggle", () => {
   it("renders the toggle and calls cycleTheme on click", async () => {
     mockTheme = "light";
     const { default: Layout } = await import("./Layout");
-    render(
-      <MemoryRouter>
-        <Layout>children</Layout>
-      </MemoryRouter>,
-    );
+    renderLayout(<Layout>children</Layout>);
 
     const toggle = screen.getByTestId("theme-toggle-button");
     act(() => toggle.click());
@@ -48,11 +49,7 @@ describe("Layout theme toggle", () => {
 describe("Layout logo", () => {
   it("links the header logo to the homepage", async () => {
     const { default: Layout } = await import("./Layout");
-    render(
-      <MemoryRouter>
-        <Layout>children</Layout>
-      </MemoryRouter>,
-    );
+    renderLayout(<Layout>children</Layout>);
 
     const logoLink = document.querySelector('a[href="/"]');
     expect(logoLink).not.toBeNull();

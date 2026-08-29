@@ -33,6 +33,7 @@ export interface BugReportSummary {
   comment_count: number;
   last_comment_at: string | null;
   has_unseen_activity: boolean;
+  unread: boolean;
 }
 
 export interface PaginatedBugReports {
@@ -49,6 +50,60 @@ export interface BugReportFilters {
 
 export async function listBugReports(filters: BugReportFilters): Promise<PaginatedBugReports> {
   return (await api.get<PaginatedBugReports>("/admin/bug-reports", { params: filters })).data;
+}
+
+export interface ErrorLogEntry {
+  source: "backend" | "frontend";
+  timestamp: string | null;
+  level: string;
+  message: string;
+  request_id: string | null;
+  details: Record<string, unknown>;
+  record_key: string;
+  unread: boolean;
+}
+
+export interface PaginatedErrorLogs {
+  items: ErrorLogEntry[];
+  total: number;
+}
+
+export async function listAdminErrors(options: {
+  source?: "backend" | "frontend";
+  offset?: number;
+  limit?: number;
+  from?: string;
+  to?: string;
+} = {}): Promise<PaginatedErrorLogs> {
+  return (await api.get<PaginatedErrorLogs>("/admin/errors", { params: options })).data;
+}
+
+export async function getAdminErrorUnreadCount(): Promise<number> {
+  return (await api.get<{ count: number }>("/admin/errors/unread-count")).data.count;
+}
+
+export async function markAdminErrorsRead(entries: Array<{ record_key: string; source: "backend" | "frontend" }>): Promise<void> {
+  await api.post("/admin/errors/mark-read", { entries });
+}
+
+export async function markAllAdminErrorsRead(options: { source?: "backend" | "frontend"; from?: string; to?: string } = {}): Promise<void> {
+  await api.post("/admin/errors/mark-all-read", undefined, { params: options });
+}
+
+export async function clearAdminErrors(through: string): Promise<number> {
+  return (await api.delete<{ removed: number }>("/admin/errors", { params: { through } })).data.removed;
+}
+
+export async function getAdminBugReportUnreadCount(): Promise<number> {
+  return (await api.get<{ count: number }>("/admin/bug-reports/unread-count")).data.count;
+}
+
+export async function markAdminBugReportsRead(reportIds: string[]): Promise<void> {
+  await api.post("/admin/bug-reports/mark-read", { report_ids: reportIds });
+}
+
+export async function markAllAdminBugReportsRead(options: { severity?: BugReportSeverity; status?: BugReportStatus } = {}): Promise<void> {
+  await api.post("/admin/bug-reports/mark-all-read", undefined, { params: options });
 }
 
 export interface DownloadBugReportExportOptions {

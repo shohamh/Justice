@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import require_password_changed, require_roles
 from app.db.models import (
+    AdminErrorRead,
     BugReport,
     BugReportComment,
     BugReportCommentAttachment,
@@ -128,6 +129,7 @@ class BugReportSummaryOut(BaseModel):
     comment_count: int
     last_comment_at: datetime | None
     has_unseen_activity: bool
+    unread: bool = False
 
 
 class PaginatedBugReports(BaseModel):
@@ -145,6 +147,7 @@ def _summary_out(
     comment_count: int,
     last_comment_at: datetime | None,
     has_unseen_activity: bool = False,
+    unread: bool = False,
 ) -> BugReportSummaryOut:
     return BugReportSummaryOut(
         id=report.id,
@@ -162,6 +165,7 @@ def _summary_out(
         comment_count=comment_count,
         last_comment_at=last_comment_at,
         has_unseen_activity=has_unseen_activity,
+        unread=unread,
     )
 
 
@@ -194,7 +198,7 @@ def _summary_with_comment_aggregates(session: Session, report: BugReport) -> Bug
 @router.get("/admin/bug-reports", response_model=PaginatedBugReports)
 def list_bug_reports(
     session: Session = Depends(get_session),
-    _admin: Soldier = Depends(require_roles("admin")),
+    admin: Soldier = Depends(require_roles("admin")),
     severity: Literal["low", "medium", "high"] | None = None,
     status_filter: Literal["open", "in_progress", "resolved", "wont_fix"] | None = Query(default=None, alias="status"),
     offset: int = Query(default=0, ge=0),
@@ -221,17 +225,82 @@ def list_bug_reports(
     rows = session.execute(
         query.order_by(BugReport.created_at.desc()).offset(offset).limit(limit)
     ).all()
+    markers = {
+        marker.record_key: marker.read_at
+        for marker in session.scalars(select(AdminErrorRead).where(AdminErrorRead.admin_id == admin.id, AdminErrorRead.source == "bug_report")).all()
+    }
     return PaginatedBugReports(
         items=[
             _summary_out(
                 report,
                 comment_count=comment_count,
                 last_comment_at=last_comment_at,
+                unread=str(report.id) not in markers or report.updated_at > markers[str(report.id)],
             )
             for report, comment_count, last_comment_at in rows
         ],
         total=total,
     )
+
+
+@router.get("/admin/bug-reports/unread-count")
+def admin_bug_report_unread_count(
+    session: Session = Depends(get_session),
+    admin: Soldier = Depends(require_roles("admin")),
+) -> dict[str, int]:
+    reports = session.scalars(select(BugReport)).all()
+    markers = {
+        marker.record_key: marker.read_at
+        for marker in session.scalars(select(AdminErrorRead).where(AdminErrorRead.admin_id == admin.id, AdminErrorRead.source == "bug_report")).all()
+    }
+    return {"count": sum(key not in markers or report.updated_at > markers[key] for report in reports for key in [str(report.id)])}
+
+
+class MarkBugReportsReadBody(BaseModel):
+    report_ids: list[uuid.UUID]
+
+
+@router.post("/admin/bug-reports/mark-read", status_code=204, response_model=None)
+def mark_admin_bug_reports_read(
+    body: MarkBugReportsReadBody,
+    session: Session = Depends(get_session),
+    admin: Soldier = Depends(require_roles("admin")),
+) -> None:
+    for report_id in set(body.report_ids[:1000]):
+        key = str(report_id)
+        marker = session.scalar(select(AdminErrorRead).where(AdminErrorRead.admin_id == admin.id, AdminErrorRead.source == "bug_report", AdminErrorRead.record_key == key))
+        if marker is None:
+            session.add(AdminErrorRead(admin_id=admin.id, source="bug_report", record_key=key))
+        else:
+            marker.read_at = datetime.now(UTC)
+    session.commit()
+
+
+@router.post("/admin/bug-reports/mark-all-read", status_code=204, response_model=None)
+def mark_all_admin_bug_reports_read(
+    severity: Literal["low", "medium", "high"] | None = Query(default=None),
+    status_filter: Literal["open", "in_progress", "resolved", "wont_fix"] | None = Query(default=None, alias="status"),
+    session: Session = Depends(get_session),
+    admin: Soldier = Depends(require_roles("admin")),
+) -> None:
+    query = select(BugReport)
+    if severity is not None:
+        query = query.where(BugReport.severity == severity)
+    if status_filter is not None:
+        query = query.where(BugReport.status == status_filter)
+    report_ids = [str(report.id) for report in session.scalars(query).all()]
+    markers = {
+        marker.record_key: marker
+        for marker in session.scalars(select(AdminErrorRead).where(AdminErrorRead.admin_id == admin.id, AdminErrorRead.source == "bug_report", AdminErrorRead.record_key.in_(report_ids))).all()
+    }
+    now = datetime.now(UTC)
+    for report_id in report_ids:
+        marker = markers.get(report_id)
+        if marker is None:
+            session.add(AdminErrorRead(admin_id=admin.id, source="bug_report", record_key=report_id, read_at=now))
+        else:
+            marker.read_at = now
+    session.commit()
 
 
 class BugReportImportFileResult(BaseModel):

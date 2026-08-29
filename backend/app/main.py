@@ -12,67 +12,70 @@ from starlette.responses import Response as StarletteResponse
 
 from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
-from app.qualification_expiry_worker import run_qualification_expiry_worker
-from app.rank_advancement_worker import run_rank_advancement_worker
-from app.score_projection_revalidation_worker import run_score_projection_revalidation_worker
-from app.range_reminder_worker import run_range_reminder_worker
-from app.range_attendance_worker import run_range_attendance_worker
-from app.swap_expiry_worker import run_swap_expiry_worker
+from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, request_data, request_id
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.qualification_expiry_worker import run_qualification_expiry_worker
+from app.range_attendance_worker import run_range_attendance_worker
+from app.range_reminder_worker import run_range_reminder_worker
+from app.rank_advancement_worker import run_rank_advancement_worker
 from app.rate_limit import limiter
+from app.routes import algorithm as algorithm_routes
+from app.routes import approvals_export as approvals_export_routes
 from app.routes import assignments as assignment_routes
+from app.routes import audit_logs as audit_log_routes
 from app.routes import auth as auth_routes
+from app.routes import bug_reports as bug_report_routes
 from app.routes import calendar as calendar_routes
 from app.routes import calendar_holidays as calendar_holidays_routes
+from app.routes import client_errors as client_error_routes
+from app.routes import admin_errors as admin_error_routes
+from app.routes import commander_dashboard as commander_dashboard_routes
+from app.routes import config_export as config_export_routes
 from app.routes import constraints as constraint_routes
-from app.routes import audit_logs as audit_log_routes
+from app.routes import deputies as deputy_routes
+from app.routes import dm_scope as dm_scope_routes
 from app.routes import duty_config as duty_config_routes
+from app.routes import enrollment as enrollment_routes
 from app.routes import exemption_requests as exemption_request_routes
 from app.routes import exemptions as exemption_routes
+from app.routes import gimelim as gimelim_routes
+from app.routes import hakpaza as hakpaza_routes
 from app.routes import health as health_routes
 from app.routes import hierarchy as hierarchy_routes
 from app.routes import hierarchy_transfers as hierarchy_transfer_routes
-from app.routes import me as me_routes
-from app.routes import my_requests as my_request_routes
-from app.routes import score_adjustments as score_adjustment_routes
-from app.routes import scoring as scoring_routes
-from app.routes import soldiers as soldier_routes
-from app.routes import algorithm as algorithm_routes
-from app.routes import commander_dashboard as commander_dashboard_routes
-from app.routes import shifts as shift_routes
-from app.routes import shift_templates as shift_template_routes
-from app.routes import swaps as swap_routes
-from app.routes import swaps_eligibility as swaps_eligibility_routes
-from app.routes import reserves as reserve_routes
-from app.routes import notifications as notification_routes
-from app.routes import dm_scope as dm_scope_routes
-from app.routes import deputies as deputy_routes
-from app.routes import enrollment as enrollment_routes
-from app.routes import invite_codes as invite_code_routes
-from app.routes import system_settings as system_settings_routes
-from app.routes import hakpaza as hakpaza_routes
-from app.routes import config_export as config_export_routes
-from app.routes import approvals_export as approvals_export_routes
 from app.routes import import_excel as import_excel_routes
 from app.routes import import_lookup as import_lookup_routes
 from app.routes import import_sessions as import_sessions_routes
-from app.routes import gimelim as gimelim_routes
-from app.routes import public_settings as public_settings_routes
-from app.routes import potential as potential_routes
-from app.routes import bug_reports as bug_report_routes
-from app.routes import search as search_routes
+from app.routes import invite_codes as invite_code_routes
+from app.routes import me as me_routes
+from app.routes import my_requests as my_request_routes
 from app.routes import no_show as no_show_routes
-from app.routes import ranges as ranges_routes
-from app.routes import range_qualification_visibility as range_qualification_visibility_routes
+from app.routes import notifications as notification_routes
+from app.routes import potential as potential_routes
+from app.routes import public_settings as public_settings_routes
 from app.routes import range_locations as range_locations_routes
+from app.routes import range_qualification_visibility as range_qualification_visibility_routes
+from app.routes import ranges as ranges_routes
 from app.routes import rank_advancement as rank_advancement_routes
-from app.settings import get_settings
+from app.routes import reserves as reserve_routes
+from app.routes import score_adjustments as score_adjustment_routes
+from app.routes import scoring as scoring_routes
+from app.routes import search as search_routes
+from app.routes import shift_templates as shift_template_routes
+from app.routes import shifts as shift_routes
+from app.routes import soldiers as soldier_routes
+from app.routes import swaps as swap_routes
+from app.routes import swaps_eligibility as swaps_eligibility_routes
+from app.routes import system_settings as system_settings_routes
+from app.score_projection_revalidation_worker import run_score_projection_revalidation_worker
 
 # Importing v1_standard registers it in the import-parser registry as a
 # side effect (see app/services/import_parsers/v1_standard.py's bottom-level
 # `register(...)` call). Imported here so it's registered once at app startup.
 from app.services.import_parsers import v1_standard as _v1_standard_import_parser  # noqa: F401
+from app.settings import get_settings
+from app.swap_expiry_worker import run_swap_expiry_worker
 
 setup_logging("backend.log")
 logger = logging.getLogger(__name__)
@@ -82,6 +85,7 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
     _LIMIT = 50 * 1024 * 1024  # 50 MB
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        request.state.request_id = request_id(request.headers.get(REQUEST_ID_HEADER))
         content_length = request.headers.get("content-length")
         if content_length:
             try:
@@ -89,7 +93,29 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                     return StarletteResponse("Payload too large", status_code=413)
             except ValueError:
                 return StarletteResponse("Invalid Content-Length header", status_code=400)
-        return await call_next(request)
+        logged_exception = False
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            log_backend_exception(request, exc, await request_data(request))
+            logged_exception = True
+            response = StarletteResponse(
+                "Internal server error", status_code=500,
+                headers={REQUEST_ID_HEADER: request.state.request_id},
+            )
+        if response.status_code >= 500 and not logged_exception:
+            log_backend_exception(
+                request,
+                RuntimeError(f"HTTP {response.status_code} response"),
+                await request_data(request),
+            )
+        response.headers[REQUEST_ID_HEADER] = request.state.request_id
+        return response
+
+
+async def _unhandled_exception_handler(request: Request, exc: Exception) -> StarletteResponse:
+    log_backend_exception(request, exc, await request_data(request))
+    return StarletteResponse("Internal server error", status_code=500, headers={REQUEST_ID_HEADER: request.state.request_id})
 
 
 def _handle_async_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
@@ -163,6 +189,7 @@ def create_app() -> FastAPI:
     )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, _unhandled_exception_handler)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(_BodySizeLimitMiddleware)
     app.add_middleware(
@@ -170,10 +197,12 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["Retry-After", "Content-Disposition"],
+        allow_headers=["Authorization", "Content-Type", REQUEST_ID_HEADER],
+        expose_headers=["Retry-After", "Content-Disposition", REQUEST_ID_HEADER],
     )
     app.include_router(health_routes.router, prefix="/api")
+    app.include_router(client_error_routes.router, prefix="/api")
+    app.include_router(admin_error_routes.router, prefix="/api")
     app.include_router(auth_routes.router, prefix="/api")
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(my_request_routes.router, prefix="/api")

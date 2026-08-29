@@ -9,6 +9,9 @@ import "./styles/globals.css";
 import "katex/dist/katex.min.css";
 import { AlgorithmSeenProvider } from "./contexts/AlgorithmSeenContext";
 import { NavigationHistoryProvider } from "./hooks/useNavigationHistory";
+import { installGlobalErrorReporting } from "./errorReporting";
+
+installGlobalErrorReporting();
 
 const queryClient = new QueryClient();
 

@@ -1742,6 +1742,17 @@ class BugReport(Base):
     )
 
 
+class AdminErrorRead(Base):
+    __tablename__ = "admin_error_reads"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    admin_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(Text)
+    record_key: Mapped[str] = mapped_column(Text)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), default=None)
+    __table_args__ = (sa.UniqueConstraint("admin_id", "source", "record_key", name="uq_admin_error_reads_admin_source_record_key"),)
+
+
 class BugReportComment(Base):
     __tablename__ = "bug_report_comments"
 
