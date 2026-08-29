@@ -18,6 +18,8 @@ import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
 import AssignDutyManagersDialog from "./AssignDutyManagersDialog";
 import EditNodeDialog from "./EditNodeDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import MessageDialog from "./MessageDialog";
 import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import SoldierLink from "./SoldierLink";
@@ -371,6 +373,8 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
   const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
   const [activeData, setActiveData] = useState<DragData | null>(null);
   const [dmDialogNodeId, setDmDialogNodeId] = useState<string | null>(null);
+  const [deleteNodeId, setDeleteNodeId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const portfolioDialog = usePortfolioDialog(nodes, onChanged);
 
   const { levelTypes, loading: levelTypesLoading } = useLevelTypes();
@@ -403,13 +407,15 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
     });
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm(t("team.remove") + "?")) return;
+  async function confirmDelete() {
+    if (!deleteNodeId) return;
+    const nodeId = deleteNodeId;
+    setDeleteNodeId(null);
     try {
-      await deleteNode(id);
+      await deleteNode(nodeId);
       onChanged();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic"));
     }
   }
 
@@ -428,7 +434,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
       setExpanded((prev) => new Set(prev).add(nodeId));
       onChanged();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic"));
     }
   }
 
@@ -445,7 +451,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
       if (dragData.fromNodeId === overNodeId) return;
       const isCommander = nodes.some((n) => n.commander_id === dragData.id);
       if (isCommander) {
-        alert(t("team.cannot_move_commander"));
+        setMessage(t("team.cannot_move_commander"));
         return;
       }
       try {
@@ -453,7 +459,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         setExpanded((prev) => new Set(prev).add(overNodeId));
         onChanged();
       } catch {
-        alert(t("errors.generic"));
+        setMessage(t("errors.generic"));
       }
     } else if (dragData.kind === "node") {
       if (dragData.id === overNodeId) return;
@@ -465,7 +471,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         await moveNode(dragData.id, overNodeId);
         onChanged();
       } catch {
-        alert(t("errors.generic"));
+        setMessage(t("errors.generic"));
       }
     }
   }
@@ -513,7 +519,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
           onManageDutyManagers={() => setDmDialogNodeId(node.id)}
           onOpenPortfolio={(soldierId, name) => portfolioDialog.open(soldierId, name)}
           onRename={() => setRenameDialog(node)}
-          onDelete={() => void handleDelete(node.id)}
+          onDelete={() => setDeleteNodeId(node.id)}
           hasChildren={hasChildren}
           hasSoldiers={nodeSoldiers.length > 0}
           isExpanded={isExpanded}
@@ -628,5 +634,20 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         />
       )}
     </>
+      <ConfirmDialog
+        open={deleteNodeId !== null}
+        title={t("team.delete_node_title")}
+        message={t("team.confirm_delete_node")}
+        confirmLabel={t("duty_config.delete")}
+        danger
+        onConfirm={() => void confirmDelete()}
+        onClose={() => setDeleteNodeId(null)}
+      />
+      <MessageDialog
+        open={message !== null}
+        title={t("common.error")}
+        message={message ?? ""}
+        onClose={() => setMessage(null)}
+      />
   );
 }

@@ -17,6 +17,8 @@ import TelegramBadge from "../components/TelegramBadge";
 import { usePortfolioDialog } from "../hooks/usePortfolioDialog";
 import { translateApiError } from "../utils/translateApiError";
 import PasswordInput from "../components/PasswordInput";
+import ConfirmDialog from "../components/ConfirmDialog";
+import MessageDialog from "../components/MessageDialog";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -28,6 +30,9 @@ export default function TeamHierarchyPage() {
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [resetTargetId, setResetTargetId] = useState<string | null>(null);
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [promotionTarget, setPromotionTarget] = useState<SoldierDTO | null>(null);
   const [promotionPassword, setPromotionPassword] = useState("");
   const [promotionAcknowledged, setPromotionAcknowledged] = useState(false);
@@ -66,28 +71,36 @@ export default function TeamHierarchyPage() {
         setTempPw(res.temp_password);
         setPn(""); setName(""); setNodeId("");
       } catch {
-        alert(t("errors.generic"));
+        setMessage(t("errors.generic"));
       }
     }
     await refresh();
   }
 
-  async function onReset(id: string) {
-    if (!window.confirm(t("team.confirm_reset_password", "לאפס סיסמה לחייל זה?"))) return;
-    const r = await resetSoldierPassword(id);
+  async function confirmReset() {
+    if (!resetTargetId) return;
+    const soldierId = resetTargetId;
+    setResetTargetId(null);
+    const r = await resetSoldierPassword(soldierId);
     setTempPw(r.temp_password);
   }
 
-  async function onRemove(id: string) {
+  function onRemove(id: string) {
     const commandedNode = nodes.find((n) => n.commander_id === id);
     if (commandedNode) {
-      alert(`${t("team.cannot_delete_commander")} "${commandedNode.name}". ${t("team.reassign_commander_first")}`);
+      setMessage(`${t("team.cannot_delete_commander")} "${commandedNode.name}". ${t("team.reassign_commander_first")}`);
       return;
     }
-    if (!confirm(t("team.remove") + "?")) return;
+    setRemoveTargetId(id);
+  }
+
+  async function confirmRemove() {
+    if (!removeTargetId) return;
+    const soldierId = removeTargetId;
+    setRemoveTargetId(null);
     setRemoveError(null);
     try {
-      await softDeleteSoldier(id, new Date().toISOString().slice(0, 10));
+      await softDeleteSoldier(soldierId, new Date().toISOString().slice(0, 10));
       await refresh();
     } catch (err) {
       setRemoveError(translateApiError(err, t, "אין לך הרשאה למחוק חייל זה"));
@@ -234,7 +247,7 @@ export default function TeamHierarchyPage() {
                       </button>
                     )}
                     <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600 dark:text-indigo-300" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
-                    <button onClick={() => onReset(s.id)} className="text-indigo-600 dark:text-indigo-300" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
+                    <button onClick={() => setResetTargetId(s.id)} className="text-indigo-600 dark:text-indigo-300" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                     {isAdmin && s.role !== "admin" && (
                       <button onClick={() => openPromotion(s)} className="text-amber-700 dark:text-amber-300" data-testid={`promote-admin-${s.personal_number}`}>
                         {t("team.promote_admin")}
@@ -262,6 +275,29 @@ export default function TeamHierarchyPage() {
         </div>
 
         {portfolioDialog.dialog}
+        <ConfirmDialog
+          open={resetTargetId !== null}
+          title={t("team.reset_password_title")}
+          message={t("team.confirm_reset_password")}
+          danger
+          onConfirm={() => void confirmReset()}
+          onClose={() => setResetTargetId(null)}
+        />
+        <ConfirmDialog
+          open={removeTargetId !== null}
+          title={t("team.remove_soldier_title")}
+          message={t("team.confirm_remove_soldier")}
+          confirmLabel={t("team.remove")}
+          danger
+          onConfirm={() => void confirmRemove()}
+          onClose={() => setRemoveTargetId(null)}
+        />
+        <MessageDialog
+          open={message !== null}
+          title={t("common.error")}
+          message={message ?? ""}
+          onClose={() => setMessage(null)}
+        />
         {promotionTarget && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={closePromotion} data-testid="promote-admin-modal">
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-md w-full" dir="rtl" onClick={(event) => event.stopPropagation()}>

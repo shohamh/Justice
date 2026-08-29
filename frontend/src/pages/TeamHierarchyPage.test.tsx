@@ -80,7 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([]);
   vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([soldier]);
-  window.confirm = vi.fn().mockReturnValue(true);
+  window.confirm = vi.fn();
   window.alert = vi.fn();
 });
 
@@ -112,9 +112,26 @@ describe("TeamHierarchyPage - remove button gating", () => {
     renderPage();
     const removeBtn = await screen.findByTestId(`remove-${soldier.personal_number}`);
     fireEvent.click(removeBtn);
+    expect(soldiersApi.softDeleteSoldier).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
     await waitFor(() => {
       expect(screen.getByText(/אין לך הרשאה/)).toBeInTheDocument();
     });
+  });
+
+  it("uses an application confirmation dialog before resetting a password", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", role: "admin", is_commander: false, can_delete_soldier: false },
+    });
+    vi.mocked(soldiersApi.resetSoldierPassword).mockResolvedValueOnce({ temp_password: "temporary" });
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId(`reset-${soldier.personal_number}`));
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(soldiersApi.resetSoldierPassword).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+
+    await waitFor(() => expect(soldiersApi.resetSoldierPassword).toHaveBeenCalledWith(soldier.id));
   });
 });
 

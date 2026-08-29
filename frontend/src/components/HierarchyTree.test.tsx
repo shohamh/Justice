@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import HierarchyTree from "./HierarchyTree";
 import type { NodeDTO } from "../api/hierarchy";
 import type { SoldierDTO } from "../api/soldiers";
+import { deleteNode } from "../api/hierarchy";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -11,6 +12,11 @@ const LOADED_LEVEL_TYPES = { levelTypes: [{ id: "lt1", key: "department", label:
 const mockUseLevelTypes = vi.fn(() => LOADED_LEVEL_TYPES);
 vi.mock("../hooks/useLevelTypes", () => ({
   useLevelTypes: () => mockUseLevelTypes(),
+}));
+
+vi.mock("../api/hierarchy", () => ({
+  deleteNode: vi.fn(),
+  moveNode: vi.fn(),
 }));
 
 afterEach(() => {
@@ -106,6 +112,24 @@ test("shows can_edit-gated actions when the node's can_edit flag is true", () =>
   expect(screen.getByTestId("tree-rename-node-1")).toBeInTheDocument();
 });
 
+test("only deletes a hierarchy node after confirming in the application dialog", async () => {
+  const onChanged = vi.fn();
+  vi.mocked(deleteNode).mockResolvedValueOnce();
+  const nativeConfirm = vi.spyOn(window, "confirm");
+
+  render(
+    <HierarchyTree nodes={[node({ can_edit: true })]} soldiers={soldiers} canManageLevelTypes={false} onChanged={onChanged} />
+  );
+
+  fireEvent.click(screen.getByTestId("tree-delete-node-1"));
+  expect(nativeConfirm).not.toHaveBeenCalled();
+  expect(deleteNode).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+
+  await waitFor(() => expect(deleteNode).toHaveBeenCalledWith("node-1"));
+  expect(onChanged).toHaveBeenCalledTimes(1);
+  nativeConfirm.mockRestore();
+});
 test("closes the actions menu after an action is clicked", () => {
   render(
     <HierarchyTree nodes={[node({ can_edit: true })]} soldiers={soldiers} canManageLevelTypes={false} onChanged={vi.fn()} />

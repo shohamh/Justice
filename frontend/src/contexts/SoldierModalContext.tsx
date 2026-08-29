@@ -6,9 +6,11 @@ import {
   useState,
   ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { SoldierDTO, SoldierScoreDTO, getSoldier, getSoldierScore } from "../api/soldiers";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import UnifiedSoldierModal, { type TabKey } from "../components/UnifiedSoldierModal";
+import MessageDialog from "../components/MessageDialog";
 
 interface SoldierModalContextValue {
   openSoldierModal: (soldierId: string, onRefresh?: () => void, initialTab?: TabKey, initialHistoryTypes?: string[]) => void;
@@ -32,8 +34,10 @@ interface ModalState {
 }
 
 export function SoldierModalProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [modal, setModal] = useState<ModalState | null>(null);
   const [opening, setOpening] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const openSoldierModal = useCallback(
     async (soldierId: string, onRefresh?: () => void, initialTab?: TabKey, initialHistoryTypes?: string[]) => {
@@ -46,7 +50,7 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (soldier.status === "rejected") {
-          alert("לא ניתן לטעון את פרטי החייל");
+          setLoadError(true);
           return;
         }
 
@@ -103,6 +107,12 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
           initialHistoryTypes={modal.initialHistoryTypes}
         />
       )}
+      <MessageDialog
+        open={loadError}
+        title={t("common.error")}
+        message={t("team.load_soldier_failed")}
+        onClose={() => setLoadError(false)}
+      />
     </SoldierModalContext.Provider>
   );
 }
