@@ -294,10 +294,18 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     setRejectError(null);
     try {
       await rejectConstraint(id, note);
-      setRejectingConstraintId(null);
-      await refreshConstraints();
     } catch {
       setRejectError(t("errors.generic"));
+      setRejectingConstraint(false);
+      return;
+    }
+
+    setRejectingConstraintId(null);
+    setConstraints((previous) => previous.filter((constraint) => constraint.id !== id));
+    try {
+      await refreshConstraints();
+    } catch {
+      setRejectError(t("team.constraint_refresh_failed"));
     } finally {
       setRejectingConstraint(false);
     }

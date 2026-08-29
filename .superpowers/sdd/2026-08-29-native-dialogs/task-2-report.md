@@ -15,6 +15,17 @@ Verification:
 - Scoped runtime native-dialog search returned no matches.
 - `git diff --check` — passed.
 
+## Fix round 2
+
+- A successful constraint rejection now closes and removes the stale row before refreshing.
+- If that refresh fails, the user sees the translated `team.constraint_refresh_failed` message and cannot submit the same rejection again.
+
+Verification:
+
+- `npx vitest run src/components/UnifiedSoldierModal.test.tsx src/components/InputDialog.test.tsx` — 29 passed.
+- `npm run typecheck` and `npm run lint` were run but are blocked by the unrelated, pre-existing unused `EllipsisVertical` import in `HierarchyTree.tsx`.
+- `git diff --check` — passed.
+
 The pre-existing hierarchy action-layout changes in `HierarchyTree.tsx` and
 `HierarchyTree.test.tsx` were preserved and intentionally left unstaged.
 

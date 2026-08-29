@@ -577,4 +577,20 @@ describe("UnifiedSoldierModal constraint rejection", () => {
     expect(await screen.findByText("errors.generic")).toBeInTheDocument();
     expect(screen.getByTestId("input-dialog-confirm")).not.toBeDisabled();
   });
+
+  test("closes a successfully rejected constraint and reports a later refresh failure without allowing a retry", async () => {
+    mockRejectConstraint.mockResolvedValueOnce(undefined);
+    renderModal();
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    await screen.findByTestId("reject-constraint-c1");
+    mockListSoldierConstraints.mockRejectedValueOnce(new Error("refresh failed"));
+
+    fireEvent.click(screen.getByTestId("reject-constraint-c1"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
+
+    await waitFor(() => expect(mockRejectConstraint).toHaveBeenCalledWith("c1", ""));
+    expect(await screen.findByText("team.constraint_refresh_failed")).toBeInTheDocument();
+    expect(screen.queryByTestId("input-dialog-confirm")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reject-constraint-c1")).not.toBeInTheDocument();
+  });
 });
