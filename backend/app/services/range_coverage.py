@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -39,6 +40,76 @@ _NO_COVERAGE = RangeCoverage(
     source_event_date=None,
     valid_until=None,
 )
+
+
+def _primary_assignment_rows(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID],
+    candidate_types: set[str],
+    event_date_from: date | None = None,
+    event_date_through: date | None = None,
+    disqualify_pending: bool = True,
+) -> list[tuple[uuid.UUID, date, str]]:
+    pending_excusal = exists(
+        select(RangeExcusalRequest.id).where(
+            RangeExcusalRequest.range_assignment_id == RangeAssignment.id,
+            RangeExcusalRequest.status == RangeExcusalStatus.pending,
+        )
+    )
+    conditions = [
+        RangeAssignment.soldier_id.in_(soldier_ids),
+        RangeAssignment.is_reserve.is_(False),
+        RangeAssignment.is_draft.is_(False),
+        RangeEvent.status == RangeEventStatus.planned,
+        RangeEvent.range_type.in_(candidate_types),
+    ]
+    if event_date_from is not None:
+        conditions.append(RangeEvent.date >= event_date_from)
+    if event_date_through is not None:
+        conditions.append(RangeEvent.date <= event_date_through)
+    if disqualify_pending:
+        conditions.append(~pending_excusal)
+    return session.execute(
+        select(
+            RangeAssignment.soldier_id,
+            RangeEvent.date,
+            RangeEvent.range_type,
+        )
+        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
+        .where(*conditions)
+    ).all()
+
+
+def _completed_reserve_assignment_rows(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID],
+    candidate_types: set[str],
+    event_date_from: date | None = None,
+    event_date_through: date | None = None,
+) -> list[tuple[uuid.UUID, date, str]]:
+    conditions = [
+        RangeAssignment.soldier_id.in_(soldier_ids),
+        RangeAssignment.is_reserve.is_(True),
+        RangeAssignment.is_draft.is_(False),
+        RangeAssignment.attendance_status == RangeAttendanceStatus.present,
+        RangeEvent.status != RangeEventStatus.cancelled,
+        RangeEvent.range_type.in_(candidate_types),
+    ]
+    if event_date_from is not None:
+        conditions.append(RangeEvent.date >= event_date_from)
+    if event_date_through is not None:
+        conditions.append(RangeEvent.date <= event_date_through)
+    return session.execute(
+        select(
+            RangeAssignment.soldier_id,
+            RangeEvent.date,
+            RangeEvent.range_type,
+        )
+        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
+        .where(*conditions)
+    ).all()
 
 
 def _range_types_at_or_above(required_range_type: str) -> set[str]:
@@ -138,29 +209,12 @@ def get_range_coverages(
             )
         )
 
-    pending_excusal = exists(
-        select(RangeExcusalRequest.id).where(
-            RangeExcusalRequest.range_assignment_id == RangeAssignment.id,
-            RangeExcusalRequest.status == RangeExcusalStatus.pending,
-        )
+    primary_rows = _primary_assignment_rows(
+        session,
+        soldier_ids=unique_soldier_ids,
+        candidate_types=candidate_types,
+        event_date_through=as_of,
     )
-    primary_rows = session.execute(
-        select(
-            RangeAssignment.soldier_id,
-            RangeEvent.date,
-            RangeEvent.range_type,
-        )
-        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
-        .where(
-            RangeAssignment.soldier_id.in_(unique_soldier_ids),
-            RangeAssignment.is_reserve.is_(False),
-            RangeAssignment.is_draft.is_(False),
-            RangeEvent.status == RangeEventStatus.planned,
-            RangeEvent.date <= as_of,
-            RangeEvent.range_type.in_(candidate_types),
-            ~pending_excusal,
-        )
-    ).all()
     validity_days = {
         range_type: _validity_days(session, range_type)
         for range_type in {row.range_type for row in primary_rows}
@@ -181,23 +235,12 @@ def get_range_coverages(
             )
         )
 
-    reserve_rows = session.execute(
-        select(
-            RangeAssignment.soldier_id,
-            RangeEvent.date,
-            RangeEvent.range_type,
-        )
-        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
-        .where(
-            RangeAssignment.soldier_id.in_(unique_soldier_ids),
-            RangeAssignment.is_reserve.is_(True),
-            RangeAssignment.is_draft.is_(False),
-            RangeAssignment.attendance_status == RangeAttendanceStatus.present,
-            RangeEvent.status != RangeEventStatus.cancelled,
-            RangeEvent.date <= as_of,
-            RangeEvent.range_type.in_(candidate_types),
-        )
-    ).all()
+    reserve_rows = _completed_reserve_assignment_rows(
+        session,
+        soldier_ids=unique_soldier_ids,
+        candidate_types=candidate_types,
+        event_date_through=as_of,
+    )
     validity_days.update({
         range_type: _validity_days(session, range_type)
         for range_type in {row.range_type for row in reserve_rows} - validity_days.keys()
@@ -237,3 +280,67 @@ def get_range_coverage(
         required_range_type=required_range_type,
         as_of=as_of,
     )[soldier_id]
+
+
+def get_projected_range_windows(
+    session: Session,
+    *,
+    soldier_ids: Sequence[uuid.UUID],
+    required_range_types: Sequence[str],
+    future_start: date,
+    disqualify_pending: bool,
+) -> dict[tuple[uuid.UUID, str], list[tuple[date, date, str]]]:
+    """Return future eligibility windows under the shared range-coverage rules.
+
+    Candidate ranking always treats a pending primary excusal as reserve-like.
+    Eligibility projections retain their existing configurable policy through
+    ``disqualify_pending``; all other primary, reserve, draft, status, date,
+    and range-tier predicates are shared.
+    """
+    unique_soldier_ids = set(soldier_ids)
+    unique_required_types = set(required_range_types)
+    if not unique_soldier_ids or not unique_required_types:
+        return {}
+
+    candidate_types = {
+        candidate_type
+        for required_range_type in unique_required_types
+        for candidate_type in _range_types_at_or_above(required_range_type)
+    }
+    primary_rows = _primary_assignment_rows(
+        session,
+        soldier_ids=unique_soldier_ids,
+        candidate_types=candidate_types,
+        event_date_from=future_start,
+        disqualify_pending=disqualify_pending,
+    )
+    reserve_rows = _completed_reserve_assignment_rows(
+        session,
+        soldier_ids=unique_soldier_ids,
+        candidate_types=candidate_types,
+        event_date_from=future_start,
+    )
+    validity_days_by_type = {
+        range_type: _validity_days(session, range_type)
+        for range_type in {row.range_type for row in primary_rows + reserve_rows}
+    }
+    windows_by_soldier_and_type: defaultdict[
+        uuid.UUID, defaultdict[str, list[tuple[date, date, str]]]
+    ] = defaultdict(lambda: defaultdict(list))
+    for soldier_id, event_date, range_type in primary_rows + reserve_rows:
+        windows_by_soldier_and_type[soldier_id][range_type].append(
+            (event_date, event_date + timedelta(days=validity_days_by_type[range_type]), range_type)
+        )
+
+    return {
+        (soldier_id, required_range_type): sorted(
+            (
+                window
+                for range_type in _range_types_at_or_above(required_range_type)
+                for window in windows_by_soldier_and_type[soldier_id].get(range_type, [])
+            ),
+            key=lambda window: (window[0], window[1]),
+        )
+        for soldier_id in unique_soldier_ids
+        for required_range_type in unique_required_types
+    }

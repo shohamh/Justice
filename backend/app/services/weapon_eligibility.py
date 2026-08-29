@@ -9,14 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import DutyBlock
-from app.db.models import (
-    RangeAssignment,
-    RangeEvent,
-    RangeEventStatus,
-    RangeExcusalRequest,
-    RangeExcusalStatus,
-)
 from app.services.range_auto_assign import _qualification_types_at_or_above
+from app.services.range_coverage import get_projected_range_windows
 from app.services.ranges import _validity_days
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -164,71 +158,13 @@ def _future_windows_by_soldier_and_required_type(
     defaults to real ``date.today()`` so existing production eligibility rules
     never treat a past range as a future qualification window.
     """
-    unique_soldier_ids = set(soldier_ids)
-    unique_required_types = set(required_range_types)
-    if not unique_soldier_ids or not unique_required_types:
-        return {}
-    candidate_types = {
-        candidate_type
-        for required_range_type in unique_required_types
-        for candidate_type in _qualification_types_at_or_above(required_range_type)
-    }
-    rows = session.execute(
-        select(
-            RangeAssignment.id,
-            RangeAssignment.soldier_id,
-            RangeEvent.date,
-            RangeEvent.range_type,
-        )
-        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
-        .where(
-            RangeAssignment.soldier_id.in_(unique_soldier_ids),
-            RangeAssignment.is_reserve.is_(False),
-            RangeAssignment.is_draft.is_(False),
-            RangeEvent.range_type.in_(candidate_types),
-            RangeEvent.status == RangeEventStatus.planned,
-            RangeEvent.date >= (future_start or date.today()),
-        )
-    ).all()
-    pending_assignment_ids: set[uuid.UUID] = set()
-    if disqualify_pending and rows:
-        pending_assignment_ids = set(
-            session.execute(
-                select(RangeExcusalRequest.range_assignment_id).where(
-                    RangeExcusalRequest.range_assignment_id.in_([row.id for row in rows]),
-                    RangeExcusalRequest.status == RangeExcusalStatus.pending,
-                )
-            ).scalars()
-        )
-    windows_by_soldier_and_type: defaultdict[
-        uuid.UUID, defaultdict[str, list[tuple[date, date, str]]]
-    ] = defaultdict(lambda: defaultdict(list))
-    validity_days_by_type = {
-        range_type: _validity_days(session, range_type)
-        for range_type in {row.range_type for row in rows}
-    }
-    for assignment_id, soldier_id, event_date, range_type in rows:
-        if assignment_id not in pending_assignment_ids:
-            windows_by_soldier_and_type[soldier_id][range_type].append(
-                (
-                    event_date,
-                    event_date + timedelta(days=validity_days_by_type[range_type]),
-                    range_type,
-                )
-            )
-
-    return {
-        (soldier_id, required_range_type): sorted(
-            (
-                window
-                for range_type in _qualification_types_at_or_above(required_range_type)
-                for window in windows_by_soldier_and_type[soldier_id].get(range_type, [])
-            ),
-            key=lambda window: (window[0], window[1]),
-        )
-        for soldier_id in unique_soldier_ids
-        for required_range_type in unique_required_types
-    }
+    return get_projected_range_windows(
+        session,
+        soldier_ids=soldier_ids,
+        required_range_types=required_range_types,
+        future_start=future_start or date.today(),
+        disqualify_pending=disqualify_pending,
+    )
 
 
 def _max_qualification_valid_until(

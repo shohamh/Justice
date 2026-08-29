@@ -9,6 +9,7 @@ import pytest
 from app.db.models import (
     DutyType,
     RangeAssignment,
+    RangeAttendanceStatus,
     RangeExcusalRequest,
     RangeExcusalStatus,
     RangeType,
@@ -294,6 +295,59 @@ def test_confirmed_reserve_range_provides_reserve_like_coverage(admin_session):
 
     assert eligible is True
     assert reason is None
+
+
+@pytest.mark.parametrize(
+    ("assignment_kwargs", "has_pending_excusal", "expected_eligible"),
+    [
+        ({}, False, True),
+        ({"is_reserve": True, "attendance_status": RangeAttendanceStatus.present}, False, True),
+        ({"is_reserve": True, "attendance_status": RangeAttendanceStatus.pending}, False, False),
+        ({}, True, False),
+        ({"is_draft": True}, False, False),
+    ],
+    ids=["primary", "completed-reserve", "unconfirmed-reserve", "pending-primary", "draft-primary"],
+)
+def test_range_eligibility_projects_only_guaranteed_future_range_coverage_at_duty_date(
+    admin_session, assignment_kwargs, has_pending_excusal, expected_eligible,
+):
+    """A mutation that treats any future assignment as qualification must fail here."""
+    node = create_node(admin_session, level="branch", name="future eligibility coverage")
+    soldier = create_soldier(
+        admin_session, personal_number=f"future-eligibility-{uuid.uuid4().hex[:8]}", hierarchy_node_id=node.id,
+    )
+    range_date = date.today() + timedelta(days=2)
+    event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.live,
+        event_date=range_date, range_location=create_range_location(admin_session),
+    )
+    assignment = RangeAssignment(
+        range_event_id=event.id,
+        soldier_id=soldier.id,
+        **{"is_reserve": False, **assignment_kwargs},
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    if has_pending_excusal:
+        admin_session.add(RangeExcusalRequest(
+            range_assignment_id=assignment.id,
+            range_event_id=event.id,
+            requested_by=None,
+            reason="pending",
+            status=RangeExcusalStatus.pending,
+        ))
+    admin_session.commit()
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+
+    eligible, reason = compute_eligibility(
+        admin_session,
+        soldier_id=soldier.id,
+        required_range_type=RangeType.laser,
+        as_of=range_date + timedelta(days=1),
+    )
+
+    assert eligible is expected_eligible
+    assert reason == (None if expected_eligible else "weapon_qualification")
 
 
 def test_range_coverage_classifies_qualification_primary_reserve_and_later_range(admin_session):
