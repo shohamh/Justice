@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-29
+
+### Features
+- Added an admin errors inbox with structured backend/frontend 500-error logging, per-admin unread tracking, source/date filters, clear-through cleanup, mark-read actions, multiline stack traces, and copy-to-clipboard controls.
+- Added frontend request URL/method details and unified LTR presentation for technical error messages and paths.
+
+### Fixes
+- Fixed clearing active error logs on Windows by safely pausing and reopening the dedicated log handlers around cleanup.
+- Separated mark-all-as-read actions for errors and bug reports, and reordered the admin tabs so errors precede the audit log.
+
+### Chores
+- Added backend and frontend regression coverage for error logging, unread behavior, tab ordering, request details, and mobile-friendly error presentation.
+
 ## 2026-08-28
 
 ### Features
