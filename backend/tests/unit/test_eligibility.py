@@ -6,14 +6,16 @@ from decimal import Decimal
 
 import pytest
 
-from app.db.models import DutyType, Soldier
+from app.db.models import DutyType, RangeAssignment, RangeType, Soldier
 from app.services.eligibility import (
     DutyTypeRequirements,
     _is_eligible,
     compute_eligibility_exclusions,
     inferred_service_type,
 )
-from tests.helpers import create_soldier
+from app.services.weapon_eligibility import compute_eligibility
+from app.services.settings_loader import set_setting
+from tests.helpers import create_node, create_range_event, create_range_location, create_soldier
 
 
 def _soldier(**kwargs) -> Soldier:
@@ -205,3 +207,59 @@ def test_compute_eligibility_exclusions_respects_reference_date(admin_session):
         admin_session, [soldier], mitvahim_months=6, alal_months=3, reference_date=date.today() + timedelta(days=60),
     )
     assert dt.id in future_exclusions.get(soldier.id, set())
+
+
+def test_range_eligibility_is_date_aware_for_primary_assignment(admin_session):
+    node = create_node(admin_session, level="branch", name="eligibility sequencing")
+    soldier = create_soldier(admin_session, personal_number="eligibility-sequencing", hierarchy_node_id=node.id)
+    earlier = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=2), range_location=create_range_location(admin_session),
+    )
+    later = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=12), range_location=create_range_location(admin_session),
+    )
+    admin_session.add(RangeAssignment(range_event_id=earlier.id, soldier_id=soldier.id, is_reserve=False))
+    admin_session.commit()
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+
+    assert compute_eligibility(
+        admin_session, soldier_id=soldier.id, required_range_type=RangeType.laser,
+        as_of=date.today() + timedelta(days=6),
+    )[0] is True
+    assert compute_eligibility(
+        admin_session, soldier_id=soldier.id, required_range_type=RangeType.laser,
+        as_of=date.today() + timedelta(days=1),
+    )[0] is False
+
+
+def test_range_eligibility_does_not_count_pending_or_draft_reserve_assignment(admin_session):
+    node = create_node(admin_session, level="branch", name="eligibility reserve sequencing")
+    soldier = create_soldier(admin_session, personal_number="eligibility-reserve", hierarchy_node_id=node.id)
+    reserve_event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=date.today() - timedelta(days=2), range_location=create_range_location(admin_session),
+    )
+    draft_event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=date.today() - timedelta(days=1), range_location=create_range_location(admin_session),
+    )
+    draft_reserve_event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=date.today() - timedelta(days=3), range_location=create_range_location(admin_session),
+    )
+    admin_session.add_all([
+        RangeAssignment(range_event_id=reserve_event.id, soldier_id=soldier.id, is_reserve=True, attendance_status="pending"),
+        RangeAssignment(range_event_id=draft_event.id, soldier_id=soldier.id, is_reserve=False, is_draft=True),
+        RangeAssignment(range_event_id=draft_reserve_event.id, soldier_id=soldier.id, is_reserve=True, is_draft=True),
+    ])
+    admin_session.commit()
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+
+    eligible, reason = compute_eligibility(
+        admin_session, soldier_id=soldier.id, required_range_type=RangeType.laser, as_of=date.today(),
+    )
+
+    assert eligible is False
+    assert reason == "weapon_qualification"

@@ -11,6 +11,8 @@ from app.db.models import (
     ExemptionType,
     PersonalConstraint,
     RangeAssignment,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
     RangeType,
     Soldier,
     SoldierExemption,
@@ -573,6 +575,133 @@ def test_qualification_at_higher_range_type_counts_as_tier_d(app_session: Sessio
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "qualified"
+
+
+def test_earlier_primary_range_qualifies_later_candidate_event(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    soldier = create_soldier(app_session, personal_number="sequencing-primary", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="earlier range").id,
+        required_count=1,
+    )
+    app_session.add(RangeAssignment(
+        range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False,
+    ))
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code == "qualified"
+
+
+def test_primary_coverage_is_stronger_than_reserve_coverage(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=2)
+    primary = create_soldier(app_session, personal_number="sequencing-primary-kind", hierarchy_node_id=node.id)
+    reserve = create_soldier(app_session, personal_number="sequencing-reserve-kind", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="kind range").id,
+        required_count=1,
+    )
+    app_session.add_all([
+        RangeAssignment(range_event_id=earlier_event.id, soldier_id=primary.id, is_reserve=False),
+        RangeAssignment(range_event_id=earlier_event.id, soldier_id=reserve.id, is_reserve=True,
+                        attendance_status="pending"),
+    ])
+    app_session.commit()
+
+    ranked = {candidate.soldier.id: candidate for candidate in rank_candidates(app_session, event=event, user=dm)}
+
+    assert ranked[primary.id].reason_code == "qualified"
+    assert ranked[reserve.id].reason_code != "qualified"
+
+
+def test_pending_primary_excusal_makes_range_reserve_like(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    soldier = create_soldier(app_session, personal_number="sequencing-pending", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="pending range").id,
+        required_count=1,
+    )
+    assignment = RangeAssignment(range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False)
+    app_session.add(assignment)
+    app_session.flush()
+    app_session.add(RangeExcusalRequest(
+        range_assignment_id=assignment.id, range_event_id=earlier_event.id,
+        requested_by=None, reason="pending", status=RangeExcusalStatus.pending,
+    ))
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code != "qualified"
+
+
+def test_future_range_after_candidate_event_does_not_cover_current_event(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    soldier = create_soldier(app_session, personal_number="sequencing-future", hierarchy_node_id=node.id)
+    future_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="future range").id,
+        required_count=1,
+    )
+    app_session.add(RangeAssignment(range_event_id=future_event.id, soldier_id=soldier.id, is_reserve=False))
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code != "qualified"
+
+
+def test_candidate_duty_ranking_uses_duties_after_event_and_primary_before_reserve(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="sequencing duties")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="sequencing weapon")
+    location = create_duty_location(app_session)
+    dm = _dm_for(app_session, node, personal_number="sequencing-duty-dm")
+    event_date = date.today() + timedelta(days=5)
+    primary = create_soldier(app_session, personal_number="sequencing-duty-primary", hierarchy_node_id=node.id)
+    reserve = create_soldier(app_session, personal_number="sequencing-duty-reserve", hierarchy_node_id=node.id)
+    app_session.add_all([
+        DutyAssignment(
+            soldier_id=primary.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=2), end_date=date.today() + timedelta(days=2),
+            status="published", is_reserve=False,
+        ),
+        DutyAssignment(
+            soldier_id=primary.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=10), end_date=date.today() + timedelta(days=10),
+            status="published", is_reserve=False,
+        ),
+        DutyAssignment(
+            soldier_id=reserve.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=6), end_date=date.today() + timedelta(days=6),
+            status="published", is_reserve=True,
+        ),
+    ])
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="duty ranking range").id,
+        required_count=2,
+    )
+
+    ranked = [candidate.soldier.id for candidate in rank_candidates(app_session, event=event, user=dm)]
+
+    assert ranked[:2] == [primary.id, reserve.id]
+    primary_candidate = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                             if candidate.soldier.id == primary.id)
+    assert primary_candidate.explanation.endswith(
+        f"{(date.today() + timedelta(days=10)).strftime('%d.%m.%Y')}"
+    )
 
 
 def test_reason_code_available_and_balanced_when_no_qualification_or_duty(app_session: Session) -> None:
