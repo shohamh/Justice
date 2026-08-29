@@ -6,13 +6,22 @@ from decimal import Decimal
 
 import pytest
 
-from app.db.models import DutyType, RangeAssignment, RangeType, Soldier
+from app.db.models import (
+    DutyType,
+    RangeAssignment,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
+    RangeType,
+    Soldier,
+    SoldierRangeQualification,
+)
 from app.services.eligibility import (
     DutyTypeRequirements,
     _is_eligible,
     compute_eligibility_exclusions,
     inferred_service_type,
 )
+from app.services.range_coverage import get_range_coverage, get_range_coverages
 from app.services.weapon_eligibility import compute_eligibility
 from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_range_event, create_range_location, create_soldier
@@ -285,3 +294,66 @@ def test_confirmed_reserve_range_provides_reserve_like_coverage(admin_session):
 
     assert eligible is True
     assert reason is None
+
+
+def test_range_coverage_classifies_qualification_primary_reserve_and_later_range(admin_session):
+    node = create_node(admin_session, level="branch", name="shared coverage")
+    as_of = date.today() + timedelta(days=10)
+    qualified = create_soldier(admin_session, personal_number="coverage-qualified", hierarchy_node_id=node.id)
+    primary = create_soldier(admin_session, personal_number="coverage-primary", hierarchy_node_id=node.id)
+    reserve = create_soldier(admin_session, personal_number="coverage-reserve", hierarchy_node_id=node.id)
+    later = create_soldier(admin_session, personal_number="coverage-later", hierarchy_node_id=node.id)
+    pending = create_soldier(admin_session, personal_number="coverage-pending", hierarchy_node_id=node.id)
+    draft = create_soldier(admin_session, personal_number="coverage-draft", hierarchy_node_id=node.id)
+    admin_session.add(SoldierRangeQualification(
+        soldier_id=qualified.id, range_type=RangeType.live, valid_until=as_of,
+    ))
+    earlier_event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=as_of - timedelta(days=2), range_location=create_range_location(admin_session),
+    )
+    later_event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=as_of + timedelta(days=1), range_location=create_range_location(admin_session),
+    )
+    pending_assignment = RangeAssignment(
+        range_event_id=earlier_event.id, soldier_id=pending.id, is_reserve=False,
+    )
+    admin_session.add_all([
+        RangeAssignment(range_event_id=earlier_event.id, soldier_id=primary.id, is_reserve=False),
+        RangeAssignment(
+            range_event_id=earlier_event.id, soldier_id=reserve.id, is_reserve=True, attendance_status="present",
+        ),
+        RangeAssignment(range_event_id=later_event.id, soldier_id=later.id, is_reserve=False),
+        pending_assignment,
+        RangeAssignment(range_event_id=earlier_event.id, soldier_id=draft.id, is_reserve=False, is_draft=True),
+    ])
+    admin_session.flush()
+    admin_session.add(RangeExcusalRequest(
+        range_assignment_id=pending_assignment.id,
+        range_event_id=earlier_event.id,
+        requested_by=None,
+        reason="pending",
+        status=RangeExcusalStatus.pending,
+    ))
+    admin_session.commit()
+
+    coverages = get_range_coverages(
+        admin_session,
+        soldier_ids=[qualified.id, primary.id, reserve.id, later.id, pending.id, draft.id],
+        required_range_type=RangeType.laser,
+        as_of=as_of,
+    )
+
+    assert coverages[qualified.id].coverage_kind == "qualification"
+    assert coverages[qualified.id].valid_until == as_of
+    assert coverages[primary.id].coverage_kind == "primary_range"
+    assert coverages[primary.id].qualified is True
+    assert coverages[primary.id].source_event_date == earlier_event.date
+    assert coverages[reserve.id].coverage_kind == "reserve_range"
+    assert coverages[reserve.id].qualified is True
+    assert get_range_coverage(
+        admin_session, soldier_id=later.id, required_range_type=RangeType.laser, as_of=as_of,
+    ).coverage_kind == "none"
+    assert coverages[pending.id].coverage_kind == "none"
+    assert coverages[draft.id].coverage_kind == "none"
