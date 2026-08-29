@@ -19,6 +19,7 @@ router = APIRouter(prefix="/hierarchy-transfers", tags=["hierarchy_transfers"])
 class CreateTransferBody(BaseModel):
     soldier_id: uuid.UUID
     to_node_id: uuid.UUID
+    reason: str | None = None
 
 
 class DecisionBody(BaseModel):
@@ -32,12 +33,14 @@ class TransferOut(BaseModel):
     from_node_id: uuid.UUID | None
     to_node_id: uuid.UUID
     status: str
+    reason: str | None
 
 
 def _out(req: HierarchyTransferRequest, soldier_name: str) -> TransferOut:
     return TransferOut(
         id=req.id, soldier_id=req.soldier_id, soldier_name=soldier_name,
         from_node_id=req.from_node_id, to_node_id=req.to_node_id, status=req.status,
+        reason=req.reason,
     )
 
 
@@ -53,7 +56,7 @@ def create_transfer(
     source_node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
     authorize(session, user, Action.HIERARCHY_TRANSFER, target_node=source_node)
     try:
-        req = svc.create_request(session, soldier_id=body.soldier_id, to_node_id=body.to_node_id, requested_by=user.id)
+        req = svc.create_request(session, soldier_id=body.soldier_id, to_node_id=body.to_node_id, requested_by=user.id, reason=body.reason)
     except svc.HierarchyTransferError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     session.commit()

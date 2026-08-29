@@ -4,7 +4,7 @@ subject to approval by the destination node's commander/duty managers.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -22,15 +22,44 @@ class HierarchyTransferError(Exception):
 
 def create_request(
     session: Session, *, soldier_id: uuid.UUID, to_node_id: uuid.UUID,
-    requested_by: uuid.UUID,
+    requested_by: uuid.UUID, reason: str | None = None,
 ) -> HierarchyTransferRequest:
-    soldier = session.get(Soldier, soldier_id)
+    # Serialize requests for the same soldier so concurrent submissions cannot
+    # both observe that there is no pending request.
+    soldier = session.execute(
+        select(Soldier).where(Soldier.id == soldier_id).with_for_update()
+    ).scalar_one_or_none()
     if soldier is None:
         raise HierarchyTransferError("soldier_not_found")
     if session.get(HierarchyNode, to_node_id) is None:
         raise HierarchyTransferError("to_node_not_found")
+    normalized_reason = reason.strip() if reason else None
 
-    window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+    existing = session.execute(
+        select(HierarchyTransferRequest).where(
+            HierarchyTransferRequest.soldier_id == soldier_id,
+            HierarchyTransferRequest.status == "pending",
+        ).order_by(HierarchyTransferRequest.created_at, HierarchyTransferRequest.id)
+    ).scalars().first()
+    if existing is not None:
+        if existing.to_node_id == to_node_id and existing.reason == normalized_reason:
+            return existing
+        existing.from_node_id = soldier.hierarchy_node_id
+        existing.to_node_id = to_node_id
+        existing.reason = normalized_reason
+        existing.status = "pending"
+        existing.decided_by = None
+        existing.decision_note = None
+        session.flush()
+        _notify_destination_approvers(session, existing)
+        write_audit(
+            session, actor_id=requested_by, action="hierarchy_transfer.request_updated",
+            entity_type="hierarchy_transfer_request", entity_id=existing.id,
+            after={"soldier_id": str(soldier_id), "to_node_id": str(to_node_id)},
+        )
+        return existing
+
+    window_start = datetime.now(UTC) - timedelta(hours=24)
     recent_count = session.execute(
         select(func.count()).select_from(HierarchyTransferRequest).where(
             HierarchyTransferRequest.soldier_id == soldier_id,
@@ -42,7 +71,7 @@ def create_request(
 
     req = HierarchyTransferRequest(
         soldier_id=soldier_id, from_node_id=soldier.hierarchy_node_id,
-        to_node_id=to_node_id, requested_by=requested_by,
+        to_node_id=to_node_id, requested_by=requested_by, reason=normalized_reason,
     )
     session.add(req)
     session.flush()

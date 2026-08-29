@@ -11,9 +11,11 @@ import {
   useDraggable,
 } from "@dnd-kit/core";
 import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
+import { Network, Plus, Trash2, UserPlus } from "lucide-react";
 import PopoverDropdown from "./PopoverDropdown";
 import { SoldierDTO, onboardSoldier } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
+import { translateApiError } from "../utils/translateApiError";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
 import AssignDutyManagersDialog from "./AssignDutyManagersDialog";
@@ -58,6 +60,18 @@ interface DragDataNode {
 }
 type DragData = DragDataSoldier | DragDataNode;
 
+interface PendingTransfer {
+  soldierId: string;
+  soldierName: string;
+  nodeId: string;
+  nodeName: string;
+  nodeLevel: string;
+}
+
+interface TransferSuccessInfo {
+  commander: { id: string; name: string } | null;
+}
+
 interface Props {
   nodes: NodeDTO[];
   soldiers: SoldierDTO[];
@@ -94,13 +108,13 @@ function DraggableSoldier({
       )}
       <SoldierAvatar url={s.profile_picture_url} name={s.full_name} />
       <SoldierLink id={s.id} name={s.full_name} />
-      <span className="text-xs text-gray-400">({s.personal_number})</span>
       <TelegramBadge linked={s.telegram_linked} />
       {canEdit && (
         <button
           className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline ml-auto"
           onClick={() => onEdit(s)}
           aria-label={t("team.edit")}
+          title={t("team.edit")}
           data-testid={`edit-soldier-${s.personal_number}`}
         >
           ✏️
@@ -160,16 +174,15 @@ function DroppableNodeRow({
     setDragRef(el);
   }, [setDropRef, setDragRef]);
 
-  const hasSecondaryInfo = !!node.commander_name || node.duty_managers.length > 0;
-
   return (
     <div
       ref={setRef}
-      className={`py-1 px-2 rounded ${depth > 0 ? "mr-4" : ""} ${
+      className={`py-1 px-2 rounded ${depth > 0 ? "mr-4 sm:mr-8" : ""} ${
         isDragging ? "opacity-40" : ""
       } ${isOver ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950" : "hover:bg-gray-50 dark:hover:bg-gray-700"}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <button
           className={`w-4 h-4 shrink-0 flex items-center justify-center text-xs ${hasChildren || hasSoldiers ? "visible" : "invisible"}`}
           onClick={onToggle}
@@ -192,83 +205,67 @@ function DroppableNodeRow({
             {levelLabel}
           </span>
         )}
-        <span className="font-medium truncate" data-testid={`tree-name-${node.id}`}>{node.name}</span>
+        <span className="font-medium truncate min-w-0" data-testid={`tree-name-${node.id}`}>{node.name}</span>
         {node.can_edit && (
           <button
             type="button"
-            className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline"
+            className="shrink-0 rounded border border-indigo-300 p-0.5 text-indigo-600 hover:bg-indigo-100 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
             onClick={onRename}
             aria-label={t("team.edit")}
+            title={t("team.edit")}
             data-testid={`tree-edit-name-${node.id}`}
           >
             ✏️
           </button>
         )}
+        </div>
         {(node.can_edit || node.dm_manageable) && (
-          <div className="ml-auto shrink-0">
+          <div className="ml-1 shrink-0 sm:hidden">
             <PopoverDropdown
               triggerLabel=""
               badgeCount={0}
               title={t("team.actions")}
-              triggerClassName="text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center"
+              triggerClassName="inline-flex h-7 w-7 items-center justify-center rounded border border-gray-400 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
               panelDir="rtl"
-              panelClassName="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-40 flex flex-col py-1"
+              panelClassName="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-52 flex flex-col py-1"
               triggerTestId={`tree-actions-menu-${node.id}`}
             >
               {(close) => (
                 <>
                   {node.can_edit && canHaveChildren && (
-                    <button
-                      className="text-sm px-3 py-1.5 text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                      onClick={() => { onAddChild(); close(); }}
-                      data-testid={`tree-add-child-${node.id}`}
-                    >
-                      +{t("team.add_node")}
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAddChild(); close(); }}>
+                      <Network size={16} aria-hidden="true" />+{t("team.add_node")}
                     </button>
                   )}
                   {node.can_edit && (
-                    <button
-                      className="text-sm px-3 py-1.5 text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                      onClick={() => { onAddSoldier(); close(); }}
-                      data-testid={`tree-add-soldier-${node.id}`}
-                    >
-                      +{t("team.add_soldier")}
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAddSoldier(); close(); }}>
+                      <UserPlus size={16} aria-hidden="true" />+{t("team.add_soldier")}
                     </button>
                   )}
                   {node.can_edit && (
-                    <button
-                      className="text-sm px-3 py-1.5 text-green-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-                      onClick={() => { onAssignCommander(); close(); }}
-                      data-testid={`tree-commander-btn-${node.id}`}
-                    >
-                      {t("team.assign_commander")}
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-green-600 dark:text-green-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAssignCommander(); close(); }}>
+                      <span aria-hidden="true">👑</span>{t("team.assign_commander")}
                     </button>
                   )}
                   {node.dm_manageable && (
-                    <button
-                      className="text-sm px-3 py-1.5 text-green-700 hover:bg-gray-50 dark:hover:bg-gray-700"
-                      onClick={() => { onManageDutyManagers(); close(); }}
-                      data-testid={`tree-dm-btn-${node.id}`}
-                    >
-                      {t("team.assign_duty_managers")}
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-green-700 dark:text-green-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onManageDutyManagers(); close(); }}>
+                      <span aria-hidden="true">📋</span>{t("team.assign_duty_managers")}
+                    </button>
+                  )}
+                  {node.can_edit && (
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-amber-600 dark:text-amber-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onRename(); close(); }}>
+                      ✏️{t("team.edit")}
                     </button>
                   )}
                   {node.can_edit && (
                     <button
-                      className="text-sm px-3 py-1.5 text-amber-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-                      onClick={() => { onRename(); close(); }}
-                      data-testid={`tree-rename-${node.id}`}
-                    >
-                      {t("team.edit")}
-                    </button>
-                  )}
-                  {node.can_edit && !node.commander_id && !hasChildren && (
-                    <button
-                      className="text-sm px-3 py-1.5 text-red-500 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      type="button"
+                      disabled={hasChildren || hasSoldiers}
+                      className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40"
                       onClick={() => { onDelete(); close(); }}
-                      data-testid={`tree-delete-${node.id}`}
+                      title={hasChildren || hasSoldiers ? "לא ניתן למחוק היררכיה שיש בה חיילים או תתי היררכיות" : t("duty_config.delete")}
                     >
-                      {t("duty_config.delete")}
+                      <Trash2 size={16} aria-hidden="true" />{t("duty_config.delete")}
                     </button>
                   )}
                 </>
@@ -276,59 +273,116 @@ function DroppableNodeRow({
             </PopoverDropdown>
           </div>
         )}
-      </div>
-
-      {hasSecondaryInfo && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 pr-6 text-xs text-gray-400">
-          {node.commander_name && (
-            <span data-testid={`tree-commander-${node.id}`}>
-              {t("team.commander")}: {node.commander_id ? (
-                <SoldierLink id={node.commander_id} name={node.commander_name} />
-              ) : node.commander_name}
-              {node.can_edit && (
-                <button
-                  type="button"
-                  className="mr-1 hover:underline text-indigo-600 dark:text-indigo-300"
-                  onClick={onAssignCommander}
-                  aria-label={t("team.edit")}
-                  data-testid={`tree-edit-commander-${node.id}`}
-                >
-                  ✏️
-                </button>
-              )}
-            </span>
-          )}
-          {node.duty_managers.length > 0 && (
-            <span data-testid={`tree-dm-list-${node.id}`}>
-              {t("team.duty_managers")}:{" "}
-              {node.duty_managers.map((dm, i) => (
-                <span key={dm.scope_id}>
-                  {i > 0 && ", "}
+        {(node.can_edit || node.dm_manageable) && (
+          <div className="ml-1 hidden shrink-0 grid-cols-5 items-start gap-0.5 sm:grid sm:gap-1" data-testid={`tree-action-group-${node.id}`}>
+            {node.can_edit ? (
+              <div className="flex min-h-14 w-12 items-start justify-center">
+                {canHaveChildren ? (
                   <button
                     type="button"
-                    className="hover:underline text-indigo-600 dark:text-indigo-300"
-                    onClick={() => onOpenPortfolio(dm.soldier_id, dm.name)}
-                    data-testid={`tree-dm-link-${dm.scope_id}`}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded border border-indigo-300 p-0.5 text-indigo-600 hover:bg-indigo-100 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/50 sm:p-1"
+                    onClick={onAddChild}
+                    aria-label={t("team.add_node")}
+                    title={t("team.add_node")}
+                    data-testid={`tree-add-child-${node.id}`}
                   >
-                    {dm.name}
+                    <span className="relative inline-flex h-4 w-4 items-center justify-center" aria-hidden="true">
+                      <Network size={15} />
+                      <Plus size={8} strokeWidth={3} className="absolute -top-0.5 -right-0.5" />
+                    </span>
                   </button>
-                </span>
-              ))}
-              {node.dm_manageable && (
+                ) : <span className="h-7 w-7" aria-hidden="true" />}
+              </div>
+            ) : null}
+            {node.can_edit ? (
+              <div className="flex min-h-14 w-12 items-start justify-center">
                 <button
                   type="button"
-                  className="mr-1 hover:underline text-indigo-600 dark:text-indigo-300"
-                  onClick={onManageDutyManagers}
-                  aria-label={t("team.edit")}
-                  data-testid={`tree-edit-dm-${node.id}`}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-indigo-300 p-0.5 text-indigo-600 hover:bg-indigo-100 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/50 sm:p-1"
+                  onClick={onAddSoldier}
+                  aria-label={t("team.add_soldier")}
+                  title={t("team.add_soldier")}
+                  data-testid={`tree-add-soldier-${node.id}`}
                 >
-                  ✏️
+                  <UserPlus size={16} aria-hidden="true" />
                 </button>
-              )}
-            </span>
-          )}
-        </div>
-      )}
+              </div>
+            ) : null}
+            {(node.can_edit || node.commander_name) && (
+              <div className="flex min-h-14 w-12 flex-col items-center leading-none">
+                {node.can_edit ? (
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded border border-green-300 p-0.5 text-green-600 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900/50 sm:p-1"
+                    onClick={onAssignCommander}
+                    aria-label={t("team.assign_commander")}
+                    title={t("team.assign_commander")}
+                    data-testid={`tree-commander-btn-${node.id}`}
+                  >
+                    <span aria-hidden="true">👑</span>
+                  </button>
+                ) : <span className="p-0.5 sm:p-1" aria-hidden="true">👑</span>}
+                {node.commander_name && node.commander_id ? (
+                  <span className="w-12 max-w-12 line-clamp-2 whitespace-normal break-words text-center text-[9px] leading-3 text-gray-400" data-testid={`tree-commander-name-${node.id}`}>
+                    <SoldierLink id={node.commander_id} name={node.commander_name} className="block whitespace-normal break-words text-center" />
+                  </span>
+                ) : (
+                  <span className="w-12 max-w-12 text-center text-[9px] leading-3 text-red-600" data-testid={`tree-commander-unassigned-${node.id}`}>לא מוגדר</span>
+                )}
+              </div>
+            )}
+            {(node.dm_manageable || node.duty_managers.length > 0) ? (
+              <div className="flex min-h-14 w-12 flex-col items-center leading-none">
+                {node.dm_manageable ? (
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded border border-green-300 p-0.5 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900/50 sm:p-1"
+                    onClick={onManageDutyManagers}
+                    aria-label={t("team.assign_duty_managers")}
+                    title={t("team.assign_duty_managers")}
+                    data-testid={`tree-dm-btn-${node.id}`}
+                  >
+                    <span aria-hidden="true">📋</span>
+                  </button>
+                ) : <span className="p-0.5 sm:p-1" aria-hidden="true">📋</span>}
+                {node.duty_managers.length > 0 && (
+                  <span className="w-12 max-w-12 line-clamp-2 whitespace-normal break-words text-center text-[9px] leading-3 text-gray-400" data-testid={`tree-dm-names-${node.id}`}>
+                    {node.duty_managers.map((dm, i) => (
+                      <span key={dm.scope_id}>
+                        {i > 0 && ", "}
+                        <button
+                          type="button"
+                          className="whitespace-normal break-words text-indigo-600 dark:text-indigo-300 hover:underline"
+                          onClick={() => onOpenPortfolio(dm.soldier_id, dm.name)}
+                          data-testid={`tree-dm-name-${dm.scope_id}`}
+                        >
+                          {dm.name}
+                        </button>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
+            ) : (node.can_edit ? <div className="min-h-14 w-12" aria-hidden="true" /> : null)}
+            {node.can_edit && (
+              <div className="flex min-h-14 w-12 items-start justify-center">
+                <button
+                  type="button"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-300 p-0.5 text-red-500 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:hover:bg-red-900/50 sm:p-1"
+                  onClick={onDelete}
+                  disabled={hasChildren || hasSoldiers}
+                  aria-label={t("duty_config.delete")}
+                  title={hasChildren || hasSoldiers ? "לא ניתן למחוק היררכיה שיש בה חיילים או תתי היררכיות" : t("duty_config.delete")}
+                  data-testid={`tree-delete-${node.id}`}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
@@ -375,6 +429,9 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
   const [dmDialogNodeId, setDmDialogNodeId] = useState<string | null>(null);
   const [deleteNodeId, setDeleteNodeId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [transferSuccess, setTransferSuccess] = useState<TransferSuccessInfo | null>(null);
+  const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null);
+  const [transferReason, setTransferReason] = useState("");
   const portfolioDialog = usePortfolioDialog(nodes, onChanged);
 
   const { levelTypes, loading: levelTypesLoading } = useLevelTypes();
@@ -414,8 +471,8 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
     try {
       await deleteNode(nodeId);
       onChanged();
-    } catch {
-      setMessage(t("errors.generic"));
+    } catch (error) {
+      setMessage(translateApiError(error, t));
     }
   }
 
@@ -426,15 +483,58 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         // hierarchy-transfer request flow (pending the destination's
         // approval), not a direct PATCH — see app/routes/soldiers.py's
         // update endpoint, which no longer accepts hierarchy_node_id.
-        await createTransferRequest(soldier.id, nodeId);
+        openTransferConfirmation(soldier.id, soldier.full_name, nodeId);
+        return;
       } else {
         await onboardSoldier({ personal_number: personalNumber, full_name: fullName, hierarchy_node_id: nodeId });
       }
       setQuickAddNode(null);
       setExpanded((prev) => new Set(prev).add(nodeId));
       onChanged();
-    } catch {
-      setMessage(t("errors.generic"));
+    } catch (error) {
+      setMessage(translateApiError(error, t));
+    }
+  }
+
+  function openTransferConfirmation(soldierId: string, soldierName: string, nodeId: string) {
+    const destination = nodes.find((n) => n.id === nodeId);
+    if (!destination) return;
+    setTransferReason("");
+    setPendingTransfer({
+      soldierId,
+      soldierName,
+      nodeId,
+      nodeName: destination.name,
+      nodeLevel: labelByKey.get(destination.level) ?? destination.level,
+    });
+  }
+
+  function findApprovingCommander(nodeId: string): { id: string; name: string } | null {
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return null;
+    const chain = [...node.path_ids].reverse();
+    for (const ancestorId of chain) {
+      const ancestor = nodes.find((n) => n.id === ancestorId);
+      if (ancestor?.commander_id) {
+        const commander = soldiers.find((s) => s.id === ancestor.commander_id);
+        if (commander) return { id: commander.id, name: commander.full_name };
+      }
+    }
+    return null;
+  }
+
+  async function confirmTransfer() {
+    if (!pendingTransfer) return;
+    const transfer = pendingTransfer;
+    setPendingTransfer(null);
+    setQuickAddNode(null);
+    try {
+      await createTransferRequest(transfer.soldierId, transfer.nodeId, transferReason);
+      setExpanded((prev) => new Set(prev).add(transfer.nodeId));
+      onChanged();
+      setTransferSuccess({ commander: findApprovingCommander(transfer.nodeId) });
+    } catch (error) {
+      setMessage(translateApiError(error, t));
     }
   }
 
@@ -455,11 +555,9 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         return;
       }
       try {
-        await createTransferRequest(dragData.id, overNodeId);
-        setExpanded((prev) => new Set(prev).add(overNodeId));
-        onChanged();
-      } catch {
-        setMessage(t("errors.generic"));
+        openTransferConfirmation(dragData.id, dragData.name, overNodeId);
+      } catch (error) {
+        setMessage(translateApiError(error, t));
       }
     } else if (dragData.kind === "node") {
       if (dragData.id === overNodeId) return;
@@ -470,8 +568,8 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
       try {
         await moveNode(dragData.id, overNodeId);
         onChanged();
-      } catch {
-        setMessage(t("errors.generic"));
+      } catch (error) {
+        setMessage(translateApiError(error, t));
       }
     }
   }
@@ -633,7 +731,26 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
           initialEditing={true}
         />
       )}
-    </>
+      <ConfirmDialog
+        open={pendingTransfer !== null}
+        title={t("team.transfer_confirm_title")}
+        message={pendingTransfer ? t("team.transfer_confirm_message").replace("{{soldier}}", pendingTransfer.soldierName).replace("{{level}}", pendingTransfer.nodeLevel).replace("{{node}}", pendingTransfer.nodeName) : ""}
+        confirmLabel={t("common.confirm")}
+        onConfirm={() => void confirmTransfer()}
+        onClose={() => setPendingTransfer(null)}
+      >
+        <label className="block text-sm text-gray-700 dark:text-gray-200">
+          {t("team.transfer_reason_label")}
+          <textarea
+            value={transferReason}
+            onChange={(event) => setTransferReason(event.target.value)}
+            placeholder={t("team.transfer_reason_placeholder")}
+            rows={3}
+            className="mt-1 w-full rounded border p-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+            data-testid="transfer-reason"
+          />
+        </label>
+      </ConfirmDialog>
       <ConfirmDialog
         open={deleteNodeId !== null}
         title={t("team.delete_node_title")}
@@ -649,5 +766,26 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         message={message ?? ""}
         onClose={() => setMessage(null)}
       />
+      <MessageDialog
+        open={transferSuccess !== null}
+        title={t("team.transfer_success_title")}
+        message={
+          transferSuccess?.commander
+            ? (() => {
+                const token = "@@COMMANDER@@";
+                const [before, after] = t("team.transfer_success_message", { commander: token }).split(token);
+                return (
+                  <>
+                    {before}
+                    <SoldierLink id={transferSuccess.commander.id} name={transferSuccess.commander.name} />
+                    {after}
+                  </>
+                );
+              })()
+            : t("team.transfer_success_message_no_commander")
+        }
+        onClose={() => setTransferSuccess(null)}
+      />
+    </>
   );
 }

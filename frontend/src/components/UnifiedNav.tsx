@@ -13,6 +13,7 @@ import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getIncomingSwapCount, isSwapActionableForUser, listPendingSwaps } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
+import { listPendingTransferRequests } from "../api/hierarchyTransfers";
 import { getPendingHakpazaCount } from "../api/hakpaza";
 import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
 import { queryKeys } from "../queryKeys";
@@ -102,15 +103,16 @@ export default function UnifiedNav() {
   useEffect(() => {
     if (!canApprove) return;
     void (async () => {
-      const [c, e, f, enroll, hk, swaps] = await Promise.all([
+      const [c, e, f, enroll, hk, swaps, transfers] = await Promise.all([
         getPendingCount().catch(() => 0),
         getPendingExemptionCount().catch(() => 0),
         getPendingFieldUpdateCount().catch(() => 0),
         listPendingEnrollments().then((r) => r.length).catch(() => 0),
         getPendingHakpazaCount().catch(() => 0),
         listPendingSwaps().then((rows) => rows.filter((swap) => isSwapActionableForUser(swap, user?.id, user?.role === "admin")).length).catch(() => 0),
+        listPendingTransferRequests().then((rows) => rows.length).catch(() => 0),
       ]);
-      setPendingCount(c + e + f + enroll + hk + swaps);
+      setPendingCount(c + e + f + enroll + hk + swaps + transfers);
     })();
   }, [canApprove, location.pathname, user?.id, user?.role]);
 

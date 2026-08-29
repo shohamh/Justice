@@ -42,6 +42,10 @@ vi.mock("../api/swaps", () => ({
   getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
   listPendingSwaps: vi.fn(() => Promise.resolve([])),
 }));
+const mockListPendingTransferRequests = vi.fn(() => Promise.resolve([]));
+vi.mock("../api/hierarchyTransfers", () => ({
+  listPendingTransferRequests: (...args: unknown[]) => mockListPendingTransferRequests(...args),
+}));
 const mockGetIneligibleSoldierCount = vi.fn();
 vi.mock("../api/ineligibleSoldiers", () => ({
   getIneligibleSoldierCount: (...args: unknown[]) => mockGetIneligibleSoldierCount(...args),
@@ -115,6 +119,8 @@ beforeEach(() => {
   mockListJobs.mockResolvedValue({ items: [], total: 0 });
   mockUsePublicSettings.mockReset();
   mockUsePublicSettings.mockReturnValue({});
+  mockListPendingTransferRequests.mockReset();
+  mockListPendingTransferRequests.mockResolvedValue([]);
   mockSeedSeenIds.mockReset();
   mockUseSeenJobs.mockReset();
   mockUseSeenJobs.mockImplementation(() => ({
@@ -290,6 +296,17 @@ describe("UnifiedNav — algorithm badge color", () => {
 
     await waitFor(() => expect(mockListJobs).toHaveBeenCalled());
     expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
+  });
+
+  test("includes pending hierarchy transfers in the commander badge", async () => {
+    mockListPendingTransferRequests.mockResolvedValue([
+      { id: "tr-1", soldier_id: "s-1", soldier_name: "Soldier 1", from_node_id: "n-1", to_node_id: "n-2", status: "pending", reason: null },
+      { id: "tr-2", soldier_id: "s-2", soldier_name: "Soldier 2", from_node_id: "n-1", to_node_id: "n-3", status: "pending", reason: "needed" },
+    ]);
+    render(<UnifiedNav />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("pending-badge").some((badge) => badge.textContent === "2")).toBe(true);
+    });
   });
 });
 

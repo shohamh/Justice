@@ -962,6 +962,7 @@ export default function ApprovalsPage() {
                     <strong><SoldierLink id={req.soldier_id} name={req.soldier_name || req.soldier_id.slice(0, 8)} /></strong>
                   </div>
                   <p className="text-gray-500">{t("approvals.transfer_from")}: <strong>{fromNodeName}</strong> ← {t("approvals.transfer_to")}: <strong>{toNodeName}</strong></p>
+                  {req.reason && <p className="text-gray-500">{t("approvals.transfer_reason")}: <strong>{req.reason}</strong></p>}
                   <div className="flex gap-2 items-center flex-wrap">
                     <button
                       onClick={() => onTransferApprove(req.id)}

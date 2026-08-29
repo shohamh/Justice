@@ -15,7 +15,7 @@ def test_create_and_approve_transfer_via_api(client: TestClient, admin_session: 
 
     resp = client.post(
         "/api/hierarchy-transfers",
-        json={"soldier_id": str(soldier.id), "to_node_id": str(dst.id)},
+        json={"soldier_id": str(soldier.id), "to_node_id": str(dst.id), "reason": "needed for staffing"},
         headers=auth_headers(admin),
     )
     assert resp.status_code == 200
@@ -23,6 +23,7 @@ def test_create_and_approve_transfer_via_api(client: TestClient, admin_session: 
     assert resp.json()["status"] == "pending"
     assert resp.json()["from_node_id"] == str(src.id)
     assert resp.json()["to_node_id"] == str(dst.id)
+    assert resp.json()["reason"] == "needed for staffing"
 
     resp2 = client.post(f"/api/hierarchy-transfers/{req_id}/approve", headers=auth_headers(admin))
     assert resp2.status_code == 200
