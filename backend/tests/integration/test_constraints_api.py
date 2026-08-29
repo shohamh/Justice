@@ -4,7 +4,22 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db.models import PersonalConstraint, PersonalConstraintOverride
+from app.services.holidays import holidays_in_range
 from tests.helpers import auth_headers, create_node, create_soldier
+
+
+def _next_holiday_free_range(span_days: int) -> tuple[date, date]:
+    """First [start, start + span_days] window from today onward (inclusive
+    on both ends, matching /api/me/constraints' own holiday check) that
+    crosses no real IL holiday — so a "no holidays in range" test stays
+    correct regardless of what day it actually runs on, instead of a
+    hardcoded date that eventually rolls into the past."""
+    start = date.today()
+    while True:
+        end = start + timedelta(days=span_days)
+        if not holidays_in_range(start, end, end_inclusive=True):
+            return start, end
+        start += timedelta(days=1)
 
 
 def test_soldier_submit_and_list(client: TestClient, admin_session: Session):
@@ -335,10 +350,11 @@ def test_submit_response_includes_crossed_holidays(client: TestClient, admin_ses
 
 def test_submit_response_has_empty_crossed_holidays_when_no_holiday_in_range(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="7500021")
+    start, end = _next_holiday_free_range(13)
     r = client.post(
         "/api/me/constraints",
         headers=auth_headers(s),
-        json={"start_date": "2026-08-29", "end_date": "2026-09-11", "reason": "חופשה"},
+        json={"start_date": start.isoformat(), "end_date": end.isoformat(), "reason": "חופשה"},
     )
     assert r.status_code == 201, r.text
     assert r.json()["crossed_holidays"] == []
