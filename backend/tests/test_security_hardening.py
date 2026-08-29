@@ -97,7 +97,7 @@ def test_cors_exposes_retry_after_and_content_disposition():
 
     app = create_app()
     cors = next(mw for mw in app.user_middleware if mw.cls is CORSMiddleware)
-    assert cors.kwargs["expose_headers"] == ["Retry-After", "Content-Disposition"]
+    assert cors.kwargs["expose_headers"] == ["Retry-After", "Content-Disposition", "X-Request-ID"]
 
 
 def test_score_adjustment_delta_bounds():
