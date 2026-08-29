@@ -19,6 +19,7 @@ from app.db.models import (
     ExemptionRequest, ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier, SoldierEnrollmentRequest,
 )
 from app.db.session import get_session
+from app.services.approval_scope import exemption_approval_flags
 from app.services.authority import (
     commander_can_grant_commander_exemption, dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
     senior_commander_approval_authorized,
@@ -173,34 +174,13 @@ def _out(
 def _exemption_approval_flags(
     session: Session, user: Soldier, target_node: HierarchyNode | None
 ) -> tuple[bool, bool]:
-    """Mirror the authorization checks in approve_exemption_request_commander_step
-    and approve_exemption_request_duty_manager_step, so pending-list responses can
-    tell the frontend whether the current viewer's approve buttons would actually
-    succeed, instead of failing 403 only after the click.
-
-    Commander-step mirrors `authorize(session, user, Action.CONSTRAINT_APPROVE, ...)`
-    exactly via `can()` — note CONSTRAINT_APPROVE is in both _DM_ACTIONS and
-    _COMMANDER_ACTIONS, so an in-scope duty manager (not just a commander) can
-    also successfully call approve-commander; using a bare `is_commander(...)`
-    check here would produce a false negative (hide a button that would actually
-    succeed) for that case.
-    """
-    if user.role == "admin":
-        return True, True
-    roots = scope_root_ids(session, user)
-    user_is_commander = is_commander(session, user.id)
-    user_is_duty_manager = is_duty_manager(session, user.id)
-    can_commander_step = senior_commander_approval_authorized(
-        session, user=user, target_node=target_node,
-    ) or (user_is_duty_manager and can(
-        user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=roots,
-        is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
-    ))
-    can_dm_step = user_is_duty_manager and dm_scope_covers_target(
-        session, scope_root_ids=roots, target_node=target_node,
-        required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
-    )
-    return can_commander_step, can_dm_step
+    """Whether `user`'s approve buttons for the commander/duty-manager steps
+    would actually succeed, so pending-list responses can tell the frontend
+    instead of failing 403 only after the click. See
+    `approval_scope.exemption_approval_flags` for the authorization mirror
+    itself — shared with the notification cascade, which needs the same
+    per-recipient check to route a notified approver to the right tab."""
+    return exemption_approval_flags(session, user, target_node)
 
 
 def _nearest_approvers(
