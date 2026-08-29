@@ -535,8 +535,9 @@ def assign_batch(
     return rows
 
 
-def remove_range_assignment(
-    session: Session, *, assignment: RangeAssignment, reason: str, actor_id: uuid.UUID | None = None,
+def _remove_range_assignment_in_transaction(
+    session: Session, *, assignment: RangeAssignment, reason: str,
+    actor_id: uuid.UUID | None = None,
 ) -> None:
     event = session.get(RangeEvent, assignment.range_event_id)
     if event is not None and event.status != RangeEventStatus.planned:
@@ -560,6 +561,14 @@ def remove_range_assignment(
     session.flush()
     _notify_roster_change(
         session, event=event, soldier_ids=remaining_ids | {soldier_id}, actor_id=actor_id,
+    )
+
+
+def remove_range_assignment(
+    session: Session, *, assignment: RangeAssignment, reason: str, actor_id: uuid.UUID | None = None,
+) -> None:
+    _remove_range_assignment_in_transaction(
+        session, assignment=assignment, reason=reason, actor_id=actor_id,
     )
     session.commit()
 

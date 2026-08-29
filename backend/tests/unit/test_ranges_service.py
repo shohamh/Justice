@@ -600,3 +600,122 @@ def test_range_batch_assign_requires_reason_and_writes_override(app_session: Ses
     assert app_session.query(PersonalConstraintOverride).filter(
         PersonalConstraintOverride.soldier_id == free_soldier.id,
     ).first() is None
+
+
+def test_reconciliation_removes_later_primary_and_reserve_in_event_date_order(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="reconciliation ordering")
+    soldier = create_soldier(app_session, personal_number="reconciliation-001", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="reconciliation ordering weapon", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    location = create_range_location(app_session, name="reconciliation ordering range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    later_reserve_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=15), range_location_id=location.id, required_count=0,
+        reserve_count=1,
+    )
+    later_primary_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    add_range_assignment(app_session, event=source_event, soldier_id=soldier.id, is_reserve=False)
+    later_reserve = add_range_assignment(app_session, event=later_reserve_event, soldier_id=soldier.id, is_reserve=True)
+    later_primary = add_range_assignment(app_session, event=later_primary_event, soldier_id=soldier.id, is_reserve=False)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=soldier.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == [later_primary.id, later_reserve.id]
+    assert app_session.get(RangeAssignment, later_primary.id) is None
+    assert app_session.get(RangeAssignment, later_reserve.id) is None
+
+
+def test_reconciliation_keeps_draft_cancelled_and_completed_targets(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="reconciliation target states")
+    soldier = create_soldier(app_session, personal_number="reconciliation-002", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="reconciliation target states weapon", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    location = create_range_location(app_session, name="reconciliation target states range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    draft_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    cancelled_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=15), range_location_id=location.id, required_count=1,
+    )
+    completed_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=20), range_location_id=location.id, required_count=1,
+    )
+    add_range_assignment(app_session, event=source_event, soldier_id=soldier.id, is_reserve=False)
+    draft_target = RangeAssignment(range_event_id=draft_event.id, soldier_id=soldier.id, is_draft=True)
+    cancelled_target = RangeAssignment(range_event_id=cancelled_event.id, soldier_id=soldier.id)
+    completed_target = RangeAssignment(range_event_id=completed_event.id, soldier_id=soldier.id)
+    cancelled_event.status = RangeEventStatus.cancelled
+    completed_event.status = RangeEventStatus.completed
+    app_session.add_all([draft_target, cancelled_target, completed_target])
+    app_session.commit()
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=soldier.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == []
+    assert app_session.get(RangeAssignment, draft_target.id) is not None
+    assert app_session.get(RangeAssignment, cancelled_target.id) is not None
+    assert app_session.get(RangeAssignment, completed_target.id) is not None
+
+
+def test_reconciliation_writes_removal_audit_without_committing(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="reconciliation transaction")
+    manager = create_soldier(app_session, personal_number="reconciliation-003", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(app_session, personal_number="reconciliation-004", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="reconciliation transaction weapon", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    location = create_range_location(app_session, name="reconciliation transaction range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    add_range_assignment(app_session, event=source_event, soldier_id=soldier.id, is_reserve=False)
+    target = add_range_assignment(app_session, event=target_event, soldier_id=soldier.id, is_reserve=False)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=soldier.id, source_event=source_event, actor_id=manager.id,
+    )
+
+    audit = app_session.execute(select(AuditLog).where(
+        AuditLog.action == "range_assignment.remove", AuditLog.entity_id == target.id,
+    )).scalar_one()
+    assert result.removed_assignment_ids == [target.id]
+    assert audit.before == {
+        "soldier_id": str(soldier.id),
+        "range_event_id": str(target_event.id),
+        "is_reserve": False,
+    }
+    assert audit.actor_id == manager.id
+
+    app_session.rollback()
+    app_session.expire_all()
+
+    assert app_session.get(RangeAssignment, target.id) is not None
+    assert app_session.execute(select(AuditLog).where(AuditLog.entity_id == target.id)).scalar_one_or_none() is None

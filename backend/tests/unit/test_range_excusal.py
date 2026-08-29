@@ -9,6 +9,7 @@ from app.db.models import (
     Notification,
     NotificationType,
     RangeAssignment,
+    RangeAttendanceStatus,
     RangeExcusalStatus,
     RangeType,
 )
@@ -137,3 +138,94 @@ def test_primary_excusal_notifies_duty_managers_with_event_id(app_session: Sessi
         )
     ).scalar_one()
     assert dm_notif.metadata_json == {"event_id": str(assignment.range_event_id)}
+
+
+def test_pending_primary_excusal_does_not_remove_later_primary_assignment(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="reconciliation pending excusal")
+    soldier = create_soldier(app_session, personal_number="reconciliation-excusal-001", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="reconciliation pending excusal weapon", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    location = create_range_location(app_session, name="reconciliation pending excusal range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    source = add_range_assignment(app_session, event=source_event, soldier_id=soldier.id, is_reserve=False)
+    target = add_range_assignment(app_session, event=target_event, soldier_id=soldier.id, is_reserve=False)
+    request_primary_excusal(app_session, assignment=source, reason="medical appointment", requested_by=soldier.id)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=soldier.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == []
+    assert app_session.get(RangeAssignment, target.id) is not None
+
+
+def test_reconciliation_requires_persisted_reserve_attendance_before_removal(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="reconciliation reserve attendance")
+    soldier = create_soldier(app_session, personal_number="reconciliation-excusal-002", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="reconciliation reserve attendance weapon", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    location = create_range_location(app_session, name="reconciliation reserve attendance range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=0,
+        reserve_count=1,
+    )
+    target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    source = add_range_assignment(app_session, event=source_event, soldier_id=soldier.id, is_reserve=True)
+    target = add_range_assignment(app_session, event=target_event, soldier_id=soldier.id, is_reserve=False)
+
+    pending_result = reconcile_future_range_assignments(
+        app_session, soldier_id=soldier.id, source_event=source_event, actor_id=None,
+    )
+    source.attendance_status = RangeAttendanceStatus.present
+    app_session.commit()
+    confirmed_result = reconcile_future_range_assignments(
+        app_session, soldier_id=soldier.id, source_event=source_event, actor_id=None,
+    )
+
+    assert pending_result.removed_assignment_ids == []
+    assert confirmed_result.removed_assignment_ids == [target.id]
+    assert app_session.get(RangeAssignment, target.id) is None
+
+
+def test_draft_source_assignment_does_not_remove_later_assignment(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="reconciliation draft source")
+    soldier = create_soldier(app_session, personal_number="reconciliation-excusal-003", hierarchy_node_id=node.id)
+    app_session.add(DutyType(name="reconciliation draft source weapon", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    location = create_range_location(app_session, name="reconciliation draft source range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    source = RangeAssignment(range_event_id=source_event.id, soldier_id=soldier.id, is_draft=True)
+    app_session.add(source)
+    app_session.commit()
+    target = add_range_assignment(app_session, event=target_event, soldier_id=soldier.id, is_reserve=False)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=soldier.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == []
+    assert app_session.get(RangeAssignment, target.id) is not None
