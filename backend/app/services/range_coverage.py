@@ -129,18 +129,31 @@ def _first_by_event_date(rows: Sequence[tuple]) -> tuple | None:
     )
 
 
-def _earliest_coverage(coverages: Sequence[RangeCoverage]) -> RangeCoverage:
-    kind_tiebreaker = {
-        "qualification": 0,
-        "primary_range": 1,
-        "reserve_range": 2,
-    }
+_KIND_STRENGTH = {
+    "qualification": 0,
+    "primary_range": 1,
+    "reserve_range": 2,
+}
+
+
+def _strongest_coverage(coverages: Sequence[RangeCoverage]) -> RangeCoverage:
+    """Pick the strongest coverage source, not merely the earliest one.
+
+    Source KIND is the primary key: a recorded qualification and a planned primary
+    range are guaranteed coverage, a completed reserve range is the weakest tier.
+    Reporting an earlier-but-weaker reserve source for a soldier who also holds
+    guaranteed coverage would drop them out of the ranking's qualified tier (see
+    ``_rank_from_coverage``) and reintroduce duplicate assignments. Date is only a
+    tiebreaker within a kind, preserving the pre-existing earliest-source intent;
+    a qualification with no source range event therefore no longer loses to any
+    range assignment just because it has no date.
+    """
     return min(
         coverages,
         key=lambda coverage: (
+            _KIND_STRENGTH[coverage.coverage_kind],
             coverage.source_event_date is None,
             coverage.source_event_date or date.max,
-            kind_tiebreaker[coverage.coverage_kind],
             coverage.valid_until or date.max,
         ),
     )
@@ -155,10 +168,11 @@ def get_range_coverages(
 ) -> dict[uuid.UUID, RangeCoverage]:
     """Classify coverage for a candidate list with a bounded number of reads.
 
-    The earliest applicable source is returned, with persisted qualification
-    winning only same-date ties over primary and reserve coverage. A primary range
-    is a projection, while reserve coverage requires recorded presence and never
-    allows an event after ``as_of`` to qualify an earlier date.
+    The strongest applicable source is returned: persisted qualification, then
+    primary range, then reserve range, with the earliest source date breaking ties
+    inside a kind. A primary range is a projection, while reserve coverage requires
+    recorded presence and never allows an event after ``as_of`` to qualify an
+    earlier date.
     """
     unique_soldier_ids = set(soldier_ids)
     if not unique_soldier_ids:
@@ -262,7 +276,7 @@ def get_range_coverages(
         )
 
     return {
-        soldier_id: _earliest_coverage(sources) if sources else _NO_COVERAGE
+        soldier_id: _strongest_coverage(sources) if sources else _NO_COVERAGE
         for soldier_id, sources in sources_by_soldier.items()
     }
 

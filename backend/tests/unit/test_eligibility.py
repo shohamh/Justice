@@ -413,11 +413,17 @@ def test_range_coverage_classifies_qualification_primary_reserve_and_later_range
     assert coverages[draft.id].coverage_kind == "none"
 
 
-def test_range_coverage_uses_earliest_source_across_qualification_primary_and_reserve(admin_session):
+def test_range_coverage_prefers_strongest_source_over_earliest(admin_session):
+    """Source KIND decides, date only breaks ties inside a kind. The two
+    qualification-holding soldiers report ``qualification`` even though their range
+    assignments are earlier; the two soldiers without one keep reporting the exact
+    source date and validity window of their single range source."""
     node = create_node(admin_session, level="branch", name="coverage source ordering")
     as_of = date.today() + timedelta(days=20)
     primary = create_soldier(admin_session, personal_number="coverage-earliest-primary", hierarchy_node_id=node.id)
     reserve = create_soldier(admin_session, personal_number="coverage-earliest-reserve", hierarchy_node_id=node.id)
+    primary_only = create_soldier(admin_session, personal_number="coverage-primary-only", hierarchy_node_id=node.id)
+    reserve_only = create_soldier(admin_session, personal_number="coverage-reserve-only", hierarchy_node_id=node.id)
     reserve_event = create_range_event(
         admin_session, hierarchy_node=node, range_type=RangeType.laser,
         event_date=as_of - timedelta(days=6), range_location=create_range_location(admin_session),
@@ -434,6 +440,11 @@ def test_range_coverage_uses_earliest_source_across_qualification_primary_and_re
         RangeAssignment(range_event_id=primary_event.id, soldier_id=primary.id, is_reserve=False),
         RangeAssignment(
             range_event_id=reserve_event.id, soldier_id=reserve.id, is_reserve=True, attendance_status="present",
+        ),
+        RangeAssignment(range_event_id=primary_event.id, soldier_id=primary_only.id, is_reserve=False),
+        RangeAssignment(
+            range_event_id=reserve_event.id, soldier_id=reserve_only.id, is_reserve=True,
+            attendance_status="present",
         ),
         SoldierRangeQualification(
             soldier_id=primary.id,
@@ -453,14 +464,56 @@ def test_range_coverage_uses_earliest_source_across_qualification_primary_and_re
 
     coverages = get_range_coverages(
         admin_session,
-        soldier_ids=[primary.id, reserve.id],
+        soldier_ids=[primary.id, reserve.id, primary_only.id, reserve_only.id],
         required_range_type=RangeType.laser,
         as_of=as_of,
     )
 
-    assert coverages[primary.id].coverage_kind == "primary_range"
-    assert coverages[primary.id].source_event_date == primary_event.date
-    assert coverages[primary.id].valid_until == primary_event.date + timedelta(days=30)
-    assert coverages[reserve.id].coverage_kind == "reserve_range"
-    assert coverages[reserve.id].source_event_date == reserve_event.date
-    assert coverages[reserve.id].valid_until == reserve_event.date + timedelta(days=30)
+    # Qualification is the strongest kind, so it wins over both range sources even
+    # though those sit earlier — and it reports its own, longer validity window.
+    assert coverages[primary.id].coverage_kind == "qualification"
+    assert coverages[primary.id].valid_until == as_of + timedelta(days=40)
+    assert coverages[reserve.id].coverage_kind == "qualification"
+    assert coverages[reserve.id].valid_until == as_of + timedelta(days=40)
+
+    assert coverages[primary_only.id].coverage_kind == "primary_range"
+    assert coverages[primary_only.id].source_event_date == primary_event.date
+    assert coverages[primary_only.id].valid_until == primary_event.date + timedelta(days=30)
+    assert coverages[reserve_only.id].coverage_kind == "reserve_range"
+    assert coverages[reserve_only.id].source_event_date == reserve_event.date
+    assert coverages[reserve_only.id].valid_until == reserve_event.date + timedelta(days=30)
+
+
+def test_range_coverage_prefers_later_primary_over_earlier_reserve(admin_session):
+    """The exact regression: an earlier confirmed reserve range must not mask a later
+    planned primary range, which would drop the soldier out of the qualified tier."""
+    node = create_node(admin_session, level="branch", name="coverage strength over date")
+    as_of = date.today() + timedelta(days=20)
+    soldier = create_soldier(
+        admin_session, personal_number="coverage-strength-mixed", hierarchy_node_id=node.id,
+    )
+    reserve_event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=as_of - timedelta(days=6), range_location=create_range_location(admin_session),
+    )
+    primary_event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=as_of - timedelta(days=2), range_location=create_range_location(admin_session),
+    )
+    admin_session.add_all([
+        RangeAssignment(
+            range_event_id=reserve_event.id, soldier_id=soldier.id, is_reserve=True,
+            attendance_status="present",
+        ),
+        RangeAssignment(range_event_id=primary_event.id, soldier_id=soldier.id, is_reserve=False),
+    ])
+    admin_session.commit()
+    set_setting(admin_session, "mitvachim.laser_validity_days", 30, actor_id=None)
+
+    coverage = get_range_coverage(
+        admin_session, soldier_id=soldier.id, required_range_type=RangeType.laser, as_of=as_of,
+    )
+
+    assert coverage.coverage_kind == "primary_range"
+    assert coverage.source_event_date == primary_event.date
+    assert coverage.valid_until == primary_event.date + timedelta(days=30)

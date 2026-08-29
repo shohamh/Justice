@@ -916,6 +916,127 @@ def test_reconciliation_refill_only_draws_from_event_subtree(app_session: Sessio
     assert refilled.soldier_id != outside_subtree.id
 
 
+def _reconciliation_gap_fixture(app_session: Session, *, name: str, prefix: str, duty_offset_days: int):
+    """Source and target both laser, so the target's validity window outlives the
+    source's by exactly the 5 days between the two events. A weapon duty placed at
+    `duty_offset_days` past the source event decides whether the target is redundant."""
+    node = create_node(app_session, level="branch", name=name)
+    weapon_duty_type = _weapon_duty_type(app_session, node=node, name=f"{name} weapon")
+    covered = create_soldier(app_session, personal_number=f"{prefix}-001", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name=f"{name} range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    duty_date = source_event.date + timedelta(days=duty_offset_days)
+    app_session.add(DutyAssignment(
+        soldier_id=covered.id, duty_type_id=weapon_duty_type.id,
+        duty_location_id=create_duty_location(app_session, name=f"{name} duty").id,
+        start_date=duty_date, end_date=duty_date, status="published",
+    ))
+    app_session.flush()
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+    target = add_range_assignment(app_session, event=target_event, soldier_id=covered.id, is_reserve=False)
+    return covered, source_event, target
+
+
+def test_reconciliation_keeps_target_covering_duty_beyond_source_window(app_session: Session) -> None:
+    """The target's own validity window reaches 5 days further than the source's.
+    A published weapon duty in that gap was covered by the target and cannot be
+    covered by the source, so the target is not redundant."""
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    laser_validity = _validity_days(app_session, RangeType.laser)
+    covered, source_event, target = _reconciliation_gap_fixture(
+        app_session, name="reconciliation gap duty", prefix="gap",
+        duty_offset_days=laser_validity + 3,
+    )
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == []
+    assert result.unfilled_primary_count == 0
+    assert result.refilled_primary_assignment_ids == []
+    assert app_session.get(RangeAssignment, target.id) is not None
+
+
+def test_reconciliation_still_removes_target_when_duty_falls_inside_source_window(
+    app_session: Session,
+) -> None:
+    """Same shape, but the weapon duty is inside the source's own validity window —
+    the ordinary redundancy case, which must still remove the target."""
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    laser_validity = _validity_days(app_session, RangeType.laser)
+    covered, source_event, target = _reconciliation_gap_fixture(
+        app_session, name="reconciliation covered duty", prefix="nogap",
+        duty_offset_days=laser_validity - 3,
+    )
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == [target.id]
+    assert app_session.get(RangeAssignment, target.id) is None
+
+
+def test_reconciliation_locks_each_target_event_date_before_writing(
+    app_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refills land on the TARGET event's date, which the caller's source-date lock
+    does not cover — reconciliation must take each target date's lock itself, in
+    ascending date order so the ordering stays consistent with add_range_assignment."""
+    from app.services import range_reconciliation
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    locked_dates: list[date] = []
+    real_lock = range_reconciliation._acquire_range_assignment_date_lock
+
+    def spy(session, *, event_date: date) -> None:
+        locked_dates.append(event_date)
+        real_lock(session, event_date=event_date)
+
+    monkeypatch.setattr(range_reconciliation, "_acquire_range_assignment_date_lock", spy)
+
+    node = create_node(app_session, level="branch", name="reconciliation target lock")
+    _weapon_duty_type(app_session, node=node, name="reconciliation target lock weapon")
+    covered = create_soldier(app_session, personal_number="lock-001", hierarchy_node_id=node.id)
+    create_soldier(app_session, personal_number="lock-002", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="reconciliation target lock range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    first_target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    second_target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=20), range_location_id=location.id, required_count=1,
+    )
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+    # Earliest target first: creating the day-10 assignment after the day-20 one would
+    # reconcile the day-20 one away before the explicit call below can see it.
+    add_range_assignment(app_session, event=first_target_event, soldier_id=covered.id, is_reserve=False)
+    add_range_assignment(app_session, event=second_target_event, soldier_id=covered.id, is_reserve=False)
+    locked_dates.clear()
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert len(result.removed_assignment_ids) == 2
+    assert locked_dates == [first_target_event.date, second_target_event.date]
+
+
 def test_add_range_assignment_reconciles_later_duplicate(app_session: Session) -> None:
     """Creating the earlier assignment makes the later duplicate redundant: it is
     removed and its slot refilled inside the same call."""

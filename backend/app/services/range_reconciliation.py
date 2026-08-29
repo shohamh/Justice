@@ -17,9 +17,10 @@ from app.db.models import (
     RangeExcusalRequest,
     RangeExcusalStatus,
 )
-from app.services.range_auto_assign import rank_candidates
+from app.services.range_auto_assign import _earliest_future_weapon_duty_start, rank_candidates
 from app.services.ranges import (
     RangeValidationError,
+    _acquire_range_assignment_date_lock,
     _remove_range_assignment_in_transaction,
     _validate_and_build_assignment,
     _validity_days,
@@ -53,6 +54,29 @@ def _source_provides_guaranteed_coverage(
         ))
     ).scalar_one()
     return not pending_excusal
+
+
+def _earliest_weapon_duty_after(
+    session: Session, *, soldier_id: uuid.UUID, after_date: date,
+) -> date | None:
+    """Earliest published weapon-requiring duty starting strictly after ``after_date``.
+
+    Both ``DutyAssignment.is_reserve`` kinds are considered: a range assignment covers
+    the soldier's weapon eligibility for regular and reserve duties alike, so either
+    kind falling in an uncovered gap is enough to make a later range non-redundant.
+    Reuses the exact duty filters of ``_earliest_future_weapon_duty_start``.
+    """
+    starts = [
+        start
+        for start in (
+            _earliest_future_weapon_duty_start(
+                session, soldier_id=soldier_id, is_reserve=is_reserve, after_date=after_date,
+            )
+            for is_reserve in (False, True)
+        )
+        if start is not None
+    ]
+    return min(starts, default=None)
 
 
 def _refill_slot(
@@ -141,7 +165,27 @@ def reconcile_future_range_assignments(
         .order_by(RangeEvent.date, RangeEvent.id)
     ).all()
 
+    # A target sits after the source, so the target's OWN coverage window generally
+    # reaches further into the future than the source's. Removing it would uncover any
+    # weapon duty in that gap — a duty the target covered and the source cannot. One
+    # query answers this for every target: the earliest weapon duty past the source's
+    # window. Targets are visited in date order, so the per-date advisory locks below
+    # are taken in a consistent order with add_range_assignment/assign_batch.
+    earliest_uncovered_duty_start = _earliest_weapon_duty_after(
+        session, soldier_id=soldier_id, after_date=source_valid_until,
+    )
+
     for assignment, event in targets:
+        target_valid_until = event.date + timedelta(
+            days=_validity_days(session, event.range_type),
+        )
+        if (
+            earliest_uncovered_duty_start is not None
+            and earliest_uncovered_duty_start <= target_valid_until
+        ):
+            continue
+
+        _acquire_range_assignment_date_lock(session, event_date=event.date)
         removed_id, is_reserve = assignment.id, assignment.is_reserve
         _remove_range_assignment_in_transaction(
             session,
