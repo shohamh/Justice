@@ -12,6 +12,8 @@ describe("RangeLocationsContent", () => {
         error={false}
         canManage
         onCreate={onCreate}
+        onUpdate={vi.fn().mockResolvedValue(undefined)}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
       />,
     );
 
@@ -20,5 +22,23 @@ describe("RangeLocationsContent", () => {
     fireEvent.click(screen.getByRole("button", { name: "הוסף מיקום" }));
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith("מטווח מזרח"));
+  });
+
+  it("disables delete for used locations and explains why", () => {
+    render(
+      <RangeLocationsContent
+        locations={[{ id: "loc-used", name: "מטווח בשימוש", active: true, can_delete: false, usage_count: 2 }]}
+        loading={false}
+        error={false}
+        canManage
+        onCreate={vi.fn().mockResolvedValue(undefined)}
+        onUpdate={vi.fn().mockResolvedValue(undefined)}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const deleteButton = screen.getByRole("button", { name: "מחק מיקום" });
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton.parentElement).toHaveAttribute("title", "לא ניתן למחוק — המיקום כבר בשימוש במטווחים");
   });
 });

@@ -102,8 +102,8 @@ describe("RangesPage", () => {
     ]);
     vi.mocked(rangesApi.getRangeCandidates).mockImplementation(async (eventId) => ({
       candidates: [
-        { soldier_id: `${eventId}-primary`, full_name: `חייל ראשי ${eventId}`, personal_number: "1", reason_code: "qualified", explanation: "", conflict_warning: null, personal_constraint_conflict: false },
-        { soldier_id: `${eventId}-reserve`, full_name: `חייל רזרבה ${eventId}`, personal_number: "2", reason_code: "available_and_balanced", explanation: "", conflict_warning: null, personal_constraint_conflict: false },
+        { soldier_id: `${eventId}-primary`, full_name: `חייל ראשי ${eventId}`, personal_number: "1", reason_code: "qualified", explanation: "range_valid_expiring:2027-03-01", system_reason_code: "valid_expiring", system_reason_date: "2027-03-01", conflict_warning: null, personal_constraint_conflict: false },
+        { soldier_id: `${eventId}-reserve`, full_name: `חייל רזרבה ${eventId}`, personal_number: "2", reason_code: "available_and_balanced", explanation: "range_last_completed:2026-01-01", system_reason_code: "last_completed", system_reason_date: "2026-01-01", conflict_warning: null, personal_constraint_conflict: false },
       ],
       excluded: [],
     }));
@@ -116,18 +116,47 @@ describe("RangesPage", () => {
     fireEvent.click(screen.getByTestId("bulk-auto-assign-button"));
 
     expect(await screen.findByTestId("confirm-bulk-auto-assign")).toBeInTheDocument();
+    expect(screen.getByTestId("bulk-auto-assign-checkbox-event-1-primary")).toBeChecked();
+    expect(screen.getByTestId("bulk-auto-assign-checkbox-event-1-reserve")).toBeChecked();
     expect(screen.getByText("חייל ראשי event-1")).toBeInTheDocument();
     expect(screen.getByText("חייל רזרבה event-1")).toBeInTheDocument();
     expect(screen.getByText("חייל ראשי event-2")).toBeInTheDocument();
+    expect(screen.getAllByText("סיבת מערכת").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("מטווחים בתוקף, עומדים לפוג ב־01.03.2027").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("מטווח אחרון ב־01.01.2026").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("bulk-auto-assign-checkbox-event-1-reserve"));
+    expect(screen.getByTestId("confirm-bulk-auto-assign")).toHaveTextContent("(3)");
     fireEvent.click(screen.getByTestId("confirm-bulk-auto-assign"));
 
     await waitFor(() => expect(rangesApi.batchAssignRange).toHaveBeenCalledTimes(2));
     expect(rangesApi.batchAssignRange).toHaveBeenNthCalledWith(1, "event-1", {
-      primaries: ["event-1-primary"], reserves: ["event-1-reserve"],
+      primaries: ["event-1-primary"], reserves: [],
     });
     expect(rangesApi.batchAssignRange).toHaveBeenNthCalledWith(2, "event-2", {
       primaries: ["event-2-primary"], reserves: ["event-2-reserve"],
     });
+  });
+
+  it("keeps successful plans when candidate loading fails for one selected range", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-ok", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01", location: "מטווח תקין", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "event-failed", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02", location: "מטווח שנכשל", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeCandidates).mockImplementation(async (eventId) => {
+      if (eventId === "event-failed") throw new Error("candidate request failed");
+      return { candidates: [{ soldier_id: "soldier-ok", full_name: "חייל תקין", personal_number: "1", reason_code: "qualified", explanation: "range_valid_expiring:2027-03-01", system_reason_code: "valid_expiring", system_reason_date: "2027-03-01", conflict_warning: null, personal_constraint_conflict: false }], excluded: [] };
+    });
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח תקין");
+    fireEvent.click(screen.getByTestId("select-range-event-ok"));
+    fireEvent.click(screen.getByTestId("select-range-event-failed"));
+    fireEvent.click(screen.getByTestId("bulk-auto-assign-button"));
+
+    expect(await screen.findByText("חייל תקין")).toBeInTheDocument();
+    const failure = screen.getByText(/מטווח שנכשל.*השיבוץ האוטומטי נכשל/);
+    expect(failure).toHaveClass("whitespace-pre-line");
+    expect(screen.getByTestId("confirm-bulk-auto-assign")).toHaveTextContent("(1)");
   });
 
   it("does not fetch planning data in the default schedule view", async () => {

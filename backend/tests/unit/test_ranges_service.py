@@ -89,6 +89,23 @@ def test_create_range_event_rejects_unknown_location(app_session: Session) -> No
         )
 
 
+def test_create_range_event_rejects_inactive_location(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה מיקום-מושבת")
+    location = create_range_location(app_session, name="מטווח מושבת")
+    location.active = False
+    app_session.flush()
+
+    with pytest.raises(RangeValidationError, match="range_location_inactive"):
+        create_range_event(
+            app_session,
+            hierarchy_node_id=node.id,
+            range_type=RangeType.live,
+            event_date=date(2026, 8, 20),
+            range_location_id=location.id,
+            required_count=2,
+        )
+
+
 def test_create_range_event_rejects_negative_counts(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ב")
 
@@ -373,6 +390,22 @@ def test_roster_change_notifies_existing_and_removed_assignees(app_session: Sess
         "primary_capacity": 2,
         "reserve_filled": 0,
         "reserve_capacity": 0,
+        "assignments": [
+            {
+                "soldier_id": str(first.id),
+                "soldier_name": first.full_name,
+                "is_reserve": False,
+                "assignment_reason_code": "manual",
+                "assignment_reason_text": "שיבוץ ידני",
+            },
+            {
+                "soldier_id": str(second.id),
+                "soldier_name": second.full_name,
+                "is_reserve": False,
+                "assignment_reason_code": "manual",
+                "assignment_reason_text": "שיבוץ ידני",
+            },
+        ],
     }
 
     remove_range_assignment(app_session, assignment=second_assignment, reason="test removal")

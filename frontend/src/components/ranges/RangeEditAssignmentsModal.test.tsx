@@ -6,6 +6,9 @@ import { SoldierDTO } from "../../api/soldiers";
 import RangeEditAssignmentsModal from "./RangeEditAssignmentsModal";
 
 vi.mock("../../api/ranges");
+vi.mock("../SoldierLink", () => ({
+  default: ({ id, name }: { id: string; name: string }) => <button type="button" data-testid={`soldier-link-${id}`}>{name}</button>,
+}));
 
 const soldier = (id: string, full_name: string): SoldierDTO => ({
   id, full_name, personal_number: id, role: "soldier", hierarchy_node_id: "node-1",
@@ -51,6 +54,11 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.getByText("דנה")).toBeInTheDocument();
     expect(screen.getAllByText("ראשי").length).toBeGreaterThan(0);
     expect(screen.getAllByText("רזרבה").length).toBeGreaterThan(0);
+  });
+
+  it("renders soldier names as soldier links in the regular assignments modal", () => {
+    renderModal({ event: event([assignment("a1", "s1")]) });
+    expect(screen.getByTestId("soldier-link-s1")).toBeInTheDocument();
   });
 
   it("renders Hebrew assignment reasons for automatic and manual assignments", () => {
@@ -169,9 +177,12 @@ describe("RangeEditAssignmentsModal", () => {
     const summaries = await screen.findAllByText("ranges.excluded_summary");
     expect(summaries).toHaveLength(2);
     fireEvent.click(summaries[0]);
-    expect(await screen.findAllByText("אורי: ranges.excluded_reason.weapon_exempt")).toHaveLength(2);
-    expect(screen.getAllByText("דנה: ranges.excluded_reason.structurally_ineligible")).toHaveLength(2);
-    expect(screen.getAllByText("רון: ranges.excluded_reason.assigned_elsewhere_same_day")).toHaveLength(2);
+    expect(screen.getAllByTestId("soldier-link-s1")).toHaveLength(2);
+    expect(screen.getAllByTestId("soldier-link-s2")).toHaveLength(2);
+    expect(screen.getAllByTestId("soldier-link-s3")).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("ranges.excluded_reason.weapon_exempt");
+    expect(screen.getAllByRole("listitem")[1]).toHaveTextContent("ranges.excluded_reason.structurally_ineligible");
+    expect(screen.getAllByRole("listitem")[2]).toHaveTextContent("ranges.excluded_reason.assigned_elsewhere_same_day");
   });
 
   it("does not auto-select any reserve candidates once the reserve slots are already full", async () => {

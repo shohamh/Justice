@@ -14,6 +14,14 @@ function formatDate(value: unknown): string {
   return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
 }
 
+function assignmentReason(assignment: Record<string, unknown>, t: TFunction): string {
+  if (typeof assignment.assignment_reason_text === "string" && assignment.assignment_reason_text) {
+    return assignment.assignment_reason_text;
+  }
+  const code = String(assignment.assignment_reason_code ?? "legacy");
+  return t(`ranges.assignment_reasons.${code}`, { defaultValue: code });
+}
+
 function rangeDetails(notification: NotificationDTO, t: TFunction): Array<[string, string]> {
   if (!RANGE_TYPES.has(notification.type)) return [];
   const metadata = notification.metadata ?? {};
@@ -66,13 +74,41 @@ export function NotificationDetails({ notification, expanded, t }: {
   t: TFunction;
 }) {
   if (!notification.body) return null;
+  const assignments = notification.metadata?.assignments;
+  const assignmentRows = Array.isArray(assignments)
+    ? assignments.filter((assignment): assignment is Record<string, unknown> => Boolean(assignment && typeof assignment === "object"))
+    : [];
   const details = rangeDetails(notification, t);
   if (!expanded) {
     return <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 break-words">{details.length > 0 ? details.map(([label, value]) => `${label}: ${value}`).join(" | ") : notification.body}</p>;
   }
   if (details.length > 0) {
-    return <div className="mt-1 space-y-0.5 text-sm text-gray-600 dark:text-gray-300 break-words">
-      {details.map(([label, value], index) => <p key={`${label}-${index}`}>{label ? `${label}: ${value}` : value}</p>)}
+    return <div className="mt-1 space-y-2 text-sm text-gray-600 dark:text-gray-300 break-words">
+      <div className="space-y-0.5">
+        {details.map(([label, value], index) => <p key={`${label}-${index}`}>{label ? `${label}: ${value}` : value}</p>)}
+      </div>
+      {assignmentRows.length > 0 && (
+        <div className="overflow-x-auto rounded border dark:border-gray-600">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="p-2 text-right font-medium">{t("notifications.detail_assignment_soldier")}</th>
+                <th className="p-2 text-right font-medium">{t("notifications.detail_assignment_type")}</th>
+                <th className="p-2 text-right font-medium">{t("notifications.detail_assignment_system_reason")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assignmentRows.map((assignment, index) => (
+                <tr key={`${String(assignment.soldier_id ?? assignment.soldier_name ?? "assignment")}-${index}`} className="border-t dark:border-gray-600">
+                  <td className="p-2">{String(assignment.soldier_name ?? assignment.soldier_id ?? "")}</td>
+                  <td className="p-2">{assignment.is_reserve ? t("notifications.assignment_type_reserve") : t("notifications.assignment_type_primary")}</td>
+                  <td className="p-2">{assignmentReason(assignment, t)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>;
   }
   return <p className="mt-1 whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-300">{notification.body}</p>;

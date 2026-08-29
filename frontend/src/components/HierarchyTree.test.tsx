@@ -23,6 +23,10 @@ vi.mock("../api/dmScope", () => ({
   listDmScope: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("./SoldierLink", () => ({
+  default: ({ id, name }: { id: string; name: string }) => <button data-testid={`soldier-link-${id}`}>{name}</button>,
+}));
+
 function node(overrides: Partial<NodeDTO> = {}): NodeDTO {
   return {
     id: "node-1",
@@ -40,6 +44,14 @@ function node(overrides: Partial<NodeDTO> = {}): NodeDTO {
 }
 
 const soldiers: SoldierDTO[] = [];
+
+const editableSoldier = {
+  id: "soldier-1",
+  personal_number: "1234567",
+  full_name: "×—×™×™×œ ×‘×“×™×§×”",
+  hierarchy_node_id: "node-1",
+  telegram_linked: false,
+} as SoldierDTO;
 
 function openActionsMenu(nodeId: string) {
   fireEvent.click(screen.getByTestId(`tree-actions-menu-${nodeId}`));
@@ -133,4 +145,43 @@ test("auto-expands down to and highlights the viewer's own commanded node, beyon
   // only renders if the tree specifically auto-expanded down to the viewer's own node.
   expect(screen.getByTestId("tree-name-child")).toBeInTheDocument();
   expect(screen.getByTestId("tree-name-child").closest("li")).toHaveClass("bg-indigo-50");
+});
+
+test("renders the soldier edit action as a pencil icon with an accessible label", () => {
+  render(
+    <HierarchyTree
+      nodes={[node({ can_edit: true })]}
+      soldiers={[editableSoldier]}
+      canManageLevelTypes={false}
+      onChanged={vi.fn()}
+    />
+  );
+
+  const editButton = screen.getByTestId("edit-soldier-1234567");
+  expect(editButton).toHaveTextContent("✏️");
+  expect(editButton).toHaveAttribute("aria-label", "team.edit");
+});
+
+test("links the commander and exposes inline pencil actions for editable hierarchy details", () => {
+  const commander = { ...editableSoldier, id: "commander-1", full_name: "מפקד" };
+
+  render(
+    <HierarchyTree
+      nodes={[node({
+        can_edit: true,
+        dm_manageable: true,
+        commander_id: commander.id,
+        commander_name: commander.full_name,
+        duty_managers: [{ scope_id: "scope-1", soldier_id: "dm-1", name: "אחראי" }],
+      })]}
+      soldiers={[commander]}
+      canManageLevelTypes={false}
+      onChanged={vi.fn()}
+    />
+  );
+
+  expect(screen.getAllByTestId("soldier-link-commander-1")).toHaveLength(2);
+  expect(screen.getByTestId("tree-edit-name-node-1")).toHaveAttribute("aria-label", "team.edit");
+  expect(screen.getByTestId("tree-edit-commander-node-1")).toHaveAttribute("aria-label", "team.edit");
+  expect(screen.getByTestId("tree-edit-dm-node-1")).toHaveAttribute("aria-label", "team.edit");
 });

@@ -122,6 +122,7 @@ describe("NotificationsPage", () => {
         metadata: {
           range_date: "2026-09-23", range_type: "alal", range_location: "אימונים",
           primary_filled: 20, primary_capacity: 25, reserve_filled: 4, reserve_capacity: 5,
+          assignments: [{ soldier_name: "יוסי כהן", is_reserve: false, assignment_reason_code: "qualified", assignment_reason_text: null }],
         },
       }],
       total: 1,
@@ -129,13 +130,18 @@ describe("NotificationsPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("שינוי בסגל המטווח")).toBeInTheDocument();
+    expect(await screen.findByText("שינוי בשיבוצי המטווח")).toBeInTheDocument();
     expect(screen.queryByText("תאריך: 23.09.2026")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "הצג פרטים" }));
 
     expect(screen.getByText("תאריך: 23.09.2026")).toBeInTheDocument();
     expect(screen.getByText('סוג מטווח: אל"ל')).toBeInTheDocument();
     expect(screen.getByText("מיקום: אימונים")).toBeInTheDocument();
+    expect(screen.getByText("חייל")).toBeInTheDocument();
+    expect(screen.getByText("סוג")).toBeInTheDocument();
+    expect(screen.getByText("סיבת מערכת")).toBeInTheDocument();
+    expect(screen.getByText("יוסי כהן")).toBeInTheDocument();
+    expect(screen.getByText("כשירות תקפה למטווח")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "הסתר פרטים" })).toBeInTheDocument();
   });
 

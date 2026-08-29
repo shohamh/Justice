@@ -19,7 +19,7 @@ import ConfirmDialog from "../components/ranges/ConfirmDialog";
 import { IneligibleSoldiersTable } from "../components/ranges/IneligibleSoldiersTable";
 import RangeLocationsContent from "../components/ranges/RangeLocationsContent";
 import { listSoldiers } from "../api/soldiers";
-import { createRangeLocation, listRangeLocations } from "../api/rangeLocations";
+import { createRangeLocation, deleteRangeLocation, listRangeLocations, updateRangeLocation } from "../api/rangeLocations";
 import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
 import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../utils/rangeLabels";
 import { translateApiError } from "../utils/translateApiError";
@@ -168,6 +168,8 @@ export default function RangesPage() {
   }
   async function attendance() { await invalidate(selected ?? undefined); }
   async function createLocation(name: string) { await createRangeLocation({ name }); await qc.invalidateQueries({ queryKey: queryKeys.rangeLocations() }); }
+  async function updateLocation(id: string, input: { name?: string; active?: boolean }) { await updateRangeLocation(id, input); await qc.invalidateQueries({ queryKey: queryKeys.rangeLocations() }); }
+  async function deleteLocation(id: string) { await deleteRangeLocation(id); await qc.invalidateQueries({ queryKey: queryKeys.rangeLocations() }); }
 
   return <Layout><section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="ranges-page">
     <div className="flex flex-wrap justify-between items-center gap-2"><h1 className="text-xl font-semibold">{t("ranges.page_title")}</h1><div className="flex items-center gap-3">{manage && <><Link to="/planning/export" className="text-indigo-600 hover:underline text-sm">{t("ranges.export_link")}</Link><Link to="/import" className="text-indigo-600 hover:underline text-sm">{t("ranges.import_link")}</Link></>}{showSchedule && manage && <button type="button" data-testid="create-event-button" onClick={() => setFormEvent(null)} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">{t("ranges.create_button")}</button>}</div></div>
@@ -177,7 +179,7 @@ export default function RangesPage() {
        <button type="button" role="tab" aria-selected={showLocations} onClick={() => setParams(current => { const next = new URLSearchParams(current); next.set("tab", "locations"); return next; })} className={`border-b-2 px-3 py-2 text-sm ${showLocations ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-600 dark:text-gray-300"}`}>מיקומי מטווחים</button>
     </div>
     {showIneligible && <IneligibleSoldiersTable data={ineligibleSoldiers.data} loading={ineligibleSoldiers.isLoading} error={ineligibleSoldiers.isError} />}
-    {showLocations && <RangeLocationsContent locations={rangeLocations.data ?? []} loading={rangeLocations.isLoading} error={rangeLocations.isError} canManage={manage} onCreate={createLocation} />}
+    {showLocations && <RangeLocationsContent locations={rangeLocations.data ?? []} loading={rangeLocations.isLoading} error={rangeLocations.isError} canManage={manage} onCreate={createLocation} onUpdate={updateLocation} onDelete={deleteLocation} />}
     <div className={showSchedule ? undefined : "hidden"}>
     {manage && selectedIds.size > 0 && <div data-testid="range-bulk-action-bar" className="flex flex-col gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 dark:border-indigo-800 dark:bg-indigo-950" dir="rtl">
       <div className="flex flex-wrap items-center gap-2">

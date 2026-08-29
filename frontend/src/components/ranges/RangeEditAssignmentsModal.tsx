@@ -7,6 +7,7 @@ import TableSearchInput from "../TableSearchInput";
 import { translateApiError } from "../../utils/translateApiError";
 import { formatDate } from "../../utils/formatDate";
 import OverrideReasonModal from "../OverrideReasonModal";
+import SoldierLink from "../SoldierLink";
 
 export interface RangeEditAssignmentsModalProps {
   open: boolean;
@@ -232,7 +233,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     return (
       <Fragment key={a.id}>
         <tr className={`border-t dark:border-gray-600 ${rowClass}`}>
-          <td className="p-2">{name(a.soldier_id)}</td>
+          <td className="p-2"><SoldierLink id={a.soldier_id} name={name(a.soldier_id)} /></td>
           <td className="p-2 text-gray-500 dark:text-gray-400">{typeLabel}</td>
           <td className="p-2">{isEditing ? <span className="text-gray-400">{text("ranges.editing", "עריכה...")}</span> : reasonFor(a)}</td>
           <td className="p-2 text-center whitespace-nowrap">
@@ -316,7 +317,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                 {primary.filter(a => summaryRowVisible(a.soldier_id)).map(a => renderAssignmentRow(a, text("ranges.primary_short", "ראשי"), ""))}
                 {pendingPrimaries.filter(c => matchesQuery(c.full_name, c.personal_number, summarySearch)).map(c => (
                   <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50 dark:bg-indigo-950/40">
-                    <td className="p-2 text-indigo-700 dark:text-indigo-300">{c.full_name}<span className="mr-2 text-xs text-indigo-400">{text("ranges.unsaved", "טרם נשמר")}</span></td>
+                    <td className="p-2 text-indigo-700 dark:text-indigo-300"><SoldierLink id={c.soldier_id} name={c.full_name} /><span className="mr-2 text-xs text-indigo-400">{text("ranges.unsaved", "טרם נשמר")}</span></td>
                     <td className="p-2 text-indigo-500 dark:text-indigo-300">{text("ranges.primary_short", "ראשי")}</td>
                     <td className="p-2 text-indigo-400 dark:text-indigo-500">{REASON_LABEL[c.reason_code] ?? c.reason_code}</td>
                     <td className="p-2 text-center whitespace-nowrap">
@@ -334,7 +335,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                 {reserves.filter(a => summaryRowVisible(a.soldier_id)).map(a => renderAssignmentRow(a, text("ranges.reserve_short", "רזרבה"), "bg-gray-50/50 dark:bg-gray-700/30"))}
                 {pendingReserves.filter(c => matchesQuery(c.full_name, c.personal_number, summarySearch)).map(c => (
                   <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50/50 dark:bg-indigo-950/20">
-                    <td className="p-2 text-indigo-600 dark:text-indigo-300">{c.full_name}<span className="mr-2 text-xs text-indigo-300">{text("ranges.unsaved", "טרם נשמר")}</span></td>
+                    <td className="p-2 text-indigo-600 dark:text-indigo-300"><SoldierLink id={c.soldier_id} name={c.full_name} /><span className="mr-2 text-xs text-indigo-300">{text("ranges.unsaved", "טרם נשמר")}</span></td>
                     <td className="p-2 text-indigo-400">{text("ranges.reserve_short", "רזרבה")}</td>
                     <td className="p-2 text-indigo-400 dark:text-indigo-500">{REASON_LABEL[c.reason_code] ?? c.reason_code}</td>
                     <td className="p-2 text-center whitespace-nowrap">
@@ -485,7 +486,7 @@ function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, lo
               >
                 <td className="p-2"><input type="checkbox" data-testid={`${testIdPrefix}-${c.soldier_id}`} checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
                 <td className="p-2">
-                  {c.full_name}
+                  <SoldierLink id={c.soldier_id} name={c.full_name} />
                   {c.conflict_warning && (
                     <span
                       title={c.conflict_warning}
@@ -512,7 +513,7 @@ function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, lo
           <summary className="cursor-pointer">{t("ranges.excluded_summary", { count: excluded.length })}</summary>
           <ul className="mt-1 space-y-0.5">
             {excluded.map(candidate => (
-              <li key={candidate.soldier_id}>{candidate.soldier_name}: {t(`ranges.excluded_reason.${candidate.reason}`)}</li>
+              <li key={candidate.soldier_id}><SoldierLink id={candidate.soldier_id} name={candidate.soldier_name} />: {t(`ranges.excluded_reason.${candidate.reason}`)}</li>
             ))}
           </ul>
         </details>

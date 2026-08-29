@@ -127,6 +127,17 @@ def _notify_roster_change(
         "primary_capacity": event.required_count,
         "reserve_filled": sum(1 for a in assignments if a.is_reserve and not a.is_draft),
         "reserve_capacity": event.reserve_count,
+        "assignments": [
+            {
+                "soldier_id": str(assignment.soldier_id),
+                "soldier_name": soldier.full_name if (soldier := session.get(Soldier, assignment.soldier_id)) else str(assignment.soldier_id),
+                "is_reserve": assignment.is_reserve,
+                "assignment_reason_code": assignment.assignment_reason_code,
+                "assignment_reason_text": assignment.assignment_reason_text,
+            }
+            for assignment in assignments
+            if not assignment.is_draft
+        ],
     }
     for soldier_id in soldier_ids:
         _range_notification(
@@ -157,8 +168,11 @@ def create_range_event(
 ) -> RangeEvent:
     if session.get(HierarchyNode, hierarchy_node_id) is None:
         raise RangeValidationError("hierarchy_node_not_found")
-    if session.get(RangeLocation, range_location_id) is None:
+    location = session.get(RangeLocation, range_location_id)
+    if location is None:
         raise RangeValidationError("range_location_not_found")
+    if not location.active:
+        raise RangeValidationError("range_location_inactive")
     if required_count < 0 or reserve_count < 0:
         raise RangeValidationError("counts_must_be_non_negative")
     if start_time and end_time and start_time > end_time:
@@ -258,8 +272,11 @@ def update_range_event(
         event.reserve_count = reserve_count
         after["reserve_count"] = reserve_count
     if range_location_id is not _UNSET:
-        if session.get(RangeLocation, range_location_id) is None:
+        location = session.get(RangeLocation, range_location_id)
+        if location is None:
             raise RangeValidationError("range_location_not_found")
+        if not location.active:
+            raise RangeValidationError("range_location_inactive")
         before["range_location_id"] = str(event.range_location_id)
         event.range_location_id = range_location_id
         after["range_location_id"] = str(range_location_id)
@@ -555,7 +572,7 @@ def assign_batch(
     ]
     for row, _constraint in rows_with_constraints:
         soldier = session.get(Soldier, row.soldier_id)
-        _, reason_code, _explanation, _auto_selectable = _rank_candidate(session, soldier=soldier, event=event)
+        _, reason_code, _explanation, _auto_selectable, _system_reason_code, _system_reason_date = _rank_candidate(session, soldier=soldier, event=event)
         row.assignment_reason_code = reason_code
         session.add(row)
     session.flush()

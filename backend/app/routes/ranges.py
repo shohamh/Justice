@@ -765,6 +765,8 @@ class RangeCandidateOut(BaseModel):
     conflict_warning: str | None = None
     personal_constraint_conflict: bool = False
     auto_selectable: bool = True
+    system_reason_code: str
+    system_reason_date: date_type | None = None
 
 
 class ExcludedSoldierOut(BaseModel):
@@ -801,6 +803,7 @@ def get_range_candidates(
                 reason_code=c.reason_code, explanation=c.explanation, conflict_warning=c.conflict_warning,
                 personal_constraint_conflict=c.personal_constraint_conflict,
                 auto_selectable=c.auto_selectable,
+                system_reason_code=c.system_reason_code, system_reason_date=c.system_reason_date,
             )
             for c in ranked
         ],

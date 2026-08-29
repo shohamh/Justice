@@ -98,9 +98,10 @@ function DraggableSoldier({
         <button
           className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline ml-auto"
           onClick={() => onEdit(s)}
+          aria-label={t("team.edit")}
           data-testid={`edit-soldier-${s.personal_number}`}
         >
-          {t("team.edit")}
+          ✏️
         </button>
       )}
     </li>
@@ -190,6 +191,17 @@ function DroppableNodeRow({
           </span>
         )}
         <span className="font-medium truncate" data-testid={`tree-name-${node.id}`}>{node.name}</span>
+        {node.can_edit && (
+          <button
+            type="button"
+            className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline"
+            onClick={onRename}
+            aria-label={t("team.edit")}
+            data-testid={`tree-edit-name-${node.id}`}
+          >
+            ✏️
+          </button>
+        )}
         {(node.can_edit || node.dm_manageable) && (
           <div className="ml-auto shrink-0">
             <PopoverDropdown
@@ -268,7 +280,20 @@ function DroppableNodeRow({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 pr-6 text-xs text-gray-400">
           {node.commander_name && (
             <span data-testid={`tree-commander-${node.id}`}>
-              {t("team.commander")}: {node.commander_name}
+              {t("team.commander")}: {node.commander_id ? (
+                <SoldierLink id={node.commander_id} name={node.commander_name} />
+              ) : node.commander_name}
+              {node.can_edit && (
+                <button
+                  type="button"
+                  className="mr-1 hover:underline text-indigo-600 dark:text-indigo-300"
+                  onClick={onAssignCommander}
+                  aria-label={t("team.edit")}
+                  data-testid={`tree-edit-commander-${node.id}`}
+                >
+                  ✏️
+                </button>
+              )}
             </span>
           )}
           {node.duty_managers.length > 0 && (
@@ -287,6 +312,17 @@ function DroppableNodeRow({
                   </button>
                 </span>
               ))}
+              {node.dm_manageable && (
+                <button
+                  type="button"
+                  className="mr-1 hover:underline text-indigo-600 dark:text-indigo-300"
+                  onClick={onManageDutyManagers}
+                  aria-label={t("team.edit")}
+                  data-testid={`tree-edit-dm-${node.id}`}
+                >
+                  ✏️
+                </button>
+              )}
             </span>
           )}
         </div>
