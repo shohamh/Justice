@@ -476,12 +476,12 @@ def test_tier_a_sorts_before_tier_b_before_tier_c_before_tier_d(app_session: Ses
     tier_b_soldier = create_soldier(app_session, personal_number="6100005", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=tier_b_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1), status="published", is_reserve=True,
+        start_date=event_date + timedelta(days=1), end_date=event_date + timedelta(days=1), status="published", is_reserve=True,
     ))
     tier_a_soldier = create_soldier(app_session, personal_number="6100003", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=tier_a_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1), status="published",
+        start_date=event_date + timedelta(days=1), end_date=event_date + timedelta(days=1), status="published",
     ))
     app_session.flush()
 
@@ -511,7 +511,7 @@ def test_tier_a_orders_by_earliest_duty_start(app_session: Session) -> None:
     sooner_soldier = create_soldier(app_session, personal_number="6200002", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=sooner_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=2), end_date=date.today() + timedelta(days=2), status="published",
+        start_date=event_date + timedelta(days=2), end_date=event_date + timedelta(days=2), status="published",
     ))
     app_session.flush()
 
@@ -595,6 +595,7 @@ def test_earlier_primary_range_qualifies_later_candidate_event(app_session: Sess
                 if candidate.soldier.id == soldier.id)
 
     assert mine.reason_code == "qualified"
+    assert mine.explanation == f"מטווח ראשי תקף עד {(earlier_event.date + timedelta(days=180)).strftime('%d.%m.%Y')}"
 
 
 def test_primary_coverage_is_stronger_than_reserve_coverage(app_session: Session) -> None:
@@ -713,6 +714,42 @@ def test_candidate_duty_ranking_uses_duties_after_event_and_primary_before_reser
     )
 
 
+def test_candidate_duty_ranking_ignores_duty_on_or_before_the_range_date(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="candidate duty date boundary")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="candidate duty date boundary weapon")
+    location = create_duty_location(app_session)
+    dm = _dm_for(app_session, node, personal_number="sequencing-duty-boundary-dm")
+    event_date = date.today() + timedelta(days=5)
+    soldier = create_soldier(app_session, personal_number="sequencing-duty-boundary", hierarchy_node_id=node.id)
+    later_duty_date = event_date + timedelta(days=3)
+    app_session.add_all([
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1), status="published",
+        ),
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=event_date, end_date=event_date, status="published",
+        ),
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=later_duty_date, end_date=later_duty_date, status="published",
+        ),
+    ])
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="candidate duty date boundary range").id,
+        required_count=1,
+    )
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code == "duty_priority"
+    assert mine.explanation == f"תורנות קרובה ב-{later_duty_date.strftime('%d.%m.%Y')}"
+
+
 def test_reason_code_available_and_balanced_when_no_qualification_or_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגת סיבת שיבוץ")
     _weapon_duty_type(app_session, node=node, name="תורנות נשק סיבת שיבוץ")
@@ -736,7 +773,7 @@ def test_reason_code_duty_priority_for_future_regular_weapon_duty(app_session: S
     soldier = create_soldier(app_session, personal_number="7010004", hierarchy_node_id=node.id)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="תורנות נשק עדיפות")
     location = create_duty_location(app_session)
-    future_duty_date = date.today() + timedelta(days=2)
+    future_duty_date = date.today() + timedelta(days=7)
     app_session.add(DutyAssignment(
         soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
         start_date=future_duty_date, end_date=future_duty_date, status="published",
@@ -760,7 +797,7 @@ def test_reason_code_reserve_duty_priority_for_future_reserve_weapon_duty(app_se
     soldier = create_soldier(app_session, personal_number="7010006", hierarchy_node_id=node.id)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="תורנות רזרבה עדיפות")
     location = create_duty_location(app_session)
-    future_duty_date = date.today() + timedelta(days=3)
+    future_duty_date = date.today() + timedelta(days=8)
     app_session.add(DutyAssignment(
         soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
         start_date=future_duty_date, end_date=future_duty_date, status="published", is_reserve=True,
@@ -787,7 +824,7 @@ def test_regular_duty_outranks_reserve_duty(app_session: Session) -> None:
     reserve_soldier = create_soldier(app_session, personal_number="7010008", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=reserve_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1),
+        start_date=date.today() + timedelta(days=6), end_date=date.today() + timedelta(days=6),
         status="published", is_reserve=True,
     ))
     regular_soldier = create_soldier(app_session, personal_number="7010009", hierarchy_node_id=node.id)
