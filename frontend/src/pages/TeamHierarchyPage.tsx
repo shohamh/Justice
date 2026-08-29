@@ -31,6 +31,7 @@ export default function TeamHierarchyPage() {
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [resetTargetId, setResetTargetId] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [promotionTarget, setPromotionTarget] = useState<SoldierDTO | null>(null);
@@ -78,11 +79,19 @@ export default function TeamHierarchyPage() {
   }
 
   async function confirmReset() {
-    if (!resetTargetId) return;
+    if (!resetTargetId || resetting) return;
     const soldierId = resetTargetId;
-    setResetTargetId(null);
-    const r = await resetSoldierPassword(soldierId);
-    setTempPw(r.temp_password);
+    setResetting(true);
+    setMessage(null);
+    try {
+      const r = await resetSoldierPassword(soldierId);
+      setTempPw(r.temp_password);
+      setResetTargetId(null);
+    } catch {
+      setMessage(t("errors.generic"));
+    } finally {
+      setResetting(false);
+    }
   }
 
   function onRemove(id: string) {
@@ -280,8 +289,9 @@ export default function TeamHierarchyPage() {
           title={t("team.reset_password_title")}
           message={t("team.confirm_reset_password")}
           danger
+          confirmDisabled={resetting}
           onConfirm={() => void confirmReset()}
-          onClose={() => setResetTargetId(null)}
+          onClose={() => { if (!resetting) setResetTargetId(null); }}
         />
         <ConfirmDialog
           open={removeTargetId !== null}

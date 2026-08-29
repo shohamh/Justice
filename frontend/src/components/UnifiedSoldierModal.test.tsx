@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
@@ -545,5 +545,36 @@ describe("UnifiedSoldierModal constraint rejection", () => {
     fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
     await waitFor(() => expect(mockRejectConstraint).toHaveBeenCalledWith("c1", ""));
+  });
+
+  test("disables duplicate constraint rejection while the empty note submission is pending", async () => {
+    let resolveReject: () => void;
+    mockRejectConstraint.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      resolveReject = resolve;
+    }));
+    renderModal();
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
+
+    const confirm = screen.getByTestId("input-dialog-confirm");
+    fireEvent.click(confirm);
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(mockRejectConstraint).toHaveBeenCalledTimes(1);
+    expect(mockRejectConstraint).toHaveBeenCalledWith("c1", "");
+
+    await act(async () => resolveReject!());
+    await waitFor(() => expect(screen.queryByTestId("input-dialog-confirm")).not.toBeInTheDocument());
+  });
+
+  test("keeps the rejection dialog open and shows translated feedback when rejection fails", async () => {
+    mockRejectConstraint.mockRejectedValueOnce(new Error("network"));
+    renderModal();
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
+
+    expect(await screen.findByText("errors.generic")).toBeInTheDocument();
+    expect(screen.getByTestId("input-dialog-confirm")).not.toBeDisabled();
   });
 });

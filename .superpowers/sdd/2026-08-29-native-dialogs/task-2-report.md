@@ -17,3 +17,16 @@ Verification:
 
 The pre-existing hierarchy action-layout changes in `HierarchyTree.tsx` and
 `HierarchyTree.test.tsx` were preserved and intentionally left unstaged.
+
+## Fix round 1
+
+- Password reset confirmation remains open and disables repeat confirmation while its request is pending. A rejected reset now shows the translated generic error in `MessageDialog`.
+- Constraint rejection now awaits its request, disables repeat confirmation while pending, and shows a translated `MessageDialog` error without treating cancellation as an empty submission.
+- Added focused regression tests for success-pending and rejection-error paths.
+
+Verification:
+
+- `npx vitest run src/pages/TeamHierarchyPage.test.tsx src/components/UnifiedSoldierModal.test.tsx src/components/ConfirmDialog.test.tsx src/components/InputDialog.test.tsx` — 39 passed.
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `git diff --check` — passed.
