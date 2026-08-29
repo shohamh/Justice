@@ -10,7 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.authz import Action, _node_in_scope, authorize, is_commander, is_duty_manager, scope_root_ids
+from app.auth.authz import (
+    Action, _node_in_scope, authorize, is_commander, is_duty_manager,
+    responsible_range_manager_authorized, scope_root_ids,
+)
 from app.auth.deps import require_password_changed
 from app.db.models import (
     DutyManagerScope,
@@ -65,6 +68,16 @@ def _authorize_range_read(session: Session, user: Soldier, node: HierarchyNode |
         if is_commander(session, user.id) and _node_in_scope(node, scope_root_ids(session, user)):
             return False
         raise
+
+
+def _authorize_range_manage(session: Session, user: Soldier, event: RangeEvent) -> None:
+    try:
+        authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    except HTTPException:
+        if not responsible_range_manager_authorized(
+            session, user=user, responsible_duty_manager_id=event.responsible_duty_manager_id,
+        ):
+            raise
 
 
 class CreateRangeEventBody(BaseModel):
@@ -361,7 +374,7 @@ def update_range_event(
 ) -> RangeEventOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    _authorize_range_manage(session, user, event)
     if "hierarchy_node_id" in body.model_fields_set:
         new_node = session.get(HierarchyNode, body.hierarchy_node_id)
         authorize(session, user, Action.RANGE_MANAGE, target_node=new_node)
@@ -386,7 +399,7 @@ def delete_range_event(
 ) -> None:
     _require_enabled(session)
     event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    _authorize_range_manage(session, user, event)
     try:
         svc.delete_range_event(session, event=event)
     except svc.RangeValidationError as exc:
@@ -407,7 +420,7 @@ def add_assignment(
 ) -> RangeAssignmentOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    _authorize_range_manage(session, user, event)
     try:
         assignment = svc.add_range_assignment(
             session,

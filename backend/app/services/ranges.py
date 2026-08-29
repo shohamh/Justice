@@ -8,7 +8,7 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.audit.writer import write_audit
-from app.auth.authz import scope_root_ids
+from app.auth.authz import responsible_range_manager_authorized, scope_root_ids
 from app.db.models import (
     HierarchyNode,
     Notification,
@@ -360,7 +360,14 @@ def _validate_and_build_assignment(
     if node is None or event_node is None:
         raise RangeValidationError("soldier_outside_event_subunit")
     in_event_subtree = event.hierarchy_node_id in node.path_ids
-    if not in_event_subtree and not _soldier_in_authorized_scope(session, node=node, user=user):
+    responsible_authorized = user is not None and responsible_range_manager_authorized(
+        session,
+        user=user,
+        responsible_duty_manager_id=event.responsible_duty_manager_id,
+    )
+    if not in_event_subtree and not responsible_authorized and not _soldier_in_authorized_scope(
+        session, node=node, user=user
+    ):
         raise RangeValidationError("soldier_outside_event_subunit")
     if is_range_exempt(session, soldier=soldier, event_date=event.date):
         raise RangeValidationError("soldier_range_exempt")

@@ -91,6 +91,19 @@ def is_duty_manager(session: Session, soldier_id: uuid.UUID) -> bool:
     return bool(dm_scope_node_ids(session, soldier_id))
 
 
+def responsible_range_manager_authorized(
+    session: Session, *, user: Soldier, responsible_duty_manager_id: uuid.UUID | None,
+) -> bool:
+    """Whether ``user`` is the event's responsible duty manager or their
+    active duty-manager delegate. Responsibility is event-specific authority;
+    it is intentionally independent of the event hierarchy scope."""
+    if user.role == "admin" or responsible_duty_manager_id is None:
+        return user.role == "admin"
+    return responsible_duty_manager_id == user.id or responsible_duty_manager_id in _active_principal_ids(
+        session, deputy_id=user.id, role="duty_manager"
+    )
+
+
 class Action:
     SOLDIER_CREATE = "soldier.create"
     SOLDIER_READ = "soldier.read"
