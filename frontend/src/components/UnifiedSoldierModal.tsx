@@ -65,17 +65,24 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const isAdmin = user?.role === "admin";
   const isDutyManager = user?.is_duty_manager ?? false;
   const isCommander = user?.is_commander ?? false;
-  const canManage = isAdmin || isDutyManager;
+  // A soldier the viewer has no read scope over comes back from the backend
+  // in "public" mode — redacted fields only, no management actions, no
+  // score/exemptions/constraints/duty-history tabs (see _out()'s public_mode
+  // gating in backend/app/routes/soldiers.py).
+  const isPublic = soldier.visibility === "public";
+  const canManage = !isPublic && (isAdmin || isDutyManager);
   // Backend authorizes commanders to grant exemptions too (Action.EXEMPTION_GRANT
   // is in _COMMANDER_ACTIONS) — this is scoped to ExemptionsPanel only, not the
   // broader `canManage` used for soldier-detail editing and constraint approval.
-  const canManageExemptions = isAdmin || isDutyManager || isCommander;
+  const canManageExemptions = !isPublic && (isAdmin || isDutyManager || isCommander);
   const canViewAll = isAdmin || isDutyManager || isCommander;
-  const TABS: TabKey[] = canViewAll
-    ? ["details", "profile", "exemptions", "constraints", "duty_history"]
-    : isSelf
-      ? ["details", "profile", "duty_history"]
-      : ["details", "duty_history"];
+  const TABS: TabKey[] = isPublic
+    ? ["details", "profile"]
+    : canViewAll
+      ? ["details", "profile", "exemptions", "constraints", "duty_history"]
+      : isSelf
+        ? ["details", "profile", "duty_history"]
+        : ["details", "duty_history"];
 
   const [soldierData, setSoldierData] = useState<SoldierDTO>(soldier);
 
@@ -85,7 +92,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const { data: rangeStatus } = useQuery({
     queryKey: ["soldierRangeStatus", soldierData.id],
     queryFn: () => getSoldierRangeStatus(soldierData.id),
-    enabled: tab === "profile",
+    enabled: tab === "profile" && !isPublic,
   });
   const [editing, setEditing] = useState(initialEditing);
   const [fullName, setFullName] = useState(soldier.full_name);
@@ -338,6 +345,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold">{soldierData.full_name}</h3>
+                {isPublic && <span className="text-xs text-gray-500 dark:text-gray-400">פרופיל ציבורי</span>}
                 {canManage && !editing && (
                   <button
                     onClick={() => { setRankEditing(false); setEditing(true); }}
@@ -392,7 +400,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               {(() => {
                 const nodeMap = new Map(nodes.map((n) => [n.id, n]));
                 const soldierNode = soldierData.hierarchy_node_id ? nodeMap.get(soldierData.hierarchy_node_id) : null;
-                const chain = soldierNode ? soldierNode.path_ids.map((id) => nodeMap.get(id)?.name ?? id) : null;
+                const chain = soldierData.hierarchy_path?.length
+                  ? soldierData.hierarchy_path
+                  : soldierNode ? soldierNode.path_ids.map((id) => nodeMap.get(id)?.name ?? id) : null;
                 return (
                   <div className="space-y-0.5">
                     <span className="text-gray-500 dark:text-gray-400">{t("team.hierarchy")}</span>
@@ -448,7 +458,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <span>{formatDate(soldierData.last_alal_date)}</span>
                 </div>
               )}
-              {score && (
+              {score && !isPublic && (
                 <div className="border-t dark:border-gray-600 pt-3 space-y-1">
                   <div className="flex justify-between">
                     <span className="text-gray-500 dark:text-gray-400">{t("transparency.active_days")}</span>
@@ -534,8 +544,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
         {tab === "profile" && !editing && !rankEditing && (
           <div className="space-y-2 text-sm">
-            {soldierData.gender && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.gender")}</span><span>{t(`soldier_profile.gender_${soldierData.gender}`)}</span></div>}
+            {!isPublic && soldierData.gender && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.gender")}</span><span>{t(`soldier_profile.gender_${soldierData.gender}`)}</span></div>}
             {soldierData.rank && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span><span>{soldierData.rank}</span></div>}
+            {soldierData.is_officer !== null && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.is_officer")}</span><span>{soldierData.is_officer ? t("common.yes") : t("common.no")}</span></div>}
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.bahad1_graduate")}</span><span>{soldierData.bahad1_graduate ? t("common.yes") : t("common.no")}</span></div>
             {soldierData.next_rank_date && (
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.next_rank_date")}</span>
@@ -554,7 +566,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {soldierData.is_officer && soldierData.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldierData.last_alal_date)}</span></div>}
             {soldierData.food_type && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.food_type")}</span><span>{t(`soldier_profile.food_${soldierData.food_type}`)}</span></div>}
             {soldierData.food_constraints && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.food_constraints")}</span><span className="text-right">{soldierData.food_constraints}</span></div>}
-            {rangeStatus && rangeStatus.statuses.length > 0 && (
+            {!isPublic && rangeStatus && rangeStatus.statuses.length > 0 && (
               <div>
                 <span className="text-gray-500 dark:text-gray-400">{t("range_qualification.status.sectionTitle")}</span>
                 <ul className="mt-1 space-y-1">
@@ -570,11 +582,11 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.service_type")}</span>
               <span>{soldierData.is_career ? t("soldier_profile.career") : t("soldier_profile.mandatory")}</span>
             </div>
-            <div className="flex justify-between">
+            {!isPublic && <div className="flex justify-between">
               <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.has_driving_license")}</span>
               <span>{soldierData.has_military_driving_license ? t("common.yes") : t("common.no")}</span>
-            </div>
-            {soldierData.has_military_driving_license && soldierData.military_driving_license_expiry && (
+            </div>}
+            {!isPublic && soldierData.has_military_driving_license && soldierData.military_driving_license_expiry && (
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.driving_license_expiry")}</span>
                 <span>{formatDate(soldierData.military_driving_license_expiry)}</span>

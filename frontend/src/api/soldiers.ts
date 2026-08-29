@@ -35,6 +35,8 @@ export interface SoldierDTO {
   profile_picture_url?: string | null;
   food_type?: string | null;
   food_constraints?: string | null;
+  visibility?: "full" | "public";
+  hierarchy_path?: string[];
 }
 
 export interface OnboardResult extends SoldierDTO {

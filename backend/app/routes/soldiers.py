@@ -81,6 +81,8 @@ class SoldierOut(BaseModel):
     email: str | None = None
     direct_commander_id: uuid.UUID | None = None
     direct_commander_name: str | None = None
+    visibility: str = "full"
+    hierarchy_path: list[str] = Field(default_factory=list)
 
 
 class OnboardRequest(BaseModel):
@@ -235,7 +237,21 @@ def _out(
     phone_public: bool = True,
     email_public: bool = True,
     rank_scope: RankAdvancementEditScope | None = None,
+    visibility: str = "full",
+    include_hierarchy_path: bool = False,
 ) -> SoldierOut:
+    public_mode = visibility == "public"
+    hierarchy_path: list[str] = []
+    if include_hierarchy_path:
+        node = _node_of(session, s)
+        if node is not None:
+            named_nodes = {
+                n.id: n.name
+                for n in session.execute(
+                    select(HierarchyNode).where(HierarchyNode.id.in_(node.path_ids))
+                ).scalars()
+            }
+            hierarchy_path = [named_nodes[node_id] for node_id in node.path_ids if node_id in named_nodes]
     can_edit_rank_advancement = (
         rank_scope.authorized(_node_of(session, s))
         if rank_scope is not None
@@ -246,32 +262,34 @@ def _out(
         personal_number=s.personal_number,
         full_name=s.full_name,
         role=s.role,
-        hierarchy_node_id=s.hierarchy_node_id,
+        hierarchy_node_id=None if public_mode else s.hierarchy_node_id,
         phone=s.phone if (include_private or phone_public) else None,
-        must_change_password=s.must_change_password,
-        left_at=s.left_at.isoformat() if s.left_at else None,
+        must_change_password=False if public_mode else s.must_change_password,
+        left_at=None if public_mode else (s.left_at.isoformat() if s.left_at else None),
         enrolled_at=s.enrolled_at,
-        gender=s.gender if include_private else None,
+        gender=s.gender if (include_private and not public_mode) else None,
         is_officer=s.is_officer,
         is_career=s.is_career,
         rank=s.rank,
-        rank_track=s.rank_track,
+        rank_track=None if public_mode else s.rank_track,
         next_rank_date=s.next_rank_date,
-        next_rank_date_overridden=s.next_rank_date_overridden,
-        can_edit_rank_advancement=can_edit_rank_advancement,
+        next_rank_date_overridden=False if public_mode else s.next_rank_date_overridden,
+        can_edit_rank_advancement=False if public_mode else can_edit_rank_advancement,
         bahad1_graduate=s.bahad1_graduate,
-        has_military_driving_license=s.has_military_driving_license,
-        military_driving_license_expiry=s.military_driving_license_expiry,
+        has_military_driving_license=None if public_mode else s.has_military_driving_license,
+        military_driving_license_expiry=None if public_mode else s.military_driving_license_expiry,
         enlistment_date=s.enlistment_date,
         mandatory_end_date=s.mandatory_end_date,
         discharge_date=s.discharge_date,
-        last_mitvahim_date=s.last_mitvahim_date,
-        last_alal_date=s.last_alal_date,
+        last_mitvahim_date=None if public_mode else s.last_mitvahim_date,
+        last_alal_date=None if public_mode else s.last_alal_date,
         food_type=s.food_type if include_private else None,
         food_constraints=s.food_constraints if include_private else None,
         profile_picture_url=s.profile_picture_url,
-        telegram_linked=telegram_linked,
+        telegram_linked=False if public_mode else telegram_linked,
         email=s.email if (include_private or email_public) else None,
+        visibility=visibility,
+        hierarchy_path=hierarchy_path,
     )
 
 
@@ -660,12 +678,23 @@ def get_soldier(
 ) -> SoldierOut:
     s = _load(session, soldier_id)
     is_self = s.id == user.id
+    target_node = _node_of(session, s)
+    has_read_permission = is_self or can(
+        user,
+        Action.SOLDIER_READ,
+        target_node=target_node,
+        roots=scope_root_ids(session, user),
+        is_commander=is_commander(session, user.id),
+        is_duty_manager=is_duty_manager(session, user.id),
+    )
     # Soldiers, commanders, and duty managers without scope over this
-    # soldier still get the redacted public profile instead of a 403 —
-    # _out()/can_see_private() already strip private fields for them.
+    # soldier still get a redacted public profile instead of a 403 — _out()
+    # strips every field outside the public allowlist when visibility is
+    # "public" (see its `public_mode` gating).
     is_public_viewer = user.role in ("soldier", "commander", "duty_manager")
-    if not is_self and not is_public_viewer:
-        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+    if not has_read_permission and not is_public_viewer:
+        authorize(session, user, Action.SOLDIER_READ, target_node=target_node)
+    visibility = "full" if has_read_permission else "public"
     link = session.execute(
         select(TelegramLink).where(
             TelegramLink.soldier_id == soldier_id,
@@ -683,6 +712,8 @@ def get_soldier(
         direct_commander=commander,
         phone_public=phone_public,
         email_public=email_public,
+        visibility=visibility,
+        include_hierarchy_path=True,
     )
 
 

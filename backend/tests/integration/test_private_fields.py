@@ -119,7 +119,77 @@ def test_plain_soldier_cannot_see_peer_gender(client: TestClient, admin_session:
     # but private fields like gender stay redacted since the viewer has no
     # command/duty-manager scope over the target.
     assert r.status_code == 200
+    assert r.json()["visibility"] == "public"
     assert r.json()["gender"] is None
+
+
+def test_out_of_scope_profile_uses_public_mode_and_exposes_approved_public_fields(
+    client: TestClient, admin_session: Session
+):
+    viewer = create_soldier(admin_session, personal_number="pf-viewer-public", role="soldier")
+    root = create_node(admin_session, level="department", name="Public Department")
+    child = create_node(admin_session, level="section", name="Public Section", parent=root)
+    target = create_soldier(
+        admin_session,
+        personal_number="pf-public-target",
+        full_name="Public Target",
+        hierarchy_node_id=child.id,
+    )
+    target.email = "public@example.com"
+    target.gender = "female"
+    target.is_officer = True
+    target.bahad1_graduate = True
+    target.next_rank_date = date.today() + timedelta(days=30)
+    target.enlistment_date = date(2020, 1, 2)
+    target.mandatory_end_date = date(2022, 1, 2)
+    target.discharge_date = date(2026, 1, 2)
+    target.last_mitvahim_date = date(2026, 2, 2)
+    target.has_military_driving_license = True
+    target.military_driving_license_expiry = date(2027, 1, 2)
+    admin_session.commit()
+
+    response = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(viewer))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["visibility"] == "public"
+    assert body["personal_number"] == "pf-public-target"
+    assert body["email"] == "public@example.com"
+    assert body["is_officer"] is True
+    assert body["bahad1_graduate"] is True
+    assert body["next_rank_date"] is not None
+    assert body["enlistment_date"] == "2020-01-02"
+    assert body["mandatory_end_date"] == "2022-01-02"
+    assert body["discharge_date"] == "2026-01-02"
+    assert body["hierarchy_path"] == ["Public Department", "Public Section"]
+    assert body["gender"] is None
+    assert body["last_mitvahim_date"] is None
+    assert body["has_military_driving_license"] is None
+    assert body["military_driving_license_expiry"] is None
+
+
+def test_target_read_permission_gets_full_mode_independently_of_navigation_path(
+    client: TestClient, admin_session: Session
+):
+    node = create_node(admin_session, level="branch", name="Permitted Branch")
+    viewer = create_soldier(
+        admin_session, personal_number="pf-permitted-viewer", role="commander"
+    )
+    node.commander_id = viewer.id
+    target = create_soldier(
+        admin_session,
+        personal_number="pf-permitted-target",
+        hierarchy_node_id=node.id,
+    )
+    target.gender = "male"
+    admin_session.commit()
+
+    response = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(viewer))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["visibility"] == "full"
+    assert body["gender"] == "male"
 
 
 # ── Field-update redaction ───────────────────────────────────────────────────

@@ -43,31 +43,28 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
     async (soldierId: string, onRefresh?: () => void, initialTab?: TabKey, initialHistoryTypes?: string[]) => {
       setOpening(true);
       try {
-        const [soldier, score, nodes] = await Promise.allSettled([
-          getSoldier(soldierId),
-          getSoldierScore(soldierId),
-          fetchTree(),
-        ]);
-
-        if (soldier.status === "rejected") {
+        const soldier = await getSoldier(soldierId).catch(() => null);
+        if (!soldier) {
           setLoadError(true);
           return;
         }
 
-        setModal({
-          soldier: (soldier as PromiseFulfilledResult<SoldierDTO>).value,
-          score:
-            score.status === "fulfilled"
-              ? (score as PromiseFulfilledResult<SoldierScoreDTO>).value
-              : null,
-          nodes:
-            nodes.status === "fulfilled"
-              ? (nodes as PromiseFulfilledResult<NodeDTO[]>).value
-              : [],
-          onRefresh,
-          initialTab,
-          initialHistoryTypes,
-        });
+        // A soldier the viewer has no read scope over comes back in "public"
+        // mode (redacted fields, no score/hierarchy-dependent data) — score
+        // and the full hierarchy tree are irrelevant there, so skip fetching
+        // them rather than firing requests whose result is never shown.
+        let score: SoldierScoreDTO | null = null;
+        let nodes: NodeDTO[] = [];
+        if (soldier.visibility !== "public") {
+          const [scoreResult, nodesResult] = await Promise.allSettled([
+            getSoldierScore(soldierId),
+            fetchTree(),
+          ]);
+          if (scoreResult.status === "fulfilled") score = scoreResult.value;
+          if (nodesResult.status === "fulfilled") nodes = nodesResult.value;
+        }
+
+        setModal({ soldier, score, nodes, onRefresh, initialTab, initialHistoryTypes });
       } finally {
         setOpening(false);
       }
