@@ -29,3 +29,13 @@ Implementation commit: `a868e9be8dda82c17c4494509fe2d4a41fb1b15a`
 
 - The existing `HierarchyTree.tsx` and `HierarchyTree.test.tsx` changes were left untouched and remain uncommitted as pre-existing work.
 - The existing `EventDetailModal` close button and the shared dialog close action both use the Hebrew “סגור” label; this is intentional for accessibility and consistent modal behavior.
+
+## Fix-round 1
+
+Updated `frontend/src/components/ranges/ConfirmDialog.tsx` so its preserved
+reason-field variant resolves default confirm/cancel labels through
+`common.confirm` and `common.cancel` with Hebrew fallbacks. Explicit labels and
+the existing reason submission behavior remain unchanged. Added focused wrapper
+coverage in `frontend/src/components/ranges/ConfirmDialog.test.tsx`.
+
+Fix-round 1 verification: `npx vitest run src/components/ranges/ConfirmDialog.test.tsx src/components/ConfirmDialog.test.tsx src/components/MessageDialog.test.tsx src/components/InputDialog.test.tsx src/pages/RangesPage.test.tsx` — 5 test files, 47 tests passed.
