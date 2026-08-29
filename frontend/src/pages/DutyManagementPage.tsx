@@ -11,6 +11,8 @@ import { createAdjustment } from "../api/scoreAdjustments";
 import { listSoldiers } from "../api/soldiers";
 import { getDraftsPreview, resetDrafts, resetPublished } from "../api/algorithm";
 import { lastDutyDay } from "../utils/formatDate";
+import ConfirmDialog from "../components/ConfirmDialog";
+import InputDialog from "../components/InputDialog";
 
 export function DutyManagementContent() {
   const { t } = useTranslation();
@@ -20,6 +22,11 @@ export function DutyManagementContent() {
   const [adjReason, setAdjReason] = useState("");
 
   const [explanationId, setExplanationId] = useState<string | null>(null);
+  const [cancelAssignmentId, setCancelAssignmentId] = useState<string | null>(null);
+  const [overrideAssignmentId, setOverrideAssignmentId] = useState<string | null>(null);
+  const [overrideDay, setOverrideDay] = useState<{ id: string; day: string } | null>(null);
+  const [confirmCancelDrafts, setConfirmCancelDrafts] = useState(false);
+  const [confirmCancelPublished, setConfirmCancelPublished] = useState(false);
 
   // Bulk cancel state
   const [draftsExpanded, setDraftsExpanded] = useState(false);
@@ -60,17 +67,12 @@ export function DutyManagementContent() {
     };
   }, []);
 
-  async function doCancel(id: string) {
-    const reason = window.prompt(t("duty_management.cancel_reason"));
-    if (!reason) return;
+  async function doCancel(id: string, reason: string) {
     await cancelAssignment(id, reason);
     await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
   }
 
-  async function doOverride(id: string) {
-    const day = window.prompt(t("duty_management.override_day"));
-    if (!day) return;
-    const repl = window.prompt(t("duty_management.replacement"));
+  async function doOverride(id: string, day: string, repl: string) {
     await setOverride(id, day, { effective_soldier_id: repl || null, reason: repl ? "replacement" : "cancelled" });
     await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
   }
@@ -82,7 +84,6 @@ export function DutyManagementContent() {
   }
 
   async function handleCancelDrafts() {
-    if (!window.confirm(t("duty_management.cancel_drafts_confirm", { count: draftCount }))) return;
     setCancelDraftsLoading(true);
     setCancelDraftsMsg(null);
     if (draftsTimerRef.current) clearTimeout(draftsTimerRef.current);
@@ -104,7 +105,6 @@ export function DutyManagementContent() {
   }
 
   async function handleCancelPublished() {
-    if (!window.confirm(t("duty_management.cancel_published_confirm"))) return;
     setCancelPublishedLoading(true);
     setCancelPublishedMsg(null);
     if (publishedTimerRef.current) clearTimeout(publishedTimerRef.current);
@@ -146,8 +146,8 @@ export function DutyManagementContent() {
             {a.weapon_ineligible && (
               <span title={a.weapon_ineligible_reason ?? undefined} className="mr-1 text-red-500 dark:text-red-400">⚠️</span>
             )}
-            <button className="text-xs text-indigo-600 dark:text-indigo-300" onClick={() => doOverride(a.id)} data-testid={`override-${a.id}`}>{t("duty_management.override")}</button>
-            <button className="text-xs text-red-600" onClick={() => doCancel(a.id)} data-testid={`cancel-${a.id}`}>{t("duty_management.cancel")}</button>
+            <button className="text-xs text-indigo-600 dark:text-indigo-300" onClick={() => setOverrideAssignmentId(a.id)} data-testid={`override-${a.id}`}>{t("duty_management.override")}</button>
+            <button className="text-xs text-red-600" onClick={() => setCancelAssignmentId(a.id)} data-testid={`cancel-${a.id}`}>{t("duty_management.cancel")}</button>
             <button
               className="text-gray-400 hover:text-indigo-600 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-full w-5 h-5 inline-flex items-center justify-center"
               onClick={() => setExplanationId(a.id)}
@@ -193,7 +193,7 @@ export function DutyManagementContent() {
             </button>
             <button
               type="button"
-              onClick={handleCancelDrafts}
+              onClick={() => setConfirmCancelDrafts(true)}
               disabled={cancelDraftsLoading || draftCount === 0}
               className="bg-amber-600 text-white px-3 py-1 rounded text-xs hover:bg-amber-700 disabled:opacity-40"
             >
@@ -221,7 +221,7 @@ export function DutyManagementContent() {
           </span>
           <button
             type="button"
-            onClick={handleCancelPublished}
+            onClick={() => setConfirmCancelPublished(true)}
             disabled={cancelPublishedLoading}
             className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 disabled:opacity-40"
           >
@@ -235,6 +235,59 @@ export function DutyManagementContent() {
       {explanationId && (
         <ExplanationModal assignmentId={explanationId} onClose={() => setExplanationId(null)} />
       )}
+      <InputDialog
+        open={cancelAssignmentId !== null}
+        title={t("duty_management.cancel_title", "ביטול תורנות")}
+        label={t("duty_management.cancel_reason")}
+        required
+        onClose={() => setCancelAssignmentId(null)}
+        onConfirm={reason => {
+          const id = cancelAssignmentId;
+          setCancelAssignmentId(null);
+          if (id) return doCancel(id, reason);
+        }}
+      />
+      <InputDialog
+        open={overrideAssignmentId !== null}
+        title={t("duty_management.override_title", "החלפת תורנות")}
+        label={t("duty_management.override_day")}
+        required
+        onClose={() => setOverrideAssignmentId(null)}
+        onConfirm={day => {
+          const id = overrideAssignmentId;
+          setOverrideAssignmentId(null);
+          if (id) setOverrideDay({ id, day });
+        }}
+      />
+      <InputDialog
+        open={overrideDay !== null}
+        title={t("duty_management.replacement_title", "מחליף לתורנות")}
+        label={t("duty_management.replacement")}
+        onClose={() => setOverrideDay(null)}
+        onConfirm={replacement => {
+          const target = overrideDay;
+          setOverrideDay(null);
+          if (target) return doOverride(target.id, target.day, replacement);
+        }}
+      />
+      <ConfirmDialog
+        open={confirmCancelDrafts}
+        title={t("duty_management.cancel_drafts_title", "ביטול טיוטות")}
+        message={t("duty_management.cancel_drafts_confirm", { count: draftCount })}
+        danger
+        confirmDisabled={cancelDraftsLoading}
+        onClose={() => setConfirmCancelDrafts(false)}
+        onConfirm={() => { setConfirmCancelDrafts(false); void handleCancelDrafts(); }}
+      />
+      <ConfirmDialog
+        open={confirmCancelPublished}
+        title={t("duty_management.cancel_published_title", "ביטול תורנויות")}
+        message={t("duty_management.cancel_published_confirm")}
+        danger
+        confirmDisabled={cancelPublishedLoading}
+        onClose={() => setConfirmCancelPublished(false)}
+        onConfirm={() => { setConfirmCancelPublished(false); void handleCancelPublished(); }}
+      />
     </section>
   );
 }

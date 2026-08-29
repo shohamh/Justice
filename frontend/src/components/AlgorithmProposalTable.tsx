@@ -8,6 +8,7 @@ import Combobox from "./Combobox";
 import { DataTable, type ColDef } from "./DataTable";
 import ExplanationModal from "./ExplanationModal";
 import SoldierLink from "./SoldierLink";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
   job: AlgorithmJob;
@@ -26,6 +27,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const [approveError, setApproveError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [rejectError, setRejectError] = useState<string | null>(null);
+  const [pendingRejectIds, setPendingRejectIds] = useState<string[] | null>(null);
 
   function apiErrorMsg(e: unknown): string {
     if (axios.isAxiosError(e)) {
@@ -119,8 +121,16 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       ? job.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p))
       : pendingProposals;
     if (toReject.length === 0) return;
-    const count = toReject.length;
-    if (!window.confirm(`בטל ${count} טיוטות?`)) return;
+    setPendingRejectIds(toReject.map(p => p.assignment_id));
+  }
+
+  async function confirmRejectSelected() {
+    const toReject = job.proposals.filter(p => pendingRejectIds?.includes(p.assignment_id) && isPending(p));
+    if (toReject.length === 0) {
+      setPendingRejectIds(null);
+      return;
+    }
+    setPendingRejectIds(null);
     setRejecting(true);
     setRejectError(null);
     try {
@@ -327,6 +337,16 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
           onClose={() => setExplanationTarget(null)}
         />
       )}
+      <ConfirmDialog
+        open={pendingRejectIds !== null}
+        title={t("algorithm.cancel_drafts_title", "ביטול טיוטות")}
+        message={t("algorithm.cancel_drafts_confirm", { count: pendingRejectIds?.length ?? 0, defaultValue: "לבטל {{count}} טיוטות?" })}
+        confirmLabel={t("algorithm.cancel_drafts", "בטל טיוטות")}
+        danger
+        confirmDisabled={rejecting}
+        onClose={() => setPendingRejectIds(null)}
+        onConfirm={() => void confirmRejectSelected()}
+      />
     </div>
   );
 }

@@ -92,15 +92,15 @@ test("start/end date fields are styled consistently with every other date input 
 });
 
 test("revokes an existing grant", async () => {
-  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
   mockRevokeDeputy.mockResolvedValue(undefined);
   render(<DeputiesPanel principalId="p1" principalRoles={{ isCommander: true, isDutyManager: false }} />);
   await screen.findByText("יוסי כהן");
 
   fireEvent.click(screen.getByText("הסר"));
+  expect(mockRevokeDeputy).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
 
   await waitFor(() => expect(mockRevokeDeputy).toHaveBeenCalledWith("g1"));
-  confirmSpy.mockRestore();
 });
 
 test("role select is hidden and fixed to commander when principal only holds that role", async () => {

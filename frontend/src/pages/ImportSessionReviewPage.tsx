@@ -43,6 +43,7 @@ import {
   listNodesForImport,
 } from "../api/importSessions";
 import { translateApiError } from "../utils/translateApiError";
+import MessageDialog from "../components/MessageDialog";
 
 type ActionValue = RowBase["action"];
 
@@ -214,6 +215,7 @@ export default function ImportSessionReviewPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("soldiers");
   const [selections, setSelections] = useState<Selections>({});
   const [confirming, setConfirming] = useState(false);
@@ -923,7 +925,7 @@ export default function ImportSessionReviewPage() {
                             defaultValue={row.start_date}
                             max={row.end_date || undefined}
                             onBlur={(iso) => {
-                              if (!isDateRangeValid(iso, row.end_date)) { alert(t("errors.date_range_invalid")); return; }
+                              if (!isDateRangeValid(iso, row.end_date)) { setValidationMessage(t("errors.date_range_invalid")); return; }
                               setFieldOverride("duty_shifts", row.row, "start_date", iso);
                             }}
                           />
@@ -936,7 +938,7 @@ export default function ImportSessionReviewPage() {
                             defaultValue={row.end_date}
                             min={row.start_date || undefined}
                             onBlur={(iso) => {
-                              if (!isDateRangeValid(row.start_date, iso)) { alert(t("errors.date_range_invalid")); return; }
+                              if (!isDateRangeValid(row.start_date, iso)) { setValidationMessage(t("errors.date_range_invalid")); return; }
                               setFieldOverride("duty_shifts", row.row, "end_date", iso);
                             }}
                           />
@@ -1396,7 +1398,7 @@ export default function ImportSessionReviewPage() {
                             defaultValue={row.start_date}
                             max={row.end_date || undefined}
                             onBlur={(iso) => {
-                              if (!isDateRangeValid(iso, row.end_date)) { alert(t("errors.date_range_invalid")); return; }
+                              if (!isDateRangeValid(iso, row.end_date)) { setValidationMessage(t("errors.date_range_invalid")); return; }
                               setFieldOverride("assignments", row.row, "start_date", iso);
                             }}
                           />
@@ -1409,7 +1411,7 @@ export default function ImportSessionReviewPage() {
                             defaultValue={row.end_date}
                             min={row.start_date || undefined}
                             onBlur={(iso) => {
-                              if (!isDateRangeValid(row.start_date, iso)) { alert(t("errors.date_range_invalid")); return; }
+                              if (!isDateRangeValid(row.start_date, iso)) { setValidationMessage(t("errors.date_range_invalid")); return; }
                               setFieldOverride("assignments", row.row, "end_date", iso);
                             }}
                           />
@@ -3758,6 +3760,7 @@ export default function ImportSessionReviewPage() {
           onClose={() => setDetailModal(null)}
         />
       )}
+      <MessageDialog open={validationMessage !== null} title={t("common.error", "שגיאה")} message={validationMessage ?? ""} onClose={() => setValidationMessage(null)} />
     </Layout>
   );
 }

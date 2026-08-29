@@ -9,6 +9,8 @@ import { ShiftTemplate, deleteTemplate, listTemplates } from "../api/shiftTempla
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
 import { translateApiError } from "../utils/translateApiError";
+import ConfirmDialog from "../components/ConfirmDialog";
+import MessageDialog from "../components/MessageDialog";
 
 export function ShiftTemplatesContent() {
   const { t } = useTranslation();
@@ -16,6 +18,8 @@ export function ShiftTemplatesContent() {
   const [showCreate, setShowCreate] = useState(false);
   const [editTemplate, setEditTemplate] = useState<ShiftTemplate | null>(null);
   const [generateTemplateId, setGenerateTemplateId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ShiftTemplate | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const templatesQuery = useQuery({ queryKey: queryKeys.shiftTemplates(), queryFn: () => listTemplates() });
   const templates = templatesQuery.data ?? [];
@@ -31,12 +35,11 @@ export function ShiftTemplatesContent() {
   }
 
   async function handleDelete(tmpl: ShiftTemplate) {
-    if (!window.confirm(t("shift_templates.confirm_delete"))) return;
     try {
       await deleteTemplate(tmpl.id);
       await refresh();
     } catch (err: unknown) {
-      alert(translateApiError(err, t, "שגיאה"));
+      setMessage(translateApiError(err, t, t("common.error", "שגיאה")));
     }
   }
 
@@ -109,7 +112,7 @@ export function ShiftTemplatesContent() {
           </button>
           <button
             type="button"
-            onClick={() => handleDelete(tmpl)}
+            onClick={() => setDeleteTarget(tmpl)}
             className="text-red-600 text-xs hover:underline"
           >
             {t("shift_templates.delete")}
@@ -166,6 +169,19 @@ export function ShiftTemplatesContent() {
           onGenerated={() => setGenerateTemplateId(null)}
         />
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={t("shift_templates.delete_title", "מחיקת תבנית")}
+        message={t("shift_templates.confirm_delete")}
+        danger
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) void handleDelete(target);
+        }}
+      />
+      <MessageDialog open={message !== null} title={t("common.error", "שגיאה")} message={message ?? ""} onClose={() => setMessage(null)} />
     </>
   );
 }

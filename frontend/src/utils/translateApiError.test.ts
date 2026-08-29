@@ -16,6 +16,10 @@ function axiosErrorWithDetail(detail: unknown) {
   return { response: { data: { detail } } };
 }
 
+function axiosError(status: number, headers?: Record<string, string>) {
+  return { response: { status, headers, data: {} } };
+}
+
 describe("translateApiError", () => {
   it("translates a known snake_case error code", () => {
     expect(translateApiError(axiosErrorWithDetail("overlap"), t)).toBe("קיימת חפיפה עם תורנות אחרת");
@@ -35,6 +39,14 @@ describe("translateApiError", () => {
 
   it("falls back to the generic error for non-axios errors", () => {
     expect(translateApiError(new Error("boom"), t)).toBe("שגיאה");
+  });
+
+  it("explains server failures when the API provides no detail", () => {
+    const tWithServerError = (key: string): string => ({
+      "errors.generic": "generic",
+      "errors.server_error": "server error",
+    }[key] ?? key);
+    expect(translateApiError(axiosError(500), tWithServerError)).toBe("server error");
   });
 
   it("surfaces field names for a Pydantic-style list detail instead of the generic fallback", () => {
@@ -66,5 +78,10 @@ describe("translateApiError", () => {
     const msg = translateApiError(axiosErrorWithDetail("start_date_required"), i18n.t.bind(i18n), "fallback");
     expect(msg).not.toBe("fallback");
     expect(msg).toBe("יש למלא תאריך התחלה כאשר מוזן תאריך סיום");
+  });
+
+  it("resolves hierarchy transfer errors via the real he.json errors namespace", () => {
+    expect(translateApiError(axiosErrorWithDetail("to_node_not_found"), i18n.t.bind(i18n), "fallback")).toBe("יחידת היעד לא נמצאה");
+    expect(translateApiError(axiosErrorWithDetail("daily_transfer_request_limit_exceeded"), i18n.t.bind(i18n), "fallback")).toBe("הגעת למכסה היומית של בקשות העברת חיילים");
   });
 });

@@ -13,6 +13,7 @@ import AuditHistoryBlock from "../components/AuditHistoryBlock";
 import { MySwapCard } from "../components/MySwapCard";
 import SoldierLink from "../components/SoldierLink";
 import ApprovalStageIcons from "../components/ApprovalStageIcons";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useAuth } from "../auth/AuthContext";
 import { listExemptions } from "../api/exemptions";
 import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
@@ -200,6 +201,7 @@ export default function MyRequestsPage() {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelConstraintId, setCancelConstraintId] = useState<string | null>(null);
   const [submittedHolidays, setSubmittedHolidays] = useState<{ date: string; name: string }[]>([]);
 
   // Exemption request form state
@@ -331,7 +333,6 @@ export default function MyRequestsPage() {
   }
 
   async function onCancel(id: string) {
-    if (!confirm(t("my_requests.cancel") + "?")) return;
     await cancelConstraint(id);
     await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
     await queryClient.invalidateQueries({ queryKey: queryKeys.remainingConstraintDays() });
@@ -710,7 +711,7 @@ export default function MyRequestsPage() {
                               rejected it's final, so hide the button to avoid a call
                               that would 400. */}
                           {(c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager") && (
-                            <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
+                            <button className="text-red-500 text-xs" onClick={() => setCancelConstraintId(c.id)} data-testid={`cancel-${c.id}`}>
                               {t("my_requests.cancel")}
                             </button>
                           )}
@@ -1038,6 +1039,18 @@ export default function MyRequestsPage() {
           </div>
         )}
       </section>
+      <ConfirmDialog
+        open={cancelConstraintId !== null}
+        title={t("my_requests.cancel_title", "ביטול בקשה")}
+        message={t("my_requests.cancel_confirm", "לבטל את הבקשה?")}
+        danger
+        onClose={() => setCancelConstraintId(null)}
+        onConfirm={() => {
+          const id = cancelConstraintId;
+          setCancelConstraintId(null);
+          if (id) void onCancel(id);
+        }}
+      />
     </Layout>
   );
 }

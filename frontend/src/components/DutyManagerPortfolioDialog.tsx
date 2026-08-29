@@ -5,6 +5,7 @@ import { assignDmScope, DmScopeEntry, listDmScope, removeDmScope } from "../api/
 import Combobox from "./Combobox";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import MessageDialog from "./MessageDialog";
 
 interface Props {
   soldierId: string;
@@ -20,6 +21,7 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
   const [entries, setEntries] = useState<DmScopeEntry[]>([]);
   const [addNodeId, setAddNodeId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setEntries(await listDmScope(soldierId));
@@ -44,7 +46,7 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
       await refresh();
       onChanged();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic", "שגיאה"));
     } finally {
       setLoading(false);
     }
@@ -56,7 +58,7 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
       await refresh();
       onChanged();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic", "שגיאה"));
     }
   }
 
@@ -125,6 +127,7 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
           </button>
         </div>
       </div>
+      <MessageDialog open={message !== null} title={t("common.error", "שגיאה")} message={message ?? ""} onClose={() => setMessage(null)} />
     </div>
   );
 }
