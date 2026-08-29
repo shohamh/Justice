@@ -396,7 +396,7 @@ def _validate_and_build_assignment(
         session, node=node, user=user
     ):
         raise RangeValidationError("soldier_outside_event_subunit")
-    if is_range_exempt(session, soldier=soldier, event_date=event.date):
+    if is_range_exempt(session, soldier=soldier, event_date=event.date, range_type=event.range_type):
         raise RangeValidationError("soldier_range_exempt")
     existing_same_date = session.execute(
         select(RangeAssignment.id)
