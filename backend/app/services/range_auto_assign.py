@@ -132,17 +132,8 @@ class ExcludedSoldier:
 NEAR_DUTY_WINDOW_DAYS = 30
 
 
-def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier) -> list[Soldier]:
-    """Every soldier the requesting user is authorized to send to this range: the
-    full union of their commanded/duty-manager subtrees, not just the event's own
-    hierarchy node. A commander whose scope spans several sub-units must be able to
-    pick reserves from any of them, not only the specific unit the event was created
-    under — otherwise the reserve pool dries up as soon as that one unit is full."""
-    if user.role == "admin":
-        return list(session.execute(select(Soldier)).scalars().all())
-    roots = scope_root_ids(session, user)
-    if not roots:
-        return []
+def _soldiers_under_roots(session: Session, *, roots: list[uuid.UUID]) -> list[Soldier]:
+    """Every soldier whose hierarchy node lies in the subtree of any of `roots`."""
     subtree_node_ids = list(
         session.execute(
             select(HierarchyNode.id).where(
@@ -155,6 +146,26 @@ def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier) -> list
             select(Soldier).where(Soldier.hierarchy_node_id.in_(subtree_node_ids))
         ).scalars().all()
     )
+
+
+def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier | None = None) -> list[Soldier]:
+    """Every soldier the requesting user is authorized to send to this range: the
+    full union of their commanded/duty-manager subtrees, not just the event's own
+    hierarchy node. A commander whose scope spans several sub-units must be able to
+    pick reserves from any of them, not only the specific unit the event was created
+    under — otherwise the reserve pool dries up as soon as that one unit is full.
+
+    user=None (no caller context, e.g. reconciliation's automatic refill) means there
+    is no widened authorized scope to apply, so the pool is exactly the event's own
+    subtree — the same rule _validate_and_build_assignment applies via in_event_subtree."""
+    if user is None:
+        return _soldiers_under_roots(session, roots=[event.hierarchy_node_id])
+    if user.role == "admin":
+        return list(session.execute(select(Soldier)).scalars().all())
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return []
+    return _soldiers_under_roots(session, roots=roots)
 
 
 def _bulk_duty_start_by_soldier(
@@ -367,7 +378,7 @@ def _bulk_rank(
 
 
 def rank_candidates_with_excluded(
-    session: Session, *, event: RangeEvent, user: Soldier,
+    session: Session, *, event: RangeEvent, user: Soldier | None = None,
 ) -> tuple[list[RankedCandidate], list[ExcludedSoldier]]:
     """Return ranked candidates and hard-excluded soldiers in one read-only pass."""
     existing_soldier_ids = {
@@ -412,7 +423,9 @@ def rank_candidates_with_excluded(
     return ranked, excluded
 
 
-def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> list[RankedCandidate]:
+def rank_candidates(
+    session: Session, *, event: RangeEvent, user: Soldier | None = None,
+) -> list[RankedCandidate]:
     """Read-only: ranks every ELIGIBLE soldier in the requesting user's authorized
     scope who isn't already assigned to this event, using the Phase 2 tier ordering,
     but never writes to the database. Soldiers who can't actually be sent to this
@@ -424,7 +437,9 @@ def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> li
     return ranked
 
 
-def excluded_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> list[ExcludedSoldier]:
+def excluded_candidates(
+    session: Session, *, event: RangeEvent, user: Soldier | None = None,
+) -> list[ExcludedSoldier]:
     """Read-only: the soldiers hard-excluded from `rank_candidates`'s pool for this
     event (weapon-exempt, structurally ineligible, or already assigned to another
     range the same day), each with a reason code — so the UI can show *why* a

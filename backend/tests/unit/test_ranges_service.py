@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     AuditLog,
+    DutyAssignment,
     DutyType,
     Notification,
     NotificationType,
@@ -29,7 +30,7 @@ from app.services.ranges import (
     update_range_event,
 )
 from app.services.settings_loader import set_setting
-from tests.helpers import create_node, create_range_location, create_soldier
+from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
 
 
 def _approved_constraint(session: Session, soldier_id, event_date: date) -> PersonalConstraint:
@@ -719,3 +720,194 @@ def test_reconciliation_writes_removal_audit_without_committing(app_session: Ses
 
     assert app_session.get(RangeAssignment, target.id) is not None
     assert app_session.execute(select(AuditLog).where(AuditLog.entity_id == target.id)).scalar_one_or_none() is None
+
+
+def _weapon_duty_type(session: Session, *, node, name: str) -> DutyType:
+    duty_type = DutyType(
+        name=name, score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    session.add(duty_type)
+    session.flush()
+    return duty_type
+
+
+def test_reconciliation_refills_vacated_primary_slot(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="refill primary")
+    _weapon_duty_type(app_session, node=node, name="refill primary weapon")
+    covered = create_soldier(app_session, personal_number="refill-001", hierarchy_node_id=node.id)
+    replacement = create_soldier(app_session, personal_number="refill-002", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="refill primary range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+    later = add_range_assignment(app_session, event=later_event, soldier_id=covered.id, is_reserve=False)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == [later.id]
+    assert result.unfilled_primary_count == 0
+    assert len(result.refilled_primary_assignment_ids) == 1
+    refilled = app_session.get(RangeAssignment, result.refilled_primary_assignment_ids[0])
+    assert refilled.range_event_id == later_event.id
+    assert refilled.is_reserve is False
+    assert refilled.soldier_id == replacement.id
+
+
+def test_reconciliation_refills_vacated_reserve_slot(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="refill reserve")
+    _weapon_duty_type(app_session, node=node, name="refill reserve weapon")
+    covered = create_soldier(app_session, personal_number="refill-003", hierarchy_node_id=node.id)
+    replacement = create_soldier(app_session, personal_number="refill-004", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="refill reserve range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id,
+        required_count=0, reserve_count=1,
+    )
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+    later = add_range_assignment(app_session, event=later_event, soldier_id=covered.id, is_reserve=True)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == [later.id]
+    assert result.refilled_primary_assignment_ids == []
+    assert len(result.refilled_reserve_assignment_ids) == 1
+    refilled = app_session.get(RangeAssignment, result.refilled_reserve_assignment_ids[0])
+    assert refilled.range_event_id == later_event.id
+    assert refilled.is_reserve is True
+    assert refilled.soldier_id == replacement.id
+
+
+def test_reconciliation_refill_never_crosses_primary_and_reserve_slots(app_session: Session) -> None:
+    """The top-ranked candidate here ranks highly because of an upcoming *reserve*
+    duty — that must still put them in the vacated PRIMARY slot, never in reserve."""
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="refill no cross-fill")
+    weapon_duty_type = _weapon_duty_type(app_session, node=node, name="refill no cross-fill weapon")
+    covered = create_soldier(app_session, personal_number="refill-005", hierarchy_node_id=node.id)
+    reserve_ranked = create_soldier(app_session, personal_number="refill-006", hierarchy_node_id=node.id)
+    create_soldier(app_session, personal_number="refill-007", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="refill no cross-fill range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id,
+        required_count=1, reserve_count=1,
+    )
+    duty_date = later_event.date + timedelta(days=2)
+    app_session.add(DutyAssignment(
+        soldier_id=reserve_ranked.id, duty_type_id=weapon_duty_type.id,
+        duty_location_id=create_duty_location(app_session, name="refill no cross-fill duty").id,
+        start_date=duty_date, end_date=duty_date, status="published", is_reserve=True,
+    ))
+    app_session.flush()
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+    add_range_assignment(app_session, event=later_event, soldier_id=covered.id, is_reserve=False)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.refilled_reserve_assignment_ids == []
+    assert len(result.refilled_primary_assignment_ids) == 1
+    refilled = app_session.get(RangeAssignment, result.refilled_primary_assignment_ids[0])
+    assert refilled.soldier_id == reserve_ranked.id
+    assert refilled.is_reserve is False
+    assert app_session.execute(select(RangeAssignment).where(
+        RangeAssignment.range_event_id == later_event.id, RangeAssignment.is_reserve.is_(True),
+    )).scalars().all() == []
+
+
+def test_reconciliation_records_shortage_when_no_replacement_exists(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    node = create_node(app_session, level="branch", name="refill shortage")
+    _weapon_duty_type(app_session, node=node, name="refill shortage weapon")
+    covered = create_soldier(app_session, personal_number="refill-008", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="refill shortage range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+    later = add_range_assignment(app_session, event=later_event, soldier_id=covered.id, is_reserve=False)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert result.removed_assignment_ids == [later.id]
+    assert result.refilled_primary_assignment_ids == []
+    assert result.unfilled_primary_count == 1
+    assert result.unfilled_reserve_count == 0
+    # The valid removal stands even though the slot could not be refilled.
+    assert app_session.get(RangeAssignment, later.id) is None
+    assert app_session.execute(select(RangeAssignment).where(
+        RangeAssignment.range_event_id == later_event.id,
+    )).scalars().all() == []
+
+
+def test_reconciliation_refill_only_draws_from_event_subtree(app_session: Session) -> None:
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    parent = create_node(app_session, level="branch", name="refill scope parent")
+    child = create_node(app_session, level="פלוגה", name="refill scope child", parent=parent)
+    weapon_duty_type = _weapon_duty_type(app_session, node=parent, name="refill scope weapon")
+    covered = create_soldier(app_session, personal_number="refill-009", hierarchy_node_id=child.id)
+    in_subtree = create_soldier(app_session, personal_number="refill-010", hierarchy_node_id=child.id)
+    outside_subtree = create_soldier(app_session, personal_number="refill-011", hierarchy_node_id=parent.id)
+    location = create_range_location(app_session, name="refill scope range")
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=child.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=child.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    # The outsider would rank top of the pool (upcoming weapon duty) if the pool
+    # were ever widened beyond the event's own subtree.
+    duty_date = later_event.date + timedelta(days=2)
+    app_session.add(DutyAssignment(
+        soldier_id=outside_subtree.id, duty_type_id=weapon_duty_type.id,
+        duty_location_id=create_duty_location(app_session, name="refill scope duty").id,
+        start_date=duty_date, end_date=duty_date, status="published",
+    ))
+    app_session.flush()
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+    add_range_assignment(app_session, event=later_event, soldier_id=covered.id, is_reserve=False)
+
+    result = reconcile_future_range_assignments(
+        app_session, soldier_id=covered.id, source_event=source_event, actor_id=None,
+    )
+
+    assert len(result.refilled_primary_assignment_ids) == 1
+    refilled = app_session.get(RangeAssignment, result.refilled_primary_assignment_ids[0])
+    assert refilled.soldier_id == in_subtree.id
+    assert refilled.soldier_id != outside_subtree.id

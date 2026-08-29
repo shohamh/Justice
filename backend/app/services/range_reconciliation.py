@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.db.models import (
     RANGE_TYPE_RANK,
     RangeAssignment,
@@ -16,7 +17,13 @@ from app.db.models import (
     RangeExcusalRequest,
     RangeExcusalStatus,
 )
-from app.services.ranges import _remove_range_assignment_in_transaction, _validity_days
+from app.services.range_auto_assign import rank_candidates
+from app.services.ranges import (
+    RangeValidationError,
+    _remove_range_assignment_in_transaction,
+    _validate_and_build_assignment,
+    _validity_days,
+)
 
 
 @dataclass
@@ -48,16 +55,58 @@ def _source_provides_guaranteed_coverage(
     return not pending_excusal
 
 
+def _refill_slot(
+    session: Session, *, event: RangeEvent, is_reserve: bool,
+    excluded_soldier_id: uuid.UUID, actor_id: uuid.UUID | None,
+) -> RangeAssignment | None:
+    """Fill one just-vacated slot on `event` with the best-ranked replacement, without
+    committing the transaction. `user=None` keeps the candidate pool at the event's own
+    subtree, and the slot kind (`is_reserve`) is preserved exactly — a vacated primary
+    is only ever refilled by a primary, and a vacated reserve only by a reserve.
+    Returns None when nobody can take the slot; the caller records the shortage."""
+    candidates = [
+        candidate for candidate in rank_candidates(session, event=event, user=None)
+        if candidate.soldier.id != excluded_soldier_id
+    ]
+    for candidate in candidates:
+        try:
+            assignment, _constraint = _validate_and_build_assignment(
+                session, event=event, soldier_id=candidate.soldier.id,
+                is_reserve=is_reserve, user=None,
+            )
+        except RangeValidationError:
+            # The ranked list is already filtered for eligibility, but state can change
+            # between ranking and building — skip rather than abort reconciliation.
+            continue
+        assignment.assignment_reason_code = candidate.reason_code
+        session.add(assignment)
+        session.flush()
+        write_audit(
+            session, actor_id=actor_id, action="range_assignment.auto_refill",
+            entity_type="range_assignment", entity_id=assignment.id,
+            after={
+                "soldier_id": str(assignment.soldier_id),
+                "range_event_id": str(event.id),
+                "is_reserve": is_reserve,
+            },
+            context={"reason": "redundant_future_range_assignment"},
+        )
+        return assignment
+    return None
+
+
 def reconcile_future_range_assignments(
     session: Session, *, soldier_id: uuid.UUID, source_event: RangeEvent,
     actor_id: uuid.UUID | None,
 ) -> ReconciliationResult:
-    """Remove redundant later assignments without committing the transaction.
+    """Remove redundant later assignments and refill them, without committing.
 
     The source assignment is the only coverage trigger. Future planned target
     events are visited in date order, and draft assignments are never touched.
-    Refill fields remain empty until the follow-up implementation adds slot-
-    preserving candidate selection.
+    Each vacated slot is immediately offered to the best-ranked replacement from
+    the target event's own subtree, keeping the slot kind intact; when nobody can
+    take it the slot stays empty and the shortage is counted — the valid removal
+    is never rolled back just because no replacement exists.
     """
     result = ReconciliationResult()
     source_assignment = session.execute(
@@ -92,13 +141,28 @@ def reconcile_future_range_assignments(
         .order_by(RangeEvent.date, RangeEvent.id)
     ).all()
 
-    for assignment, _event in targets:
+    for assignment, event in targets:
+        removed_id, is_reserve = assignment.id, assignment.is_reserve
         _remove_range_assignment_in_transaction(
             session,
             assignment=assignment,
             reason="redundant_future_range_assignment",
             actor_id=actor_id,
         )
-        result.removed_assignment_ids.append(assignment.id)
+        result.removed_assignment_ids.append(removed_id)
+
+        replacement = _refill_slot(
+            session, event=event, is_reserve=is_reserve,
+            excluded_soldier_id=soldier_id, actor_id=actor_id,
+        )
+        if replacement is None:
+            if is_reserve:
+                result.unfilled_reserve_count += 1
+            else:
+                result.unfilled_primary_count += 1
+        elif is_reserve:
+            result.refilled_reserve_assignment_ids.append(replacement.id)
+        else:
+            result.refilled_primary_assignment_ids.append(replacement.id)
 
     return result
