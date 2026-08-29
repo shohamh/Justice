@@ -239,27 +239,49 @@ def test_range_eligibility_does_not_count_pending_or_draft_reserve_assignment(ad
     soldier = create_soldier(admin_session, personal_number="eligibility-reserve", hierarchy_node_id=node.id)
     reserve_event = create_range_event(
         admin_session, hierarchy_node=node, range_type=RangeType.laser,
-        event_date=date.today() - timedelta(days=2), range_location=create_range_location(admin_session),
+        event_date=date.today() + timedelta(days=2), range_location=create_range_location(admin_session),
     )
     draft_event = create_range_event(
         admin_session, hierarchy_node=node, range_type=RangeType.laser,
-        event_date=date.today() - timedelta(days=1), range_location=create_range_location(admin_session),
+        event_date=date.today() + timedelta(days=3), range_location=create_range_location(admin_session),
     )
     draft_reserve_event = create_range_event(
         admin_session, hierarchy_node=node, range_type=RangeType.laser,
-        event_date=date.today() - timedelta(days=3), range_location=create_range_location(admin_session),
+        event_date=date.today() + timedelta(days=4), range_location=create_range_location(admin_session),
     )
     admin_session.add_all([
         RangeAssignment(range_event_id=reserve_event.id, soldier_id=soldier.id, is_reserve=True, attendance_status="pending"),
         RangeAssignment(range_event_id=draft_event.id, soldier_id=soldier.id, is_reserve=False, is_draft=True),
-        RangeAssignment(range_event_id=draft_reserve_event.id, soldier_id=soldier.id, is_reserve=True, is_draft=True),
+        RangeAssignment(range_event_id=draft_reserve_event.id, soldier_id=soldier.id, is_reserve=True, is_draft=True, attendance_status="present"),
     ])
     admin_session.commit()
     set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
 
     eligible, reason = compute_eligibility(
-        admin_session, soldier_id=soldier.id, required_range_type=RangeType.laser, as_of=date.today(),
+        admin_session, soldier_id=soldier.id, required_range_type=RangeType.laser, as_of=date.today() + timedelta(days=5),
     )
 
     assert eligible is False
     assert reason == "weapon_qualification"
+
+
+def test_confirmed_reserve_range_provides_reserve_like_coverage(admin_session):
+    node = create_node(admin_session, level="branch", name="eligibility confirmed reserve")
+    soldier = create_soldier(admin_session, personal_number="eligibility-confirmed-reserve", hierarchy_node_id=node.id)
+    event = create_range_event(
+        admin_session, hierarchy_node=node, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=2), range_location=create_range_location(admin_session),
+    )
+    admin_session.add(RangeAssignment(
+        range_event_id=event.id, soldier_id=soldier.id, is_reserve=True, attendance_status="present",
+    ))
+    admin_session.commit()
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
+
+    eligible, reason = compute_eligibility(
+        admin_session, soldier_id=soldier.id, required_range_type=RangeType.laser,
+        as_of=date.today() + timedelta(days=3),
+    )
+
+    assert eligible is True
+    assert reason is None

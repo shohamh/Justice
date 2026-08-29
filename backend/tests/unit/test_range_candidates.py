@@ -673,17 +673,22 @@ def test_candidate_duty_ranking_uses_duties_after_event_and_primary_before_reser
     app_session.add_all([
         DutyAssignment(
             soldier_id=primary.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-            start_date=date.today() + timedelta(days=2), end_date=date.today() + timedelta(days=2),
+            start_date=date.today() + timedelta(days=10), end_date=date.today() + timedelta(days=10),
             status="published", is_reserve=False,
         ),
         DutyAssignment(
             soldier_id=primary.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-            start_date=date.today() + timedelta(days=10), end_date=date.today() + timedelta(days=10),
+            start_date=date.today() + timedelta(days=12), end_date=date.today() + timedelta(days=12),
             status="published", is_reserve=False,
         ),
         DutyAssignment(
             soldier_id=reserve.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
             start_date=date.today() + timedelta(days=6), end_date=date.today() + timedelta(days=6),
+            status="published", is_reserve=True,
+        ),
+        DutyAssignment(
+            soldier_id=reserve.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=8), end_date=date.today() + timedelta(days=8),
             status="published", is_reserve=True,
         ),
     ])
@@ -696,11 +701,15 @@ def test_candidate_duty_ranking_uses_duties_after_event_and_primary_before_reser
 
     ranked = [candidate.soldier.id for candidate in rank_candidates(app_session, event=event, user=dm)]
 
+    candidates = rank_candidates(app_session, event=event, user=dm)
     assert ranked[:2] == [primary.id, reserve.id]
-    primary_candidate = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
-                             if candidate.soldier.id == primary.id)
+    primary_candidate = next(candidate for candidate in candidates if candidate.soldier.id == primary.id)
+    reserve_candidate = next(candidate for candidate in candidates if candidate.soldier.id == reserve.id)
     assert primary_candidate.explanation.endswith(
         f"{(date.today() + timedelta(days=10)).strftime('%d.%m.%Y')}"
+    )
+    assert reserve_candidate.explanation.endswith(
+        f"{(date.today() + timedelta(days=6)).strftime('%d.%m.%Y')}"
     )
 
 
