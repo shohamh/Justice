@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, ClipboardCopy } from "lucide-react";
 import { clearAdminErrors, listAdminErrors, markAdminErrorsRead, markAllAdminErrorsRead, type ErrorLogEntry, type PaginatedErrorLogs } from "../../api/bugReports";
+import ConfirmDialog from "../../components/ConfirmDialog";
 
 function buildErrorReport(entry: ErrorLogEntry): string {
   const prompt = `This is a ${entry.source} error in my app, here are its details. Investigate it and fix it.`;
@@ -27,6 +28,7 @@ export function ErrorsContent() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [clearThrough, setClearThrough] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
   const queryClient = useQueryClient();
   const queryKey = ["admin-errors", source, page, from, to];
   const query = useQuery({
@@ -51,7 +53,12 @@ export function ErrorsContent() {
   }
 
   async function handleClear() {
-    if (!clearThrough || !window.confirm(label("admin_errors.confirm_clear", "\u05dc\u05e0\u05e7\u05d5\u05ea \u05db\u05dc \u05d4\u05e9\u05d2\u05d9\u05d0\u05d5\u05ea \u05e2\u05d3 \u05ea\u05d0\u05e8\u05d9\u05da \u05d6\u05d4?"))) return;
+    if (!clearThrough) return;
+    setConfirmClear(true);
+  }
+
+  async function confirmClearErrors() {
+    setConfirmClear(false);
     await clearAdminErrors(new Date(clearThrough).toISOString());
     setClearThrough("");
     await query.refetch();
@@ -92,6 +99,14 @@ export function ErrorsContent() {
       {!query.isLoading && !query.isError && items.length === 0 && <p className="text-sm text-gray-500 p-4">{label("admin_errors.empty", "\u05dc\u05d0 \u05e0\u05e8\u05e9\u05de\u05d5 \u05e9\u05d2\u05d9\u05d0\u05d5\u05ea")}</p>}
       {!query.isLoading && !query.isError && items.length > 0 && <div className="space-y-2">{items.map((entry, index) => <ErrorRow key={`${entry.timestamp}-${entry.request_id}-${index}`} entry={entry} onOpen={() => void markErrorRead(entry)} />)}</div>}
       {pages > 1 && <div className="flex justify-center gap-2 mt-4">{Array.from({ length: pages }, (_, index) => <button key={index} type="button" onClick={() => setPage(index + 1)} className={`px-3 py-1 rounded text-sm ${page === index + 1 ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>{index + 1}</button>)}</div>}
+      <ConfirmDialog
+        open={confirmClear}
+        title={label("admin_errors.clear", "נקה")}
+        message={label("admin_errors.confirm_clear", "לנקות כל השגיאות עד תאריך זה?")}
+        danger
+        onConfirm={() => void confirmClearErrors()}
+        onClose={() => setConfirmClear(false)}
+      />
     </div>
   );
 }
