@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { useAuth } from "../../auth/AuthContext";
+import { getSystemSettings } from "../../api/systemSettings";
 import AlertBanners from "./AlertBanners";
 
 const mocks = vi.hoisted(() => ({ t: (key: string) => key }));
@@ -60,5 +61,18 @@ describe("AlertBanners alal gating", () => {
     );
 
     expect(screen.queryByText(/אל"ל/)).not.toBeInTheDocument();
+  });
+  it("does not reject when the settings response is undefined", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { is_officer: false, is_career: false, alal_relevant: false },
+    } as ReturnType<typeof useAuth>);
+    vi.mocked(getSystemSettings).mockResolvedValue(undefined as never);
+
+    render(
+      <AlertBanners lastMitvahimDate={null} lastAlalDate={null} settings={{}} />,
+      { wrapper: makeWrapper() },
+    );
+
+    await vi.waitFor(() => expect(getSystemSettings).toHaveBeenCalled());
   });
 });

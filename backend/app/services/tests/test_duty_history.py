@@ -935,7 +935,7 @@ def test_range_removed_via_manual_removal_appears(admin_session, soldier):
     manager = create_soldier(admin_session, personal_number="dh-removed-mgr2", role="duty_manager", hierarchy_node_id=node.id)
     weapon_duty = DutyType(
         name=f"שמירה עם נשק {_uid()}", score_per_day=Decimal("1.00"),
-        requires_weapon=True, eligible_node_ids=[node.id],
+        requires_weapon=True, required_range_type=RangeType.alal, eligible_node_ids=[node.id],
     )
     admin_session.add(weapon_duty)
     admin_session.commit()

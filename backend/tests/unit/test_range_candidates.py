@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,13 +12,15 @@ from app.db.models import (
     ExemptionType,
     PersonalConstraint,
     RangeAssignment,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
     RangeType,
     Soldier,
     SoldierExemption,
     SoldierRangeQualification,
 )
-from app.services.range_auto_assign import rank_candidates, rank_candidates_with_excluded
-from app.services.ranges import add_range_assignment, create_range_event
+from app.services.range_auto_assign import excluded_candidates, rank_candidates, rank_candidates_with_excluded
+from app.services.ranges import RangeValidationError, add_range_assignment, create_range_event
 from app.services.settings_loader import set_setting
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
 
@@ -474,12 +477,12 @@ def test_tier_a_sorts_before_tier_b_before_tier_c_before_tier_d(app_session: Ses
     tier_b_soldier = create_soldier(app_session, personal_number="6100005", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=tier_b_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1), status="published", is_reserve=True,
+        start_date=event_date + timedelta(days=1), end_date=event_date + timedelta(days=1), status="published", is_reserve=True,
     ))
     tier_a_soldier = create_soldier(app_session, personal_number="6100003", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=tier_a_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1), status="published",
+        start_date=event_date + timedelta(days=1), end_date=event_date + timedelta(days=1), status="published",
     ))
     app_session.flush()
 
@@ -509,7 +512,7 @@ def test_tier_a_orders_by_earliest_duty_start(app_session: Session) -> None:
     sooner_soldier = create_soldier(app_session, personal_number="6200002", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=sooner_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=2), end_date=date.today() + timedelta(days=2), status="published",
+        start_date=event_date + timedelta(days=2), end_date=event_date + timedelta(days=2), status="published",
     ))
     app_session.flush()
 
@@ -575,6 +578,238 @@ def test_qualification_at_higher_range_type_counts_as_tier_d(app_session: Sessio
     assert mine.reason_code == "qualified"
 
 
+def test_earlier_primary_range_qualifies_later_candidate_event(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    soldier = create_soldier(app_session, personal_number="sequencing-primary", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="earlier range").id,
+        required_count=1,
+    )
+    app_session.add(RangeAssignment(
+        range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False,
+    ))
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code == "qualified"
+    assert mine.explanation == f"range_recently_completed:{(earlier_event.date + timedelta(days=180)).strftime('%d.%m.%Y')}"
+
+
+def test_primary_coverage_is_stronger_than_reserve_coverage(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=2)
+    primary = create_soldier(app_session, personal_number="sequencing-primary-kind", hierarchy_node_id=node.id)
+    reserve = create_soldier(app_session, personal_number="sequencing-reserve-kind", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="kind range").id,
+        required_count=1,
+    )
+    app_session.add_all([
+        RangeAssignment(range_event_id=earlier_event.id, soldier_id=primary.id, is_reserve=False),
+        RangeAssignment(range_event_id=earlier_event.id, soldier_id=reserve.id, is_reserve=True,
+                        attendance_status="pending"),
+    ])
+    app_session.commit()
+
+    ranked = {candidate.soldier.id: candidate for candidate in rank_candidates(app_session, event=event, user=dm)}
+
+    assert ranked[primary.id].reason_code == "qualified"
+    assert ranked[reserve.id].reason_code != "qualified"
+
+
+def test_pending_primary_excusal_makes_range_reserve_like(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    soldier = create_soldier(app_session, personal_number="sequencing-pending", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="pending range").id,
+        required_count=1,
+    )
+    assignment = RangeAssignment(range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False)
+    app_session.add(assignment)
+    app_session.flush()
+    app_session.add(RangeExcusalRequest(
+        range_assignment_id=assignment.id, range_event_id=earlier_event.id,
+        requested_by=None, reason="pending", status=RangeExcusalStatus.pending,
+    ))
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code != "qualified"
+
+
+def test_future_range_after_candidate_event_does_not_cover_current_event(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    soldier = create_soldier(app_session, personal_number="sequencing-future", hierarchy_node_id=node.id)
+    future_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="future range").id,
+        required_count=1,
+    )
+    app_session.add(RangeAssignment(range_event_id=future_event.id, soldier_id=soldier.id, is_reserve=False))
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code != "qualified"
+
+
+def test_candidate_coverage_recomputes_source_range_validity_from_type_setting(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    set_setting(app_session, "mitvachim.laser_validity_days", 180, actor_id=None)
+    soldier = create_soldier(app_session, personal_number="setting-validity", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=200),
+        range_location_id=create_range_location(app_session, name="setting validity range").id,
+        required_count=1,
+    )
+    assignment = RangeAssignment(
+        range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False,
+        attendance_status="present",
+    )
+    app_session.add_all([
+        assignment,
+        SoldierRangeQualification(
+            soldier_id=soldier.id, range_type=RangeType.laser,
+            valid_until=earlier_event.date + timedelta(days=365),
+            source_range_event_id=earlier_event.id, source_range_assignment_id=assignment.id,
+        ),
+    ])
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code != "qualified"
+
+
+@pytest.mark.parametrize(("days_since", "auto_selectable"), [(89, False), (90, True)])
+def test_recently_qualified_candidate_stays_visible_but_is_not_auto_selectable(
+    app_session: Session, days_since: int, auto_selectable: bool,
+) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    set_setting(app_session, "mitvachim.laser_validity_days", 180, actor_id=None)
+    soldier = create_soldier(app_session, personal_number="recent-qualification", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=days_since),
+        range_location_id=create_range_location(app_session, name="recent range").id,
+        required_count=1,
+    )
+    assignment = RangeAssignment(
+        range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False,
+        attendance_status="present",
+    )
+    app_session.add(assignment)
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code == "qualified"
+    reason_template = "range_recently_completed" if not auto_selectable else "range_valid_expiring"
+    assert mine.explanation == f"{reason_template}:{(earlier_event.date + timedelta(days=180)).strftime('%d.%m.%Y')}"
+    assert mine.auto_selectable is auto_selectable
+
+
+def test_candidate_duty_ranking_uses_duties_after_event_and_primary_before_reserve(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="sequencing duties")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="sequencing weapon")
+    location = create_duty_location(app_session)
+    dm = _dm_for(app_session, node, personal_number="sequencing-duty-dm")
+    event_date = date.today() + timedelta(days=5)
+    primary = create_soldier(app_session, personal_number="sequencing-duty-primary", hierarchy_node_id=node.id)
+    reserve = create_soldier(app_session, personal_number="sequencing-duty-reserve", hierarchy_node_id=node.id)
+    app_session.add_all([
+        DutyAssignment(
+            soldier_id=primary.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=10), end_date=date.today() + timedelta(days=10),
+            status="published", is_reserve=False,
+        ),
+        DutyAssignment(
+            soldier_id=primary.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=12), end_date=date.today() + timedelta(days=12),
+            status="published", is_reserve=False,
+        ),
+        DutyAssignment(
+            soldier_id=reserve.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=6), end_date=date.today() + timedelta(days=6),
+            status="published", is_reserve=True,
+        ),
+        DutyAssignment(
+            soldier_id=reserve.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=8), end_date=date.today() + timedelta(days=8),
+            status="published", is_reserve=True,
+        ),
+    ])
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="duty ranking range").id,
+        required_count=2,
+    )
+
+    ranked = [candidate.soldier.id for candidate in rank_candidates(app_session, event=event, user=dm)]
+
+    candidates = rank_candidates(app_session, event=event, user=dm)
+    assert ranked[:2] == [primary.id, reserve.id]
+    primary_candidate = next(candidate for candidate in candidates if candidate.soldier.id == primary.id)
+    reserve_candidate = next(candidate for candidate in candidates if candidate.soldier.id == reserve.id)
+    assert primary_candidate.explanation.endswith(
+        f"{(date.today() + timedelta(days=10)).strftime('%d.%m.%Y')}"
+    )
+    assert reserve_candidate.explanation.endswith(
+        f"{(date.today() + timedelta(days=6)).strftime('%d.%m.%Y')}"
+    )
+
+
+def test_candidate_duty_ranking_ignores_duty_on_or_before_the_range_date(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="candidate duty date boundary")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="candidate duty date boundary weapon")
+    location = create_duty_location(app_session)
+    dm = _dm_for(app_session, node, personal_number="sequencing-duty-boundary-dm")
+    event_date = date.today() + timedelta(days=5)
+    soldier = create_soldier(app_session, personal_number="sequencing-duty-boundary", hierarchy_node_id=node.id)
+    later_duty_date = event_date + timedelta(days=3)
+    app_session.add_all([
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1), status="published",
+        ),
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=event_date, end_date=event_date, status="published",
+        ),
+        DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+            start_date=later_duty_date, end_date=later_duty_date, status="published",
+        ),
+    ])
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="candidate duty date boundary range").id,
+        required_count=1,
+    )
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code == "duty_priority"
+    assert mine.explanation == f"תורנות קרובה ב-{later_duty_date.strftime('%d.%m.%Y')}"
+
+
 def test_reason_code_available_and_balanced_when_no_qualification_or_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגת סיבת שיבוץ")
     _weapon_duty_type(app_session, node=node, name="תורנות נשק סיבת שיבוץ")
@@ -589,7 +824,7 @@ def test_reason_code_available_and_balanced_when_no_qualification_or_duty(app_se
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "available_and_balanced"
-    assert mine.explanation == "מעולם לא ביצע מטווחים"
+    assert mine.explanation == "range_never_completed"
 
 
 def test_reason_code_duty_priority_for_future_regular_weapon_duty(app_session: Session) -> None:
@@ -598,7 +833,7 @@ def test_reason_code_duty_priority_for_future_regular_weapon_duty(app_session: S
     soldier = create_soldier(app_session, personal_number="7010004", hierarchy_node_id=node.id)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="תורנות נשק עדיפות")
     location = create_duty_location(app_session)
-    future_duty_date = date.today() + timedelta(days=2)
+    future_duty_date = date.today() + timedelta(days=7)
     app_session.add(DutyAssignment(
         soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
         start_date=future_duty_date, end_date=future_duty_date, status="published",
@@ -622,7 +857,7 @@ def test_reason_code_reserve_duty_priority_for_future_reserve_weapon_duty(app_se
     soldier = create_soldier(app_session, personal_number="7010006", hierarchy_node_id=node.id)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="תורנות רזרבה עדיפות")
     location = create_duty_location(app_session)
-    future_duty_date = date.today() + timedelta(days=3)
+    future_duty_date = date.today() + timedelta(days=8)
     app_session.add(DutyAssignment(
         soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
         start_date=future_duty_date, end_date=future_duty_date, status="published", is_reserve=True,
@@ -640,6 +875,56 @@ def test_reason_code_reserve_duty_priority_for_future_reserve_weapon_duty(app_se
     assert mine.explanation == f"תורנות רזרבה קרובה ב-{future_duty_date.strftime('%d.%m.%Y')}"
 
 
+def test_candidate_ranking_ignores_urgent_duty_needing_a_different_range_tier(app_session: Session) -> None:
+    """A soldier's upcoming duty must only boost their priority for a range event
+    whose range_type it actually needs — an urgent laser-tier duty must not make
+    a soldier look urgent for an alal event. Both soldiers here are structurally
+    eligible for the alal event via the alal-tier duty type being in scope at
+    their node (eligibility is about the duty type's scope, not who's actually
+    assigned to it) — isolating this test to ranking priority, not the hard gate."""
+    node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות לפי סוג מטווח")
+    dm = _dm_for(app_session, node, personal_number="7020001")
+    laser_duty = DutyType(
+        name="שמירה לייזר עדיפות מטווח", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    )
+    alal_duty = DutyType(
+        name='הגנ"ש עדיפות מטווח', score_per_day=Decimal("1.00"),
+        requires_weapon=False, required_range_type=RangeType.alal, eligible_node_ids=[node.id],
+    )
+    app_session.add_all([laser_duty, alal_duty])
+    app_session.flush()
+    location = create_duty_location(app_session)
+
+    off_tier_soldier = create_soldier(app_session, personal_number="7020002", hierarchy_node_id=node.id)
+    on_tier_soldier = create_soldier(app_session, personal_number="7020003", hierarchy_node_id=node.id)
+    future_duty_date = date.today() + timedelta(days=7)
+    app_session.add_all([
+        DutyAssignment(
+            soldier_id=off_tier_soldier.id, duty_type_id=laser_duty.id, duty_location_id=location.id,
+            start_date=future_duty_date, end_date=future_duty_date, status="published",
+        ),
+        DutyAssignment(
+            soldier_id=on_tier_soldier.id, duty_type_id=alal_duty.id, duty_location_id=location.id,
+            start_date=future_duty_date, end_date=future_duty_date, status="published",
+        ),
+    ])
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח עדיפות אלל").id,
+        required_count=2,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    off_tier_candidate = next(c for c in ranked if c.soldier.id == off_tier_soldier.id)
+    on_tier_candidate = next(c for c in ranked if c.soldier.id == on_tier_soldier.id)
+    assert off_tier_candidate.reason_code == "available_and_balanced"
+    assert on_tier_candidate.reason_code == "duty_priority"
+
+
 def test_regular_duty_outranks_reserve_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות משולבת")
     dm = _dm_for(app_session, node, personal_number="7010007")
@@ -649,7 +934,7 @@ def test_regular_duty_outranks_reserve_duty(app_session: Session) -> None:
     reserve_soldier = create_soldier(app_session, personal_number="7010008", hierarchy_node_id=node.id)
     app_session.add(DutyAssignment(
         soldier_id=reserve_soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=1),
+        start_date=date.today() + timedelta(days=6), end_date=date.today() + timedelta(days=6),
         status="published", is_reserve=True,
     ))
     regular_soldier = create_soldier(app_session, personal_number="7010009", hierarchy_node_id=node.id)
@@ -691,7 +976,7 @@ def test_explanation_shows_last_valid_until_when_previously_qualified(app_sessio
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "available_and_balanced"
-    assert mine.explanation == f"אין מטווחים בתוקף מ-{expired_until.strftime('%d.%m.%Y')}"
+    assert mine.explanation == f"range_last_completed:{expired_until.isoformat()}"
 
 
 def test_excluded_candidates_reports_reasons_and_omits_them_from_ranking(app_session: Session) -> None:
@@ -751,6 +1036,75 @@ def test_excluded_candidates_reports_reasons_and_omits_them_from_ranking(app_ses
     assert reasons_by_id[structurally_ineligible_soldier.id] == "structurally_ineligible"
     assert reasons_by_id[elsewhere_soldier.id] == "assigned_elsewhere_same_day"
     assert eligible_soldier.id not in reasons_by_id
+
+
+def test_candidates_exclude_soldier_needing_only_a_lower_range_tier_from_alal_event(app_session: Session) -> None:
+    """A soldier whose only duty type requires laser must be structurally
+    ineligible for an alal event, even though they're a normal weapon-carrying
+    soldier for laser/live purposes — attending alal isn't relevant to them."""
+    node = create_node(app_session, level="פלוגה", name="פלוגת לייזר בלבד מועמדים")
+    dm = _dm_for(app_session, node, personal_number="7030001")
+    laser_only_soldier = create_soldier(app_session, personal_number="7030002", hierarchy_node_id=node.id)
+    app_session.add(DutyType(
+        name="שמירה לייזר מועמדים בלבד", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח אלל מועמדים").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+    excluded = excluded_candidates(app_session, event=event, user=dm)
+
+    assert laser_only_soldier.id not in {c.soldier.id for c in ranked}
+    reasons_by_id = {x.soldier_id: x.reason for x in excluded}
+    assert reasons_by_id[laser_only_soldier.id] == "structurally_ineligible"
+
+
+def test_add_range_assignment_rejects_soldier_needing_only_a_lower_range_tier_for_alal_event(
+    app_session: Session,
+) -> None:
+    """Direct regression test for the reported bug: the write path itself
+    (not just the candidate list) must reject assigning a soldier to an alal
+    event when their only duty type needs a lower tier."""
+    node = create_node(app_session, level="פלוגה", name="פלוגת דחיית שיבוץ אלל")
+    laser_only_soldier = create_soldier(app_session, personal_number="7030005", hierarchy_node_id=node.id)
+    app_session.add(DutyType(
+        name="שמירה לייזר דחיית שיבוץ", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח אלל דחיית שיבוץ").id, required_count=1,
+    )
+
+    with pytest.raises(RangeValidationError, match="soldier_range_exempt"):
+        add_range_assignment(app_session, event=event, soldier_id=laser_only_soldier.id, is_reserve=False)
+
+
+def test_candidates_include_soldier_needing_alal_for_alal_event(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגת הגנש מועמדים")
+    dm = _dm_for(app_session, node, personal_number="7030003")
+    alal_soldier = create_soldier(app_session, personal_number="7030004", hierarchy_node_id=node.id)
+    app_session.add(DutyType(
+        name='הגנ"ש מועמדים בדיקה', score_per_day=Decimal("1.00"),
+        requires_weapon=False, required_range_type=RangeType.alal, eligible_node_ids=[node.id],
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח אלל מועמדים ב").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    assert alal_soldier.id in {c.soldier.id for c in ranked}
 
 
 def test_admin_sees_soldiers_across_the_whole_tree(app_session: Session) -> None:

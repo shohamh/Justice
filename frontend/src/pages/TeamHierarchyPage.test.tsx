@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -80,7 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([]);
   vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([soldier]);
-  window.confirm = vi.fn().mockReturnValue(true);
+  window.confirm = vi.fn();
   window.alert = vi.fn();
 });
 
@@ -112,9 +112,62 @@ describe("TeamHierarchyPage - remove button gating", () => {
     renderPage();
     const removeBtn = await screen.findByTestId(`remove-${soldier.personal_number}`);
     fireEvent.click(removeBtn);
+    expect(soldiersApi.softDeleteSoldier).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
     await waitFor(() => {
       expect(screen.getByText(/אין לך הרשאה/)).toBeInTheDocument();
     });
+  });
+
+  it("uses an application confirmation dialog before resetting a password", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", role: "admin", is_commander: false, can_delete_soldier: false },
+    });
+    vi.mocked(soldiersApi.resetSoldierPassword).mockResolvedValueOnce({ temp_password: "temporary" });
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId(`reset-${soldier.personal_number}`));
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(soldiersApi.resetSoldierPassword).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+
+    await waitFor(() => expect(soldiersApi.resetSoldierPassword).toHaveBeenCalledWith(soldier.id));
+  });
+
+  it("disables duplicate password resets while pending and closes only after success", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", role: "admin", is_commander: false, can_delete_soldier: false },
+    });
+    let resolveReset: (value: { temp_password: string }) => void;
+    vi.mocked(soldiersApi.resetSoldierPassword).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveReset = resolve;
+    }));
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId(`reset-${soldier.personal_number}`));
+    const confirm = screen.getByTestId("confirm-dialog-confirm");
+    fireEvent.click(confirm);
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(soldiersApi.resetSoldierPassword).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveReset!({ temp_password: "temporary" }));
+    expect(await screen.findByTestId("temp-password")).toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-dialog-confirm")).not.toBeInTheDocument();
+  });
+
+  it("shows a translated message when password reset fails", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", role: "admin", is_commander: false, can_delete_soldier: false },
+    });
+    vi.mocked(soldiersApi.resetSoldierPassword).mockRejectedValueOnce(new Error("network"));
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId(`reset-${soldier.personal_number}`));
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+
+    expect(await screen.findByText("errors.generic")).toBeInTheDocument();
+    expect(screen.getByTestId("confirm-dialog-confirm")).not.toBeDisabled();
   });
 });
 

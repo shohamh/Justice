@@ -22,6 +22,8 @@ import { listJobs } from "../api/algorithm";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
 import DateInput from "../components/DateInput";
 import { PlanningTable } from "../components/planning";
+import ConfirmDialog from "../components/ConfirmDialog";
+import MessageDialog from "../components/MessageDialog";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
@@ -41,6 +43,11 @@ function Spinner() {
 }
 
 function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; onClearedAll: () => void }) {
+  const { t } = useTranslation();
+  const text = (key: string, fallback: string, values?: Record<string, unknown>) => {
+    const translated = t(key, { ...values, defaultValue: fallback });
+    return translated === key ? fallback : translated;
+  };
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -49,6 +56,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
   const [busy, setBusy] = useState<BulkAction>(null);
   const [error, setError] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<BulkAction>(null);
 
   function resetResult() { setPreview(null); setResultMsg(null); setError(null); }
 
@@ -67,7 +75,6 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
   }
 
   async function handleClearAll() {
-    if (!window.confirm("לנקות את כל השיבוצים?")) return;
     setBusy("clearAll");
     setError(null);
     try {
@@ -83,7 +90,6 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
 
   async function handleClearAssignments() {
     if (!preview || preview.assignment_count === 0) return;
-    if (!window.confirm(`לנקות ${preview.assignment_count} שיבוצים מ-${preview.shift_count} משמרות? המשמרות עצמן יישארו.`)) return;
     setBusy("clear");
     setError(null);
     try {
@@ -100,7 +106,6 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
 
   async function handleDeleteShifts() {
     if (!preview || preview.shift_count === 0) return;
-    if (!window.confirm(`למחוק ${preview.shift_count} משמרות ו-${preview.assignment_count} שיבוצים לצמיתות?`)) return;
     setBusy("delete");
     setError(null);
     try {
@@ -116,6 +121,24 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
   }
 
   const canPreview = !!from && !!to && from <= to;
+  const confirmTitle = confirmAction === "delete"
+    ? text("shifts.bulk_delete_confirm_title", "מחיקת משמרות")
+    : confirmAction === "clearAll"
+      ? text("shifts.clear_all_confirm_title", "ניקוי כל השיבוצים")
+      : text("shifts.bulk_clear_confirm_title", "ניקוי שיבוצים");
+  const confirmMessage = confirmAction === "delete"
+    ? text("shifts.bulk_delete_confirm_message", "למחוק {{shifts}} משמרות ו-{{assignments}} שיבוצים לצמיתות?", { shifts: preview?.shift_count ?? 0, assignments: preview?.assignment_count ?? 0 })
+    : confirmAction === "clearAll"
+      ? text("shifts.clear_all_confirm_message", "לנקות את כל השיבוצים?")
+      : text("shifts.bulk_clear_confirm_message", "לנקות {{assignments}} שיבוצים מ-{{shifts}} משמרות? המשמרות עצמן יישארו.", { assignments: preview?.assignment_count ?? 0, shifts: preview?.shift_count ?? 0 });
+
+  function confirmBulkAction() {
+    const action = confirmAction;
+    setConfirmAction(null);
+    if (action === "clearAll") void handleClearAll();
+    if (action === "clear") void handleClearAssignments();
+    if (action === "delete") void handleDeleteShifts();
+  }
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl">
@@ -135,7 +158,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
         <span className="text-sm text-gray-600 dark:text-gray-300">נקה את כל השיבוצים מכל המשמרות</span>
         <button
           type="button"
-          onClick={() => { void handleClearAll(); }}
+          onClick={() => setConfirmAction("clearAll")}
           disabled={!!busy}
           className="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
         >
@@ -232,7 +255,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
             <div className="flex flex-wrap gap-3 pt-1">
               <button
                 type="button"
-                onClick={handleClearAssignments}
+                onClick={() => setConfirmAction("clear")}
                 disabled={!!busy || preview.assignment_count === 0}
                 className="bg-orange-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-orange-600 disabled:opacity-40 flex items-center gap-2"
               >
@@ -241,7 +264,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
               </button>
               <button
                 type="button"
-                onClick={handleDeleteShifts}
+                onClick={() => setConfirmAction("delete")}
                 disabled={!!busy}
                 className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 disabled:opacity-40 flex items-center gap-2"
               >
@@ -253,6 +276,15 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
         </div>
       )}
       </div>}
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmTitle}
+        message={confirmMessage}
+        danger={confirmAction === "delete"}
+        confirmDisabled={busy !== null}
+        onConfirm={confirmBulkAction}
+        onClose={() => setConfirmAction(null)}
+      />
     </section>
   );
 }
@@ -260,12 +292,17 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
 type BulkOp = "clear" | "cancel" | "delete" | null;
 
 function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPanel, dtName, locName }: { selectedShifts: DutyShift[]; onDone: () => void; onAutoAssign?: () => void; showAlgorithmPanel?: boolean; dtName: (id: string) => string; locName: (id: string) => string }) {
+  const { t } = useTranslation();
+  const text = (key: string, fallback: string, values?: Record<string, unknown>) => {
+    const translated = t(key, { ...values, defaultValue: fallback });
+    return translated === key ? fallback : translated;
+  };
   const [busy, setBusy] = useState<BulkOp>(null);
   const [openModal, setOpenModal] = useState<"setResponsible" | "splitInUnit" | "autoAssignResponsibility" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<BulkOp>(null);
+  const [messageOpen, setMessageOpen] = useState(false);
 
   async function handleClear() {
-    const assignmentCount = selectedShifts.reduce((acc, s) => acc + (s.assigned_count ?? 0), 0);
-    if (!window.confirm(`לנקות שיבוצים מ-${selectedShifts.length} משמרות (${assignmentCount} שיבוצים)?`)) return;
     setBusy("clear");
     try {
       await Promise.all(selectedShifts.map(s => clearShiftAssignments(s.id)));
@@ -278,7 +315,6 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
   async function handleCancel() {
     const active = selectedShifts.filter(s => s.status === "active");
     if (active.length === 0) return;
-    if (!window.confirm(`לבטל ${active.length} משמרות פעילות?`)) return;
     setBusy("cancel");
     try {
       await Promise.all(active.map(s => cancelShift(s.id)));
@@ -289,13 +325,8 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
   }
 
   async function handleDelete() {
-    const withAssignments = selectedShifts.filter(s => (s.assigned_count ?? 0) > 0);
     const toDelete = selectedShifts.filter(s => (s.assigned_count ?? 0) === 0);
-    let msg = `למחוק ${toDelete.length} משמרות לצמיתות?`;
-    if (withAssignments.length > 0)
-      msg = `${withAssignments.length} משמרות עם שיבוצים יידלגו. למחוק ${toDelete.length} משמרות ריקות לצמיתות?`;
-    if (toDelete.length === 0) { alert("כל המשמרות הנבחרות מכילות שיבוצים ולא ניתן למחוק אותן."); return; }
-    if (!window.confirm(msg)) return;
+    if (toDelete.length === 0) { setMessageOpen(true); return; }
     setBusy("delete");
     try {
       await Promise.allSettled(toDelete.map(s => deleteShift(s.id)));
@@ -306,6 +337,29 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
   }
 
   const activeCount = selectedShifts.filter(s => s.status === "active").length;
+  const assignmentCount = selectedShifts.reduce((acc, s) => acc + (s.assigned_count ?? 0), 0);
+  const withAssignmentsCount = selectedShifts.filter(s => (s.assigned_count ?? 0) > 0).length;
+  const deletableCount = selectedShifts.length - withAssignmentsCount;
+  const confirmTitle = confirmAction === "delete"
+    ? text("shifts.bulk_delete_confirm_title", "מחיקת משמרות")
+    : confirmAction === "cancel"
+      ? text("shifts.bulk_cancel_confirm_title", "ביטול משמרות")
+      : text("shifts.bulk_clear_confirm_title", "ניקוי שיבוצים");
+  const confirmMessage = confirmAction === "delete"
+    ? (withAssignmentsCount > 0
+      ? text("shifts.bulk_delete_skip_confirm_message", "{{skipped}} משמרות עם שיבוצים יידלגו. למחוק {{count}} משמרות ריקות לצמיתות?", { skipped: withAssignmentsCount, count: deletableCount })
+      : text("shifts.bulk_delete_selected_confirm_message", "למחוק {{count}} משמרות לצמיתות?", { count: deletableCount }))
+    : confirmAction === "cancel"
+      ? text("shifts.bulk_cancel_confirm_message", "לבטל {{count}} משמרות פעילות?", { count: activeCount })
+      : text("shifts.bulk_clear_selected_confirm_message", "לנקות שיבוצים מ-{{shifts}} משמרות ({{assignments}} שיבוצים)?", { shifts: selectedShifts.length, assignments: assignmentCount });
+
+  function confirmBulkAction() {
+    const action = confirmAction;
+    setConfirmAction(null);
+    if (action === "clear") void handleClear();
+    if (action === "cancel") void handleCancel();
+    if (action === "delete") void handleDelete();
+  }
 
   return (
     <div className="flex flex-col gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950 rounded-lg border border-indigo-200 dark:border-indigo-800" dir="rtl">
@@ -351,7 +405,7 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => { void handleClear(); }}
+          onClick={() => setConfirmAction("clear")}
           disabled={!!busy}
           className="flex items-center gap-1 px-3 py-1 rounded text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-40"
         >
@@ -360,7 +414,7 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
         </button>
         <button
           type="button"
-          onClick={() => { void handleCancel(); }}
+          onClick={() => setConfirmAction("cancel")}
           disabled={!!busy || activeCount === 0}
           className="flex items-center gap-1 px-3 py-1 rounded text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40"
         >
@@ -369,7 +423,10 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
         </button>
         <button
           type="button"
-          onClick={() => { void handleDelete(); }}
+          onClick={() => {
+            if (deletableCount === 0) setMessageOpen(true);
+            else setConfirmAction("delete");
+          }}
           disabled={!!busy}
           className="flex items-center gap-1 px-3 py-1 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-40"
         >
@@ -402,6 +459,21 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
           locName={locName}
         />
       )}
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmTitle}
+        message={confirmMessage}
+        danger={confirmAction === "delete"}
+        confirmDisabled={busy !== null}
+        onConfirm={confirmBulkAction}
+        onClose={() => setConfirmAction(null)}
+      />
+      <MessageDialog
+        open={messageOpen}
+        title={text("shifts.no_deletable_title", "לא ניתן למחוק משמרות")}
+        message={text("shifts.no_deletable_message", "כל המשמרות הנבחרות מכילות שיבוצים ולא ניתן למחוק אותן.")}
+        onClose={() => setMessageOpen(false)}
+      />
     </div>
   );
 }
@@ -420,6 +492,9 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
   const [showAlgorithmPanel, setShowAlgorithmPanel] = useState(false);
   const [viewTemplate, setViewTemplate] = useState<ShiftTemplate | null>(null);
+  const [cancelConfirmationShift, setCancelConfirmationShift] = useState<DutyShift | null>(null);
+  const [deleteConfirmationShift, setDeleteConfirmationShift] = useState<DutyShift | null>(null);
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
 
   const shiftsParams = useMemo(
     () => ({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
@@ -495,27 +570,39 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     }
   }, [searchParams, setSearchParams]);
 
-  const handleCancel = useCallback(async (shift: DutyShift) => {
-    if (!window.confirm(t("shifts.confirm_cancel"))) return;
+  const handleCancel = useCallback((shift: DutyShift) => {
+    setCancelConfirmationShift(shift);
+  }, []);
+
+  const confirmCancel = useCallback(async () => {
+    const shift = cancelConfirmationShift;
+    if (!shift) return;
+    setCancelConfirmationShift(null);
     await cancelShift(shift.id);
     await invalidateShifts();
-  }, [t, invalidateShifts]);
+  }, [cancelConfirmationShift, invalidateShifts]);
 
   const handleActivate = useCallback(async (shift: DutyShift) => {
     await activateShift(shift.id);
     await invalidateShifts();
   }, [invalidateShifts]);
 
-  const handleDelete = useCallback(async (shift: DutyShift) => {
-    if (!window.confirm(t("shifts.confirm_delete_permanent"))) return;
+  const handleDelete = useCallback((shift: DutyShift) => {
+    setDeleteConfirmationShift(shift);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    const shift = deleteConfirmationShift;
+    if (!shift) return;
+    setDeleteConfirmationShift(null);
     try {
       await deleteShift(shift.id);
       await invalidateShifts();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      if (detail === "has_assignments") alert(t("shifts.has_assignments_error"));
+      if (detail === "has_assignments") setOperationMessage(t("shifts.has_assignments_error", { defaultValue: "לא ניתן למחוק משמרת עם שיבוצים" }));
     }
-  }, [t, invalidateShifts]);
+  }, [deleteConfirmationShift, invalidateShifts, t]);
 
   const selectByDutyTypeIds = useCallback((dutyTypeIds: string[]) => {
     const matching = displayedShifts.filter(s => dutyTypeIds.includes(s.duty_type_id)).map(s => s.id);
@@ -947,6 +1034,27 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           onClose={() => setViewTemplate(null)}
         />
       )}
+      <ConfirmDialog
+        open={cancelConfirmationShift !== null}
+        title={t("shifts.cancel_confirm_title", { defaultValue: "ביטול משמרת" })}
+        message={t("shifts.confirm_cancel", { defaultValue: "לבטל את המשמרת?" })}
+        onConfirm={() => void confirmCancel()}
+        onClose={() => setCancelConfirmationShift(null)}
+      />
+      <ConfirmDialog
+        open={deleteConfirmationShift !== null}
+        title={t("shifts.delete_confirm_title", { defaultValue: "מחיקת משמרת" })}
+        message={t("shifts.confirm_delete_permanent", { defaultValue: "למחוק את המשמרת לצמיתות?" })}
+        danger
+        onConfirm={() => void confirmDelete()}
+        onClose={() => setDeleteConfirmationShift(null)}
+      />
+      <MessageDialog
+        open={operationMessage !== null}
+        title={t("shifts.operation_error_title", { defaultValue: "הפעולה נכשלה" })}
+        message={operationMessage ?? ""}
+        onClose={() => setOperationMessage(null)}
+      />
     </>
   );
 }

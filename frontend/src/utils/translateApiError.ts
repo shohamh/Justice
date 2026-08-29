@@ -30,10 +30,25 @@ function extractDetail(err: unknown): string | undefined {
   return undefined;
 }
 
+function extractStatus(err: unknown): number | undefined {
+  if (err && typeof err === "object" && "response" in err) {
+    const status = (err as { response?: { status?: unknown } }).response?.status;
+    return typeof status === "number" ? status : undefined;
+  }
+  return undefined;
+}
+
 export function translateApiError(err: unknown, t: TFn, fallback?: string): string {
   const fallbackText = fallback ?? t("errors.generic");
   const detail = extractDetail(err);
-  if (!detail) return fallbackText;
+  if (!detail) {
+    const status = extractStatus(err);
+    if (status !== undefined && status >= 500) {
+      const serverError = t("errors.server_error");
+      return serverError === "errors.server_error" ? fallbackText : serverError;
+    }
+    return fallbackText;
+  }
   if (detail.startsWith("validation_error:")) {
     const fields = detail.slice("validation_error:".length);
     return `${t("errors.validation_error", { defaultValue: "נתונים לא תקינים" })}: ${fields}`;

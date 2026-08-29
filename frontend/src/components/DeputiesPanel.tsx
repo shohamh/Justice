@@ -5,6 +5,7 @@ import { DeputyDTO, createDeputy, listDeputies, revokeDeputy } from "../api/depu
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import DateInput from "./DateInput";
 import { translateApiError } from "../utils/translateApiError";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
   principalId: string;
@@ -28,6 +29,7 @@ export default function DeputiesPanel({ principalId, principalRoles }: Props) {
   const [selectedDeputyId, setSelectedDeputyId] = useState("");
   const [searchText, setSearchText] = useState("");
   const [open, setOpen] = useState(false);
+  const [revokeId, setRevokeId] = useState<string | null>(null);
   const [role, setRole] = useState<"commander" | "duty_manager">(
     principalRoles.isCommander ? "commander" : "duty_manager"
   );
@@ -79,7 +81,6 @@ export default function DeputiesPanel({ principalId, principalRoles }: Props) {
   }
 
   async function handleRevoke(id: string) {
-    if (!window.confirm(t("deputies.revoke_confirm", "להסיר את ממלא המקום?"))) return;
     await revokeDeputy(id);
     await refresh();
   }
@@ -108,7 +109,7 @@ export default function DeputiesPanel({ principalId, principalRoles }: Props) {
                   <span className="text-xs">{t(badgeKey, badgeText)}</span>
                 </span>
                 {s !== "expired" && (
-                  <button type="button" onClick={() => void handleRevoke(g.id)} className="text-red-600 text-xs hover:underline">
+                  <button type="button" onClick={() => setRevokeId(g.id)} className="text-red-600 text-xs hover:underline">
                     {t("deputies.revoke", "הסר")}
                   </button>
                 )}
@@ -177,6 +178,18 @@ export default function DeputiesPanel({ principalId, principalRoles }: Props) {
         </button>
       </div>
       {error && <p className="text-red-500 text-xs">{error}</p>}
+      <ConfirmDialog
+        open={revokeId !== null}
+        title={t("deputies.revoke_title", "הסרת ממלא מקום")}
+        message={t("deputies.revoke_confirm", "להסיר את ממלא המקום?")}
+        danger
+        onClose={() => setRevokeId(null)}
+        onConfirm={() => {
+          const id = revokeId;
+          setRevokeId(null);
+          if (id) void handleRevoke(id);
+        }}
+      />
     </div>
   );
 }

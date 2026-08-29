@@ -6,7 +6,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyType, RangeAssignment
+from app.db.models import DutyManagerScope, DutyType, RangeAssignment
 from app.services.settings_loader import apply_settings
 from tests.helpers import auth_headers, create_node, create_range_location, create_soldier
 
@@ -660,6 +660,303 @@ def test_batch_assign_forbidden_for_non_manager(
         headers=auth_headers(soldier),
     )
     assert response.status_code == 403
+
+
+def _scoped_dm(session: Session, *, node, personal_number: str) -> "Soldier":
+    """A duty manager scoped to `node` via DutyManagerScope but not itself a
+    soldier inside `node`'s subtree — so they never show up as a range candidate
+    and don't skew reconciliation's refill/shortage outcome."""
+    from app.db.models import Soldier
+
+    dm = create_soldier(session, personal_number=personal_number, role="duty_manager", hierarchy_node_id=None)
+    session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=node.id))
+    session.commit()
+    return dm
+
+
+def _weapon_duty_type_for(session: Session, *, node, name: str) -> DutyType:
+    duty_type = DutyType(
+        name=name, score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    session.add(duty_type)
+    session.commit()
+    return duty_type
+
+
+def test_add_assignment_reconciles_and_refills_later_duplicate_via_api(
+    client: TestClient, admin_session: Session
+) -> None:
+    """POSTing a single assignment that gives a soldier guaranteed future coverage
+    (a planned primary slot) must reconcile away their now-redundant later duplicate
+    and refill that vacated slot from the later event's own subtree, preserving the
+    slot kind (primary stays primary) — exercised through the real HTTP endpoints,
+    not the service layer directly."""
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="branch", name="api-reconcile-1")
+    dm = _scoped_dm(admin_session, node=node, personal_number="api-recon-dm1")
+    covered = create_soldier(admin_session, personal_number="api-recon-s1", hierarchy_node_id=node.id)
+    replacement = create_soldier(admin_session, personal_number="api-recon-s2", hierarchy_node_id=node.id)
+    _weapon_duty_type_for(admin_session, node=node, name="api-reconcile-1 weapon")
+    loc = create_range_location(admin_session, name="api-reconcile-1 loc")
+    admin_session.commit()
+
+    later_create = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "laser",
+            "date": (date.today() + timedelta(days=10)).isoformat(),
+            "range_location_id": str(loc.id), "required_count": 1,
+        },
+        headers=auth_headers(dm),
+    )
+    assert later_create.status_code == 201, later_create.text
+    later_event_id = later_create.json()["id"]
+    later_add = client.post(
+        f"/api/ranges/{later_event_id}/assignments",
+        json={"soldier_id": str(covered.id), "is_reserve": False},
+        headers=auth_headers(dm),
+    )
+    assert later_add.status_code == 201, later_add.text
+    later_assignment_id = later_add.json()["id"]
+
+    source_create = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "live",
+            "date": (date.today() + timedelta(days=5)).isoformat(),
+            "range_location_id": str(loc.id), "required_count": 1,
+        },
+        headers=auth_headers(dm),
+    )
+    assert source_create.status_code == 201, source_create.text
+    source_event_id = source_create.json()["id"]
+
+    add_resp = client.post(
+        f"/api/ranges/{source_event_id}/assignments",
+        json={"soldier_id": str(covered.id), "is_reserve": False},
+        headers=auth_headers(dm),
+    )
+
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["soldier_id"] == str(covered.id)
+
+    later_get = client.get(f"/api/ranges/{later_event_id}", headers=auth_headers(dm))
+    assert later_get.status_code == 200
+    assignments = later_get.json()["assignments"]
+    assert later_assignment_id not in {a["id"] for a in assignments}
+    assert len(assignments) == 1
+    refilled = assignments[0]
+    assert refilled["soldier_id"] == str(replacement.id)
+    assert refilled["is_reserve"] is False
+
+
+def test_batch_assign_reconciles_and_refills_via_api(
+    client: TestClient, admin_session: Session
+) -> None:
+    """A batch assignment call reconciles for every soldier it creates a row for,
+    regardless of whether the vacated later slot was primary or reserve — the
+    refill always preserves the vacated slot's own kind."""
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="branch", name="api-reconcile-batch")
+    dm = _scoped_dm(admin_session, node=node, personal_number="api-recon-batch-dm")
+    covered_primary = create_soldier(admin_session, personal_number="api-recon-batch-p", hierarchy_node_id=node.id)
+    covered_reserve = create_soldier(admin_session, personal_number="api-recon-batch-r", hierarchy_node_id=node.id)
+    create_soldier(admin_session, personal_number="api-recon-batch-x1", hierarchy_node_id=node.id)
+    create_soldier(admin_session, personal_number="api-recon-batch-x2", hierarchy_node_id=node.id)
+    _weapon_duty_type_for(admin_session, node=node, name="api-reconcile-batch weapon")
+    loc = create_range_location(admin_session, name="api-reconcile-batch loc")
+    admin_session.commit()
+
+    later_create = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "laser",
+            "date": (date.today() + timedelta(days=10)).isoformat(),
+            "range_location_id": str(loc.id), "required_count": 1, "reserve_count": 1,
+        },
+        headers=auth_headers(dm),
+    )
+    later_event_id = later_create.json()["id"]
+    later_primary = client.post(
+        f"/api/ranges/{later_event_id}/assignments",
+        json={"soldier_id": str(covered_primary.id), "is_reserve": False},
+        headers=auth_headers(dm),
+    )
+    later_reserve = client.post(
+        f"/api/ranges/{later_event_id}/assignments",
+        json={"soldier_id": str(covered_reserve.id), "is_reserve": True},
+        headers=auth_headers(dm),
+    )
+    assert later_primary.status_code == 201, later_primary.text
+    assert later_reserve.status_code == 201, later_reserve.text
+    later_primary_id = later_primary.json()["id"]
+    later_reserve_id = later_reserve.json()["id"]
+
+    source_create = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "live",
+            "date": (date.today() + timedelta(days=5)).isoformat(),
+            "range_location_id": str(loc.id), "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    source_event_id = source_create.json()["id"]
+
+    batch_resp = client.post(
+        f"/api/ranges/{source_event_id}/assignments/batch",
+        json={"primaries": [str(covered_primary.id), str(covered_reserve.id)], "reserves": []},
+        headers=auth_headers(dm),
+    )
+    assert batch_resp.status_code == 200, batch_resp.text
+    assert {row["soldier_id"] for row in batch_resp.json()} == {str(covered_primary.id), str(covered_reserve.id)}
+
+    later_get = client.get(f"/api/ranges/{later_event_id}", headers=auth_headers(dm))
+    assert later_get.status_code == 200
+    assignments = later_get.json()["assignments"]
+    ids = {a["id"] for a in assignments}
+    assert later_primary_id not in ids
+    assert later_reserve_id not in ids
+    assert len(assignments) == 2
+    primary_row = next(a for a in assignments if not a["is_reserve"])
+    reserve_row = next(a for a in assignments if a["is_reserve"])
+    assert primary_row["soldier_id"] not in {str(covered_primary.id), str(covered_reserve.id)}
+    assert reserve_row["soldier_id"] not in {str(covered_primary.id), str(covered_reserve.id)}
+
+
+def test_add_assignment_reconciliation_shortage_visible_via_api(
+    client: TestClient, admin_session: Session
+) -> None:
+    """When reconciliation removes a later duplicate but no valid replacement
+    exists anywhere in that later event's hierarchy subtree, the API request that
+    triggered it must still succeed (the source assignment is created), and the
+    shortfall must be visible through the later event's existing data — the
+    already-returned primary_filled/required_count pair — with no new response
+    field required."""
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="branch", name="api-reconcile-shortage")
+    dm = _scoped_dm(admin_session, node=node, personal_number="api-recon-short-dm")
+    covered = create_soldier(admin_session, personal_number="api-recon-short-s1", hierarchy_node_id=node.id)
+    # No other soldier exists in the node's subtree, so reconciliation's refill
+    # step will find nobody to take the vacated slot.
+    _weapon_duty_type_for(admin_session, node=node, name="api-reconcile-shortage weapon")
+    loc = create_range_location(admin_session, name="api-reconcile-shortage loc")
+    admin_session.commit()
+
+    later_create = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "laser",
+            "date": (date.today() + timedelta(days=10)).isoformat(),
+            "range_location_id": str(loc.id), "required_count": 1,
+        },
+        headers=auth_headers(dm),
+    )
+    later_event_id = later_create.json()["id"]
+    later_add = client.post(
+        f"/api/ranges/{later_event_id}/assignments",
+        json={"soldier_id": str(covered.id), "is_reserve": False},
+        headers=auth_headers(dm),
+    )
+    assert later_add.status_code == 201, later_add.text
+
+    source_create = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "live",
+            "date": (date.today() + timedelta(days=5)).isoformat(),
+            "range_location_id": str(loc.id), "required_count": 1,
+        },
+        headers=auth_headers(dm),
+    )
+    source_event_id = source_create.json()["id"]
+
+    add_resp = client.post(
+        f"/api/ranges/{source_event_id}/assignments",
+        json={"soldier_id": str(covered.id), "is_reserve": False},
+        headers=auth_headers(dm),
+    )
+    assert add_resp.status_code == 201, add_resp.text
+
+    later_get = client.get(f"/api/ranges/{later_event_id}", headers=auth_headers(dm))
+    assert later_get.status_code == 200
+    body = later_get.json()
+    assert body["assignments"] == []
+    # The shortfall is fully visible from data the API already returns: 0 filled
+    # against a required_count of 1, with no new field needed to express it.
+    assert body["primary_filled"] == 0
+    assert body["required_count"] == 1
+
+
+def test_batch_assign_stale_candidate_rejected_with_no_partial_writes(
+    client: TestClient, admin_session: Session
+) -> None:
+    """A regression check on pre-existing all-or-nothing validation: if a candidate
+    from a previously-fetched list gets assigned elsewhere on a conflicting date
+    before the batch is submitted, assign_batch must still reject the whole batch
+    (soldier_already_assigned_on_date) and write nothing — reconciliation's wiring
+    must not have weakened this pre-existing guarantee."""
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="branch", name="api-stale-race")
+    dm = create_soldier(
+        admin_session, personal_number="api-stale-race-dm", role="duty_manager", hierarchy_node_id=node.id
+    )
+    soldier_a = create_soldier(admin_session, personal_number="api-stale-race-a", hierarchy_node_id=node.id)
+    soldier_b = create_soldier(admin_session, personal_number="api-stale-race-b", hierarchy_node_id=node.id)
+    _weapon_duty_type_for(admin_session, node=node, name="api-stale-race weapon")
+    loc = create_range_location(admin_session, name="api-stale-race loc")
+    admin_session.commit()
+
+    event_date = (date.today() + timedelta(days=5)).isoformat()
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "laser",
+            "date": event_date, "range_location_id": str(loc.id), "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    candidates_resp = client.get(f"/api/ranges/{event_id}/candidates", headers=auth_headers(dm))
+    assert candidates_resp.status_code == 200
+    candidate_ids = {c["soldier_id"] for c in candidates_resp.json()["candidates"]}
+    assert {str(soldier_a.id), str(soldier_b.id)}.issubset(candidate_ids)
+
+    # A prior/concurrent operation assigns soldier_a elsewhere on the same date,
+    # making them no longer a valid candidate for the batch below.
+    conflicting_create = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "laser",
+            "date": event_date, "range_location_id": str(loc.id), "required_count": 1,
+        },
+        headers=auth_headers(dm),
+    )
+    conflicting_event_id = conflicting_create.json()["id"]
+    conflict_add = client.post(
+        f"/api/ranges/{conflicting_event_id}/assignments",
+        json={"soldier_id": str(soldier_a.id), "is_reserve": False},
+        headers=auth_headers(dm),
+    )
+    assert conflict_add.status_code == 201, conflict_add.text
+
+    # Submit the original (now-stale) batch built from the earlier candidate list.
+    batch_resp = client.post(
+        f"/api/ranges/{event_id}/assignments/batch",
+        json={"primaries": [str(soldier_a.id), str(soldier_b.id)], "reserves": []},
+        headers=auth_headers(dm),
+    )
+
+    assert batch_resp.status_code == 400
+    assert batch_resp.json()["detail"] == "soldier_already_assigned_on_date"
+
+    get_resp = client.get(f"/api/ranges/{event_id}", headers=auth_headers(dm))
+    assert get_resp.status_code == 200
+    assert get_resp.json()["assignments"] == []
+    assert admin_session.query(RangeAssignment).filter(
+        RangeAssignment.range_event_id == event_id,
+    ).count() == 0
 
 
 def test_batch_assign_404_when_disabled(

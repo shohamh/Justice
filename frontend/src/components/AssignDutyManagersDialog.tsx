@@ -5,6 +5,7 @@ import { NodeDTO } from "../api/hierarchy";
 import { assignDmScope, removeDmScope } from "../api/dmScope";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import MessageDialog from "./MessageDialog";
 
 interface Props {
   node: NodeDTO;
@@ -18,6 +19,7 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
   const [inputText, setInputText] = useState("");
   const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
       await assignDmScope(s.id, node.id);
       onChanged();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic", "שגיאה"));
     }
   }
 
@@ -61,7 +63,7 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
       await removeDmScope(scopeId);
       onChanged();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic", "שגיאה"));
     }
   }
 
@@ -137,6 +139,7 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
           </button>
         </div>
       </div>
+      <MessageDialog open={message !== null} title={t("common.error", "שגיאה")} message={message ?? ""} onClose={() => setMessage(null)} />
     </div>
   );
 }

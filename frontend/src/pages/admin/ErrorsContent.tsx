@@ -1,8 +1,23 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ClipboardCopy } from "lucide-react";
 import { clearAdminErrors, listAdminErrors, markAdminErrorsRead, markAllAdminErrorsRead, type ErrorLogEntry, type PaginatedErrorLogs } from "../../api/bugReports";
+import ConfirmDialog from "../../components/ConfirmDialog";
+
+function buildErrorReport(entry: ErrorLogEntry): string {
+  const prompt = `This is a ${entry.source} error in my app, here are its details. Investigate it and fix it.`;
+  const lines = [
+    prompt,
+    "",
+    `Source: ${entry.source}`,
+    `Timestamp: ${entry.timestamp ?? "unknown"}`,
+    `Message: ${entry.message}`,
+  ];
+  if (entry.request_id) lines.push(`Request ID: ${entry.request_id}`);
+  lines.push("", "Details:", JSON.stringify(entry.details, null, 2));
+  return lines.join("\n");
+}
 
 const PAGE_SIZE = 50;
 
@@ -13,6 +28,7 @@ export function ErrorsContent() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [clearThrough, setClearThrough] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
   const queryClient = useQueryClient();
   const queryKey = ["admin-errors", source, page, from, to];
   const query = useQuery({
@@ -37,7 +53,12 @@ export function ErrorsContent() {
   }
 
   async function handleClear() {
-    if (!clearThrough || !window.confirm(label("admin_errors.confirm_clear", "\u05dc\u05e0\u05e7\u05d5\u05ea \u05db\u05dc \u05d4\u05e9\u05d2\u05d9\u05d0\u05d5\u05ea \u05e2\u05d3 \u05ea\u05d0\u05e8\u05d9\u05da \u05d6\u05d4?"))) return;
+    if (!clearThrough) return;
+    setConfirmClear(true);
+  }
+
+  async function confirmClearErrors() {
+    setConfirmClear(false);
     await clearAdminErrors(new Date(clearThrough).toISOString());
     setClearThrough("");
     await query.refetch();
@@ -78,6 +99,14 @@ export function ErrorsContent() {
       {!query.isLoading && !query.isError && items.length === 0 && <p className="text-sm text-gray-500 p-4">{label("admin_errors.empty", "\u05dc\u05d0 \u05e0\u05e8\u05e9\u05de\u05d5 \u05e9\u05d2\u05d9\u05d0\u05d5\u05ea")}</p>}
       {!query.isLoading && !query.isError && items.length > 0 && <div className="space-y-2">{items.map((entry, index) => <ErrorRow key={`${entry.timestamp}-${entry.request_id}-${index}`} entry={entry} onOpen={() => void markErrorRead(entry)} />)}</div>}
       {pages > 1 && <div className="flex justify-center gap-2 mt-4">{Array.from({ length: pages }, (_, index) => <button key={index} type="button" onClick={() => setPage(index + 1)} className={`px-3 py-1 rounded text-sm ${page === index + 1 ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>{index + 1}</button>)}</div>}
+      <ConfirmDialog
+        open={confirmClear}
+        title={label("admin_errors.clear", "נקה")}
+        message={label("admin_errors.confirm_clear", "לנקות כל השגיאות עד תאריך זה?")}
+        danger
+        onConfirm={() => void confirmClearErrors()}
+        onClose={() => setConfirmClear(false)}
+      />
     </div>
   );
 }
@@ -96,13 +125,16 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
   const toggle = () => { onOpen(); setExpanded((value) => !value); };
   return (
     <article className="border rounded dark:border-gray-600 p-3 cursor-pointer" data-testid={`admin-error-${entry.request_id ?? "unknown"}`} onClick={toggle}>
-      <button type="button" onClick={(event) => { event.stopPropagation(); toggle(); }} className="w-full text-right">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          {entry.unread && <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" data-testid={`admin-error-unread-${entry.record_key}`} aria-label="לא נקרא" />}
-          <span className={`font-semibold ${entry.source === "backend" ? "text-red-600" : "text-orange-600"}`}>{entry.source}</span>
-          <span>{entry.timestamp ? new Date(entry.timestamp).toLocaleString("he-IL") : "—"}</span>
-        </div>
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" onClick={(event) => { event.stopPropagation(); toggle(); }} className="flex-1 text-right">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            {entry.unread && <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" data-testid={`admin-error-unread-${entry.record_key}`} aria-label="לא נקרא" />}
+            <span className={`font-semibold ${entry.source === "backend" ? "text-red-600" : "text-orange-600"}`}>{entry.source}</span>
+            <span>{entry.timestamp ? new Date(entry.timestamp).toLocaleString("he-IL") : "—"}</span>
+          </div>
+        </button>
+        <CopyReportButton entry={entry} />
+      </div>
       {entry.source === "backend" && <p dir="ltr" className="mt-2 text-sm whitespace-pre-wrap text-left" data-testid={`admin-error-message-${entry.request_id ?? "unknown"}`}>{entry.message}</p>}
       {entry.source === "frontend" && typeof detailMessage === "string" && <p dir="ltr" className="mt-2 text-sm whitespace-pre-wrap text-left" data-testid={`admin-error-message-${entry.request_id ?? "unknown"}`}>{detailMessage}</p>}
       {entry.source === "frontend" && frontendRequest && <p dir="ltr" className="mt-1 text-xs text-gray-600 dark:text-gray-300 text-left" data-testid={`admin-error-request-${entry.request_id ?? "unknown"}`}>{frontendRequest}</p>}
@@ -112,6 +144,34 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
         <CopyBlock value={JSON.stringify(entry.details, null, 2)} testId={`admin-error-json-${entry.request_id ?? "unknown"}`} copyTestId={`admin-error-copy-json-${entry.request_id ?? "unknown"}`} />
       </>}
     </article>
+  );
+}
+
+function CopyReportButton({ entry }: { entry: ErrorLogEntry }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    if (!navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(buildErrorReport(entry));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      title={copied ? "הועתק" : "העתק דוח שגיאה מלא לתיקון"}
+      aria-label={copied ? "הועתק" : "העתק דוח שגיאה מלא לתיקון"}
+      className="shrink-0 p-1.5 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:text-gray-100 dark:hover:bg-gray-700"
+      data-testid={`admin-error-copy-report-${entry.request_id ?? "unknown"}`}
+      onClick={(event) => { event.stopPropagation(); void handleCopy(); }}
+    >
+      {copied ? <Check className="h-4 w-4 text-green-600" aria-hidden="true" /> : <ClipboardCopy className="h-4 w-4" aria-hidden="true" />}
+    </button>
   );
 }
 

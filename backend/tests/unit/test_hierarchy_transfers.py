@@ -19,6 +19,60 @@ def test_create_request_does_not_move_soldier_immediately(admin_session):
     assert soldier.hierarchy_node_id == src.id  # unchanged until approved
 
 
+def test_create_request_reuses_pending_request_for_same_soldier_and_destination(admin_session):
+    from app.services.hierarchy_transfers import create_request
+    from tests.helpers import create_node, create_soldier
+
+    src = create_node(admin_session, level="unit", name="dedupe_src")
+    dst = create_node(admin_session, level="unit", name="dedupe_dst")
+    soldier = create_soldier(admin_session, personal_number="7990101", hierarchy_node_id=src.id)
+    requester = create_soldier(admin_session, personal_number="7990102", role="commander")
+
+    first = create_request(admin_session, soldier_id=soldier.id, to_node_id=dst.id, requested_by=requester.id)
+    second = create_request(admin_session, soldier_id=soldier.id, to_node_id=dst.id, requested_by=requester.id)
+
+    assert second.id == first.id
+    assert len(admin_session.query(type(first)).filter_by(soldier_id=soldier.id).all()) == 1
+
+
+def test_create_request_updates_pending_request_and_resets_decision_for_new_destination(admin_session):
+    from app.services.hierarchy_transfers import create_request
+    from tests.helpers import create_node, create_soldier
+
+    src = create_node(admin_session, level="unit", name="update_src")
+    first_dst = create_node(admin_session, level="unit", name="update_first_dst")
+    second_dst = create_node(admin_session, level="unit", name="update_second_dst")
+    soldier = create_soldier(admin_session, personal_number="7990103", hierarchy_node_id=src.id)
+    requester = create_soldier(admin_session, personal_number="7990104", role="commander")
+    approver = create_soldier(admin_session, personal_number="7990105", role="commander")
+
+    request = create_request(
+        admin_session,
+        soldier_id=soldier.id,
+        to_node_id=first_dst.id,
+        requested_by=requester.id,
+        reason="old reason",
+    )
+    request.decided_by = approver.id
+    request.decision_note = "old decision"
+    updated = create_request(
+        admin_session,
+        soldier_id=soldier.id,
+        to_node_id=second_dst.id,
+        requested_by=requester.id,
+        reason="new reason",
+    )
+
+    assert updated.id == request.id
+    assert updated.to_node_id == second_dst.id
+    assert updated.from_node_id == src.id
+    assert updated.status == "pending"
+    assert updated.decided_by is None
+    assert updated.decision_note is None
+    assert updated.reason == "new reason"
+    assert len(admin_session.query(type(request)).filter_by(soldier_id=soldier.id).all()) == 1
+
+
 def test_approve_request_moves_soldier(admin_session):
     from app.services.hierarchy_transfers import approve_request, create_request
     from tests.helpers import create_node, create_soldier
@@ -140,19 +194,25 @@ def test_create_request_succeeds_for_real_node(admin_session):
 
     s = create_soldier(admin_session, personal_number="7600002")
     node = create_node(admin_session, level="unit", name="u1")
-    req = create_request(admin_session, soldier_id=s.id, to_node_id=node.id, requested_by=s.id)
+    req = create_request(admin_session, soldier_id=s.id, to_node_id=node.id, requested_by=s.id, reason="משימה חדשה")
     admin_session.commit()
     assert req.to_node_id == node.id
+    assert req.reason == "משימה חדשה"
 
 
 def test_create_request_daily_cap_enforced(admin_session):
-    from app.services.hierarchy_transfers import HierarchyTransferError, create_request
+    from app.services.hierarchy_transfers import (
+        HierarchyTransferError,
+        create_request,
+        reject_request,
+    )
     from tests.helpers import create_node, create_soldier
 
     s = create_soldier(admin_session, personal_number="7600003")
     nodes = [create_node(admin_session, level="unit", name=f"cap_u{i}") for i in range(6)]
     for node in nodes[:5]:
-        create_request(admin_session, soldier_id=s.id, to_node_id=node.id, requested_by=s.id)
+        request = create_request(admin_session, soldier_id=s.id, to_node_id=node.id, requested_by=s.id)
+        reject_request(admin_session, request_id=request.id, actor_id=s.id)
         admin_session.flush()
     with pytest.raises(HierarchyTransferError, match="daily_transfer_request_limit_exceeded"):
         create_request(admin_session, soldier_id=s.id, to_node_id=nodes[5].id, requested_by=s.id)

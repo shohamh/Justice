@@ -5,14 +5,26 @@ import UpcomingSnapshot from "./UpcomingSnapshot";
 import type { UpcomingDay } from "../api/commanderDashboard";
 import { listDutyTypes } from "../api/dutyConfig";
 
+const dict: Record<string, string> = {
+  "command_dashboard.view_duty_details": "צפה בפרטי התורנות",
+  "duty_detail.required_range": "מטווח נדרש",
+  "duty_detail.no_required_range": "לא נדרש",
+  "duty_detail.required_range_unavailable": "נתוני מטווח נדרש אינם זמינים",
+};
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => ({
-      "command_dashboard.view_duty_details": "צפה בפרטי התורנות",
-      "duty_detail.required_range": "מטווח נדרש",
-      "duty_detail.no_required_range": "לא נדרש",
-      "duty_detail.required_range_unavailable": "נתוני מטווח נדרש אינם זמינים",
-    })[key] ?? key,
+    t: (key: string, options?: string | (Record<string, unknown> & { defaultValue?: string })) => {
+      const fallback = typeof options === "string" ? options : options?.defaultValue;
+      let template = dict[key] ?? fallback ?? key;
+      if (options && typeof options === "object") {
+        for (const [varName, value] of Object.entries(options)) {
+          if (varName === "defaultValue") continue;
+          template = template.replaceAll(`{{${varName}}}`, String(value));
+        }
+      }
+      return template;
+    },
   }),
 }));
 
@@ -175,20 +187,21 @@ describe("UpcomingSnapshot soldier modal", () => {
     expect(screen.queryByText("שמירות")).not.toBeInTheDocument();
   });
 
-  it("shows a confirm dialog naming the soldier and mentioning קיצוניים, then navigates to the pre-filled hakpaza URL", () => {
+  it("shows a confirmation naming the soldier and only navigates after confirmation", () => {
     renderWithRouter();
     fireEvent.click(screen.getByText("דני כהן"));
     fireEvent.click(screen.getByText("שחרור פיקודי"));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("דני כהן"));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("קיצוניים"));
+    expect(screen.getByText(/דני כהן.*קיצוניים/)).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
     expect(mockNavigate).toHaveBeenCalledWith("/commander/hakpaza?soldierId=sol-1&assignmentId=asg-1");
   });
 
-  it("does not navigate when the confirm dialog is dismissed", () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("does not navigate when the confirmation is dismissed", () => {
     renderWithRouter();
     fireEvent.click(screen.getByText("דני כהן"));
     fireEvent.click(screen.getByText("שחרור פיקודי"));
+    fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

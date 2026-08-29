@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
@@ -13,10 +13,11 @@ vi.mock("../api/soldiers", () => ({
 }));
 
 const mockListSoldierConstraints = vi.fn().mockResolvedValue([]);
+const mockRejectConstraint = vi.fn();
 vi.mock("../api/constraints", () => ({
   listSoldierConstraints: (...args: unknown[]) => mockListSoldierConstraints(...args),
   approveConstraint: vi.fn(),
-  rejectConstraint: vi.fn(),
+  rejectConstraint: (...args: unknown[]) => mockRejectConstraint(...args),
   cancelConstraintForManager: vi.fn(),
 }));
 vi.mock("../api/rangeStatus", () => ({
@@ -507,5 +508,89 @@ describe("UnifiedSoldierModal constraint cancellation", () => {
       return element?.tagName.toLowerCase() === "p" && content.includes("team.cancel_constraint_active_warning");
     });
     expect(warning.className).toContain("amber");
+  });
+});
+
+describe("UnifiedSoldierModal constraint rejection", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    mockListSoldierConstraints.mockReset();
+    mockListSoldierConstraints.mockResolvedValue([
+      {
+        id: "c1",
+        soldier_id: "s1",
+        constraint_type: "personal",
+        start_date: "2026-01-01",
+        end_date: "2026-12-31",
+        status: "pending",
+        reason: "test reason",
+        can_cancel: false,
+        overrides: [],
+      },
+    ]);
+    mockRejectConstraint.mockReset();
+    mockRejectConstraint.mockResolvedValue(undefined);
+    window.prompt = vi.fn();
+  });
+
+  test("opens an input dialog and preserves an explicitly empty rejection note", async () => {
+    renderModal();
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
+
+    expect(window.prompt).not.toHaveBeenCalled();
+    expect(mockRejectConstraint).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("approvals.decision_note")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
+
+    await waitFor(() => expect(mockRejectConstraint).toHaveBeenCalledWith("c1", ""));
+  });
+
+  test("disables duplicate constraint rejection while the empty note submission is pending", async () => {
+    let resolveReject: () => void;
+    mockRejectConstraint.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      resolveReject = resolve;
+    }));
+    renderModal();
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
+
+    const confirm = screen.getByTestId("input-dialog-confirm");
+    fireEvent.click(confirm);
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(mockRejectConstraint).toHaveBeenCalledTimes(1);
+    expect(mockRejectConstraint).toHaveBeenCalledWith("c1", "");
+
+    await act(async () => resolveReject!());
+    await waitFor(() => expect(screen.queryByTestId("input-dialog-confirm")).not.toBeInTheDocument());
+  });
+
+  test("keeps the rejection dialog open and shows translated feedback when rejection fails", async () => {
+    mockRejectConstraint.mockRejectedValueOnce(new Error("network"));
+    renderModal();
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
+
+    expect(await screen.findByText("errors.generic")).toBeInTheDocument();
+    expect(screen.getByTestId("input-dialog-confirm")).not.toBeDisabled();
+  });
+
+  test("closes a successfully rejected constraint and reports a later refresh failure without allowing a retry", async () => {
+    mockRejectConstraint.mockResolvedValueOnce(undefined);
+    renderModal();
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    await screen.findByTestId("reject-constraint-c1");
+    mockListSoldierConstraints.mockRejectedValueOnce(new Error("refresh failed"));
+
+    fireEvent.click(screen.getByTestId("reject-constraint-c1"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
+
+    await waitFor(() => expect(mockRejectConstraint).toHaveBeenCalledWith("c1", ""));
+    expect(await screen.findByText("team.constraint_refresh_failed")).toBeInTheDocument();
+    expect(screen.queryByTestId("input-dialog-confirm")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reject-constraint-c1")).not.toBeInTheDocument();
   });
 });

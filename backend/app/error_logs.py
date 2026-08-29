@@ -135,12 +135,23 @@ def _pause_active_error_handlers(log_dir: Path):
             base_filename = getattr(handler, "baseFilename", None)
             if base_filename is None or Path(base_filename).resolve() not in active_paths:
                 continue
-            logger.removeHandler(handler)
-            handler.close()
-            paused.append((logger, handler))
+            # Serialize with any concurrent emit() before closing the stream.
+            # Windows refuses os.replace() while another thread still owns the
+            # file handle, even after the handler has been removed from logger.
+            handler.acquire()
+            try:
+                logger.removeHandler(handler)
+                handler.close()
+                paused.append((logger, handler))
+            except Exception:
+                handler.release()
+                raise
     try:
         yield
     finally:
         for logger, handler in paused:
-            handler.stream = handler._open()  # type: ignore[attr-defined]
-            logger.addHandler(handler)
+            try:
+                handler.stream = handler._open()  # type: ignore[attr-defined]
+                logger.addHandler(handler)
+            finally:
+                handler.release()

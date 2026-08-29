@@ -23,6 +23,7 @@ import {
   reorderLevelTypes,
 } from "../api/levelTypes";
 import { useLevelTypes } from "../hooks/useLevelTypes";
+import MessageDialog from "./MessageDialog";
 
 interface Props {
   nodeId: string;
@@ -93,6 +94,7 @@ export default function EditNodeDialog({
   const [violations, setViolations] = useState<{ parent: string; child: string }[] | null>(null);
   const [newTypeLabel, setNewTypeLabel] = useState("");
   const [managerOpen, setManagerOpen] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -111,7 +113,7 @@ export default function EditNodeDialog({
       onRenamed();
       onClose();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic"));
     }
   }
 
@@ -140,7 +142,7 @@ export default function EditNodeDialog({
       if (detail?.violations) {
         setViolations(detail.violations);
       } else {
-        alert(t("errors.generic"));
+        setMessage(t("errors.generic"));
       }
     }
   }
@@ -154,7 +156,7 @@ export default function EditNodeDialog({
       setNewTypeLabel("");
       await refresh();
     } catch {
-      alert(t("errors.generic"));
+      setMessage(t("errors.generic"));
     }
   }
 
@@ -248,6 +250,12 @@ export default function EditNodeDialog({
           </div>
         )}
       </div>
+      <MessageDialog
+        open={message !== null}
+        title={t("common.error")}
+        message={message ?? ""}
+        onClose={() => setMessage(null)}
+      />
     </div>
   );
 }

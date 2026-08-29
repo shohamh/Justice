@@ -3,12 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.audit.writer import write_audit
-from app.auth.authz import scope_root_ids
+from app.auth.authz import responsible_range_manager_authorized, scope_root_ids
 from app.db.models import (
     HierarchyNode,
     Notification,
@@ -28,6 +29,9 @@ from app.services.approval_scope import commander_chain_for_soldier
 from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.range_exemption import is_range_exempt
 from app.services.settings_loader import SettingNotFound, get_setting
+
+if TYPE_CHECKING:  # range_reconciliation imports this module at module scope
+    from app.services.range_reconciliation import ReconciliationResult
 
 
 class RangeValidationError(Exception):
@@ -73,6 +77,29 @@ def _range_assignment_body(event: RangeEvent) -> str:
     return f"{_RANGE_TYPE_HE.get(event.range_type, event.range_type.value)} · {event.date.strftime('%d.%m.%Y')}"
 
 
+def _notify_refilled_assignments(session: Session, reconciliation: ReconciliationResult) -> None:
+    """Tell every soldier auto-refilled into a slot vacated by reconciliation that
+    they are now assigned, using the same notification a directly created
+    assignment gets. Each refill lives on its own (later) event, so the body and
+    reference are taken from that assignment's event, not the source event.
+    The vacated-slot roster notification is already sent by the removal itself."""
+    for assignment_id in (
+        reconciliation.refilled_primary_assignment_ids
+        + reconciliation.refilled_reserve_assignment_ids
+    ):
+        assignment = session.get(RangeAssignment, assignment_id)
+        refilled_event = session.get(RangeEvent, assignment.range_event_id)
+        _range_notification(
+            session,
+            soldier_id=assignment.soldier_id,
+            type=NotificationType.range_assignment_confirmed,
+            title="שובצת למטווח",
+            body=_range_assignment_body(refilled_event),
+            reference_type="range_event",
+            reference_id=refilled_event.id,
+        )
+
+
 def _range_context(session: Session, event: RangeEvent, *, reason: str | None = None) -> str:
     from app.db.models import RangeLocation
     loc = session.get(RangeLocation, event.range_location_id)
@@ -91,14 +118,35 @@ def _notify_roster_change(
         f"primary={sum(1 for a in assignments if not a.is_reserve and not a.is_draft)}/{event.required_count}"
         f" | reserve={sum(1 for a in assignments if a.is_reserve and not a.is_draft)}/{event.reserve_count}"
     )
+    location = session.get(RangeLocation, event.range_location_id)
+    metadata = {
+        "range_date": event.date.isoformat(),
+        "range_type": event.range_type.value,
+        "range_location": location.name if location else str(event.range_location_id),
+        "primary_filled": sum(1 for a in assignments if not a.is_reserve and not a.is_draft),
+        "primary_capacity": event.required_count,
+        "reserve_filled": sum(1 for a in assignments if a.is_reserve and not a.is_draft),
+        "reserve_capacity": event.reserve_count,
+        "assignments": [
+            {
+                "soldier_id": str(assignment.soldier_id),
+                "soldier_name": soldier.full_name if (soldier := session.get(Soldier, assignment.soldier_id)) else str(assignment.soldier_id),
+                "is_reserve": assignment.is_reserve,
+                "assignment_reason_code": assignment.assignment_reason_code,
+                "assignment_reason_text": assignment.assignment_reason_text,
+            }
+            for assignment in assignments
+            if not assignment.is_draft
+        ],
+    }
     for soldier_id in soldier_ids:
         _range_notification(
             session, soldier_id=soldier_id, type=NotificationType.range_roster_changed,
             title="Range roster changed", body=f"{_range_context(session, event)} | {fill}",
-            reference_type="range_event", reference_id=event.id, actor_id=actor_id,
+            reference_type="range_event", reference_id=event.id, actor_id=actor_id, metadata=metadata,
         )
     if soldier_ids and _mitvachim_enabled(session):
-        notify_duty_managers_in_scope(session, soldier_id=next(iter(soldier_ids)), type=NotificationType.range_roster_changed, title="Range roster changed", body=f"{_range_context(session, event)} | {fill}", reference_type="range_event", reference_id=event.id, actor_id=actor_id)
+        notify_duty_managers_in_scope(session, soldier_id=next(iter(soldier_ids)), type=NotificationType.range_roster_changed, title="Range roster changed", body=f"{_range_context(session, event)} | {fill}", reference_type="range_event", reference_id=event.id, actor_id=actor_id, metadata=metadata)
 
 def create_range_event(
     session: Session,
@@ -116,11 +164,15 @@ def create_range_event(
     contact_phone: str | None = None,
     notes: str | None = None,
     created_by: uuid.UUID | None = None,
+    responsible_duty_manager_id: uuid.UUID | None = None,
 ) -> RangeEvent:
     if session.get(HierarchyNode, hierarchy_node_id) is None:
         raise RangeValidationError("hierarchy_node_not_found")
-    if session.get(RangeLocation, range_location_id) is None:
+    location = session.get(RangeLocation, range_location_id)
+    if location is None:
         raise RangeValidationError("range_location_not_found")
+    if not location.active:
+        raise RangeValidationError("range_location_inactive")
     if required_count < 0 or reserve_count < 0:
         raise RangeValidationError("counts_must_be_non_negative")
     if start_time and end_time and start_time > end_time:
@@ -140,6 +192,7 @@ def create_range_event(
         contact_phone=contact_phone,
         notes=notes,
         created_by=created_by,
+        responsible_duty_manager_id=responsible_duty_manager_id,
     )
     session.add(event)
     session.commit()
@@ -219,8 +272,11 @@ def update_range_event(
         event.reserve_count = reserve_count
         after["reserve_count"] = reserve_count
     if range_location_id is not _UNSET:
-        if session.get(RangeLocation, range_location_id) is None:
+        location = session.get(RangeLocation, range_location_id)
+        if location is None:
             raise RangeValidationError("range_location_not_found")
+        if not location.active:
+            raise RangeValidationError("range_location_inactive")
         before["range_location_id"] = str(event.range_location_id)
         event.range_location_id = range_location_id
         after["range_location_id"] = str(range_location_id)
@@ -358,9 +414,16 @@ def _validate_and_build_assignment(
     if node is None or event_node is None:
         raise RangeValidationError("soldier_outside_event_subunit")
     in_event_subtree = event.hierarchy_node_id in node.path_ids
-    if not in_event_subtree and not _soldier_in_authorized_scope(session, node=node, user=user):
+    responsible_authorized = user is not None and responsible_range_manager_authorized(
+        session,
+        user=user,
+        responsible_duty_manager_id=event.responsible_duty_manager_id,
+    )
+    if not in_event_subtree and not responsible_authorized and not _soldier_in_authorized_scope(
+        session, node=node, user=user
+    ):
         raise RangeValidationError("soldier_outside_event_subunit")
-    if is_range_exempt(session, soldier=soldier, event_date=event.date):
+    if is_range_exempt(session, soldier=soldier, event_date=event.date, range_type=event.range_type):
         raise RangeValidationError("soldier_range_exempt")
     existing_same_date = session.execute(
         select(RangeAssignment.id)
@@ -449,6 +512,12 @@ def add_range_assignment(
             session, soldier_id=soldier_id, assignment_kind="range",
             reason=override_reason.strip(), actor_id=user.id if user else None,
         )
+    # Deferred: range_reconciliation imports this module at module scope.
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    reconciliation = reconcile_future_range_assignments(
+        session, soldier_id=soldier_id, source_event=event, actor_id=user.id if user else None,
+    )
     _notify_roster_change(session, event=event, soldier_ids=existing_soldier_ids)
     _range_notification(
         session,
@@ -459,6 +528,7 @@ def add_range_assignment(
         reference_type="range_event",
         reference_id=event.id,
     )
+    _notify_refilled_assignments(session, reconciliation)
     session.commit()
     session.refresh(assignment)
     return assignment
@@ -502,12 +572,22 @@ def assign_batch(
     ]
     for row, _constraint in rows_with_constraints:
         soldier = session.get(Soldier, row.soldier_id)
-        _, reason_code, _explanation = _rank_candidate(session, soldier=soldier, event=event)
+        _, reason_code, _explanation, _auto_selectable, _system_reason_code, _system_reason_date = _rank_candidate(session, soldier=soldier, event=event)
         row.assignment_reason_code = reason_code
         session.add(row)
     session.flush()
     from app.db.models import PersonalConstraintOverride
     from app.services.notifications import notify_personal_constraint_overridden
+
+    # Deferred: range_reconciliation imports this module at module scope.
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    for row, _constraint in rows_with_constraints:
+        reconciliation = reconcile_future_range_assignments(
+            session, soldier_id=row.soldier_id, source_event=event,
+            actor_id=user.id if user else None,
+        )
+        _notify_refilled_assignments(session, reconciliation)
 
     for row, constraint in rows_with_constraints:
         _range_notification(
@@ -535,12 +615,14 @@ def assign_batch(
     return rows
 
 
-def remove_range_assignment(
-    session: Session, *, assignment: RangeAssignment, reason: str, actor_id: uuid.UUID | None = None,
+def _remove_range_assignment_in_transaction(
+    session: Session, *, assignment: RangeAssignment, reason: str,
+    actor_id: uuid.UUID | None = None,
 ) -> None:
     event = session.get(RangeEvent, assignment.range_event_id)
-    if event is not None and event.status != RangeEventStatus.planned:
-        raise RangeValidationError("event_not_planned")
+    if event is not None:
+        if event.status != RangeEventStatus.planned:
+            raise RangeValidationError("event_not_planned")
     remaining_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
         RangeAssignment.range_event_id == assignment.range_event_id,
         RangeAssignment.id != assignment.id,
@@ -560,6 +642,14 @@ def remove_range_assignment(
     session.flush()
     _notify_roster_change(
         session, event=event, soldier_ids=remaining_ids | {soldier_id}, actor_id=actor_id,
+    )
+
+
+def remove_range_assignment(
+    session: Session, *, assignment: RangeAssignment, reason: str, actor_id: uuid.UUID | None = None,
+) -> None:
+    _remove_range_assignment_in_transaction(
+        session, assignment=assignment, reason=reason, actor_id=actor_id,
     )
     session.commit()
 

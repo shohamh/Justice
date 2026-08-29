@@ -6,6 +6,7 @@ import { soldierApproveSwap, soldierRejectSwap } from "../api/swaps";
 import { decideRangeExcusal } from "../api/ranges";
 import { Check, Eye, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
+import { getNotificationTitle } from "./notifications/NotificationDetails";
 
 export default function NotificationBell() {
   const { t } = useTranslation();
@@ -144,10 +145,10 @@ export default function NotificationBell() {
                         className="text-sm font-medium truncate text-right w-full hover:text-indigo-600"
                         onClick={() => handleNotificationClick(n)}
                       >
-                        {n.title}
+                        {getNotificationTitle(n, t)}
                       </button>
                     ) : (
-                      <p className="text-sm font-medium truncate">{n.title}</p>
+                      <p className="text-sm font-medium truncate">{getNotificationTitle(n, t)}</p>
                     )}
                     {n.body && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{n.body}</p>}
                     {n.sender_name && <p className="text-xs text-gray-400 truncate">{t("notifications.sent_by", { name: n.sender_name })}</p>}

@@ -11,6 +11,8 @@ import {
   markSessionDone,
 } from "../api/importSessions";
 import { translateApiError } from "../utils/translateApiError";
+import ConfirmDialog from "../components/ConfirmDialog";
+import MessageDialog from "../components/MessageDialog";
 
 const STATUS_LABEL: Record<SessionSummary["status"], string> = {
   draft: "טיוטה",
@@ -44,6 +46,8 @@ export default function ImportSessionsListPage() {
   const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [cancelSessionId, setCancelSessionId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const statusFilter = showAll ? "draft,confirmed,cancelled,done" : undefined;
   const sessionsQuery = useQuery({
@@ -57,13 +61,12 @@ export default function ImportSessionsListPage() {
 
   async function handleCancel(id: string) {
     if (pendingId) return;
-    if (!window.confirm("לבטל את הטיוטה?")) return;
     setPendingId(id);
     try {
       await cancelSession(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
-      alert(translateApiError(err, t, "שגיאה בביטול הייבוא"));
+      setMessage(translateApiError(err, t, t("import_sessions.cancel_error", "שגיאה בביטול הייבוא")));
     } finally {
       setPendingId(null);
     }
@@ -76,7 +79,7 @@ export default function ImportSessionsListPage() {
       await markSessionDone(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
-      alert(translateApiError(err, t, "שגיאה בעדכון הייבוא"));
+      setMessage(translateApiError(err, t, t("import_sessions.update_error", "שגיאה בעדכון הייבוא")));
     } finally {
       setPendingId(null);
     }
@@ -152,7 +155,7 @@ export default function ImportSessionsListPage() {
                           <button
                             className="text-red-600 hover:underline text-sm disabled:opacity-50"
                             disabled={pendingId === session.id}
-                            onClick={() => void handleCancel(session.id)}
+                            onClick={() => setCancelSessionId(session.id)}
                           >
                             בטל
                           </button>
@@ -203,6 +206,19 @@ export default function ImportSessionsListPage() {
           </table>
         </div>
       </div>
+      <ConfirmDialog
+        open={cancelSessionId !== null}
+        title={t("import_sessions.cancel_title", "ביטול טיוטת ייבוא")}
+        message={t("import_sessions.cancel_confirm", "לבטל את הטיוטה?")}
+        danger
+        onClose={() => setCancelSessionId(null)}
+        onConfirm={() => {
+          const id = cancelSessionId;
+          setCancelSessionId(null);
+          if (id) void handleCancel(id);
+        }}
+      />
+      <MessageDialog open={message !== null} title={t("common.error", "שגיאה")} message={message ?? ""} onClose={() => setMessage(null)} />
     </Layout>
   );
 }

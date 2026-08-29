@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
@@ -25,6 +24,8 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.constraint_override_settings import manual_override_allowed
+from app.services.range_coverage import RangeCoverage, get_range_coverage, get_range_coverages, relevant_duty_types
+from app.services.ranges import _validity_days
 
 
 def _qualification_types_at_or_above(range_type: str) -> list[str]:
@@ -32,28 +33,8 @@ def _qualification_types_at_or_above(range_type: str) -> list[str]:
     return [rt for rt, rank in RANGE_TYPE_RANK.items() if rank >= min_rank]
 
 
-def _best_qualification_valid_until(
-    session: Session, *, soldier_id: uuid.UUID, range_type: str, as_of: date,
-) -> date | None:
-    """Among the soldier's still-valid (valid_until >= as_of) qualification rows at
-    range_type or higher, returns the valid_until of the most permissive (highest-rank)
-    one, or None if the soldier has no such row."""
-    candidate_types = _qualification_types_at_or_above(range_type)
-    rows = session.execute(
-        select(SoldierRangeQualification).where(
-            SoldierRangeQualification.soldier_id == soldier_id,
-            SoldierRangeQualification.range_type.in_(candidate_types),
-            SoldierRangeQualification.valid_until >= as_of,
-        )
-    ).scalars().all()
-    if not rows:
-        return None
-    best = max(rows, key=lambda r: RANGE_TYPE_RANK[r.range_type])
-    return best.valid_until
-
-
 def _earliest_future_weapon_duty_start(
-    session: Session, *, soldier_id: uuid.UUID, is_reserve: bool,
+    session: Session, *, soldier_id: uuid.UUID, is_reserve: bool, after_date: date,
 ) -> date | None:
     return session.execute(
         select(func.min(DutyAssignment.start_date))
@@ -61,9 +42,31 @@ def _earliest_future_weapon_duty_start(
         .where(
             DutyAssignment.soldier_id == soldier_id,
             DutyAssignment.status == "published",
-            DutyAssignment.start_date >= date.today(),
+            DutyAssignment.start_date > after_date,
             DutyAssignment.is_reserve == is_reserve,
             DutyType.requires_weapon.is_(True),
+        )
+    ).scalar_one_or_none()
+
+
+def _earliest_future_range_relevant_duty_start(
+    session: Session, *, soldier_id: uuid.UUID, is_reserve: bool, after_date: date,
+    relevant_duty_type_ids: list[uuid.UUID],
+) -> date | None:
+    """Like `_earliest_future_weapon_duty_start`, but scoped to `relevant_duty_type_ids`
+    (see `relevant_duty_types`) — used for candidate ranking, where a soldier's
+    urgent laser-tier duty must not boost their priority for an alal event they
+    don't structurally need. Takes the id list rather than a range_type so callers
+    checking both `is_reserve` kinds for the same event compute it once."""
+    if not relevant_duty_type_ids:
+        return None
+    return session.execute(
+        select(func.min(DutyAssignment.start_date)).where(
+            DutyAssignment.soldier_id == soldier_id,
+            DutyAssignment.status == "published",
+            DutyAssignment.start_date > after_date,
+            DutyAssignment.is_reserve == is_reserve,
+            DutyAssignment.duty_type_id.in_(relevant_duty_type_ids),
         )
     ).scalar_one_or_none()
 
@@ -83,38 +86,63 @@ def _last_qualification_valid_until(
     ).scalar_one_or_none()
 
 
-def _rank_candidate(session: Session, *, soldier: Soldier, event: RangeEvent) -> tuple[tuple, str, str]:
-    """Returns (sort_key, reason_code, explanation). Tier order (lowest sorts first,
-    i.e. highest priority to be sent to this range): soldiers with an upcoming
-    weapon-requiring duty (regular before reserve) need to qualify before that duty;
-    soldiers with neither an upcoming duty nor a valid qualification are next; already-
-    qualified soldiers sort last, tie-broken by soonest-expiring qualification first."""
-    qualified_until = _best_qualification_valid_until(
-        session, soldier_id=soldier.id, range_type=event.range_type, as_of=event.date,
-    )
-    if qualified_until is not None:
-        explanation = f"כשירות תקפה עד {qualified_until.strftime('%d.%m.%Y')}"
-        return (3, qualified_until, str(soldier.id)), "qualified", explanation
+def _rank_from_coverage(
+    *, soldier_id: uuid.UUID, coverage: RangeCoverage, duty_start: date | None,
+    reserve_duty_start: date | None, last_valid_until: date | None,
+    event_date: date, validity_days: int,
+) -> tuple[tuple, str, str, bool, str, date | None]:
+    """Return a candidate rank from already-bulk-loaded coverage and duty facts."""
+    if coverage.coverage_kind in {"qualification", "primary_range"}:
+        assert coverage.valid_until is not None
+        recently_qualified = (
+            coverage.source_event_date is not None
+            and (event_date - coverage.source_event_date).days * 2 < validity_days
+        )
+        expiry_date = coverage.valid_until.strftime('%d.%m.%Y')
+        explanation = f"range_recently_completed:{expiry_date}" if recently_qualified else f"range_valid_expiring:{expiry_date}"
+        if recently_qualified:
+            return (4, coverage.valid_until, str(soldier_id)), "qualified", explanation, False, "recent", coverage.valid_until
+        return (3, coverage.valid_until, str(soldier_id)), "qualified", explanation, True, "valid_expiring", coverage.valid_until
 
-    duty_start = _earliest_future_weapon_duty_start(session, soldier_id=soldier.id, is_reserve=False)
     if duty_start is not None:
         explanation = f"תורנות קרובה ב-{duty_start.strftime('%d.%m.%Y')}"
-        return (0, duty_start, str(soldier.id)), "duty_priority", explanation
+        return (0, duty_start, str(soldier_id)), "duty_priority", explanation, True, "duty_priority", duty_start
 
-    reserve_duty_start = _earliest_future_weapon_duty_start(session, soldier_id=soldier.id, is_reserve=True)
     if reserve_duty_start is not None:
         explanation = f"תורנות רזרבה קרובה ב-{reserve_duty_start.strftime('%d.%m.%Y')}"
-        return (1, reserve_duty_start, str(soldier.id)), "reserve_duty_priority", explanation
+        return (1, reserve_duty_start, str(soldier_id)), "reserve_duty_priority", explanation, True, "reserve_duty_priority", reserve_duty_start
 
-    last_valid_until = _last_qualification_valid_until(
-        session, soldier_id=soldier.id, range_type=event.range_type,
-    )
     explanation = (
-        f"אין מטווחים בתוקף מ-{last_valid_until.strftime('%d.%m.%Y')}"
+        f"range_last_completed:{last_valid_until.isoformat()}"
         if last_valid_until is not None
-        else "מעולם לא ביצע מטווחים"
+        else "range_never_completed"
     )
-    return (2, str(soldier.id)), "available_and_balanced", explanation
+    return (2, str(soldier_id)), "available_and_balanced", explanation, True, "last_completed" if last_valid_until is not None else "never_completed", last_valid_until
+
+
+def _rank_candidate(session: Session, *, soldier: Soldier, event: RangeEvent) -> tuple[tuple, str, str, bool, str, date | None]:
+    """Single-soldier counterpart of the bounded candidate-list ranking path."""
+    coverage = get_range_coverage(
+        session, soldier_id=soldier.id, required_range_type=event.range_type, as_of=event.date,
+    )
+    relevant_duty_type_ids = [dt.id for dt in relevant_duty_types(session, range_type=event.range_type)]
+    return _rank_from_coverage(
+        soldier_id=soldier.id,
+        coverage=coverage,
+        duty_start=_earliest_future_range_relevant_duty_start(
+            session, soldier_id=soldier.id, is_reserve=False, after_date=event.date,
+            relevant_duty_type_ids=relevant_duty_type_ids,
+        ),
+        reserve_duty_start=_earliest_future_range_relevant_duty_start(
+            session, soldier_id=soldier.id, is_reserve=True, after_date=event.date,
+            relevant_duty_type_ids=relevant_duty_type_ids,
+        ),
+        last_valid_until=_last_qualification_valid_until(
+            session, soldier_id=soldier.id, range_type=event.range_type,
+        ),
+        event_date=event.date,
+        validity_days=_validity_days(session, coverage.source_range_type or event.range_type),
+    )
 
 
 @dataclass
@@ -124,6 +152,9 @@ class RankedCandidate:
     explanation: str
     conflict_warning: str | None
     personal_constraint_conflict: bool = False
+    auto_selectable: bool = True
+    system_reason_code: str = ""
+    system_reason_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -135,17 +166,8 @@ class ExcludedSoldier:
 NEAR_DUTY_WINDOW_DAYS = 30
 
 
-def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier) -> list[Soldier]:
-    """Every soldier the requesting user is authorized to send to this range: the
-    full union of their commanded/duty-manager subtrees, not just the event's own
-    hierarchy node. A commander whose scope spans several sub-units must be able to
-    pick reserves from any of them, not only the specific unit the event was created
-    under — otherwise the reserve pool dries up as soon as that one unit is full."""
-    if user.role == "admin":
-        return list(session.execute(select(Soldier)).scalars().all())
-    roots = scope_root_ids(session, user)
-    if not roots:
-        return []
+def _soldiers_under_roots(session: Session, *, roots: list[uuid.UUID]) -> list[Soldier]:
+    """Every soldier whose hierarchy node lies in the subtree of any of `roots`."""
     subtree_node_ids = list(
         session.execute(
             select(HierarchyNode.id).where(
@@ -160,11 +182,35 @@ def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier) -> list
     )
 
 
+def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier | None = None) -> list[Soldier]:
+    """Every soldier the requesting user is authorized to send to this range: the
+    full union of their commanded/duty-manager subtrees, not just the event's own
+    hierarchy node. A commander whose scope spans several sub-units must be able to
+    pick reserves from any of them, not only the specific unit the event was created
+    under — otherwise the reserve pool dries up as soon as that one unit is full.
+
+    user=None (no caller context, e.g. reconciliation's automatic refill) means there
+    is no widened authorized scope to apply, so the pool is exactly the event's own
+    subtree — the same rule _validate_and_build_assignment applies via in_event_subtree."""
+    if user is None:
+        return _soldiers_under_roots(session, roots=[event.hierarchy_node_id])
+    if user.role == "admin":
+        return list(session.execute(select(Soldier)).scalars().all())
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return []
+    return _soldiers_under_roots(session, roots=roots)
+
+
 def _bulk_duty_start_by_soldier(
-    session: Session, *, soldier_ids: list[uuid.UUID],
+    session: Session, *, soldier_ids: list[uuid.UUID], start_date: date, include_start_date: bool,
 ) -> dict[tuple[uuid.UUID, bool], date]:
-    """{(soldier_id, is_reserve): earliest future published weapon-requiring duty
-    start}, one bulk query shared by ranking and eligibility."""
+    """Return earliest published weapon duties by soldier and assignment kind."""
+    start_date_filter = (
+        DutyAssignment.start_date >= start_date
+        if include_start_date
+        else DutyAssignment.start_date > start_date
+    )
     return {
         (soldier_id, is_reserve): start
         for soldier_id, is_reserve, start in session.execute(
@@ -173,8 +219,38 @@ def _bulk_duty_start_by_soldier(
             .where(
                 DutyAssignment.soldier_id.in_(soldier_ids),
                 DutyAssignment.status == "published",
-                DutyAssignment.start_date >= date.today(),
+                start_date_filter,
                 DutyType.requires_weapon.is_(True),
+            )
+            .group_by(DutyAssignment.soldier_id, DutyAssignment.is_reserve)
+        ).all()
+    }
+
+
+def _bulk_range_relevant_duty_start_by_soldier(
+    session: Session, *, soldier_ids: list[uuid.UUID], start_date: date, include_start_date: bool,
+    range_type: str,
+) -> dict[tuple[uuid.UUID, bool], date]:
+    """Bulk counterpart of `_earliest_future_range_relevant_duty_start`: earliest
+    published duty by soldier and assignment kind, scoped to duty types this
+    `range_type` is actually relevant to — used for candidate ranking priority."""
+    duty_type_ids = [dt.id for dt in relevant_duty_types(session, range_type=range_type)]
+    if not duty_type_ids or not soldier_ids:
+        return {}
+    start_date_filter = (
+        DutyAssignment.start_date >= start_date
+        if include_start_date
+        else DutyAssignment.start_date > start_date
+    )
+    return {
+        (soldier_id, is_reserve): start
+        for soldier_id, is_reserve, start in session.execute(
+            select(DutyAssignment.soldier_id, DutyAssignment.is_reserve, func.min(DutyAssignment.start_date))
+            .where(
+                DutyAssignment.soldier_id.in_(soldier_ids),
+                DutyAssignment.status == "published",
+                start_date_filter,
+                DutyAssignment.duty_type_id.in_(duty_type_ids),
             )
             .group_by(DutyAssignment.soldier_id, DutyAssignment.is_reserve)
         ).all()
@@ -192,10 +268,11 @@ def _bulk_eligibility(
 
     A soldier is entirely OMITTED from the result dict (hard-excluded from the
     candidate list, but recorded in `excluded` with a reason) if they have a
-    weapons-forbidding exemption, are structurally ineligible for every weapon
-    duty type, or are already assigned to a different range the same day — all
-    of these also fail actual assignment, so there's never a reason to show them
-    as a candidate.
+    weapons-forbidding exemption, are structurally ineligible for every duty type
+    this event's range_type is relevant to (see `relevant_duty_types` — a soldier
+    who only ever needs laser is ineligible for an alal event), or are already
+    assigned to a different range the same day — all of these also fail actual
+    assignment, so there's never a reason to show them as a candidate.
 
     A soldier with an approved personal constraint overlapping the event date is
     handled according to the constraints.allow_manual_override system setting: if
@@ -213,9 +290,7 @@ def _bulk_eligibility(
     soldier_ids = [s.id for s in soldiers]
     override_allowed = manual_override_allowed(session)
 
-    weapon_duty_types = session.execute(
-        select(DutyType).where(DutyType.requires_weapon.is_(True), DutyType.active.is_(True))
-    ).scalars().all()
+    range_relevant_types = relevant_duty_types(session, range_type=event.range_type)
     node_ids = {s.hierarchy_node_id for s in soldiers if s.hierarchy_node_id is not None}
     nodes_by_id = {
         n.id: n for n in session.execute(
@@ -276,7 +351,7 @@ def _bulk_eligibility(
     for soldier in soldiers:
         node = nodes_by_id.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
         structurally_exempt = node is None or not any(
-            node_in_scope(dt.eligible_node_ids, node.path_ids) for dt in weapon_duty_types
+            node_in_scope(dt.eligible_node_ids, node.path_ids) for dt in range_relevant_types
         )
         if soldier.id in exempted:
             excluded.append(ExcludedSoldier(soldier.id, "weapon_exempt"))
@@ -330,55 +405,47 @@ def _bulk_eligibility(
 def _bulk_rank(
     session: Session, *, soldiers: list[Soldier], event: RangeEvent,
     duty_start_by_soldier: dict[tuple[uuid.UUID, bool], date],
-) -> dict[uuid.UUID, tuple[tuple, str, str]]:
-    """Bulk equivalent of _rank_candidate: same tier logic, but the qualification
-    lookup it depends on is fetched once for the whole candidate set."""
+) -> dict[uuid.UUID, tuple[tuple, str, str, bool, str, date | None]]:
+    """Bulk candidate ranking using the shared date-aware coverage classification."""
     soldier_ids = [s.id for s in soldiers]
     candidate_types = _qualification_types_at_or_above(event.range_type)
 
-    quals_by_soldier: dict[uuid.UUID, list[SoldierRangeQualification]] = defaultdict(list)
-    for q in session.execute(
-        select(SoldierRangeQualification).where(
+    last_valid_until_by_soldier: dict[uuid.UUID, date] = {}
+    for soldier_id, valid_until in session.execute(
+        select(SoldierRangeQualification.soldier_id, func.max(SoldierRangeQualification.valid_until))
+        .where(
             SoldierRangeQualification.soldier_id.in_(soldier_ids),
             SoldierRangeQualification.range_type.in_(candidate_types),
         )
-    ).scalars().all():
-        quals_by_soldier[q.soldier_id].append(q)
+        .group_by(SoldierRangeQualification.soldier_id)
+    ).all():
+        last_valid_until_by_soldier[soldier_id] = valid_until
 
-    result: dict[uuid.UUID, tuple[tuple, str, str]] = {}
-    for soldier in soldiers:
-        rows = quals_by_soldier.get(soldier.id, [])
-        valid_rows = [r for r in rows if r.valid_until >= event.date]
-        if valid_rows:
-            best = max(valid_rows, key=lambda r: RANGE_TYPE_RANK[r.range_type])
-            explanation = f"כשירות תקפה עד {best.valid_until.strftime('%d.%m.%Y')}"
-            result[soldier.id] = ((3, best.valid_until, str(soldier.id)), "qualified", explanation)
-            continue
+    coverage_by_soldier = get_range_coverages(
+        session,
+        soldier_ids=soldier_ids,
+        required_range_type=event.range_type,
+        as_of=event.date,
+    )
 
-        duty_start = duty_start_by_soldier.get((soldier.id, False))
-        if duty_start is not None:
-            explanation = f"תורנות קרובה ב-{duty_start.strftime('%d.%m.%Y')}"
-            result[soldier.id] = ((0, duty_start, str(soldier.id)), "duty_priority", explanation)
-            continue
-
-        reserve_duty_start = duty_start_by_soldier.get((soldier.id, True))
-        if reserve_duty_start is not None:
-            explanation = f"תורנות רזרבה קרובה ב-{reserve_duty_start.strftime('%d.%m.%Y')}"
-            result[soldier.id] = ((1, reserve_duty_start, str(soldier.id)), "reserve_duty_priority", explanation)
-            continue
-
-        last_valid_until = max((r.valid_until for r in rows), default=None)
-        explanation = (
-            f"אין מטווחים בתוקף מ-{last_valid_until.strftime('%d.%m.%Y')}"
-            if last_valid_until is not None
-            else "מעולם לא ביצע מטווחים"
+    return {
+            soldier.id: _rank_from_coverage(
+            soldier_id=soldier.id,
+            coverage=coverage_by_soldier[soldier.id],
+            duty_start=duty_start_by_soldier.get((soldier.id, False)),
+            reserve_duty_start=duty_start_by_soldier.get((soldier.id, True)),
+            last_valid_until=last_valid_until_by_soldier.get(soldier.id),
+            event_date=event.date,
+            validity_days=_validity_days(
+                session, coverage_by_soldier[soldier.id].source_range_type or event.range_type,
+            ),
         )
-        result[soldier.id] = ((2, str(soldier.id)), "available_and_balanced", explanation)
-    return result
+        for soldier in soldiers
+    }
 
 
 def rank_candidates_with_excluded(
-    session: Session, *, event: RangeEvent, user: Soldier,
+    session: Session, *, event: RangeEvent, user: Soldier | None = None,
 ) -> tuple[list[RankedCandidate], list[ExcludedSoldier]]:
     """Return ranked candidates and hard-excluded soldiers in one read-only pass."""
     existing_soldier_ids = {
@@ -390,21 +457,35 @@ def rank_candidates_with_excluded(
     if not soldiers:
         return [], []
 
-    duty_start_by_soldier = _bulk_duty_start_by_soldier(session, soldier_ids=[s.id for s in soldiers])
+    soldier_ids = [s.id for s in soldiers]
+    warning_duty_start_by_soldier = _bulk_duty_start_by_soldier(
+        session, soldier_ids=soldier_ids, start_date=date.today(), include_start_date=True,
+    )
     eligibility, excluded, constraint_conflict_ids = _bulk_eligibility(
-        session, soldiers=soldiers, event=event, duty_start_by_soldier=duty_start_by_soldier,
+        session, soldiers=soldiers, event=event, duty_start_by_soldier=warning_duty_start_by_soldier,
     )
     eligible_soldiers = [s for s in soldiers if s.id in eligibility]
     if not eligible_soldiers:
         return [], excluded
 
-    ranks = _bulk_rank(session, soldiers=eligible_soldiers, event=event, duty_start_by_soldier=duty_start_by_soldier)
+    ranking_duty_start_by_soldier = _bulk_range_relevant_duty_start_by_soldier(
+        session,
+        soldier_ids=[s.id for s in eligible_soldiers],
+        start_date=event.date,
+        include_start_date=False,
+        range_type=event.range_type,
+    )
+    ranks = _bulk_rank(
+        session, soldiers=eligible_soldiers, event=event, duty_start_by_soldier=ranking_duty_start_by_soldier,
+    )
 
     ranked = [
         RankedCandidate(
             soldier=soldier, reason_code=ranks[soldier.id][1], explanation=ranks[soldier.id][2],
             conflict_warning=eligibility[soldier.id],
             personal_constraint_conflict=soldier.id in constraint_conflict_ids,
+            auto_selectable=ranks[soldier.id][3],
+            system_reason_code=ranks[soldier.id][4], system_reason_date=ranks[soldier.id][5],
         )
         for soldier in eligible_soldiers
     ]
@@ -412,7 +493,9 @@ def rank_candidates_with_excluded(
     return ranked, excluded
 
 
-def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> list[RankedCandidate]:
+def rank_candidates(
+    session: Session, *, event: RangeEvent, user: Soldier | None = None,
+) -> list[RankedCandidate]:
     """Read-only: ranks every ELIGIBLE soldier in the requesting user's authorized
     scope who isn't already assigned to this event, using the Phase 2 tier ordering,
     but never writes to the database. Soldiers who can't actually be sent to this
@@ -424,7 +507,9 @@ def rank_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> li
     return ranked
 
 
-def excluded_candidates(session: Session, *, event: RangeEvent, user: Soldier) -> list[ExcludedSoldier]:
+def excluded_candidates(
+    session: Session, *, event: RangeEvent, user: Soldier | None = None,
+) -> list[ExcludedSoldier]:
     """Read-only: the soldiers hard-excluded from `rank_candidates`'s pool for this
     event (weapon-exempt, structurally ineligible, or already assigned to another
     range the same day), each with a reason code — so the UI can show *why* a

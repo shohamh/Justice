@@ -21,6 +21,8 @@ import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import { parseRankSelectionId, rankSelectionId, RankTrack } from "../constants/ranks";
 import ReasonPromptModal from "./ReasonPromptModal";
 import ApprovalStageIcons from "./ApprovalStageIcons";
+import InputDialog from "./InputDialog";
+import MessageDialog from "./MessageDialog";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -92,6 +94,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [enrolledAt, setEnrolledAt] = useState(soldier.enrolled_at ?? "");
   const [constraints, setConstraints] = useState<PersonalConstraint[]>([]);
   const [cancellingConstraintId, setCancellingConstraintId] = useState<string | null>(null);
+  const [rejectingConstraintId, setRejectingConstraintId] = useState<string | null>(null);
+  const [rejectingConstraint, setRejectingConstraint] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -284,8 +289,26 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   }
 
   async function handleReject(id: string, note: string) {
-    await rejectConstraint(id, note);
-    await refreshConstraints();
+    if (rejectingConstraint) return;
+    setRejectingConstraint(true);
+    setRejectError(null);
+    try {
+      await rejectConstraint(id, note);
+    } catch {
+      setRejectError(t("errors.generic"));
+      setRejectingConstraint(false);
+      return;
+    }
+
+    setRejectingConstraintId(null);
+    setConstraints((previous) => previous.filter((constraint) => constraint.id !== id));
+    try {
+      await refreshConstraints();
+    } catch {
+      setRejectError(t("team.constraint_refresh_failed"));
+    } finally {
+      setRejectingConstraint(false);
+    }
   }
 
   async function handleCancelConstraint(reason?: string) {
@@ -766,7 +789,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     <button className="text-xs text-green-600 hover:underline" onClick={() => handleApprove(c.id)} data-testid={`approve-constraint-${c.id}`}>
                       {t("approvals.approve")}
                     </button>
-                    <button className="text-xs text-red-600 hover:underline" onClick={() => { const n = prompt(t("approvals.decision_note")); if (n !== null) handleReject(c.id, n || ""); }} data-testid={`reject-constraint-${c.id}`}>
+                    <button className="text-xs text-red-600 hover:underline" onClick={() => { setRejectError(null); setRejectingConstraintId(c.id); }} data-testid={`reject-constraint-${c.id}`}>
                       {t("approvals.reject")}
                     </button>
                   </div>
@@ -783,6 +806,22 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         )}
 
         {cancellingConstraintId && <ReasonPromptModal title={t("team.cancel_constraint")} description={t("team.cancel_constraint_active_warning")} variant="warning" onConfirm={handleCancelConstraint} onClose={() => setCancellingConstraintId(null)} />}
+        <InputDialog
+          open={rejectingConstraintId !== null}
+          title={t("team.reject_constraint_title")}
+          message={t("team.reject_constraint_message")}
+          label={t("approvals.decision_note")}
+          confirmLabel={t("approvals.reject")}
+          confirmDisabled={rejectingConstraint}
+          onConfirm={(note) => rejectingConstraintId ? handleReject(rejectingConstraintId, note) : Promise.resolve()}
+          onClose={() => { if (!rejectingConstraint) setRejectingConstraintId(null); }}
+        />
+        <MessageDialog
+          open={rejectError !== null}
+          title={t("common.error")}
+          message={rejectError ?? ""}
+          onClose={() => setRejectError(null)}
+        />
 
         {tab === "duty_history" && (
           <DutyHistoryPanel

@@ -10,12 +10,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.authz import Action, _node_in_scope, authorize, is_commander, is_duty_manager, scope_root_ids
+from app.auth.authz import (
+    Action, _node_in_scope, authorize, is_commander, is_duty_manager,
+    responsible_range_manager_authorized, scope_root_ids,
+)
 from app.auth.deps import require_password_changed
 from app.db.models import (
     DutyManagerScope,
     HierarchyNode,
     RangeAssignment,
+    RangeAssignmentRequest,
     RangeAttendanceStatus,
     RangeEvent,
     RangeExcusalRequest,
@@ -25,6 +29,7 @@ from app.db.models import (
 from app.db.session import get_session
 from app.services import range_auto_assign as auto_assign_svc
 from app.services import range_excusal as excusal_svc
+from app.services import range_assignment_requests as assignment_request_svc
 from app.services import ranges as svc
 from app.services.authority import dm_scope_covers_target, range_attendance_edit_authorized
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -65,6 +70,24 @@ def _authorize_range_read(session: Session, user: Soldier, node: HierarchyNode |
         raise
 
 
+def _authorize_range_manage(session: Session, user: Soldier, event: RangeEvent) -> None:
+    try:
+        authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    except HTTPException:
+        if not responsible_range_manager_authorized(
+            session, user=user, responsible_duty_manager_id=event.responsible_duty_manager_id,
+        ):
+            raise
+
+
+def _can_manage_event(session: Session, user: Soldier, event: RangeEvent) -> bool:
+    try:
+        _authorize_range_manage(session, user, event)
+    except HTTPException:
+        return False
+    return True
+
+
 class CreateRangeEventBody(BaseModel):
     hierarchy_node_id: uuid.UUID
     range_type: RangeType
@@ -78,6 +101,7 @@ class CreateRangeEventBody(BaseModel):
     contact_name: str | None = None
     contact_phone: str | None = None
     notes: str | None = None
+    responsible_duty_manager_id: uuid.UUID | None = None
 
 
 class UpdateRangeEventBody(BaseModel):
@@ -115,6 +139,104 @@ class RangeAssignmentOut(BaseModel):
     note: str | None
     assignment_reason_code: str | None
     assignment_reason_text: str | None
+
+
+class RangeAssignmentRequestBody(BaseModel):
+    soldier_id: uuid.UUID
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be empty")
+        return value
+
+
+class RangeAssignmentRequestOut(BaseModel):
+    id: uuid.UUID
+    range_event_id: uuid.UUID
+    soldier_id: uuid.UUID
+    requested_by: uuid.UUID
+    reason: str
+    system_reason_code: str | None
+    system_reason_text: str | None
+    status: str
+    approved_assignment_id: uuid.UUID | None = None
+
+
+def _assignment_request_out(request: RangeAssignmentRequest) -> RangeAssignmentRequestOut:
+    return RangeAssignmentRequestOut(
+        id=request.id,
+        range_event_id=request.range_event_id,
+        soldier_id=request.soldier_id,
+        requested_by=request.requested_by,
+        reason=request.reason,
+        system_reason_code=request.system_reason_code,
+        system_reason_text=request.system_reason_text,
+        status=request.status,
+        approved_assignment_id=request.approved_assignment_id,
+    )
+
+
+class ApproveRangeAssignmentRequestBody(BaseModel):
+    is_reserve: bool
+
+
+@router.post(
+    "/{event_id}/assignment-requests",
+    response_model=RangeAssignmentRequestOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_assignment_request(
+    event_id: uuid.UUID,
+    body: RangeAssignmentRequestBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeAssignmentRequestOut:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    try:
+        request = assignment_request_svc.create_assignment_request(
+            session,
+            event=event,
+            soldier_id=body.soldier_id,
+            requested_by=user,
+            reason=body.reason,
+        )
+    except assignment_request_svc.RangeAssignmentRequestError as exc:
+        detail = str(exc)
+        if detail == "soldier_outside_scope":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden") from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+    return _assignment_request_out(request)
+
+
+@router.patch(
+    "/{event_id}/assignment-requests/{request_id}/approve",
+    response_model=RangeAssignmentOut,
+)
+def approve_assignment_request(
+    event_id: uuid.UUID,
+    request_id: uuid.UUID,
+    body: ApproveRangeAssignmentRequestBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeAssignmentOut:
+    _require_enabled(session)
+    request = session.get(RangeAssignmentRequest, request_id)
+    if request is None or request.range_event_id != event_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    try:
+        assignment = assignment_request_svc.approve_assignment_request(
+            session, request=request, actor=user, is_reserve=body.is_reserve,
+        )
+    except assignment_request_svc.RangeAssignmentRequestError as exc:
+        detail = str(exc)
+        code = status.HTTP_403_FORBIDDEN if detail == "not_responsible_manager" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=detail) from exc
+    return _assignment_out(assignment)
 
 
 class FoodSpecialConstraintOut(BaseModel):
@@ -157,6 +279,8 @@ class RangeEventOut(BaseModel):
     assigned_to_me: bool = False
     can_edit_attendance: bool = False
     food_summary: FoodSummaryOut | None = None
+    responsible_duty_manager_id: uuid.UUID | None = None
+    can_manage: bool = False
 
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
@@ -208,6 +332,7 @@ def _event_out(
     include_assignments: bool = False,
     include_drafts: bool = True,
     include_food_summary: bool = False,
+    can_manage: bool = False,
 ) -> RangeEventOut:
     query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
     if not include_drafts:
@@ -246,6 +371,8 @@ def _event_out(
         assigned_to_me=assigned_to_me,
         can_edit_attendance=can_edit_attendance,
         food_summary=_food_summary(session, rows) if include_food_summary else None,
+        responsible_duty_manager_id=event.responsible_duty_manager_id,
+        can_manage=can_manage,
     )
 
 
@@ -274,6 +401,7 @@ def create_range_event(
             contact_phone=body.contact_phone,
             notes=body.notes,
             created_by=user.id,
+            responsible_duty_manager_id=body.responsible_duty_manager_id,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -289,7 +417,7 @@ def update_range_event(
 ) -> RangeEventOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    _authorize_range_manage(session, user, event)
     if "hierarchy_node_id" in body.model_fields_set:
         new_node = session.get(HierarchyNode, body.hierarchy_node_id)
         authorize(session, user, Action.RANGE_MANAGE, target_node=new_node)
@@ -314,7 +442,7 @@ def delete_range_event(
 ) -> None:
     _require_enabled(session)
     event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    _authorize_range_manage(session, user, event)
     try:
         svc.delete_range_event(session, event=event)
     except svc.RangeValidationError as exc:
@@ -335,7 +463,7 @@ def add_assignment(
 ) -> RangeAssignmentOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    _authorize_range_manage(session, user, event)
     try:
         assignment = svc.add_range_assignment(
             session,
@@ -484,6 +612,7 @@ def get_range_event(
         include_assignments=True,
         include_drafts=can_manage,
         include_food_summary=user.role == "admin" or is_duty_manager(session, user.id),
+        can_manage=can_manage,
     )
 
 
@@ -537,7 +666,16 @@ def list_range_events(
     if date_to is not None:
         query = query.filter(RangeEvent.date <= date_to)
     events = query.order_by(RangeEvent.date).all()
-    return [_event_out(session, e, user=user, include_drafts=can_manage) for e in events]
+    return [
+        _event_out(
+            session,
+            e,
+            user=user,
+            include_drafts=can_manage,
+            can_manage=can_manage and _can_manage_event(session, user, e),
+        )
+        for e in events
+    ]
 
 
 class RangeExcusalOut(BaseModel):
@@ -626,6 +764,9 @@ class RangeCandidateOut(BaseModel):
     explanation: str
     conflict_warning: str | None = None
     personal_constraint_conflict: bool = False
+    auto_selectable: bool = True
+    system_reason_code: str
+    system_reason_date: date_type | None = None
 
 
 class ExcludedSoldierOut(BaseModel):
@@ -661,6 +802,8 @@ def get_range_candidates(
                 soldier_id=c.soldier.id, full_name=c.soldier.full_name, personal_number=c.soldier.personal_number,
                 reason_code=c.reason_code, explanation=c.explanation, conflict_warning=c.conflict_warning,
                 personal_constraint_conflict=c.personal_constraint_conflict,
+                auto_selectable=c.auto_selectable,
+                system_reason_code=c.system_reason_code, system_reason_date=c.system_reason_date,
             )
             for c in ranked
         ],

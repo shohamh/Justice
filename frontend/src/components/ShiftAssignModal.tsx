@@ -8,6 +8,7 @@ import { translateApiError } from "../utils/translateApiError";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 import ConstraintWarningIcon from "./ConstraintWarningIcon";
 import OverrideReasonModal from "./OverrideReasonModal";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
   shift: DutyShift;
@@ -43,6 +44,7 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingOverride, setPendingOverride] = useState<{ primaries: string[]; reserves: string[] } | null>(null);
+  const [weaponWarningConfirmOpen, setWeaponWarningConfirmOpen] = useState(false);
 
   const dutyTypeName = dutyTypes.find(d => d.id === shift.duty_type_id)?.name ?? "";
   const primarySlotsLeft = Math.max(0, shift.required_count - shift.assigned_count);
@@ -144,22 +146,22 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
     setReserveSelected(new Set(top));
   }
 
-  async function handleAssign() {
-    if (primarySelected.size === 0 && reserveSelected.size === 0) return;
+  async function continueAssign() {
     const selectedIds = new Set([...primarySelected, ...reserveSelected]);
-    const hasWeaponWarning = candidates.some(c => selectedIds.has(c.soldier_id) && c.weapon_warning);
-    if (hasWeaponWarning) {
-      const confirmed = window.confirm(
-        "חלק מהחיילים שנבחרו אינם כשירים מבחינת הכשרת נשק לתורנות זו. לשבץ בכל זאת?"
-      );
-      if (!confirmed) return;
-    }
     const hasConstraintWarning = candidates.some(c => selectedIds.has(c.soldier_id) && c.personal_constraint_warning);
     if (hasConstraintWarning) {
       setPendingOverride({ primaries: [...primarySelected], reserves: [...reserveSelected] });
       return;
     }
     await doAssign();
+  }
+
+  function handleAssign() {
+    if (primarySelected.size === 0 && reserveSelected.size === 0) return;
+    const selectedIds = new Set([...primarySelected, ...reserveSelected]);
+    const hasWeaponWarning = candidates.some(c => selectedIds.has(c.soldier_id) && c.weapon_warning);
+    if (hasWeaponWarning) { setWeaponWarningConfirmOpen(true); return; }
+    void continueAssign();
   }
 
   async function doAssign(overrideReason?: string) {
@@ -270,6 +272,15 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
           count={pendingOverride ? pendingOverride.primaries.length + pendingOverride.reserves.length : 0}
           onCancel={() => setPendingOverride(null)}
           onConfirm={(reason) => { setPendingOverride(null); void doAssign(reason); }}
+        />
+
+        <ConfirmDialog
+          open={weaponWarningConfirmOpen}
+          title={t("shifts.weapon_warning_confirm_title", { defaultValue: "אישור שיבוץ למרות אזהרת נשק" })}
+          message={t("shifts.weapon_warning_confirm_message", { defaultValue: "חלק מהחיילים שנבחרו אינם כשירים מבחינת הכשרת נשק לתורנות זו. לשבץ בכל זאת?" })}
+          confirmLabel={t("common.confirm", { defaultValue: "אישור" })}
+          onConfirm={() => { setWeaponWarningConfirmOpen(false); void continueAssign(); }}
+          onClose={() => setWeaponWarningConfirmOpen(false)}
         />
 
         <div className="flex justify-end gap-2 mt-4 pt-3 border-t dark:border-gray-600 flex-wrap">

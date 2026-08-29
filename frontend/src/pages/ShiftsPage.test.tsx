@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter, MemoryRouter } from "react-router-dom";
 import { ShiftsContent } from "./ShiftsPage";
@@ -39,7 +39,13 @@ vi.mock("../components/AutoAssignResponsibilityModal", () => ({
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: { defaultValue?: string; [name: string]: unknown }) => {
+      const text = options?.defaultValue ?? key;
+      return Object.entries(options ?? {}).reduce(
+        (result, [name, value]) => name === "defaultValue" ? result : result.replace(`{{${name}}}`, String(value)),
+        text,
+      );
+    },
   }),
 }));
 
@@ -50,6 +56,123 @@ function createTestQueryClient() {
     },
   });
 }
+
+function seedShiftQueries(shifts: shiftsApi.DutyShift[]) {
+  vi.mocked(shiftsApi.listShifts).mockResolvedValue(shifts);
+  vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
+  vi.mocked(dutyConfigApi.listLocations).mockResolvedValue([]);
+  vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
+  vi.mocked(algorithmApi.listJobs).mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(templatesApi.listTemplates).mockResolvedValue([]);
+  vi.mocked(scoringApi.listEligibilityGroups).mockResolvedValue([]);
+}
+
+function shift(id: string, overrides: Partial<shiftsApi.DutyShift> = {}): shiftsApi.DutyShift {
+  return {
+    id,
+    duty_type_id: "dt1",
+    duty_location_id: "loc1",
+    start_date: "2026-09-01",
+    end_date: "2026-09-02",
+    required_count: 1,
+    notes: null,
+    assigned_count: 0,
+    reserve_assigned_count: 0,
+    fill_status: "empty",
+    status: "active",
+    ineligible_count: 0,
+    ...overrides,
+  };
+}
+
+function renderShifts(shifts: shiftsApi.DutyShift[]) {
+  seedShiftQueries(shifts);
+  return render(
+    <BrowserRouter>
+      <QueryClientProvider client={createTestQueryClient()}>
+        <ShiftsContent />
+      </QueryClientProvider>
+    </BrowserRouter>,
+  );
+}
+
+test("requires a styled confirmation before clearing selected shift assignments", async () => {
+  const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  vi.mocked(shiftsApi.clearShiftAssignments).mockResolvedValue(undefined);
+  renderShifts([shift("s1", { assigned_count: 2 }), shift("s2", { assigned_count: 1 })]);
+
+  fireEvent.click(await screen.findByTestId("shift-row-checkbox-s1"));
+  fireEvent.click(screen.getByTestId("shift-row-checkbox-s2"));
+  fireEvent.click(screen.getByRole("button", { name: "נקה שיבוצים" }));
+
+  expect(nativeConfirm).not.toHaveBeenCalled();
+  expect(screen.getByText("לנקות שיבוצים מ-2 משמרות (3 שיבוצים)?")).toBeInTheDocument();
+  expect(shiftsApi.clearShiftAssignments).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+  expect(shiftsApi.clearShiftAssignments).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "נקה שיבוצים" }));
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+  await waitFor(() => expect(shiftsApi.clearShiftAssignments).toHaveBeenCalledWith("s1"));
+  expect(shiftsApi.clearShiftAssignments).toHaveBeenCalledWith("s2");
+  nativeConfirm.mockRestore();
+});
+
+test("requires a styled confirmation before cancelling selected active shifts", async () => {
+  const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  vi.mocked(shiftsApi.cancelShift).mockResolvedValue(undefined);
+  renderShifts([shift("active"), shift("cancelled", { status: "cancelled" })]);
+
+  fireEvent.click(await screen.findByTestId("shift-row-checkbox-active"));
+  fireEvent.click(screen.getByTestId("shift-row-checkbox-cancelled"));
+  fireEvent.click(screen.getByRole("button", { name: "בטל משמרות (1)" }));
+
+  expect(nativeConfirm).not.toHaveBeenCalled();
+  expect(screen.getByText("לבטל 1 משמרות פעילות?")).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+  await waitFor(() => expect(shiftsApi.cancelShift).toHaveBeenCalledWith("active"));
+  expect(shiftsApi.cancelShift).not.toHaveBeenCalledWith("cancelled");
+  nativeConfirm.mockRestore();
+});
+
+test("uses a danger confirmation for deleting selected empty shifts and explains when none are deletable", async () => {
+  const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const nativeAlert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+  vi.mocked(shiftsApi.deleteShift).mockResolvedValue(undefined);
+  renderShifts([shift("empty"), shift("assigned", { assigned_count: 1 })]);
+
+  fireEvent.click(await screen.findByTestId("shift-row-checkbox-empty"));
+  fireEvent.click(screen.getByRole("button", { name: "מחק משמרות" }));
+  expect(nativeConfirm).not.toHaveBeenCalled();
+  expect(screen.getByTestId("confirm-dialog-confirm")).toHaveClass("bg-red-600");
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+  await waitFor(() => expect(shiftsApi.deleteShift).toHaveBeenCalledWith("empty"));
+
+  fireEvent.click(screen.getByTestId("shift-row-checkbox-assigned"));
+  fireEvent.click(screen.getByRole("button", { name: "מחק משמרות" }));
+  expect(nativeAlert).not.toHaveBeenCalled();
+  expect(await screen.findByTestId("message-dialog-close")).toBeInTheDocument();
+  nativeConfirm.mockRestore();
+  nativeAlert.mockRestore();
+});
+
+test("requires styled confirmations for individual cancellation and permanent deletion", async () => {
+  const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  vi.mocked(shiftsApi.cancelShift).mockResolvedValue(undefined);
+  vi.mocked(shiftsApi.deleteShift).mockResolvedValue(undefined);
+  renderShifts([shift("single")]);
+
+  fireEvent.click(await screen.findByTitle("shifts.cancel"));
+  expect(nativeConfirm).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+  await waitFor(() => expect(shiftsApi.cancelShift).toHaveBeenCalledWith("single"));
+
+  fireEvent.click(screen.getByTitle("shifts.delete_tooltip"));
+  expect(screen.getByTestId("confirm-dialog-confirm")).toHaveClass("bg-red-600");
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+  await waitFor(() => expect(shiftsApi.deleteShift).toHaveBeenCalledWith("single"));
+  nativeConfirm.mockRestore();
+});
 
 test("shows a warning indicator for shifts with ineligible_count", async () => {
   const queryClient = createTestQueryClient();

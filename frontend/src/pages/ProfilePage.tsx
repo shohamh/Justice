@@ -29,6 +29,7 @@ import DateInput from "../components/DateInput";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
+import MessageDialog from "../components/MessageDialog";
 
 // Notification types that are never sent to a plain soldier — only to their
 // commander(s), duty managers, or admins (see notify_* call sites in
@@ -43,6 +44,7 @@ const MANAGER_ONLY_NOTIFICATION_TYPES = new Set([
 
 export default function ProfilePage() {
   const { t } = useTranslation();
+  const [message, setMessage] = useState<string | null>(null);
   const location = useLocation();
   const { user, refreshMe } = useAuth();
   const queryClient = useQueryClient();
@@ -288,7 +290,7 @@ export default function ProfilePage() {
       setTgBotUsername(bot_username || null);
       setTgPolling(true);
     } catch {
-      alert(t("notifications.link_error"));
+      setMessage(t("notifications.link_error"));
     }
   }
 
@@ -337,7 +339,7 @@ export default function ProfilePage() {
       setAddNodeId("");
       setAddDepth(-1);
     } catch {
-      alert(t("notifications.scope_add_error"));
+      setMessage(t("notifications.scope_add_error"));
     } finally {
       setAddingScopeLoading(false);
     }
@@ -802,6 +804,7 @@ export default function ProfilePage() {
           </form>
         </section>
       )}
+      <MessageDialog open={message !== null} title={t("common.error", "שגיאה")} message={message ?? ""} onClose={() => setMessage(null)} />
     </Layout>
   );
 }

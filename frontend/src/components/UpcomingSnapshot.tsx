@@ -6,6 +6,7 @@ import type { EffectiveDuty } from "../api/assignments";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import SoldierLink from "./SoldierLink";
 import DutyDetailModal from "./dashboard/DutyDetailModal";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
   data: UpcomingDay[] | null;
@@ -44,13 +45,10 @@ export default function UpcomingSnapshot({ data }: Props) {
   const [selected, setSelected] = useState<UpcomingAssignment | null>(null);
   const [detailDuty, setDetailDuty] = useState<EffectiveDuty | null>(null);
   const [detailLocationNames, setDetailLocationNames] = useState<Record<string, string>>({});
+  const [forcedReleaseTarget, setForcedReleaseTarget] = useState<UpcomingAssignment | null>(null);
   const forcedCallupEnabled = publicSettings?.["forced_callup.enabled"] === true;
 
   function handleForcedRelease(a: UpcomingAssignment) {
-    const confirmed = window.confirm(
-      `פעולה זו תפעיל מנגנון הקפצה פיקודית עבור ${a.soldier_name || "החייל"} — מיועד למקרים קיצוניים בלבד (מחלה, צורך מבצעי דחוף). להמשיך?`
-    );
-    if (!confirmed) return;
     navigate(`/commander/hakpaza?soldierId=${a.soldier_id}&assignmentId=${a.assignment_id}`);
   }
 
@@ -127,7 +125,7 @@ export default function UpcomingSnapshot({ data }: Props) {
             </button>
             {selected.soldier_id && forcedCallupEnabled && (
               <button
-                onClick={() => handleForcedRelease(selected)}
+                onClick={() => setForcedReleaseTarget(selected)}
                 className="mt-4 w-full px-3 py-1.5 rounded text-sm font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
               >
                 שחרור פיקודי
@@ -144,6 +142,19 @@ export default function UpcomingSnapshot({ data }: Props) {
         onClose={() => {
           setDetailDuty(null);
           setDetailLocationNames({});
+        }}
+      />
+      <ConfirmDialog
+        open={forcedReleaseTarget !== null}
+        title={t("command_dashboard.forced_callup_title", "שחרור פיקודי")}
+        message={t("command_dashboard.forced_callup_confirm", { soldier: forcedReleaseTarget?.soldier_name || t("command_dashboard.soldier", "החייל"), defaultValue: "פעולה זו תפעיל מנגנון הקפצה פיקודית עבור {{soldier}} — מיועד למקרים קיצוניים בלבד (מחלה, צורך מבצעי דחוף). להמשיך?" })}
+        confirmLabel={t("command_dashboard.forced_callup_confirm_button", "המשך")}
+        danger
+        onClose={() => setForcedReleaseTarget(null)}
+        onConfirm={() => {
+          const target = forcedReleaseTarget;
+          setForcedReleaseTarget(null);
+          if (target) handleForcedRelease(target);
         }}
       />
     </div>

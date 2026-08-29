@@ -71,6 +71,94 @@ beforeEach(() => {
 });
 
 describe("RangesPage", () => {
+  it("disables selection for a range the user cannot manage", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-forbidden", hierarchy_node_id: "node-2", range_type: "laser",
+        date: "2026-09-01", location: "מטווח ללא הרשאה", required_count: 1,
+        reserve_count: 0, status: "planned", assignments: [], can_manage: false,
+      },
+    ]);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח ללא הרשאה");
+
+    expect(screen.getByTestId("select-range-event-forbidden")).toBeDisabled();
+    expect(screen.queryByTestId("bulk-auto-assign-button")).not.toBeInTheDocument();
+  });
+
+  it("opens multi-range auto assignment and confirms the ranked primary/reserve plan", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-01", location: "מטווח דרום", required_count: 1,
+        reserve_count: 1, status: "planned", assignments: [],
+      },
+      {
+        id: "event-2", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-02", location: "מטווח צפון", required_count: 1,
+        reserve_count: 1, status: "planned", assignments: [],
+      },
+    ]);
+    vi.mocked(rangesApi.getRangeCandidates).mockImplementation(async (eventId) => ({
+      candidates: [
+        { soldier_id: `${eventId}-primary`, full_name: `חייל ראשי ${eventId}`, personal_number: "1", reason_code: "qualified", explanation: "range_valid_expiring:2027-03-01", system_reason_code: "valid_expiring", system_reason_date: "2027-03-01", conflict_warning: null, personal_constraint_conflict: false },
+        { soldier_id: `${eventId}-reserve`, full_name: `חייל רזרבה ${eventId}`, personal_number: "2", reason_code: "available_and_balanced", explanation: "range_last_completed:2026-01-01", system_reason_code: "last_completed", system_reason_date: "2026-01-01", conflict_warning: null, personal_constraint_conflict: false },
+      ],
+      excluded: [],
+    }));
+    vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([]);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח דרום");
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+    fireEvent.click(screen.getByTestId("select-range-event-2"));
+    fireEvent.click(screen.getByTestId("bulk-auto-assign-button"));
+
+    expect(await screen.findByTestId("confirm-bulk-auto-assign")).toBeInTheDocument();
+    expect(screen.getByTestId("bulk-auto-assign-checkbox-event-1-primary")).toBeChecked();
+    expect(screen.getByTestId("bulk-auto-assign-checkbox-event-1-reserve")).toBeChecked();
+    expect(screen.getByText("חייל ראשי event-1")).toBeInTheDocument();
+    expect(screen.getByText("חייל רזרבה event-1")).toBeInTheDocument();
+    expect(screen.getByText("חייל ראשי event-2")).toBeInTheDocument();
+    expect(screen.getAllByText("סיבת מערכת").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("מטווחים בתוקף, עומדים לפוג ב־01.03.2027").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("מטווח אחרון ב־01.01.2026").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("bulk-auto-assign-checkbox-event-1-reserve"));
+    expect(screen.getByTestId("confirm-bulk-auto-assign")).toHaveTextContent("(3)");
+    fireEvent.click(screen.getByTestId("confirm-bulk-auto-assign"));
+
+    await waitFor(() => expect(rangesApi.batchAssignRange).toHaveBeenCalledTimes(2));
+    expect(rangesApi.batchAssignRange).toHaveBeenNthCalledWith(1, "event-1", {
+      primaries: ["event-1-primary"], reserves: [],
+    });
+    expect(rangesApi.batchAssignRange).toHaveBeenNthCalledWith(2, "event-2", {
+      primaries: ["event-2-primary"], reserves: ["event-2-reserve"],
+    });
+  });
+
+  it("keeps successful plans when candidate loading fails for one selected range", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-ok", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01", location: "מטווח תקין", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "event-failed", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02", location: "מטווח שנכשל", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeCandidates).mockImplementation(async (eventId) => {
+      if (eventId === "event-failed") throw new Error("candidate request failed");
+      return { candidates: [{ soldier_id: "soldier-ok", full_name: "חייל תקין", personal_number: "1", reason_code: "qualified", explanation: "range_valid_expiring:2027-03-01", system_reason_code: "valid_expiring", system_reason_date: "2027-03-01", conflict_warning: null, personal_constraint_conflict: false }], excluded: [] };
+    });
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח תקין");
+    fireEvent.click(screen.getByTestId("select-range-event-ok"));
+    fireEvent.click(screen.getByTestId("select-range-event-failed"));
+    fireEvent.click(screen.getByTestId("bulk-auto-assign-button"));
+
+    expect(await screen.findByText("חייל תקין")).toBeInTheDocument();
+    const failure = screen.getByText(/מטווח שנכשל.*השיבוץ האוטומטי נכשל/);
+    expect(failure).toHaveClass("whitespace-pre-line");
+    expect(screen.getByTestId("confirm-bulk-auto-assign")).toHaveTextContent("(1)");
+  });
+
   it("does not fetch planning data in the default schedule view", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
 
@@ -122,6 +210,34 @@ describe("RangesPage", () => {
     renderWithQuery(<RangesPage />);
 
     await waitFor(() => expect(screen.getByText("מטווח דרום")).toBeInTheDocument());
+  });
+
+  it("recomputes the primary/reserve fill columns after a roster-changing refetch", async () => {
+    // Mirrors what happens when reconciliation removes a redundant duplicate on a
+    // FUTURE event and refills it elsewhere: that event's own range_roster_changed
+    // notification invalidates the ranges list query, which refetches with updated
+    // primary_filled/reserve_filled — no new response field is needed for a
+    // commander to see the fill counts change, the existing table already recomputes.
+    const baseEvent = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const,
+      date: "2026-09-01", location: "מטווח דרום", required_count: 2, reserve_count: 1,
+      primary_filled: 1, reserve_filled: 0, status: "planned" as const, assignments: [],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValueOnce([baseEvent]);
+
+    const { client } = renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח דרום");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("0/1")).toBeInTheDocument();
+
+    vi.mocked(rangesApi.getRanges).mockResolvedValueOnce([
+      { ...baseEvent, primary_filled: 2, reserve_filled: 1 },
+    ]);
+    await client.invalidateQueries({ queryKey: ["ranges"] });
+
+    await waitFor(() => expect(screen.getByText("2/2")).toBeInTheDocument());
+    expect(screen.getByText("1/1")).toBeInTheDocument();
+    expect(screen.queryByText("1/2")).not.toBeInTheDocument();
   });
 
   it("renders Hebrew labels for range_type and status instead of raw English", async () => {
@@ -368,6 +484,28 @@ describe("RangesPage", () => {
     expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("1 נבחרו");
   });
 
+  it("selects all visible manageable range rows from the table corner checkbox", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01", location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "event-2", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02", location: "מטווח ב", required_count: 1, reserve_count: 0, status: "planned", assignments: [], can_manage: false },
+      { id: "event-3", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-03", location: "מטווח ג", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+
+    const selectAll = screen.getByTestId("select-all-ranges");
+    fireEvent.click(selectAll);
+    expect(screen.getByTestId("select-range-event-1")).toBeChecked();
+    expect(screen.getByTestId("select-range-event-2")).toBeDisabled();
+    expect(screen.getByTestId("select-range-event-3")).toBeChecked();
+    expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("2 נבחרו");
+
+    fireEvent.click(selectAll);
+    expect(screen.getByTestId("select-range-event-1")).not.toBeChecked();
+    expect(screen.getByTestId("select-range-event-3")).not.toBeChecked();
+  });
+
   it("shows range list loading and request failures through the planning table", async () => {
     let resolve!: (rows: rangesApi.RangeEvent[]) => void;
     vi.mocked(rangesApi.getRanges).mockReturnValue(new Promise(r => { resolve = r; }));
@@ -612,13 +750,14 @@ describe("RangesPage assignment editor integration", () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
-    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
 
     const { client } = renderWithQuery(<RangesPage />);
     const invalidate = vi.spyOn(client, "invalidateQueries");
     fireEvent.click(await screen.findByText("מטווח לרענון"));
     fireEvent.click(screen.getByTestId("view-assignments-event-refresh"));
     fireEvent.click(await screen.findByTestId("remove-assignment-assignment-refresh"));
+    fireEvent.change(await screen.findByLabelText("סיבת ההסרה"), { target: { value: "חייל שוחרר" } });
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-refresh", "assignment-refresh", "חייל שוחרר"));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ranges"] }));
@@ -728,7 +867,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(screen.getByTestId("select-range-event-1"));
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
     fireEvent.change(await screen.findByLabelText("סיבת הניקוי (תחול על כל השיבוצים שינוקו)"), { target: { value: "ניקוי כללי" } });
-    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1", "ניקוי כללי"));
@@ -748,9 +887,24 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(screen.getByTestId("select-range-event-1"));
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
     fireEvent.change(await screen.findByLabelText("סיבת הניקוי (תחול על כל השיבוצים שינוקו)"), { target: { value: "ניקוי כללי" } });
-    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("מטווח א");
+    expect(screen.getByRole("alert")).toHaveTextContent("boom");
+  });
+
+  it("does not offer clearing assignments for a range that already happened", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-past", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-08-01",
+        location: "מטווח שכבר התקיים", required_count: 1, reserve_count: 0, status: "completed", assignments: [] },
+    ]);
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח שכבר התקיים");
+    fireEvent.click(screen.getByTestId("select-range-event-past"));
+
+    expect(screen.getByTestId("bulk-clear-button")).toBeDisabled();
+    expect(screen.getByText(/לא ניתן לנקות מטווחים שכבר התקיימו/)).toBeInTheDocument();
+    expect(rangesApi.getRangeEvent).not.toHaveBeenCalled();
   });
 
   it("filters bulk-cancel to planned events only and labels the button with the filtered count", async () => {

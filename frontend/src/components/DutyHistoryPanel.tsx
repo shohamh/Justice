@@ -13,6 +13,8 @@ import OfferSwapModal from "./OfferSwapModal";
 import CheckboxListDropdown from "./CheckboxListDropdown";
 import { useAuth } from "../auth/AuthContext";
 import { formatDate, formatDateTimeIsrael, lastDutyDay } from "../utils/formatDate";
+import InputDialog from "./InputDialog";
+import MessageDialog from "./MessageDialog";
 
 // Only "assignment"/"cancellation" events carry DutyAssignment's exclusive end_date;
 // every other event type (dismissal, call_up, exemption, constraint) is already inclusive.
@@ -511,6 +513,8 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   const [dutyTypeById, setDutyTypeById] = useState<Record<string, DutyType>>({});
   const [offerSwapEvent, setOfferSwapEvent] = useState<TimelineEvent | null>(null);
   const [eligibilityByAssignment, setEligibilityByAssignment] = useState<Record<string, { eligible: boolean; reason: string | null }>>({});
+  const [rejectionTarget, setRejectionTarget] = useState<{ type: "exemption" | "constraint"; id: string } | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -608,18 +612,16 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
       }
       await load();
     } catch {
-      alert("שגיאה בביצוע הפעולה");
+      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
     }
   }
 
-  async function handleRejectExemption(id: string) {
+  async function handleRejectExemption(id: string, note: string) {
     try {
-      const note = prompt(t("approvals.decision_note"));
-      if (note === null) return;
-      await rejectExemptionRequest(id, note || "");
+      await rejectExemptionRequest(id, note);
       await load();
     } catch {
-      alert("שגיאה בביצוע הפעולה");
+      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
     }
   }
 
@@ -628,18 +630,16 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
       await approveConstraint(id);
       await load();
     } catch {
-      alert("שגיאה בביצוע הפעולה");
+      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
     }
   }
 
-  async function handleRejectConstraint(id: string) {
+  async function handleRejectConstraint(id: string, note: string) {
     try {
-      const note = prompt(t("approvals.decision_note"));
-      if (note === null) return;
-      await rejectConstraint(id, note || "");
+      await rejectConstraint(id, note);
       await load();
     } catch {
-      alert("שגיאה בביצוע הפעולה");
+      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
     }
   }
 
@@ -652,7 +652,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
       if (httpStatus === 409) {
         await load();
       } else {
-        alert("שגיאה בביצוע הפעולה");
+        setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
       }
     }
   }
@@ -666,7 +666,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
       if (httpStatus === 409) {
         await load();
       } else {
-        alert("שגיאה בביצוע הפעולה");
+        setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
       }
     }
   }
@@ -721,9 +721,9 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     onToggle: toggleExpand,
     canManage,
     onApproveExemption: handleApproveExemption,
-    onRejectExemption: handleRejectExemption,
+    onRejectExemption: (id: string) => setRejectionTarget({ type: "exemption", id }),
     onApproveConstraint: handleApproveConstraint,
-    onRejectConstraint: handleRejectConstraint,
+    onRejectConstraint: (id: string) => setRejectionTarget({ type: "constraint", id }),
     swapsByAssignment,
     onCover: handleOpenCoverModal,
     onOfferSwap: isOtherSoldier ? setOfferSwapEvent : undefined,
@@ -834,6 +834,20 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
         onDone={() => setOfferSwapEvent(null)}
       />
     )}
+    <InputDialog
+      open={rejectionTarget !== null}
+      title={t("duty_history.reject_title", "דחיית בקשה")}
+      label={t("approvals.decision_note")}
+      multiline
+      onClose={() => setRejectionTarget(null)}
+      onConfirm={note => {
+        const target = rejectionTarget;
+        setRejectionTarget(null);
+        if (target?.type === "exemption") return handleRejectExemption(target.id, note);
+        if (target?.type === "constraint") return handleRejectConstraint(target.id, note);
+      }}
+    />
+    <MessageDialog open={message !== null} title={t("common.error", "שגיאה")} message={message ?? ""} onClose={() => setMessage(null)} />
     </>
   );
 }

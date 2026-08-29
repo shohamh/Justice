@@ -62,8 +62,6 @@ describe("ImportSessionsListPage", () => {
     vi.mocked(importSessionsApi.listSessions).mockResolvedValue(mockSessions);
     vi.mocked(importSessionsApi.cancelSession).mockResolvedValue(undefined);
     vi.mocked(importSessionsApi.markSessionDone).mockResolvedValue(undefined);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.spyOn(window, "alert").mockImplementation(() => {});
   });
 
   it("renders session rows with correct filename and status label", async () => {
@@ -118,12 +116,16 @@ describe("ImportSessionsListPage", () => {
     });
   });
 
-  it("calls cancelSession and reloads when 'בטל' is clicked", async () => {
+  it("opens a translated confirmation and cancels only after confirmation", async () => {
     renderPage();
     await screen.findByText("draft-file.xlsx");
 
     const draftRow = screen.getByText("draft-file.xlsx").closest("tr")!;
     fireEvent.click(within(draftRow).getByText("בטל"));
+
+    expect(importSessionsApi.cancelSession).not.toHaveBeenCalled();
+    expect(screen.getByText("ביטול טיוטת ייבוא")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
 
     await waitFor(() => {
       expect(importSessionsApi.cancelSession).toHaveBeenCalledWith("draft-1");
@@ -154,21 +156,18 @@ describe("ImportSessionsListPage", () => {
     expect(screen.getByText("אין ייבואים להצגה")).toBeInTheDocument();
   });
 
-  it("does not call cancelSession when the confirm dialog is declined", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("does not call cancelSession when the confirmation is dismissed", async () => {
     renderPage();
     await screen.findByText("draft-file.xlsx");
 
     const draftRow = screen.getByText("draft-file.xlsx").closest("tr")!;
     fireEvent.click(within(draftRow).getByText("בטל"));
 
-    await waitFor(() => {
-      expect(window.confirm).toHaveBeenCalled();
-    });
+    fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
     expect(importSessionsApi.cancelSession).not.toHaveBeenCalled();
   });
 
-  it("shows an alert when cancelSession rejects", async () => {
+  it("shows a message dialog when cancelSession rejects", async () => {
     vi.mocked(importSessionsApi.cancelSession).mockRejectedValue({
       response: { data: { detail: "only_draft_sessions_can_be_cancelled" } },
     });
@@ -177,13 +176,12 @@ describe("ImportSessionsListPage", () => {
 
     const draftRow = screen.getByText("draft-file.xlsx").closest("tr")!;
     fireEvent.click(within(draftRow).getByText("בטל"));
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
 
-    await waitFor(() => {
-      expect(window.alert).toHaveBeenCalledWith("שגיאה בביטול הייבוא");
-    });
+    expect(await screen.findByText("שגיאה בביטול הייבוא")).toBeInTheDocument();
   });
 
-  it("shows a generic alert when markSessionDone rejects without a detail message", async () => {
+  it("shows a message dialog when markSessionDone rejects without a detail message", async () => {
     vi.mocked(importSessionsApi.markSessionDone).mockRejectedValue(new Error("boom"));
     renderPage();
     await screen.findByText("confirmed-file.xlsx");
@@ -191,8 +189,6 @@ describe("ImportSessionsListPage", () => {
     const confirmedRow = screen.getByText("confirmed-file.xlsx").closest("tr")!;
     fireEvent.click(within(confirmedRow).getByText("סמן כבוצע"));
 
-    await waitFor(() => {
-      expect(window.alert).toHaveBeenCalledWith("שגיאה בעדכון הייבוא");
-    });
+    expect(await screen.findByText("שגיאה בעדכון הייבוא")).toBeInTheDocument();
   });
 });

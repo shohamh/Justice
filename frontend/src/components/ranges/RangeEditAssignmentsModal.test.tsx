@@ -6,6 +6,9 @@ import { SoldierDTO } from "../../api/soldiers";
 import RangeEditAssignmentsModal from "./RangeEditAssignmentsModal";
 
 vi.mock("../../api/ranges");
+vi.mock("../SoldierLink", () => ({
+  default: ({ id, name }: { id: string; name: string }) => <button type="button" data-testid={`soldier-link-${id}`}>{name}</button>,
+}));
 
 const soldier = (id: string, full_name: string): SoldierDTO => ({
   id, full_name, personal_number: id, role: "soldier", hierarchy_node_id: "node-1",
@@ -51,6 +54,11 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.getByText("דנה")).toBeInTheDocument();
     expect(screen.getAllByText("ראשי").length).toBeGreaterThan(0);
     expect(screen.getAllByText("רזרבה").length).toBeGreaterThan(0);
+  });
+
+  it("renders soldier names as soldier links in the regular assignments modal", () => {
+    renderModal({ event: event([assignment("a1", "s1")]) });
+    expect(screen.getByTestId("soldier-link-s1")).toBeInTheDocument();
   });
 
   it("renders Hebrew assignment reasons for automatic and manual assignments", () => {
@@ -113,29 +121,40 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("shows pending state while removing an assignment", async () => {
     let resolve!: () => void;
-    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
+    const nativePrompt = vi.spyOn(window, "prompt").mockReturnValue(null);
     vi.mocked(rangesApi.removeRangeAssignment).mockReturnValue(new Promise<void>(r => { resolve = r; }));
     renderModal({ event: event([assignment("a1", "s1")]) });
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+    expect(nativePrompt).not.toHaveBeenCalled();
+    fireEvent.change(await screen.findByLabelText("סיבת ההסרה"), { target: { value: "חייל שוחרר" } });
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
     expect(screen.getByTestId("remove-assignment-a1")).toBeDisabled();
     resolve();
     await waitFor(() => expect(screen.queryByText("אורי")).not.toBeInTheDocument());
+    nativePrompt.mockRestore();
   });
 
   it("shows a user-facing error when removing an assignment fails", async () => {
-    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
+    const nativePrompt = vi.spyOn(window, "prompt").mockReturnValue(null);
     vi.mocked(rangesApi.removeRangeAssignment).mockRejectedValue(new Error("remove"));
     renderModal({ event: event([assignment("a1", "s1", false, false)]) });
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+    expect(nativePrompt).not.toHaveBeenCalled();
+    fireEvent.change(await screen.findByLabelText("סיבת ההסרה"), { target: { value: "חייל שוחרר" } });
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
     expect(await screen.findByRole("alert")).toHaveTextContent("הסרת השיבוץ נכשלה");
+    nativePrompt.mockRestore();
   });
 
-  it("does not remove an assignment when the reason prompt is cancelled", async () => {
-    vi.spyOn(window, "prompt").mockReturnValue(null);
+  it("does not remove an assignment when the styled reason dialog is cancelled", async () => {
+    const nativePrompt = vi.spyOn(window, "prompt").mockReturnValue(null);
     renderModal({ event: event([assignment("a1", "s1")]) });
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+    expect(nativePrompt).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId("input-dialog-cancel"));
     expect(rangesApi.removeRangeAssignment).not.toHaveBeenCalled();
     expect(screen.getByText(/אורי/)).toBeInTheDocument();
+    nativePrompt.mockRestore();
   });
 
   it("renders the ranked candidate panel with auto-select and lets a manager save a batch", async () => {
@@ -169,9 +188,12 @@ describe("RangeEditAssignmentsModal", () => {
     const summaries = await screen.findAllByText("ranges.excluded_summary");
     expect(summaries).toHaveLength(2);
     fireEvent.click(summaries[0]);
-    expect(await screen.findAllByText("אורי: ranges.excluded_reason.weapon_exempt")).toHaveLength(2);
-    expect(screen.getAllByText("דנה: ranges.excluded_reason.structurally_ineligible")).toHaveLength(2);
-    expect(screen.getAllByText("רון: ranges.excluded_reason.assigned_elsewhere_same_day")).toHaveLength(2);
+    expect(screen.getAllByTestId("soldier-link-s1")).toHaveLength(2);
+    expect(screen.getAllByTestId("soldier-link-s2")).toHaveLength(2);
+    expect(screen.getAllByTestId("soldier-link-s3")).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("ranges.excluded_reason.weapon_exempt");
+    expect(screen.getAllByRole("listitem")[1]).toHaveTextContent("ranges.excluded_reason.structurally_ineligible");
+    expect(screen.getAllByRole("listitem")[2]).toHaveTextContent("ranges.excluded_reason.assigned_elsewhere_same_day");
   });
 
   it("does not auto-select any reserve candidates once the reserve slots are already full", async () => {
@@ -286,14 +308,18 @@ describe("RangeEditAssignmentsModal", () => {
       .mockResolvedValueOnce(candidateResponse([
         { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", explanation: "qualified", conflict_warning: null, personal_constraint_conflict: false },
       ]));
-    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
+    const nativePrompt = vi.spyOn(window, "prompt").mockReturnValue(null);
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
     renderModal({ event: event([assignment("a1", "s1")]) });
 
     fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+    expect(nativePrompt).not.toHaveBeenCalled();
+    fireEvent.change(await screen.findByLabelText("סיבת ההסרה"), { target: { value: "חייל שוחרר" } });
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
     await waitFor(() => expect(rangesApi.getRangeCandidates).toHaveBeenCalledTimes(2));
     expect(await screen.findByTestId("candidate-checkbox-s1")).toBeInTheDocument();
+    nativePrompt.mockRestore();
   });
 
   it("requires an override reason before batch-assigning a soldier with a conflict_warning", async () => {

@@ -65,10 +65,11 @@ export default function AlertBanners({ lastMitvahimDate, lastAlalDate, settings 
   useEffect(() => {
     if (!user) return;
     void (async () => {
-      const [duties, fetchedSettings] = await Promise.all([
+      const [duties, fetchedSettingsResult] = await Promise.all([
         listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
         getSystemSettings().catch(() => ({} as SettingsMap)),
       ]);
+      const fetchedSettings = fetchedSettingsResult ?? {};
       const alertDays = Number(fetchedSettings["alerts.upcoming_duty_days"] ?? 3);
       if (alertDays === 0) return;
       const alerts = duties

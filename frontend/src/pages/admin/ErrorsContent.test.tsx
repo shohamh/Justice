@@ -10,6 +10,7 @@ vi.mock("../../api/bugReports", async () => ({
   markAdminErrorsRead: vi.fn().mockResolvedValue(undefined),
   markAllAdminErrorsRead: vi.fn().mockResolvedValue(undefined),
   markAllAdminBugReportsRead: vi.fn().mockResolvedValue(undefined),
+  clearAdminErrors: vi.fn().mockResolvedValue(undefined),
 }));
 
 function renderContent() {
@@ -141,6 +142,29 @@ it("marks all errors read using the active filters", async () => {
   fireEvent.click(await screen.findByTestId("admin-errors-mark-all-read"));
   await waitFor(() => expect(bugReportsApi.markAllAdminErrorsRead).toHaveBeenCalledWith(expect.objectContaining({ from: expect.any(String) })));
   expect(bugReportsApi.markAllAdminBugReportsRead).not.toHaveBeenCalled();
+});
+
+it("does not clear errors until the styled confirmation is accepted", async () => {
+  vi.mocked(bugReportsApi.listAdminErrors).mockResolvedValue({ total: 0, items: [] });
+  renderContent();
+  const clearThrough = screen.getByLabelText("נקה עד");
+  fireEvent.change(clearThrough, { target: { value: "2026-08-28T10:00" } });
+  fireEvent.click(screen.getByText("נקה"));
+  expect(bugReportsApi.clearAdminErrors).not.toHaveBeenCalled();
+  expect(screen.getByText("לנקות כל השגיאות עד תאריך זה?")).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+  await waitFor(() => expect(bugReportsApi.clearAdminErrors).toHaveBeenCalledWith(new Date("2026-08-28T10:00").toISOString()));
+});
+
+it("does not clear errors when the confirmation is dismissed", async () => {
+  vi.mocked(bugReportsApi.clearAdminErrors).mockClear();
+  vi.mocked(bugReportsApi.listAdminErrors).mockResolvedValue({ total: 0, items: [] });
+  renderContent();
+  const clearThrough = screen.getByLabelText("נקה עד");
+  fireEvent.change(clearThrough, { target: { value: "2026-08-28T10:00" } });
+  fireEvent.click(screen.getByText("נקה"));
+  fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+  expect(bugReportsApi.clearAdminErrors).not.toHaveBeenCalled();
 });
 
 it("clears each datetime picker with its small clear button", async () => {
