@@ -58,6 +58,23 @@ def _first_by_event_date(rows: Sequence[tuple]) -> tuple | None:
     )
 
 
+def _earliest_coverage(coverages: Sequence[RangeCoverage]) -> RangeCoverage:
+    kind_tiebreaker = {
+        "qualification": 0,
+        "primary_range": 1,
+        "reserve_range": 2,
+    }
+    return min(
+        coverages,
+        key=lambda coverage: (
+            coverage.source_event_date is None,
+            coverage.source_event_date or date.max,
+            kind_tiebreaker[coverage.coverage_kind],
+            coverage.valid_until or date.max,
+        ),
+    )
+
+
 def get_range_coverages(
     session: Session,
     *,
@@ -67,17 +84,19 @@ def get_range_coverages(
 ) -> dict[uuid.UUID, RangeCoverage]:
     """Classify coverage for a candidate list with a bounded number of reads.
 
-    The returned coverage is ordered by strength: persisted qualification, then a
-    guaranteed planned primary range, then confirmed reserve attendance.  A
-    primary range is a projection, while reserve coverage requires recorded
-    presence and never allows an event after ``as_of`` to qualify an earlier date.
+    The earliest applicable source is returned, with persisted qualification
+    winning only same-date ties over primary and reserve coverage. A primary range
+    is a projection, while reserve coverage requires recorded presence and never
+    allows an event after ``as_of`` to qualify an earlier date.
     """
     unique_soldier_ids = set(soldier_ids)
     if not unique_soldier_ids:
         return {}
 
     candidate_types = _range_types_at_or_above(required_range_type)
-    coverages = {soldier_id: _NO_COVERAGE for soldier_id in unique_soldier_ids}
+    sources_by_soldier: dict[uuid.UUID, list[RangeCoverage]] = {
+        soldier_id: [] for soldier_id in unique_soldier_ids
+    }
 
     qualification_assignment = aliased(RangeAssignment)
     qualification_event = aliased(RangeEvent)
@@ -110,11 +129,13 @@ def get_range_coverages(
         qualifications_by_soldier.setdefault(row.soldier_id, []).append(row)
     for soldier_id, rows in qualifications_by_soldier.items():
         _, source_event_date, valid_until = _first_by_event_date(rows)
-        coverages[soldier_id] = RangeCoverage(
-            qualified=True,
-            coverage_kind="qualification",
-            source_event_date=source_event_date,
-            valid_until=valid_until,
+        sources_by_soldier[soldier_id].append(
+            RangeCoverage(
+                qualified=True,
+                coverage_kind="qualification",
+                source_event_date=source_event_date,
+                valid_until=valid_until,
+            )
         )
 
     pending_excusal = exists(
@@ -150,14 +171,14 @@ def get_range_coverages(
         if valid_until >= as_of:
             primaries_by_soldier.setdefault(soldier_id, []).append((soldier_id, event_date, valid_until))
     for soldier_id, rows in primaries_by_soldier.items():
-        if coverages[soldier_id].coverage_kind != "none":
-            continue
         _, source_event_date, valid_until = _first_by_event_date(rows)
-        coverages[soldier_id] = RangeCoverage(
-            qualified=True,
-            coverage_kind="primary_range",
-            source_event_date=source_event_date,
-            valid_until=valid_until,
+        sources_by_soldier[soldier_id].append(
+            RangeCoverage(
+                qualified=True,
+                coverage_kind="primary_range",
+                source_event_date=source_event_date,
+                valid_until=valid_until,
+            )
         )
 
     reserve_rows = session.execute(
@@ -187,17 +208,20 @@ def get_range_coverages(
         if valid_until >= as_of:
             reserves_by_soldier.setdefault(soldier_id, []).append((soldier_id, event_date, valid_until))
     for soldier_id, rows in reserves_by_soldier.items():
-        if coverages[soldier_id].coverage_kind != "none":
-            continue
         _, source_event_date, valid_until = _first_by_event_date(rows)
-        coverages[soldier_id] = RangeCoverage(
-            qualified=True,
-            coverage_kind="reserve_range",
-            source_event_date=source_event_date,
-            valid_until=valid_until,
+        sources_by_soldier[soldier_id].append(
+            RangeCoverage(
+                qualified=True,
+                coverage_kind="reserve_range",
+                source_event_date=source_event_date,
+                valid_until=valid_until,
+            )
         )
 
-    return coverages
+    return {
+        soldier_id: _earliest_coverage(sources) if sources else _NO_COVERAGE
+        for soldier_id, sources in sources_by_soldier.items()
+    }
 
 
 def get_range_coverage(
