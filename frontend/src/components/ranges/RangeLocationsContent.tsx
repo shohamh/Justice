@@ -1,6 +1,8 @@
 import { FormEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Edit2, Power, Trash2 } from "lucide-react";
 import { RangeLocation } from "../../api/rangeLocations";
+import ConfirmDialog from "../ConfirmDialog";
 
 interface Props {
   locations: RangeLocation[];
@@ -15,12 +17,18 @@ interface Props {
 const deleteDisabledReason = "לא ניתן למחוק — המיקום כבר בשימוש במטווחים";
 
 export default function RangeLocationsContent({ locations, loading, error, canManage, onCreate, onUpdate, onDelete }: Props) {
+  const { t } = useTranslation();
+  const text = (key: string, fallback: string, values?: Record<string, unknown>) => {
+    const translated = t(key, { ...values, defaultValue: fallback });
+    return translated === key ? fallback : translated;
+  };
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+  const [locationToDelete, setLocationToDelete] = useState<RangeLocation | null>(null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -42,14 +50,20 @@ export default function RangeLocationsContent({ locations, loading, error, canMa
     try { await onUpdate(location.id, { active: !location.active }); } catch { setFormError("עדכון מצב המיקום נכשל"); } finally { setBusyId(null); }
   }
 
-  async function remove(location: RangeLocation) {
+  function remove(location: RangeLocation) {
     if (location.can_delete === false) { setTooltipId(location.id); return; }
-    if (!window.confirm(`למחוק את המיקום "${location.name}"?`)) return;
-    setBusyId(location.id); setFormError("");
-    try { await onDelete(location.id); } catch { setFormError("מחיקת המיקום נכשלה"); } finally { setBusyId(null); }
+    setLocationToDelete(location);
   }
 
-  return <div data-testid="range-locations-content" className="space-y-4" dir="rtl">
+  async function confirmRemove() {
+    const location = locationToDelete;
+    if (!location) return;
+    setBusyId(location.id); setFormError("");
+    try { await onDelete(location.id); } catch { setFormError("מחיקת המיקום נכשלה"); } finally { setBusyId(null); setLocationToDelete(null); }
+  }
+
+  return <>
+  <div data-testid="range-locations-content" className="space-y-4" dir="rtl">
     <div><h2 className="text-lg font-semibold">מיקומי מטווחים</h2><p className="text-sm text-gray-500 dark:text-gray-400">ניהול המיקומים הזמינים בטפסי מטווחים</p></div>
     {canManage && <form onSubmit={submit} className="flex flex-wrap items-end gap-2"><label className="block text-sm">שם המיקום<input value={name} onChange={event => setName(event.target.value)} required maxLength={200} className="mt-1 block rounded border p-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" /></label><button type="submit" disabled={busyId === "new"} className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">הוסף מיקום</button></form>}
     {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
@@ -69,5 +83,16 @@ export default function RangeLocationsContent({ locations, loading, error, canMa
         {!location.active && <span className="text-xs text-gray-500">לא פעיל</span>}
       </li>;
     })}</ul>}
-  </div>;
+  </div>
+  <ConfirmDialog
+    open={locationToDelete !== null}
+    title={text("ranges.locations.confirm_delete_title", "מחיקת מיקום")}
+    message={text("ranges.locations.confirm_delete_message", `למחוק את המיקום "${locationToDelete?.name ?? ""}"?`, { name: locationToDelete?.name ?? "" })}
+    confirmLabel={text("ranges.confirm_delete_label", "מחק")}
+    danger
+    confirmDisabled={busyId === locationToDelete?.id}
+    onConfirm={() => void confirmRemove()}
+    onClose={() => setLocationToDelete(null)}
+  />
+  </>;
 }

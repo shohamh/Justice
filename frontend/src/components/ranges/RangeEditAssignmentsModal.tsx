@@ -8,6 +8,7 @@ import { translateApiError } from "../../utils/translateApiError";
 import { formatDate } from "../../utils/formatDate";
 import OverrideReasonModal from "../OverrideReasonModal";
 import SoldierLink from "../SoldierLink";
+import InputDialog from "../InputDialog";
 
 export interface RangeEditAssignmentsModalProps {
   open: boolean;
@@ -42,6 +43,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   };
   const [assignments, setAssignments] = useState(event.assignments);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [removalAssignmentId, setRemovalAssignmentId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [editingReason, setEditingReason] = useState<string | null>(null);
   const [reasonText, setReasonText] = useState("");
@@ -177,14 +179,12 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     void doSave();
   }
 
-  async function remove(assignmentId: string) {
+  async function remove(assignmentId: string, reason: string) {
     if (!editable || removing) return;
-    const reason = window.prompt("סיבת ההסרה:");
-    if (!reason || !reason.trim()) return;
     setRemoving(assignmentId);
     setError("");
     try {
-      await removeRangeAssignment(event.id, assignmentId, reason.trim());
+      await removeRangeAssignment(event.id, assignmentId, reason);
       setAssignments(current => current.filter(a => a.id !== assignmentId));
       await getRangeCandidates(event.id)
         .then(({ candidates, excluded }) => { setRangeCandidates(candidates); setExcludedCandidates(excluded); })
@@ -252,7 +252,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                 type="button"
                 data-testid={`remove-assignment-${a.id}`}
                 disabled={removing !== null}
-                onClick={() => void remove(a.id)}
+                onClick={() => setRemovalAssignmentId(a.id)}
                 title={text("ranges.remove", "הסר")}
                 aria-label={text("ranges.remove", "הסר")}
                 className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 text-sm text-red-600 hover:bg-red-50 disabled:opacity-40 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 mr-1"
@@ -282,7 +282,8 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     );
   }
 
-  return <EventDetailModal open={open} title={text("ranges.edit_assignments", "עריכת שיבוצים")} subtitle={`${event.location} · ${formatDate(event.date)}`} onClose={onClose}>
+  return <>
+  <EventDetailModal open={open} title={text("ranges.edit_assignments", "עריכת שיבוצים")} subtitle={`${event.location} · ${formatDate(event.date)}`} onClose={onClose}>
     <div className="overflow-y-auto flex-1 space-y-5">
       {/* Summary table — current + pending */}
       <div>
@@ -438,13 +439,29 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
         <button type="button" onClick={onClose} className="rounded border px-3 py-1.5 text-sm dark:border-gray-600 dark:text-gray-100">{text("ranges.close", "סגור")}</button>
       </div>
     </div>
-    <OverrideReasonModal
-      open={pendingOverride !== null}
-      count={pendingOverride ? pendingOverride.primaries.length + pendingOverride.reserves.length : 0}
-      onCancel={() => setPendingOverride(null)}
-      onConfirm={(reason) => { setPendingOverride(null); void doSave(reason); }}
-    />
-  </EventDetailModal>;
+  </EventDetailModal>
+  <InputDialog
+    open={removalAssignmentId !== null}
+    title={text("ranges.remove_assignment_title", "הסרת שיבוץ")}
+    message={text("ranges.remove_assignment_message", "יש לציין את סיבת ההסרה.")}
+    label={text("ranges.remove_assignment_reason_label", "סיבת ההסרה")}
+    multiline
+    required
+    confirmLabel={text("ranges.remove", "הסר")}
+    onConfirm={(reason) => {
+      const assignmentId = removalAssignmentId;
+      setRemovalAssignmentId(null);
+      if (assignmentId) void remove(assignmentId, reason);
+    }}
+    onClose={() => setRemovalAssignmentId(null)}
+  />
+  <OverrideReasonModal
+    open={pendingOverride !== null}
+    count={pendingOverride ? pendingOverride.primaries.length + pendingOverride.reserves.length : 0}
+    onCancel={() => setPendingOverride(null)}
+    onConfirm={(reason) => { setPendingOverride(null); void doSave(reason); }}
+  />
+  </>;
 }
 
 interface CandidateTableProps {

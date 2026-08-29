@@ -750,13 +750,14 @@ describe("RangesPage assignment editor integration", () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
-    vi.spyOn(window, "prompt").mockReturnValue("חייל שוחרר");
 
     const { client } = renderWithQuery(<RangesPage />);
     const invalidate = vi.spyOn(client, "invalidateQueries");
     fireEvent.click(await screen.findByText("מטווח לרענון"));
     fireEvent.click(screen.getByTestId("view-assignments-event-refresh"));
     fireEvent.click(await screen.findByTestId("remove-assignment-assignment-refresh"));
+    fireEvent.change(await screen.findByLabelText("סיבת ההסרה"), { target: { value: "חייל שוחרר" } });
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-refresh", "assignment-refresh", "חייל שוחרר"));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ranges"] }));
@@ -866,7 +867,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(screen.getByTestId("select-range-event-1"));
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
     fireEvent.change(await screen.findByLabelText("סיבת הניקוי (תחול על כל השיבוצים שינוקו)"), { target: { value: "ניקוי כללי" } });
-    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1", "ניקוי כללי"));
@@ -886,7 +887,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(screen.getByTestId("select-range-event-1"));
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
     fireEvent.change(await screen.findByLabelText("סיבת הניקוי (תחול על כל השיבוצים שינוקו)"), { target: { value: "ניקוי כללי" } });
-    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("מטווח א");
     expect(screen.getByRole("alert")).toHaveTextContent("boom");

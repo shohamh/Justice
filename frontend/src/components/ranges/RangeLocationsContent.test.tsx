@@ -41,4 +41,32 @@ describe("RangeLocationsContent", () => {
     expect(deleteButton).toBeDisabled();
     expect(deleteButton.parentElement).toHaveAttribute("title", "לא ניתן למחוק — המיקום כבר בשימוש במטווחים");
   });
+
+  it("requires the styled confirmation before deleting a location", async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(
+      <RangeLocationsContent
+        locations={[{ id: "loc-1", name: "מטווח דרום", active: true }]}
+        loading={false}
+        error={false}
+        canManage
+        onCreate={vi.fn().mockResolvedValue(undefined)}
+        onUpdate={vi.fn().mockResolvedValue(undefined)}
+        onDelete={onDelete}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "מחק מיקום" }));
+
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId("confirm-dialog-cancel"));
+    expect(onDelete).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "מחק מיקום" }));
+    fireEvent.click(await screen.findByTestId("confirm-dialog-confirm"));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("loc-1"));
+    nativeConfirm.mockRestore();
+  });
 });

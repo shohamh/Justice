@@ -15,7 +15,8 @@ import RangeFormModal from "../components/ranges/RangeFormModal";
 import RangeCancelDialog from "../components/ranges/RangeCancelDialog";
 import RangeBulkCancelDialog from "../components/ranges/RangeBulkCancelDialog";
 import RangeBulkAutoAssignModal from "../components/ranges/RangeBulkAutoAssignModal";
-import ConfirmDialog from "../components/ranges/ConfirmDialog";
+import ConfirmDialog from "../components/ConfirmDialog";
+import InputDialog from "../components/InputDialog";
 import { IneligibleSoldiersTable } from "../components/ranges/IneligibleSoldiersTable";
 import RangeLocationsContent from "../components/ranges/RangeLocationsContent";
 import { listSoldiers } from "../api/soldiers";
@@ -208,14 +209,15 @@ export default function RangesPage() {
       onConfirm={() => void bulkDelete()}
       onClose={() => setBulkDeleteConfirmOpen(false)}
     />
-    <ConfirmDialog
+    <InputDialog
       open={bulkClearConfirmOpen}
       title={t("ranges.confirm_bulk_clear_title")}
       message={t("ranges.confirm_bulk_clear_message", { count: clearableSelectedEvents.length })}
-      reasonLabel={t("ranges.confirm_bulk_clear_reason_label")}
+      label={t("ranges.confirm_bulk_clear_reason_label")}
       confirmLabel={t("ranges.confirm_bulk_clear_label")}
-      danger
-      onConfirm={(reason) => void bulkClear(reason ?? "")}
+      multiline
+      required
+      onConfirm={(reason) => { setBulkClearConfirmOpen(false); void bulkClear(reason); }}
       onClose={() => setBulkClearConfirmOpen(false)}
     />
     <ConfirmDialog

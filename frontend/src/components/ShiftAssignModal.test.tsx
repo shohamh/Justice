@@ -37,14 +37,19 @@ describe("ShiftAssignModal weapon eligibility warning", () => {
     expect(checkbox.disabled).toBe(false);
   });
 
-  it("asks for confirmation before assigning a flagged candidate", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<ShiftAssignModal shift={baseShift} dutyTypes={[]} onSaved={vi.fn()} onClose={vi.fn()} />);
+  it("uses a styled confirmation before assigning a flagged candidate", async () => {
+    const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onSaved = vi.fn();
+    render(<ShiftAssignModal shift={baseShift} dutyTypes={[]} onSaved={onSaved} onClose={vi.fn()} />);
     await waitFor(() => screen.getByText("לוחם לא כשיר"));
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByText(/^שבץ/));
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
-    confirmSpy.mockRestore();
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    expect(shiftsApi.assignBatch).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId("confirm-dialog-confirm"));
+    await waitFor(() => expect(shiftsApi.assignBatch).toHaveBeenCalled());
+    expect(onSaved).toHaveBeenCalled();
+    nativeConfirm.mockRestore();
   });
 });
 
