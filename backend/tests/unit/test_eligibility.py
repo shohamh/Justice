@@ -470,11 +470,12 @@ def test_range_coverage_prefers_strongest_source_over_earliest(admin_session):
     )
 
     # Qualification is the strongest kind, so it wins over both range sources even
-    # though those sit earlier — and it reports its own, longer validity window.
+    # though those sit earlier. A qualification sourced from a range event uses the
+    # current validity setting for that source range type.
     assert coverages[primary.id].coverage_kind == "qualification"
-    assert coverages[primary.id].valid_until == as_of + timedelta(days=40)
+    assert coverages[primary.id].valid_until == qualification_event.date + timedelta(days=365)
     assert coverages[reserve.id].coverage_kind == "qualification"
-    assert coverages[reserve.id].valid_until == as_of + timedelta(days=40)
+    assert coverages[reserve.id].valid_until == qualification_event.date + timedelta(days=365)
 
     assert coverages[primary_only.id].coverage_kind == "primary_range"
     assert coverages[primary_only.id].source_event_date == primary_event.date

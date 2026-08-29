@@ -664,6 +664,63 @@ def test_future_range_after_candidate_event_does_not_cover_current_event(app_ses
     assert mine.reason_code != "qualified"
 
 
+def test_candidate_coverage_recomputes_source_range_validity_from_type_setting(app_session: Session) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    set_setting(app_session, "mitvachim.laser_validity_days", 180, actor_id=None)
+    soldier = create_soldier(app_session, personal_number="setting-validity", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=200),
+        range_location_id=create_range_location(app_session, name="setting validity range").id,
+        required_count=1,
+    )
+    assignment = RangeAssignment(
+        range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False,
+        attendance_status="present",
+    )
+    app_session.add_all([
+        assignment,
+        SoldierRangeQualification(
+            soldier_id=soldier.id, range_type=RangeType.laser,
+            valid_until=earlier_event.date + timedelta(days=365),
+            source_range_event_id=earlier_event.id, source_range_assignment_id=assignment.id,
+        ),
+    ])
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code != "qualified"
+
+
+@pytest.mark.parametrize(("days_since", "auto_selectable"), [(89, False), (90, True)])
+def test_recently_qualified_candidate_stays_visible_but_is_not_auto_selectable(
+    app_session: Session, days_since: int, auto_selectable: bool,
+) -> None:
+    node, event, dm = _event(app_session, required_count=1)
+    set_setting(app_session, "mitvachim.laser_validity_days", 180, actor_id=None)
+    soldier = create_soldier(app_session, personal_number="recent-qualification", hierarchy_node_id=node.id)
+    earlier_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event.date - timedelta(days=days_since),
+        range_location_id=create_range_location(app_session, name="recent range").id,
+        required_count=1,
+    )
+    assignment = RangeAssignment(
+        range_event_id=earlier_event.id, soldier_id=soldier.id, is_reserve=False,
+        attendance_status="present",
+    )
+    app_session.add(assignment)
+    app_session.commit()
+
+    mine = next(candidate for candidate in rank_candidates(app_session, event=event, user=dm)
+                if candidate.soldier.id == soldier.id)
+
+    assert mine.reason_code == "qualified"
+    assert mine.auto_selectable is auto_selectable
+
+
 def test_candidate_duty_ranking_uses_duties_after_event_and_primary_before_reserve(app_session: Session) -> None:
     node = create_node(app_session, level="branch", name="sequencing duties")
     weapon_dt = _weapon_duty_type(app_session, node=node, name="sequencing weapon")

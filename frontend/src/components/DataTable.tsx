@@ -12,7 +12,7 @@ import CheckboxListDropdown from "./CheckboxListDropdown";
 
 export interface ColDef<T> {
   id: string;
-  header: string;
+  header: React.ReactNode;
   headerTooltip?: React.ReactNode;
   /** When set, the header "?" button calls this instead of showing the
    * default headerTooltip popup — e.g. to open a fuller help modal. */
@@ -215,7 +215,7 @@ export function DataTable<T>({
     () =>
       columns.map((col) => ({
         id: col.id,
-        header: col.header,
+        header: col.header as TanColumnDef<T>["header"],
         cell: ({ row }) => col.cell(row.original),
         enableSorting: !!col.sortValue,
         enableGlobalFilter: !!col.filterValue,

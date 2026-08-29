@@ -56,7 +56,7 @@ export function PlanningTable<T>({
 }: PlanningTableProps<T>) {
   const dataColumns: ColDef<T>[] = columns.map(column => ({
     id: column.key,
-    header: typeof column.label === "string" ? column.label : String(column.label ?? ""),
+    header: column.label,
     cell: column.render,
     sortValue: column.sortValue,
     filterValue: column.filterValue,

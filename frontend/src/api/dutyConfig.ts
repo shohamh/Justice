@@ -50,7 +50,8 @@ export interface ExemptionType {
 }
 
 export async function listDutyTypes(): Promise<DutyType[]> {
-  return (await api.get<DutyType[]>("/duty-config/duty-types")).data;
+  const data = (await api.get<DutyType[]>("/duty-config/duty-types")).data;
+  return Array.isArray(data) ? data : [];
 }
 export async function createDutyType(input: {
   name: string;
@@ -109,7 +110,8 @@ export async function getDutyTypeUsage(id: string): Promise<DutyTypeUsage> {
 }
 
 export async function listLocations(): Promise<DutyLocation[]> {
-  return (await api.get<DutyLocation[]>("/duty-config/locations")).data;
+  const data = (await api.get<DutyLocation[]>("/duty-config/locations")).data;
+  return Array.isArray(data) ? data : [];
 }
 export async function createLocation(input: { name: string; base?: string | null }): Promise<DutyLocation> {
   return (await api.post<DutyLocation>("/duty-config/locations", input)).data;

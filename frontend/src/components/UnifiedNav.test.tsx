@@ -282,6 +282,15 @@ describe("UnifiedNav — algorithm badge color", () => {
     await waitFor(() => expect(mockListJobs).toHaveBeenCalled());
     expect(screen.queryByTestId("pending-badge")).not.toBeInTheDocument();
   });
+
+  test("does not crash when the job list response omits items", async () => {
+    mockListJobs.mockResolvedValue({ total: 0 });
+
+    render(<UnifiedNav />);
+
+    await waitFor(() => expect(mockListJobs).toHaveBeenCalled());
+    expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
+  });
 });
 
 describe("UnifiedNav — dual-role soldier (commander label, also a duty manager)", () => {

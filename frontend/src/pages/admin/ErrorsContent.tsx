@@ -1,8 +1,22 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ClipboardCopy } from "lucide-react";
 import { clearAdminErrors, listAdminErrors, markAdminErrorsRead, markAllAdminErrorsRead, type ErrorLogEntry, type PaginatedErrorLogs } from "../../api/bugReports";
+
+function buildErrorReport(entry: ErrorLogEntry): string {
+  const prompt = `This is a ${entry.source} error in my app, here are its details. Investigate it and fix it.`;
+  const lines = [
+    prompt,
+    "",
+    `Source: ${entry.source}`,
+    `Timestamp: ${entry.timestamp ?? "unknown"}`,
+    `Message: ${entry.message}`,
+  ];
+  if (entry.request_id) lines.push(`Request ID: ${entry.request_id}`);
+  lines.push("", "Details:", JSON.stringify(entry.details, null, 2));
+  return lines.join("\n");
+}
 
 const PAGE_SIZE = 50;
 
@@ -96,13 +110,16 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
   const toggle = () => { onOpen(); setExpanded((value) => !value); };
   return (
     <article className="border rounded dark:border-gray-600 p-3 cursor-pointer" data-testid={`admin-error-${entry.request_id ?? "unknown"}`} onClick={toggle}>
-      <button type="button" onClick={(event) => { event.stopPropagation(); toggle(); }} className="w-full text-right">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          {entry.unread && <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" data-testid={`admin-error-unread-${entry.record_key}`} aria-label="לא נקרא" />}
-          <span className={`font-semibold ${entry.source === "backend" ? "text-red-600" : "text-orange-600"}`}>{entry.source}</span>
-          <span>{entry.timestamp ? new Date(entry.timestamp).toLocaleString("he-IL") : "—"}</span>
-        </div>
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" onClick={(event) => { event.stopPropagation(); toggle(); }} className="flex-1 text-right">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            {entry.unread && <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" data-testid={`admin-error-unread-${entry.record_key}`} aria-label="לא נקרא" />}
+            <span className={`font-semibold ${entry.source === "backend" ? "text-red-600" : "text-orange-600"}`}>{entry.source}</span>
+            <span>{entry.timestamp ? new Date(entry.timestamp).toLocaleString("he-IL") : "—"}</span>
+          </div>
+        </button>
+        <CopyReportButton entry={entry} />
+      </div>
       {entry.source === "backend" && <p dir="ltr" className="mt-2 text-sm whitespace-pre-wrap text-left" data-testid={`admin-error-message-${entry.request_id ?? "unknown"}`}>{entry.message}</p>}
       {entry.source === "frontend" && typeof detailMessage === "string" && <p dir="ltr" className="mt-2 text-sm whitespace-pre-wrap text-left" data-testid={`admin-error-message-${entry.request_id ?? "unknown"}`}>{detailMessage}</p>}
       {entry.source === "frontend" && frontendRequest && <p dir="ltr" className="mt-1 text-xs text-gray-600 dark:text-gray-300 text-left" data-testid={`admin-error-request-${entry.request_id ?? "unknown"}`}>{frontendRequest}</p>}
@@ -112,6 +129,34 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
         <CopyBlock value={JSON.stringify(entry.details, null, 2)} testId={`admin-error-json-${entry.request_id ?? "unknown"}`} copyTestId={`admin-error-copy-json-${entry.request_id ?? "unknown"}`} />
       </>}
     </article>
+  );
+}
+
+function CopyReportButton({ entry }: { entry: ErrorLogEntry }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    if (!navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(buildErrorReport(entry));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      title={copied ? "הועתק" : "העתק דוח שגיאה מלא לתיקון"}
+      aria-label={copied ? "הועתק" : "העתק דוח שגיאה מלא לתיקון"}
+      className="shrink-0 p-1.5 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:text-gray-100 dark:hover:bg-gray-700"
+      data-testid={`admin-error-copy-report-${entry.request_id ?? "unknown"}`}
+      onClick={(event) => { event.stopPropagation(); void handleCopy(); }}
+    >
+      {copied ? <Check className="h-4 w-4 text-green-600" aria-hidden="true" /> : <ClipboardCopy className="h-4 w-4" aria-hidden="true" />}
+    </button>
   );
 }
 

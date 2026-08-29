@@ -75,10 +75,14 @@ export default function HomePage() {
   const duties = useMemo(() => dutiesQuery.data ?? [], [dutiesQuery.data]);
 
   const typesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
-  const typeNames = Object.fromEntries((typesQuery.data ?? []).map((t) => [t.id, t.name]));
+  const typeNames = Object.fromEntries(
+    (Array.isArray(typesQuery.data) ? typesQuery.data : []).map((t) => [t.id, t.name]),
+  );
 
   const locsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
-  const locationNames = Object.fromEntries((locsQuery.data ?? []).map((l) => [l.id, l.name]));
+  const locationNames = Object.fromEntries(
+    (Array.isArray(locsQuery.data) ? locsQuery.data : []).map((l) => [l.id, l.name]),
+  );
 
   const mySwapsQuery = useQuery({ queryKey: queryKeys.mySwaps(), queryFn: listMySwaps });
   const mySwaps = mySwapsQuery.data ?? [];
@@ -349,7 +353,7 @@ export default function HomePage() {
                 </tr>
               </thead>
               <tbody>
-                {breakdown.adjustments.map((a) => (
+                {(Array.isArray(breakdown.adjustments) ? breakdown.adjustments : []).map((a) => (
                   <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
                     <td className="py-2">{formatDateTimeIsrael(a.created_at)}</td>
                     <td

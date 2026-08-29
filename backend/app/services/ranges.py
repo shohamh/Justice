@@ -545,7 +545,7 @@ def assign_batch(
     ]
     for row, _constraint in rows_with_constraints:
         soldier = session.get(Soldier, row.soldier_id)
-        _, reason_code, _explanation = _rank_candidate(session, soldier=soldier, event=event)
+        _, reason_code, _explanation, _auto_selectable = _rank_candidate(session, soldier=soldier, event=event)
         row.assignment_reason_code = reason_code
         session.add(row)
     session.flush()
@@ -593,8 +593,11 @@ def _remove_range_assignment_in_transaction(
     actor_id: uuid.UUID | None = None,
 ) -> None:
     event = session.get(RangeEvent, assignment.range_event_id)
-    if event is not None and event.status != RangeEventStatus.planned:
-        raise RangeValidationError("event_not_planned")
+    if event is not None:
+        if event.status != RangeEventStatus.planned:
+            raise RangeValidationError("event_not_planned")
+        if event.date < date.today():
+            raise RangeValidationError("event_already_happened")
     remaining_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
         RangeAssignment.range_event_id == assignment.range_event_id,
         RangeAssignment.id != assignment.id,

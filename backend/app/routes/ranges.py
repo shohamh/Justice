@@ -80,6 +80,14 @@ def _authorize_range_manage(session: Session, user: Soldier, event: RangeEvent) 
             raise
 
 
+def _can_manage_event(session: Session, user: Soldier, event: RangeEvent) -> bool:
+    try:
+        _authorize_range_manage(session, user, event)
+    except HTTPException:
+        return False
+    return True
+
+
 class CreateRangeEventBody(BaseModel):
     hierarchy_node_id: uuid.UUID
     range_type: RangeType
@@ -272,6 +280,7 @@ class RangeEventOut(BaseModel):
     can_edit_attendance: bool = False
     food_summary: FoodSummaryOut | None = None
     responsible_duty_manager_id: uuid.UUID | None = None
+    can_manage: bool = False
 
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
@@ -323,6 +332,7 @@ def _event_out(
     include_assignments: bool = False,
     include_drafts: bool = True,
     include_food_summary: bool = False,
+    can_manage: bool = False,
 ) -> RangeEventOut:
     query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
     if not include_drafts:
@@ -362,6 +372,7 @@ def _event_out(
         can_edit_attendance=can_edit_attendance,
         food_summary=_food_summary(session, rows) if include_food_summary else None,
         responsible_duty_manager_id=event.responsible_duty_manager_id,
+        can_manage=can_manage,
     )
 
 
@@ -601,6 +612,7 @@ def get_range_event(
         include_assignments=True,
         include_drafts=can_manage,
         include_food_summary=user.role == "admin" or is_duty_manager(session, user.id),
+        can_manage=can_manage,
     )
 
 
@@ -654,7 +666,16 @@ def list_range_events(
     if date_to is not None:
         query = query.filter(RangeEvent.date <= date_to)
     events = query.order_by(RangeEvent.date).all()
-    return [_event_out(session, e, user=user, include_drafts=can_manage) for e in events]
+    return [
+        _event_out(
+            session,
+            e,
+            user=user,
+            include_drafts=can_manage,
+            can_manage=can_manage and _can_manage_event(session, user, e),
+        )
+        for e in events
+    ]
 
 
 class RangeExcusalOut(BaseModel):
@@ -743,6 +764,7 @@ class RangeCandidateOut(BaseModel):
     explanation: str
     conflict_warning: str | None = None
     personal_constraint_conflict: bool = False
+    auto_selectable: bool = True
 
 
 class ExcludedSoldierOut(BaseModel):
@@ -778,6 +800,7 @@ def get_range_candidates(
                 soldier_id=c.soldier.id, full_name=c.soldier.full_name, personal_number=c.soldier.personal_number,
                 reason_code=c.reason_code, explanation=c.explanation, conflict_warning=c.conflict_warning,
                 personal_constraint_conflict=c.personal_constraint_conflict,
+                auto_selectable=c.auto_selectable,
             )
             for c in ranked
         ],
