@@ -5,13 +5,19 @@
 ### Features
 - Added an admin errors inbox with structured backend/frontend 500-error logging, per-admin unread tracking, source/date filters, clear-through cleanup, mark-read actions, multiline stack traces, and copy-to-clipboard controls.
 - Added frontend request URL/method details and unified LTR presentation for technical error messages and paths.
+- Replaced every native browser confirm/alert/prompt dialog across the frontend with translated, RTL-aware application modals, covering hierarchy, ranges, shifts, imports, duty management, algorithm proposals, deputies, requests, profile, and the admin error log.
+- Added scoped range assignment requests with responsible-manager approval authority, date-aware primary/reserve candidate ranking, and automatic reconciliation of range assignments on creation and primary excusal, including refilling vacated slots.
+- Added an optional reason field to hierarchy transfer requests, shown to approvers alongside a translated success message naming the approving commander.
 
 ### Fixes
 - Fixed clearing active error logs on Windows by safely pausing and reopening the dedicated log handlers around cleanup.
 - Separated mark-all-as-read actions for errors and bug reports, and reordered the admin tabs so errors precede the audit log.
+- Fixed range candidate eligibility and ranking to honor the required range type, closing an alal-tier fallback loophole, and fixed reconciliation coverage-window, source-strength, and locking gaps.
+- Fixed and translated range-related notifications, and retained rejected personal-constraint state through the native-dialog migration.
 
 ### Chores
 - Added backend and frontend regression coverage for error logging, unread behavior, tab ordering, request details, and mobile-friendly error presentation.
+- Added extensive regression coverage and behavioral-contract/design docs for range candidate sequencing, range assignment requests, and the native dialog migration.
 
 ## 2026-08-28
 
