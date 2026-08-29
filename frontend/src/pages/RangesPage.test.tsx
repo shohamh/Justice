@@ -124,6 +124,34 @@ describe("RangesPage", () => {
     await waitFor(() => expect(screen.getByText("מטווח דרום")).toBeInTheDocument());
   });
 
+  it("recomputes the primary/reserve fill columns after a roster-changing refetch", async () => {
+    // Mirrors what happens when reconciliation removes a redundant duplicate on a
+    // FUTURE event and refills it elsewhere: that event's own range_roster_changed
+    // notification invalidates the ranges list query, which refetches with updated
+    // primary_filled/reserve_filled — no new response field is needed for a
+    // commander to see the fill counts change, the existing table already recomputes.
+    const baseEvent = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const,
+      date: "2026-09-01", location: "מטווח דרום", required_count: 2, reserve_count: 1,
+      primary_filled: 1, reserve_filled: 0, status: "planned" as const, assignments: [],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValueOnce([baseEvent]);
+
+    const { client } = renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח דרום");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("0/1")).toBeInTheDocument();
+
+    vi.mocked(rangesApi.getRanges).mockResolvedValueOnce([
+      { ...baseEvent, primary_filled: 2, reserve_filled: 1 },
+    ]);
+    await client.invalidateQueries({ queryKey: ["ranges"] });
+
+    await waitFor(() => expect(screen.getByText("2/2")).toBeInTheDocument());
+    expect(screen.getByText("1/1")).toBeInTheDocument();
+    expect(screen.queryByText("1/2")).not.toBeInTheDocument();
+  });
+
   it("renders Hebrew labels for range_type and status instead of raw English", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {
