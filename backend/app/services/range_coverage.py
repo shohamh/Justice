@@ -31,6 +31,7 @@ class RangeCoverage:
     qualified: bool
     coverage_kind: CoverageKind
     source_event_date: date | None
+    source_range_type: str | None
     valid_until: date | None
 
 
@@ -38,6 +39,7 @@ _NO_COVERAGE = RangeCoverage(
     qualified=False,
     coverage_kind="none",
     source_event_date=None,
+    source_range_type=None,
     valid_until=None,
 )
 
@@ -189,6 +191,8 @@ def get_range_coverages(
         select(
             SoldierRangeQualification.soldier_id,
             qualification_event.date,
+            qualification_event.range_type.label("source_range_type"),
+            SoldierRangeQualification.range_type.label("qualification_range_type"),
             SoldierRangeQualification.valid_until,
         )
         .outerjoin(
@@ -202,23 +206,32 @@ def get_range_coverages(
         .where(
             SoldierRangeQualification.soldier_id.in_(unique_soldier_ids),
             SoldierRangeQualification.range_type.in_(candidate_types),
-            SoldierRangeQualification.valid_until >= as_of,
             or_(
                 SoldierRangeQualification.source_range_assignment_id.is_(None),
                 qualification_assignment.attendance_status == RangeAttendanceStatus.present,
             ),
         )
     ).all()
-    qualifications_by_soldier: dict[uuid.UUID, list[tuple[uuid.UUID, date | None, date]]] = {}
+    qualifications_by_soldier: dict[uuid.UUID, list[tuple[uuid.UUID, date | None, str, date]]] = {}
     for row in qualification_rows:
-        qualifications_by_soldier.setdefault(row.soldier_id, []).append(row)
+        source_range_type = row.source_range_type or row.qualification_range_type
+        valid_until = (
+            row.date + timedelta(days=_validity_days(session, source_range_type))
+            if row.date is not None and row.source_range_type is not None
+            else row.valid_until
+        )
+        if valid_until >= as_of:
+            qualifications_by_soldier.setdefault(row.soldier_id, []).append(
+                (row.soldier_id, row.date, source_range_type, valid_until)
+            )
     for soldier_id, rows in qualifications_by_soldier.items():
-        _, source_event_date, valid_until = _first_by_event_date(rows)
+        _, source_event_date, source_range_type, valid_until = _first_by_event_date(rows)
         sources_by_soldier[soldier_id].append(
             RangeCoverage(
                 qualified=True,
                 coverage_kind="qualification",
                 source_event_date=source_event_date,
+                source_range_type=source_range_type,
                 valid_until=valid_until,
             )
         )
@@ -245,6 +258,7 @@ def get_range_coverages(
                 qualified=True,
                 coverage_kind="primary_range",
                 source_event_date=source_event_date,
+                source_range_type=range_type,
                 valid_until=valid_until,
             )
         )
@@ -271,6 +285,7 @@ def get_range_coverages(
                 qualified=True,
                 coverage_kind="reserve_range",
                 source_event_date=source_event_date,
+                source_range_type=range_type,
                 valid_until=valid_until,
             )
         )

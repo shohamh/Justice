@@ -127,8 +127,9 @@ export default function UnifiedNav() {
     async function fetchAlgorithmBadge() {
       try {
         const result = await listJobs(50);
-        setAlgorithmJobs(result.items);
-        seedSeenIds(result.items);
+        const items = Array.isArray(result?.items) ? result.items : [];
+        setAlgorithmJobs(items);
+        seedSeenIds(items);
       } catch {
         // ignore
       }

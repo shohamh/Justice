@@ -4,7 +4,7 @@ export type SettingsMap = Record<string, string | number | boolean | string[] | 
 
 export async function getSystemSettings(): Promise<SettingsMap> {
   const r = await api.get<{ settings: SettingsMap }>("/admin/system-settings");
-  return r.data.settings;
+  return r.data?.settings ?? {};
 }
 
 export async function updateSystemSettings(settings: SettingsMap): Promise<SettingsMap> {

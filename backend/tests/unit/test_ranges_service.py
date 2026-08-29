@@ -429,6 +429,24 @@ def test_remove_range_assignment_rejects_when_event_not_planned(app_session: Ses
         remove_range_assignment(app_session, assignment=assignment, reason="test removal")
 
 
+def test_remove_range_assignment_rejects_when_event_already_happened(app_session: Session) -> None:
+    node = create_node(app_session, level="×¤×œ×•×’×”", name="past-range-clear")
+    soldier = create_soldier(app_session, personal_number="past-range-clear", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() - timedelta(days=1),
+        range_location_id=create_range_location(app_session, name="past range").id, required_count=1,
+    )
+    assignment = RangeAssignment(
+        range_event_id=event.id, soldier_id=soldier.id, is_reserve=False,
+    )
+    app_session.add(assignment)
+    app_session.commit()
+
+    with pytest.raises(RangeValidationError, match="event_already_happened"):
+        remove_range_assignment(app_session, assignment=assignment, reason="test removal")
+
+
 def test_remove_range_assignment_requires_reason(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="rra-node-1")
     soldier = create_soldier(app_session, personal_number="rra-001", hierarchy_node_id=node.id)
