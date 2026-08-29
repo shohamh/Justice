@@ -15,6 +15,9 @@ def test_clear_error_logs_pauses_active_error_handlers(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     logger = logging.getLogger("backend.errors")
+    existing_handlers = list(logger.handlers)
+    for existing_handler in existing_handlers:
+        logger.removeHandler(existing_handler)
     handler = RotatingFileHandler(log_path, maxBytes=10_000_000, backupCount=5)
     logger.addHandler(handler)
 
@@ -41,3 +44,5 @@ def test_clear_error_logs_pauses_active_error_handlers(tmp_path, monkeypatch):
     finally:
         logger.removeHandler(handler)
         handler.close()
+        for existing_handler in existing_handlers:
+            logger.addHandler(existing_handler)
