@@ -18,6 +18,9 @@ vi.mock("../../api/bugReports", async () => {
     fetchBugReportScreenshot: vi.fn(),
     importBugReports: vi.fn(),
     listComments: vi.fn(),
+    markAdminBugReportsRead: vi.fn().mockResolvedValue(undefined),
+    markAllAdminBugReportsRead: vi.fn().mockResolvedValue(undefined),
+    markAllAdminErrorsRead: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -46,6 +49,7 @@ const SAMPLE_REPORT: BugReportSummary = {
   comment_count: 2,
   last_comment_at: "2026-07-25T10:07:00Z",
   has_unseen_activity: false,
+  unread: true,
 };
 
 describe("BugReportsContent", () => {
@@ -64,6 +68,23 @@ describe("BugReportsContent", () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByText("the calendar is blank")).toBeInTheDocument());
     expect(screen.getByText("Test Soldier")).toBeInTheDocument();
+  });
+
+  it("shows an unread dot and marks the report read when its row is opened", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+    expect(screen.getByTestId("bug-report-unread-r1")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+    await waitFor(() => expect(bugReportsApi.markAdminBugReportsRead).toHaveBeenCalledWith(["r1"]));
+    expect(screen.queryByTestId("bug-report-unread-r1")).not.toBeInTheDocument();
+  });
+
+  it("marks all bug reports read", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bug-reports-mark-all-read"));
+    await waitFor(() => expect(bugReportsApi.markAllAdminBugReportsRead).toHaveBeenCalled());
+    expect(bugReportsApi.markAllAdminErrorsRead).not.toHaveBeenCalled();
   });
 
   it("updates status via the icon buttons", async () => {

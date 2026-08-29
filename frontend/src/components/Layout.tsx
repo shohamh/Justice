@@ -11,6 +11,8 @@ import HeaderSearch from "./HeaderSearch";
 import { getPublicSettings } from "../api/publicSettings";
 import JusticeLogo from "./JusticeLogo";
 import BugReportTrigger from "./BugReportTrigger";
+import { getAdminBugReportUnreadCount, getAdminErrorUnreadCount } from "../api/bugReports";
+import { useQuery } from "@tanstack/react-query";
 
 export default function Layout({ children }: { children: ReactNode | ((openHelp: (tab?: string) => void) => ReactNode) }) {
   const { t } = useTranslation();
@@ -22,6 +24,9 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
     theme === "dark" ? "מצב תאורה: כהה (לחץ למעבר לפי מערכת)" :
     "מצב תאורה: לפי מערכת (לחץ למעבר לבהיר)";
   const isAdmin = user?.role === "admin";
+  const errorUnread = useQuery({ queryKey: ["admin-errors-unread"], queryFn: getAdminErrorUnreadCount, enabled: isAdmin, refetchInterval: 30000 });
+  const bugUnread = useQuery({ queryKey: ["admin-bug-reports-unread"], queryFn: getAdminBugReportUnreadCount, enabled: isAdmin, refetchInterval: 30000 });
+  const adminUnread = (errorUnread.data ?? 0) + (bugUnread.data ?? 0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<string | undefined>(undefined);
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
@@ -59,8 +64,9 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
               <CircleUser size={20} />
             </Link>
             {isAdmin && (
-              <Link to="/admin/settings" aria-label={t("nav.admin_settings")} className="text-gray-500 hover:text-indigo-600">
+              <Link to="/admin/settings" aria-label={t("nav.admin_settings")} className="relative text-gray-500 hover:text-indigo-600">
                 <Settings size={20} />
+                {adminUnread > 0 && <span className="absolute -top-2 -right-2 min-w-4 h-4 px-1 rounded-full bg-red-600 text-white text-[10px] leading-4 text-center" data-testid="admin-settings-unread-badge">{adminUnread > 99 ? "99+" : adminUnread}</span>}
               </Link>
             )}
             <button

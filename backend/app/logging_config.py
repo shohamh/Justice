@@ -31,11 +31,17 @@ _UVICORN_LOGGER_NAMES = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        standard = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
+        fields = {
+            key: value for key, value in record.__dict__.items()
+            if key not in standard and not key.startswith("_")
+        }
         return json.dumps({
             "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
+            **fields,
             **({"exc": self.formatException(record.exc_info)} if record.exc_info else {}),
         }, ensure_ascii=False)
 
@@ -64,6 +70,16 @@ def setup_logging(log_filename: str) -> None:
     root.setLevel(logging.INFO)
     root.addHandler(file_handler)
     root.addHandler(stream_handler)
+
+    for logger_name, filename in (("backend.errors", "backend-errors.log"), ("frontend.errors", "frontend-errors.log")):
+        error_logger = logging.getLogger(logger_name)
+        if not any(getattr(handler, "_justice_error_log", False) for handler in error_logger.handlers):
+            error_handler = RotatingFileHandler(LOG_DIR / filename, maxBytes=10_000_000, backupCount=5)
+            error_handler.setFormatter(_JsonFormatter())
+            error_handler._justice_error_log = True  # type: ignore[attr-defined]
+            error_logger.addHandler(error_handler)
+        error_logger.setLevel(logging.ERROR)
+        error_logger.propagate = False
 
     # uvicorn configures its own loggers with propagate=False and its own
     # StreamHandler before our module is imported. Clear those handlers and

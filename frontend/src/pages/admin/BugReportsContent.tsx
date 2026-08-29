@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Circle, Clock, CheckCircle2, XCircle, LucideIcon } from "lucide-react";
 import {
@@ -10,6 +10,8 @@ import {
   getBugReportJson,
   fetchBugReportScreenshot,
   importBugReports,
+  markAdminBugReportsRead,
+  markAllAdminBugReportsRead,
   BugReportSummary,
   BugReportSeverity,
   BugReportStatus,
@@ -45,6 +47,7 @@ const STATUS_ORDER: BugReportStatus[] = ["open", "in_progress", "resolved", "won
 
 export function BugReportsContent() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const bugReportSeverityLabel = (severity: BugReportSeverity) => t(`bug_reports.severity_${severity}`);
   const bugReportStatusLabel = (status: BugReportStatus) => t(`bug_reports.status_${status}`);
   const [severityFilter, setSeverityFilter] = useState<BugReportSeverity | "">("");
@@ -87,9 +90,22 @@ export function BugReportsContent() {
       }),
   });
 
-  const items = query.data?.items ?? [];
+  const items = useMemo(() => query.data?.items ?? [], [query.data?.items]);
   const total = query.data?.total ?? 0;
   const pages = Math.ceil(total / limit);
+
+  async function markReportRead(report: BugReportSummary) {
+    if (!report.unread) return;
+    queryClient.setQueryData<{ items: BugReportSummary[]; total: number }>(["bug-reports", severityFilter, statusFilter, offset], (data) => data ? { ...data, items: data.items.map((item) => item.id === report.id ? { ...item, unread: false } : item) } : data);
+    await markAdminBugReportsRead([report.id]);
+    void queryClient.invalidateQueries({ queryKey: ["admin-bug-reports-unread"] });
+  }
+
+  async function handleMarkAllRead() {
+    await markAllAdminBugReportsRead({ severity: severityFilter || undefined, status: statusFilter || undefined });
+    queryClient.setQueryData<{ items: BugReportSummary[]; total: number }>(["bug-reports", severityFilter, statusFilter, offset], (data) => data ? { ...data, items: data.items.map((item) => ({ ...item, unread: false })) } : data);
+    void queryClient.invalidateQueries({ queryKey: ["admin-bug-reports-unread"] });
+  }
 
   useEffect(() => {
     if (pages > 0 && page > pages) setPage(pages);
@@ -128,6 +144,7 @@ export function BugReportsContent() {
       return;
     }
     setExpandedId(report.id);
+    void markReportRead(report).catch(() => undefined);
     if (report.has_screenshot) void loadScreenshot(report.id);
   }
 
@@ -198,6 +215,12 @@ export function BugReportsContent() {
   }
 
   const bugReportColumns: ColDef<BugReportSummary>[] = [
+    {
+      id: "unread",
+      header: "",
+      cell: (report) => report.unread ? <span className="inline-block h-2 w-2 rounded-full bg-red-500" data-testid={`bug-report-unread-${report.id}`} aria-label="לא נקרא" /> : null,
+      sortValue: (report) => report.unread ? 1 : 0,
+    },
     {
       id: "created_at",
       header: "תאריך",
@@ -367,6 +390,7 @@ export function BugReportsContent() {
           <option value="resolved">{bugReportStatusLabel("resolved")}</option>
           <option value="wont_fix">{bugReportStatusLabel("wont_fix")}</option>
         </select>
+        <button type="button" data-testid="bug-reports-mark-all-read" onClick={() => void handleMarkAllRead()} className="rounded bg-gray-600 text-white px-3 py-1 text-sm">סמן הכל כנקרא</button>
       </div>
 
       {query.isLoading && (

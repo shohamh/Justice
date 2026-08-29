@@ -1,4 +1,5 @@
 import axios, { AxiosError } from "axios";
+import { newRequestId, reportAxiosError } from "../errorReporting";
 
 const baseURL = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -18,6 +19,7 @@ export function getAccessToken(): string | null {
 }
 
 api.interceptors.request.use((config) => {
+  config.headers["X-Request-ID"] = newRequestId();
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -33,6 +35,9 @@ api.interceptors.response.use(
     // Never attempt a token refresh for the auth endpoints themselves: a 401 from
     // /auth/login means bad credentials, and /auth/refresh failing means re-login.
     const isAuthEndpoint = originalRequest?.url?.includes("/auth/");
+    if (error.response?.status === 500) {
+      reportAxiosError(error, originalRequest);
+    }
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
       try {
