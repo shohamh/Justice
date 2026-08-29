@@ -44,10 +44,10 @@ export default function TeamHierarchyPage() {
   const canDeleteSoldier = user?.can_delete_soldier ?? false;
 
   const nodesQuery = useQuery({ queryKey: queryKeys.hierarchyTreeVisible(), queryFn: fetchTree });
-  const nodes = nodesQuery.data ?? [];
+  const nodes = Array.isArray(nodesQuery.data) ? nodesQuery.data : [];
 
   const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
-  const soldiers: SoldierDTO[] = soldiersQuery.data ?? [];
+  const soldiers: SoldierDTO[] = Array.isArray(soldiersQuery.data) ? soldiersQuery.data : [];
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.hierarchyTreeVisible() });

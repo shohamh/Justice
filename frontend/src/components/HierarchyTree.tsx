@@ -242,10 +242,45 @@ function DroppableNodeRow({
                       <UserPlus size={16} aria-hidden="true" />+{t("team.add_soldier")}
                     </button>
                   )}
+                  {(node.can_edit || node.commander_name) && (
+                    <div className="flex items-center gap-2 px-3 py-1 text-xs text-gray-400 dark:text-gray-500">
+                      <span aria-hidden="true">👑</span>
+                      <span>{t("team.commander")}:</span>
+                      {node.commander_name && node.commander_id ? (
+                        <SoldierLink id={node.commander_id} name={node.commander_name} />
+                      ) : (
+                        <span className="text-red-500">לא מוגדר</span>
+                      )}
+                    </div>
+                  )}
                   {node.can_edit && (
                     <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-green-600 dark:text-green-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAssignCommander(); close(); }}>
                       <span aria-hidden="true">👑</span>{t("team.assign_commander")}
                     </button>
+                  )}
+                  {(node.dm_manageable || node.duty_managers.length > 0) && (
+                    <div className="flex items-start gap-2 px-3 py-1 text-xs text-gray-400 dark:text-gray-500">
+                      <span aria-hidden="true">📋</span>
+                      <span className="shrink-0">{t("team.duty_managers")}:</span>
+                      {node.duty_managers.length > 0 ? (
+                        <span className="whitespace-normal break-words">
+                          {node.duty_managers.map((dm, i) => (
+                            <span key={dm.scope_id}>
+                              {i > 0 && ", "}
+                              <button
+                                type="button"
+                                className="text-indigo-600 dark:text-indigo-300 hover:underline"
+                                onClick={() => { onOpenPortfolio(dm.soldier_id, dm.name); close(); }}
+                              >
+                                {dm.name}
+                              </button>
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span>{t("team.no_duty_managers")}</span>
+                      )}
+                    </div>
                   )}
                   {node.dm_manageable && (
                     <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-green-700 dark:text-green-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onManageDutyManagers(); close(); }}>
