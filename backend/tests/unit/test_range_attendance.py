@@ -31,7 +31,7 @@ def _setup_event_and_assignment(session: Session, *, event_date: date, range_typ
     node = create_node(session, level="פלוגה", name=f"פלוגה-{event_date}")
     weapon_duty = DutyType(
         name=f"שמירה עם נשק {event_date}", score_per_day=Decimal("1.00"),
-        requires_weapon=True, eligible_node_ids=[node.id],
+        requires_weapon=True, required_range_type=range_type, eligible_node_ids=[node.id],
     )
     session.add(weapon_duty)
     session.flush()
