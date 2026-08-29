@@ -15,7 +15,8 @@ from app.db.models import (
     RangeExcusalStatus,
 )
 from app.services.notifications import create_notification, notify_duty_managers_in_scope
-from app.services.ranges import RangeValidationError
+from app.services.range_reconciliation import reconcile_future_range_assignments
+from app.services.ranges import RangeValidationError, _notify_refilled_assignments
 
 
 def _range_notification(session: Session, **kwargs):
@@ -72,7 +73,7 @@ def _recheck_soldier_assignments(session: Session, soldier_id: uuid.UUID) -> Non
 def request_primary_excusal(
     session: Session, *, assignment: RangeAssignment, reason: str, requested_by: uuid.UUID,
 ) -> RangeExcusalRequest:
-    _load_future_event(session, assignment)
+    assignment_event = _load_future_event(session, assignment)
     if assignment.is_reserve:
         raise RangeValidationError("assignment_is_reserve")
     if requested_by != assignment.soldier_id:
@@ -84,6 +85,13 @@ def request_primary_excusal(
     )
     session.add(request)
     session.flush()
+    # Same single reconciliation authority as the assignment-creation paths. With the
+    # pending request now flushed the source no longer provides guaranteed coverage,
+    # so this is a no-op today; it stays correct if that predicate ever changes.
+    reconcile_future_range_assignments(
+        session, soldier_id=assignment.soldier_id, source_event=assignment_event,
+        actor_id=requested_by,
+    )
     _recheck_soldier_assignments(session, assignment.soldier_id)
     _range_notification(
         session, soldier_id=assignment.soldier_id, type=NotificationType.range_excusal_pending,
@@ -221,6 +229,13 @@ def decide_primary_excusal(
             _recheck_soldier_assignments(session, _soldier_id)
 
         if promoted is not None:
+            # The promotion made this soldier a guaranteed primary coverage source for
+            # `event`, so their later duplicate assignments are now redundant. With no
+            # promotion nobody gained coverage, so there is nothing to reconcile.
+            reconciliation = reconcile_future_range_assignments(
+                session, soldier_id=promoted.soldier_id, source_event=event, actor_id=decided_by,
+            )
+            _notify_refilled_assignments(session, reconciliation)
             _range_notification(
                 session, soldier_id=promoted.soldier_id, type=NotificationType.range_reserve_promoted,
                 title="קודמת משיבוץ מילואים למטווח", reference_type="range_excusal_request",

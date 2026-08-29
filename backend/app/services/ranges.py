@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
@@ -28,6 +29,9 @@ from app.services.approval_scope import commander_chain_for_soldier
 from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.range_exemption import is_range_exempt
 from app.services.settings_loader import SettingNotFound, get_setting
+
+if TYPE_CHECKING:  # range_reconciliation imports this module at module scope
+    from app.services.range_reconciliation import ReconciliationResult
 
 
 class RangeValidationError(Exception):
@@ -71,6 +75,29 @@ _RANGE_TYPE_HE: dict[RangeType, str] = {
 
 def _range_assignment_body(event: RangeEvent) -> str:
     return f"{_RANGE_TYPE_HE.get(event.range_type, event.range_type.value)} · {event.date.strftime('%d.%m.%Y')}"
+
+
+def _notify_refilled_assignments(session: Session, reconciliation: ReconciliationResult) -> None:
+    """Tell every soldier auto-refilled into a slot vacated by reconciliation that
+    they are now assigned, using the same notification a directly created
+    assignment gets. Each refill lives on its own (later) event, so the body and
+    reference are taken from that assignment's event, not the source event.
+    The vacated-slot roster notification is already sent by the removal itself."""
+    for assignment_id in (
+        reconciliation.refilled_primary_assignment_ids
+        + reconciliation.refilled_reserve_assignment_ids
+    ):
+        assignment = session.get(RangeAssignment, assignment_id)
+        refilled_event = session.get(RangeEvent, assignment.range_event_id)
+        _range_notification(
+            session,
+            soldier_id=assignment.soldier_id,
+            type=NotificationType.range_assignment_confirmed,
+            title="שובצת למטווח",
+            body=_range_assignment_body(refilled_event),
+            reference_type="range_event",
+            reference_id=refilled_event.id,
+        )
 
 
 def _range_context(session: Session, event: RangeEvent, *, reason: str | None = None) -> str:
@@ -449,6 +476,12 @@ def add_range_assignment(
             session, soldier_id=soldier_id, assignment_kind="range",
             reason=override_reason.strip(), actor_id=user.id if user else None,
         )
+    # Deferred: range_reconciliation imports this module at module scope.
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    reconciliation = reconcile_future_range_assignments(
+        session, soldier_id=soldier_id, source_event=event, actor_id=user.id if user else None,
+    )
     _notify_roster_change(session, event=event, soldier_ids=existing_soldier_ids)
     _range_notification(
         session,
@@ -459,6 +492,7 @@ def add_range_assignment(
         reference_type="range_event",
         reference_id=event.id,
     )
+    _notify_refilled_assignments(session, reconciliation)
     session.commit()
     session.refresh(assignment)
     return assignment
@@ -508,6 +542,16 @@ def assign_batch(
     session.flush()
     from app.db.models import PersonalConstraintOverride
     from app.services.notifications import notify_personal_constraint_overridden
+
+    # Deferred: range_reconciliation imports this module at module scope.
+    from app.services.range_reconciliation import reconcile_future_range_assignments
+
+    for row, _constraint in rows_with_constraints:
+        reconciliation = reconcile_future_range_assignments(
+            session, soldier_id=row.soldier_id, source_event=event,
+            actor_id=user.id if user else None,
+        )
+        _notify_refilled_assignments(session, reconciliation)
 
     for row, constraint in rows_with_constraints:
         _range_notification(

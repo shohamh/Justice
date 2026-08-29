@@ -625,8 +625,11 @@ def test_reconciliation_removes_later_primary_and_reserve_in_event_date_order(ap
         event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
     )
     add_range_assignment(app_session, event=source_event, soldier_id=soldier.id, is_reserve=False)
-    later_reserve = add_range_assignment(app_session, event=later_reserve_event, soldier_id=soldier.id, is_reserve=True)
+    # The day-10 primary is created before the day-15 reserve: creating it afterwards
+    # would reconcile the reserve away itself, leaving nothing for the explicit call
+    # below (which is what this test is about) to remove.
     later_primary = add_range_assignment(app_session, event=later_primary_event, soldier_id=soldier.id, is_reserve=False)
+    later_reserve = add_range_assignment(app_session, event=later_reserve_event, soldier_id=soldier.id, is_reserve=True)
 
     result = reconcile_future_range_assignments(
         app_session, soldier_id=soldier.id, source_event=source_event, actor_id=None,
@@ -911,3 +914,85 @@ def test_reconciliation_refill_only_draws_from_event_subtree(app_session: Sessio
     refilled = app_session.get(RangeAssignment, result.refilled_primary_assignment_ids[0])
     assert refilled.soldier_id == in_subtree.id
     assert refilled.soldier_id != outside_subtree.id
+
+
+def test_add_range_assignment_reconciles_later_duplicate(app_session: Session) -> None:
+    """Creating the earlier assignment makes the later duplicate redundant: it is
+    removed and its slot refilled inside the same call."""
+    node = create_node(app_session, level="branch", name="wire add reconcile")
+    _weapon_duty_type(app_session, node=node, name="wire add reconcile weapon")
+    covered = create_soldier(app_session, personal_number="wire-001", hierarchy_node_id=node.id)
+    replacement = create_soldier(app_session, personal_number="wire-002", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="wire add reconcile range")
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id, required_count=1,
+    )
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id, required_count=1,
+    )
+    later = add_range_assignment(app_session, event=later_event, soldier_id=covered.id, is_reserve=False)
+
+    add_range_assignment(app_session, event=source_event, soldier_id=covered.id, is_reserve=False)
+
+    assert app_session.get(RangeAssignment, later.id) is None
+    refilled = app_session.execute(select(RangeAssignment).where(
+        RangeAssignment.range_event_id == later_event.id,
+    )).scalars().one()
+    assert refilled.soldier_id == replacement.id
+    assert refilled.is_reserve is False
+    assert app_session.execute(select(Notification).where(
+        Notification.soldier_id == replacement.id,
+        Notification.type == NotificationType.range_assignment_confirmed,
+        Notification.reference_id == later_event.id,
+    )).scalars().one() is not None
+
+
+def test_assign_batch_reconciles_created_rows(app_session: Session) -> None:
+    """Every row the batch creates reconciles forward: the primary rows clear their
+    soldiers' later duplicates (primary and reserve slots alike), while a reserve row
+    is not yet guaranteed coverage and leaves later assignments alone."""
+    node = create_node(app_session, level="branch", name="wire batch reconcile")
+    _weapon_duty_type(app_session, node=node, name="wire batch reconcile weapon")
+    covered_primary = create_soldier(app_session, personal_number="wire-003", hierarchy_node_id=node.id)
+    covered_reserve = create_soldier(app_session, personal_number="wire-004", hierarchy_node_id=node.id)
+    batch_reserve = create_soldier(app_session, personal_number="wire-005", hierarchy_node_id=node.id)
+    create_soldier(app_session, personal_number="wire-006", hierarchy_node_id=node.id)
+    create_soldier(app_session, personal_number="wire-007", hierarchy_node_id=node.id)
+    location = create_range_location(app_session, name="wire batch reconcile range")
+    later_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=10), range_location_id=location.id,
+        required_count=1, reserve_count=1,
+    )
+    reserve_source_target_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=12), range_location_id=location.id, required_count=1,
+    )
+    source_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=5), range_location_id=location.id,
+        required_count=2, reserve_count=1,
+    )
+    later_primary = add_range_assignment(app_session, event=later_event, soldier_id=covered_primary.id, is_reserve=False)
+    later_reserve = add_range_assignment(app_session, event=later_event, soldier_id=covered_reserve.id, is_reserve=True)
+    untouched = add_range_assignment(
+        app_session, event=reserve_source_target_event, soldier_id=batch_reserve.id, is_reserve=False,
+    )
+
+    assign_batch(
+        app_session, event=source_event,
+        primary_soldier_ids=[covered_primary.id, covered_reserve.id],
+        reserve_soldier_ids=[batch_reserve.id],
+    )
+
+    assert app_session.get(RangeAssignment, later_primary.id) is None
+    assert app_session.get(RangeAssignment, later_reserve.id) is None
+    # The batch's reserve row is not guaranteed coverage until attendance is marked.
+    assert app_session.get(RangeAssignment, untouched.id) is not None
+    refills = app_session.execute(select(RangeAssignment).where(
+        RangeAssignment.range_event_id == later_event.id,
+    )).scalars().all()
+    assert sorted(row.is_reserve for row in refills) == [False, True]
+    assert {covered_primary.id, covered_reserve.id}.isdisjoint({row.soldier_id for row in refills})
