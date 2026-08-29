@@ -596,8 +596,6 @@ def _remove_range_assignment_in_transaction(
     if event is not None:
         if event.status != RangeEventStatus.planned:
             raise RangeValidationError("event_not_planned")
-        if event.date < date.today():
-            raise RangeValidationError("event_already_happened")
     remaining_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
         RangeAssignment.range_event_id == assignment.range_event_id,
         RangeAssignment.id != assignment.id,

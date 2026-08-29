@@ -441,9 +441,10 @@ def test_remove_range_assignment_rejects_when_event_already_happened(app_session
         range_event_id=event.id, soldier_id=soldier.id, is_reserve=False,
     )
     app_session.add(assignment)
+    event.status = RangeEventStatus.completed
     app_session.commit()
 
-    with pytest.raises(RangeValidationError, match="event_already_happened"):
+    with pytest.raises(RangeValidationError, match="event_not_planned"):
         remove_range_assignment(app_session, assignment=assignment, reason="test removal")
 
 
