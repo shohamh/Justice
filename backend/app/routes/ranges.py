@@ -583,6 +583,26 @@ def remove_assignment(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@router.delete("/{event_id}/assignments", response_model=None, status_code=status.HTTP_200_OK)
+def clear_assignments(
+    event_id: uuid.UUID,
+    body: RemoveAssignmentBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    """Remove every assignment on the event in one round trip — the bulk
+    counterpart of `remove_assignment`, used when clearing a whole event's
+    roster instead of one soldier at a time (see `clear_range_assignments`)."""
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    try:
+        cleared = svc.clear_range_assignments(session, event=event, reason=body.reason, actor_id=user.id)
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"cleared_assignments": cleared}
+
+
 @router.get("/{event_id}", response_model=RangeEventOut)
 def get_range_event(
     event_id: uuid.UUID,
