@@ -112,6 +112,33 @@ describe("NotificationsPage", () => {
     expect(screen.queryByLabelText("אשר")).not.toBeInTheDocument();
   });
 
+  it("translates system notifications and expands the full details", async () => {
+    vi.mocked(listNotifications).mockResolvedValue({
+      items: [{
+        id: "notification-1", soldier_id: "soldier-1", title: "Range roster changed",
+        body: "date=2026-09-23 | type=alal | location=אימונים | primary=20/25 | reserve=4/5",
+        type: "range_roster_changed", reference_type: "range_event", reference_id: "evt1",
+        is_read: false, created_at: "2026-08-29T15:59:51Z",
+        metadata: {
+          range_date: "2026-09-23", range_type: "alal", range_location: "אימונים",
+          primary_filled: 20, primary_capacity: 25, reserve_filled: 4, reserve_capacity: 5,
+        },
+      }],
+      total: 1,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("שינוי בסגל המטווח")).toBeInTheDocument();
+    expect(screen.queryByText("תאריך: 23.09.2026")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "הצג פרטים" }));
+
+    expect(screen.getByText("תאריך: 23.09.2026")).toBeInTheDocument();
+    expect(screen.getByText('סוג מטווח: אל"ל')).toBeInTheDocument();
+    expect(screen.getByText("מיקום: אימונים")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "הסתר פרטים" })).toBeInTheDocument();
+  });
+
   it("shows approve/reject for swap_offer_incoming and calls the soldier-decision API", async () => {
     vi.mocked(listNotifications).mockResolvedValue({
       items: [{
@@ -125,7 +152,7 @@ describe("NotificationsPage", () => {
 
     renderPage();
 
-    await screen.findByText("הצעת החלפה");
+    await screen.findByText("הצעת החלפה נכנסת");
     fireEvent.click(screen.getByLabelText("אשר"));
 
     await waitFor(() => expect(swapsApi.soldierApproveSwap).toHaveBeenCalledWith("req1"));
@@ -144,7 +171,7 @@ describe("NotificationsPage", () => {
 
     renderPage();
 
-    await screen.findByText("בקשת פטור ממטווח");
+    await screen.findByText("בקשת פטור ממטווח ממתינה");
     fireEvent.click(screen.getByLabelText("דחה"));
 
     await waitFor(() => expect(rangesApi.decideRangeExcusal).toHaveBeenCalledWith("evt1", "req1", false));
