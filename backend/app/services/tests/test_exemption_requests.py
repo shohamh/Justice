@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from app.db.models import (
+    CommanderNotificationScope,
     DutyManagerScope,
     ExemptionType,
     HierarchyLevelType,
@@ -96,6 +97,44 @@ def test_approve_commander_step_notifies_duty_managers(app_session):
         soldier_id=dm.id, type=NotificationType.exemption_request_pending,
     ).one_or_none()
     assert notif is not None
+
+
+def test_submit_request_tags_target_tab_by_recipient_authority(app_session):
+    """The commander-notification cascade (CommanderNotificationScope) notifies
+    every commander who opted into visibility over the soldier's subtree —
+    wider than who can actually decide the commander step. A notified admin
+    can always decide (exemption_approval_flags short-circuits on role ==
+    "admin"), so their notification should point at the "exemptions" tab; a
+    plain soldier with no command/DM authority cannot, so theirs should point
+    at "waiting" instead — see _exemption_actionable_check."""
+    node = HierarchyNode(level="unit", name="target-tab-node", path_ids=[])
+    app_session.add(node)
+    app_session.flush()
+    node.path_ids = [node.id]
+    app_session.flush()
+
+    et = ExemptionType(name="פטור רפואי - target tab")
+    app_session.add(et)
+    app_session.flush()
+
+    soldier = _soldier(app_session, hierarchy_node_id=node.id)
+    actionable_recipient = _soldier(app_session, role="admin")
+    non_actionable_recipient = _soldier(app_session)
+    app_session.add(CommanderNotificationScope(commander_id=actionable_recipient.id, hierarchy_node_id=node.id))
+    app_session.add(CommanderNotificationScope(commander_id=non_actionable_recipient.id, hierarchy_node_id=node.id))
+    app_session.flush()
+
+    submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
+
+    actionable_notif = app_session.query(Notification).filter_by(
+        soldier_id=actionable_recipient.id, type=NotificationType.exemption_request_pending,
+    ).one()
+    assert actionable_notif.metadata_json == {"target_tab": "exemptions"}
+
+    waiting_notif = app_session.query(Notification).filter_by(
+        soldier_id=non_actionable_recipient.id, type=NotificationType.exemption_request_pending,
+    ).one()
+    assert waiting_notif.metadata_json == {"target_tab": "waiting"}
 
 
 def test_approve_duty_manager_step_finalizes_and_creates_exemption(app_session):

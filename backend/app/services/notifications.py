@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import secrets
 import uuid
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import or_, select
@@ -37,34 +38,43 @@ DEFAULT_PENDING_MAX_DEPTH = 2
 _ANNOUNCEMENT_DUPLICATE_COOLDOWN = timedelta(minutes=5)
 
 _FRONTEND_PATHS: dict[str, str] = {
-    "constraint_pending": "/constraints",
-    "constraint_approved": "/constraints",
-    "constraint_rejected": "/constraints",
-    "personal_constraint_overridden": "/constraints",
-    "exemption_request_pending": "/exemption-requests",
-    "exemption_approved": "/exemption-requests",
-    "exemption_rejected": "/exemption-requests",
+    # constraint_pending/exemption_request_pending/swap_pending_approval/
+    # transfer_request_pending/enrollment_request_received are only ever sent
+    # to commanders/duty managers being asked to decide something (never to
+    # the requesting soldier) — see notify_commanders_of_request /
+    # notify_duty_managers_of_request / cascade_to_commanders callers — so a
+    # single per-type Approvals tab is always correct here, unlike the
+    # *_approved/*_rejected outcome types below, which go to the soldier.
+    "constraint_pending": "/approvals?tab=constraints",
+    "constraint_approved": "/my-requests",
+    "constraint_rejected": "/my-requests",
+    "personal_constraint_overridden": "/my-requests",
+    "exemption_request_pending": "/approvals?tab=exemptions",
+    "exemption_approved": "/my-requests",
+    "exemption_rejected": "/my-requests",
+    "swap_pending_approval": "/approvals?tab=swaps",
     "swap_offer": "/swaps",
     "swap_offer_incoming": "/swaps",
     "swap_accepted": "/swaps",
     "swap_rejected": "/swaps",
-    "assignment_created": "/schedule",
-    "assignment_removed": "/schedule",
+    "transfer_request_pending": "/approvals?tab=transfers",
+    "assignment_created": "/my-duties",
+    "assignment_removed": "/my-duties",
     "range_assignment_confirmed": "/ranges",
     "range_roster_changed": "/ranges",
     "range_cancelled": "/ranges",
     "range_no_show": "/ranges",
     "score_adjusted": "/profile",
     "announcement": "/notifications",
-    "algorithm_job_done": "/algorithm",
-    "algorithm_job_failed": "/algorithm",
-    "enrollment_request_received": "/approvals",
+    "algorithm_job_done": "/planning/shifts",
+    "algorithm_job_failed": "/planning/shifts",
+    "enrollment_request_received": "/approvals?tab=enrollment",
     "enrollment_approved": "/profile",
     "enrollment_rejected": "/profile",
-    "gimelim_dismissed": "/schedule",
-    "gimelim_reserve_called_up": "/schedule",
-    "gimelim_demoted_to_reserve": "/schedule",
-    "gimelim_reassigned": "/schedule",
+    "gimelim_dismissed": "/my-duties",
+    "gimelim_reserve_called_up": "/my-duties",
+    "gimelim_demoted_to_reserve": "/my-duties",
+    "gimelim_reassigned": "/my-duties",
     "rank_advanced": "/profile",
     "rank_advancement_soon": "/profile",
     "mitvahim_expiring_soon": "/profile",
@@ -72,6 +82,15 @@ _FRONTEND_PATHS: dict[str, str] = {
     "alal_expiring_soon": "/profile",
     "alal_expired": "/profile",
     "bug_report_comment": "/",
+}
+
+# Notification types whose Telegram/email deep link needs a reference_id
+# appended as a query param — matches the frontend's getNotificationLink
+# deep-linking for the same types (see frontend/src/api/notifications.ts).
+_FRONTEND_QUERY_PARAM: dict[str, str] = {
+    "bug_report_comment": "bugReport",
+    "algorithm_job_done": "jobId",
+    "algorithm_job_failed": "jobId",
 }
 
 
@@ -117,8 +136,10 @@ def _frontend_url(
     from app.settings import get_settings
     base = get_settings().frontend_url.rstrip("/")
     path = _FRONTEND_PATHS.get(notification_type.value, "/notifications")
-    if notification_type == NotificationType.bug_report_comment and reference_id is not None:
-        path = f"{path}?bugReport={reference_id}"
+    param = _FRONTEND_QUERY_PARAM.get(notification_type.value)
+    if param is not None and reference_id is not None:
+        separator = "&" if "?" in path else "?"
+        path = f"{path}{separator}{param}={reference_id}"
     return f"{base}{path}"
 
 
@@ -386,12 +407,17 @@ def notify_commanders_of_request(
     reference_type: str | None = None,
     reference_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
+    target_tab: str | None = None,
+    is_actionable: Callable[[uuid.UUID], bool] | None = None,
 ) -> None:
-    """Send notification only to commanders in scope — not to the soldier themselves."""
+    """Send notification only to commanders in scope — not to the soldier themselves.
+
+    `target_tab`/`is_actionable`: see `cascade_to_commanders`."""
     cascade_to_commanders(
         session, type=type, title=title, body=body,
         reference_type=reference_type, reference_id=reference_id,
         actor_id=actor_id, original_soldier_id=soldier_id,
+        target_tab=target_tab, is_actionable=is_actionable,
     )
 
 
@@ -405,12 +431,20 @@ def notify_duty_managers_of_request(
     reference_type: str | None = None,
     reference_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
+    target_tab: str | None = None,
+    is_actionable: Callable[[uuid.UUID], bool] | None = None,
 ) -> None:
     """Send notification only to duty managers whose scope covers the soldier's
     node at or above the regular-exemption approval level — not to commanders.
 
     Used for commander-escalated exemption requests, which start at
-    pending_duty_manager and so skip the commander notification cascade."""
+    pending_duty_manager and so skip the commander notification cascade.
+
+    `target_tab`/`is_actionable`: see `cascade_to_commanders` — this cascade's
+    scope (any DM whose DutyManagerScope covers the node) is likewise wider
+    than who can actually act (only the nearest DM in the approval chain, or a
+    senior override), so a caller that cares which Approvals sub-tab each
+    recipient will find their item in should pass both."""
     from app.services.authority import REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY, dm_scope_covers_target
 
     soldier = session.get(Soldier, soldier_id)
@@ -446,7 +480,20 @@ def notify_duty_managers_of_request(
                 title=f"{soldier.full_name}: {title}", body=body,
                 reference_type=reference_type, reference_id=reference_id,
                 actor_id=actor_id,
+                metadata=_tab_metadata(target_tab, is_actionable, recipient_id),
             )
+
+
+def _tab_metadata(
+    target_tab: str | None, is_actionable: Callable[[uuid.UUID], bool] | None, recipient_id: uuid.UUID,
+) -> dict | None:
+    """Resolve a notified recipient's Approvals-page destination tab. Returns
+    None when the caller didn't ask for tab routing (the common case — most
+    cascades aren't approval-queue notifications at all)."""
+    if target_tab is None:
+        return None
+    actionable = is_actionable(recipient_id) if is_actionable is not None else True
+    return {"target_tab": target_tab if actionable else "waiting"}
 
 
 def cascade_to_commanders(
@@ -454,6 +501,8 @@ def cascade_to_commanders(
     body: str | None, reference_type: str | None,
     reference_id: uuid.UUID | None, actor_id: uuid.UUID | None,
     original_soldier_id: uuid.UUID,
+    target_tab: str | None = None,
+    is_actionable: Callable[[uuid.UUID], bool] | None = None,
 ) -> None:
     soldier = session.get(Soldier, original_soldier_id)
     if soldier is None or soldier.hierarchy_node_id is None:
@@ -495,6 +544,7 @@ def cascade_to_commanders(
                 type=type, title=f"{soldier.full_name}: {title}",
                 body=body, reference_type=reference_type,
                 reference_id=reference_id, actor_id=actor_id,
+                metadata=_tab_metadata(target_tab, is_actionable, recipient_id),
             )
 
 

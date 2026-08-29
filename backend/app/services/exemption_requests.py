@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import ExemptionRequest, ExemptionType, NotificationType, SoldierExemption
+from app.db.models import ExemptionRequest, ExemptionType, HierarchyNode, NotificationType, Soldier, SoldierExemption
+from app.services.approval_scope import exemption_approval_flags
 from app.services.date_validation import check_max_span
 from app.services.exemptions import ExemptionError, grant_commander_exemption
 from app.services.notifications import create_notification
@@ -16,6 +18,33 @@ def _format_exemption_period(start_date: date | None, end_date: date | None) -> 
     if start_date is None or end_date is None:
         return "קבוע"
     return f"{start_date.isoformat()}–{end_date.isoformat()}"
+
+
+def _exemption_actionable_check(
+    session: Session, subject_soldier_id: uuid.UUID, step: str,
+) -> Callable[[uuid.UUID], bool]:
+    """Build an `is_actionable(recipient_id)` predicate for the notification
+    cascade: whether a notified commander/DM can actually decide `step`
+    ("commander" or "duty_manager") for the exemption request belonging to
+    `subject_soldier_id`. The cascade's own scope (CommanderNotificationScope/
+    DutyManagerScope) is visibility-based and wider than actual approval
+    authority, so this is what lets the notification point a non-deciding
+    recipient at the Approvals page's "waiting" tab instead of "exemptions"."""
+    subject = session.get(Soldier, subject_soldier_id)
+    target_node = (
+        session.get(HierarchyNode, subject.hierarchy_node_id)
+        if subject is not None and subject.hierarchy_node_id is not None
+        else None
+    )
+
+    def check(recipient_id: uuid.UUID) -> bool:
+        recipient = session.get(Soldier, recipient_id)
+        if recipient is None:
+            return False
+        can_commander_step, can_dm_step = exemption_approval_flags(session, recipient, target_node)
+        return can_commander_step if step == "commander" else can_dm_step
+
+    return check
 
 
 class ExemptionRequestError(ValueError):
@@ -85,6 +114,8 @@ def submit_request(
         reference_type="exemption_request",
         reference_id=req.id,
         actor_id=None,
+        target_tab="exemptions",
+        is_actionable=_exemption_actionable_check(session, soldier_id, "commander"),
     )
     return req
 
@@ -148,6 +179,8 @@ def submit_commander_escalation(
         reference_type="exemption_request",
         reference_id=req.id,
         actor_id=actor_id,
+        target_tab="exemptions",
+        is_actionable=_exemption_actionable_check(session, soldier_id, "duty_manager"),
     )
     return req
 
@@ -202,6 +235,8 @@ def approve_commander_step(
         reference_type="exemption_request",
         reference_id=req.id,
         actor_id=approved_by,
+        target_tab="exemptions",
+        is_actionable=_exemption_actionable_check(session, req.soldier_id, "duty_manager"),
     )
     return req
 
