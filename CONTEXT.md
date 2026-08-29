@@ -30,6 +30,24 @@ _Avoid_: comment image, feedback file
 
 ## Requests and approvals
 
+## Range assignments
+
+**Responsible duty manager**:
+The single duty manager accountable for deciding which pending assignment requests become official assignments for a scheduled range event.
+_Avoid_: range owner, approving duty manager
+
+**Assignment request (בקשה לשיבוץ)**:
+A duty-manager nomination of a soldier for a scheduled range event that is awaiting the responsible duty manager's decision; it is not an official assignment and creates no attendance obligation.
+_Avoid_: proposal, range assignment, confirmed assignment
+
+**Official range assignment**:
+An approved placement of a soldier in a scheduled range event's primary or reserve capacity that creates an obligation to attend.
+_Avoid_: pending assignment, assignment request
+
+**Reserve waiting list**:
+Valid assignment requests retained after both primary and reserve capacity is full, available for the responsible duty manager to approve when reserve capacity opens.
+_Avoid_: overflow assignment, automatic reserve
+
 **Personal constraint (אילוץ אישי)**:
 A recurring personal limitation a soldier submits that restricts which duties can be assigned to them.
 _Avoid_: constraint request, restriction

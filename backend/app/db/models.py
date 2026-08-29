@@ -1022,6 +1022,14 @@ class RangeExcusalStatus(str, _enum.Enum):
     rejected = "rejected"
 
 
+class RangeAssignmentRequestStatus(str, _enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    withdrawn = "withdrawn"
+    commander_removed = "commander_removed"
+
+
 class RangeLocation(Base):
     __tablename__ = "range_locations"
 
@@ -1065,6 +1073,9 @@ class RangeEvent(Base):
         default=RangeEventStatus.planned,
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    responsible_duty_manager_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
@@ -1114,6 +1125,44 @@ class RangeAssignment(Base):
     score_adjustment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("score_adjustments.id", ondelete="SET NULL"), nullable=True, default=None
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class RangeAssignmentRequest(Base):
+    __tablename__ = "range_assignment_requests"
+    __table_args__ = (
+        sa.Index("ix_range_assignment_requests_event_status", "range_event_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    range_event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_events.id", ondelete="CASCADE")
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    requested_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="RESTRICT")
+    )
+    reason: Mapped[str] = mapped_column(Text)
+    system_reason_code: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    system_reason_text: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    status: Mapped[str] = mapped_column(
+        Enum(RangeAssignmentRequestStatus, name="range_assignment_request_status"),
+        server_default=text("'pending'"), default=RangeAssignmentRequestStatus.pending,
+    )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    approved_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_assignments.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -1433,6 +1482,7 @@ class NotificationType(str, _enum.Enum):
     range_reserve_excused = "range_reserve_excused"
     range_excusal_no_backfill = "range_excusal_no_backfill"
     range_absence_reported_to_commander = "range_absence_reported_to_commander"
+    range_assignment_request_pending = "range_assignment_request_pending"
     range_attendance_corrected_to_present = "range_attendance_corrected_to_present"
     bug_report_comment = "bug_report_comment"
     weapon_ineligible_detected = "weapon_ineligible_detected"

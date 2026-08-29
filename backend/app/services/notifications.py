@@ -51,6 +51,7 @@ _FRONTEND_PATHS: dict[str, str] = {
     "assignment_created": "/schedule",
     "assignment_removed": "/schedule",
     "range_assignment_confirmed": "/ranges",
+    "range_assignment_request_pending": "/ranges",
     "range_roster_changed": "/ranges",
     "range_cancelled": "/ranges",
     "range_no_show": "/ranges",
