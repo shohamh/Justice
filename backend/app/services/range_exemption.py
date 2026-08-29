@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import node_in_scope
-from app.db.models import DutyType, ExemptionType, HierarchyNode, Soldier, SoldierExemption
+from app.db.models import ExemptionType, HierarchyNode, Soldier, SoldierExemption
 
 
 def _has_covering_weapon_exemption(session: Session, *, soldier_id, event_date: date) -> bool:
@@ -27,25 +27,26 @@ def _has_covering_weapon_exemption(session: Session, *, soldier_id, event_date: 
     return False
 
 
-def _has_any_eligible_weapon_duty_type(session: Session, *, soldier: Soldier) -> bool:
+def _has_any_eligible_weapon_duty_type(session: Session, *, soldier: Soldier, range_type: str) -> bool:
     if soldier.hierarchy_node_id is None:
         return False
     node = session.get(HierarchyNode, soldier.hierarchy_node_id)
     if node is None:
         return False
-    weapon_duty_types = session.execute(
-        select(DutyType).where(DutyType.requires_weapon.is_(True), DutyType.active.is_(True))
-    ).scalars().all()
-    for duty_type in weapon_duty_types:
+    from app.services.range_coverage import relevant_duty_types
+
+    for duty_type in relevant_duty_types(session, range_type=range_type):
         if node_in_scope(duty_type.eligible_node_ids, node.path_ids):
             return True
     return False
 
 
-def is_range_exempt(session: Session, *, soldier: Soldier, event_date: date) -> bool:
-    """True iff the soldier is exempt from a range event on event_date, per either:
-    (1) an active global or weapons-forbidding exemption covering that date, or
-    (2) structural ineligibility for any weapon-requiring duty type."""
+def is_range_exempt(session: Session, *, soldier: Soldier, event_date: date, range_type: str) -> bool:
+    """True iff the soldier is exempt from a range event of `range_type` on
+    event_date, per either: (1) an active global or weapons-forbidding exemption
+    covering that date, or (2) structural ineligibility for any duty type this
+    range type is relevant to (see `relevant_duty_types` — a soldier needing only
+    a lower tier is exempt from a higher-tier event like alal)."""
     if _has_covering_weapon_exemption(session, soldier_id=soldier.id, event_date=event_date):
         return True
-    return not _has_any_eligible_weapon_duty_type(session, soldier=soldier)
+    return not _has_any_eligible_weapon_duty_type(session, soldier=soldier, range_type=range_type)

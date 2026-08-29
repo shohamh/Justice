@@ -30,7 +30,7 @@ def test_global_exemption_covering_event_date_exempts(app_session: Session) -> N
     soldier = create_soldier(app_session, personal_number="2000001", hierarchy_node_id=node.id)
     _grant_exemption(app_session, soldier.id, is_global=True, end_date=None)
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 10, 1)) is True
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 10, 1), range_type="laser") is True
 
 
 def test_time_limited_forbids_weapons_exemption_covering_event_date_exempts(app_session: Session) -> None:
@@ -41,7 +41,7 @@ def test_time_limited_forbids_weapons_exemption_covering_event_date_exempts(app_
         start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
     )
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is True
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is True
 
 
 def test_expired_forbids_weapons_exemption_does_not_exempt(app_session: Session) -> None:
@@ -60,7 +60,7 @@ def test_expired_forbids_weapons_exemption_does_not_exempt(app_session: Session)
     app_session.add(weapon_duty)
     app_session.flush()
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
 
 
 def test_plain_exemption_not_global_not_forbids_weapons_does_not_exempt(app_session: Session) -> None:
@@ -76,7 +76,7 @@ def test_plain_exemption_not_global_not_forbids_weapons_does_not_exempt(app_sess
     app_session.add(weapon_duty)
     app_session.flush()
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
 
 
 def test_structurally_ineligible_for_any_weapon_duty_type_exempts(app_session: Session) -> None:
@@ -90,7 +90,7 @@ def test_structurally_ineligible_for_any_weapon_duty_type_exempts(app_session: S
     app_session.add(weapon_duty)
     app_session.flush()
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is True
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is True
 
 
 def test_eligible_for_a_weapon_duty_type_does_not_exempt(app_session: Session) -> None:
@@ -103,14 +103,14 @@ def test_eligible_for_a_weapon_duty_type_does_not_exempt(app_session: Session) -
     app_session.add(weapon_duty)
     app_session.flush()
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
 
 
 def test_no_weapon_duty_types_exist_at_all_exempts(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ח")
     soldier = create_soldier(app_session, personal_number="2000007", hierarchy_node_id=node.id)
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is True
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is True
 
 
 def test_eligible_via_descendant_node_of_duty_types_eligible_node(app_session: Session) -> None:
@@ -124,7 +124,7 @@ def test_eligible_via_descendant_node_of_duty_types_eligible_node(app_session: S
     app_session.add(weapon_duty)
     app_session.flush()
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
 
 
 def test_eligible_when_duty_type_has_unrestricted_eligible_node_ids(app_session: Session) -> None:
@@ -137,7 +137,7 @@ def test_eligible_when_duty_type_has_unrestricted_eligible_node_ids(app_session:
     app_session.add(weapon_duty)
     app_session.flush()
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
 
 
 def test_plain_exemption_plus_structural_ineligibility_still_exempts(app_session: Session) -> None:
@@ -147,4 +147,45 @@ def test_plain_exemption_plus_structural_ineligibility_still_exempts(app_session
     # No requires_weapon=True duty type is eligible for this node -> structurally exempt,
     # and the presence of the unrelated plain exemption above must not change that.
 
-    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is True
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is True
+
+
+def test_soldier_needing_only_laser_is_exempt_from_alal_event(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה לייזר בלבד")
+    soldier = create_soldier(app_session, personal_number="2000011", hierarchy_node_id=node.id)
+    laser_duty = DutyType(
+        name="שמירה לייזר בלבד", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type="laser", eligible_node_ids=[node.id],
+    )
+    app_session.add(laser_duty)
+    app_session.flush()
+
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="alal") is True
+
+
+def test_soldier_needing_alal_is_not_exempt_from_alal_event(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה הגנש")
+    soldier = create_soldier(app_session, personal_number="2000012", hierarchy_node_id=node.id)
+    alal_duty = DutyType(
+        name='הגנ"ש בדיקה', score_per_day=Decimal("1.00"),
+        requires_weapon=False, required_range_type="alal", eligible_node_ids=[node.id],
+    )
+    app_session.add(alal_duty)
+    app_session.flush()
+
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="alal") is False
+
+
+def test_generic_untiered_weapon_duty_is_relevant_to_any_range_type(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה כללי")
+    soldier = create_soldier(app_session, personal_number="2000013", hierarchy_node_id=node.id)
+    generic_duty = DutyType(
+        name="ליווים בדיקה", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=None, eligible_node_ids=[node.id],
+    )
+    app_session.add(generic_duty)
+    app_session.flush()
+
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="laser") is False
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1), range_type="alal") is False

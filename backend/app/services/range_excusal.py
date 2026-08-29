@@ -160,7 +160,7 @@ def _eligible_assigned_reserves(session: Session, *, event: RangeEvent) -> list[
     eligible: list[RangeAssignment] = []
     for assignment in rows:
         soldier = session.get(Soldier, assignment.soldier_id)
-        if soldier is None or is_range_exempt(session, soldier=soldier, event_date=event.date):
+        if soldier is None or is_range_exempt(session, soldier=soldier, event_date=event.date, range_type=event.range_type):
             continue
         if any(start <= event.date <= end for start, end in get_approved_constraint_dates(session, soldier_id=soldier.id)):
             continue

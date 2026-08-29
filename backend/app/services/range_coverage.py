@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.db.models import (
     RANGE_TYPE_RANK,
+    DutyType,
     RangeAssignment,
     RangeAttendanceStatus,
     RangeEvent,
@@ -21,6 +22,27 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.ranges import _validity_days
+
+
+def relevant_duty_types(session: Session, *, range_type: str) -> list[DutyType]:
+    """Active DutyTypes a range event of `range_type` is relevant to: those whose
+    `required_range_type` is exactly `range_type` (mirrors `alal_relevance.py`'s
+    `active_alal_duty_types`, generalized to every tier — a soldier needing only a
+    lower tier, e.g. laser, is not thereby relevant to a higher-tier event like
+    alal), plus generic weapon duty types with no specific tier at all
+    (`required_range_type IS NULL`), which apply to any range type — this is the
+    single authority for "does this soldier's duty load make them a candidate for
+    this specific range type," shared by structural eligibility and candidate
+    ranking so neither can drift from the other."""
+    return list(session.execute(
+        select(DutyType).where(
+            DutyType.active.is_(True),
+            or_(
+                DutyType.required_range_type == range_type,
+                and_(DutyType.required_range_type.is_(None), DutyType.requires_weapon.is_(True)),
+            ),
+        )
+    ).scalars())
 
 
 CoverageKind = Literal["qualification", "primary_range", "reserve_range", "none"]

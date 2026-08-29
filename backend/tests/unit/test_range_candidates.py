@@ -18,7 +18,7 @@ from app.db.models import (
     SoldierExemption,
     SoldierRangeQualification,
 )
-from app.services.range_auto_assign import rank_candidates, rank_candidates_with_excluded
+from app.services.range_auto_assign import excluded_candidates, rank_candidates, rank_candidates_with_excluded
 from app.services.ranges import add_range_assignment, create_range_event
 from app.services.settings_loader import set_setting
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
@@ -815,6 +815,56 @@ def test_reason_code_reserve_duty_priority_for_future_reserve_weapon_duty(app_se
     assert mine.explanation == f"תורנות רזרבה קרובה ב-{future_duty_date.strftime('%d.%m.%Y')}"
 
 
+def test_candidate_ranking_ignores_urgent_duty_needing_a_lower_range_tier(app_session: Session) -> None:
+    """A soldier's upcoming duty must only boost their priority for a range event
+    whose range_type it actually needs — an urgent laser-tier duty must not make
+    a soldier look urgent for an alal event they don't structurally need it for."""
+    node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות לפי סוג מטווח")
+    dm = _dm_for(app_session, node, personal_number="7020001")
+    # A generic, untiered weapon duty keeps both soldiers structurally eligible for
+    # any range type, isolating this test to ranking priority, not the hard gate.
+    _weapon_duty_type(app_session, node=node, name="ליווים עדיפות מטווח")
+    laser_duty = DutyType(
+        name="שמירה לייזר עדיפות מטווח", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    )
+    alal_duty = DutyType(
+        name='הגנ"ש עדיפות מטווח', score_per_day=Decimal("1.00"),
+        requires_weapon=False, required_range_type=RangeType.alal, eligible_node_ids=[node.id],
+    )
+    app_session.add_all([laser_duty, alal_duty])
+    app_session.flush()
+    location = create_duty_location(app_session)
+
+    laser_only_soldier = create_soldier(app_session, personal_number="7020002", hierarchy_node_id=node.id)
+    alal_soldier = create_soldier(app_session, personal_number="7020003", hierarchy_node_id=node.id)
+    future_duty_date = date.today() + timedelta(days=7)
+    app_session.add_all([
+        DutyAssignment(
+            soldier_id=laser_only_soldier.id, duty_type_id=laser_duty.id, duty_location_id=location.id,
+            start_date=future_duty_date, end_date=future_duty_date, status="published",
+        ),
+        DutyAssignment(
+            soldier_id=alal_soldier.id, duty_type_id=alal_duty.id, duty_location_id=location.id,
+            start_date=future_duty_date, end_date=future_duty_date, status="published",
+        ),
+    ])
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח עדיפות אלל").id,
+        required_count=2,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    laser_candidate = next(c for c in ranked if c.soldier.id == laser_only_soldier.id)
+    alal_candidate = next(c for c in ranked if c.soldier.id == alal_soldier.id)
+    assert laser_candidate.reason_code == "available_and_balanced"
+    assert alal_candidate.reason_code == "duty_priority"
+
+
 def test_regular_duty_outranks_reserve_duty(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגת עדיפות משולבת")
     dm = _dm_for(app_session, node, personal_number="7010007")
@@ -926,6 +976,52 @@ def test_excluded_candidates_reports_reasons_and_omits_them_from_ranking(app_ses
     assert reasons_by_id[structurally_ineligible_soldier.id] == "structurally_ineligible"
     assert reasons_by_id[elsewhere_soldier.id] == "assigned_elsewhere_same_day"
     assert eligible_soldier.id not in reasons_by_id
+
+
+def test_candidates_exclude_soldier_needing_only_a_lower_range_tier_from_alal_event(app_session: Session) -> None:
+    """A soldier whose only duty type requires laser must be structurally
+    ineligible for an alal event, even though they're a normal weapon-carrying
+    soldier for laser/live purposes — attending alal isn't relevant to them."""
+    node = create_node(app_session, level="פלוגה", name="פלוגת לייזר בלבד מועמדים")
+    dm = _dm_for(app_session, node, personal_number="7030001")
+    laser_only_soldier = create_soldier(app_session, personal_number="7030002", hierarchy_node_id=node.id)
+    app_session.add(DutyType(
+        name="שמירה לייזר מועמדים בלבד", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח אלל מועמדים").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+    excluded = excluded_candidates(app_session, event=event, user=dm)
+
+    assert laser_only_soldier.id not in {c.soldier.id for c in ranked}
+    reasons_by_id = {x.soldier_id: x.reason for x in excluded}
+    assert reasons_by_id[laser_only_soldier.id] == "structurally_ineligible"
+
+
+def test_candidates_include_soldier_needing_alal_for_alal_event(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגת הגנש מועמדים")
+    dm = _dm_for(app_session, node, personal_number="7030003")
+    alal_soldier = create_soldier(app_session, personal_number="7030004", hierarchy_node_id=node.id)
+    app_session.add(DutyType(
+        name='הגנ"ש מועמדים בדיקה', score_per_day=Decimal("1.00"),
+        requires_weapon=False, required_range_type=RangeType.alal, eligible_node_ids=[node.id],
+    ))
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="מטווח אלל מועמדים ב").id, required_count=1,
+    )
+
+    ranked = rank_candidates(app_session, event=event, user=dm)
+
+    assert alal_soldier.id in {c.soldier.id for c in ranked}
 
 
 def test_admin_sees_soldiers_across_the_whole_tree(app_session: Session) -> None:
