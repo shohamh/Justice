@@ -16,6 +16,7 @@ from app.db.models import (
     DutyManagerScope,
     HierarchyNode,
     RangeAssignment,
+    RangeAssignmentRequest,
     RangeAttendanceStatus,
     RangeEvent,
     RangeExcusalRequest,
@@ -25,6 +26,7 @@ from app.db.models import (
 from app.db.session import get_session
 from app.services import range_auto_assign as auto_assign_svc
 from app.services import range_excusal as excusal_svc
+from app.services import range_assignment_requests as assignment_request_svc
 from app.services import ranges as svc
 from app.services.authority import dm_scope_covers_target, range_attendance_edit_authorized
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -78,6 +80,7 @@ class CreateRangeEventBody(BaseModel):
     contact_name: str | None = None
     contact_phone: str | None = None
     notes: str | None = None
+    responsible_duty_manager_id: uuid.UUID | None = None
 
 
 class UpdateRangeEventBody(BaseModel):
@@ -115,6 +118,72 @@ class RangeAssignmentOut(BaseModel):
     note: str | None
     assignment_reason_code: str | None
     assignment_reason_text: str | None
+
+
+class RangeAssignmentRequestBody(BaseModel):
+    soldier_id: uuid.UUID
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be empty")
+        return value
+
+
+class RangeAssignmentRequestOut(BaseModel):
+    id: uuid.UUID
+    range_event_id: uuid.UUID
+    soldier_id: uuid.UUID
+    requested_by: uuid.UUID
+    reason: str
+    system_reason_code: str | None
+    system_reason_text: str | None
+    status: str
+
+
+def _assignment_request_out(request: RangeAssignmentRequest) -> RangeAssignmentRequestOut:
+    return RangeAssignmentRequestOut(
+        id=request.id,
+        range_event_id=request.range_event_id,
+        soldier_id=request.soldier_id,
+        requested_by=request.requested_by,
+        reason=request.reason,
+        system_reason_code=request.system_reason_code,
+        system_reason_text=request.system_reason_text,
+        status=request.status,
+    )
+
+
+@router.post(
+    "/{event_id}/assignment-requests",
+    response_model=RangeAssignmentRequestOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_assignment_request(
+    event_id: uuid.UUID,
+    body: RangeAssignmentRequestBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeAssignmentRequestOut:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    try:
+        request = assignment_request_svc.create_assignment_request(
+            session,
+            event=event,
+            soldier_id=body.soldier_id,
+            requested_by=user,
+            reason=body.reason,
+        )
+    except assignment_request_svc.RangeAssignmentRequestError as exc:
+        detail = str(exc)
+        if detail == "soldier_outside_scope":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden") from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+    return _assignment_request_out(request)
 
 
 class FoodSpecialConstraintOut(BaseModel):
@@ -157,6 +226,7 @@ class RangeEventOut(BaseModel):
     assigned_to_me: bool = False
     can_edit_attendance: bool = False
     food_summary: FoodSummaryOut | None = None
+    responsible_duty_manager_id: uuid.UUID | None = None
 
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
@@ -246,6 +316,7 @@ def _event_out(
         assigned_to_me=assigned_to_me,
         can_edit_attendance=can_edit_attendance,
         food_summary=_food_summary(session, rows) if include_food_summary else None,
+        responsible_duty_manager_id=event.responsible_duty_manager_id,
     )
 
 
@@ -274,6 +345,7 @@ def create_range_event(
             contact_phone=body.contact_phone,
             notes=body.notes,
             created_by=user.id,
+            responsible_duty_manager_id=body.responsible_duty_manager_id,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

@@ -116,6 +116,7 @@ def create_range_event(
     contact_phone: str | None = None,
     notes: str | None = None,
     created_by: uuid.UUID | None = None,
+    responsible_duty_manager_id: uuid.UUID | None = None,
 ) -> RangeEvent:
     if session.get(HierarchyNode, hierarchy_node_id) is None:
         raise RangeValidationError("hierarchy_node_not_found")
@@ -140,6 +141,7 @@ def create_range_event(
         contact_phone=contact_phone,
         notes=notes,
         created_by=created_by,
+        responsible_duty_manager_id=responsible_duty_manager_id,
     )
     session.add(event)
     session.commit()
