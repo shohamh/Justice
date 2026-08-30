@@ -7,6 +7,7 @@ import * as rangesApi from "../api/ranges";
 import * as rangeLocationsApi from "../api/rangeLocations";
 import * as ineligibleSoldiersApi from "../api/ineligibleSoldiers";
 import * as soldiersApi from "../api/soldiers";
+import * as hierarchyApi from "../api/hierarchy";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import he from "../i18n/he.json";
 
@@ -952,6 +953,19 @@ describe("RangesPage assignment editor integration", () => {
     renderWithQuery(<RangesPage />);
     await screen.findByText("מטווח א");
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("does not crash when the hierarchy tree response is missing duty_managers/children", async () => {
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: "node-1", level: "unit", name: "יחידה", parent_id: null, commander_id: null, commander_name: null, path_ids: [], dm_manageable: false, can_edit: false } as any,
+    ]);
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    renderWithQuery(<RangesPage />);
+    expect(await screen.findByText("מטווח א")).toBeInTheDocument();
   });
 
   it("filters bulk-cancel to planned events only and labels the button with the filtered count", async () => {

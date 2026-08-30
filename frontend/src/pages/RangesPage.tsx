@@ -69,10 +69,10 @@ export default function RangesPage() {
   const names = (id: string) => (Array.isArray(soldiers.data) ? soldiers.data : []).find(s => s.id === id)?.full_name ?? id;
   const dutyManagers = useMemo(() => {
     const flatten = (nodes: NodeDTO[] | undefined): { id: string; name: string }[] =>
-      (nodes ?? []).flatMap(node => [
-        ...node.duty_managers.map(dm => ({ id: dm.soldier_id, name: dm.name })),
+      Array.isArray(nodes) ? nodes.flatMap(node => [
+        ...(Array.isArray(node.duty_managers) ? node.duty_managers.map(dm => ({ id: dm.soldier_id, name: dm.name })) : []),
         ...flatten(node.children),
-      ]);
+      ]) : [];
     const list = flatten(hierarchyTree.data);
     if (user && !list.some(dm => dm.id === user.id)) {
       const currentUserName = (Array.isArray(soldiers.data) ? soldiers.data : []).find(s => s.id === user.id)?.full_name ?? user.id;
