@@ -901,6 +901,26 @@ describe("RangesPage assignment editor integration", () => {
     expect(rangesApi.getRangeEvent).not.toHaveBeenCalled();
   });
 
+  it("deselects the irrelevant ranges from a mixed selection via the deselect-irrelevant button", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-past", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-08-01",
+        location: "מטווח שכבר התקיים", required_count: 1, reserve_count: 0, status: "completed", assignments: [] },
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח שכבר התקיים");
+    fireEvent.click(screen.getByTestId("select-range-event-past"));
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+
+    expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("2 נבחרו");
+    fireEvent.click(screen.getByTestId("bulk-clear-deselect-irrelevant"));
+
+    expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("1 נבחרו");
+    expect(screen.queryByText(/לא ניתן לנקות מטווחים שכבר התקיימו/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("bulk-clear-button")).not.toBeDisabled();
+  });
+
   it("filters bulk-cancel to planned events only and labels the button with the filtered count", async () => {
     vi.mocked(rangesApi.cancelRangeEvent).mockClear();
     vi.mocked(rangesApi.getRanges).mockResolvedValue([

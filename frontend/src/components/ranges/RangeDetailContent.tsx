@@ -1,8 +1,8 @@
 import { ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FoodAssignmentSummary, RangeAssignment, RangeEvent, RangeExcusalRequest } from "../../api/ranges";
+import { FoodAssignmentSummary, RangeAssignment, RangeAttendanceStatus, RangeEvent, RangeExcusalRequest, markRangeAttendance } from "../../api/ranges";
 import { RosterSection } from "../planning";
-import { RangeAttendanceRow } from "./RangeAttendanceRow";
+import { RangeAttendanceStatusPicker } from "./RangeAttendanceStatusPicker";
 import { ATTENDANCE_STATUS_LABELS } from "../../utils/rangeLabels";
 
 interface Props {
@@ -29,6 +29,9 @@ export default function RangeDetailContent(p: Props) {
   const [excuseId, setExcuseId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [rosterSearch, setRosterSearch] = useState("");
+  const [pendingAttendance, setPendingAttendance] = useState<Record<string, { status: RangeAttendanceStatus; note: string }>>({});
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [attendanceSaveError, setAttendanceSaveError] = useState("");
   const today = new Date().toISOString().slice(0, 10);
   const future = event.date > today;
   const selfAssignment = event.assignments.find(a => future && !a.is_draft && a.soldier_id === p.userId);
@@ -61,12 +64,54 @@ export default function RangeDetailContent(p: Props) {
   const reserve = event.assignments.filter(a => a.is_reserve && matchesSearch(a));
 
   const row = (a: RangeAssignment) => ({ id: a.id, soldierId: a.soldier_id, soldierName: p.soldierName(a.soldier_id), isDraft: a.is_draft, status: ATTENDANCE_STATUS_LABELS[a.attendance_status] ?? a.attendance_status });
+  const attendanceNoteRequired = (assignment: RangeAssignment, status: RangeAttendanceStatus) => {
+    const isCorrection = assignment.attendance_status !== "pending" && status !== assignment.attendance_status;
+    return status === "no_show" || isCorrection;
+  };
   const attendanceAction = (assignmentId: string) => {
     if (!attendanceEditable) return null;
     const assignment = event.assignments.find(a => a.id === assignmentId);
     if (!assignment || assignment.is_draft) return null;
-    return <RangeAttendanceRow eventId={event.id} assignment={assignment} onMarked={p.onAttendance} />;
+    const pending = pendingAttendance[assignmentId];
+    return (
+      <RangeAttendanceStatusPicker
+        assignment={assignment}
+        pendingStatus={pending?.status}
+        pendingNote={pending?.note}
+        onStatusChange={status => setPendingAttendance(prev => ({ ...prev, [assignmentId]: { status, note: prev[assignmentId]?.note ?? "" } }))}
+        onNoteChange={note => setPendingAttendance(prev => ({ ...prev, [assignmentId]: { status: prev[assignmentId]?.status ?? "present", note } }))}
+      />
+    );
   };
+  const canSaveAttendance = Object.keys(pendingAttendance).length > 0 && Object.entries(pendingAttendance).every(([id, v]) => {
+    const assignment = event.assignments.find(a => a.id === id);
+    return !assignment || !attendanceNoteRequired(assignment, v.status) || !!v.note;
+  });
+  async function saveAttendance() {
+    const entries = Object.entries(pendingAttendance);
+    if (entries.length === 0 || savingAttendance) return;
+    setSavingAttendance(true);
+    setAttendanceSaveError("");
+    const results = await Promise.allSettled(entries.map(([id, v]) => markRangeAttendance(event.id, id, v.status, v.note || undefined)));
+    const failedIds = new Set<string>();
+    const failedNames: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const [id] = entries[index];
+        failedIds.add(id);
+        const assignment = event.assignments.find(a => a.id === id);
+        failedNames.push(assignment ? p.soldierName(assignment.soldier_id) : id);
+      }
+    });
+    setPendingAttendance(prev => {
+      const next: typeof prev = {};
+      for (const [id, v] of Object.entries(prev)) if (failedIds.has(id)) next[id] = v;
+      return next;
+    });
+    if (failedNames.length > 0) setAttendanceSaveError(`${text("ranges.attendance_save_error", "שמירת הנוכחות נכשלה עבור:")} ${failedNames.join(", ")}`);
+    setSavingAttendance(false);
+    p.onAttendance();
+  }
 
   return <div className="space-y-4" data-testid="range-detail-content">
     {p.actions}
@@ -85,6 +130,18 @@ export default function RangeDetailContent(p: Props) {
       />
       <RosterSection kind="primary" assignments={primary.map(row)} count={event.required_count} assignmentActionRenderer={rowData => attendanceAction(rowData.id)} />
       <RosterSection kind="reserve" assignments={reserve.map(row)} count={event.reserve_count} assignmentActionRenderer={rowData => attendanceAction(rowData.id)} />
+      {attendanceEditable && <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-testid="attendance-save-button"
+          disabled={!canSaveAttendance || savingAttendance}
+          onClick={saveAttendance}
+          className="bg-indigo-600 text-white px-3 py-1 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-40"
+        >
+          {text("ranges.attendance_save", "שמור")}
+        </button>
+        {attendanceSaveError && <span data-testid="attendance-save-error" className="text-xs text-red-600 dark:text-red-400">{attendanceSaveError}</span>}
+      </div>}
     </section>
     {p.excusalRequests && p.excusalRequests.length > 0 && <section data-testid="excusal-review-queue" className="space-y-2 rounded border p-4 dark:border-gray-600"><h3 className="text-sm font-semibold">בקשות היעדרות</h3>{p.excusalRequests.map(r => <div key={r.id} className="flex flex-wrap items-center gap-2 text-sm">{r.reason}{p.canManage && <><button type="button" data-testid={`approve-excusal-${r.id}`} onClick={() => p.onDecide(r.id, true)} className={`${actionClass} border-green-600 bg-green-600 text-white`}>אשר וקדם</button><button type="button" data-testid={`reject-excusal-${r.id}`} onClick={() => p.onDecide(r.id, false)} className={`${actionClass} border-red-200 text-red-700`}>דחה</button></>}</div>)}</section>}
   </div>;

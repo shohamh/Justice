@@ -7,6 +7,11 @@ vi.mock("../planning", () => ({
   RosterSection: ({ assignments, assignmentActionRenderer }: { assignments: Array<{ id: string }>; assignmentActionRenderer: (assignment: { id: string }) => React.ReactNode }) => <div>{assignments.map(assignment => <div key={assignment.id}>{assignmentActionRenderer(assignment)}</div>)}</div>,
 }));
 
+vi.mock("../../api/ranges", async () => {
+  const actual = await vi.importActual<typeof import("../../api/ranges")>("../../api/ranges");
+  return { ...actual, markRangeAttendance: vi.fn() };
+});
+
 const event = (overrides: Partial<RangeEvent> = {}): RangeEvent => ({
   id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2099-09-01",
   location: "מטווח דרום", required_count: 1, reserve_count: 0, status: "planned",
@@ -54,7 +59,7 @@ describe("RangeDetailContent attendance permissions", () => {
 
     expect(screen.queryByTestId("present-a1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("no-show-a1")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("submit-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("attendance-save-button")).not.toBeInTheDocument();
   });
 
   it("allows attendance mutations when the API grants attendance editing", () => {
@@ -62,7 +67,35 @@ describe("RangeDetailContent attendance permissions", () => {
 
     expect(screen.getByTestId("present-a1")).toBeInTheDocument();
     expect(screen.getByTestId("no-show-a1")).toBeInTheDocument();
-    expect(screen.getByTestId("submit-a1")).toBeInTheDocument();
+    expect(screen.getByTestId("attendance-save-button")).toBeInTheDocument();
+  });
+});
+
+describe("RangeDetailContent attendance saving", () => {
+  it("saves all pending attendance changes with a single save button", async () => {
+    const rangesApi = await import("../../api/ranges");
+    vi.mocked(rangesApi.markRangeAttendance).mockResolvedValue({ id: "a1", soldier_id: "me", is_reserve: false, is_draft: false, attendance_status: "present", note: null, assignment_reason_code: null, assignment_reason_text: null });
+    const { props } = renderDetail({ canManage: false, canEditAttendance: true, event: event({ date: "2000-01-01", status: "completed" }) });
+
+    const saveButton = screen.getByTestId("attendance-save-button");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("present-a1"));
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(rangesApi.markRangeAttendance).toHaveBeenCalledWith("event-1", "a1", "present", undefined));
+    await waitFor(() => expect(props.onAttendance).toHaveBeenCalled());
+  });
+
+  it("requires a note before a no-show can be saved", () => {
+    renderDetail({ canManage: false, canEditAttendance: true, event: event({ date: "2000-01-01", status: "completed" }) });
+
+    fireEvent.click(screen.getByTestId("no-show-a1"));
+    expect(screen.getByTestId("attendance-save-button")).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("note-a1"), { target: { value: "לא הגיע" } });
+    expect(screen.getByTestId("attendance-save-button")).not.toBeDisabled();
   });
 });
 
