@@ -9,7 +9,8 @@ export function AdminInviteCodesContent() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const codesQuery = useQuery({ queryKey: queryKeys.inviteCodes(), queryFn: listInviteCodes });
-  const codes = codesQuery.data ?? [];
+  const hasInvalidResponse = codesQuery.data !== undefined && !Array.isArray(codesQuery.data);
+  const codes = hasInvalidResponse ? [] : (codesQuery.data ?? []);
   const [usesLeft, setUsesLeft] = useState(5);
   const [copyState, setCopyState] = useState<Record<string, "copied" | "error">>({});
 
@@ -59,6 +60,11 @@ export function AdminInviteCodesContent() {
           {t("invite_codes.create")}
         </button>
       </div>
+      {(codesQuery.isError || hasInvalidResponse) && (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {t("invite_codes.load_error", "שגיאה בטעינת קודי ההזמנה")}
+        </p>
+      )}
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b dark:border-gray-700 text-gray-500 dark:text-gray-400 text-right">
