@@ -189,6 +189,23 @@ describe("AskSwapModal", () => {
     expect(screen.queryByText("swaps.no_eligible_targets")).not.toBeInTheDocument();
   });
 
+  test("shows a role=alert failure banner (not the empty-state text) when eligible targets fail to load", async () => {
+    mockListEligibleTargets.mockRejectedValueOnce(new Error("network error"));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AskSwapModal
+          duty={{ assignment_id: "a1", start_date: "2026-08-01", end_date: "2026-08-02" } as never}
+          dutyTypeName="Guard"
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("swaps.eligible_targets_load_error");
+    expect(screen.queryByText("swaps.no_eligible_targets")).not.toBeInTheDocument();
+  });
+
   test("edit mode: eligible people grey out with invite_limit_reached once existing candidates already fill the cap", async () => {
     mockGetSwapConfig.mockResolvedValueOnce({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 2 });
     mockListEligibleTargets.mockResolvedValueOnce([
