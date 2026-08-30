@@ -236,8 +236,9 @@ export default function ExemptionsPanel({
           await uploadSoldierExemptionFile(soldierId, createdExemption.id, file);
         }
       } catch {
-        setGrantError(t("exemption_requests.upload_error"));
+        const uploadError = t("exemption_requests.upload_error");
         resetGrantForm();
+        setGrantError(uploadError);
         await Promise.all([refresh(), refreshRequests()]);
         return;
       }

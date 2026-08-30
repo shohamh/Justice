@@ -185,6 +185,41 @@ describe("ExemptionsPanel", () => {
     });
   });
 
+  test("keeps the upload error visible after resetting a regular grant whose attachment upload fails", async () => {
+    vi.mocked(exemptionsApi.uploadSoldierExemptionFile).mockRejectedValueOnce(new Error("upload failed"));
+
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+
+    await selectGrantType("פטור רשמי");
+    fireEvent.change(screen.getByTestId("grant-start"), { target: { value: "2026-08-30" } });
+    fireEvent.change(screen.getByTestId("grant-reason"), { target: { value: "סיבה רגילה" } });
+    fireEvent.click(screen.getByTestId("grant-medical-classification"));
+
+    const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "proof-a.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByTestId("grant-files"), { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByTestId("grant-submit")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("grant-submit"));
+
+    await waitFor(() => {
+      expect(exemptionsApi.grantExemption).toHaveBeenCalledWith("abc", {
+        exemption_type_id: "et-official",
+        start_date: "2026-08-30",
+        end_date: null,
+        reason: "סיבה רגילה",
+      });
+    });
+    await waitFor(() =>
+      expect(exemptionsApi.uploadSoldierExemptionFile).toHaveBeenCalledWith("abc", "ex-new", file),
+    );
+    await waitFor(() => expect(screen.getByText("exemption_requests.upload_error")).toBeInTheDocument());
+    await waitFor(() => {
+      expect(screen.getByTestId("grant-reason")).toHaveValue("");
+      expect(screen.getByTestId("grant-medical-classification")).not.toBeChecked();
+    });
+    expect(vi.mocked(exemptionsApi.listExemptions)).toHaveBeenCalledTimes(2);
+  });
+
   test("shows exemption request history with a pending duty-manager approve button for a duty manager viewer", async () => {
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
     const row = await screen.findByTestId("exemption-request-row-req-1");
