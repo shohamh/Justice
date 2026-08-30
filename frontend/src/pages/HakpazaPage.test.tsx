@@ -63,6 +63,14 @@ describe("HakpazaPage query-param pre-fill", () => {
     expect(screen.getByText("שלב 1 — בחר חייל להקפיץ")).toBeInTheDocument();
   });
 
+  it("falls back to step 1 with an error when the pre-fill soldier fetch fails (e.g. malformed response)", async () => {
+    vi.mocked(soldiersApi.getSoldier).mockRejectedValue(new Error("Invalid soldier response"));
+    renderAt("/commander/hakpaza?soldierId=sol-1&assignmentId=asg-1");
+    await waitFor(() => expect(soldiersApi.getSoldier).toHaveBeenCalledWith("sol-1"));
+    await waitFor(() => expect(screen.getByText("לא נמצאה התורנות המבוקשת — בחר חייל ידנית")).toBeInTheDocument());
+    expect(screen.getByText("שלב 1 — בחר חייל להקפיץ")).toBeInTheDocument();
+  });
+
   it("behaves as before (step 1, no pre-fill) when no query params are present", async () => {
     renderAt("/commander/hakpaza");
     await waitFor(() => expect(soldiersApi.listSoldiers).toHaveBeenCalled());
