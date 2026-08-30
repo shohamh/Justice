@@ -594,3 +594,40 @@ describe("UnifiedSoldierModal constraint rejection", () => {
     expect(screen.queryByTestId("reject-constraint-c1")).not.toBeInTheDocument();
   });
 });
+
+describe("UnifiedSoldierModal public mode", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({
+      user: { personal_number: "viewer-1", role: "soldier", is_duty_manager: false, is_commander: false },
+    });
+  });
+
+  test("renders only backend-approved public profile data without private tabs", () => {
+    renderModal({
+      visibility: "public",
+      hierarchy_path: ["Public Department", "Public Section"],
+      gender: null,
+      has_military_driving_license: null,
+      last_mitvahim_date: null,
+      is_officer: true,
+      bahad1_graduate: true,
+      enlistment_date: "2020-01-02",
+      mandatory_end_date: "2022-01-02",
+      discharge_date: "2026-01-02",
+    });
+
+    expect(screen.getByText("פרופיל ציבורי")).toBeInTheDocument();
+    expect(screen.queryByTestId("modal-tab-exemptions")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("modal-tab-constraints")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("modal-tab-duty_history")).not.toBeInTheDocument();
+    expect(screen.getByText("Public Department")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+    expect(screen.getByText("soldier_profile.is_officer")).toBeInTheDocument();
+    expect(screen.getByText("soldier_profile.bahad1_graduate")).toBeInTheDocument();
+    expect(screen.queryByText("soldier_profile.gender")).not.toBeInTheDocument();
+    expect(screen.queryByText("soldier_profile.has_driving_license")).not.toBeInTheDocument();
+    expect(screen.queryByText("soldier_profile.last_mitvahim_date")).not.toBeInTheDocument();
+  });
+});

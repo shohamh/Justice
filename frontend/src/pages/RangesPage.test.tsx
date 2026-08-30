@@ -847,20 +847,15 @@ describe("RangesPage assignment editor integration", () => {
     expect(rangesApi.cancelRangeEvent).toHaveBeenCalledWith("event-2", "גשם");
   });
 
-  it("bulk-clears all assignments from selected events by fetching each event's real assignments", async () => {
-    // The list row itself carries an empty assignments array (matching the real
-    // list endpoint, which never includes assignments) — bulkClear must fetch
-    // event detail to find what to remove, not read off the stale list row.
+  it("bulk-clears all assignments from selected events via the bulk clear endpoint", async () => {
+    // bulkClear calls the bulk clear-assignments endpoint once per selected
+    // event, instead of fetching each event's assignments and removing them
+    // one at a time — see RangesPage.tsx's bulkClear.
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
         location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
     ]);
-    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(
-      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
-        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned",
-        assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null }] },
-    );
-    vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
+    vi.mocked(rangesApi.clearRangeAssignments).mockResolvedValue({ cleared_assignments: 1 });
 
     renderWithQuery(<RangesPage />);
     await screen.findByText("מטווח א");
@@ -869,8 +864,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.change(await screen.findByLabelText("סיבת הניקוי (תחול על כל השיבוצים שינוקו)"), { target: { value: "ניקוי כללי" } });
     fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
-    await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
-    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1", "ניקוי כללי"));
+    await waitFor(() => expect(rangesApi.clearRangeAssignments).toHaveBeenCalledWith("event-1", "ניקוי כללי"));
   });
 
   it("shows an error message when a bulk action fails", async () => {
@@ -878,9 +872,9 @@ describe("RangesPage assignment editor integration", () => {
       { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
         location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
     ]);
-    // bulkClear (Promise.all under the hood) rejects on the first failure, unlike
-    // bulkDelete's Promise.allSettled which never rejects — exercise the catch path here.
-    vi.mocked(rangesApi.getRangeEvent).mockRejectedValue(new Error("boom"));
+    // bulkClear uses Promise.allSettled, so a per-event failure surfaces as a
+    // partial-failure message rather than an uncaught rejection.
+    vi.mocked(rangesApi.clearRangeAssignments).mockRejectedValue(new Error("boom"));
 
     renderWithQuery(<RangesPage />);
     await screen.findByText("מטווח א");

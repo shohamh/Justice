@@ -21,8 +21,8 @@ export default function ActionPage() {
         const action: string = r.data?.action ?? "";
         // Navigate to the relevant section after a short delay
         const path =
-          action.startsWith("constraint") ? "/constraints" :
-          action.startsWith("exemption") ? "/exemption-requests" :
+          action.startsWith("constraint") ? "/approvals?tab=constraints" :
+          action.startsWith("exemption") ? "/approvals?tab=exemptions" :
           action.startsWith("swap") ? "/swaps" : "/notifications";
         setTimeout(() => navigate(path), 1500);
       })

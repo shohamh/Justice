@@ -555,7 +555,7 @@ def assign_batch(
         new_reserve=len(reserve_soldier_ids),
     )
 
-    from app.services.range_auto_assign import _rank_candidate
+    from app.services.range_auto_assign import _bulk_rank, _bulk_range_relevant_duty_start_by_soldier
 
     rows_with_constraints = [
         _validate_and_build_assignment(
@@ -570,10 +570,27 @@ def assign_batch(
         )
         for sid in reserve_soldier_ids
     ]
+    # Batched rather than one _rank_candidate call per soldier (each of which is
+    # several queries on its own) — this endpoint can assign dozens of soldiers at
+    # once (e.g. accepting an auto-assign proposal wholesale), so the per-soldier
+    # version made saving noticeably slow. Same bulk helpers the read-only
+    # candidate-ranking path (rank_candidates_with_excluded) already uses.
+    batch_soldier_ids = [row.soldier_id for row, _constraint in rows_with_constraints]
+    batch_soldiers_by_id = {
+        s.id: s for s in session.execute(
+            select(Soldier).where(Soldier.id.in_(batch_soldier_ids))
+        ).scalars()
+    }
+    batch_duty_start_by_soldier = _bulk_range_relevant_duty_start_by_soldier(
+        session, soldier_ids=batch_soldier_ids, start_date=event.date, include_start_date=False,
+        range_type=event.range_type,
+    )
+    batch_ranks = _bulk_rank(
+        session, soldiers=list(batch_soldiers_by_id.values()), event=event,
+        duty_start_by_soldier=batch_duty_start_by_soldier,
+    )
     for row, _constraint in rows_with_constraints:
-        soldier = session.get(Soldier, row.soldier_id)
-        _, reason_code, _explanation, _auto_selectable, _system_reason_code, _system_reason_date = _rank_candidate(session, soldier=soldier, event=event)
-        row.assignment_reason_code = reason_code
+        row.assignment_reason_code = batch_ranks[row.soldier_id][1]
         session.add(row)
     session.flush()
     from app.db.models import PersonalConstraintOverride
@@ -652,6 +669,46 @@ def remove_range_assignment(
         session, assignment=assignment, reason=reason, actor_id=actor_id,
     )
     session.commit()
+
+
+def clear_range_assignments(
+    session: Session, *, event: RangeEvent, reason: str, actor_id: uuid.UUID | None = None,
+) -> int:
+    """Remove every assignment on `event` in one transaction.
+
+    Deliberately not a loop over `remove_range_assignment`: that per-assignment
+    path re-notifies every *remaining* soldier on the roster on every single
+    removal (see `_notify_roster_change`), so clearing an event with M
+    assignments one-by-one costs O(M^2) notifications and re-fetches the
+    soldier for each remaining assignment every time — the actual source of
+    "clearing assignments is slow" for events with more than a handful of
+    soldiers. Here the roster-change notification fires exactly once, after
+    every row is already gone, so every notified soldier sees the same
+    now-empty roster."""
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
+    assignments = list(session.execute(
+        select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
+    ).scalars())
+    if not assignments:
+        return 0
+    soldier_ids = {a.soldier_id for a in assignments}
+    for assignment in assignments:
+        write_audit(
+            session, actor_id=actor_id, action="range_assignment.remove", entity_type="range_assignment",
+            entity_id=assignment.id,
+            before={
+                "soldier_id": str(assignment.soldier_id),
+                "range_event_id": str(assignment.range_event_id),
+                "is_reserve": assignment.is_reserve,
+            },
+            context={"reason": reason},
+        )
+        session.delete(assignment)
+    session.flush()
+    _notify_roster_change(session, event=event, soldier_ids=soldier_ids, actor_id=actor_id)
+    session.commit()
+    return len(assignments)
 
 
 _VALIDITY_SETTING_KEYS: dict[str, str] = {
