@@ -8,7 +8,8 @@ export interface LevelTypeDTO {
 }
 
 export async function listLevelTypes(): Promise<LevelTypeDTO[]> {
-  return (await api.get<LevelTypeDTO[]>("/hierarchy/level-types")).data;
+  const data = (await api.get<LevelTypeDTO[]>("/hierarchy/level-types")).data;
+  return Array.isArray(data) ? data : [];
 }
 
 export async function createLevelType(key: string, label: string): Promise<LevelTypeDTO> {
