@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface RangeLocation {
   id: string;
@@ -9,7 +10,8 @@ export interface RangeLocation {
 }
 
 export async function listRangeLocations(): Promise<RangeLocation[]> {
-  return (await api.get<RangeLocation[]>("/range-locations")).data;
+  const r = await api.get<unknown>("/range-locations");
+  return optionalArrayResponse<RangeLocation>(r.data);
 }
 
 export async function createRangeLocation(input: { name: string }): Promise<RangeLocation> {

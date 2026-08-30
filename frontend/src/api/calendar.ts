@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type { DutyEligibilityFact } from "./ineligibleSoldiers";
 import type { RangeType } from "./ranges";
+import { isRecord, optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 // Old types (still used by UnitCalendar)
 export interface CalAssignment {
@@ -22,7 +23,8 @@ export interface CalRow {
 }
 
 export async function getUnitCalendar(nodeId: string, params?: { date_from?: string; date_to?: string }): Promise<CalRow[]> {
-  return (await api.get<CalRow[]>(`/calendar/unit`, { params: { node_id: nodeId, ...params } })).data;
+  const r = await api.get<unknown>(`/calendar/unit`, { params: { node_id: nodeId, ...params } });
+  return optionalArrayResponse<CalRow>(r.data);
 }
 
 // New shift-based calendar types
@@ -87,15 +89,26 @@ export interface CalendarShiftsResponse {
   shifts: CalendarShift[];
 }
 
+function normalizeCalendarShift(value: unknown): CalendarShift {
+  const shift = isRecord(value) ? value : {};
+  return {
+    ...(shift as unknown as CalendarShift),
+    assignees: optionalArrayResponse<CalendarShiftAssignee>(shift.assignees),
+    crossed_holidays: optionalArrayResponse<{ date: string; name: string }>(shift.crossed_holidays),
+  };
+}
+
 export async function getCalendarShifts(
   params: { nodeId?: string; soldierId?: string; date_from?: string; date_to?: string },
 ): Promise<CalendarShiftsResponse> {
   const { nodeId, soldierId, ...rest } = params;
-  return (
-    await api.get<CalendarShiftsResponse>("/calendar/shifts", {
-      params: { node_id: nodeId, soldier_id: soldierId, ...rest },
-    })
-  ).data;
+  const r = await api.get<unknown>("/calendar/shifts", {
+    params: { node_id: nodeId, soldier_id: soldierId, ...rest },
+  });
+  const data = requiredObjectResponse(r.data, "Invalid calendar shifts response");
+  return {
+    shifts: optionalArrayResponse<unknown>(data.shifts).map(normalizeCalendarShift),
+  };
 }
 
 export async function getCalendarShift(shiftId: string): Promise<CalendarShift> {
