@@ -159,6 +159,39 @@ export function exemptionFileDownloadUrl(requestId: string, fileId: string): str
   return `/exemption-requests/${requestId}/files/${fileId}`;
 }
 
+export async function uploadSoldierExemptionFile(
+  soldierId: string,
+  exemptionId: string,
+  file: File,
+): Promise<ExemptionFile> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await api.post<ExemptionFile>(
+    `/soldiers/${soldierId}/exemptions/${exemptionId}/files`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return res.data;
+}
+
+export async function listSoldierExemptionFiles(
+  soldierId: string,
+  exemptionId: string,
+): Promise<ExemptionFile[]> {
+  const res = await api.get<ExemptionFile[]>(
+    `/soldiers/${soldierId}/exemptions/${exemptionId}/files`,
+  );
+  return res.data;
+}
+
+export function soldierExemptionFileDownloadUrl(
+  soldierId: string,
+  exemptionId: string,
+  fileId: string,
+): string {
+  return `/soldiers/${soldierId}/exemptions/${exemptionId}/files/${fileId}`;
+}
+
 export async function grantCommanderExemption(soldierId: string, input: {
   exemption_type_id: string; start_date: string; end_date?: string | null; reason: string;
 }): Promise<void> {
