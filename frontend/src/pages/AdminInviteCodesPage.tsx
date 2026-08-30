@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, ClipboardCopy } from "lucide-react";
 import Layout from "../components/Layout";
 import { listInviteCodes, createInviteCode, revokeInviteCode } from "../api/inviteCodes";
 import { queryKeys } from "../queryKeys";
@@ -22,12 +23,6 @@ export function AdminInviteCodesContent() {
     mutationFn: revokeInviteCode,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.inviteCodes() }),
   });
-
-  const creating = createMutation.isPending;
-
-  function handleCreate() {
-    createMutation.mutate(usesLeft);
-  }
 
   async function handleCopy(codeId: string, code: string) {
     try {
@@ -56,7 +51,7 @@ export function AdminInviteCodesContent() {
             value={usesLeft} onChange={e => setUsesLeft(Number(e.target.value))} />
         </label>
         <button className="bg-indigo-600 text-white px-4 py-2 rounded disabled:opacity-50"
-          onClick={handleCreate} disabled={creating}>
+          onClick={() => createMutation.mutate(usesLeft)} disabled={createMutation.isPending}>
           {t("invite_codes.create")}
         </button>
       </div>
@@ -68,39 +63,46 @@ export function AdminInviteCodesContent() {
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b dark:border-gray-700 text-gray-500 dark:text-gray-400 text-right">
-            <th className="py-2">קוד</th>
+            <th className="py-2">{t("invite_codes.code", "קוד")}</th>
             <th className="py-2">{t("invite_codes.uses_left")}</th>
             <th className="py-2"></th>
           </tr>
         </thead>
         <tbody>
-          {codes.map(c => (
-            <tr key={c.id} className={`border-b dark:border-gray-700 ${c.uses_left === 0 ? "opacity-40" : ""}`}>
-              <td className="py-2 font-mono">
-                <span className="inline-flex items-center gap-2">
-                  <span>{c.code}</span>
-                  <button
-                    type="button"
-                    className="text-indigo-600 text-xs hover:underline"
-                    aria-label={`העתקת קוד ${c.code}`}
-                    title={`העתקת קוד ${c.code}`}
-                    onClick={() => handleCopy(c.id, c.code)}
-                  >
-                    העתק
+          {codes.map(c => {
+            const copied = copyState[c.id] === "copied";
+            return (
+              <tr key={c.id} className={`border-b dark:border-gray-700 ${c.uses_left === 0 ? "opacity-40" : ""}`}>
+                <td className="py-2 font-mono">
+                  <span className="inline-flex items-center gap-2">
+                    <span>{c.code}</span>
+                    <button
+                      type="button"
+                      className="p-1 rounded text-indigo-600 hover:bg-indigo-50 dark:hover:bg-gray-700"
+                      aria-label={copied ? "הועתק" : "העתק"}
+                      title={copied ? "הועתק" : "העתק"}
+                      data-testid={`invite-code-copy-${c.id}`}
+                      onClick={() => handleCopy(c.id, c.code)}
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-600" aria-hidden="true" data-testid={`invite-code-copy-success-${c.id}`} />
+                      ) : (
+                        <ClipboardCopy className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </button>
+                    {copyState[c.id] === "error" && <span className="text-red-600 text-xs">לא ניתן להעתיק — נסה שוב</span>}
+                  </span>
+                </td>
+                <td className="py-2">{c.uses_left}</td>
+                <td className="py-2">
+                  <button className="text-red-600 text-xs hover:underline"
+                    onClick={() => revokeMutation.mutate(c.id)}>
+                    {t("invite_codes.revoke")}
                   </button>
-                  {copyState[c.id] === "copied" && <span className="text-green-600 text-xs">הועתק</span>}
-                  {copyState[c.id] === "error" && <span className="text-red-600 text-xs">לא ניתן להעתיק — נסה שוב</span>}
-                </span>
-              </td>
-              <td className="py-2">{c.uses_left}</td>
-              <td className="py-2">
-                <button className="text-red-600 text-xs hover:underline"
-                  onClick={() => revokeMutation.mutate(c.id)}>
-                  {t("invite_codes.revoke")}
-                </button>
-              </td>
-            </tr>
-          ))}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>
