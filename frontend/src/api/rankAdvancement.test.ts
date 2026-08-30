@@ -64,4 +64,32 @@ describe("rank advancement api", () => {
     expect(result.officer_academic).toBeDefined();
     expect(result.officer_academic[0].advance_on_career_entry).toBe(true);
   });
+
+  it.each([
+    ["getRankLadder", () => import("./rankAdvancement").then((m) => m.getRankLadder())],
+    ["getPublicRankLadder", () => import("./rankAdvancement").then((m) => m.getPublicRankLadder())],
+  ])("rejects a non-object %s payload", async (_name, call) => {
+    mockGet.mockResolvedValueOnce({ data: ["unexpected", "response"] });
+
+    await expect(call()).rejects.toThrow("Invalid rank ladder response");
+  });
+
+  it("rejects a rank ladder payload with a malformed track", async () => {
+    mockGet.mockResolvedValueOnce({
+      data: { ...ladder, officer: { detail: "unexpected response" } },
+    });
+    const { getRankLadder } = await import("./rankAdvancement");
+
+    await expect(getRankLadder()).rejects.toThrow("Invalid rank ladder response");
+  });
+
+  it("rejects a malformed updateRankAdvancementIntervals response", async () => {
+    mockPut.mockResolvedValueOnce({ data: { enlisted: ladder.enlisted, officer: ladder.officer } });
+    const { updateRankAdvancementIntervals } = await import("./rankAdvancement");
+
+    const intervals = [
+      { track: "enlisted" as const, rank: "רבט", months_to_next: 5, advance_on_career_entry: false },
+    ];
+    await expect(updateRankAdvancementIntervals(intervals)).rejects.toThrow("Invalid rank ladder response");
+  });
 });

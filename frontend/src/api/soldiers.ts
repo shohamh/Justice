@@ -2,6 +2,7 @@ import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
 import {
+  isRecord,
   optionalArrayResponse,
   requiredArrayResponse,
   requiredObjectResponse,
@@ -182,7 +183,16 @@ export interface SoldierScoreDTO {
 }
 
 export async function getSoldier(id: string): Promise<SoldierDTO> {
-  return (await api.get<SoldierDTO>(`/soldiers/${id}`)).data;
+  const data = (await api.get<unknown>(`/soldiers/${id}`)).data;
+  if (
+    !isRecord(data) ||
+    typeof data.id !== "string" ||
+    typeof data.personal_number !== "string" ||
+    typeof data.full_name !== "string"
+  ) {
+    throw new Error("Invalid soldier response");
+  }
+  return data as unknown as SoldierDTO;
 }
 
 export async function getSoldierScore(id: string): Promise<SoldierScoreDTO> {
