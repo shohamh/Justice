@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -691,6 +691,7 @@ class ShiftCandidateOut(BaseModel):
     burden_share: float
     blocked: bool
     blocked_reason: str | None = None
+    blocked_detail: str | None = None
     weapon_warning: bool = False
     hierarchy_path_ids: list[str] = []
     personal_constraint_warning: PersonalConstraintWarningOut | None = None
@@ -774,6 +775,45 @@ def get_shift_candidates(
     candidate_soldiers = [soldier_map[si.id] for si in soldier_inputs if si.id in soldier_map]
     burden_share_by_id = burden_shares_by_soldier(session, candidate_soldiers)
 
+    from app.db.models import ExemptionDutyTypeMap, ExemptionType, SoldierExemption
+    from app.services.eligibility import duty_type_ineligibility_reason
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    def _setting_int(key: str, default: int) -> int:
+        try:
+            return int(get_setting(session, key))
+        except SettingNotFound:
+            return default
+
+    mitvahim_months = _setting_int("eligibility.mitvahim_months", 6)
+    alal_months = _setting_int("eligibility.alal_months", 3)
+
+    # Soldiers exempt from this specific duty type via a granted exemption
+    # (as opposed to structurally ineligible per the duty type's requirements)
+    # — used only to distinguish the two cases for blocked_detail, never to
+    # expose the grant's own reason text.
+    covering_etids: set[uuid.UUID] = set(
+        session.execute(select(ExemptionType.id).where(ExemptionType.is_global.is_(True))).scalars().all()
+    )
+    covering_etids.update(
+        session.execute(
+            select(ExemptionDutyTypeMap.exemption_type_id).where(
+                ExemptionDutyTypeMap.duty_type_id == shift.duty_type_id
+            )
+        ).scalars().all()
+    )
+    exempted_via_grant: set[uuid.UUID] = set()
+    if covering_etids:
+        exempted_via_grant = set(
+            session.execute(
+                select(SoldierExemption.soldier_id).where(
+                    SoldierExemption.exemption_type_id.in_(covering_etids),
+                    SoldierExemption.start_date <= shift.start_date,
+                    or_(SoldierExemption.end_date.is_(None), SoldierExemption.end_date >= shift.start_date),
+                )
+            ).scalars().all()
+        )
+
     weapon_ineligible: dict[uuid.UUID, set[uuid.UUID]] = {}
     if required_range_type is not None:
         from app.algorithm.types import DutyBlock
@@ -827,8 +867,16 @@ def get_shift_candidates(
         effective_constraint_block = has_constraint and not override_allowed
         blocked = exempted or effective_constraint_block or si.id in blocked_by_assignment
         blocked_reason: str | None = None
+        blocked_detail: str | None = None
         if exempted:
             blocked_reason = "ineligible"
+            if si.id in exempted_via_grant:
+                blocked_detail = "פטור מסוג תורנות זה"
+            elif shift_duty_type is not None:
+                blocked_detail = duty_type_ineligibility_reason(
+                    soldier, shift_duty_type, mitvahim_months=mitvahim_months, alal_months=alal_months,
+                    today=shift.start_date,
+                )
         elif effective_constraint_block:
             blocked_reason = "constraint"
         elif si.id in blocked_by_assignment:
@@ -847,6 +895,7 @@ def get_shift_candidates(
             burden_share=round(burden_share, 3),
             blocked=blocked,
             blocked_reason=blocked_reason,
+            blocked_detail=blocked_detail,
             weapon_warning=weapon_warning,
             hierarchy_path_ids=path_ids,
             personal_constraint_warning=personal_constraint_warning,

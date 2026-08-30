@@ -63,6 +63,7 @@ export interface ShiftCandidate {
   burden_share: number;
   blocked: boolean;
   blocked_reason: "constraint" | "assignment" | "ineligible" | null;
+  blocked_detail: string | null;
   weapon_warning: boolean;
   hierarchy_path_ids: string[];
   personal_constraint_warning: PersonalConstraintWarning | null;

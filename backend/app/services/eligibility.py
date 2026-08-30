@@ -124,58 +124,85 @@ def derive_bahad1_graduate(rank: str | None) -> bool:
     return rank not in BAHAD1_EXCLUDED_OFFICER_RANKS
 
 
-def _is_eligible(
+def _ineligibility_reason(
     soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date,
     rank_override: str | None = None,
-) -> bool:
-    """Return False if soldier fails any requirement (fail-safe: null field = blocked if restriction exists)."""
+) -> str | None:
+    """Return a short Hebrew description of the first requirement the soldier fails,
+    or None if they meet every requirement (fail-safe: null field = blocked if restriction exists)."""
     if reqs.allowed_genders:
         if not soldier.gender or soldier.gender not in reqs.allowed_genders:
-            return False
+            return "מגדר לא מתאים לדרישות התורנות"
 
     if reqs.requires_mitvahim:
         if not soldier.last_mitvahim_date:
-            return False
+            return "לא בוצע מטווח מבצעי בטווח הזמן הנדרש"
         if (today - soldier.last_mitvahim_date) > timedelta(days=mitvahim_months * 30):
-            return False
+            return "לא בוצע מטווח מבצעי בטווח הזמן הנדרש"
 
     if reqs.requires_alal:
         if not soldier.last_alal_date:
-            return False
+            return 'לא בוצע מטווח אל"ל בטווח הזמן הנדרש'
         if (today - soldier.last_alal_date) > timedelta(days=alal_months * 30):
-            return False
+            return 'לא בוצע מטווח אל"ל בטווח הזמן הנדרש'
 
     effective_rank = rank_override if rank_override is not None else soldier.rank
 
     if reqs.allowed_ranks:
         if not effective_rank or effective_rank not in reqs.allowed_ranks:
-            return False
+            return "דרגה לא מתאימה לדרישות התורנות"
 
     per_rank_service_types = reqs.rank_service_types.get(effective_rank) if effective_rank else None
     active_service_types = per_rank_service_types if per_rank_service_types is not None else reqs.allowed_service_types
     if active_service_types:
         stype = inferred_service_type(soldier, today)
         if not stype or stype not in active_service_types:
-            return False
+            return "מסלול שירות לא מתאים לדרישות התורנות"
 
     if not reqs.officers_allowed and soldier.is_officer:
-        return False
+        return "התורנות אינה פתוחה לקצינים"
 
     if not reqs.enlisted_allowed:
         # blocked if not officer, or if officer status unknown
         if not soldier.is_officer:
-            return False
+            return "התורנות פתוחה לקצינים בלבד"
 
     if reqs.requires_bahad1 and not soldier.bahad1_graduate:
-        return False
+        return 'נדרש להיות בוגר בה"ד 1'
 
     if reqs.requires_military_driving_license:
         if not soldier.has_military_driving_license:
-            return False
+            return "נדרש רישיון נהיגה צבאי בתוקף"
         if soldier.military_driving_license_expiry and soldier.military_driving_license_expiry < today:
-            return False
+            return "נדרש רישיון נהיגה צבאי בתוקף"
 
-    return True
+    return None
+
+
+def _is_eligible(
+    soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date,
+    rank_override: str | None = None,
+) -> bool:
+    """Return False if soldier fails any requirement (fail-safe: null field = blocked if restriction exists)."""
+    return _ineligibility_reason(
+        soldier, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months, today=today,
+        rank_override=rank_override,
+    ) is None
+
+
+def duty_type_ineligibility_reason(
+    soldier: Soldier, duty_type: DutyType, *, mitvahim_months: int, alal_months: int, today: date,
+) -> str | None:
+    """Short Hebrew reason the soldier fails `duty_type`'s structural requirements,
+    or None if the duty type has no requirements or the soldier meets them all."""
+    raw_reqs = duty_type.requirements or {}
+    if not raw_reqs:
+        return None
+    try:
+        reqs = DutyTypeRequirements.model_validate(raw_reqs)
+    except Exception:
+        return None
+    return _ineligibility_reason(soldier, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months, today=today)
 
 
 def compute_eligibility_exclusions(

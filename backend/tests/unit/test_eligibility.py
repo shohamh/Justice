@@ -20,6 +20,7 @@ from app.services.eligibility import (
     DutyTypeRequirements,
     _is_eligible,
     compute_eligibility_exclusions,
+    duty_type_ineligibility_reason,
     inferred_service_type,
 )
 from app.services.range_coverage import get_range_coverage, get_range_coverages
@@ -82,6 +83,32 @@ def test_null_gender_blocked_if_restriction():
     s = _soldier(gender=None)
     reqs = DutyTypeRequirements(allowed_genders=["male"])
     assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
+
+
+def test_duty_type_ineligibility_reason_none_when_eligible():
+    s = _soldier(gender="male")
+    dt = DutyType(name="dt_reason_ok", score_per_day=Decimal("1.00"), requirements={"allowed_genders": ["male"]})
+    assert duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY) is None
+
+
+def test_duty_type_ineligibility_reason_none_when_no_requirements():
+    s = _soldier(gender="female")
+    dt = DutyType(name="dt_reason_none", score_per_day=Decimal("1.00"), requirements={})
+    assert duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY) is None
+
+
+def test_duty_type_ineligibility_reason_describes_gender_mismatch():
+    s = _soldier(gender="female")
+    dt = DutyType(name="dt_reason_gender", score_per_day=Decimal("1.00"), requirements={"allowed_genders": ["male"]})
+    reason = duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY)
+    assert reason == "מגדר לא מתאים לדרישות התורנות"
+
+
+def test_duty_type_ineligibility_reason_describes_stale_mitvahim():
+    s = _soldier(last_mitvahim_date=TODAY - timedelta(days=400))
+    dt = DutyType(name="dt_reason_mitvahim", score_per_day=Decimal("1.00"), requirements={"requires_mitvahim": True})
+    reason = duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY)
+    assert reason == "לא בוצע מטווח מבצעי בטווח הזמן הנדרש"
 
 
 def test_mitvahim_fresh_passes():
