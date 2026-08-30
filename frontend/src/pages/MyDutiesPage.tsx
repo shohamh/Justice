@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart,
@@ -50,6 +51,7 @@ const dayCount = (d: { start_date: string; end_date: string }) => {
 };
 
 export default function MyDutiesPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [askSwapDuty, setAskSwapDuty] = useState<{
     assignment_id: string;
@@ -94,6 +96,9 @@ export default function MyDutiesPage() {
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
 
   const loading = transparencyQuery.isLoading || breakdownQuery.isLoading || dutiesQuery.isLoading;
+  // Both queries fetch required-object payloads (see api/scoring.ts) — a
+  // malformed shape throws instead of silently rendering wrong totals.
+  const hasScoreLoadError = transparencyQuery.isError || breakdownQuery.isError;
 
   const myRow = useMemo(
     () => allRows.find((r) => r.soldier_id === user?.id) ?? null,
@@ -139,6 +144,12 @@ export default function MyDutiesPage() {
         data-testid="my-diary-page"
       >
         <h2 className="text-xl font-semibold">היומן שלי</h2>
+
+        {hasScoreLoadError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            {t("my_duties.load_error")}
+          </p>
+        )}
 
         {/* Section 1: Stat cards */}
         <div

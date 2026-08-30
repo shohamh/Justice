@@ -67,6 +67,12 @@ export default function HomePage() {
 
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
 
+  // These queries fetch required-object payloads (see api/scoring.ts) — a
+  // malformed shape throws instead of silently rendering wrong totals, so
+  // surface that as a single banner rather than letting the page's ?? []/??
+  // null fallbacks mask the failure.
+
+
   const dutiesQuery = useQuery({
     queryKey: user ? queryKeys.effectiveDuties(user.id, { date_from: offsetDate(-365), date_to: offsetDate(60) }) : ["effectiveDuties", "anonymous"],
     queryFn: () => listEffectiveDuties(user!.id, { date_from: offsetDate(-365), date_to: offsetDate(60), include_drafts: true }),
@@ -122,6 +128,12 @@ export default function HomePage() {
     queryFn: () => getBurdenShareBreakdown(user!.id),
     enabled: !!user,
   });
+
+  const hasScoreLoadError =
+    transparencyQuery.isError ||
+    breakdownQuery.isError ||
+    burdenShareQuery.isError ||
+    burdenShareBreakdownQuery.isError;
 
   const enrollQuery = useQuery({
     queryKey: queryKeys.pendingEnrollments(),
@@ -259,6 +271,12 @@ export default function HomePage() {
       <div className="space-y-4 max-w-3xl mx-auto" dir="rtl">
         <h2 className="text-xl font-semibold">{t("home.welcome", { name: user?.full_name ?? "" })}</h2>
 
+        {hasScoreLoadError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            {t("home.score_load_error")}
+          </p>
+        )}
+
         <ActiveDeputyBanner grants={user?.active_deputy_grants ?? []} />
 
         <AlertBanners
@@ -353,7 +371,7 @@ export default function HomePage() {
                 </tr>
               </thead>
               <tbody>
-                {(Array.isArray(breakdown.adjustments) ? breakdown.adjustments : []).map((a) => (
+                {breakdown.adjustments.map((a) => (
                   <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
                     <td className="py-2">{formatDateTimeIsrael(a.created_at)}</td>
                     <td

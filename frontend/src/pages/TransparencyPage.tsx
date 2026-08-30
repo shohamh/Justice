@@ -310,6 +310,10 @@ export default function TransparencyPage() {
   const transparencyForbidden =
     user?.can_view_transparency === false ||
     (isAxiosError(transparencyQuery.error) && transparencyQuery.error.response?.status === 403);
+  // getTransparency returns a required object (see api/scoring.ts) — a
+  // malformed shape throws instead of silently rendering an empty table.
+  // Distinguish that from the "no permission" case handled above.
+  const transparencyLoadError = transparencyQuery.isError && !transparencyForbidden;
 
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
@@ -334,6 +338,7 @@ export default function TransparencyPage() {
   });
   const burdenShareBreakdown = burdenShareBreakdownFor ? burdenShareBreakdownQuery.data ?? null : null;
   const burdenShareBreakdownSoldierName = burdenShareBreakdownFor?.soldierName ?? null;
+  const burdenShareBreakdownLoadError = !!burdenShareBreakdownFor && burdenShareBreakdownQuery.isError;
 
   function openBurdenShareBreakdown(soldierId: string, soldierName: string) {
     setBurdenShareBreakdownFor({ soldierId, soldierName });
@@ -974,6 +979,12 @@ export default function TransparencyPage() {
           )}
         </div>
 
+        {transparencyLoadError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400" dir="rtl">
+            {t("transparency.load_error")}
+          </p>
+        )}
+
         {/* Tabs */}
         <TabBar tabs={["חיילים", "תתי יחידות"]} active={tab} onChange={setTab} />
 
@@ -1114,6 +1125,24 @@ export default function TransparencyPage() {
           breakdown={burdenShareBreakdown}
           onClose={closeBurdenShareBreakdown}
         />
+      )}
+      {burdenShareBreakdownLoadError && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={closeBurdenShareBreakdown}>
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 max-w-sm w-full mx-4"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {t("transparency.burden_share_breakdown_load_error")}
+            </p>
+            <div className="text-left mt-3">
+              <button type="button" className="text-sm text-indigo-600 dark:text-indigo-300 hover:underline" onClick={closeBurdenShareBreakdown}>
+                {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {showFairnessHelp && (
         <HelpModal onClose={() => setShowFairnessHelp(false)} initialTab="fairness" />

@@ -354,3 +354,36 @@ describe("TransparencyPage sub-units exemption aggregates", () => {
     expect(rowEl!.textContent).toContain("0");
   });
 });
+
+describe("TransparencyPage required data load errors", () => {
+  it("shows a load error banner when the transparency response is malformed (not a 403)", async () => {
+    vi.mocked(scoringApi.getTransparency).mockRejectedValue(new Error("Invalid transparency response"));
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText("שגיאה בטעינת נתוני השקיפות")).toBeInTheDocument();
+    });
+    // Distinct from the 403 "no permission" message.
+    expect(screen.queryByText("אין לך הרשאה לצפות בדף זה")).not.toBeInTheDocument();
+  });
+
+  it("shows a load error alert instead of a silent no-op when the burden-share breakdown fails to load", async () => {
+    const out: TransparencyOut = {
+      rows: [makeRow({ soldier_id: "s1", full_name: "חייל בדיקה", burden_share: 0.25 })],
+      can_see_exemption_aggregates: true,
+    };
+    vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
+    vi.mocked(scoringApi.getBurdenShareBreakdown).mockRejectedValue(new Error("Invalid burden-share breakdown response"));
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+
+    await screen.findByText("חייל בדיקה");
+    const breakdownButton = await screen.findByTitle("לחץ לפירוט רבעוני");
+    fireEvent.click(breakdownButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("שגיאה בטעינת פירוט חלק בנטל")).toBeInTheDocument();
+    });
+  });
+});

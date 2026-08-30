@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import MyDutiesPage from "./MyDutiesPage";
 import * as assignmentsApi from "../api/assignments";
 import * as swapsApi from "../api/swaps";
+import * as scoringApi from "../api/scoring";
 import type { EffectiveDuty } from "../api/assignments";
 
 const mockUseAuth = vi.fn(() => ({ user: null }));
@@ -197,5 +198,34 @@ describe("MyDutiesPage weapon-ineligibility swap path", () => {
     const payload = mockCreateSwap.mock.calls[0][0] as Record<string, unknown>;
     expect(payload).not.toHaveProperty("target_soldier_id");
     expect(payload.target_soldier_ids).not.toContain("s1");
+  });
+});
+
+describe("MyDutiesPage required scoring data load errors", () => {
+  beforeEach(() => {
+    vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([]);
+    vi.mocked(scoringApi.getTransparency).mockResolvedValue({ rows: [], can_see_exemption_aggregates: false });
+    vi.mocked(scoringApi.getBreakdown).mockResolvedValue({ per_type: [], adjustments: [] });
+  });
+
+  it("shows a load error banner when the transparency response is malformed", async () => {
+    vi.mocked(scoringApi.getTransparency).mockRejectedValue(new Error("Invalid transparency response"));
+    renderPage();
+
+    expect(await screen.findByText("my_duties.load_error")).toHaveAttribute("role", "alert");
+  });
+
+  it("shows a load error banner when the score breakdown response is malformed", async () => {
+    vi.mocked(scoringApi.getBreakdown).mockRejectedValue(new Error("Invalid score breakdown response"));
+    renderPage();
+
+    expect(await screen.findByText("my_duties.load_error")).toHaveAttribute("role", "alert");
+  });
+
+  it("renders no load-error banner when both scoring queries succeed", async () => {
+    renderPage();
+
+    await screen.findByTestId("my-diary-page");
+    expect(screen.queryByText("my_duties.load_error")).not.toBeInTheDocument();
   });
 });
