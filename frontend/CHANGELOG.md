@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-30 (3)
+
+### Features
+- Added screenshot previews to soldiers' own bug-report cards.
+
+### Fixes
+- Fixed range-qualification eligibility so a manually entered future last-range date cannot qualify an earlier duty, while still refreshing existing duty warnings after profile edits.
+- Fixed stale range-qualification warnings and improved shift-candidate ineligibility details and filter controls.
+- Fixed a privileged personal-constraint cancellation crash.
+- Rate-limited repeated error-log entries.
+
+## 2026-08-30 (2)
+
+### Features
+- Added per-soldier attendance marking (present/no-show, with a required note for corrections or no-shows) to range events, saved with a single button instead of per-row submits, plus a one-click way to deselect ranges a bulk-clear can't reach (past or unmanageable).
+- Added a responsible duty manager ("אחראי") to range events, defaulting to the creator and changeable via a combobox listing every duty manager; shown as a linked name in the ranges table, the event detail modal, and the assignments modal.
+
+### Fixes
+- Self-hosted the PDF preview's worker file instead of fetching it from unpkg.com at runtime, so PDF previews work fully offline; widened the preview modal and added visible zoom buttons for images.
+- Fixed a crash on the ranges page when the hierarchy tree response was malformed, by guarding the responsible-duty-manager list computation against non-array data.
+
 ## 2026-08-30
 
 ### Features
@@ -19,13 +40,19 @@
 ### Features
 - Added an admin errors inbox with structured backend/frontend 500-error logging, per-admin unread tracking, source/date filters, clear-through cleanup, mark-read actions, multiline stack traces, and copy-to-clipboard controls.
 - Added frontend request URL/method details and unified LTR presentation for technical error messages and paths.
+- Replaced every native browser confirm/alert/prompt dialog across the frontend with translated, RTL-aware application modals, covering hierarchy, ranges, shifts, imports, duty management, algorithm proposals, deputies, requests, profile, and the admin error log.
+- Added scoped range assignment requests with responsible-manager approval authority, date-aware primary/reserve candidate ranking, and automatic reconciliation of range assignments on creation and primary excusal, including refilling vacated slots.
+- Added an optional reason field to hierarchy transfer requests, shown to approvers alongside a translated success message naming the approving commander.
 
 ### Fixes
 - Fixed clearing active error logs on Windows by safely pausing and reopening the dedicated log handlers around cleanup.
 - Separated mark-all-as-read actions for errors and bug reports, and reordered the admin tabs so errors precede the audit log.
+- Fixed range candidate eligibility and ranking to honor the required range type, closing an alal-tier fallback loophole, and fixed reconciliation coverage-window, source-strength, and locking gaps.
+- Fixed and translated range-related notifications, and retained rejected personal-constraint state through the native-dialog migration.
 
 ### Chores
 - Added backend and frontend regression coverage for error logging, unread behavior, tab ordering, request details, and mobile-friendly error presentation.
+- Added extensive regression coverage and behavioral-contract/design docs for range candidate sequencing, range assignment requests, and the native dialog migration.
 
 ## 2026-08-28
 

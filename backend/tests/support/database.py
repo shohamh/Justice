@@ -41,6 +41,7 @@ RESET_TABLES = (
     "swap_requests",
     "personal_constraints",
     "exemption_request_files",
+    "soldier_exemption_files",
     "exemption_requests",
     "soldier_exemptions",
     "exemption_duty_type_map",

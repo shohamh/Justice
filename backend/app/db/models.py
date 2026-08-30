@@ -304,6 +304,7 @@ class SoldierExemption(Base):
         UUID(as_uuid=True), ForeignKey("exemption_types.id", ondelete="RESTRICT")
     )
     start_date: Mapped[date] = mapped_column(Date)
+    is_medical: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     granted_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -325,6 +326,26 @@ class SoldierExemption(Base):
         default=None,
     )
     revoke_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
+class SoldierExemptionFile(Base):
+    __tablename__ = "soldier_exemption_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_exemption_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldier_exemptions.id", ondelete="CASCADE")
+    )
+    file_name: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(Text)
+    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
 
 
 class DutyAssignment(Base):
