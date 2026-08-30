@@ -23,7 +23,11 @@ function statusLabel(t: TFunction, d: EffectiveDuty): { text: string; calledUp: 
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty }: Props) {
   const { t } = useTranslation();
   const today = new Date().toISOString().split("T")[0];
-  const upcoming = duties
+  // Defensive guard: listEffectiveDuties (api/assignments.ts) is currently
+  // an unguarded pass-through, so a malformed non-array response would
+  // otherwise crash .filter() here. Normalize to [] rather than throwing —
+  // this widget is decorative, not a required-data screen.
+  const upcoming = (Array.isArray(duties) ? duties : [])
     .filter((d) => d.end_date > today)
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
 

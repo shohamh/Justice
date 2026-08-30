@@ -71,8 +71,6 @@ export default function HomePage() {
   // malformed shape throws instead of silently rendering wrong totals, so
   // surface that as a single banner rather than letting the page's ?? []/??
   // null fallbacks mask the failure.
-
-
   const dutiesQuery = useQuery({
     queryKey: user ? queryKeys.effectiveDuties(user.id, { date_from: offsetDate(-365), date_to: offsetDate(60) }) : ["effectiveDuties", "anonymous"],
     queryFn: () => listEffectiveDuties(user!.id, { date_from: offsetDate(-365), date_to: offsetDate(60), include_drafts: true }),
