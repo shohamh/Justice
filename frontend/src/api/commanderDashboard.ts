@@ -80,12 +80,17 @@ export interface ApprovalItem {
   created_at: string;
 }
 
+function optionalArrayResponse<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 export async function getSummary(): Promise<SummaryCards> {
   return (await api.get<SummaryCards>("/command-dashboard/summary")).data;
 }
 
 export async function getDashboardSoldiers(): Promise<SoldierWithStatus[]> {
-  return (await api.get<SoldierWithStatus[]>("/command-dashboard/soldiers")).data;
+  const data = (await api.get<unknown>("/command-dashboard/soldiers")).data;
+  return optionalArrayResponse<SoldierWithStatus>(data);
 }
 
 export async function getFairnessInternal(): Promise<FairnessStats> {
@@ -93,21 +98,26 @@ export async function getFairnessInternal(): Promise<FairnessStats> {
 }
 
 export async function getFairnessExternal(): Promise<NodeFairness[]> {
-  return (await api.get<NodeFairness[]>("/command-dashboard/fairness/external")).data;
+  const data = (await api.get<unknown>("/command-dashboard/fairness/external")).data;
+  return optionalArrayResponse<NodeFairness>(data);
 }
 
 export async function getPotential(): Promise<PotentialCount[]> {
-  return (await api.get<PotentialCount[]>("/command-dashboard/potential")).data;
+  const data = (await api.get<unknown>("/command-dashboard/potential")).data;
+  return optionalArrayResponse<PotentialCount>(data);
 }
 
 export async function getUpcoming(): Promise<UpcomingDay[]> {
-  return (await api.get<UpcomingDay[]>("/command-dashboard/upcoming")).data;
+  const data = (await api.get<unknown>("/command-dashboard/upcoming")).data;
+  return optionalArrayResponse<UpcomingDay>(data);
 }
 
 export async function getAlerts(): Promise<Alert[]> {
-  return (await api.get<Alert[]>("/command-dashboard/alerts")).data;
+  const data = (await api.get<unknown>("/command-dashboard/alerts")).data;
+  return optionalArrayResponse<Alert>(data);
 }
 
 export async function getApprovals(): Promise<ApprovalItem[]> {
-  return (await api.get<ApprovalItem[]>("/command-dashboard/approvals")).data;
+  const data = (await api.get<unknown>("/command-dashboard/approvals")).data;
+  return optionalArrayResponse<ApprovalItem>(data);
 }
