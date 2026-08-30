@@ -1,9 +1,12 @@
 """Structured, privacy-aware logging for failed HTTP interactions."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
+import threading
+import time
 import traceback
 import uuid
 from typing import Any
@@ -15,6 +18,45 @@ _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
 _SENSITIVE = re.compile(r"password|token|secret|authorization|cookie|refresh|access", re.I)
 _MAX_VALUE = 4000
 _MAX_BODY = 16000
+
+# Caps how many times the *same* error can be logged in a burst — e.g. a hot
+# loop hitting a broken endpoint, or a broken frontend retry loop — without
+# flooding backend-errors.log/frontend-errors.log (and, downstream, the admin
+# error inbox and its unread-count poll). Distinct errors are never affected:
+# the limit is keyed per fingerprint, not global. Configurable via
+# ERROR_LOG_RATE_LIMIT_MAX_PER_WINDOW / ERROR_LOG_RATE_LIMIT_WINDOW_SECONDS
+# since the right threshold depends on the deployment's traffic.
+_rate_limit_lock = threading.Lock()
+_rate_limit_state: dict[str, tuple[float, int, int]] = {}  # fingerprint -> (window_start, count, suppressed)
+
+
+def _check_rate_limit(fingerprint: str) -> tuple[bool, int]:
+    """Returns (allow, suppressed_count_from_the_window_that_just_ended).
+
+    allow=True means this occurrence should be logged normally. A non-zero
+    suppressed count means the caller should first log one rollup line
+    reporting that many occurrences of the same fingerprint were dropped
+    during the window that just elapsed — so volume stays visible without
+    flooding the log. A fingerprint that stops recurring entirely leaves its
+    final tail of suppressed occurrences unreported (no background flush) —
+    an accepted tradeoff for keeping this a plain in-memory counter."""
+    from app.settings import get_settings
+
+    settings = get_settings()
+    max_per_window = settings.error_log_rate_limit_max_per_window
+    window_seconds = settings.error_log_rate_limit_window_seconds
+
+    now = time.monotonic()
+    with _rate_limit_lock:
+        window_start, count, suppressed = _rate_limit_state.get(fingerprint, (now, 0, 0))
+        if now - window_start >= window_seconds:
+            _rate_limit_state[fingerprint] = (now, 1, 0)
+            return True, suppressed
+        if count < max_per_window:
+            _rate_limit_state[fingerprint] = (window_start, count + 1, suppressed)
+            return True, 0
+        _rate_limit_state[fingerprint] = (window_start, count, suppressed + 1)
+        return False, 0
 
 
 def request_id(value: str | None) -> str:
@@ -59,10 +101,23 @@ async def request_data(request: Request) -> dict[str, Any]:
 
 
 def log_backend_exception(request: Request, exc: BaseException, data: dict[str, Any]) -> None:
-    logging.getLogger("backend.errors").error(
+    logger = logging.getLogger("backend.errors")
+    request_id_value = getattr(request.state, "request_id", "unknown")
+    fingerprint = "backend:" + hashlib.sha256(
+        f"{data.get('path', '')}|{type(exc).__name__}|{exc}".encode()
+    ).hexdigest()
+    allow, suppressed = _check_rate_limit(fingerprint)
+    if suppressed:
+        logger.error(
+            "Unhandled HTTP 500 (rate-limit rollup)",
+            extra={"request_id": request_id_value, "suppressed_count": suppressed, "path": data.get("path")},
+        )
+    if not allow:
+        return
+    logger.error(
         "Unhandled HTTP 500",
         extra={
-            "request_id": getattr(request.state, "request_id", "unknown"),
+            "request_id": request_id_value,
             "request": data,
             "traceback": "".join(traceback.format_exception(exc)),
         },
@@ -70,7 +125,20 @@ def log_backend_exception(request: Request, exc: BaseException, data: dict[str, 
 
 
 def log_frontend_error(payload: dict[str, Any]) -> None:
-    logging.getLogger("frontend.errors").error(
+    logger = logging.getLogger("frontend.errors")
+    request_id_value = payload.get("request_id", "unknown")
+    fingerprint = "frontend:" + hashlib.sha256(
+        f"{payload.get('kind', '')}|{payload.get('message', '')}|{payload.get('filename', '')}|{payload.get('line', '')}".encode()
+    ).hexdigest()
+    allow, suppressed = _check_rate_limit(fingerprint)
+    if suppressed:
+        logger.error(
+            "Frontend error (rate-limit rollup)",
+            extra={"request_id": request_id_value, "suppressed_count": suppressed, "kind": payload.get("kind")},
+        )
+    if not allow:
+        return
+    logger.error(
         "Frontend error",
-        extra={"request_id": payload.get("request_id", "unknown"), "frontend": redact(payload)},
+        extra={"request_id": request_id_value, "frontend": redact(payload)},
     )
