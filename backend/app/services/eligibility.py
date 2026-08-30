@@ -129,7 +129,7 @@ _MITVAHIM_RANGE_TYPES = (RangeType.laser, RangeType.live)
 
 
 def _has_recent_range(last_date: date | None, months: int, today: date) -> bool:
-    if not last_date:
+    if not last_date or last_date > today:
         return False
     return (today - last_date) <= timedelta(days=months * 30)
 

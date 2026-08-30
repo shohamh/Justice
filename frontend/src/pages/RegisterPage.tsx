@@ -323,7 +323,7 @@ export default function RegisterPage() {
               </select>
               {step2Attempted && !form.gender && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
-            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","תאריך שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
+            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","תאריך שחרור"],["last_mitvahim_date","תאריך מטווחים אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
               <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={iso => set(key, iso)} />

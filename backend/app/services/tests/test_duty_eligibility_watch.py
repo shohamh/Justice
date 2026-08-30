@@ -163,6 +163,25 @@ def test_transition_to_eligible_updates_cache_silently(app_session: Session) -> 
     assert app_session.query(Notification).count() == before_count
 
 
+def test_profile_last_mitvahim_date_clears_existing_weapon_warning(app_session: Session) -> None:
+    set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
+    node = create_node(app_session, level="branch", name="watch-node-profile-date")
+    soldier = create_soldier(app_session, personal_number="watch-sol-profile-date", hierarchy_node_id=node.id)
+    assignment = _make_weapon_assignment(
+        app_session, soldier_id=soldier.id, node_id=node.id, start_date=date.today() + timedelta(days=5),
+    )
+    assignment.weapon_ineligible = True
+    assignment.weapon_ineligible_reason = "stale"
+    soldier.last_mitvahim_date = date.today()
+    app_session.commit()
+
+    recheck_assignments(app_session, [assignment.id])
+    app_session.refresh(assignment)
+
+    assert assignment.weapon_ineligible is False
+    assert assignment.weapon_ineligible_reason is None
+
+
 def test_cancelled_assignment_is_never_checked(app_session: Session) -> None:
     node = create_node(app_session, level="branch", name="watch-node-3")
     soldier = create_soldier(app_session, personal_number="watch-sol-3", hierarchy_node_id=node.id)

@@ -204,7 +204,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
             ["תאריך גיוס", enlistmentDate, setEnlistmentDate],
             ["סיום חובה", mandatoryEndDate, setMandatoryEndDate],
             ["שחרור", dischargeDate, setDischargeDate],
-            ["מטווח אחרון", lastMitvahimDate, setLastMitvahimDate],
+            ["תאריך מטווחים אחרון", lastMitvahimDate, setLastMitvahimDate],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="block">
               <span className="text-xs text-gray-500">{label as string}</span>
