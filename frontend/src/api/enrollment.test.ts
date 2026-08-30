@@ -5,9 +5,9 @@ import { listPendingEnrollments } from "./enrollment";
 vi.mock("./client");
 
 describe("enrollment APIs", () => {
-  it("returns an empty list when pending enrollments are not an array", async () => {
+  it("rejects a malformed pending enrollments payload", async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
 
-    await expect(listPendingEnrollments()).resolves.toEqual([]);
+    await expect(listPendingEnrollments()).rejects.toThrow("Invalid pending enrollments response");
   });
 });

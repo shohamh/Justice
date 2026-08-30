@@ -1,5 +1,5 @@
 import { api } from "./client";
-import { optionalArrayResponse } from "./responseGuards";
+import { requiredArrayResponse } from "./responseGuards";
 
 export interface TransferRequest {
   id: string;
@@ -29,5 +29,5 @@ export async function rejectTransferRequest(id: string, decisionNote?: string): 
 
 export async function listPendingTransferRequests(): Promise<TransferRequest[]> {
   const data = (await api.get<unknown>("/hierarchy-transfers/pending")).data;
-  return optionalArrayResponse<TransferRequest>(data);
+  return requiredArrayResponse<TransferRequest>(data, "Invalid pending hierarchy transfer requests response");
 }

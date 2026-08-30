@@ -1,6 +1,6 @@
 import { api } from "./client";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
-import { optionalArrayResponse } from "./responseGuards";
+import { optionalArrayResponse, requiredArrayResponse } from "./responseGuards";
 
 export interface ConstraintOverride {
   id: string;
@@ -64,7 +64,7 @@ export async function cancelConstraintForManager(id: string, reason?: string): P
 
 export async function listPendingApprovals(): Promise<PersonalConstraint[]> {
   const data = (await api.get<unknown>("/constraints/pending")).data;
-  return optionalArrayResponse<PersonalConstraint>(data);
+  return requiredArrayResponse<PersonalConstraint>(data, "Invalid pending constraint approvals response");
 }
 
 export async function getPendingCount(): Promise<number> {

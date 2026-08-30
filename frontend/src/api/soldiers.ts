@@ -3,6 +3,7 @@ import type { RankTrack } from "./rankAdvancement";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
 import {
   optionalArrayResponse,
+  requiredArrayResponse,
   requiredObjectResponse,
   requiredStringArrayField,
 } from "./responseGuards";
@@ -138,7 +139,7 @@ export async function getPendingFieldUpdateCount(): Promise<number> {
 
 export async function listPendingFieldUpdates(): Promise<FieldUpdateDTO[]> {
   const data = (await api.get<unknown>(`/soldiers/field-updates/pending`)).data;
-  return optionalArrayResponse<FieldUpdateDTO>(data);
+  return requiredArrayResponse<FieldUpdateDTO>(data, "Invalid pending field updates response");
 }
 
 export async function approveFieldUpdate(

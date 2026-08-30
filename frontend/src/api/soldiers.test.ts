@@ -8,11 +8,16 @@ describe("soldier collection APIs", () => {
   it.each([
     ["listSoldiers", () => listSoldiers()],
     ["listFieldUpdates", () => listFieldUpdates("soldier-1")],
-    ["listPendingFieldUpdates", () => listPendingFieldUpdates()],
   ])("returns an empty list when %s receives a non-array payload", async (_name, call) => {
     vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
 
     await expect(call()).resolves.toEqual([]);
+  });
+
+  it("rejects a malformed pending field-updates payload", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
+
+    await expect(listPendingFieldUpdates()).rejects.toThrow("Invalid pending field updates response");
   });
 
   it("rejects a malformed soldier ranks payload", async () => {

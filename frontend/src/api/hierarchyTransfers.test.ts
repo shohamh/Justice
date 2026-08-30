@@ -5,9 +5,9 @@ import { listPendingTransferRequests } from "./hierarchyTransfers";
 vi.mock("./client");
 
 describe("hierarchy transfer APIs", () => {
-  it("returns an empty list when pending transfer requests are not an array", async () => {
+  it("rejects a malformed pending transfer requests payload", async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
 
-    await expect(listPendingTransferRequests()).resolves.toEqual([]);
+    await expect(listPendingTransferRequests()).rejects.toThrow("Invalid pending hierarchy transfer requests response");
   });
 });
