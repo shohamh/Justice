@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-30 (2)
+
+### Features
+- Added per-soldier attendance marking (present/no-show, with a required note for corrections or no-shows) to range events, saved with a single button instead of per-row submits, plus a one-click way to deselect ranges a bulk-clear can't reach (past or unmanageable).
+- Added a responsible duty manager ("אחראי") to range events, defaulting to the creator and changeable via a combobox listing every duty manager; shown as a linked name in the ranges table, the event detail modal, and the assignments modal.
+
+### Fixes
+- Self-hosted the PDF preview's worker file instead of fetching it from unpkg.com at runtime, so PDF previews work fully offline; widened the preview modal and added visible zoom buttons for images.
+
 ## 2026-08-30
 
 ### Features
