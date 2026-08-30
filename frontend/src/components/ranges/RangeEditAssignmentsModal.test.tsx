@@ -61,6 +61,17 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.getByTestId("soldier-link-s1")).toBeInTheDocument();
   });
 
+  it("shows the responsible duty manager as a soldier link", () => {
+    renderModal({ event: { ...event(), responsible_duty_manager_id: "s2" } });
+    expect(screen.getByTestId("range-assignments-responsible")).toBeInTheDocument();
+    expect(screen.getByTestId("soldier-link-s2")).toHaveTextContent("דנה");
+  });
+
+  it("hides the responsible line when no one is assigned", () => {
+    renderModal({ event: event() });
+    expect(screen.queryByTestId("range-assignments-responsible")).not.toBeInTheDocument();
+  });
+
   it("renders Hebrew assignment reasons for automatic and manual assignments", () => {
     renderModal({ event: event([
       assignment("a1", "s1", false, false, "qualified", null),

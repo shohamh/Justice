@@ -1565,6 +1565,7 @@
     "confirm": "אשר",
     "remove": "הסר",
     "edit_assignments": "עריכת שיבוצים",
+    "responsible": "אחראי",
     "auto_assign_shortfall": "לא נמצאו מספיק מועמדים — חסרים {{count}} שיבוצים",
     "primary_assignments": "שיבוצים ראשיים",
     "reserve_assignments": "שיבוצי רזרבה",

@@ -285,6 +285,11 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   return <>
   <EventDetailModal open={open} title={text("ranges.edit_assignments", "עריכת שיבוצים")} subtitle={`${event.location} · ${formatDate(event.date)}`} onClose={onClose}>
     <div className="overflow-y-auto flex-1 space-y-5">
+      {event.responsible_duty_manager_id && (
+        <p data-testid="range-assignments-responsible" className="text-sm text-gray-600 dark:text-gray-300">
+          <b>{text("ranges.responsible", "אחראי")}:</b> <SoldierLink id={event.responsible_duty_manager_id} name={name(event.responsible_duty_manager_id)} />
+        </p>
+      )}
       {/* Summary table — current + pending */}
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">

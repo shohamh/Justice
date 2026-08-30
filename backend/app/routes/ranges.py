@@ -117,6 +117,7 @@ class UpdateRangeEventBody(BaseModel):
     contact_name: str | None = None
     contact_phone: str | None = None
     notes: str | None = None
+    responsible_duty_manager_id: uuid.UUID | None = None
     cancel: bool = False
     cancellation_reason: str | None = None
     force_schedule_change: bool = False
@@ -401,7 +402,7 @@ def create_range_event(
             contact_phone=body.contact_phone,
             notes=body.notes,
             created_by=user.id,
-            responsible_duty_manager_id=body.responsible_duty_manager_id,
+            responsible_duty_manager_id=body.responsible_duty_manager_id or user.id,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

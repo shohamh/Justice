@@ -4,13 +4,17 @@ import RangeDetailContent from "./RangeDetailContent";
 import { RangeEvent } from "../../api/ranges";
 
 vi.mock("../planning", () => ({
-  RosterSection: ({ assignments, assignmentActionRenderer }: { assignments: Array<{ id: string }>; assignmentActionRenderer: (assignment: { id: string }) => React.ReactNode }) => <div>{assignments.map(assignment => <div key={assignment.id}>{assignmentActionRenderer(assignment)}</div>)}</div>,
+  RosterSection: ({ assignments, assignmentActionRenderer }: { assignments: Array<{ id: string; status?: React.ReactNode }>; assignmentActionRenderer: (assignment: { id: string }) => React.ReactNode }) => <div>{assignments.map(assignment => <div key={assignment.id}>{assignment.status}{assignmentActionRenderer(assignment)}</div>)}</div>,
 }));
 
 vi.mock("../../api/ranges", async () => {
   const actual = await vi.importActual<typeof import("../../api/ranges")>("../../api/ranges");
   return { ...actual, markRangeAttendance: vi.fn() };
 });
+
+vi.mock("../SoldierLink", () => ({
+  default: ({ id, name }: { id: string; name: string }) => <button type="button" data-testid={`soldier-link-${id}`}>{name}</button>,
+}));
 
 const event = (overrides: Partial<RangeEvent> = {}): RangeEvent => ({
   id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2099-09-01",
@@ -97,6 +101,16 @@ describe("RangeDetailContent attendance saving", () => {
     fireEvent.change(screen.getByTestId("note-a1"), { target: { value: "לא הגיע" } });
     expect(screen.getByTestId("attendance-save-button")).not.toBeDisabled();
   });
+
+  it("shows the saved no-show status and the reason recorded for it", () => {
+    renderDetail({
+      event: event({
+        assignments: [{ id: "a1", soldier_id: "me", is_reserve: false, is_draft: false, attendance_status: "no_show", note: "חופשה מאושרת", assignment_reason_code: "manual", assignment_reason_text: "שיבוץ ידני" }],
+      }),
+    });
+
+    expect(screen.getByText("לא נכח — חופשה מאושרת")).toBeInTheDocument();
+  });
 });
 
 describe("RangeDetailContent assignment actions", () => {
@@ -104,6 +118,19 @@ describe("RangeDetailContent assignment actions", () => {
     render(<RangeDetailContent {...baseProps({ canManage: true })} />);
     expect(screen.queryByTestId("edit-range-assignments")).not.toBeInTheDocument();
     expect(screen.queryByText("פעולות שיבוץ")).not.toBeInTheDocument();
+  });
+});
+
+describe("RangeDetailContent responsible duty manager", () => {
+  it("shows the responsible duty manager as a soldier link", () => {
+    renderDetail({ event: event({ responsible_duty_manager_id: "responsible-1" }), soldierName: () => "רונן" });
+    expect(screen.getByTestId("range-detail-responsible")).toBeInTheDocument();
+    expect(screen.getByTestId("soldier-link-responsible-1")).toHaveTextContent("רונן");
+  });
+
+  it("shows a dash when no one is responsible", () => {
+    renderDetail({ event: event({ responsible_duty_manager_id: null }) });
+    expect(screen.getByTestId("range-detail-responsible")).toHaveTextContent("—");
   });
 });
 

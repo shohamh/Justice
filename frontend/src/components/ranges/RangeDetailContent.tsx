@@ -4,6 +4,7 @@ import { FoodAssignmentSummary, RangeAssignment, RangeAttendanceStatus, RangeEve
 import { RosterSection } from "../planning";
 import { RangeAttendanceStatusPicker } from "./RangeAttendanceStatusPicker";
 import { ATTENDANCE_STATUS_LABELS } from "../../utils/rangeLabels";
+import SoldierLink from "../SoldierLink";
 
 interface Props {
   event: RangeEvent;
@@ -63,7 +64,11 @@ export default function RangeDetailContent(p: Props) {
   const primary = event.assignments.filter(a => !a.is_reserve && matchesSearch(a));
   const reserve = event.assignments.filter(a => a.is_reserve && matchesSearch(a));
 
-  const row = (a: RangeAssignment) => ({ id: a.id, soldierId: a.soldier_id, soldierName: p.soldierName(a.soldier_id), isDraft: a.is_draft, status: ATTENDANCE_STATUS_LABELS[a.attendance_status] ?? a.attendance_status });
+  const row = (a: RangeAssignment) => {
+    const statusLabel = ATTENDANCE_STATUS_LABELS[a.attendance_status] ?? a.attendance_status;
+    const status = a.note ? `${statusLabel} — ${a.note}` : statusLabel;
+    return { id: a.id, soldierId: a.soldier_id, soldierName: p.soldierName(a.soldier_id), isDraft: a.is_draft, status };
+  };
   const attendanceNoteRequired = (assignment: RangeAssignment, status: RangeAttendanceStatus) => {
     const isCorrection = assignment.attendance_status !== "pending" && status !== assignment.attendance_status;
     return status === "no_show" || isCorrection;
@@ -116,7 +121,7 @@ export default function RangeDetailContent(p: Props) {
   return <div className="space-y-4" data-testid="range-detail-content">
     {p.actions}
     {selfAssignment && <section className="flex flex-wrap items-center gap-2" data-testid="range-self-excusal-action"><button type="button" onClick={() => { setExcuseId(selfAssignment.id); setReason(""); }} className={`${actionClass} border-amber-300 text-amber-700`}>{text("ranges.self_excuse", "אני לא אוכל להגיע")}</button>{excuseId === selfAssignment.id && <span className="flex items-center gap-1"><input aria-label={text("ranges.self_excuse_reason", "סיבת היעדרות")} value={reason} onChange={e => setReason(e.target.value)} className="rounded border p-1 text-sm" /><button type="button" data-testid="submit-excuse-button" disabled={!reason.trim()} onClick={async () => { await p.onExcuse(selfAssignment.id, reason.trim()); setExcuseId(null); setReason(""); }} className={`${actionClass} border-blue-600 bg-blue-600 text-white`}>{text("ranges.send", "שלח")}</button></span>}</section>}
-    <section data-testid="range-detail-information" className="rounded border bg-gray-50 p-4 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"><h3 className="mb-2 text-sm font-semibold">מידע והנחיות</h3><div><b>הוראות הגעה:</b> {event.arrival_instructions || "—"}</div><div><b>איש קשר:</b> {event.contact_name || "—"} {event.contact_phone || ""}</div><div><b>הערות:</b> {event.notes || "—"}</div></section>
+    <section data-testid="range-detail-information" className="rounded border bg-gray-50 p-4 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"><h3 className="mb-2 text-sm font-semibold">מידע והנחיות</h3><div data-testid="range-detail-responsible"><b>אחראי:</b> {event.responsible_duty_manager_id ? <SoldierLink id={event.responsible_duty_manager_id} name={p.soldierName(event.responsible_duty_manager_id)} /> : "—"}</div><div><b>הוראות הגעה:</b> {event.arrival_instructions || "—"}</div><div><b>איש קשר:</b> {event.contact_name || "—"} {event.contact_phone || ""}</div><div><b>הערות:</b> {event.notes || "—"}</div></section>
     {foodSummary && <section data-testid="range-food-summary" className="space-y-3 rounded border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-950"><h3 className="text-sm font-semibold">{text("ranges.food_summary_title", "סיכום הזמנת אוכל")}</h3>{foodGroup("primary", foodSummary.primary)}{foodGroup("reserve", foodSummary.reserve)}</section>}
     <section data-testid="range-detail-roster" className="space-y-3">
       <h3 className="text-sm font-semibold">רשימת שיבוצים</h3>
