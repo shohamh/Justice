@@ -64,6 +64,7 @@ def grant_exemption(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat() if end_date else None,
         },
+        context={"reason": reason},
     )
     create_notification(
         session, soldier_id=soldier_id,

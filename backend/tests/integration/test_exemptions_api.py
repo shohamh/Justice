@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import ExemptionRequest, ExemptionType, SoldierExemption
+from app.db.models import AuditLog, ExemptionRequest, ExemptionType, SoldierExemption
+from app.services.file_validation import MAX_EXEMPTION_FILE_BYTES
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -33,6 +34,99 @@ def test_commander_grants_in_subtree(client: TestClient, admin_session: Session)
     assert r.status_code == 201, r.text
     r2 = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(cmd))
     assert len(r2.json()) == 1
+
+
+def test_direct_grant_audit_context_includes_reason(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5200001-a", role="admin")
+    target = create_soldier(admin_session, personal_number="5200002-a")
+    et = _et(admin_session, "פטור-audit-reason")
+
+    response = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "מסמך רפואי"},
+    )
+    assert response.status_code == 201, response.text
+    exemption_id = response.json()["id"]
+    context = admin_session.execute(
+        select(AuditLog.context)
+        .where(AuditLog.action == "exemption.grant", AuditLog.entity_id == exemption_id)
+    ).scalar_one()
+    assert context == {"reason": "מסמך רפואי"}
+
+
+def test_soldier_exemption_files_are_scoped_and_validated(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5200003-a", role="admin")
+    target = create_soldier(admin_session, personal_number="5200004-a")
+    stranger = create_soldier(admin_session, personal_number="5200005-a")
+    et = _et(admin_session, "פטור-file-scope")
+    grant = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    )
+    assert grant.status_code == 201, grant.text
+    exemption_id = grant.json()["id"]
+    path = f"/api/soldiers/{target.id}/exemptions/{exemption_id}/files"
+
+    invalid = client.post(
+        path,
+        headers=auth_headers(admin),
+        files={"file": ("bad.png", b"not-a-png", "image/png")},
+    )
+    assert invalid.status_code == 400
+    assert invalid.json()["detail"] == "invalid_file_type"
+
+    oversized = client.post(
+        path,
+        headers=auth_headers(admin),
+        files={"file": ("large.pdf", b"%PDF" + b"x" * MAX_EXEMPTION_FILE_BYTES, "application/pdf")},
+    )
+    assert oversized.status_code == 400
+    assert oversized.json()["detail"] == "file_too_large"
+
+    uploaded = client.post(
+        path,
+        headers=auth_headers(admin),
+        files={"file": ("supporting report.pdf", b"%PDF-1.7 content", "application/pdf")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    file_id = uploaded.json()["id"]
+
+    listed = client.get(path, headers=auth_headers(target))
+    assert listed.status_code == 200
+    assert listed.json()[0]["file_name"] == "supporting_report.pdf"
+    downloaded = client.get(f"{path}/{file_id}", headers=auth_headers(target))
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"%PDF-1.7 content"
+
+    assert client.get(path, headers=auth_headers(stranger)).status_code == 403
+
+
+def test_medical_exemption_files_require_medical_document_visibility(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="5200006-a", role="admin")
+    viewer = create_soldier(admin_session, personal_number="5200007-a", role="admin")
+    target = create_soldier(admin_session, personal_number="5200008-a")
+    et = ExemptionType(name="פטור-medical-file", is_medical=True)
+    admin_session.add(et)
+    admin_session.commit()
+    grant = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    )
+    assert grant.status_code == 201, grant.text
+    exemption_id = grant.json()["id"]
+    path = f"/api/soldiers/{target.id}/exemptions/{exemption_id}/files"
+    uploaded = client.post(
+        path,
+        headers=auth_headers(admin),
+        files={"file": ("medical.pdf", b"%PDF-1.7 medical", "application/pdf")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    assert client.get(path, headers=auth_headers(viewer)).status_code == 403
 
 
 def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: Session):

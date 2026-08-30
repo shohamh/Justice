@@ -1,17 +1,33 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can_see_private, is_duty_manager
+from app.auth.authz import (
+    Action,
+    authorize,
+    can_see_private,
+    can_view_medical_document,
+    is_duty_manager,
+)
 from app.auth.deps import require_password_changed
-from app.db.models import ExemptionType, HierarchyNode, Soldier, SoldierExemption
+from app.db.models import (
+    ExemptionType,
+    HierarchyNode,
+    Soldier,
+    SoldierExemption,
+    SoldierExemptionFile,
+)
 from app.db.session import get_session
+from app.rate_limit import limiter
 from app.services import exemptions as svc
+from app.services.file_validation import FileValidationError, validate_exemption_file
 
 router = APIRouter(prefix="/soldiers/{soldier_id}/exemptions", tags=["exemptions"])
 
@@ -48,6 +64,13 @@ class GrantRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
+class ExemptionFileOut(BaseModel):
+    id: uuid.UUID
+    file_name: str
+    content_type: str
+    created_at: str
+
+
 def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True, can_cancel: bool = False) -> ExemptionOut:
     revoked_by_name = None
     if include_sensitive and ex.revoked_by is not None:
@@ -76,6 +99,38 @@ def _load_soldier(session: Session, soldier_id: uuid.UUID) -> Soldier:
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
+
+
+def _load_exemption(session: Session, soldier_id: uuid.UUID, exemption_id: uuid.UUID) -> tuple[Soldier, SoldierExemption]:
+    soldier = _load_soldier(session, soldier_id)
+    exemption = session.get(SoldierExemption, exemption_id)
+    if exemption is None or exemption.soldier_id != soldier_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return soldier, exemption
+
+
+def _authorize_file_read(
+    session: Session, user: Soldier, target: Soldier, exemption: SoldierExemption
+) -> None:
+    if target.id != user.id:
+        authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, target))
+    exemption_type = session.get(ExemptionType, exemption.exemption_type_id)
+    if (
+        exemption_type is not None
+        and exemption_type.is_medical
+        and target.id != user.id
+        and not can_view_medical_document(session, user, target)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no_permission")
+
+
+def _file_out(file: SoldierExemptionFile) -> ExemptionFileOut:
+    return ExemptionFileOut(
+        id=file.id,
+        file_name=file.file_name,
+        content_type=file.content_type,
+        created_at=file.created_at.isoformat(),
+    )
 
 
 @router.get("", response_model=list[ExemptionOut])
@@ -224,3 +279,71 @@ def revoke(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     svc.revoke_exemption(session, exemption_id=exemption_id, reason=body.reason, actor_id=user.id)
     session.commit()
+
+
+@router.post("/{exemption_id}/files", response_model=ExemptionFileOut, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    soldier_id: uuid.UUID,
+    exemption_id: uuid.UUID,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionFileOut:
+    target, exemption = _load_exemption(session, soldier_id, exemption_id)
+    authorize(session, user, Action.EXEMPTION_GRANT, target_node=_node_of(session, target))
+    data = await file.read()
+    content_type = file.content_type or ""
+    try:
+        validate_exemption_file(content_type, data)
+    except FileValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    saved = SoldierExemptionFile(
+        soldier_exemption_id=exemption.id,
+        file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file")).replace("..", "_")[:200],
+        content_type=content_type,
+        data=data,
+        uploaded_by=user.id,
+    )
+    session.add(saved)
+    session.commit()
+    session.refresh(saved)
+    return _file_out(saved)
+
+
+@router.get("/{exemption_id}/files", response_model=list[ExemptionFileOut])
+def list_files(
+    soldier_id: uuid.UUID,
+    exemption_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[ExemptionFileOut]:
+    target, exemption = _load_exemption(session, soldier_id, exemption_id)
+    _authorize_file_read(session, user, target, exemption)
+    files = session.execute(
+        select(SoldierExemptionFile)
+        .where(SoldierExemptionFile.soldier_exemption_id == exemption.id)
+        .order_by(SoldierExemptionFile.created_at)
+    ).scalars().all()
+    return [_file_out(file) for file in files]
+
+
+@limiter.limit("30/minute")
+@router.get("/{exemption_id}/files/{file_id}")
+def download_file(
+    request: Request,
+    soldier_id: uuid.UUID,
+    exemption_id: uuid.UUID,
+    file_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> Response:
+    target, exemption = _load_exemption(session, soldier_id, exemption_id)
+    _authorize_file_read(session, user, target, exemption)
+    file = session.get(SoldierExemptionFile, file_id)
+    if file is None or file.soldier_exemption_id != exemption.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file_not_found")
+    return Response(
+        content=file.data,
+        media_type=file.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{file.file_name}"'},
+    )

@@ -327,6 +327,26 @@ class SoldierExemption(Base):
     revoke_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
+class SoldierExemptionFile(Base):
+    __tablename__ = "soldier_exemption_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_exemption_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldier_exemptions.id", ondelete="CASCADE")
+    )
+    file_name: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(Text)
+    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class DutyAssignment(Base):
     __tablename__ = "duty_assignments"
 
