@@ -46,6 +46,12 @@ export default function CommandDashboardPage() {
   const fairnessInternalQuery = useQuery({ queryKey: queryKeys.commandDashboardFairnessInternal(), queryFn: getFairnessInternal });
   const fairnessInternal = fairnessInternalQuery.data ?? null;
 
+  // getSummary/getFairnessInternal are required-object endpoints (see
+  // api/commanderDashboard.ts) — a malformed shape throws instead of
+  // silently rendering wrong counters, so surface that explicitly.
+  const hasSummaryLoadError = summaryQuery.isError;
+  const hasFairnessInternalLoadError = fairnessInternalQuery.isError;
+
   const fairnessExternalQuery = useQuery({ queryKey: queryKeys.commandDashboardFairnessExternal(), queryFn: getFairnessExternal });
   const fairnessExternal = fairnessExternalQuery.data ?? null;
 
@@ -207,7 +213,13 @@ export default function CommandDashboardPage() {
     {
       id: "fairness_internal",
       title: t("command_dashboard.internal_fairness"),
-      content: <InternalFairness data={fairnessInternal} />,
+      content: hasFairnessInternalLoadError ? (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {t("command_dashboard.fairness_internal_load_error")}
+        </p>
+      ) : (
+        <InternalFairness data={fairnessInternal} />
+      ),
     },
     {
       id: "fairness_external",
@@ -256,6 +268,11 @@ export default function CommandDashboardPage() {
     <Layout>
       <section className="space-y-4" data-testid="command-dashboard-page">
         <h2 className="text-xl font-semibold">{t("command_dashboard.title")}</h2>
+        {hasSummaryLoadError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            {t("command_dashboard.summary_load_error")}
+          </p>
+        )}
         <SummaryCards data={summaryData} />
         {panels.map((panel) => (
           <details key={panel.id} open className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" data-testid={`panel-${panel.id}`}>

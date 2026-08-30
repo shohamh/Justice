@@ -32,6 +32,8 @@ vi.mock("react-i18next", () => ({
       "command_dashboard.final_potential": "פוטנציאל סופי",
       "range_qualification.dashboard.title": "חיילים ללא כשירות מטווח",
       "range_qualification.soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
+      "command_dashboard.summary_load_error": "שגיאה בטעינת נתוני הסיכום",
+      "command_dashboard.fairness_internal_load_error": "שגיאה בטעינת מדדי ההוגנות הפנימיים",
     }[key] ?? key),
   }),
 }));
@@ -68,6 +70,7 @@ vi.mock("../api/exemptions", () => ({ getPendingExemptionCount: vi.fn().mockReso
 vi.mock("../api/ineligibleSoldiers", () => ({ getIneligibleSoldiers: vi.fn() }));
 
 import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
+import { getSummary, getFairnessInternal } from "../api/commanderDashboard";
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -100,6 +103,25 @@ describe("CommandDashboardPage", () => {
     expect(within(panel).getByTestId("soldiers-summary")).toBeInTheDocument();
     const link = within(panel).getByTestId("soldiers-panel-team-link");
     expect(link).toHaveAttribute("href", "/team");
+  });
+});
+
+describe("CommandDashboardPage - required dashboard summary/fairness load errors", () => {
+  it("shows a load error banner when the summary response is malformed", async () => {
+    vi.mocked(getSummary).mockRejectedValue(new Error("Invalid dashboard summary response"));
+    renderPage();
+
+    expect(await screen.findByText("שגיאה בטעינת נתוני הסיכום")).toHaveAttribute("role", "alert");
+  });
+
+  it("shows a load error message in the internal-fairness panel when that response is malformed", async () => {
+    vi.mocked(getFairnessInternal).mockRejectedValue(new Error("Invalid internal fairness response"));
+    renderPage();
+
+    const panel = await screen.findByTestId("panel-fairness_internal");
+    await waitFor(() => {
+      expect(within(panel).getByText("שגיאה בטעינת מדדי ההוגנות הפנימיים")).toHaveAttribute("role", "alert");
+    });
   });
 });
 
