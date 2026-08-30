@@ -304,6 +304,7 @@ class SoldierExemption(Base):
         UUID(as_uuid=True), ForeignKey("exemption_types.id", ondelete="RESTRICT")
     )
     start_date: Mapped[date] = mapped_column(Date)
+    is_medical: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     granted_by: Mapped[uuid.UUID | None] = mapped_column(

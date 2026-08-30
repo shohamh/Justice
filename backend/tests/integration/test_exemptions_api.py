@@ -108,17 +108,30 @@ def test_medical_exemption_files_require_medical_document_visibility(
 ):
     admin = create_soldier(admin_session, personal_number="5200006-a", role="admin")
     viewer = create_soldier(admin_session, personal_number="5200007-a", role="admin")
-    target = create_soldier(admin_session, personal_number="5200008-a")
-    et = ExemptionType(name="פטור-medical-file", is_medical=True)
+    commander = create_soldier(admin_session, personal_number="5200008-a", role="commander")
+    root = create_node(
+        admin_session, level="group", name="medical-file-root", commander_id=commander.id
+    )
+    target = create_soldier(
+        admin_session, personal_number="5200009-a", hierarchy_node_id=root.id
+    )
+    et = ExemptionType(name="פטור-manually-medical-file", is_medical=False)
     admin_session.add(et)
     admin_session.commit()
     grant = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={
+            "exemption_type_id": str(et.id),
+            "start_date": "2026-01-01",
+            "is_medical": True,
+        },
     )
     assert grant.status_code == 201, grant.text
     exemption_id = grant.json()["id"]
+    exemption = admin_session.get(SoldierExemption, exemption_id)
+    assert exemption is not None
+    assert exemption.is_medical is True
     path = f"/api/soldiers/{target.id}/exemptions/{exemption_id}/files"
     uploaded = client.post(
         path,
@@ -126,7 +139,42 @@ def test_medical_exemption_files_require_medical_document_visibility(
         files={"file": ("medical.pdf", b"%PDF-1.7 medical", "application/pdf")},
     )
     assert uploaded.status_code == 201, uploaded.text
+    file_id = uploaded.json()["id"]
     assert client.get(path, headers=auth_headers(viewer)).status_code == 403
+    assert client.get(path, headers=auth_headers(commander)).status_code == 200
+    assert client.get(f"{path}/{file_id}", headers=auth_headers(commander)).status_code == 200
+    assert client.get(path, headers=auth_headers(target)).status_code == 200
+    assert client.get(f"{path}/{file_id}", headers=auth_headers(target)).status_code == 200
+
+
+def test_commander_grant_persists_type_medical_classification(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="5200010-a", role="admin")
+    regular_target = create_soldier(admin_session, personal_number="5200011-a")
+    medical_target = create_soldier(admin_session, personal_number="5200012-a")
+    regular_type = ExemptionType(
+        name="פטור-commander-file-regular", is_commander_exemption=True, is_medical=False
+    )
+    medical_type = ExemptionType(
+        name="פטור-commander-file-medical", is_commander_exemption=True, is_medical=True
+    )
+    admin_session.add_all([regular_type, medical_type])
+    admin_session.commit()
+
+    for target, exemption_type, expected in (
+        (regular_target, regular_type, False),
+        (medical_target, medical_type, True),
+    ):
+        response = client.post(
+            f"/api/soldiers/{target.id}/exemptions/commander-exemption",
+            headers=auth_headers(admin),
+            json={"exemption_type_id": str(exemption_type.id), "start_date": "2026-01-01", "reason": "x"},
+        )
+        assert response.status_code == 201, response.text
+        exemption = admin_session.get(SoldierExemption, response.json()["id"])
+        assert exemption is not None
+        assert exemption.is_medical is expected
 
 
 def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: Session):

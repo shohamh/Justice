@@ -62,6 +62,7 @@ class GrantRequest(BaseModel):
     start_date: date
     end_date: date | None = None
     reason: str | None = Field(default=None, max_length=1000)
+    is_medical: bool = False
 
 
 class ExemptionFileOut(BaseModel):
@@ -116,8 +117,7 @@ def _authorize_file_read(
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, target))
     exemption_type = session.get(ExemptionType, exemption.exemption_type_id)
     if (
-        exemption_type is not None
-        and exemption_type.is_medical
+        (exemption.is_medical or (exemption_type is not None and exemption_type.is_medical))
         and target.id != user.id
         and not can_view_medical_document(session, user, target)
     ):
@@ -204,6 +204,7 @@ def grant(
             start_date=body.start_date,
             end_date=body.end_date,
             reason=body.reason,
+            is_medical=body.is_medical,
             actor_id=user.id,
         )
     except svc.ExemptionError as exc:

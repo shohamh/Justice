@@ -28,6 +28,7 @@ def grant_exemption(
     start_date: date,
     end_date: date | None,
     reason: str | None,
+    is_medical: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> SoldierExemption:
     from app.db.models import NotificationType
@@ -45,6 +46,7 @@ def grant_exemption(
     ex = SoldierExemption(
         soldier_id=soldier_id,
         exemption_type_id=exemption_type_id,
+        is_medical=is_medical,
         start_date=start_date,
         end_date=end_date,
         reason=reason,
@@ -119,6 +121,7 @@ def grant_commander_exemption(
     ex = SoldierExemption(
         soldier_id=soldier_id,
         exemption_type_id=exemption_type_id,
+        is_medical=et.is_medical,
         start_date=start_date,
         end_date=end_date,
         reason=reason,
