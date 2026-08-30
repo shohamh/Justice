@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-30 (4)
+
+### Features
+- Added commander and regular exemption grants with medical classification, supporting evidence uploads, secure file listing/downloads, and audit context for direct grants.
+
+### Fixes
+- Persisted exemption medical classification so medical evidence remains protected by the server-side privacy gate.
+- Preserved attachment-upload errors after a grant so users can see and retry failed uploads.
+- Tightened range eligibility to require the appropriate recent range qualification and improved the associated Hebrew explanations.
+- Prevented profile edits from silently triggering published-assignment rechecks.
+
 ## 2026-08-30 (3)
 
 ### Features
