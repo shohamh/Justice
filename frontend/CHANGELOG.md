@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-30
+
+### Features
+- Added a redacted "public profile" view for a soldier the viewer has no read scope over (instead of a hard error), showing only approved public fields with a "public profile" indicator and hiding management actions and the score/exemptions/constraints/duty-history tabs.
+- Linked action-item notifications to the correct tab on the Approvals page.
+- Added a commander/duty-manager summary to the mobile hierarchy node action menu, matching the desktop view.
+
+### Fixes
+- Sped up saving a range auto-assign batch and bulk-clearing a range event's assignments by replacing per-soldier ranking and notification calls with batched ones.
+
+### Chores
+- Reworked a constraints test that hardcoded a date so it no longer breaks as real time passes.
+- Added a triage spec and handoff doc for previously reported user issues.
+
 ## 2026-08-29
 
 ### Features
