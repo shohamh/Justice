@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface DutyShift {
   id: string;
@@ -61,7 +62,8 @@ export async function listShifts(params?: {
   date_to?: string;
   duty_type_id?: string;
 }): Promise<DutyShift[]> {
-  return (await api.get<DutyShift[]>("/shifts", { params })).data;
+  const data = (await api.get<unknown>("/shifts", { params })).data;
+  return optionalArrayResponse<DutyShift>(data);
 }
 
 export async function createShift(input: CreateShiftInput): Promise<DutyShift> {
