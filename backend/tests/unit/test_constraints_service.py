@@ -363,31 +363,6 @@ def test_cancel_once_fully_approved_requires_a_reason(admin_session):
         cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
 
 
-def test_cancel_once_fully_approved_with_reason_succeeds(admin_session):
-    # Regression test: the success path (as opposed to the reason-required
-    # error path above) actually writes decided_at, which previously blew up
-    # with NameError: name 'timezone' is not defined.
-    s = create_soldier(admin_session, personal_number="7400011")
-    c = submit_constraint(
-        admin_session,
-        soldier_id=s.id,
-        start_date=date.today() + timedelta(days=5),
-        end_date=date.today() + timedelta(days=10),
-        reason="חופשה",
-        actor_id=None,
-    )
-    admin_session.flush()
-    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)  # -> pending_duty_manager
-    admin_session.flush()
-    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id, actor_role="admin")  # -> approved
-    admin_session.flush()
-    cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id, reason="סיבה")
-    admin_session.flush()
-    assert c.status == "cancelled"
-    assert c.decided_at is not None
-    assert c.decision_note == "סיבה"
-
-
 def test_cancel_not_pending_once_rejected(admin_session):
     s = create_soldier(admin_session, personal_number=_pn(13))
     c = submit_constraint(

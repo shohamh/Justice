@@ -11,8 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyAssignment, DutyType, ExemptionDutyLocationMap, ExemptionDutyTypeMap, ExemptionType,
-    PersonalConstraint, RangeAssignment, RangeEvent, RangeEventStatus, RangeExcusalRequest, RangeType,
-    Soldier, SoldierExemption,
+    PersonalConstraint, Soldier, SoldierExemption,
 )
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -125,15 +124,6 @@ def derive_bahad1_graduate(rank: str | None) -> bool:
     return rank not in BAHAD1_EXCLUDED_OFFICER_RANKS
 
 
-_MITVAHIM_RANGE_TYPES = (RangeType.laser, RangeType.live)
-
-
-def _has_recent_range(last_date: date | None, months: int, today: date) -> bool:
-    if not last_date or last_date > today:
-        return False
-    return (today - last_date) <= timedelta(days=months * 30)
-
-
 def _ineligibility_reason(
     soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date,
     rank_override: str | None = None,
@@ -144,11 +134,17 @@ def _ineligibility_reason(
         if not soldier.gender or soldier.gender not in reqs.allowed_genders:
             return "מגדר לא מתאים לדרישות התורנות"
 
-    if reqs.requires_mitvahim and not _has_recent_range(soldier.last_mitvahim_date, mitvahim_months, today):
-        return "אין מטווחים בתוקף"
+    if reqs.requires_mitvahim:
+        if not soldier.last_mitvahim_date:
+            return "לא בוצע מטווח מבצעי בטווח הזמן הנדרש"
+        if (today - soldier.last_mitvahim_date) > timedelta(days=mitvahim_months * 30):
+            return "לא בוצע מטווח מבצעי בטווח הזמן הנדרש"
 
-    if reqs.requires_alal and not _has_recent_range(soldier.last_alal_date, alal_months, today):
-        return "אין מטווחים בתוקף"
+    if reqs.requires_alal:
+        if not soldier.last_alal_date:
+            return 'לא בוצע מטווח אל"ל בטווח הזמן הנדרש'
+        if (today - soldier.last_alal_date) > timedelta(days=alal_months * 30):
+            return 'לא בוצע מטווח אל"ל בטווח הזמן הנדרש'
 
     effective_rank = rank_override if rank_override is not None else soldier.rank
 
@@ -194,125 +190,19 @@ def _is_eligible(
     ) is None
 
 
-def _ineligibility_reason_excluding_recency(
-    soldier: Soldier, reqs: DutyTypeRequirements, *, today: date, rank_override: str | None = None,
+def duty_type_ineligibility_reason(
+    soldier: Soldier, duty_type: DutyType, *, mitvahim_months: int, alal_months: int, today: date,
 ) -> str | None:
-    """Same as `_ineligibility_reason` but skips the מטווח מבצעי/אל"ל recency
-    checks — those are advisory only for manual assignment (see
-    `duty_type_recency_warning`), not a hard block."""
-    if reqs.allowed_genders:
-        if not soldier.gender or soldier.gender not in reqs.allowed_genders:
-            return "מגדר לא מתאים לדרישות התורנות"
-
-    effective_rank = rank_override if rank_override is not None else soldier.rank
-
-    if reqs.allowed_ranks:
-        if not effective_rank or effective_rank not in reqs.allowed_ranks:
-            return "דרגה לא מתאימה לדרישות התורנות"
-
-    per_rank_service_types = reqs.rank_service_types.get(effective_rank) if effective_rank else None
-    active_service_types = per_rank_service_types if per_rank_service_types is not None else reqs.allowed_service_types
-    if active_service_types:
-        stype = inferred_service_type(soldier, today)
-        if not stype or stype not in active_service_types:
-            return "מסלול שירות לא מתאים לדרישות התורנות"
-
-    if not reqs.officers_allowed and soldier.is_officer:
-        return "התורנות אינה פתוחה לקצינים"
-
-    if not reqs.enlisted_allowed:
-        if not soldier.is_officer:
-            return "התורנות פתוחה לקצינים בלבד"
-
-    if reqs.requires_bahad1 and not soldier.bahad1_graduate:
-        return 'נדרש להיות בוגר בה"ד 1'
-
-    if reqs.requires_military_driving_license:
-        if not soldier.has_military_driving_license:
-            return "נדרש רישיון נהיגה צבאי בתוקף"
-        if soldier.military_driving_license_expiry and soldier.military_driving_license_expiry < today:
-            return "נדרש רישיון נהיגה צבאי בתוקף"
-
-    return None
-
-
-def _duty_type_requirements(duty_type: DutyType) -> DutyTypeRequirements | None:
+    """Short Hebrew reason the soldier fails `duty_type`'s structural requirements,
+    or None if the duty type has no requirements or the soldier meets them all."""
     raw_reqs = duty_type.requirements or {}
     if not raw_reqs:
         return None
     try:
-        return DutyTypeRequirements.model_validate(raw_reqs)
+        reqs = DutyTypeRequirements.model_validate(raw_reqs)
     except Exception:
         return None
-
-
-def duty_type_ineligibility_reason(
-    soldier: Soldier, duty_type: DutyType, *, today: date,
-) -> str | None:
-    """Short Hebrew reason the soldier structurally fails `duty_type`'s
-    requirements (rank, gender, service track, בה"ד 1, driving license — never
-    the range-recency check, see `duty_type_recency_warning`), or None if the
-    duty type has no requirements or the soldier meets them all."""
-    reqs = _duty_type_requirements(duty_type)
-    if reqs is None:
-        return None
-    return _ineligibility_reason_excluding_recency(soldier, reqs, today=today)
-
-
-def _has_upcoming_qualifying_range(
-    session: Session, *, soldier_id: uuid.UUID, range_types: tuple[RangeType, ...], before: date,
-) -> bool:
-    """True if the soldier is expected to have a valid range of one of
-    `range_types` by `before` — a still-standing (non-excused) primary
-    assignment to a planned range event of that type on/before that date.
-    Approved excusals delete the assignment row outright, so only a pending
-    excusal request needs to be checked for explicitly."""
-    pending_excused_ids = select(RangeExcusalRequest.range_assignment_id).where(
-        RangeExcusalRequest.status == "pending",
-    )
-    row = session.execute(
-        select(RangeAssignment.id)
-        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
-        .where(
-            RangeAssignment.soldier_id == soldier_id,
-            RangeAssignment.is_reserve.is_(False),
-            RangeAssignment.is_draft.is_(False),
-            RangeAssignment.id.not_in(pending_excused_ids),
-            RangeEvent.status == RangeEventStatus.planned,
-            RangeEvent.date <= before,
-            RangeEvent.range_type.in_(range_types),
-        )
-        .limit(1)
-    ).first()
-    return row is not None
-
-
-def duty_type_recency_warning(
-    session: Session, soldier: Soldier, duty_type: DutyType, *, mitvahim_months: int, alal_months: int, today: date,
-) -> str | None:
-    """'אין מטווחים בתוקף' if `duty_type` requires a recent מבצעי/אל"ל range the
-    soldier's profile doesn't show — unless they're expected to have one by
-    `today` via a still-standing primary range assignment. Unlike other
-    structural requirements, this is advisory only: a duty manager can still
-    assign the soldier manually; only the algorithm treats it as a hard
-    exclusion (see `_ineligibility_reason`)."""
-    reqs = _duty_type_requirements(duty_type)
-    if reqs is None:
-        return None
-
-    needed_range_types: set[RangeType] = set()
-    if reqs.requires_mitvahim and not _has_recent_range(soldier.last_mitvahim_date, mitvahim_months, today):
-        needed_range_types.update(_MITVAHIM_RANGE_TYPES)
-    if reqs.requires_alal and not _has_recent_range(soldier.last_alal_date, alal_months, today):
-        needed_range_types.add(RangeType.alal)
-    if not needed_range_types:
-        return None
-
-    if _has_upcoming_qualifying_range(
-        session, soldier_id=soldier.id, range_types=tuple(needed_range_types), before=today,
-    ):
-        return None
-    return "אין מטווחים בתוקף"
+    return _ineligibility_reason(soldier, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months, today=today)
 
 
 def compute_eligibility_exclusions(
