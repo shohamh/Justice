@@ -1543,6 +1543,8 @@
     "bulk_delete_button": "מחק מטווחים",
     "bulk_delete_no_deletable": "כל המטווחים הנבחרים מכילים שיבוצים ולא ניתן למחוק אותם.",
     "load_error": "טעינת המטווחים נכשלה",
+    "detail_title": "פרטי מטווח",
+    "detail_load_error": "טעינת פרטי המטווח נכשלה",
     "view_assignments_button": "📋 שיבוצים",
     "edit_button": "✏️ עריכה",
     "delete_button": "🗑️ מחיקה",
@@ -1647,7 +1649,8 @@
       "confirm_assignments": "אישור השיבוצים נכשל",
       "save_assignments": "שמירת השיבוצים נכשלה",
       "primary_full": "אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף",
-      "reserve_full": "אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף"
+      "reserve_full": "אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף",
+      "candidates_load": "טעינת רשימת המועמדים נכשלה"
     }
   },
   "range_qualification": {
