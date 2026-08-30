@@ -40,7 +40,8 @@ export async function listAssignments(soldierId: string, params?: { date_from?: 
 }
 
 export async function listEffectiveDuties(soldierId: string, params?: { date_from?: string; date_to?: string; include_drafts?: boolean }): Promise<EffectiveDuty[]> {
-  return (await api.get<EffectiveDuty[]>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
+  const data = (await api.get<EffectiveDuty[]>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
+  return Array.isArray(data) ? data : [];
 }
 export async function createAssignment(input: {
   soldier_id: string; duty_type_id: string; duty_location_id: string; start_date: string; end_date: string; duty_shift_id?: string | null; notes?: string | null; is_reserve?: boolean;
@@ -63,6 +64,7 @@ export interface ShiftCandidate {
   burden_share: number;
   blocked: boolean;
   blocked_reason: "constraint" | "assignment" | "ineligible" | null;
+  blocked_detail: string | null;
   weapon_warning: boolean;
   hierarchy_path_ids: string[];
   personal_constraint_warning: PersonalConstraintWarning | null;

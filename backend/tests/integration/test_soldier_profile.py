@@ -106,6 +106,24 @@ def test_junior_duty_manager_can_edit_profile_without_changing_rank(client, admi
     assert rank_change_response.status_code == 403
 
 
+def test_authorized_editor_can_update_last_mitvahim_date_directly(client, admin_session):
+    duty_manager, node = _setup_dm(admin_session, "profile_mitvahim_dm")
+    soldier = create_soldier(
+        admin_session,
+        personal_number="profile_mitvahim_target",
+        hierarchy_node_id=node.id,
+    )
+
+    response = client.patch(
+        f"/api/soldiers/{soldier.id}/profile",
+        json={"last_mitvahim_date": "2026-09-03"},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["last_mitvahim_date"] == "2026-09-03"
+
+
 def test_lower_level_duty_manager_cannot_correct_rank(client, admin_session):
     root = create_node(admin_session, level="team", name="rank_junior_dm_root")
     duty_manager = create_soldier(

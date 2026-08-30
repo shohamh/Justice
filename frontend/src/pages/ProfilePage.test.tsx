@@ -4,10 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ProfilePage from "./ProfilePage";
 import { NotificationPref } from "../api/notifications";
-import { listFieldUpdates } from "../api/soldiers";
+import { listFieldUpdates, submitFieldUpdate } from "../api/soldiers";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key === "errors.same_value" ? "הערך שהוזן זהה לערך הקיים" : key }),
 }));
 
 vi.mock("../components/Layout", () => ({
@@ -129,6 +129,31 @@ describe("ProfilePage notification preferences", () => {
 
 
 describe("ProfilePage unified service-details form", () => {
+  it("surfaces the backend reason when submitting a last-range-date update fails", async () => {
+    vi.mocked(submitFieldUpdate).mockRejectedValueOnce({
+      response: { data: { detail: "same_value" } },
+    });
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "u1", full_name: "×—×™×™×œ", role: "soldier", is_commander: false,
+        is_duty_manager: false, email: null, email_verified: false,
+        gender: null, rank: null, rank_track: null, phone: null,
+        last_mitvahim_date: "2026-08-01", last_alal_date: null,
+        mandatory_end_date: null, discharge_date: null,
+        has_military_driving_license: false, military_driving_license_expiry: null,
+      },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    renderProfilePage();
+
+    const dateInput = await screen.findByDisplayValue("01/08/2026");
+    fireEvent.change(dateInput, { target: { value: "2026-08-24" } });
+    const submitButtons = screen.getAllByRole("button", { name: "soldier_profile.submit_update" });
+    fireEvent.click(submitButtons[3]);
+
+    expect(await screen.findByText("הערך שהוזן זהה לערך הקיים")).toBeInTheDocument();
+  });
+
   it("seeds controls with the current value and disables submit while unchanged", async () => {
     mockUseAuth.mockReturnValue({
       user: {

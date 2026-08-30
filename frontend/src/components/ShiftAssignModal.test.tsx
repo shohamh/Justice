@@ -53,6 +53,33 @@ describe("ShiftAssignModal weapon eligibility warning", () => {
   });
 });
 
+describe("ShiftAssignModal ineligible candidate wording", () => {
+  it("shows the not-fit wording plus a short detail for a structurally ineligible candidate", async () => {
+    vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
+      {
+        soldier_id: "s1", full_name: "חייל לא כשיר", personal_number: "222",
+        burden_share: 0.5, blocked: true, blocked_reason: "ineligible",
+        blocked_detail: "מגדר לא מתאים לדרישות התורנות", weapon_warning: false,
+        hierarchy_path_ids: [],
+      },
+    ]);
+    render(<ShiftAssignModal shift={baseShift} dutyTypes={[]} onSaved={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByText("לא כשיר לסוג תורנות זה — מגדר לא מתאים לדרישות התורנות")).toBeInTheDocument();
+  });
+
+  it("shows the not-fit wording without a dash when there is no detail", async () => {
+    vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
+      {
+        soldier_id: "s1", full_name: "חייל לא כשיר", personal_number: "222",
+        burden_share: 0.5, blocked: true, blocked_reason: "ineligible",
+        blocked_detail: null, weapon_warning: false, hierarchy_path_ids: [],
+      },
+    ]);
+    render(<ShiftAssignModal shift={baseShift} dutyTypes={[]} onSaved={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByText("לא כשיר לסוג תורנות זה")).toBeInTheDocument();
+  });
+});
+
 describe("ShiftAssignModal personal constraint override", () => {
   beforeEach(() => {
     vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([

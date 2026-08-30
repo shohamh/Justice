@@ -164,6 +164,10 @@ export async function fetchBugReportScreenshot(id: string): Promise<Blob> {
   return (await api.get(`/admin/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
 }
 
+export async function fetchMyBugReportScreenshot(id: string): Promise<Blob> {
+  return (await api.get(`/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
+}
+
 export async function updateBugReportStatus(id: string, status: BugReportStatus): Promise<BugReportSummary> {
   return (await api.patch<BugReportSummary>(`/admin/bug-reports/${id}`, { status })).data;
 }

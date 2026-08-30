@@ -527,6 +527,18 @@ def mark_bug_report_seen(
     session.commit()
 
 
+@router.get("/bug-reports/{report_id}/screenshot")
+def get_my_bug_report_screenshot(
+    report_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> Response:
+    report = _require_reporter_or_admin(session, user, report_id)
+    if report.screenshot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_screenshot_not_found")
+    return Response(content=report.screenshot, media_type="image/png")
+
+
 @router.post(
     "/bug-reports/{report_id}/comments",
     response_model=BugReportCommentOut,

@@ -307,7 +307,7 @@ def cancel_constraint(
     old_status = c.status
     c.status = "cancelled"
     c.decided_by = actor_id
-    c.decided_at = datetime.now(timezone.utc)
+    c.decided_at = datetime.now(UTC)
     c.decision_note = reason.strip()
     write_audit(
         session,

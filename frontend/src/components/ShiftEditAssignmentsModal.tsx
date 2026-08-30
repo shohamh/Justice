@@ -27,6 +27,11 @@ const BLOCKED_REASON_LABEL: Record<string, string> = {
   assignment: "כבר משובץ",
 };
 
+function blockedReasonText(c: ShiftCandidate): string {
+  if (c.blocked_reason === "ineligible") return `לא כשיר לסוג תורנות זה${c.blocked_detail ? ` — ${c.blocked_detail}` : ""}`;
+  return c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : "";
+}
+
 function hierarchyDistance(pathA: string[], pathB: string[]): number {
   let common = 0;
   while (common < pathA.length && common < pathB.length && pathA[common] === pathB[common]) common++;
@@ -606,7 +611,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
               <td className="p-2">{c.full_name}</td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
               <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
-              <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
+              <td className="p-2 text-gray-400 whitespace-nowrap">{blockedReasonText(c)}</td>
             </tr>
           ))}
         </tbody>
@@ -676,7 +681,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
               <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
               {showDist && <td className="p-2"></td>}
-              <td className="p-2 text-gray-400 whitespace-nowrap">{c.blocked_reason === "ineligible" ? "אי־כשיר לסוג תורנות זה" : c.blocked_reason ? BLOCKED_REASON_LABEL[c.blocked_reason] : ""}</td>
+              <td className="p-2 text-gray-400 whitespace-nowrap">{blockedReasonText(c)}</td>
             </tr>
           ))}
         </tbody>

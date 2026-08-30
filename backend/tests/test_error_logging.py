@@ -1,9 +1,11 @@
 import json
+import logging
 
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from app.error_logging import redact, request_id
+from app import error_logging as error_logging_module
+from app.error_logging import log_backend_exception, log_frontend_error, redact, request_id
 
 
 def test_request_id_rejects_header_injection_and_redacts_secrets():
@@ -57,3 +59,95 @@ def test_frontend_error_endpoint_writes_to_dedicated_logger(monkeypatch):
     )
     assert response.status_code == 204
     assert records[0]["request_id"] == "trace-1"
+
+
+class _RecordingHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def _capture(logger_name: str):
+    logger = logging.getLogger(logger_name)
+    handler = _RecordingHandler()
+    logger.addHandler(handler)
+    logger.setLevel(logging.ERROR)
+    return handler, logger
+
+
+class _FakeRateLimitSettings:
+    error_log_rate_limit_max_per_window = 3
+    error_log_rate_limit_window_seconds = 60.0
+
+
+class _FakeRequestState:
+    request_id = "r1"
+
+
+class _FakeRequest:
+    state = _FakeRequestState()
+
+
+def _setup_rate_limit_test(monkeypatch):
+    error_logging_module._rate_limit_state.clear()
+    monkeypatch.setattr("app.settings.get_settings", lambda: _FakeRateLimitSettings())
+    fake_time = {"now": 1000.0}
+    monkeypatch.setattr(error_logging_module.time, "monotonic", lambda: fake_time["now"])
+    return fake_time
+
+
+def test_repeated_frontend_errors_are_rate_limited_per_fingerprint(monkeypatch):
+    _setup_rate_limit_test(monkeypatch)
+    handler, logger = _capture("frontend.errors")
+    try:
+        payload = {"request_id": "r1", "kind": "uncaught-error", "message": "boom", "filename": "x.ts", "line": 1}
+        for _ in range(10):
+            log_frontend_error(payload)
+        # Capped at the configured max (3 here) even though called 10 times.
+        assert len(handler.records) == 3
+        assert all(r.getMessage() == "Frontend error" for r in handler.records)
+
+        # A different fingerprint isn't affected by the first one's cap.
+        log_frontend_error({**payload, "message": "a different error"})
+        assert len(handler.records) == 4
+    finally:
+        logger.removeHandler(handler)
+
+
+def test_rate_limit_window_rollover_emits_one_rollup_line(monkeypatch):
+    fake_time = _setup_rate_limit_test(monkeypatch)
+    handler, logger = _capture("frontend.errors")
+    try:
+        payload = {"request_id": "r1", "kind": "uncaught-error", "message": "boom", "filename": "x.ts", "line": 1}
+        for _ in range(10):
+            log_frontend_error(payload)
+        assert len(handler.records) == 3  # 3 logged, 7 suppressed
+
+        fake_time["now"] += 61  # past the 60s window
+        log_frontend_error(payload)
+
+        assert len(handler.records) == 5
+        rollup, resumed = handler.records[-2], handler.records[-1]
+        assert rollup.getMessage() == "Frontend error (rate-limit rollup)"
+        assert rollup.suppressed_count == 7
+        assert resumed.getMessage() == "Frontend error"
+    finally:
+        logger.removeHandler(handler)
+
+
+def test_repeated_backend_exceptions_are_rate_limited_per_fingerprint(monkeypatch):
+    _setup_rate_limit_test(monkeypatch)
+    handler, logger = _capture("backend.errors")
+    try:
+        for _ in range(10):
+            log_backend_exception(_FakeRequest(), RuntimeError("boom"), {"path": "/broken"})
+        assert len(handler.records) == 3
+
+        # A different exception/path is a different fingerprint, unaffected.
+        log_backend_exception(_FakeRequest(), RuntimeError("boom"), {"path": "/other"})
+        assert len(handler.records) == 4
+    finally:
+        logger.removeHandler(handler)
