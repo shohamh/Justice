@@ -171,6 +171,7 @@ describe("ExemptionsPanel", () => {
     await waitFor(() => {
       expect(exemptionsApi.grantExemption).toHaveBeenCalledWith("abc", {
         exemption_type_id: "et-official",
+        is_medical: true,
         start_date: "2026-08-30",
         end_date: null,
         reason: "סיבה רגילה",
@@ -204,6 +205,7 @@ describe("ExemptionsPanel", () => {
     await waitFor(() => {
       expect(exemptionsApi.grantExemption).toHaveBeenCalledWith("abc", {
         exemption_type_id: "et-official",
+        is_medical: true,
         start_date: "2026-08-30",
         end_date: null,
         reason: "סיבה רגילה",

@@ -226,6 +226,7 @@ export default function ExemptionsPanel({
     try {
       const createdExemption = await grantExemption(soldierId, {
         exemption_type_id: typeId,
+        is_medical: isMedicalGrant,
         start_date: start,
         end_date: end || null,
         reason: reason || null,

@@ -39,7 +39,16 @@ export async function getExemptionDetail(soldierId: string, exemptionId: string)
 export async function listExemptions(soldierId: string): Promise<Exemption[]> {
   return (await api.get<Exemption[]>(`/soldiers/${soldierId}/exemptions`)).data;
 }
-export async function grantExemption(soldierId: string, input: { exemption_type_id: string; start_date: string; end_date?: string | null; reason?: string | null }): Promise<Exemption> {
+export async function grantExemption(
+  soldierId: string,
+  input: {
+    exemption_type_id: string;
+    is_medical?: boolean;
+    start_date: string;
+    end_date?: string | null;
+    reason?: string | null;
+  },
+): Promise<Exemption> {
   return (await api.post<Exemption>(`/soldiers/${soldierId}/exemptions`, input)).data;
 }
 export async function revokeExemption(soldierId: string, exemptionId: string, reason: string): Promise<void> {
