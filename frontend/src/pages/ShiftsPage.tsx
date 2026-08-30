@@ -7,7 +7,6 @@ import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
 import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
 import ShiftTemplateFormModal from "../components/ShiftTemplateFormModal";
-import CheckboxListDropdown from "../components/CheckboxListDropdown";
 import SetResponsibleUnitsModal from "../components/SetResponsibleUnitsModal";
 import SplitInUnitModal from "../components/SplitInUnitModal";
 import AutoAssignResponsibilityModal from "../components/AutoAssignResponsibilityModal";
@@ -487,8 +486,6 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const [nodeFilterIds, setNodeFilterIds] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [selectedDutyTypeFilterIds, setSelectedDutyTypeFilterIds] = useState<string[]>([]);
-  const [selectedEligibilityGroupFilterIds, setSelectedEligibilityGroupFilterIds] = useState<string[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [editShift, setEditShift] = useState<DutyShift | null>(null);
   const [editAssignmentsShift, setEditAssignmentsShift] = useState<DutyShift | null>(null);
@@ -611,17 +608,6 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     const matching = displayedShifts.filter(s => dutyTypeIds.includes(s.duty_type_id)).map(s => s.id);
     setSelectedShiftIds(prev => Array.from(new Set([...prev, ...matching])));
   }, [displayedShifts]);
-
-  const selectDutyTypeFilter = useCallback((dutyTypeIds: string[]) => {
-    setSelectedDutyTypeFilterIds(dutyTypeIds);
-    selectByDutyTypeIds(dutyTypeIds);
-  }, [selectByDutyTypeIds]);
-
-  const selectEligibilityGroupFilter = useCallback((groupIds: string[]) => {
-    setSelectedEligibilityGroupFilterIds(groupIds);
-    const dutyTypeIds = groupIds.flatMap(id => eligibilityGroups[Number(id)]?.duty_type_ids ?? []);
-    selectByDutyTypeIds(dutyTypeIds);
-  }, [eligibilityGroups, selectByDutyTypeIds]);
 
   const dtName = useCallback((id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8), [dutyTypes]);
   const locName = useCallback((id: string) => locations.find(l => l.id === id)?.name ?? id.slice(0, 8), [locations]);
@@ -864,24 +850,35 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             {t("shifts.filter_to")}
             <DateInput value={dateTo} onChange={iso => { setDateTo(iso); if (iso && dateFrom && iso < dateFrom) setDateFrom(iso); }} min={dateFrom || undefined} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
-          <CheckboxListDropdown
-            items={dutyTypes.map(dt => ({ id: dt.id, label: dt.name }))}
-            selected={selectedDutyTypeFilterIds}
-            onChange={selectDutyTypeFilter}
-            triggerLabel={t("shifts.filter_by_duty_type")}
-            panelDir="rtl"
-          />
+          <label className="flex items-center gap-2">
+            {t("shifts.filter_by_duty_type")}
+            <select
+              multiple
+              data-testid="quick-filter-duty-type"
+              className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32"
+              onChange={(e) => selectByDutyTypeIds(Array.from(e.target.selectedOptions, o => o.value))}
+            >
+              {dutyTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
+            </select>
+          </label>
           {eligibilityGroups.length > 0 && (
-            <CheckboxListDropdown
-              items={eligibilityGroups.map((g: EligibilityGroup, i: number) => ({
-                id: String(i),
-                label: `${g.soldier_count} חיילים כשירים ל${g.duty_type_names.join(", ")}`,
-              }))}
-              selected={selectedEligibilityGroupFilterIds}
-              onChange={selectEligibilityGroupFilter}
-              triggerLabel={t("shifts.filter_by_eligibility_group")}
-              panelDir="rtl"
-            />
+            <label className="flex items-center gap-2">
+              {t("shifts.filter_by_eligibility_group")}
+              <select
+                multiple
+                data-testid="quick-filter-eligibility-group"
+                className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32"
+                onChange={(e) => {
+                  const indices = Array.from(e.target.selectedOptions, o => Number(o.value));
+                  const ids = indices.flatMap(i => eligibilityGroups[i]?.duty_type_ids ?? []);
+                  selectByDutyTypeIds(ids);
+                }}
+              >
+                {eligibilityGroups.map((g: EligibilityGroup, i: number) => (
+                  <option key={i} value={i}>{`${g.soldier_count} חיילים כשירים ל${g.duty_type_names.join(", ")}`}</option>
+                ))}
+              </select>
+            </label>
           )}
           {displayedShifts.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

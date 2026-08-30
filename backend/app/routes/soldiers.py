@@ -22,7 +22,7 @@ from app.auth.authz import (
 )
 from app.auth.deps import require_password_changed
 from app.auth.password import verify_password
-from app.db.models import DutyAssignment, HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
+from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
 from app.audit.writer import write_audit
 from app.services import soldiers as svc
@@ -802,17 +802,6 @@ def update_profile(
         update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
     except svc.SoldierError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    # Profile range dates are a legacy/manual qualification source. Refresh the
-    # cached weapon-eligibility flag on the soldier's published duties now so
-    # an otherwise stale warning disappears immediately after the edit.
-    from app.services.duty_eligibility_watch import recheck_assignments
-    assignment_ids = session.execute(
-        select(DutyAssignment.id).where(
-            DutyAssignment.soldier_id == s.id,
-            DutyAssignment.status == "published",
-        )
-    ).scalars().all()
-    recheck_assignments(session, assignment_ids)
     session.commit()
     session.refresh(s)
     phone_public, email_public = _contact_visibility(session)

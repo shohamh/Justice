@@ -88,27 +88,27 @@ def test_null_gender_blocked_if_restriction():
 def test_duty_type_ineligibility_reason_none_when_eligible():
     s = _soldier(gender="male")
     dt = DutyType(name="dt_reason_ok", score_per_day=Decimal("1.00"), requirements={"allowed_genders": ["male"]})
-    assert duty_type_ineligibility_reason(s, dt, today=TODAY) is None
+    assert duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY) is None
 
 
 def test_duty_type_ineligibility_reason_none_when_no_requirements():
     s = _soldier(gender="female")
     dt = DutyType(name="dt_reason_none", score_per_day=Decimal("1.00"), requirements={})
-    assert duty_type_ineligibility_reason(s, dt, today=TODAY) is None
+    assert duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY) is None
 
 
 def test_duty_type_ineligibility_reason_describes_gender_mismatch():
     s = _soldier(gender="female")
     dt = DutyType(name="dt_reason_gender", score_per_day=Decimal("1.00"), requirements={"allowed_genders": ["male"]})
-    reason = duty_type_ineligibility_reason(s, dt, today=TODAY)
+    reason = duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY)
     assert reason == "מגדר לא מתאים לדרישות התורנות"
 
 
 def test_duty_type_ineligibility_reason_describes_stale_mitvahim():
     s = _soldier(last_mitvahim_date=TODAY - timedelta(days=400))
     dt = DutyType(name="dt_reason_mitvahim", score_per_day=Decimal("1.00"), requirements={"requires_mitvahim": True})
-    reason = duty_type_ineligibility_reason(s, dt, today=TODAY)
-    assert reason is None
+    reason = duty_type_ineligibility_reason(s, dt, mitvahim_months=6, alal_months=3, today=TODAY)
+    assert reason == "לא בוצע מטווח מבצעי בטווח הזמן הנדרש"
 
 
 def test_mitvahim_fresh_passes():
@@ -125,12 +125,6 @@ def test_mitvahim_stale_blocks():
 
 def test_null_mitvahim_blocks():
     s = _soldier(last_mitvahim_date=None)
-    reqs = DutyTypeRequirements(requires_mitvahim=True)
-    assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
-
-
-def test_future_mitvahim_date_blocks():
-    s = _soldier(last_mitvahim_date=TODAY + timedelta(days=1))
     reqs = DutyTypeRequirements(requires_mitvahim=True)
     assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
 

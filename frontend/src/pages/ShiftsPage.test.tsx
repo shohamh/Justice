@@ -331,8 +331,11 @@ test("selecting a duty type in the quick filter checks all matching shift rows",
   );
 
   const user = userEvent.setup();
-  await user.click(screen.getByText("shifts.filter_by_duty_type"));
-  await user.click(screen.getAllByRole("checkbox")[1]);
+  const dutyTypeSelect = await screen.findByTestId("quick-filter-duty-type");
+  await waitFor(() => {
+    expect(Array.from(dutyTypeSelect.options).map(o => o.value)).toEqual(["dt1", "dt2"]);
+  });
+  await user.selectOptions(dutyTypeSelect, ["dt1"]);
   expect(screen.getByTestId("shift-row-checkbox-s1")).toBeChecked();
   expect(screen.getByTestId("shift-row-checkbox-s2")).not.toBeChecked();
 });
@@ -376,8 +379,7 @@ test("selecting an eligibility group checks all shift rows whose duty type is in
   );
 
   const user = userEvent.setup();
-  await user.click(await screen.findByText("shifts.filter_by_eligibility_group"));
-  await user.click(screen.getAllByRole("checkbox")[1]);
+  await user.selectOptions(await screen.findByTestId("quick-filter-eligibility-group"), ["0"]);
   expect(screen.getByTestId("shift-row-checkbox-s1")).toBeChecked();
   expect(screen.getByTestId("shift-row-checkbox-s2")).not.toBeChecked();
 });
