@@ -72,36 +72,6 @@ def test_current_qualification_covers_as_of_date(app_session: Session) -> None:
     assert reason is None
 
 
-def test_profile_last_mitvahim_date_covers_weapon_duty(app_session: Session) -> None:
-    soldier = create_soldier(app_session, personal_number="we-profile-date")
-    soldier.last_mitvahim_date = date.today()
-    _enable_mitvachim(app_session)
-    app_session.commit()
-
-    eligible, reason = compute_eligibility(
-        app_session, soldier_id=soldier.id, required_range_type=RangeType.laser,
-        as_of=date.today(),
-    )
-
-    assert eligible is True
-    assert reason is None
-
-
-def test_future_profile_last_mitvahim_date_does_not_cover_earlier_duty(app_session: Session) -> None:
-    soldier = create_soldier(app_session, personal_number="we-future-profile-date")
-    soldier.last_mitvahim_date = date.today() + timedelta(days=9)
-    _enable_mitvachim(app_session)
-    app_session.commit()
-
-    eligible, reason = compute_eligibility(
-        app_session, soldier_id=soldier.id, required_range_type=RangeType.laser,
-        as_of=date.today(),
-    )
-
-    assert eligible is False
-    assert reason == "weapon_qualification"
-
-
 def test_expired_qualification_is_not_eligible(app_session: Session) -> None:
     soldier = create_soldier(app_session, personal_number="we-003")
     _enable_mitvachim(app_session)

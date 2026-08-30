@@ -3,13 +3,11 @@
 ## 2026-08-30 (3)
 
 ### Features
-- Added screenshot previews to soldiers' own bug-report cards.
+- Reporters can now view their own attached screenshot when expanding a report in the "my reports" tab, not just admins.
+- Rate-limited repeated error log entries (10 per 60s per fingerprint, both configurable) so a hot loop hitting a broken endpoint or a broken client-side retry loop can't flood the error logs or drown the admin error inbox; a rollup line reports the suppressed count once the window rolls over.
 
 ### Fixes
-- Fixed range-qualification eligibility so a manually entered future last-range date cannot qualify an earlier duty, while still refreshing existing duty warnings after profile edits.
-- Fixed stale range-qualification warnings and improved shift-candidate ineligibility details and filter controls.
-- Fixed a privileged personal-constraint cancellation crash.
-- Rate-limited repeated error-log entries.
+- Reworded a shift candidate's ineligibility label from "אי־כשיר לסוג תורנות זה" to "לא כשיר לסוג תורנות זה" and added a short reason: a generic "exempt from this duty type" note for a granted exemption (never the grant's own reason text), or the specific failing requirement (rank, gender, service track, missing mitvahim/alal recency, etc.) for a structurally ineligible candidate.
 
 ## 2026-08-30 (2)
 

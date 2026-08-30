@@ -12,6 +12,7 @@ from app.services.hierarchy import (
     create_node,
     delete_level_type,
     delete_node,
+    get_level_rank,
     move_node,
     node_distance,
     rename_node,
@@ -81,6 +82,16 @@ def test_create_child_rejects_rank_not_below_parent(admin_session):
 def test_create_node_rejects_unknown_level(admin_session):
     with pytest.raises(HierarchyError):
         create_node(admin_session, level="not_a_real_level", name="x", parent_id=None, actor_id=None)
+
+
+def test_get_level_rank_prefers_key_and_falls_back_to_seeded_label(admin_session):
+    custom = HierarchyLevelType(key="\u05de\u05d3\u05d5\u05e8", label="custom", rank=99)
+    admin_session.add(custom)
+    admin_session.flush()
+
+    assert get_level_rank(admin_session, "\u05de\u05d3\u05d5\u05e8") == 99
+    assert get_level_rank(admin_session, "\u05de\u05e8\u05db\u05d6") == 4
+    assert get_level_rank(admin_session, "not-a-level") is None
 
 
 def test_ancestor_id_at_level_finds_matching_ancestor(admin_session):

@@ -15,6 +15,17 @@ class HierarchyError(Exception):
 
 _UNREACHABLE_DISTANCE = 10**6
 
+_SEEDED_LEVEL_LABEL_KEYS = {
+    "\u05d0\u05d2\u05e3": "corps",
+    "\u05de\u05e2\u05e8\u05da": "division",
+    "\u05d9\u05d7\u05d9\u05d3\u05d4": "unit",
+    "\u05de\u05e8\u05db\u05d6": "department",
+    "\u05e2\u05e0\u05e3": "branch",
+    "\u05de\u05d3\u05d5\u05e8": "group",
+    "\u05e6\u05d5\u05d5\u05ea": "team",
+    "\u05d7\u05d5\u05dc\u05d9\u05d4": "squad",
+}
+
 
 def node_distance(session: Session, node_a: uuid.UUID | None, node_b: uuid.UUID | None) -> int:
     """Symmetric-difference distance between two nodes' ancestor chains
@@ -36,8 +47,16 @@ def node_distance(session: Session, node_a: uuid.UUID | None, node_b: uuid.UUID 
 
 
 def get_level_rank(session: Session, level_key: str) -> int | None:
-    return session.execute(
+    rank = session.execute(
         select(HierarchyLevelType.rank).where(HierarchyLevelType.key == level_key)
+    ).scalar_one_or_none()
+    if rank is not None:
+        return rank
+    seeded_key = _SEEDED_LEVEL_LABEL_KEYS.get(level_key)
+    if seeded_key is None:
+        return None
+    return session.execute(
+        select(HierarchyLevelType.rank).where(HierarchyLevelType.key == seeded_key)
     ).scalar_one_or_none()
 
 

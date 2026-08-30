@@ -30,7 +30,6 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import MessageDialog from "../components/MessageDialog";
-import { translateApiError } from "../utils/translateApiError";
 
 // Notification types that are never sent to a plain soldier — only to their
 // commander(s), duty managers, or admins (see notify_* call sites in
@@ -279,8 +278,8 @@ export default function ProfilePage() {
     try {
       await submitFieldUpdate(user.id, field, value);
       await queryClient.invalidateQueries({ queryKey: queryKeys.fieldUpdates(user.id) });
-    } catch (err: unknown) {
-      setMessage(translateApiError(err, t));
+    } catch {
+      // submission failed silently — backend returns error detail
     }
   }
 

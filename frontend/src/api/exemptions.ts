@@ -39,7 +39,16 @@ export async function getExemptionDetail(soldierId: string, exemptionId: string)
 export async function listExemptions(soldierId: string): Promise<Exemption[]> {
   return (await api.get<Exemption[]>(`/soldiers/${soldierId}/exemptions`)).data;
 }
-export async function grantExemption(soldierId: string, input: { exemption_type_id: string; start_date: string; end_date?: string | null; reason?: string | null }): Promise<Exemption> {
+export async function grantExemption(
+  soldierId: string,
+  input: {
+    exemption_type_id: string;
+    is_medical?: boolean;
+    start_date: string;
+    end_date?: string | null;
+    reason?: string | null;
+  },
+): Promise<Exemption> {
   return (await api.post<Exemption>(`/soldiers/${soldierId}/exemptions`, input)).data;
 }
 export async function revokeExemption(soldierId: string, exemptionId: string, reason: string): Promise<void> {
@@ -157,6 +166,39 @@ export async function listExemptionFiles(requestId: string): Promise<ExemptionFi
 
 export function exemptionFileDownloadUrl(requestId: string, fileId: string): string {
   return `/exemption-requests/${requestId}/files/${fileId}`;
+}
+
+export async function uploadSoldierExemptionFile(
+  soldierId: string,
+  exemptionId: string,
+  file: File,
+): Promise<ExemptionFile> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await api.post<ExemptionFile>(
+    `/soldiers/${soldierId}/exemptions/${exemptionId}/files`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return res.data;
+}
+
+export async function listSoldierExemptionFiles(
+  soldierId: string,
+  exemptionId: string,
+): Promise<ExemptionFile[]> {
+  const res = await api.get<ExemptionFile[]>(
+    `/soldiers/${soldierId}/exemptions/${exemptionId}/files`,
+  );
+  return res.data;
+}
+
+export function soldierExemptionFileDownloadUrl(
+  soldierId: string,
+  exemptionId: string,
+  fileId: string,
+): string {
+  return `/soldiers/${soldierId}/exemptions/${exemptionId}/files/${fileId}`;
 }
 
 export async function grantCommanderExemption(soldierId: string, input: {

@@ -19,7 +19,6 @@ from app.services.weapon_eligibility import (
     _latest_qualification_by_soldier,
     _max_qualification_valid_untils,
     _pending_excusal_disqualifies,
-    _profile_valid_until,
 )
 
 
@@ -149,14 +148,6 @@ def project_duty_eligibility(
             )
             continue
         current_valid_until = valid_untils[soldier_id, required_range_type]
-        profile_valid_until = _profile_valid_until(
-            session,
-            soldier_id=soldier_id,
-            required_range_type=required_range_type,
-            as_of=requirement.scheduled_date,
-        )
-        if profile_valid_until is not None:
-            current_valid_until = max(current_valid_until or profile_valid_until, profile_valid_until)
         windows = future_windows[soldier_id, required_range_type]
         eligible = _is_eligible_from_data(
             current_best_valid_until=current_valid_until,

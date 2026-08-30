@@ -61,8 +61,7 @@ export async function listShifts(params?: {
   date_to?: string;
   duty_type_id?: string;
 }): Promise<DutyShift[]> {
-  const data = (await api.get<DutyShift[]>("/shifts", { params })).data;
-  return Array.isArray(data) ? data : [];
+  return (await api.get<DutyShift[]>("/shifts", { params })).data;
 }
 
 export async function createShift(input: CreateShiftInput): Promise<DutyShift> {
