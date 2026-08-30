@@ -55,6 +55,33 @@ def test_soldier_cancel_own(client: TestClient, admin_session: Session):
     assert len(r2.json()) == 0
 
 
+def test_admin_cancels_approved_constraint_with_reason(client: TestClient, admin_session: Session):
+    # Regression test: hitting POST /constraints/{id}/cancel on an *approved*
+    # constraint previously 500'd with NameError: name 'timezone' is not
+    # defined in cancel_constraint's decided_at assignment.
+    admin = create_soldier(admin_session, personal_number="7500021", role="admin")
+    s = create_soldier(admin_session, personal_number="7500022")
+    c = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(s),
+        json={
+            "start_date": (date.today() + timedelta(days=5)).isoformat(),
+            "end_date": (date.today() + timedelta(days=10)).isoformat(),
+            "reason": "חופשה",
+        },
+    ).json()
+    r1 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(admin), json={})
+    assert r1.status_code == 200, r1.text
+    r2 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(admin), json={})
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "approved"
+    r3 = client.post(
+        f"/api/constraints/{c['id']}/cancel", headers=auth_headers(admin), json={"reason": "בוטל"}
+    )
+    assert r3.status_code == 200, r3.text
+    assert r3.json()["status"] == "cancelled"
+
+
 def test_soldier_remaining_days(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="7500005")
     r = client.get("/api/me/constraints/remaining", headers=auth_headers(s))
