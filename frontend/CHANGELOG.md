@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-30 (3)
+
+### Features
+- Added screenshot previews to soldiers' own bug-report cards.
+
+### Fixes
+- Fixed range-qualification eligibility so a manually entered future last-range date cannot qualify an earlier duty, while still refreshing existing duty warnings after profile edits.
+- Fixed stale range-qualification warnings and improved shift-candidate ineligibility details and filter controls.
+- Fixed a privileged personal-constraint cancellation crash.
+- Rate-limited repeated error-log entries.
+
 ## 2026-08-30 (2)
 
 ### Features
