@@ -1,5 +1,8 @@
-import { describe, expect, test } from "vitest";
-import { isSwapActionableForUser, SwapRequest } from "./swaps";
+import { describe, expect, test, vi } from "vitest";
+import { api } from "./client";
+import { isSwapActionableForUser, listPendingSwaps, SwapRequest } from "./swaps";
+
+vi.mock("./client");
 
 function makeSwap(overrides: Partial<SwapRequest> = {}): SwapRequest {
   return {
@@ -86,5 +89,20 @@ describe("isSwapActionableForUser", () => {
 
   test("counts every swap for an admin", () => {
     expect(isSwapActionableForUser(makeSwap(), "admin-1", true)).toBe(true);
+  });
+});
+
+describe("listPendingSwaps", () => {
+  test("rejects a malformed pending swaps payload", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
+
+    await expect(listPendingSwaps()).rejects.toThrow("Invalid pending swaps response");
+  });
+
+  test("returns the same pending swaps array when the payload is valid", async () => {
+    const payload = [makeSwap()];
+    vi.mocked(api.get).mockResolvedValue({ data: payload });
+
+    await expect(listPendingSwaps()).resolves.toBe(payload);
   });
 });

@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { requiredArrayResponse } from "./responseGuards";
 
 export interface SwapManagerApproval {
   commander_id: string;
@@ -129,7 +130,10 @@ export async function cancelSwap(id: string): Promise<void> {
 }
 
 export async function listPendingSwaps(): Promise<SwapRequest[]> {
-  return (await api.get<SwapRequest[]>("/swaps/pending")).data;
+  return requiredArrayResponse<SwapRequest>(
+    (await api.get<SwapRequest[]>("/swaps/pending")).data,
+    "Invalid pending swaps response",
+  );
 }
 
 export async function soldierApproveSwap(id: string): Promise<SwapRequest> {

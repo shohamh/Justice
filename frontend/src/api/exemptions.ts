@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
+import { requiredArrayResponse } from "./responseGuards";
 
 export interface Exemption {
   id: string;
@@ -118,7 +119,10 @@ export async function submitExemptionRequest(
 }
 
 export async function listPendingExemptionRequests(): Promise<ExemptionRequest[]> {
-  return (await api.get<ExemptionRequest[]>("/exemption-requests/pending")).data;
+  return requiredArrayResponse<ExemptionRequest>(
+    (await api.get<ExemptionRequest[]>("/exemption-requests/pending")).data,
+    "Invalid pending exemption requests response",
+  );
 }
 
 export async function getPendingExemptionCount(): Promise<number> {
