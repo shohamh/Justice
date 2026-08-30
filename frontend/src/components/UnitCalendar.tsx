@@ -309,7 +309,7 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
       </div>
 
       {loading && <p className="text-gray-500 text-sm">{t("unit_calendar.loading")}</p>}
-      {error && <p className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}
+      {error && <p role="alert" className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}
 
       <div
         data-testid="fullcalendar"

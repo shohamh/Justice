@@ -121,6 +121,35 @@ describe("RegisterPage - rank ladder source", () => {
   });
 });
 
+describe("RegisterPage - malformed public list responses", () => {
+  // Both fetchRegisterNodes and listPublicExemptionTypes are public,
+  // unauthenticated endpoints; a malformed-but-200 response used to flow
+  // straight into state typed as an array, crashing buildTree()/the
+  // exemption Combobox on the very next render. The page should instead
+  // degrade to an empty list, matching its existing soft-fail convention for
+  // this step.
+  it("treats a malformed register-nodes response as an empty list instead of crashing the page", async () => {
+    vi.mocked(authApi.fetchRegisterNodes).mockResolvedValue({ nodes: "not-an-array" } as unknown as never);
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });
+    fireEvent.click(screen.getByText("register.next"));
+
+    await waitFor(() => expect(authApi.fetchRegisterNodes).toHaveBeenCalled());
+    expect(await screen.findByText("register.step_personal")).toBeInTheDocument();
+  });
+
+  it("treats a malformed exemption-types response as an empty list instead of crashing the page", async () => {
+    vi.mocked(authApi.listPublicExemptionTypes).mockResolvedValue({ not: "an-array" } as unknown as never);
+
+    await goToExemptionsStep();
+    fireEvent.click(screen.getByText("+ register.add_exemption"));
+
+    fireEvent.focus(getComboboxInput());
+    expect(screen.queryByRole("button", { name: "פטור רפואי 🏥" })).not.toBeInTheDocument();
+  });
+});
+
 describe("RegisterPage - exemption rows", () => {
   it("permanent checkbox on a row disables its date fields", async () => {
     await goToExemptionsStep();

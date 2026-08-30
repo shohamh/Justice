@@ -18,7 +18,11 @@ export default function ForgotPasswordPage() {
     setError(null);
     try {
       const ch = await checkForgotPasswordChannels(personalNumber);
-      setChannels(ch);
+      // checkForgotPasswordChannels can only reject the request outright (see
+      // catch below); it does not itself guarantee an array shape for a
+      // malformed-but-200 response, so guard defensively before setState —
+      // channels.map() below would otherwise crash on a non-array value.
+      setChannels(Array.isArray(ch) ? ch : []);
       setStep("choose");
     } catch {
       setError(t("login.errors.network"));
