@@ -58,4 +58,13 @@ describe("AdminInviteCodesContent", () => {
     expect(screen.getByText("REVOKED-456")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "בטל" })).toHaveLength(2);
   });
+
+  it("does not crash when the invite-code endpoint returns a non-array payload", async () => {
+    vi.mocked(inviteCodesApi.listInviteCodes).mockResolvedValue({ unexpected: true } as never);
+
+    renderPage();
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("ACTIVE-123")).not.toBeInTheDocument();
+  });
 });
