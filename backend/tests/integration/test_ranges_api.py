@@ -62,6 +62,74 @@ def test_create_range_event_success(client: TestClient, admin_session: Session) 
 
     assert response.status_code == 201, response.text
     assert response.json()["status"] == "planned"
+    assert response.json()["responsible_duty_manager_id"] == str(dm.id)
+
+
+def test_create_range_event_respects_explicit_responsible_duty_manager(
+    client: TestClient, admin_session: Session
+) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה אחראי-נבחר")
+    dm = create_soldier(
+        admin_session, personal_number="6000010", role="duty_manager", hierarchy_node_id=node.id
+    )
+    other_dm = create_soldier(
+        admin_session, personal_number="6000011", role="duty_manager", hierarchy_node_id=node.id
+    )
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
+
+    response = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-01",
+            "range_location_id": str(loc.id),
+            "required_count": 2,
+            "responsible_duty_manager_id": str(other_dm.id),
+        },
+        headers=auth_headers(dm),
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["responsible_duty_manager_id"] == str(other_dm.id)
+
+
+def test_update_range_event_changes_responsible_duty_manager(
+    client: TestClient, admin_session: Session
+) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה אחראי-עדכון")
+    dm = create_soldier(
+        admin_session, personal_number="6000012", role="duty_manager", hierarchy_node_id=node.id
+    )
+    new_manager = create_soldier(
+        admin_session, personal_number="6000013", role="duty_manager", hierarchy_node_id=node.id
+    )
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
+
+    created = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-01",
+            "range_location_id": str(loc.id),
+            "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    ).json()
+
+    response = client.patch(
+        f"/api/ranges/{created['id']}",
+        json={"responsible_duty_manager_id": str(new_manager.id)},
+        headers=auth_headers(dm),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["responsible_duty_manager_id"] == str(new_manager.id)
 
 
 def test_create_range_event_forbidden_outside_dm_scope(

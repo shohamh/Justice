@@ -6,12 +6,14 @@ import RangesPage from "./RangesPage";
 import * as rangesApi from "../api/ranges";
 import * as rangeLocationsApi from "../api/rangeLocations";
 import * as ineligibleSoldiersApi from "../api/ineligibleSoldiers";
+import * as soldiersApi from "../api/soldiers";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import he from "../i18n/he.json";
 
 vi.mock("../api/ranges");
 vi.mock("../api/rangeLocations");
 vi.mock("../api/ineligibleSoldiers");
+vi.mock("../api/hierarchy", () => ({ fetchFullTree: vi.fn().mockResolvedValue([]) }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
@@ -566,6 +568,7 @@ describe("RangesPage create event", () => {
         contact_name: "אחראי מטווח",
         contact_phone: "050-0000000",
         notes: "ציוד אישי",
+        responsible_duty_manager_id: "me",
         required_count: 6,
         reserve_count: 2,
       }),
@@ -899,6 +902,56 @@ describe("RangesPage assignment editor integration", () => {
     expect(screen.getByTestId("bulk-clear-button")).toBeDisabled();
     expect(screen.getByText(/לא ניתן לנקות מטווחים שכבר התקיימו/)).toBeInTheDocument();
     expect(rangesApi.getRangeEvent).not.toHaveBeenCalled();
+  });
+
+  it("deselects the irrelevant ranges from a mixed selection via the deselect-irrelevant button", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-past", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-08-01",
+        location: "מטווח שכבר התקיים", required_count: 1, reserve_count: 0, status: "completed", assignments: [] },
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח שכבר התקיים");
+    fireEvent.click(screen.getByTestId("select-range-event-past"));
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+
+    expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("2 נבחרו");
+    fireEvent.click(screen.getByTestId("bulk-clear-deselect-irrelevant"));
+
+    expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("1 נבחרו");
+    expect(screen.queryByText(/לא ניתן לנקות מטווחים שכבר התקיימו/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("bulk-clear-button")).not.toBeDisabled();
+  });
+
+  it("shows the responsible duty manager as a linked name in the ranges table", async () => {
+    vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([
+      { id: "dm-1", full_name: "רונן אחראי", personal_number: "1", role: "duty_manager", hierarchy_node_id: "node-1",
+        phone: null, must_change_password: false, left_at: null, enrolled_at: null,
+        gender: null, is_officer: false, is_career: false, rank: null,
+        bahad1_graduate: false, has_military_driving_license: null,
+        military_driving_license_expiry: null, enlistment_date: null, mandatory_end_date: null,
+        discharge_date: null, last_mitvahim_date: null, last_alal_date: null, telegram_linked: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    ]);
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [],
+        responsible_duty_manager_id: "dm-1" },
+    ]);
+    renderWithQuery(<RangesPage />);
+    expect(await screen.findByText("רונן אחראי")).toBeInTheDocument();
+  });
+
+  it("shows a dash for the responsible column when no one is assigned", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("filters bulk-cancel to planned events only and labels the button with the filtered count", async () => {

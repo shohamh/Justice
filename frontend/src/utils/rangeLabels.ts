@@ -20,5 +20,5 @@ export const RANGE_EVENT_STATUS_LABELS: Record<string, string> = {
 export const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
   pending: "ממתין",
   present: "נכח",
-  no_show: "לא הגיע",
+  no_show: "לא נכח",
 };

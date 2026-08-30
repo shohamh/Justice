@@ -173,6 +173,32 @@ def test_update_range_event_writes_audit_entry(app_session: Session) -> None:
     assert entry.after.get("range_location_id") == str(new_location.id)
 
 
+def test_update_range_event_changes_responsible_duty_manager(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אחראי")
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
+    )
+    new_manager = create_soldier(app_session, personal_number="6100001", full_name="אחראי חדש")
+
+    updated = update_range_event(app_session, event=event, responsible_duty_manager_id=new_manager.id)
+
+    assert updated.responsible_duty_manager_id == new_manager.id
+
+
+def test_create_range_event_stores_responsible_duty_manager(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אחראי-יצירה")
+    manager = create_soldier(app_session, personal_number="6100002", full_name="אחראי")
+
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id,
+        required_count=3, responsible_duty_manager_id=manager.id,
+    )
+
+    assert event.responsible_duty_manager_id == manager.id
+
+
 def test_cancel_range_event_sets_status(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ד")
     event = create_range_event(

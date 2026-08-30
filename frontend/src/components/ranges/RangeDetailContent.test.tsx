@@ -4,7 +4,16 @@ import RangeDetailContent from "./RangeDetailContent";
 import { RangeEvent } from "../../api/ranges";
 
 vi.mock("../planning", () => ({
-  RosterSection: ({ assignments, assignmentActionRenderer }: { assignments: Array<{ id: string }>; assignmentActionRenderer: (assignment: { id: string }) => React.ReactNode }) => <div>{assignments.map(assignment => <div key={assignment.id}>{assignmentActionRenderer(assignment)}</div>)}</div>,
+  RosterSection: ({ assignments, assignmentActionRenderer }: { assignments: Array<{ id: string; status?: React.ReactNode }>; assignmentActionRenderer: (assignment: { id: string }) => React.ReactNode }) => <div>{assignments.map(assignment => <div key={assignment.id}>{assignment.status}{assignmentActionRenderer(assignment)}</div>)}</div>,
+}));
+
+vi.mock("../../api/ranges", async () => {
+  const actual = await vi.importActual<typeof import("../../api/ranges")>("../../api/ranges");
+  return { ...actual, markRangeAttendance: vi.fn() };
+});
+
+vi.mock("../SoldierLink", () => ({
+  default: ({ id, name }: { id: string; name: string }) => <button type="button" data-testid={`soldier-link-${id}`}>{name}</button>,
 }));
 
 const event = (overrides: Partial<RangeEvent> = {}): RangeEvent => ({
@@ -54,7 +63,7 @@ describe("RangeDetailContent attendance permissions", () => {
 
     expect(screen.queryByTestId("present-a1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("no-show-a1")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("submit-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("attendance-save-button")).not.toBeInTheDocument();
   });
 
   it("allows attendance mutations when the API grants attendance editing", () => {
@@ -62,7 +71,45 @@ describe("RangeDetailContent attendance permissions", () => {
 
     expect(screen.getByTestId("present-a1")).toBeInTheDocument();
     expect(screen.getByTestId("no-show-a1")).toBeInTheDocument();
-    expect(screen.getByTestId("submit-a1")).toBeInTheDocument();
+    expect(screen.getByTestId("attendance-save-button")).toBeInTheDocument();
+  });
+});
+
+describe("RangeDetailContent attendance saving", () => {
+  it("saves all pending attendance changes with a single save button", async () => {
+    const rangesApi = await import("../../api/ranges");
+    vi.mocked(rangesApi.markRangeAttendance).mockResolvedValue({ id: "a1", soldier_id: "me", is_reserve: false, is_draft: false, attendance_status: "present", note: null, assignment_reason_code: null, assignment_reason_text: null });
+    const { props } = renderDetail({ canManage: false, canEditAttendance: true, event: event({ date: "2000-01-01", status: "completed" }) });
+
+    const saveButton = screen.getByTestId("attendance-save-button");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("present-a1"));
+    expect(saveButton).not.toBeDisabled();
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(rangesApi.markRangeAttendance).toHaveBeenCalledWith("event-1", "a1", "present", undefined));
+    await waitFor(() => expect(props.onAttendance).toHaveBeenCalled());
+  });
+
+  it("requires a note before a no-show can be saved", () => {
+    renderDetail({ canManage: false, canEditAttendance: true, event: event({ date: "2000-01-01", status: "completed" }) });
+
+    fireEvent.click(screen.getByTestId("no-show-a1"));
+    expect(screen.getByTestId("attendance-save-button")).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("note-a1"), { target: { value: "לא הגיע" } });
+    expect(screen.getByTestId("attendance-save-button")).not.toBeDisabled();
+  });
+
+  it("shows the saved no-show status and the reason recorded for it", () => {
+    renderDetail({
+      event: event({
+        assignments: [{ id: "a1", soldier_id: "me", is_reserve: false, is_draft: false, attendance_status: "no_show", note: "חופשה מאושרת", assignment_reason_code: "manual", assignment_reason_text: "שיבוץ ידני" }],
+      }),
+    });
+
+    expect(screen.getByText("לא נכח — חופשה מאושרת")).toBeInTheDocument();
   });
 });
 
@@ -71,6 +118,19 @@ describe("RangeDetailContent assignment actions", () => {
     render(<RangeDetailContent {...baseProps({ canManage: true })} />);
     expect(screen.queryByTestId("edit-range-assignments")).not.toBeInTheDocument();
     expect(screen.queryByText("פעולות שיבוץ")).not.toBeInTheDocument();
+  });
+});
+
+describe("RangeDetailContent responsible duty manager", () => {
+  it("shows the responsible duty manager as a soldier link", () => {
+    renderDetail({ event: event({ responsible_duty_manager_id: "responsible-1" }), soldierName: () => "רונן" });
+    expect(screen.getByTestId("range-detail-responsible")).toBeInTheDocument();
+    expect(screen.getByTestId("soldier-link-responsible-1")).toHaveTextContent("רונן");
+  });
+
+  it("shows a dash when no one is responsible", () => {
+    renderDetail({ event: event({ responsible_duty_manager_id: null }) });
+    expect(screen.getByTestId("range-detail-responsible")).toHaveTextContent("—");
   });
 });
 

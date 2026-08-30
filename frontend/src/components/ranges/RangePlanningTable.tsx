@@ -4,6 +4,7 @@ import { PlanningTable, PlanningColumn } from "../planning";
 import { RangeEvent } from "../../api/ranges";
 import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../../utils/rangeLabels";
 import { formatDate } from "../../utils/formatDate";
+import SoldierLink from "../SoldierLink";
 
 interface Props {
   rows: RangeEvent[];
@@ -15,6 +16,7 @@ interface Props {
   error?: ReactNode;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  soldierName?: (id: string) => string;
 }
 
 function filled(event: RangeEvent, reserve: boolean) {
@@ -54,7 +56,7 @@ function toggleRows(rows: RangeEvent[], selectedIds: Set<string>, onToggle: (id:
   });
 }
 
-export default function RangePlanningTable({ rows, onRowClick, rowActions, filters, sort, loading, error, selectedIds, onToggleSelect }: Props) {
+export default function RangePlanningTable({ rows, onRowClick, rowActions, filters, sort, loading, error, selectedIds, onToggleSelect, soldierName }: Props) {
   const columns: PlanningColumn<RangeEvent>[] = [
     ...(onToggleSelect ? [{
       key: "select",
@@ -76,6 +78,9 @@ export default function RangePlanningTable({ rows, onRowClick, rowActions, filte
     { key: "date", label: "תאריך", sortValue: event => event.date, render: event => <span>{formatDate(event.date)}</span> },
     { key: "type", label: "סוג", render: event => RANGE_TYPE_LABELS[event.range_type] ?? event.range_type },
     { key: "location", label: "מיקום", render: event => <span>{event.location}</span> },
+    { key: "responsible", label: "אחראי", render: event => event.responsible_duty_manager_id
+      ? <SoldierLink id={event.responsible_duty_manager_id} name={soldierName ? soldierName(event.responsible_duty_manager_id) : event.responsible_duty_manager_id} />
+      : <span className="text-gray-400">—</span> },
     { key: "primary", label: "ראשיים", render: event => `${filled(event, false)}/${event.required_count}` },
     { key: "reserve", label: "רזרבה", render: event => `${filled(event, true)}/${event.reserve_count}` },
     { key: "status", label: "סטטוס", render: event => RANGE_EVENT_STATUS_LABELS[event.status] ?? event.status },

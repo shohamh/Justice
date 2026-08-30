@@ -216,6 +216,7 @@ def update_range_event(
     required_count: int | object = _UNSET,
     reserve_count: int | object = _UNSET,
     notes: str | None | object = _UNSET,
+    responsible_duty_manager_id: uuid.UUID | None | object = _UNSET,
     force_schedule_change: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> RangeEvent:
@@ -296,6 +297,10 @@ def update_range_event(
         before["notes"] = event.notes
         event.notes = notes
         after["notes"] = notes
+    if responsible_duty_manager_id is not _UNSET:
+        before["responsible_duty_manager_id"] = str(event.responsible_duty_manager_id) if event.responsible_duty_manager_id else None
+        event.responsible_duty_manager_id = responsible_duty_manager_id
+        after["responsible_duty_manager_id"] = str(responsible_duty_manager_id) if responsible_duty_manager_id else None
     write_audit(
         session, actor_id=actor_id, action="range_event.update", entity_type="range_event",
         entity_id=event.id, before=before, after=after,
