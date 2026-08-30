@@ -165,7 +165,8 @@
     "filter_type_label": "סוג בקשה",
     "filter_status_label": "סטטוס",
     "filter_all": "הכל",
-    "filter_pending": "ממתין"
+    "filter_pending": "ממתין",
+    "load_error": "שגיאה בטעינת הבקשות"
   },
   "my_bug_reports": {
     "load_error": "שגיאה בטעינת הדיווחים"
@@ -1070,6 +1071,7 @@
     "send_to_soldier": "שלח לחייל ספציפי",
     "select_up_to": "בחר עד {{n}} חיילים לבקש מהם",
     "select_at_least_one": "יש לבחור לפחות חייל אחד",
+    "eligible_targets_load_error": "שגיאה בטעינת רשימת החיילים הזמינים",
     "no_eligible_targets": "אין חיילים זמינים וכשירים לתורנות זו",
     "no_search_results": "לא נמצאו חיילים התואמים את החיפוש",
     "loading_eligible_targets": "טוען רשימת חיילים...",
