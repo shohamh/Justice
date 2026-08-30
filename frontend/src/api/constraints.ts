@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface ConstraintOverride {
   id: string;
@@ -37,7 +38,8 @@ export interface PersonalConstraint {
 }
 
 export async function listMyConstraints(): Promise<PersonalConstraint[]> {
-  return (await api.get<PersonalConstraint[]>("/me/constraints")).data;
+  const data = (await api.get<unknown>("/me/constraints")).data;
+  return optionalArrayResponse<PersonalConstraint>(data);
 }
 
 export async function submitConstraint(input: {
@@ -61,7 +63,8 @@ export async function cancelConstraintForManager(id: string, reason?: string): P
 }
 
 export async function listPendingApprovals(): Promise<PersonalConstraint[]> {
-  return (await api.get<PersonalConstraint[]>("/constraints/pending")).data;
+  const data = (await api.get<unknown>("/constraints/pending")).data;
+  return optionalArrayResponse<PersonalConstraint>(data);
 }
 
 export async function getPendingCount(): Promise<number> {
@@ -94,7 +97,8 @@ export async function rejectConstraint(
 export async function listSoldierConstraints(
   soldierId: string,
 ): Promise<PersonalConstraint[]> {
-  return (await api.get<PersonalConstraint[]>(`/soldiers/${soldierId}/constraints`)).data;
+  const data = (await api.get<unknown>(`/soldiers/${soldierId}/constraints`)).data;
+  return optionalArrayResponse<PersonalConstraint>(data);
 }
 
 export interface RemainingConstraintDays {

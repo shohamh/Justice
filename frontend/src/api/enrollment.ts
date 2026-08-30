@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface EnrollmentExemptionDTO {
   id: string;
@@ -39,8 +40,8 @@ export interface EnrollmentRequestDTO {
 }
 
 export async function listPendingEnrollments(): Promise<EnrollmentRequestDTO[]> {
-  const r = await api.get<EnrollmentRequestDTO[]>("/enrollment-requests/pending");
-  return r.data;
+  const r = await api.get<unknown>("/enrollment-requests/pending");
+  return optionalArrayResponse<EnrollmentRequestDTO>(r.data);
 }
 
 export async function approveEnrollment(id: string, decision_note?: string): Promise<void> {

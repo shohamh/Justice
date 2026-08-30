@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface Assignment {
   id: string;
@@ -36,11 +37,13 @@ export interface EffectiveDuty {
 }
 
 export async function listAssignments(soldierId: string, params?: { date_from?: string; date_to?: string }): Promise<Assignment[]> {
-  return (await api.get<Assignment[]>(`/assignments`, { params: { soldier_id: soldierId, ...params } })).data;
+  const data = (await api.get<unknown>(`/assignments`, { params: { soldier_id: soldierId, ...params } })).data;
+  return optionalArrayResponse<Assignment>(data);
 }
 
 export async function listEffectiveDuties(soldierId: string, params?: { date_from?: string; date_to?: string; include_drafts?: boolean }): Promise<EffectiveDuty[]> {
-  return (await api.get<EffectiveDuty[]>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
+  const data = (await api.get<unknown>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
+  return optionalArrayResponse<EffectiveDuty>(data);
 }
 export async function createAssignment(input: {
   soldier_id: string; duty_type_id: string; duty_location_id: string; start_date: string; end_date: string; duty_shift_id?: string | null; notes?: string | null; is_reserve?: boolean;
@@ -70,7 +73,8 @@ export interface ShiftCandidate {
 }
 
 export async function getShiftCandidates(shiftId: string): Promise<ShiftCandidate[]> {
-  return (await api.get<ShiftCandidate[]>(`/shifts/${shiftId}/candidates`)).data;
+  const data = (await api.get<unknown>(`/shifts/${shiftId}/candidates`)).data;
+  return optionalArrayResponse<ShiftCandidate>(data);
 }
 export async function cancelAssignment(id: string, reason: string): Promise<Assignment> {
   return (await api.post<Assignment>(`/assignments/${id}/cancel`, { reason })).data;
