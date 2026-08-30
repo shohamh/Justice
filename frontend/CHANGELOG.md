@@ -8,6 +8,7 @@
 
 ### Fixes
 - Self-hosted the PDF preview's worker file instead of fetching it from unpkg.com at runtime, so PDF previews work fully offline; widened the preview modal and added visible zoom buttons for images.
+- Fixed a crash on the ranges page when the hierarchy tree response was malformed, by guarding the responsible-duty-manager list computation against non-array data.
 
 ## 2026-08-30
 
