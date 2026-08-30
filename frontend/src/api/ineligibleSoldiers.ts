@@ -1,5 +1,6 @@
 import type { RangeType } from "./ranges";
 import { api } from "./client";
+import { isRecord, optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export type IneligibleSoldiersAudience = "planning" | "commander";
 
@@ -64,12 +65,51 @@ export interface IneligibleSoldiersResponse {
   soldiers: IneligibleSoldier[];
 }
 
-export function getIneligibleSoldiers(
+/**
+ * Normalizes one raw hierarchy-node row: drops it if the row itself isn't an
+ * object, otherwise coerces the nested `path_ids` array so hierarchyRows()'s
+ * traversal in IneligibleSoldiersTable can't throw on a malformed row.
+ */
+function sanitizeIneligibleHierarchyNode(raw: unknown): IneligibleHierarchyNode | null {
+  if (!isRecord(raw)) return null;
+  return {
+    ...(raw as unknown as IneligibleHierarchyNode),
+    path_ids: optionalArrayResponse<string>(raw.path_ids),
+  };
+}
+
+/**
+ * Normalizes one raw soldier row: drops it if the row itself isn't an
+ * object, otherwise coerces every nested collection so
+ * IneligibleSoldiersTable's `.filter`/`.map`/`.includes` calls over a row's
+ * qualifications and upcoming duties/ranges can't throw and take the whole
+ * table down.
+ */
+function sanitizeIneligibleSoldier(raw: unknown): IneligibleSoldier | null {
+  if (!isRecord(raw)) return null;
+  return {
+    ...(raw as unknown as IneligibleSoldier),
+    hierarchy_path_ids: optionalArrayResponse<string>(raw.hierarchy_path_ids),
+    valid_qualifications: optionalArrayResponse<QualificationSummary>(raw.valid_qualifications),
+    upcoming_weapon_duties: optionalArrayResponse<UpcomingWeaponDuty>(raw.upcoming_weapon_duties),
+    upcoming_matching_ranges: optionalArrayResponse<UpcomingMatchingRange>(raw.upcoming_matching_ranges),
+  };
+}
+
+export async function getIneligibleSoldiers(
   audience: IneligibleSoldiersAudience,
 ): Promise<IneligibleSoldiersResponse> {
-  return api
-    .get<IneligibleSoldiersResponse>("/ranges/ineligible-soldiers", { params: { audience } })
-    .then((response) => response.data);
+  const r = await api.get<unknown>("/ranges/ineligible-soldiers", { params: { audience } });
+  const data = requiredObjectResponse(r.data, "Invalid ineligible soldiers response");
+  return {
+    ...(data as unknown as IneligibleSoldiersResponse),
+    nodes: optionalArrayResponse<unknown>(data.nodes)
+      .map(sanitizeIneligibleHierarchyNode)
+      .filter((n): n is IneligibleHierarchyNode => n !== null),
+    soldiers: optionalArrayResponse<unknown>(data.soldiers)
+      .map(sanitizeIneligibleSoldier)
+      .filter((s): s is IneligibleSoldier => s !== null),
+  };
 }
 
 export function getIneligibleSoldierCount(): Promise<{ count: number }> {

@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { isRecord, optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface AdminAuditLogEntryDTO {
   id: string;
@@ -45,6 +46,16 @@ export interface AdminAuditLogFilters {
 export async function listAdminAuditLogs(
   filters: AdminAuditLogFilters
 ): Promise<AdminAuditLogPageDTO> {
-  const r = await api.get<AdminAuditLogPageDTO>("/admin/audit-logs", { params: filters });
-  return r.data;
+  const r = await api.get<unknown>("/admin/audit-logs", { params: filters });
+  const data = requiredObjectResponse(r.data, "Invalid admin audit log response");
+  const rawFacets = isRecord(data.facets) ? data.facets : {};
+  return {
+    ...(data as unknown as AdminAuditLogPageDTO),
+    items: optionalArrayResponse<AdminAuditLogEntryDTO>(data.items),
+    facets: {
+      actions: optionalArrayResponse<string>(rawFacets.actions),
+      entity_types: optionalArrayResponse<string>(rawFacets.entity_types),
+      actors: optionalArrayResponse<AuditLogActorDTO>(rawFacets.actors),
+    },
+  };
 }

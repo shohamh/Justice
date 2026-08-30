@@ -1,5 +1,6 @@
 import { api } from "./client";
 import { ExemptionSummaryItem } from "./exemptions";
+import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface SoldierPotentialDetail {
   soldier_id: string;
@@ -34,15 +35,22 @@ export interface PotentialResult {
 }
 
 export async function getPotential(nodeId: string, referenceDate?: string): Promise<PotentialResult> {
-  return (await api.get<PotentialResult>("/potential", {
+  const r = await api.get<unknown>("/potential", {
     params: { node_id: nodeId, reference_date: referenceDate },
-  })).data;
+  });
+  const data = requiredObjectResponse(r.data, "Invalid potential response");
+  return {
+    ...(data as unknown as PotentialResult),
+    modifiers: optionalArrayResponse<PotentialModifierDTO>(data.modifiers),
+    soldiers: optionalArrayResponse<SoldierPotentialDetail>(data.soldiers),
+  };
 }
 
 export async function listModifiers(nodeId: string): Promise<PotentialModifierDTO[]> {
-  return (await api.get<PotentialModifierDTO[]>("/potential/modifiers", {
+  const r = await api.get<unknown>("/potential/modifiers", {
     params: { hierarchy_node_id: nodeId },
-  })).data;
+  });
+  return optionalArrayResponse<PotentialModifierDTO>(r.data);
 }
 
 export async function createModifier(input: {
@@ -69,8 +77,9 @@ export interface NodeBurdenSharePotential {
 }
 
 export async function getBurdenShareGap(referenceDate?: string): Promise<NodeBurdenSharePotential[]> {
-  const r = await api.get<{ nodes: NodeBurdenSharePotential[] }>("/potential/burden-share-gap", {
+  const r = await api.get<unknown>("/potential/burden-share-gap", {
     params: { reference_date: referenceDate },
   });
-  return r.data.nodes;
+  const data = requiredObjectResponse(r.data, "Invalid burden-share-gap response");
+  return optionalArrayResponse<NodeBurdenSharePotential>(data.nodes);
 }
