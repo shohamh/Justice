@@ -194,7 +194,13 @@ export function markRead(id: string): Promise<NotificationDTO> {
 }
 
 export function markAllRead(): Promise<UnreadCount> {
-  return client.patch("/notifications/read-all").then((r) => r.data);
+  return client.patch<unknown>("/notifications/read-all").then((r) => {
+    const data = requiredObjectResponse(r.data, "Invalid unread notifications response");
+    return {
+      ...data,
+      count: requiredNumberField(data.count, "Invalid unread notifications response"),
+    } as UnreadCount;
+  });
 }
 
 export function deleteNotification(id: string): Promise<void> {

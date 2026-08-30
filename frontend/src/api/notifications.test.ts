@@ -6,6 +6,7 @@ import {
   getUnreadCount,
   listCommanderScopes,
   listNotifications,
+  markAllRead,
   updatePreferences,
 } from "./notifications";
 
@@ -99,6 +100,12 @@ describe("notification APIs", () => {
     vi.mocked(api.get).mockResolvedValue({ data: { count: "2" } });
 
     await expect(getUnreadCount()).rejects.toThrow("Invalid unread notifications response");
+  });
+
+  it("rejects a malformed mark-all-read count payload", async () => {
+    vi.mocked(api.patch).mockResolvedValue({ data: { count: "2" } });
+
+    await expect(markAllRead()).rejects.toThrow("Invalid unread notifications response");
   });
 
   it("rejects a malformed notifications page payload", async () => {
