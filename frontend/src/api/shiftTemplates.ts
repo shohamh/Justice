@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse, requiredArrayResponse } from "./responseGuards";
 
 export type RecurrenceType = "daily" | "weekdays" | "weekly";
 
@@ -46,7 +47,8 @@ export interface PreviewRow {
 }
 
 export async function listTemplates(includeInactive = false): Promise<ShiftTemplate[]> {
-  return (await api.get<ShiftTemplate[]>("/shift-templates", { params: { include_inactive: includeInactive } })).data;
+  const r = await api.get<unknown>("/shift-templates", { params: { include_inactive: includeInactive } });
+  return optionalArrayResponse<ShiftTemplate>(r.data);
 }
 
 export async function createTemplate(input: CreateTemplateInput): Promise<ShiftTemplate> {
@@ -66,7 +68,8 @@ export async function previewGeneration(
   range_start: string,
   range_end: string,
 ): Promise<PreviewRow[]> {
-  return (await api.post<PreviewRow[]>(`/shift-templates/${id}/preview`, { range_start, range_end })).data;
+  const r = await api.post<unknown>(`/shift-templates/${id}/preview`, { range_start, range_end });
+  return requiredArrayResponse<PreviewRow>(r.data, "Invalid shift template preview response");
 }
 
 export async function generateShifts(
