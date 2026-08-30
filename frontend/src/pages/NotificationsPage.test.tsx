@@ -164,6 +164,15 @@ describe("NotificationsPage", () => {
     await waitFor(() => expect(swapsApi.soldierApproveSwap).toHaveBeenCalledWith("req1"));
   });
 
+  it("shows a load-error alert and suppresses the empty-state copy when the notifications query fails", async () => {
+    vi.mocked(listNotifications).mockRejectedValue(new Error("network error"));
+
+    renderPage();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("שגיאה בטעינת ההתראות");
+    expect(screen.queryByText("אין התראות")).not.toBeInTheDocument();
+  });
+
   it("shows approve/reject for range_excusal_pending and calls decideRangeExcusal with metadata.event_id", async () => {
     vi.mocked(listNotifications).mockResolvedValue({
       items: [{

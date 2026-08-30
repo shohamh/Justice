@@ -142,13 +142,6 @@ function optionalArrayResponse<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function requiredArrayResponse<T>(value: unknown, errorMessage: string): T[] {
-  if (!Array.isArray(value)) {
-    throw new Error(errorMessage);
-  }
-  return value as T[];
-}
-
 function requiredObjectResponse(value: unknown, errorMessage: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(errorMessage);
@@ -180,12 +173,14 @@ export function listNotifications(params?: {
   limit?: number;
 }): Promise<PaginatedNotifications> {
   return client.get<unknown>("/notifications", { params }).then((r) => {
-    const data = requiredObjectResponse(r.data, "Invalid notifications response");
+    const data =
+      typeof r.data === "object" && r.data !== null && !Array.isArray(r.data)
+        ? (r.data as Record<string, unknown>)
+        : {};
     return {
-      ...data,
-      items: requiredArrayResponse<NotificationDTO>(data.items, "Invalid notifications response"),
-      total: requiredNumberField(data.total, "Invalid notifications response"),
-    } as PaginatedNotifications;
+      items: optionalArrayResponse<NotificationDTO>(data.items),
+      total: typeof data.total === "number" ? data.total : 0,
+    };
   });
 }
 

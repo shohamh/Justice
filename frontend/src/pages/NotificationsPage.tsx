@@ -87,6 +87,11 @@ export default function NotificationsPage() {
             {t("notifications.mark_all_read")}
           </button>
         </div>
+        {notificationsQuery.isError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400 mb-4" dir="rtl">
+            {t("notifications.load_error")}
+          </p>
+        )}
         <div className="flex gap-2 mb-4">
           <button onClick={() => { setFilter("all"); setPage(1); }}
                   className={`px-3 py-1 rounded text-sm ${filter === "all" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>
@@ -98,7 +103,7 @@ export default function NotificationsPage() {
           </button>
         </div>
         {notifications.length === 0 ? (
-          <p className="text-gray-500">{t("notifications.none")}</p>
+          !notificationsQuery.isError && <p className="text-gray-500">{t("notifications.none")}</p>
         ) : (
           <div className="space-y-2">
             {notifications.map((n) => (

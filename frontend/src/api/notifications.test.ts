@@ -108,10 +108,16 @@ describe("notification APIs", () => {
     await expect(markAllRead()).rejects.toThrow("Invalid unread notifications response");
   });
 
-  it("rejects a malformed notifications page payload", async () => {
+  it("normalizes a malformed notifications items payload to an empty list", async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { items: { detail: "unexpected response" }, total: 1 } });
 
-    await expect(listNotifications()).rejects.toThrow("Invalid notifications response");
+    await expect(listNotifications()).resolves.toEqual({ items: [], total: 1 });
+  });
+
+  it("normalizes a wholly malformed notifications page payload", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: "unexpected response" });
+
+    await expect(listNotifications()).resolves.toEqual({ items: [], total: 0 });
   });
 
   it.each([
