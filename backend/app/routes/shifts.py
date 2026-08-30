@@ -692,6 +692,7 @@ class ShiftCandidateOut(BaseModel):
     blocked: bool
     blocked_reason: str | None = None
     blocked_detail: str | None = None
+    range_warning: str | None = None
     weapon_warning: bool = False
     hierarchy_path_ids: list[str] = []
     personal_constraint_warning: PersonalConstraintWarningOut | None = None
@@ -776,7 +777,7 @@ def get_shift_candidates(
     burden_share_by_id = burden_shares_by_soldier(session, candidate_soldiers)
 
     from app.db.models import ExemptionDutyTypeMap, ExemptionType, SoldierExemption
-    from app.services.eligibility import duty_type_ineligibility_reason
+    from app.services.eligibility import duty_type_ineligibility_reason, duty_type_recency_warning
     from app.services.settings_loader import SettingNotFound, get_setting
 
     def _setting_int(key: str, default: int) -> int:
@@ -832,7 +833,6 @@ def get_shift_candidates(
     for si in soldier_inputs:
         if si.id in already_on_shift:
             continue
-        exempted = shift.duty_type_id in si.exempted_duty_type_ids
         soldier_node = node_map.get(si.hierarchy_node_id) if si.hierarchy_node_id else None
         soldier_path_ids = list(soldier_node.path_ids) if soldier_node else []
         if not node_in_scope(shift.eligible_node_ids, soldier_path_ids):
@@ -840,6 +840,30 @@ def get_shift_candidates(
         soldier = soldier_map.get(si.id)
         if soldier is None:
             continue
+
+        # Stale range recency (מבצעי/אל"ל) is advisory only here — it shows as
+        # a warning on an otherwise-selectable candidate rather than a hard
+        # block, so a duty manager can still assign manually. Every other
+        # structural requirement (rank, gender, service track, ...) and any
+        # granted exemption still hard-blocks, same as the algorithm.
+        blocked_detail: str | None = None
+        range_warning: str | None = None
+        if si.id in exempted_via_grant:
+            exempted = True
+            blocked_detail = "פטור מסוג תורנות זה"
+        elif shift_duty_type is not None:
+            non_recency_reason = duty_type_ineligibility_reason(soldier, shift_duty_type, today=shift.start_date)
+            if non_recency_reason:
+                exempted = True
+                blocked_detail = non_recency_reason
+            else:
+                exempted = False
+                range_warning = duty_type_recency_warning(
+                    session, soldier, shift_duty_type, mitvahim_months=mitvahim_months, alal_months=alal_months,
+                    today=shift.start_date,
+                )
+        else:
+            exempted = False
 
         has_constraint = any(
             c_start < shift.end_date and c_end >= shift.start_date
@@ -867,16 +891,8 @@ def get_shift_candidates(
         effective_constraint_block = has_constraint and not override_allowed
         blocked = exempted or effective_constraint_block or si.id in blocked_by_assignment
         blocked_reason: str | None = None
-        blocked_detail: str | None = None
         if exempted:
             blocked_reason = "ineligible"
-            if si.id in exempted_via_grant:
-                blocked_detail = "פטור מסוג תורנות זה"
-            elif shift_duty_type is not None:
-                blocked_detail = duty_type_ineligibility_reason(
-                    soldier, shift_duty_type, mitvahim_months=mitvahim_months, alal_months=alal_months,
-                    today=shift.start_date,
-                )
         elif effective_constraint_block:
             blocked_reason = "constraint"
         elif si.id in blocked_by_assignment:
@@ -896,12 +912,13 @@ def get_shift_candidates(
             blocked=blocked,
             blocked_reason=blocked_reason,
             blocked_detail=blocked_detail,
+            range_warning=range_warning,
             weapon_warning=weapon_warning,
             hierarchy_path_ids=path_ids,
             personal_constraint_warning=personal_constraint_warning,
         ))
 
-    result.sort(key=lambda x: (x.blocked, x.personal_constraint_warning is not None, x.weapon_warning, x.burden_share))
+    result.sort(key=lambda x: (x.blocked, x.personal_constraint_warning is not None, x.weapon_warning, x.range_warning is not None, x.burden_share))
     return result
 
 
