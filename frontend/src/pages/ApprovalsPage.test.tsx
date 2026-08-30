@@ -203,6 +203,48 @@ describe("ApprovalsPage - action error banner", () => {
   });
 });
 
+describe("ApprovalsPage - required queue load errors", () => {
+  it("shows a load error instead of the empty-state success copy when the required constraints queue rejects", async () => {
+    vi.mocked(constraintsApi.listPendingApprovals).mockRejectedValue(new Error("constraints unavailable"));
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("approvals.load_error");
+    expect(screen.queryByText("approvals.none")).not.toBeInTheDocument();
+  });
+
+  it("keeps the empty-state copy for a genuinely empty constraints queue", async () => {
+    vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText("approvals.none")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
 describe("ApprovalsPage - swaps tab duty-manager empty state", () => {
   it("shows the duty-manager empty-state text when the setting is on but no duty manager is scoped", async () => {
     // require_duty_manager_approval is already true in the shared beforeEach

@@ -216,6 +216,7 @@
     "tab_constraints": "אילוצים אישיים",
     "tab_exemptions": "בקשות פטור",
     "tab_transfers": "העברות",
+    "load_error": "שגיאה בטעינת בקשות האישור",
     "exemption_none": "אין בקשות פטור ממתינות",
     "field_update_new_value": "ערך חדש: ",
     "field_update_either_approver_suffices": "מספיק אישור אחד מהשניים",
