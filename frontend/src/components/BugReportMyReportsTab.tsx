@@ -1,10 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../queryKeys";
-import { getMyBugReports, markBugReportSeen, BugReportSeverity, BugReportStatus } from "../api/bugReports";
+import {
+  getMyBugReports,
+  markBugReportSeen,
+  fetchMyBugReportScreenshot,
+  BugReportSeverity,
+  BugReportStatus,
+} from "../api/bugReports";
 import { translateApiError } from "../utils/translateApiError";
 import BugReportCommentsPanel from "./BugReportCommentsPanel";
+import DocumentPreviewModal from "./DocumentPreviewModal";
 
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   low: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
@@ -24,8 +31,37 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
   const query = useQuery({ queryKey: queryKeys.myBugReports(), queryFn: getMyBugReports });
   const reports = query.data?.items ?? [];
 
+  const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
+  const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+
+  // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
+  // accumulated without re-registering the effect on every fetch.
+  const screenshotUrlByIdRef = useRef(screenshotUrlById);
+  screenshotUrlByIdRef.current = screenshotUrlById;
+
+  useEffect(() => {
+    return () => {
+      Object.values(screenshotUrlByIdRef.current).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
+
   const bugReportSeverityLabel = (severity: BugReportSeverity) => t(`bug_reports.severity_${severity}`);
   const bugReportStatusLabel = (status: BugReportStatus) => t(`bug_reports.status_${status}`);
+
+  async function loadScreenshot(id: string) {
+    if (screenshotUrlByIdRef.current[id]) return;
+    setScreenshotErrorById((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const blob = await fetchMyBugReportScreenshot(id);
+      setScreenshotUrlById((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
+    } catch (err: unknown) {
+      setScreenshotErrorById((prev) => ({
+        ...prev,
+        [id]: translateApiError(err, t, t("bug_reports.screenshot_load_error")),
+      }));
+    }
+  }
 
   function handleToggle(reportId: string) {
     const collapsing = expandedId === reportId;
@@ -48,6 +84,17 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
       })
       .catch(() => {});
   }, [expandedId, qc]);
+
+  useEffect(() => {
+    if (!expandedId) return;
+    const report = reports.find((r) => r.id === expandedId);
+    if (report?.has_screenshot) void loadScreenshot(expandedId);
+    // Only re-runs when the expanded report changes or its has_screenshot
+    // flag becomes known (reports load async) — loadScreenshot itself
+    // guards against re-fetching an already-loaded screenshot, so a
+    // `reports` reference change from an unrelated refetch is harmless.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedId, reports]);
 
   return (
     <div className="space-y-3">
@@ -108,6 +155,22 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
                       <div><span className="font-medium">{t("bug_reports.report_created")}: </span>{new Date(report.created_at).toLocaleString("he-IL", { hour12: false })}</div>
                     </div>
                     <p className="whitespace-pre-wrap text-sm"><span className="font-medium">{t("bug_reports.description")}: </span>{report.description}</p>
+                    {report.has_screenshot && screenshotUrlById[report.id] && (
+                      <img
+                        src={screenshotUrlById[report.id]}
+                        alt={t("bug_reports.screenshot_alt")}
+                        className="max-w-full sm:max-w-md rounded border dark:border-gray-600 cursor-zoom-in"
+                        onClick={() =>
+                          setPreviewImage({ url: screenshotUrlById[report.id], name: `bug-report-${report.id}.png` })
+                        }
+                        data-testid={`my-bug-report-screenshot-${report.id}`}
+                      />
+                    )}
+                    {screenshotErrorById[report.id] && (
+                      <p className="text-xs text-red-500" data-testid={`my-bug-report-screenshot-error-${report.id}`}>
+                        {screenshotErrorById[report.id]}
+                      </p>
+                    )}
                     <BugReportCommentsPanel reportId={report.id} />
                   </div>
                 )}
@@ -115,6 +178,14 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
             );
           })}
         </ul>
+      )}
+      {previewImage && (
+        <DocumentPreviewModal
+          fileUrl={previewImage.url}
+          fileName={previewImage.name}
+          contentType="image/png"
+          onClose={() => setPreviewImage(null)}
+        />
       )}
     </div>
   );

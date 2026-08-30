@@ -191,6 +191,8 @@
     "attachment_label": "צירוף תמונה (אופציונלי)",
     "attachment_preview_alt": "צירוף לתגובה",
     "attachment_upload_failed": "התגובה נשלחה בהצלחה, אך העלאת הצירוף נכשלה",
+    "screenshot_alt": "צילום מסך של הדיווח",
+    "screenshot_load_error": "שגיאה בטעינת צילום המסך",
     "close": "סגור",
     "none": "לא דיווחת על באגים",
     "status_open": "פתוח",
