@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { api } from "./client";
 import {
   exemptionFileDownloadUrl,
+  listExemptionRequestsForSoldier,
+  listExemptions,
+  listMyExemptionRequests,
   listPendingExemptionRequests,
   type ExemptionRequest,
 } from "./exemptions";
@@ -52,10 +55,43 @@ describe("listPendingExemptionRequests", () => {
     );
   });
 
-  it("returns the same pending exemption requests array when the payload is valid", async () => {
+  it("returns an equivalent pending exemption requests array when the payload is valid", async () => {
     const payload = [makeExemptionRequest()];
     vi.mocked(api.get).mockResolvedValue({ data: payload });
 
-    await expect(listPendingExemptionRequests()).resolves.toBe(payload);
+    await expect(listPendingExemptionRequests()).resolves.toEqual(payload);
+  });
+
+  it("drops a non-object row and normalizes a row's malformed files field to []", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [42, { ...makeExemptionRequest(), files: "not-an-array" }],
+    });
+
+    const result = await listPendingExemptionRequests();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].files).toEqual([]);
+  });
+});
+
+describe("optional exemption list adapters", () => {
+  it.each([
+    ["listExemptions", () => listExemptions("soldier-1")],
+    ["listMyExemptionRequests", () => listMyExemptionRequests()],
+    ["listExemptionRequestsForSoldier", () => listExemptionRequestsForSoldier("soldier-1")],
+  ])("returns an empty list when %s receives a non-array payload", async (_name, call) => {
+    vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
+
+    await expect(call()).resolves.toEqual([]);
+  });
+
+  it("normalizes a malformed files field on a listMyExemptionRequests row to []", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [{ ...makeExemptionRequest(), files: null }],
+    });
+
+    const result = await listMyExemptionRequests();
+
+    expect(result[0].files).toEqual([]);
   });
 });

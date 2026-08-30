@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface Candidate {
   soldier_id: string;
@@ -27,11 +28,12 @@ export interface HakpazaRecord {
 }
 
 export async function findCandidates(pulledAssignmentId: string, pullDate: string, n = 8): Promise<Candidate[]> {
-  return (await api.post<Candidate[]>("/hakpaza/candidates", {
+  const data = (await api.post<unknown>("/hakpaza/candidates", {
     pulled_assignment_id: pulledAssignmentId,
     pull_date: pullDate,
     n,
   })).data;
+  return optionalArrayResponse<Candidate>(data);
 }
 
 export async function createHakpaza(
