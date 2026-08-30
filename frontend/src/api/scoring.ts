@@ -1,5 +1,6 @@
 import { api } from "./client";
 import { ExemptionSummaryItem } from "./exemptions";
+import { isRecord, optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface TransparencyRow {
   soldier_id: string;
@@ -77,7 +78,12 @@ export interface BurdenShareBreakdown {
 }
 
 export async function getTransparency(): Promise<TransparencyOut> {
-  return (await api.get<TransparencyOut>(`/scoring/transparency`)).data;
+  const r = await api.get<unknown>(`/scoring/transparency`);
+  const data = requiredObjectResponse(r.data, "Invalid transparency response");
+  return {
+    rows: optionalArrayResponse<TransparencyRow>(data.rows),
+    can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
+  };
 }
 
 export interface FairnessBurdenShare {
@@ -96,7 +102,16 @@ export interface FairnessComponents {
 }
 
 export async function getFairnessComponents(): Promise<FairnessComponents> {
-  return (await api.get<FairnessComponents>(`/scoring/fairness-components`)).data;
+  const r = await api.get<unknown>(`/scoring/fairness-components`);
+  const data = requiredObjectResponse(r.data, "Invalid fairness components response");
+  const exemptFromAll = isRecord(data.exempt_from_all) ? data.exempt_from_all : {};
+  return {
+    exempt_from_all: {
+      count: typeof exemptFromAll.count === "number" ? exemptFromAll.count : 0,
+      soldiers: optionalArrayResponse<FairnessSoldier>(exemptFromAll.soldiers),
+    },
+    components: optionalArrayResponse<FairnessComponent>(data.components),
+  };
 }
 
 export interface EligibilityGroup {
@@ -110,10 +125,25 @@ export async function listEligibilityGroups(): Promise<EligibilityGroup[]> {
 }
 
 export async function getBreakdown(soldierId: string): Promise<Breakdown> {
-  return (await api.get<Breakdown>(`/scoring/soldiers/${soldierId}`)).data;
+  const r = await api.get<unknown>(`/scoring/soldiers/${soldierId}`);
+  const data = requiredObjectResponse(r.data, "Invalid score breakdown response");
+  return {
+    per_type: optionalArrayResponse<Breakdown["per_type"][number]>(data.per_type),
+    adjustments: optionalArrayResponse<Breakdown["adjustments"][number]>(data.adjustments),
+  };
 }
 export async function getBurdenShareBreakdown(soldierId: string): Promise<BurdenShareBreakdown> {
-  return (await api.get<BurdenShareBreakdown>(`/scoring/soldiers/${soldierId}/burden-share-breakdown`)).data;
+  const r = await api.get<unknown>(`/scoring/soldiers/${soldierId}/burden-share-breakdown`);
+  const data = requiredObjectResponse(r.data, "Invalid burden-share breakdown response");
+  if (typeof data.burden_share !== "string" || typeof data.A_i !== "string" || typeof data.W_i !== "string") {
+    throw new Error("Invalid burden-share breakdown response");
+  }
+  return {
+    quarters: optionalArrayResponse<BurdenShareQuarterRow>(data.quarters),
+    burden_share: data.burden_share,
+    A_i: data.A_i,
+    W_i: data.W_i,
+  };
 }
 
 // Anonymized rank + peer distribution within a soldier's duty-type eligibility
@@ -133,5 +163,14 @@ export interface BurdenShare {
 }
 
 export async function getBurdenShare(soldierId: string): Promise<BurdenShare> {
-  return (await api.get<BurdenShare>(`/scoring/soldiers/${soldierId}/burden-share`)).data;
+  const r = await api.get<unknown>(`/scoring/soldiers/${soldierId}/burden-share`);
+  const data = requiredObjectResponse(r.data, "Invalid burden share response");
+  if (typeof data.has_group !== "boolean") {
+    throw new Error("Invalid burden share response");
+  }
+  return {
+    ...(data as unknown as BurdenShare),
+    duty_type_names: optionalArrayResponse<string>(data.duty_type_names),
+    peer_scores: optionalArrayResponse<number>(data.peer_scores),
+  };
 }

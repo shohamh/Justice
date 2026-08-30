@@ -22,7 +22,8 @@
   "home": {
     "welcome": "שלום, {{name}}",
     "logout": "יציאה",
-    "duty_primary": "ראשי"
+    "duty_primary": "ראשי",
+    "score_load_error": "שגיאה בטעינת נתוני הניקוד"
   },
   "common": {
     "yes": "כן",
@@ -499,7 +500,9 @@
     "subunit_cv_burden_share": "פיזור (CV)",
     "subunit_sibling_gap": "פער מול אחים (יחס)",
     "subunit_global_gap": "פער מול הארגון (יחס)",
-    "no_permission": "אין לך הרשאה לצפות בדף זה"
+    "no_permission": "אין לך הרשאה לצפות בדף זה",
+    "load_error": "שגיאה בטעינת נתוני השקיפות",
+    "burden_share_breakdown_load_error": "שגיאה בטעינת פירוט חלק בנטל"
   },
   "my_duties": {
     "title": "היומן שלי",
@@ -511,7 +514,8 @@
     "showing_for_date": "תורנויות לתאריך: {{date}}",
     "show_all": "הצג הכל",
     "add_to_calendar": "הוסף ליומן",
-    "download_ics": "הורד אירוע (.ics)"
+    "download_ics": "הורד אירוע (.ics)",
+    "load_error": "שגיאה בטעינת נתוני היומן"
   },
   "unit_calendar": {
     "title": "יומן יחידה",
@@ -1189,7 +1193,9 @@
     "target_node": "יחידת יעד",
     "move_confirm": "שלח בקשת העברה",
     "cancel": "ביטול",
-    "view_duty_details": "צפה בפרטי התורנות"
+    "view_duty_details": "צפה בפרטי התורנות",
+    "summary_load_error": "שגיאה בטעינת נתוני הסיכום",
+    "fairness_internal_load_error": "שגיאה בטעינת מדדי ההוגנות הפנימיים"
   },
   "duty_detail": {
     "required_range": "מטווח נדרש",

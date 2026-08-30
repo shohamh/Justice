@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface SummaryCards {
   approvals_pending: number;
@@ -80,12 +81,23 @@ export interface ApprovalItem {
   created_at: string;
 }
 
-function optionalArrayResponse<T>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
-}
-
 export async function getSummary(): Promise<SummaryCards> {
-  return (await api.get<SummaryCards>("/command-dashboard/summary")).data;
+  const r = await api.get<unknown>("/command-dashboard/summary");
+  const data = requiredObjectResponse(r.data, "Invalid dashboard summary response");
+  if (
+    typeof data.approvals_pending !== "number" ||
+    typeof data.upcoming_duties_7d !== "number" ||
+    typeof data.unfilled_gaps !== "number" ||
+    typeof data.alerts_count !== "number"
+  ) {
+    throw new Error("Invalid dashboard summary response");
+  }
+  return {
+    approvals_pending: data.approvals_pending,
+    upcoming_duties_7d: data.upcoming_duties_7d,
+    unfilled_gaps: data.unfilled_gaps,
+    alerts_count: data.alerts_count,
+  };
 }
 
 export async function getDashboardSoldiers(): Promise<SoldierWithStatus[]> {
@@ -94,7 +106,26 @@ export async function getDashboardSoldiers(): Promise<SoldierWithStatus[]> {
 }
 
 export async function getFairnessInternal(): Promise<FairnessStats> {
-  return (await api.get<FairnessStats>("/command-dashboard/fairness/internal")).data;
+  const r = await api.get<unknown>("/command-dashboard/fairness/internal");
+  const data = requiredObjectResponse(r.data, "Invalid internal fairness response");
+  if (
+    typeof data.mean !== "number" ||
+    typeof data.median !== "number" ||
+    typeof data.min !== "number" ||
+    typeof data.max !== "number" ||
+    typeof data.stddev !== "number" ||
+    typeof data.soldier_count !== "number"
+  ) {
+    throw new Error("Invalid internal fairness response");
+  }
+  return {
+    mean: data.mean,
+    median: data.median,
+    min: data.min,
+    max: data.max,
+    stddev: data.stddev,
+    soldier_count: data.soldier_count,
+  };
 }
 
 export async function getFairnessExternal(): Promise<NodeFairness[]> {
