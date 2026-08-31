@@ -11,6 +11,7 @@ import HeaderSearch from "./HeaderSearch";
 import { getPublicSettings } from "../api/publicSettings";
 import JusticeLogo from "./JusticeLogo";
 import BugReportTrigger from "./BugReportTrigger";
+import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import { getAdminBugReportUnreadCount, getAdminErrorUnreadCount } from "../api/bugReports";
 import { useQuery } from "@tanstack/react-query";
 
@@ -51,7 +52,8 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
   }, []);
 
   return (
-    <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
+    <BugReportModalProvider>
+      <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
       <BugReportTrigger />
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} hakpazaEnabled={hakpazaEnabled} initialTab={helpTab} />}
@@ -122,6 +124,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
           {typeof children === "function" ? children(openHelp) : children}
         </div>
       </main>
-    </div>
+      </div>
+    </BugReportModalProvider>
   );
 }

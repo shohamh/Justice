@@ -2,6 +2,12 @@ import { render, screen, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useBugReportModal } from "../contexts/BugReportModalContext";
+
+function NotificationBellContextConsumer() {
+  useBugReportModal();
+  return null;
+}
 
 function renderLayout(ui: React.ReactNode) {
   return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
@@ -25,7 +31,7 @@ vi.mock("./HelpModal", () => ({
   default: () => null,
 }));
 vi.mock("./NotificationBell", () => ({
-  default: () => null,
+  default: NotificationBellContextConsumer,
 }));
 vi.mock("./JusticeLogo", () => ({
   default: () => null,

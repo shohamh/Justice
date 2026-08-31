@@ -4,7 +4,6 @@ import type { ReactElement } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { SoldierModalProvider } from "./contexts/SoldierModalContext";
-import { BugReportModalProvider } from "./contexts/BugReportModalContext";
 import { usePublicSettings } from "./hooks/usePublicSettings";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -82,8 +81,7 @@ export default function App() {
       <AuthProvider>
         <ThemeProvider>
           <SoldierModalProvider>
-            <BugReportModalProvider>
-              <Routes>
+            <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -140,8 +138,7 @@ export default function App() {
                       should land somewhere real instead of a blank Outlet. */}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
-              </Routes>
-            </BugReportModalProvider>
+            </Routes>
           </SoldierModalProvider>
         </ThemeProvider>
       </AuthProvider>
