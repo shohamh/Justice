@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface DeputyDTO {
   id: string;
@@ -20,7 +21,8 @@ export interface CreateDeputyInput {
 }
 
 export async function listDeputies(principalId: string): Promise<DeputyDTO[]> {
-  return (await api.get<DeputyDTO[]>("/deputies", { params: { principal_id: principalId } })).data;
+  const r = await api.get<unknown>("/deputies", { params: { principal_id: principalId } });
+  return optionalArrayResponse<DeputyDTO>(r.data);
 }
 
 export async function createDeputy(input: CreateDeputyInput): Promise<DeputyDTO> {

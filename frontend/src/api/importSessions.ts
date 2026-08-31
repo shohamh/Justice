@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { requiredArrayResponse } from "./responseGuards";
 
 export interface NameMappings {
   duty_type?: {
@@ -444,11 +445,10 @@ export async function uploadSession(
 export async function listSessions(
   statusFilter?: string,
 ): Promise<SessionSummary[]> {
-  return (
-    await api.get<SessionSummary[]>("/import/sessions", {
-      params: statusFilter ? { status_filter: statusFilter } : undefined,
-    })
-  ).data;
+  const r = await api.get<unknown>("/import/sessions", {
+    params: statusFilter ? { status_filter: statusFilter } : undefined,
+  });
+  return requiredArrayResponse<SessionSummary>(r.data, "Invalid import sessions response");
 }
 
 export async function getSession(id: string): Promise<SessionDetail> {

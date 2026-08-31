@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface DmScopeEntry {
   id: string;
@@ -7,7 +8,8 @@ export interface DmScopeEntry {
 }
 
 export async function listDmScope(soldierId: string): Promise<DmScopeEntry[]> {
-  return (await api.get<DmScopeEntry[]>("/duty-manager-scope", { params: { soldier_id: soldierId } })).data;
+  const r = await api.get<unknown>("/duty-manager-scope", { params: { soldier_id: soldierId } });
+  return optionalArrayResponse<DmScopeEntry>(r.data);
 }
 
 export async function assignDmScope(soldierId: string, nodeId: string): Promise<DmScopeEntry> {

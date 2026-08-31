@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export type AuditLogEntityType = "soldier_exemption" | "personal_constraint";
 
@@ -19,9 +20,8 @@ export async function listAuditLogs(
   entityType: AuditLogEntityType,
   entityId: string,
 ): Promise<AuditLogEntry[]> {
-  return (
-    await api.get<AuditLogEntry[]>("/audit-logs", {
-      params: { entity_type: entityType, entity_id: entityId },
-    })
-  ).data;
+  const r = await api.get<unknown>("/audit-logs", {
+    params: { entity_type: entityType, entity_id: entityId },
+  });
+  return optionalArrayResponse<AuditLogEntry>(r.data);
 }
