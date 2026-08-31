@@ -117,6 +117,42 @@ def test_upcoming_duties_includes_algorithm_draft(admin_session):
     assert all_assignments[0]["status"] == "algorithm_draft"
 
 
+def test_upcoming_duties_with_no_horizon_includes_far_future_assignment(admin_session):
+    from datetime import date as _date
+
+    from app.db.models import DutyAssignment
+
+    node = create_node(admin_session, level="unit", name="upcoming_far_future_test")
+    soldier = create_soldier(admin_session, personal_number="7940002", hierarchy_node_id=node.id)
+    dt = DutyType(name="dt_upcoming_far_future_test", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_upcoming_far_future_test")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    far_start = _date.today() + timedelta(days=30)
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            start_date=far_start,
+            end_date=far_start + timedelta(days=1),
+            status="published",
+        )
+    )
+    admin_session.commit()
+
+    days_capped = upcoming_duties(admin_session, subtree_ids=[node.id], days=7)
+    assert [a for day in days_capped for a in day["assignments"]] == []
+
+    days_uncapped = upcoming_duties(admin_session, subtree_ids=[node.id], days=None)
+    all_assignments = [a for day in days_uncapped for a in day["assignments"]]
+    assert len(all_assignments) == 1
+    assert all_assignments[0]["start_date"] == str(far_start)
+    # Only days with assignments are present — no empty-day filler.
+    assert all(day["assignments"] for day in days_uncapped)
+
+
 def test_summary_cards_upcoming_count_includes_algorithm_draft(admin_session):
     from datetime import date as _date
 

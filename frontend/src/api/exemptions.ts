@@ -250,3 +250,31 @@ export async function listExemptionRequestsForSoldier(soldierId: string): Promis
   const data = (await api.get<unknown>(`/soldiers/${soldierId}/exemption-requests`)).data;
   return sanitizeExemptionRequests(data);
 }
+
+/**
+ * Commander/duty-manager "log an exemption" for a soldier — files the same
+ * request the soldier would file for themselves, then the backend
+ * auto-advances it through whichever approval steps the submitter already
+ * qualifies for (see create_exemption_request_for_soldier). The returned
+ * request's `status` tells the caller whether it landed fully approved or
+ * is still waiting on someone (`waiting_on`/`nearest_commander`/
+ * `nearest_duty_manager` name who).
+ */
+export async function logExemptionForSoldier(
+  soldierId: string,
+  input: {
+    exemption_type_id: string;
+    start_date: string | null;
+    end_date?: string | null;
+    reason?: string | null;
+  },
+  files: File[] = [],
+): Promise<ExemptionRequest> {
+  const formData = new FormData();
+  formData.append("payload", JSON.stringify(input));
+  for (const f of files) formData.append("files", f);
+  const r = await api.post<ExemptionRequest>(`/soldiers/${soldierId}/exemption-requests`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return r.data;
+}

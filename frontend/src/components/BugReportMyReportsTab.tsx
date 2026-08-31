@@ -159,31 +159,35 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
                 <button
                   type="button"
                   onClick={() => handleToggle(report.id)}
-                  className="w-full flex items-center gap-3 p-3 text-right"
+                  className="w-full flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 text-right"
                   aria-expanded={isExpanded}
                   data-testid={`my-bug-report-expand-${report.id}`}
                 >
-                  <span dir="ltr" className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-                    {new Date(report.created_at).toLocaleString("he-IL")}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded shrink-0 ${SEVERITY_COLORS[report.severity]}`}>
-                    {bugReportSeverityLabel(report.severity)}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded shrink-0 ${STATUS_COLORS[report.status]}`}>
-                    {bugReportStatusLabel(report.status)}
-                  </span>
+                  <div className="flex items-center flex-wrap gap-2 sm:contents">
+                    <span dir="ltr" className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                      {new Date(report.created_at).toLocaleString("he-IL")}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded shrink-0 ${SEVERITY_COLORS[report.severity]}`}>
+                      {bugReportSeverityLabel(report.severity)}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded shrink-0 ${STATUS_COLORS[report.status]}`}>
+                      {bugReportStatusLabel(report.status)}
+                    </span>
+                    {report.has_unseen_activity && (
+                      <span
+                        className="w-2 h-2 rounded-full bg-red-500 shrink-0"
+                        data-testid={`my-bug-report-unseen-${report.id}`}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </div>
                   {!isExpanded && <span className="flex-1 min-w-0 whitespace-pre-wrap text-right">{report.description}</span>}
-                  {report.has_unseen_activity && (
-                    <span
-                      className="w-2 h-2 rounded-full bg-red-500 shrink-0"
-                      data-testid={`my-bug-report-unseen-${report.id}`}
-                      aria-hidden="true"
-                    />
-                  )}
-                  <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-                    {report.comment_count} {t("bug_reports.comment_count")}
-                  </span>
-                  <span className="text-gray-400 shrink-0">{isExpanded ? "▲" : "▼"}</span>
+                  <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                      {report.comment_count} {t("bug_reports.comment_count")}
+                    </span>
+                    <span className="text-gray-400 shrink-0">{isExpanded ? "▲" : "▼"}</span>
+                  </div>
                 </button>
                 {isExpanded && (
                   <div className="border-t dark:border-gray-600 p-3 space-y-3">

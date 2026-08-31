@@ -41,8 +41,14 @@ const CALENDAR_EVENT_INTERACTION_CLASSES = [
 
 
 interface UnitCalendarProps {
-  // Node whose subtree to show. Required unless soldierId is given.
+  // Node whose subtree to show. Required unless soldierId or nodeIds is given.
   nodeId?: string;
+  // Multiple nodes whose subtrees to show merged together — for a commander
+  // who directly commands more than one node. Takes precedence over nodeId
+  // when given. Each node is fetched independently and the results merged
+  // (deduped by id), since the backend calendar endpoints only take one
+  // node at a time.
+  nodeIds?: string[];
   // When set, shows only this soldier's own duties/ranges (personal view) —
   // both shifts and ranges are fetched by soldier, ignoring nodeId/hierarchy
   // entirely (a duty or range can involve a soldier outside its own node's
@@ -62,7 +68,7 @@ export function filterCalendarShifts(
   );
 }
 
-export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
+export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const canSeeEligibilityBadges = canApprove(user);
@@ -89,35 +95,62 @@ export default function UnitCalendar({ nodeId, soldierId }: UnitCalendarProps) {
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
   const fetchedHolidayYearsRef = useRef<Set<number>>(new Set());
 
+  // Multiple own nodes are fetched independently and merged (deduped by id)
+  // rather than plumbing a multi-node query through the shared calendar
+  // endpoints, which other callers use with a single node.
+  const effectiveNodeIds = nodeIds && nodeIds.length > 0 ? nodeIds : nodeId ? [nodeId] : [];
+  const nodeIdsKey = effectiveNodeIds.join(",");
+
   const fetchData = useCallback(async (from: string, to: string) => {
-    if (!nodeId && !soldierId) return;
+    if (effectiveNodeIds.length === 0 && !soldierId) return;
     setLoading(true);
     setError(null);
     try {
-      const { calendar, ranges: rangeEvents } = await loadCalendarData(
-        () => getCalendarShifts({ nodeId: soldierId ? undefined : nodeId, soldierId, date_from: from, date_to: to }),
-        () => (soldierId ? getMyRanges(soldierId, from, to) : (nodeId ? getRanges(nodeId, from, to) : Promise.resolve([]))),
-        rangesEnabled,
-      );
-      setShifts(calendar.shifts);
-      setRanges(rangeEvents);
-      setSelectedShift(prev => {
-        if (!prev) return null;
-        return calendar.shifts.find(s => s.id === prev.id) ?? prev;
-      });
+      if (soldierId) {
+        const { calendar, ranges: rangeEvents } = await loadCalendarData(
+          () => getCalendarShifts({ soldierId, date_from: from, date_to: to }),
+          () => getMyRanges(soldierId, from, to),
+          rangesEnabled,
+        );
+        setShifts(calendar.shifts);
+        setRanges(rangeEvents);
+        setSelectedShift(prev => (prev ? calendar.shifts.find(s => s.id === prev.id) ?? prev : null));
+      } else {
+        const perNode = await Promise.all(
+          effectiveNodeIds.map((id) =>
+            loadCalendarData(
+              () => getCalendarShifts({ nodeId: id, date_from: from, date_to: to }),
+              () => getRanges(id, from, to),
+              rangesEnabled,
+            )
+          )
+        );
+        const shiftsById = new Map<string, CalendarShift>();
+        const rangesById = new Map<string, RangeEvent>();
+        for (const { calendar, ranges: rangeEvents } of perNode) {
+          for (const s of calendar.shifts) shiftsById.set(s.id, s);
+          for (const r of rangeEvents) rangesById.set(r.id, r);
+        }
+        const mergedShifts = Array.from(shiftsById.values());
+        setShifts(mergedShifts);
+        setRanges(Array.from(rangesById.values()));
+        setSelectedShift(prev => (prev ? mergedShifts.find(s => s.id === prev.id) ?? prev : null));
+      }
     } catch {
       setError(t("unit_calendar.error") || "Failed to load calendar");
     } finally {
       setLoading(false);
     }
-  }, [nodeId, soldierId, rangesEnabled, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeIdsKey, soldierId, rangesEnabled, t]);
 
   useEffect(() => {
     dateRangeRef.current = null;
     setShifts([]);
     setRanges([]);
     setSelectedShift(null);
-  }, [nodeId, soldierId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeIdsKey, soldierId]);
 
   // The duty-type filter should list every active duty type, not just the
   // ones that happen to have a shift in the currently-loaded date range —

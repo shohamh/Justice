@@ -34,16 +34,30 @@ vi.mock("../api/exemptions", () => ({
     { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null },
     { id: "ex2", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-10", reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null },
   ])),
-  grantExemption: vi.fn(() => Promise.resolve({
-    id: "ex-new",
+  logExemptionForSoldier: vi.fn(() => Promise.resolve({
+    id: "req-new",
     soldier_id: "abc",
-    exemption_type_id: "et-regular",
+    soldier_name: "X",
+    node_name: null,
+    exemption_type_id: "et-official",
     start_date: "2026-08-30",
     end_date: null,
     reason: "סיבה רגילה",
-    granted_by: null,
-    revoke_reason: null,
-    revoked_by_name: null,
+    status: "approved",
+    commander_approved_by: null,
+    commander_approved_at: null,
+    waiting_on: null,
+    decided_by: null,
+    decided_at: null,
+    requested_at: "2026-08-30T00:00:00Z",
+    updated_at: "2026-08-30T00:00:00Z",
+    decision_note: null,
+    created_at: "2026-08-30T00:00:00Z",
+    files: [],
+    nearest_commander: null,
+    nearest_duty_manager: null,
+    can_approve_commander_step: false,
+    can_approve_duty_manager_step: false,
   })),
   revokeExemption: vi.fn(() => Promise.resolve()),
   grantCommanderExemption: vi.fn(() => Promise.resolve()),
@@ -117,8 +131,16 @@ vi.mock("../utils/fileValidation", () => ({
   validateFileSignature: vi.fn(() => Promise.resolve(true)),
 }));
 
+async function selectLogExemptionType(name: string) {
+  const input = screen.getByTestId("er-type");
+  fireEvent.focus(input);
+  const option = await screen.findByRole("button", { name });
+  fireEvent.pointerDown(option);
+  fireEvent.pointerUp(option);
+}
+
 async function selectGrantType(name: string) {
-  const input = screen.getByTestId("grant-type");
+  const input = await screen.findByTestId("grant-type");
   fireEvent.focus(input);
   const option = await screen.findByRole("button", { name });
   fireEvent.pointerDown(option);
@@ -141,85 +163,88 @@ describe("ExemptionsPanel", () => {
     vi.mocked(validateFileSignature).mockResolvedValue(true);
   });
 
-  test("indefinite checkbox disables end-date picker", () => {
+  test("indefinite checkbox disables end-date picker", async () => {
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
-    const checkbox = screen.getByTestId("grant-indefinite");
+    const checkbox = await screen.findByTestId("grant-indefinite");
     const endInput = screen.getByTestId("grant-end");
     expect(endInput).not.toBeDisabled();
     fireEvent.click(checkbox);
     expect(endInput).toBeDisabled();
   });
 
-  test("requires a file for a medical regular grant and uploads selected files sequentially after grant", async () => {
+  test("logs an exemption via the shared request form, requiring a file for a medical type", async () => {
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
 
-    await selectGrantType("פטור רשמי");
-    fireEvent.change(screen.getByTestId("grant-start"), { target: { value: "2026-08-30" } });
-    fireEvent.change(screen.getByTestId("grant-reason"), { target: { value: "סיבה רגילה" } });
-    fireEvent.click(screen.getByTestId("grant-medical-classification"));
+    await selectLogExemptionType("פטור רשמי");
+    fireEvent.change(screen.getByTestId("er-start"), { target: { value: "2026-08-30" } });
+    fireEvent.change(screen.getByTestId("er-end"), { target: { value: "2026-08-30" } });
+    fireEvent.change(screen.getByTestId("er-reason"), { target: { value: "סיבה רגילה" } });
+    fireEvent.click(screen.getByTestId("er-medical-check"));
 
-    expect(screen.getByText("exemption_requests.upload_required_hint")).toBeInTheDocument();
-    expect(screen.getByTestId("grant-submit")).toBeDisabled();
+    expect(screen.getByTestId("er-submit")).toBeDisabled();
 
     const fileA = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "proof-a.pdf", { type: "application/pdf" });
-    const fileB = new File([new Uint8Array([0xff, 0xd8, 0xff])], "proof-b.jpg", { type: "image/jpeg" });
-    fireEvent.change(screen.getByTestId("grant-files"), { target: { files: [fileA, fileB] } });
+    fireEvent.change(screen.getByTestId("er-files"), { target: { files: [fileA] } });
 
-    await waitFor(() => expect(screen.getByTestId("grant-submit")).not.toBeDisabled());
-    fireEvent.click(screen.getByTestId("grant-submit"));
-
-    await waitFor(() => {
-      expect(exemptionsApi.grantExemption).toHaveBeenCalledWith("abc", {
-        exemption_type_id: "et-official",
-        is_medical: true,
-        start_date: "2026-08-30",
-        end_date: null,
-        reason: "סיבה רגילה",
-      });
-    });
-    expect(exemptionsApi.uploadSoldierExemptionFile).toHaveBeenNthCalledWith(1, "abc", "ex-new", fileA);
-    expect(exemptionsApi.uploadSoldierExemptionFile).toHaveBeenNthCalledWith(2, "abc", "ex-new", fileB);
+    await waitFor(() => expect(screen.getByTestId("er-submit")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("er-submit"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("grant-reason")).toHaveValue("");
-      expect(screen.getByTestId("grant-medical-classification")).not.toBeChecked();
+      expect(exemptionsApi.logExemptionForSoldier).toHaveBeenCalledWith(
+        "abc",
+        {
+          exemption_type_id: "et-official",
+          start_date: "2026-08-30",
+          end_date: "2026-08-30",
+          reason: "סיבה רגילה",
+        },
+        [fileA],
+      );
     });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("er-reason")).toHaveValue("");
+    });
+    expect(screen.getByTestId("log-exemption-approved-note")).toBeInTheDocument();
   });
 
-  test("keeps the upload error visible after resetting a regular grant whose attachment upload fails", async () => {
-    vi.mocked(exemptionsApi.uploadSoldierExemptionFile).mockRejectedValueOnce(new Error("upload failed"));
+  test("shows who the request is waiting on when it does not fully auto-approve", async () => {
+    vi.mocked(exemptionsApi.logExemptionForSoldier).mockResolvedValueOnce({
+      id: "req-pending",
+      soldier_id: "abc",
+      soldier_name: "X",
+      node_name: null,
+      exemption_type_id: "et-official",
+      start_date: "2026-08-30",
+      end_date: null,
+      reason: "סיבה רגילה",
+      status: "pending_duty_manager",
+      commander_approved_by: { soldier_id: "cmd-1", name: "מפקד המדור" },
+      commander_approved_at: "2026-08-30T00:00:00Z",
+      waiting_on: null,
+      decided_by: null,
+      decided_at: null,
+      requested_at: "2026-08-30T00:00:00Z",
+      updated_at: "2026-08-30T00:00:00Z",
+      decision_note: null,
+      created_at: "2026-08-30T00:00:00Z",
+      files: [],
+      nearest_commander: null,
+      nearest_duty_manager: { id: "dm-1", name: "קצין תורנויות" },
+      can_approve_commander_step: false,
+      can_approve_duty_manager_step: false,
+    });
 
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
 
-    await selectGrantType("פטור רשמי");
-    fireEvent.change(screen.getByTestId("grant-start"), { target: { value: "2026-08-30" } });
-    fireEvent.change(screen.getByTestId("grant-reason"), { target: { value: "סיבה רגילה" } });
-    fireEvent.click(screen.getByTestId("grant-medical-classification"));
+    await selectLogExemptionType("פטור רשמי");
+    fireEvent.change(screen.getByTestId("er-start"), { target: { value: "2026-08-30" } });
+    fireEvent.change(screen.getByTestId("er-end"), { target: { value: "2026-08-30" } });
+    fireEvent.change(screen.getByTestId("er-reason"), { target: { value: "סיבה רגילה" } });
+    fireEvent.click(screen.getByTestId("er-submit"));
 
-    const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "proof-a.pdf", { type: "application/pdf" });
-    fireEvent.change(screen.getByTestId("grant-files"), { target: { files: [file] } });
-
-    await waitFor(() => expect(screen.getByTestId("grant-submit")).not.toBeDisabled());
-    fireEvent.click(screen.getByTestId("grant-submit"));
-
-    await waitFor(() => {
-      expect(exemptionsApi.grantExemption).toHaveBeenCalledWith("abc", {
-        exemption_type_id: "et-official",
-        is_medical: true,
-        start_date: "2026-08-30",
-        end_date: null,
-        reason: "סיבה רגילה",
-      });
-    });
-    await waitFor(() =>
-      expect(exemptionsApi.uploadSoldierExemptionFile).toHaveBeenCalledWith("abc", "ex-new", file),
-    );
-    await waitFor(() => expect(screen.getByText("exemption_requests.upload_error")).toBeInTheDocument());
-    await waitFor(() => {
-      expect(screen.getByTestId("grant-reason")).toHaveValue("");
-      expect(screen.getByTestId("grant-medical-classification")).not.toBeChecked();
-    });
-    expect(vi.mocked(exemptionsApi.listExemptions)).toHaveBeenCalledTimes(2);
+    const note = await screen.findByTestId("log-exemption-pending-note");
+    expect(note.textContent).toContain("קצין תורנויות");
   });
 
   test("shows exemption request history with a pending duty-manager approve button for a duty manager viewer", async () => {

@@ -37,8 +37,11 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
+const mockOpenSoldierModal = vi.fn();
 vi.mock("./SoldierLink", () => ({
-  default: ({ name }: { name: string }) => <span>{name}</span>,
+  default: ({ id, name }: { id: string; name: string }) => (
+    <button onClick={() => mockOpenSoldierModal(id)}>{name}</button>
+  ),
 }));
 
 const mockUsePublicSettings = vi.fn();
@@ -51,7 +54,7 @@ vi.mock("../auth/AuthContext", () => ({
 }));
 
 vi.mock("../contexts/SoldierModalContext", () => ({
-  useSoldierModal: () => ({ openSoldierModal: vi.fn() }),
+  useSoldierModal: () => ({ openSoldierModal: mockOpenSoldierModal }),
 }));
 
 vi.mock("../hooks/useModalBackClose", () => ({
@@ -98,6 +101,23 @@ const data: UpcomingDay[] = [
         is_reserve: false,
         status: "published",
       },
+      {
+        assignment_id: "asg-2",
+        soldier_id: "sol-2",
+        soldier_name: "רוני לוי",
+        duty_type_id: "dt-1",
+        duty_type_name: "שמירות",
+        duty_location_id: "loc-1",
+        duty_location_name: "שער צפון",
+        start_date: "2026-07-06",
+        end_date: "2026-07-07",
+        start_time: "08:00",
+        end_time: "12:00",
+        shift_id: "shift-1",
+        node_name: "ספקטרה",
+        is_reserve: true,
+        status: "published",
+      },
     ],
   },
 ];
@@ -131,35 +151,37 @@ function makeDraftDay(status: string): UpcomingDay[] {
 
 beforeEach(() => {
   mockNavigate.mockReset();
+  mockOpenSoldierModal.mockReset();
   mockUsePublicSettings.mockReset();
   mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": true });
-  vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
-function renderWithRouter() {
+function renderWithRouter(days: UpcomingDay[] = data) {
   return render(
     <MemoryRouter>
-      <UpcomingSnapshot data={data} />
+      <UpcomingSnapshot data={days} />
     </MemoryRouter>
   );
 }
 
-describe("UpcomingSnapshot soldier modal", () => {
-  it("hides commander release when forced callup is disabled", () => {
-    mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": false });
+describe("UpcomingSnapshot grouping", () => {
+  it("groups primary and reserve soldiers under one duty row", () => {
     renderWithRouter();
-
-    fireEvent.click(screen.getByText("דני כהן"));
-
-    expect(screen.queryByRole("button", { name: "שחרור פיקודי" })).not.toBeInTheDocument();
+    expect(screen.getByText(/שמירות/)).toBeInTheDocument();
+    expect(screen.getByText("דני כהן")).toBeInTheDocument();
+    expect(screen.getByText("רוני לוי")).toBeInTheDocument();
+    expect(screen.getByText(/רזרבה/)).toBeInTheDocument();
   });
 
-  it("opens the existing duty details from the selected upcoming assignment", async () => {
+  it("clicking a soldier name opens the soldier modal directly", () => {
     renderWithRouter();
     fireEvent.click(screen.getByText("דני כהן"));
+    expect(mockOpenSoldierModal).toHaveBeenCalledWith("sol-1");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "צפה בפרטי התורנות" }));
-
+  it("clicking the duty header opens the duty details modal directly", async () => {
+    renderWithRouter();
+    fireEvent.click(screen.getByText(/שמירות · שער צפון/));
     expect(screen.getByRole("dialog", { name: "שמירות" })).toBeInTheDocument();
     expect(screen.getByText("06.07.2026")).toBeInTheDocument();
     expect(screen.getByText("שער צפון")).toBeInTheDocument();
@@ -169,28 +191,29 @@ describe("UpcomingSnapshot soldier modal", () => {
   it("shows required-range data as unavailable when the duty type lookup fails", async () => {
     vi.mocked(listDutyTypes).mockRejectedValueOnce(new Error("unavailable"));
     renderWithRouter();
-    fireEvent.click(screen.getByText("דני כהן"));
-
-    fireEvent.click(screen.getByRole("button", { name: "צפה בפרטי התורנות" }));
-
+    fireEvent.click(screen.getByText(/שמירות · שער צפון/));
     expect(await screen.findByText("נתוני מטווח נדרש אינם זמינים")).toBeInTheDocument();
-    expect(screen.queryByText("לא נדרש")).not.toBeInTheDocument();
   });
 
-  it("opens the modal on badge click and closes it via the ✕ button (no bottom ביטול button)", () => {
+  it("closes the duty modal via the close button", () => {
     renderWithRouter();
-    fireEvent.click(screen.getByText("דני כהן"));
-    expect(screen.getByText("שמירות")).toBeInTheDocument();
-    expect(screen.queryByText("command_dashboard.cancel")).not.toBeInTheDocument();
-    const closeBtn = screen.getByLabelText("סגור");
-    fireEvent.click(closeBtn);
-    expect(screen.queryByText("שמירות")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(/שמירות · שער צפון/));
+    expect(screen.getByRole("dialog", { name: "שמירות" })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("סגור"));
+    expect(screen.queryByRole("dialog", { name: "שמירות" })).not.toBeInTheDocument();
+  });
+});
+
+describe("UpcomingSnapshot forced release", () => {
+  it("hides the forced-release icon when forced callup is disabled", () => {
+    mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": false });
+    renderWithRouter();
+    expect(screen.queryByLabelText("שחרור פיקודי")).not.toBeInTheDocument();
   });
 
   it("shows a confirmation naming the soldier and only navigates after confirmation", () => {
     renderWithRouter();
-    fireEvent.click(screen.getByText("דני כהן"));
-    fireEvent.click(screen.getByText("שחרור פיקודי"));
+    fireEvent.click(screen.getAllByLabelText("שחרור פיקודי")[0]);
     expect(screen.getByText(/דני כהן.*קיצוניים/)).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
@@ -199,8 +222,7 @@ describe("UpcomingSnapshot soldier modal", () => {
 
   it("does not navigate when the confirmation is dismissed", () => {
     renderWithRouter();
-    fireEvent.click(screen.getByText("דני כהן"));
-    fireEvent.click(screen.getByText("שחרור פיקודי"));
+    fireEvent.click(screen.getAllByLabelText("שחרור פיקודי")[0]);
     fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -208,20 +230,12 @@ describe("UpcomingSnapshot soldier modal", () => {
 
 describe("UpcomingSnapshot draft badge", () => {
   it("shows a draft badge for an algorithm_draft assignment", () => {
-    render(
-      <MemoryRouter>
-        <UpcomingSnapshot data={makeDraftDay("algorithm_draft")} />
-      </MemoryRouter>
-    );
+    renderWithRouter(makeDraftDay("algorithm_draft"));
     expect(screen.getByTestId("draft-badge-a1")).toBeInTheDocument();
   });
 
   it("shows no draft badge for a published assignment", () => {
-    render(
-      <MemoryRouter>
-        <UpcomingSnapshot data={makeDraftDay("published")} />
-      </MemoryRouter>
-    );
+    renderWithRouter(makeDraftDay("published"));
     expect(screen.queryByTestId("draft-badge-a1")).not.toBeInTheDocument();
   });
 });

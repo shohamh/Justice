@@ -227,7 +227,7 @@ def upcoming(
 ) -> list[UpcomingDay]:
     node_id = _assert_commander(session, user)
     subtree = _get_subtree_ids(session, node_id)
-    return svc.upcoming_duties(session, subtree_ids=subtree, days=7)
+    return svc.upcoming_duties(session, subtree_ids=subtree, days=None)
 
 
 @router.get("/alerts", response_model=list[Alert])
