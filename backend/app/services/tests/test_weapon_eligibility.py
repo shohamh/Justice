@@ -72,6 +72,37 @@ def test_current_qualification_covers_as_of_date(app_session: Session) -> None:
     assert reason is None
 
 
+def test_profile_range_date_covers_live_as_of_date(app_session: Session) -> None:
+    soldier = create_soldier(app_session, personal_number="we-profile-001")
+    _enable_mitvachim(app_session)
+    set_setting(app_session, "mitvachim.live_validity_days", 365, actor_id=None)
+    soldier.last_mitvahim_date = date.today() - timedelta(days=1)
+    app_session.commit()
+
+    eligible, reason = compute_eligibility(
+        app_session, soldier_id=soldier.id, required_range_type=RangeType.live,
+        as_of=date.today(),
+    )
+
+    assert eligible is True
+    assert reason is None
+
+
+def test_profile_alal_date_covers_alal_as_of_date(app_session: Session) -> None:
+    soldier = create_soldier(app_session, personal_number="we-profile-alal-001")
+    _enable_mitvachim(app_session)
+    soldier.last_alal_date = date.today() - timedelta(days=1)
+    app_session.commit()
+
+    eligible, reason = compute_eligibility(
+        app_session, soldier_id=soldier.id, required_range_type=RangeType.alal,
+        as_of=date.today(),
+    )
+
+    assert eligible is True
+    assert reason is None
+
+
 def test_expired_qualification_is_not_eligible(app_session: Session) -> None:
     soldier = create_soldier(app_session, personal_number="we-003")
     _enable_mitvachim(app_session)

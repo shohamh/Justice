@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import DutyBlock
+from app.db.models import RangeType, Soldier
 from app.services.range_auto_assign import _qualification_types_at_or_above
 from app.services.range_coverage import get_projected_range_windows
 from app.services.ranges import _validity_days
@@ -180,6 +181,31 @@ def _max_qualification_valid_until(
     )[soldier_id, required_range_type]
 
 
+def _profile_valid_until(
+    session: Session, *, soldier_id: uuid.UUID, required_range_type: str, as_of: date,
+) -> date | None:
+    """Return the legacy profile qualification's projected validity.
+
+    ``last_mitvahim_date`` is the profile's live-range date and covers live (and
+    lower-tier laser) requirements. ``last_alal_date`` covers alal requirements.
+    A future profile date must not qualify an earlier duty.
+    """
+    last_mitvahim_date, last_alal_date = session.execute(
+        select(Soldier.last_mitvahim_date, Soldier.last_alal_date).where(Soldier.id == soldier_id)
+    ).one_or_none() or (None, None)
+    if required_range_type == RangeType.alal:
+        profile_date = last_alal_date
+        profile_range_type = RangeType.alal
+    else:
+        profile_date = last_mitvahim_date
+        profile_range_type = RangeType.live
+    if profile_date is None or profile_date > as_of:
+        return None
+    if profile_range_type not in _qualification_types_at_or_above(required_range_type):
+        return None
+    return profile_date + timedelta(days=_validity_days(session, profile_range_type))
+
+
 def _future_windows(
     session: Session,
     *,
@@ -214,6 +240,11 @@ def compute_eligibility(
         soldier_id=soldier_id,
         required_range_type=required_range_type,
     )
+    profile_valid_until = _profile_valid_until(
+        session, soldier_id=soldier_id, required_range_type=required_range_type, as_of=as_of,
+    )
+    if profile_valid_until is not None:
+        current_valid_until = max(current_valid_until or profile_valid_until, profile_valid_until)
     future_windows = _future_windows(
         session,
         soldier_id=soldier_id,
@@ -301,6 +332,11 @@ def bulk_ineligible_duty_blocks(
                     ),
                 )
             current_valid_until, future_windows = cache[required]
+            profile_valid_until = _profile_valid_until(
+                session, soldier_id=soldier_id, required_range_type=required, as_of=block.start_date,
+            )
+            if profile_valid_until is not None:
+                current_valid_until = max(current_valid_until or profile_valid_until, profile_valid_until)
             if not _is_eligible_from_data(
                 current_best_valid_until=current_valid_until,
                 future_windows=future_windows,
