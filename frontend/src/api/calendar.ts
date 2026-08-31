@@ -112,5 +112,6 @@ export async function getCalendarShifts(
 }
 
 export async function getCalendarShift(shiftId: string): Promise<CalendarShift> {
-  return (await api.get<CalendarShift>(`/calendar/shifts/${shiftId}`)).data;
+  const r = await api.get<unknown>(`/calendar/shifts/${shiftId}`);
+  return normalizeCalendarShift(r.data);
 }

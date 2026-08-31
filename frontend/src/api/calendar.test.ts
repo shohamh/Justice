@@ -62,6 +62,39 @@ describe("calendar api", () => {
     });
   });
 
+  describe("getCalendarShift", () => {
+    it("returns a shift with assignees/crossed_holidays intact on a valid response", async () => {
+      const shift = {
+        id: "shift-1",
+        duty_type_id: "dt-1",
+        assignees: [{ assignment_id: "a-1" }],
+        crossed_holidays: [{ date: "2026-09-12", name: "Rosh Hashanah" }],
+      };
+      mockGet.mockResolvedValue({ data: shift });
+      const { getCalendarShift } = await import("./calendar");
+      const result = await getCalendarShift("shift-1");
+      expect(result.assignees).toEqual([{ assignment_id: "a-1" }]);
+      expect(result.crossed_holidays).toEqual([{ date: "2026-09-12", name: "Rosh Hashanah" }]);
+    });
+
+    it("normalizes a malformed assignees/crossed_holidays field to an empty array", async () => {
+      mockGet.mockResolvedValue({ data: { id: "shift-1", assignees: "bad", crossed_holidays: null } });
+      const { getCalendarShift } = await import("./calendar");
+      const result = await getCalendarShift("shift-1");
+      expect(result.id).toBe("shift-1");
+      expect(result.assignees).toEqual([]);
+      expect(result.crossed_holidays).toEqual([]);
+    });
+
+    it("normalizes a completely malformed (non-object) response to an empty-normalized shift", async () => {
+      mockGet.mockResolvedValue({ data: "not-an-object" });
+      const { getCalendarShift } = await import("./calendar");
+      const result = await getCalendarShift("shift-1");
+      expect(result.assignees).toEqual([]);
+      expect(result.crossed_holidays).toEqual([]);
+    });
+  });
+
   describe("getUnitCalendar", () => {
     it("normalizes a malformed (non-array) response to an empty list", async () => {
       mockGet.mockResolvedValue({ data: { not: "an array" } });
