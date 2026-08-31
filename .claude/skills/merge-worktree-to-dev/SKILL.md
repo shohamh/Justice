@@ -19,14 +19,49 @@ branch fixed to `dev` instead of detected/guessed.
 
 ## The Process
 
-### Step 1: Verify Tests
+### Step 1: Verify the Relevant Subset
 
-Run the project's test suite before presenting any options (see CLAUDE.md's
-`Common one-liners` — `pytest -q` for backend, `npm test` / `npm run
-typecheck` for frontend). If tests fail, stop and report the failures —
-don't proceed to Step 2 until they're fixed or the failure is confirmed
-pre-existing and unrelated (verify with a quick reproduction on `dev` before
-trusting that claim).
+Merging into `dev` runs a **scoped** subset of tests, not the full suite —
+the full suite is expensive (~10 min per side) and only needs to run once,
+at the `dev` → `master` release gate (see `release-dev-to-master`). Running
+it again per feature merge is the redundant cost this step removes.
+
+1. Get changed files relative to `dev`:
+   `git diff --name-only $(git merge-base dev HEAD)..HEAD`
+2. **Backend** (files under `backend/`):
+   - If any changed file is core/shared-infra — `app/main.py`,
+     `app/settings.py`, `app/db/`, `app/logging_config.py`,
+     `app/error_logging.py`, `app/rate_limit.py`, `app/auth/`,
+     `alembic/versions/`, `tests/conftest.py`, `tests/support/`,
+     `pyproject.toml` — skip the mapping below and run the full fast suite:
+     `pytest -q`.
+   - Otherwise, for each changed non-test file, take its stem (e.g.
+     `app/services/swaps.py` → `swaps`) and find matching test files under
+     `backend/tests/` by name (`rg -l --glob 'test_*swap*.py' backend/tests`
+     or equivalent — try the stem as-is and an obvious singular/plural
+     variant). Union the matches across all changed files.
+   - If a changed non-test file has no matching test file, or the matches
+     span more than ~5 of the area markers listed in CLAUDE.md (algorithm,
+     auth, hierarchy, duty, scoring, notifications, soldiers, misc), treat
+     it as ambiguous and fall back to `pytest -q` instead of guessing.
+   - Otherwise run `pytest -q <matched test files>`.
+   - No backend files changed → skip backend tests entirely.
+3. **Frontend** (files under `frontend/`):
+   - Always run `npm run typecheck` and `npm run lint` in full — both are
+     fast whole-project static checks, not the slow part.
+   - Run `npx vitest run --changed dev` instead of the full `npm test`
+     (Vitest's own git-diff-aware selection, using its module graph rather
+     than path guessing). If it errors (e.g. `dev` not fetched locally),
+     fall back to `npm test -- --run`.
+   - No frontend files changed → skip frontend tests entirely.
+4. When in doubt about whether a change is "core" or a mapping is
+   reliable, prefer the full-suite fallback for that side — this step
+   trades exhaustiveness for speed, not correctness.
+
+If the scoped run fails, stop and report the failures — don't proceed to
+Step 2 until they're fixed or the failure is confirmed pre-existing and
+unrelated (verify with a quick reproduction on `dev` before trusting that
+claim).
 
 ### Step 2: Detect Environment
 
@@ -98,8 +133,11 @@ git checkout dev   # wherever it's safe to do so
 git pull
 git merge <feature-branch>
 
-# Verify tests on the merged result before treating the merge as done
-<test command>
+# Re-run the same scoped subset from Step 1 on the merged result before
+# treating the merge as done — a clean feature-branch merge rarely needs
+# more than that; reach for the full suite only if the merge itself
+# touched core/shared infra in a way Step 1 didn't already cover.
+<scoped test command from Step 1>
 ```
 
 Then: Cleanup worktree (Step 6), then delete the feature branch:
@@ -161,6 +199,9 @@ git worktree prune
 **Never:**
 - Merge a feature branch directly into `master` — always `dev`
 - Proceed with failing tests (unless a pre-existing, verified-unrelated failure)
+- Guess a test subset for a change you flagged as core/shared infra, or for
+  a changed file with no matching test file — fall back to the full suite
+  for that side instead
 - Delete work without typed `discard` confirmation
 - Force-push without explicit request
 - Remove a worktree before confirming the merge to `dev` succeeded

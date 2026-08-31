@@ -152,17 +152,17 @@ export default function BugReportTrigger() {
         trigger();
       }}
       aria-label={capturing ? "מצלם צילום מסך..." : "מצאתי באג"}
-      className="fixed bottom-20 left-2 md:bottom-4 md:left-4 flex flex-col items-center gap-0.5 text-gray-500 hover:text-indigo-600 z-[100] disabled:opacity-60"
+      className="fixed bottom-20 left-2 md:bottom-6 md:left-6 flex flex-col items-center gap-0.5 text-gray-500 hover:text-indigo-600 z-[100] disabled:opacity-60 md:flex-row md:gap-2 md:rounded-full md:bg-indigo-600 md:px-4 md:py-3 md:text-white md:shadow-lg md:hover:bg-indigo-700 md:hover:text-white md:transition-colors"
       data-testid="bug-report-trigger"
       disabled={capturing}
     >
       {capturing
-        ? <Loader2 size={22} className="animate-spin" data-testid="bug-report-trigger-spinner" aria-hidden="true" />
-        : <Bug size={22} />}
-      <span className="text-[10px] leading-none">פידבק</span>
+        ? <Loader2 size={22} className="animate-spin md:size-5" data-testid="bug-report-trigger-spinner" aria-hidden="true" />
+        : <Bug size={22} className="md:size-5" />}
+      <span className="text-[10px] leading-none md:text-sm md:font-medium md:leading-none">פידבק</span>
       {unseenCount > 0 && (
         <span
-          className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
+          className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center md:-top-1.5 md:-right-1.5"
           data-testid="bug-report-trigger-badge"
         >
           {unseenCount > 99 ? "99+" : unseenCount}

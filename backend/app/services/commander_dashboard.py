@@ -298,30 +298,31 @@ def potential_counts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[
     return counts
 
 
-def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int) -> list[dict]:
+def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int | None = None) -> list[dict]:
+    """List all currently-scheduled duties from today onward, grouped by day.
+
+    ``days`` caps the horizon when given; ``None`` returns everything
+    currently scheduled (however far out the algorithm has assigned).
+    """
     soldiers = _soldiers_in_nodes(session, subtree_ids)
     soldier_ids = {s.id for s in soldiers}
     today = date.today()
-    end = today + timedelta(days=days)
+    end = today + timedelta(days=days) if days is not None else None
 
-    assignments = (
-        session.execute(
-            select(DutyAssignment).where(
-                DutyAssignment.status.in_(["published", "algorithm_draft"]),
-                uuid_any("duty_assignments.soldier_id", soldier_ids),
-                DutyAssignment.start_date <= end,
-                DutyAssignment.end_date >= today,
-            )
-        )
-        .scalars()
-        .all()
-    )
+    conditions = [
+        DutyAssignment.status.in_(["published", "algorithm_draft"]),
+        uuid_any("duty_assignments.soldier_id", soldier_ids),
+        DutyAssignment.end_date >= today,
+    ]
+    if end is not None:
+        conditions.append(DutyAssignment.start_date <= end)
 
+    assignments = session.execute(select(DutyAssignment).where(*conditions)).scalars().all()
+
+    # Only days that actually have an assignment get an entry — with no
+    # horizon cap, pre-filling every empty day between today and the
+    # furthest assignment would be unbounded and pointless.
     day_map: dict[date, list[dict]] = {}
-    d = today
-    while d <= end:
-        day_map[d] = []
-        d += timedelta(days=1)
 
     # Preload lookup maps
     soldier_map = {s.id: s for s in soldiers}
@@ -338,7 +339,8 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
         dt = duty_type_map.get(a.duty_type_id)
         location = location_map.get(a.duty_location_id)
         node = node_map.get(soldier.hierarchy_node_id) if soldier else None
-        while d < min(a.end_date, end + timedelta(days=1)):
+        day_limit = min(a.end_date, end + timedelta(days=1)) if end is not None else a.end_date
+        while d < day_limit:
             day_map.setdefault(d, []).append(
                 {
                     "assignment_id": str(a.id),

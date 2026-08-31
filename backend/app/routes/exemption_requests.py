@@ -740,6 +740,95 @@ def escalate_commander_exemption_route(
     return _out(session, req, include_sensitive=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
+@router.post(
+    "/soldiers/{soldier_id}/exemption-requests",
+    response_model=ExemptionRequestOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_exemption_request_for_soldier(
+    soldier_id: uuid.UUID,
+    payload: str = Form(...),
+    files: list[UploadFile] = File(default=[]),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionRequestOut:
+    """Commander/duty-manager "log an exemption" for a soldier: files the same
+    request a soldier would file for themselves (`create_exemption_request`
+    above), then immediately fast-forwards it through whichever approval
+    steps the submitter already qualifies for — via the same
+    `exemption_approval_flags` check the manual approve buttons use — so a
+    senior-enough commander sees it land already approved instead of having
+    to also click approve on their own submission."""
+    target = session.get(Soldier, soldier_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    target_node = (
+        session.get(HierarchyNode, target.hierarchy_node_id) if target.hierarchy_node_id else None
+    )
+    authorize(session, user, Action.EXEMPTION_GRANT, target_node=target_node)
+
+    try:
+        body = CreateExemptionRequest.model_validate_json(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    file_payloads: list[tuple[str, str, bytes]] = []
+    for f in files:
+        if not f.filename:
+            continue
+        data = await f.read()
+        try:
+            validate_exemption_file(f.content_type or "", data)
+        except FileValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        file_payloads.append((f.filename, f.content_type or "", data))
+
+    et = session.get(ExemptionType, body.exemption_type_id)
+    if et is not None and et.is_medical and not file_payloads:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="medical_exemption_requires_file")
+
+    try:
+        req = submit_request(
+            session,
+            soldier_id=soldier_id,
+            exemption_type_id=body.exemption_type_id,
+            start_date=date.fromisoformat(body.start_date) if body.start_date else None,
+            end_date=date.fromisoformat(body.end_date) if body.end_date else None,
+            reason=body.reason,
+        )
+    except ExemptionRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    saved_files: list[ExemptionFileOut] = []
+    for filename, content_type, data in file_payloads:
+        ef = ExemptionRequestFile(
+            exemption_request_id=req.id,
+            file_name=re.sub(r"[^\w.\-]", "_", filename).replace("..", "_")[:200],
+            content_type=content_type,
+            data=data,
+            uploaded_by=user.id,
+        )
+        session.add(ef)
+        session.flush()
+        saved_files.append(ExemptionFileOut(
+            id=ef.id, file_name=ef.file_name, content_type=ef.content_type,
+            created_at=ef.created_at.isoformat(),
+        ))
+
+    can_commander_step, can_dm_step = _exemption_approval_flags(session, user, target_node)
+    if can_commander_step:
+        req = approve_commander_step(session, req.id, approved_by=user.id)
+        if can_dm_step:
+            req = approve_duty_manager_step(session, req.id, decided_by=user.id)
+
+    session.commit()
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    return _out(
+        session, req, soldier_name=target.full_name, include_sensitive=True, files=saved_files,
+        nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+    )
+
+
 @router.get("/soldiers/{soldier_id}/exemption-requests", response_model=list[ExemptionRequestOut])
 def get_soldier_exemption_request_history(
     soldier_id: uuid.UUID,

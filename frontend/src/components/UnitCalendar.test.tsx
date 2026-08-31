@@ -205,15 +205,17 @@ describe("filterCalendarShifts", () => {
   });
 });
 
-function renderCalendar(initialProps: { nodeId?: string; soldierId?: string } = { nodeId: "node-1" }) {
+type CalendarProps = { nodeId?: string; nodeIds?: string[]; soldierId?: string };
+
+function renderCalendar(initialProps: CalendarProps = { nodeId: "node-1" }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const calendar = (props: { nodeId?: string; soldierId?: string }) => (
+  const calendar = (props: CalendarProps) => (
     <QueryClientProvider client={queryClient}>
       <UnitCalendar {...props} />
     </QueryClientProvider>
   );
   const result = render(calendar(initialProps));
-  return { ...result, rerenderCalendar: (props: { nodeId?: string; soldierId?: string }) => result.rerender(calendar(props)) };
+  return { ...result, rerenderCalendar: (props: CalendarProps) => result.rerender(calendar(props)) };
 }
 
 function loadCalendarWith(shifts: CalendarShift[]) {
@@ -227,6 +229,23 @@ describe("UnitCalendar", () => {
     renderCalendar();
 
     expect(screen.getByText("unit_calendar.duty_type_filter_label")).toBeInTheDocument();
+  });
+
+  test("merges shifts from multiple commanded nodes and dedupes overlapping ids", async () => {
+    const perNodeResults = [
+      { calendar: { shifts: [shift("s1", "guard", false)] }, ranges: [] },
+      { calendar: { shifts: [shift("s1", "guard", false), shift("s2", "patrol", false)] }, ranges: [] },
+    ];
+    let call = 0;
+    vi.mocked(calendarDataApi.loadCalendarData).mockImplementation(() => Promise.resolve(perNodeResults[call++]));
+
+    renderCalendar({ nodeIds: ["node-1", "node-2"] });
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("calendar-event-s1")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-event-s2")).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^calendar-event-s\d$/)).toHaveLength(2);
+    expect(calendarDataApi.loadCalendarData).toHaveBeenCalledTimes(2);
   });
 
   // getCalendarShifts (via loadCalendarData) throws a descriptive error for a

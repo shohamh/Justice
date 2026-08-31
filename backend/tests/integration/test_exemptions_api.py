@@ -699,3 +699,135 @@ def test_dm_at_merkaz_can_use_direct_commander_exemption_route(client: TestClien
         json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "x"},
     )
     assert resp.status_code == 201, resp.text
+
+
+def test_log_exemption_by_group_level_commander_auto_approves_commander_step(
+    client: TestClient, admin_session: Session,
+):
+    """A commander of a "group" (מדור) node or above logging an exemption for
+    one of their soldiers should skip having to also click "approve" on their
+    own submission — the commander step auto-advances, landing at
+    pending_duty_manager since this actor is not also a duty manager."""
+    cmd = create_soldier(admin_session, personal_number="9900010", role="commander")
+    root = create_node(admin_session, level="group", name="log_exemption_group_root", commander_id=cmd.id)
+    target = create_soldier(admin_session, personal_number="9900011", hierarchy_node_id=root.id)
+    et = _et(admin_session, "פטור-log-1")
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemption-requests",
+        headers=auth_headers(cmd),
+        data={"payload": json.dumps({
+            "exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה",
+        })},
+        files=[],
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "pending_duty_manager"
+    assert body["commander_approved_by"]["soldier_id"] == str(cmd.id)
+
+
+def test_log_exemption_by_commander_and_duty_manager_fully_auto_approves(
+    client: TestClient, admin_session: Session,
+):
+    """When the submitting commander is also a duty manager scoped high
+    enough (department/מרכז or above), both approval steps auto-advance and
+    the exemption is created immediately."""
+    dept = create_node(admin_session, level="department", name="log_exemption_dept")
+    group = create_node(admin_session, level="group", name="log_exemption_group2", parent=dept)
+    cmd = create_soldier(admin_session, personal_number="9900012", role="commander")
+    group.commander_id = cmd.id
+    admin_session.commit()
+    from app.db.models import DutyManagerScope
+    admin_session.add(DutyManagerScope(duty_manager_id=cmd.id, hierarchy_node_id=dept.id))
+    target = create_soldier(admin_session, personal_number="9900013", hierarchy_node_id=group.id)
+    et = _et(admin_session, "פטור-log-2")
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemption-requests",
+        headers=auth_headers(cmd),
+        data={"payload": json.dumps({
+            "exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה",
+        })},
+        files=[],
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "approved"
+    exemption = admin_session.execute(
+        select(SoldierExemption).where(SoldierExemption.soldier_id == target.id)
+    ).scalar_one()
+    assert exemption.exemption_type_id == et.id
+
+
+def test_log_exemption_by_low_level_commander_stays_pending_commander(
+    client: TestClient, admin_session: Session,
+):
+    """A commander below the "group" (מדור) level covering the soldier is not
+    senior enough to auto-approve their own submission — it should land in
+    the normal pending_commander state, same as a soldier's own request.
+    ("group" is rank 6, i.e. section level; "team" below it is rank 7 — see
+    alembic/versions/0059_hierarchy_level_types.py for the seeded ranks.)"""
+    group = create_node(admin_session, level="group", name="log_exemption_group3")
+    team = create_node(admin_session, level="team", name="log_exemption_team", parent=group)
+    cmd = create_soldier(admin_session, personal_number="9900014", role="commander")
+    team.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="9900015", hierarchy_node_id=team.id)
+    et = _et(admin_session, "פטור-log-3")
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemption-requests",
+        headers=auth_headers(cmd),
+        data={"payload": json.dumps({
+            "exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה",
+        })},
+        files=[],
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "pending_commander"
+    assert body["commander_approved_by"] is None
+    assert body["nearest_commander"]["id"] == str(cmd.id)
+
+
+def test_log_exemption_out_of_subtree_forbidden(client: TestClient, admin_session: Session):
+    d = create_node(admin_session, level="department", name="log_exemption_out1")
+    b = create_node(admin_session, level="branch", name="log_exemption_out2", parent=d)
+    other = create_node(admin_session, level="department", name="log_exemption_out3")
+    cmd = create_soldier(admin_session, personal_number="9900016", role="commander")
+    b.commander_id = cmd.id
+    target = create_soldier(admin_session, personal_number="9900017", hierarchy_node_id=other.id)
+    et = _et(admin_session, "פטור-log-4")
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemption-requests",
+        headers=auth_headers(cmd),
+        data={"payload": json.dumps({
+            "exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה",
+        })},
+        files=[],
+    )
+    assert r.status_code == 403
+
+
+def test_log_exemption_medical_type_requires_file(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9900018", role="admin")
+    target = create_soldier(admin_session, personal_number="9900019")
+    et = ExemptionType(name="פטור-log-medical", is_medical=True)
+    admin_session.add(et)
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemption-requests",
+        headers=auth_headers(admin),
+        data={"payload": json.dumps({
+            "exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה",
+        })},
+        files=[],
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "medical_exemption_requires_file"

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AxiosError } from "axios";
 
@@ -15,24 +15,21 @@ import {
   approveExemptionRequestDutyManagerStep,
   escalateCommanderExemption,
   grantCommanderExemption,
-  grantExemption,
   listExemptions,
   listExemptionRequestsForSoldier,
+  logExemptionForSoldier,
   rejectExemptionRequest,
   revokeExemption,
-  uploadSoldierExemptionFile,
 } from "../api/exemptions";
 import { useAuth } from "../auth/AuthContext";
 import DateInput from "../components/DateInput";
+import ExemptionRequestForm, { ExemptionRequestFormInput } from "./ExemptionRequestForm";
 import { formatDate, isDateRangeValid } from "../utils/formatDate";
-import { PDF_IMAGE_SIGNATURES, validateFileSignature } from "../utils/fileValidation";
 import { translateApiError } from "../utils/translateApiError";
 import ApprovalStageIcons from "./ApprovalStageIcons";
 import Combobox from "./Combobox";
 import { DaysBadge } from "./DaysBadge";
 import ReasonPromptModal from "./ReasonPromptModal";
-
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export default function ExemptionsPanel({
   soldierId,
@@ -51,16 +48,11 @@ export default function ExemptionsPanel({
   const [types, setTypes] = useState<ExemptionType[]>([]);
   const [dutyTypeMap, setDutyTypeMap] = useState<Record<string, string[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [typeId, setTypeId] = useState("");
+  const [commanderTypeId, setCommanderTypeId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [indefinite, setIndefinite] = useState(false);
-  const [reason, setReason] = useState("");
-  const [medicalClassification, setMedicalClassification] = useState(false);
-  const [grantFiles, setGrantFiles] = useState<File[]>([]);
-  const [grantFileValidationErrors, setGrantFileValidationErrors] = useState<string[]>([]);
-  const [grantError, setGrantError] = useState<string | null>(null);
-  const [grantSubmitting, setGrantSubmitting] = useState(false);
+  const [logResult, setLogResult] = useState<ExemptionRequest | null>(null);
   const [requests, setRequests] = useState<ExemptionRequest[]>([]);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -133,10 +125,7 @@ export default function ExemptionsPanel({
   const typeName = (id: string) => types.find((type) => type.id === id)?.name ?? "—";
   const activeTypes = types.filter((type) => type.active);
   const officialExemptionTypes = activeTypes.filter((type) => type.is_commander_exemption !== true);
-  const selectedType = activeTypes.find((type) => type.id === typeId) ?? null;
-  const isCommanderGrant = selectedType?.is_commander_exemption === true;
-  const lockedMedicalClassification = selectedType?.is_medical === true;
-  const isMedicalGrant = !isCommanderGrant && (lockedMedicalClassification || medicalClassification);
+  const commanderExemptionTypes = activeTypes.filter((type) => type.is_commander_exemption === true);
 
   useEffect(() => {
     if (!canApplyImmediately) {
@@ -146,12 +135,11 @@ export default function ExemptionsPanel({
   }, [canApplyImmediately]);
 
   useEffect(() => {
-    if (!isCommanderGrant) {
-      setShowCommanderConfirm(false);
-      setCommanderAcknowledged(false);
-      return;
-    }
-    setGrantError(null);
+    if (commanderTypeId && commanderExemptionTypes.some((type) => type.id === commanderTypeId)) return;
+    setCommanderTypeId(commanderExemptionTypes[0]?.id ?? "");
+  }, [commanderTypeId, commanderExemptionTypes]);
+
+  useEffect(() => {
     if (
       commanderOfficialTypeId &&
       officialExemptionTypes.some((type) => type.id === commanderOfficialTypeId)
@@ -159,18 +147,12 @@ export default function ExemptionsPanel({
       return;
     }
     setCommanderOfficialTypeId(officialExemptionTypes[0]?.id ?? "");
-  }, [commanderOfficialTypeId, isCommanderGrant, officialExemptionTypes]);
+  }, [commanderOfficialTypeId, officialExemptionTypes]);
 
-  function resetGrantForm() {
-    setTypeId("");
+  function resetCommanderForm() {
     setStart("");
     setEnd("");
     setIndefinite(false);
-    setReason("");
-    setMedicalClassification(false);
-    setGrantFiles([]);
-    setGrantFileValidationErrors([]);
-    setGrantError(null);
     setCommanderReason("");
     setCommanderError(null);
     setCommanderEscalate(!canApplyImmediately);
@@ -189,68 +171,10 @@ export default function ExemptionsPanel({
     });
   }
 
-  async function onGrantFilesChange(files: FileList | null) {
-    const picked = Array.from(files ?? []);
-    if (picked.length === 0) return;
-    const withinSize = picked.filter((file) => file.size <= MAX_FILE_BYTES);
-    const oversized = picked.filter((file) => file.size > MAX_FILE_BYTES).map((file) => file.name);
-    const signatureChecks = await Promise.all(
-      withinSize.map((file) => validateFileSignature(file, PDF_IMAGE_SIGNATURES)),
-    );
-    const valid = withinSize.filter((_, index) => signatureChecks[index]);
-    const invalidType = withinSize
-      .filter((_, index) => !signatureChecks[index])
-      .map((file) => file.name);
-    setGrantFiles((previous) => [...previous, ...valid]);
-    setGrantFileValidationErrors([...oversized, ...invalidType]);
-  }
-
-  async function onGrant(event: FormEvent) {
-    event.preventDefault();
-    if (isCommanderGrant) return;
-    setGrantError(null);
-    if (!start) {
-      setGrantError(t("errors.start_date_required"));
-      return;
-    }
-    if (!isDateRangeValid(start, end)) {
-      setGrantError(t("errors.date_range_invalid"));
-      return;
-    }
-    if (isMedicalGrant && grantFiles.length === 0) {
-      setGrantError(t("exemption_requests.upload_required_hint"));
-      return;
-    }
-
-    setGrantSubmitting(true);
-    try {
-      const createdExemption = await grantExemption(soldierId, {
-        exemption_type_id: typeId,
-        is_medical: isMedicalGrant,
-        start_date: start,
-        end_date: end || null,
-        reason: reason || null,
-      });
-
-      try {
-        for (const file of grantFiles) {
-          await uploadSoldierExemptionFile(soldierId, createdExemption.id, file);
-        }
-      } catch {
-        const uploadError = t("exemption_requests.upload_error");
-        resetGrantForm();
-        setGrantError(uploadError);
-        await Promise.all([refresh(), refreshRequests()]);
-        return;
-      }
-
-      resetGrantForm();
-      await Promise.all([refresh(), refreshRequests()]);
-    } catch (err) {
-      setGrantError(translateApiError(err, t));
-    } finally {
-      setGrantSubmitting(false);
-    }
+  async function handleLogExemption(input: ExemptionRequestFormInput, files: File[]) {
+    const result = await logExemptionForSoldier(soldierId, input, files);
+    setLogResult(result);
+    await Promise.all([refresh(), refreshRequests()]);
   }
 
   async function onRevoke(id: string, revokeReason: string) {
@@ -309,7 +233,7 @@ export default function ExemptionsPanel({
       if (commanderEscalate) {
         await escalateCommanderExemption(soldierId, {
           official_exemption_type_id: commanderOfficialTypeId,
-          commander_exemption_type_id: commanderApplyImmediately ? typeId : undefined,
+          commander_exemption_type_id: commanderApplyImmediately ? commanderTypeId : undefined,
           start_date: start,
           end_date: end || null,
           reason: commanderReason,
@@ -317,14 +241,14 @@ export default function ExemptionsPanel({
         });
       } else if (canApplyImmediately) {
         await grantCommanderExemption(soldierId, {
-          exemption_type_id: typeId,
+          exemption_type_id: commanderTypeId,
           start_date: start,
           end_date: end || null,
           reason: commanderReason,
         });
       }
 
-      resetGrantForm();
+      resetCommanderForm();
       await Promise.all([refresh(), refreshRequests()]);
     } catch (err) {
       setCommanderError(translateApiError(err, t, t("exemptions.commander_submit_error")));
@@ -339,12 +263,6 @@ export default function ExemptionsPanel({
   const expiredItems = items.filter(
     (exemption) => exemption.revoked_by_name || (exemption.end_date != null && exemption.end_date < today),
   );
-  const regularSubmitDisabled =
-    grantSubmitting ||
-    !typeId ||
-    !start ||
-    !isDateRangeValid(start, end) ||
-    (isMedicalGrant && grantFiles.length === 0);
 
   return (
     <div data-testid="exemptions-panel" className="space-y-4">
@@ -563,152 +481,77 @@ export default function ExemptionsPanel({
       )}
 
       {canManage && (
-        <form
-          onSubmit={onGrant}
-          className="space-y-3 pt-2 border-t dark:border-gray-600"
-          data-testid="grant-form"
-        >
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[12rem] flex-1">
-              <Combobox
-                items={activeTypes.map((type) => ({ id: type.id, name: type.name }))}
-                value={typeId}
-                onChange={(nextTypeId) => {
-                  setTypeId(nextTypeId);
-                  setGrantError(null);
-                  setCommanderError(null);
-                }}
-                placeholder={t("exemptions.type")}
-                testId="grant-type"
-              />
-            </div>
-            <DateInput
-              className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-              value={start}
-              onChange={setStart}
-              max={!indefinite && end ? end : undefined}
-              required
-              showHolidays
-              data-testid="grant-start"
-            />
-            <div className="flex items-center gap-2">
-              <DateInput
-                className={`border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${indefinite ? "opacity-40 cursor-not-allowed" : ""}`}
-                value={indefinite ? "" : end}
-                onChange={setEnd}
-                min={start || undefined}
-                disabled={indefinite}
-                showHolidays
-                data-testid="grant-end"
-              />
-              <label className="flex items-center gap-1 text-sm whitespace-nowrap cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={indefinite}
-                  onChange={(event) => {
-                    setIndefinite(event.target.checked);
-                    if (event.target.checked) setEnd("");
-                  }}
-                  data-testid="grant-indefinite"
-                />
-                {t("exemptions.forever")}
-              </label>
-            </div>
+        <div className="space-y-6 pt-2 border-t dark:border-gray-600" data-testid="grant-form">
+          <div>
+            <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">
+              {t("exemptions.log_title", "הזנת פטור")}
+            </h4>
+            <ExemptionRequestForm exemptionTypes={officialExemptionTypes} onSubmit={handleLogExemption} />
+            {logResult && logResult.status !== "approved" && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2" data-testid="log-exemption-pending-note">
+                {t(`exemptions.request_status_${logResult.status}`)}
+                {logResult.status === "pending_commander" && logResult.nearest_commander &&
+                  ` — ${logResult.nearest_commander.name}`}
+                {logResult.status === "pending_duty_manager" && logResult.nearest_duty_manager &&
+                  ` — ${logResult.nearest_duty_manager.name}`}
+              </p>
+            )}
+            {logResult && logResult.status === "approved" && (
+              <p className="text-xs text-green-600 dark:text-green-400 mt-2" data-testid="log-exemption-approved-note">
+                {t("exemptions.request_status_approved")}
+              </p>
+            )}
           </div>
 
-          {!isCommanderGrant && (
-            <div className="space-y-3">
-              <input
-                className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder={t("exemptions.reason")}
-                data-testid="grant-reason"
-              />
-              <label className="flex items-center gap-2 text-sm cursor-pointer w-fit">
-                <input
-                  type="checkbox"
-                  checked={isMedicalGrant}
-                  disabled={lockedMedicalClassification}
-                  onChange={(event) => setMedicalClassification(event.target.checked)}
-                  data-testid="grant-medical-classification"
+          {commanderExemptionTypes.length > 0 && (
+            <div className="space-y-3 pt-2 border-t dark:border-gray-600" dir="rtl">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[12rem] flex-1">
+                  <Combobox
+                    items={commanderExemptionTypes.map((type) => ({ id: type.id, name: type.name }))}
+                    value={commanderTypeId}
+                    onChange={(nextTypeId) => {
+                      setCommanderTypeId(nextTypeId);
+                      setCommanderError(null);
+                    }}
+                    placeholder={t("exemptions.type")}
+                    testId="grant-type"
+                  />
+                </div>
+                <DateInput
+                  className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={start}
+                  onChange={setStart}
+                  max={!indefinite && end ? end : undefined}
+                  required
+                  showHolidays
+                  data-testid="grant-start"
                 />
-                {t("exemptions.medical_classification")}
-              </label>
-              <div
-                className={`rounded border-2 border-dashed p-3 space-y-2 ${isMedicalGrant ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-gray-600"}`}
-              >
-                <p className="text-xs">
-                  {isMedicalGrant
-                    ? t("exemption_requests.upload_required")
-                    : t("exemption_requests.upload_optional")}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t("exemption_requests.upload_hint")}
-                </p>
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,image/*"
-                  data-testid="grant-files"
-                  onChange={(event) => {
-                    void onGrantFilesChange(event.target.files);
-                    event.target.value = "";
-                  }}
-                />
-                <span className="text-xs text-gray-400">
-                  PDF, JPG, PNG, GIF · {t("exemption_requests.max_file_size")}
-                </span>
-                {grantFileValidationErrors.length > 0 && (
-                  <div className="rounded p-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
-                    <p className="text-xs font-medium text-red-700 dark:text-red-300">
-                      {t("exemption_requests.file_too_large")}
-                    </p>
-                    <ul className="text-xs text-red-600 dark:text-red-400 mt-0.5 list-disc list-inside">
-                      {grantFileValidationErrors.map((name) => (
-                        <li key={name}>{name}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {grantFiles.length > 0 && (
-                  <ul className="text-xs space-y-0.5">
-                    {grantFiles.map((file, index) => (
-                      <li key={`${file.name}-${index}`} className="flex items-center gap-2">
-                        <span className="truncate max-w-52">{file.name}</span>
-                        <button
-                          type="button"
-                          className="text-red-500"
-                          onClick={() =>
-                            setGrantFiles((previous) => previous.filter((_, fileIndex) => fileIndex !== index))
-                          }
-                        >
-                          {t("team.remove")}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {isMedicalGrant && grantFiles.length === 0 && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    {t("exemption_requests.upload_required_hint")}
-                  </p>
-                )}
+                <div className="flex items-center gap-2">
+                  <DateInput
+                    className={`border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${indefinite ? "opacity-40 cursor-not-allowed" : ""}`}
+                    value={indefinite ? "" : end}
+                    onChange={setEnd}
+                    min={start || undefined}
+                    disabled={indefinite}
+                    showHolidays
+                    data-testid="grant-end"
+                  />
+                  <label className="flex items-center gap-1 text-sm whitespace-nowrap cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={indefinite}
+                      onChange={(event) => {
+                        setIndefinite(event.target.checked);
+                        if (event.target.checked) setEnd("");
+                      }}
+                      data-testid="grant-indefinite"
+                    />
+                    {t("exemptions.forever")}
+                  </label>
+                </div>
               </div>
-              {grantError && <p className="text-sm text-red-600">{grantError}</p>}
-              <button
-                type="submit"
-                disabled={regularSubmitDisabled}
-                className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50"
-                data-testid="grant-submit"
-              >
-                {grantSubmitting ? t("app.loading") : t("exemptions.grant")}
-              </button>
-            </div>
-          )}
 
-          {isCommanderGrant && (
-            <div className="space-y-3" dir="rtl">
               <p className="text-sm text-gray-600 dark:text-gray-300">
                 {t("exemptions.commander_grant_warning")}
               </p>
@@ -767,7 +610,7 @@ export default function ExemptionsPanel({
               <button
                 type="button"
                 onClick={openCommanderConfirm}
-                disabled={grantSubmitting || !typeId || !start || !isDateRangeValid(start, end)}
+                disabled={!commanderTypeId || !start || !isDateRangeValid(start, end)}
                 className="bg-blue-600 text-white rounded px-3 py-1 disabled:opacity-50"
                 data-testid="commander-exemption-submit"
               >
@@ -775,7 +618,7 @@ export default function ExemptionsPanel({
               </button>
             </div>
           )}
-        </form>
+        </div>
       )}
 
       {showCommanderConfirm && (
