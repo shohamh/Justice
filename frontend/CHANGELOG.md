@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-31
+
+### Features
+- Invite codes now use a copy icon instead of a text button for copying the code.
+
+### Fixes
+- Hardened the frontend against malformed or unexpected API responses across the entire app (adapters, hooks, and page/component render paths for approvals, notifications, algorithm runs, scoring, the commander dashboard, soldiers, rank advancement, ranges, the calendar, and every request/approval queue), so a malformed backend payload degrades gracefully or shows a visible error instead of crashing the page.
+- Guarded hierarchy level-type and invite-code responses against malformed data so admin pages no longer crash on an unexpected shape.
+
 ## 2026-08-30 (4)
 
 ### Features
