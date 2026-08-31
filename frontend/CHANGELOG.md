@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-31 (6)
+
+### Fixes
+- Fixed the transparency fairness pie-chart tooltip being clipped beneath the fixed sidebar in the RTL layout.
+
 ## 2026-08-31 (5)
 
 ### Fixes
