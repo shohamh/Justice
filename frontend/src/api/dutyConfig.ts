@@ -125,7 +125,8 @@ export async function deleteLocation(id: string): Promise<void> {
 }
 
 export async function listExemptionTypes(): Promise<ExemptionType[]> {
-  return (await api.get<ExemptionType[]>("/duty-config/exemption-types")).data;
+  const data = (await api.get<ExemptionType[]>("/duty-config/exemption-types")).data;
+  return Array.isArray(data) ? data : [];
 }
 export async function createExemptionType(input: { name: string; description?: string | null; is_global?: boolean; is_medical?: boolean; is_commander_exemption?: boolean }): Promise<ExemptionType> {
   return (await api.post<ExemptionType>("/duty-config/exemption-types", input)).data;
