@@ -1,5 +1,6 @@
 import json
 import logging
+from types import SimpleNamespace
 
 from fastapi import Request
 from fastapi.testclient import TestClient
@@ -47,18 +48,67 @@ def test_unhandled_http_exception_is_logged_with_request_context(monkeypatch):
     assert "authorization" not in json.dumps(captured["data"]).lower()
 
 
+def test_unhandled_http_exception_carries_user_and_ip(monkeypatch):
+    import app.main as main_module
+    from app.main import create_app
+
+    captured = {}
+
+    def capture(request: Request, exc: BaseException, data: dict):
+        captured.update(data=data, user=getattr(request.state, "user", None), ip=request.client.host if request.client else None)
+
+    monkeypatch.setattr(main_module, "log_backend_exception", capture)
+    app = create_app()
+    user = SimpleNamespace(id="soldier-1", full_name="Shoham")
+
+    @app.post("/test-error-with-user")
+    async def test_error_with_user(request: Request):
+        request.state.user = user
+        raise RuntimeError("boom")
+
+    response = TestClient(app, raise_server_exceptions=False).post("/test-error-with-user")
+
+    assert response.status_code == 500
+    assert captured["user"] is user
+    assert captured["ip"] == "testclient"
+
+
 def test_frontend_error_endpoint_writes_to_dedicated_logger(monkeypatch):
     import app.routes.client_errors as client_errors
+    from app.auth.deps import get_optional_current_user
     from app.main import create_app
 
     records = []
-    monkeypatch.setattr(client_errors, "log_frontend_error", records.append)
-    response = TestClient(create_app()).post(
+    monkeypatch.setattr(client_errors, "log_frontend_error", lambda payload, **kwargs: records.append((payload, kwargs)))
+    app = create_app()
+    app.dependency_overrides[get_optional_current_user] = lambda: None
+    response = TestClient(app).post(
         "/api/client-errors",
         json={"request_id": "trace-1", "kind": "http-500", "message": "failed", "request_data": {"token": "x"}},
     )
     assert response.status_code == 204
-    assert records[0]["request_id"] == "trace-1"
+    assert records[0][0]["request_id"] == "trace-1"
+
+
+def test_frontend_error_endpoint_passes_user_and_ip_to_logger(monkeypatch):
+    import app.routes.client_errors as client_errors
+    from app.auth.deps import get_optional_current_user
+    from app.main import create_app
+
+    records = []
+    monkeypatch.setattr(client_errors, "log_frontend_error", lambda payload, **kwargs: records.append((payload, kwargs)))
+    app = create_app()
+    app.dependency_overrides[get_optional_current_user] = lambda: SimpleNamespace(id="soldier-1", full_name="Shoham")
+
+    response = TestClient(app).post(
+        "/api/client-errors",
+        json={"request_id": "trace-2", "kind": "uncaught-error", "message": "failed"},
+    )
+
+    assert response.status_code == 204
+    assert records[0][0]["request_id"] == "trace-2"
+    assert records[0][1]["user"].full_name == "Shoham"
+    assert records[0][1]["ip"] == "testclient"
 
 
 class _RecordingHandler(logging.Handler):

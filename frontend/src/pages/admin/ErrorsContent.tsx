@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Check, Copy, ClipboardCopy } from "lucide-react";
 import { clearAdminErrors, listAdminErrors, markAdminErrorsRead, markAllAdminErrorsRead, type ErrorLogEntry, type PaginatedErrorLogs } from "../../api/bugReports";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import SoldierLink from "../../components/SoldierLink";
 
 function buildErrorReport(entry: ErrorLogEntry): string {
   const prompt = `This is a ${entry.source} error in my app, here are its details. Investigate it and fix it.`;
@@ -122,6 +123,10 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
   const stack = entry.source === "frontend" && frontendDetails && typeof frontendDetails === "object" && "stack" in frontendDetails ? frontendDetails.stack : entry.details.traceback;
   const request = entry.details.request;
   const path = entry.source === "backend" && request && typeof request === "object" && "path" in request ? request.path : entry.details.path;
+  const user = entry.details.user;
+  const userId = user && typeof user === "object" && "id" in user && typeof user.id === "string" ? user.id : undefined;
+  const userName = user && typeof user === "object" && "name" in user && typeof user.name === "string" ? user.name : undefined;
+  const ip = typeof entry.details.ip === "string" ? entry.details.ip : undefined;
   const toggle = () => { onOpen(); setExpanded((value) => !value); };
   return (
     <article className="border rounded dark:border-gray-600 p-3 cursor-pointer" data-testid={`admin-error-${entry.request_id ?? "unknown"}`} onClick={toggle}>
@@ -135,6 +140,10 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
         </button>
         <CopyReportButton entry={entry} />
       </div>
+      {(userId && userName || ip) && <div className="mt-1 text-xs text-gray-600 dark:text-gray-300 flex items-center gap-2">
+        {userId && userName && <><span>משתמש:</span><SoldierLink id={userId} name={userName} /></>}
+        {ip && <span dir="ltr">IP: {ip}</span>}
+      </div>}
       {entry.source === "backend" && <p dir="ltr" className="mt-2 text-sm whitespace-pre-wrap text-left" data-testid={`admin-error-message-${entry.request_id ?? "unknown"}`}>{entry.message}</p>}
       {entry.source === "frontend" && typeof detailMessage === "string" && <p dir="ltr" className="mt-2 text-sm whitespace-pre-wrap text-left" data-testid={`admin-error-message-${entry.request_id ?? "unknown"}`}>{detailMessage}</p>}
       {entry.source === "frontend" && frontendRequest && <p dir="ltr" className="mt-1 text-xs text-gray-600 dark:text-gray-300 text-left" data-testid={`admin-error-request-${entry.request_id ?? "unknown"}`}>{frontendRequest}</p>}

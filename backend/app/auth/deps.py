@@ -35,6 +35,26 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     user = session.get(Soldier, uuid.UUID(sub))
     if user is None or user.left_at is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
+    request.state.user = user
+    return user
+
+
+def get_optional_current_user(request: Request, session: Session = Depends(get_session)) -> Soldier | None:
+    """Resolve a bearer user when present, without rejecting anonymous requests."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        payload = decode_token(token)
+        if payload.get("type") != "access" or not payload.get("sub"):
+            return None
+        user = session.get(Soldier, uuid.UUID(payload["sub"]))
+    except (InvalidToken, TypeError, ValueError):
+        return None
+    if user is None or user.left_at is not None:
+        return None
+    request.state.user = user
     return user
 
 

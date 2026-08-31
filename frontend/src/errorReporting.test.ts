@@ -1,9 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { reportFrontendError } from "./errorReporting";
+import { reportFrontendError, setErrorReportingToken } from "./errorReporting";
 
 describe("reportFrontendError rate limiting", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({}));
+    setErrorReportingToken(null);
+  });
+
+  it("sends the current access token with frontend error reports", () => {
+    setErrorReportingToken("access-token");
+
+    reportFrontendError({ kind: "uncaught-error", message: "boom" });
+
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      headers: expect.objectContaining({ "Content-Type": "application/json", Authorization: "Bearer access-token" }),
+    }));
   });
 
   it("caps repeated reports of the same fingerprint within the window", () => {

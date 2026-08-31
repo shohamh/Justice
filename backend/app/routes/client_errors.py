@@ -1,9 +1,11 @@
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.error_logging import log_frontend_error
+from app.auth.deps import get_optional_current_user
+from app.db.models import Soldier
 
 router = APIRouter()
 
@@ -29,5 +31,9 @@ class ClientErrorReport(BaseModel):
 
 
 @router.post("/client-errors", status_code=204)
-async def report_client_error(report: ClientErrorReport) -> None:
-    log_frontend_error(report.model_dump())
+async def report_client_error(
+    request: Request,
+    report: ClientErrorReport,
+    user: Soldier | None = Depends(get_optional_current_user),
+) -> None:
+    log_frontend_error(report.model_dump(), user=user, ip=request.client.host if request.client else None)

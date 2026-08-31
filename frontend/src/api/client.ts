@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import { newRequestId, reportAxiosError } from "../errorReporting";
+import { newRequestId, reportAxiosError, setErrorReportingToken } from "../errorReporting";
 
 const baseURL = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -12,6 +12,7 @@ let accessToken: string | null = null;
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  setErrorReportingToken(token);
 }
 
 export function getAccessToken(): string | null {
