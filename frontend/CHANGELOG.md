@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-31 (5)
+
+### Fixes
+- Fixed range qualification so profile dates count correctly: `last_mitvahim_date` is treated as a live-range qualification (and covers lower laser requirements), while `last_alal_date` is treated as an alal qualification.
+
 ## 2026-08-31 (4)
 
 ### Features
