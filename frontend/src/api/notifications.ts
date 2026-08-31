@@ -1,4 +1,5 @@
 import { api as client } from "./client";
+import { isRecord, optionalArrayResponse, requiredObjectResponse, requiredNumberField } from "./responseGuards";
 
 export interface NotificationDTO {
   id: string;
@@ -138,24 +139,6 @@ export interface CommanderScope {
   soldiers: SoldierBrief[];
 }
 
-function optionalArrayResponse<T>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
-}
-
-function requiredObjectResponse(value: unknown, errorMessage: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(errorMessage);
-  }
-  return value as Record<string, unknown>;
-}
-
-function requiredNumberField(value: unknown, errorMessage: string): number {
-  if (typeof value !== "number") {
-    throw new Error(errorMessage);
-  }
-  return value;
-}
-
 export function getUnreadCount(): Promise<UnreadCount> {
   return client.get<unknown>("/notifications/unread-count").then((r) => {
     const data = requiredObjectResponse(r.data, "Invalid unread notifications response");
@@ -173,10 +156,7 @@ export function listNotifications(params?: {
   limit?: number;
 }): Promise<PaginatedNotifications> {
   return client.get<unknown>("/notifications", { params }).then((r) => {
-    const data =
-      typeof r.data === "object" && r.data !== null && !Array.isArray(r.data)
-        ? (r.data as Record<string, unknown>)
-        : {};
+    const data = isRecord(r.data) ? r.data : {};
     return {
       items: optionalArrayResponse<NotificationDTO>(data.items),
       total: typeof data.total === "number" ? data.total : 0,

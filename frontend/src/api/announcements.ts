@@ -1,4 +1,5 @@
 import { api as client } from "./client";
+import { optionalArrayResponse, requiredArrayResponse, requiredObjectResponse, requiredNumberField } from "./responseGuards";
 
 export interface ScopeNode {
   id: string;
@@ -38,31 +39,6 @@ export interface AnnouncementRecipient {
 export interface PaginatedAnnouncementRecipients {
   items: AnnouncementRecipient[];
   total: number;
-}
-
-function optionalArrayResponse<T>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
-}
-
-function requiredArrayResponse<T>(value: unknown, errorMessage: string): T[] {
-  if (!Array.isArray(value)) {
-    throw new Error(errorMessage);
-  }
-  return value as T[];
-}
-
-function requiredObjectResponse(value: unknown, errorMessage: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(errorMessage);
-  }
-  return value as Record<string, unknown>;
-}
-
-function requiredNumberField(value: unknown, errorMessage: string): number {
-  if (typeof value !== "number") {
-    throw new Error(errorMessage);
-  }
-  return value;
 }
 
 export function getAnnounceScope(): Promise<ScopeNode[]> {
