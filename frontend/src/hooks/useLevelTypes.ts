@@ -10,7 +10,14 @@ export function useLevelTypes() {
   }
 
   useEffect(() => {
-    void refresh().finally(() => setLoading(false));
+    void refresh()
+      .catch(() => {
+        // Swallow: a failed initial fetch (e.g. a transient network error)
+        // shouldn't surface as an unhandled rejection. Callers that invoke
+        // refresh() directly (after create/delete/reorder) still see the
+        // rejection via their own try/catch.
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return { levelTypes, loading, refresh };
