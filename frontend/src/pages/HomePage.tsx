@@ -13,6 +13,7 @@ import UpcomingRangesWidget from "../components/dashboard/UpcomingRangesWidget";
 import RangeDetailModal from "../components/ranges/RangeDetailModal";
 import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
+import CommandDashboardSection from "../components/dashboard/CommandDashboardSection";
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
 import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
@@ -309,14 +310,16 @@ export default function HomePage() {
         <SwapStatusWidget swaps={mySwaps} />
 
         {commandScopeAvailable && (
-          <PendingApprovalsWidget
-            pendingEnrollments={pendingEnrollments}
-            pendingSwaps={pendingSwaps}
-            pendingConstraints={pendingConstraints}
-            pendingExemptions={pendingExemptions}
-            pendingFieldUpdates={pendingFieldUpdates}
-            pendingTransfers={pendingTransfers}
-          />
+          <CommandDashboardSection>
+            <PendingApprovalsWidget
+              pendingEnrollments={pendingEnrollments}
+              pendingSwaps={pendingSwaps}
+              pendingConstraints={pendingConstraints}
+              pendingExemptions={pendingExemptions}
+              pendingFieldUpdates={pendingFieldUpdates}
+              pendingTransfers={pendingTransfers}
+            />
+          </CommandDashboardSection>
         )}
 
         <DutyHistoryWidget
