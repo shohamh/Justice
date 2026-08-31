@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
@@ -14,9 +14,13 @@ import RangeDetailModal from "../components/ranges/RangeDetailModal";
 import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
 import CommandDashboardSection from "../components/dashboard/CommandDashboardSection";
+import IneligibleSoldiersPanel from "../components/dashboard/IneligibleSoldiersPanel";
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
 import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
+import UpcomingSnapshot from "../components/UpcomingSnapshot";
+import AlertsPanel from "../components/AlertsPanel";
+import DutyPotentialPanel from "../components/DutyPotentialPanel";
 import { formatDateTimeIsrael } from "../utils/formatDate";
 
 import { useAuth } from "../auth/AuthContext";
@@ -34,6 +38,13 @@ import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getRanges } from "../api/ranges";
 import { listPendingTransferRequests } from "../api/hierarchyTransfers";
 import { lastDutyDay } from "../utils/formatDate";
+import { fetchFullTree } from "../api/hierarchy";
+import {
+  getAlerts as getCommandAlerts,
+  getPotential as getCommandPotential,
+  getUpcoming as getCommandUpcoming,
+} from "../api/commanderDashboard";
+import { getPotential as getNodePotential, type PotentialResult } from "../api/potential";
 
 function offsetDate(days: number): string {
   const d = new Date();
@@ -68,6 +79,59 @@ export default function HomePage() {
   const [openRangeId, setOpenRangeId] = useState<string | null>(null);
 
   const commandScopeAvailable = isCommandScopeAvailable(user);
+
+  const commandNodesQuery = useQuery({
+    queryKey: queryKeys.hierarchyTree(),
+    queryFn: fetchFullTree,
+    enabled: commandScopeAvailable,
+  });
+  const commandNodes = useMemo(() => commandNodesQuery.data ?? [], [commandNodesQuery.data]);
+  const commandNodesOwnedByUser = useMemo(
+    () => commandNodes.filter((node) => node.commander_id === user?.id),
+    [commandNodes, user],
+  );
+
+  const commandAlertsQuery = useQuery({
+    queryKey: queryKeys.commandDashboardAlerts(),
+    queryFn: getCommandAlerts,
+    enabled: commandScopeAvailable,
+  });
+  const commandAlerts = commandAlertsQuery.data ?? null;
+
+  const commandUpcomingQuery = useQuery({
+    queryKey: queryKeys.commandDashboardUpcoming(),
+    queryFn: getCommandUpcoming,
+    enabled: commandScopeAvailable,
+  });
+  const commandUpcoming = commandUpcomingQuery.data ?? null;
+
+  const commandPotentialQuery = useQuery({
+    queryKey: queryKeys.commandDashboardPotential(),
+    queryFn: getCommandPotential,
+    enabled: commandScopeAvailable,
+  });
+  const commandPotential = commandPotentialQuery.data ?? null;
+
+  const ownPotentialQueries = useQueries({
+    queries: commandNodesOwnedByUser.map((node) => ({
+      queryKey: queryKeys.commandDashboardOwnPotential(node.id),
+      queryFn: () => getNodePotential(node.id),
+      enabled: commandScopeAvailable,
+    })),
+  });
+
+  const ownPotential = useMemo(() => {
+    const byId: Record<string, PotentialResult> = {};
+    commandNodesOwnedByUser.forEach((node, index) => {
+      const result = ownPotentialQueries[index];
+      if (result?.data) {
+        byId[node.id] = result.data;
+      } else if (result?.isError) {
+        console.error(`Failed to fetch potential for node ${node.id}:`, result.error);
+      }
+    });
+    return byId;
+  }, [commandNodesOwnedByUser, ownPotentialQueries]);
 
   // These queries fetch required-object payloads (see api/scoring.ts) — a
   // malformed shape throws instead of silently rendering wrong totals, so
@@ -176,6 +240,81 @@ export default function HomePage() {
     enabled: commandScopeAvailable,
   });
   const pendingTransfers = pendingTransfersQuery.data ?? [];
+
+  const commandPanels: { id: string; title: string; content: ReactNode }[] = [
+    {
+      id: "ineligible-soldiers",
+      title: t("range_qualification.dashboard.title"),
+      content: <IneligibleSoldiersPanel />,
+    },
+    {
+      id: "alerts",
+      title: t("command_dashboard.alerts"),
+      content: <AlertsPanel data={commandAlerts} />,
+    },
+    {
+      id: "approvals",
+      title: t("command_dashboard.approvals"),
+      content: (
+        <PendingApprovalsWidget
+          pendingEnrollments={pendingEnrollments}
+          pendingSwaps={pendingSwaps}
+          pendingConstraints={pendingConstraints}
+          pendingExemptions={pendingExemptions}
+          pendingFieldUpdates={pendingFieldUpdates}
+          pendingTransfers={pendingTransfers}
+        />
+      ),
+    },
+    {
+      id: "upcoming",
+      title: t("command_dashboard.upcoming"),
+      content: <UpcomingSnapshot data={commandUpcoming} />,
+    },
+    {
+      id: "calendar",
+      title: t("command_dashboard.calendar"),
+      content: commandNodesOwnedByUser.length > 0 ? (
+        <UnitCalendar nodeIds={commandNodesOwnedByUser.map((node) => node.id)} />
+      ) : null,
+    },
+    {
+      id: "potential",
+      title: t("command_dashboard.potential"),
+      content: <DutyPotentialPanel data={commandPotential} />,
+    },
+    {
+      id: "own_potential",
+      title: t("command_dashboard.own_potential"),
+      content: commandNodesOwnedByUser.length === 0 ? (
+        <p className="text-gray-500">{t("command_dashboard.no_own_potential")}</p>
+      ) : (
+        <table className="w-full border-collapse" data-testid="own-potential-table">
+          <thead>
+            <tr>
+              <th className="border p-2">{t("command_dashboard.node")}</th>
+              <th className="border p-2">{t("command_dashboard.eligible")}</th>
+              <th className="border p-2">{t("command_dashboard.modifiers")}</th>
+              <th className="border p-2">{t("command_dashboard.final_potential")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {commandNodesOwnedByUser.map((node) => {
+              const result = ownPotential[node.id];
+              return (
+                <tr key={node.id}>
+                  <td className="border p-2">{node.name}</td>
+                  <td className="border p-2">{result?.raw_eligible_count ?? "-"}</td>
+                  <td className="border p-2">{result ? result.modifiers.reduce((sum, modifier) => sum + modifier.delta, 0) : "-"}</td>
+                  <td className="border p-2">{result?.final_potential ?? "-"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ),
+    },
+  ];
 
   function handleOpenDuty(duty: EffectiveDuty) {
     setSelectedDuty(duty);
@@ -291,14 +430,21 @@ export default function HomePage() {
               defaultValue: "היחידה / תת-העץ שבאחריותך",
             })}
           >
-            <PendingApprovalsWidget
-              pendingEnrollments={pendingEnrollments}
-              pendingSwaps={pendingSwaps}
-              pendingConstraints={pendingConstraints}
-              pendingExemptions={pendingExemptions}
-              pendingFieldUpdates={pendingFieldUpdates}
-              pendingTransfers={pendingTransfers}
-            />
+            <div className="space-y-3">
+              {commandPanels.map((panel) => (
+                <details
+                  key={panel.id}
+                  open
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow p-4"
+                  data-testid={`panel-${panel.id}`}
+                >
+                  <summary className="cursor-pointer font-medium text-lg mb-2 dark:text-gray-100">
+                    {panel.title}
+                  </summary>
+                  {panel.content}
+                </details>
+              ))}
+            </div>
           </CommandDashboardSection>
         )}
 

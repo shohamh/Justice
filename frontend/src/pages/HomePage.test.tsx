@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -17,6 +17,11 @@ import * as soldiersApi from "../api/soldiers";
 import * as rangesApi from "../api/ranges";
 import * as hierarchyTransfersApi from "../api/hierarchyTransfers";
 import * as publicSettingsApi from "../api/publicSettings";
+import * as commandDashboardApi from "../api/commanderDashboard";
+import * as hierarchyApi from "../api/hierarchy";
+import * as potentialApi from "../api/potential";
+import * as ineligibleSoldiersApi from "../api/ineligibleSoldiers";
+import * as levelTypesApi from "../api/levelTypes";
 import type { PermissionUser } from "../auth/permissions";
 
 vi.mock("react-i18next", () => ({
@@ -39,6 +44,11 @@ vi.mock("../api/soldiers");
 vi.mock("../api/ranges");
 vi.mock("../api/hierarchyTransfers");
 vi.mock("../api/publicSettings");
+vi.mock("../api/commanderDashboard");
+vi.mock("../api/hierarchy");
+vi.mock("../api/potential");
+vi.mock("../api/ineligibleSoldiers");
+vi.mock("../api/levelTypes");
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -53,7 +63,13 @@ const mockUser: PermissionUser = {
 };
 
 vi.mock("../components/UnitCalendar", () => ({
-  default: () => <div data-testid="unit-calendar" />,
+  default: ({ nodeIds, soldierId }: { nodeIds?: string[]; soldierId?: string }) => (
+    <div
+      data-testid={nodeIds ? "command-unit-calendar" : "personal-unit-calendar"}
+      data-node-count={nodeIds?.length ?? 0}
+      data-soldier-id={soldierId ?? ""}
+    />
+  ),
 }));
 
 vi.mock("../auth/AuthContext", () => ({
@@ -90,6 +106,39 @@ beforeEach(() => {
   vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
   vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([]);
   vi.mocked(publicSettingsApi.getPublicSettings).mockResolvedValue({});
+  vi.mocked(commandDashboardApi.getAlerts).mockResolvedValue([]);
+  vi.mocked(commandDashboardApi.getPotential).mockResolvedValue([]);
+  vi.mocked(commandDashboardApi.getUpcoming).mockResolvedValue([]);
+  vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+    {
+      id: "node-1",
+      level: "team",
+      name: "צוות א",
+      parent_id: null,
+      commander_id: "soldier-1",
+      commander_name: "חייל בדיקה",
+      path_ids: ["node-1"],
+      duty_managers: [],
+      dm_manageable: true,
+      can_edit: true,
+    },
+  ]);
+  vi.mocked(potentialApi.getPotential).mockResolvedValue({
+    node_id: "node-1",
+    as_of: "2026-08-31",
+    raw_eligible_count: 3,
+    total_soldiers: 5,
+    modifiers: [],
+    final_potential: 3,
+    soldiers: [],
+    partial_exemption_count: 0,
+  });
+  vi.mocked(ineligibleSoldiersApi.getIneligibleSoldiers).mockResolvedValue({
+    count: 0,
+    nodes: [],
+    soldiers: [],
+  });
+  vi.mocked(levelTypesApi.listLevelTypes).mockResolvedValue([]);
 });
 
 function renderHome() {
@@ -139,8 +188,75 @@ describe("HomePage - required scoring data load errors", () => {
     const commandSection = await screen.findByRole("region", { name: "ניהול היחידה" });
     expect(screen.getByText("היחידה / תת-העץ שבאחריותך")).toBeInTheDocument();
 
-    const calendar = screen.getByTestId("unit-calendar");
+    const calendar = screen.getByTestId("personal-unit-calendar");
     const position = commandSection.compareDocumentPosition(calendar);
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps command queries and widgets off the regular soldier homepage while preserving personal widgets", async () => {
+    renderHome();
+
+    expect(await screen.findByTestId("personal-unit-calendar")).toHaveAttribute("data-soldier-id", "soldier-1");
+    expect(screen.queryByText("ניהול היחידה")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-unit-calendar")).not.toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(assignmentsApi.listEffectiveDuties).toHaveBeenCalledWith(
+        "soldier-1",
+        expect.objectContaining({ include_drafts: true }),
+      ),
+    );
+    expect(commandDashboardApi.getAlerts).not.toHaveBeenCalled();
+    expect(commandDashboardApi.getPotential).not.toHaveBeenCalled();
+    expect(commandDashboardApi.getUpcoming).not.toHaveBeenCalled();
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+    expect(potentialApi.getPotential).not.toHaveBeenCalled();
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).not.toHaveBeenCalled();
+    expect(enrollmentApi.listPendingEnrollments).not.toHaveBeenCalled();
+    expect(swapsApi.listPendingSwaps).not.toHaveBeenCalled();
+    expect(constraintsApi.getPendingCount).not.toHaveBeenCalled();
+    expect(exemptionsApi.getPendingExemptionCount).not.toHaveBeenCalled();
+    expect(soldiersApi.getPendingFieldUpdateCount).not.toHaveBeenCalled();
+    expect(hierarchyTransfersApi.listPendingTransferRequests).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { role: "commander" as const, flags: { is_commander: true, is_duty_manager: false } },
+    { role: "duty_manager" as const, flags: { is_commander: false, is_duty_manager: true } },
+    { role: "admin" as const, flags: { is_commander: false, is_duty_manager: false } },
+  ])("renders the command composition and gates command queries on for $role users", async ({ role, flags }) => {
+    vi.mocked(constraintsApi.getPendingCount).mockResolvedValue(1);
+    Object.assign(mockUser, {
+      role,
+      hierarchy_node_id: "node-1",
+      ...flags,
+    });
+
+    const { container } = renderHome();
+
+    expect(await screen.findByText("ניהול היחידה")).toBeInTheDocument();
+    expect(await screen.findByTestId("panel-ineligible-soldiers")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-alerts")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-approvals")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-upcoming")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-calendar")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-potential")).toBeInTheDocument();
+    expect(screen.getByTestId("panel-own_potential")).toBeInTheDocument();
+    expect(screen.getByTestId("command-unit-calendar")).toHaveAttribute("data-node-count", "1");
+    expect(screen.getByTestId("personal-unit-calendar")).toHaveAttribute("data-soldier-id", "soldier-1");
+    expect(container.querySelectorAll('a[href="/approvals?tab=constraints"]')).toHaveLength(1);
+
+    await waitFor(() => expect(commandDashboardApi.getAlerts).toHaveBeenCalledTimes(1));
+    expect(commandDashboardApi.getPotential).toHaveBeenCalledTimes(1);
+    expect(commandDashboardApi.getUpcoming).toHaveBeenCalledTimes(1);
+    expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
+    expect(potentialApi.getPotential).toHaveBeenCalledWith("node-1");
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledWith("commander");
+    expect(enrollmentApi.listPendingEnrollments).toHaveBeenCalledTimes(1);
+    expect(swapsApi.listPendingSwaps).toHaveBeenCalledTimes(1);
+    expect(constraintsApi.getPendingCount).toHaveBeenCalledTimes(1);
+    expect(exemptionsApi.getPendingExemptionCount).toHaveBeenCalledTimes(1);
+    expect(soldiersApi.getPendingFieldUpdateCount).toHaveBeenCalledTimes(1);
+    expect(hierarchyTransfersApi.listPendingTransferRequests).toHaveBeenCalledTimes(1);
   });
 });
