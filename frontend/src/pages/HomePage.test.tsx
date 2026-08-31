@@ -67,6 +67,7 @@ vi.mock("../components/UnitCalendar", () => ({
     <div
       data-testid={nodeIds ? "command-unit-calendar" : "personal-unit-calendar"}
       data-node-count={nodeIds?.length ?? 0}
+      data-node-ids={nodeIds?.join(",") ?? ""}
       data-soldier-id={soldierId ?? ""}
     />
   ),
@@ -258,5 +259,34 @@ describe("HomePage - required scoring data load errors", () => {
     expect(exemptionsApi.getPendingExemptionCount).toHaveBeenCalledTimes(1);
     expect(soldiersApi.getPendingFieldUpdateCount).toHaveBeenCalledTimes(1);
     expect(hierarchyTransfersApi.listPendingTransferRequests).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { role: "duty_manager" as const, flags: { is_commander: false, is_duty_manager: true } },
+    { role: "admin" as const, flags: { is_commander: false, is_duty_manager: false } },
+  ])("uses the user's hierarchy node as the command calendar fallback for $role users", async ({ role, flags }) => {
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+      {
+        id: "other-node",
+        level: "team",
+        name: "צוות אחר",
+        parent_id: null,
+        commander_id: "someone-else",
+        commander_name: "מפקד אחר",
+        path_ids: ["other-node"],
+        duty_managers: [],
+        dm_manageable: true,
+        can_edit: true,
+      },
+    ]);
+    Object.assign(mockUser, {
+      role,
+      hierarchy_node_id: "authorized-node",
+      ...flags,
+    });
+
+    renderHome();
+
+    expect(await screen.findByTestId("command-unit-calendar")).toHaveAttribute("data-node-ids", "authorized-node");
   });
 });

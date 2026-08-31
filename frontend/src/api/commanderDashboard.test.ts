@@ -7,6 +7,7 @@ import {
   getFairnessExternal,
   getFairnessInternal,
   getPotential,
+  getSummary,
   getUpcoming,
 } from "./commanderDashboard";
 
@@ -24,6 +25,26 @@ describe("commander dashboard collection APIs", () => {
     vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
 
     await expect(call()).resolves.toEqual([]);
+  });
+});
+
+describe("getSummary", () => {
+  it("rejects a non-object payload", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: null });
+    await expect(getSummary()).rejects.toThrow("Invalid dashboard summary response");
+  });
+
+  it("rejects a payload with a non-numeric counter", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { approvals_pending: "3", upcoming_duties_7d: 1, unfilled_gaps: 0, alerts_count: 2 },
+    });
+    await expect(getSummary()).rejects.toThrow("Invalid dashboard summary response");
+  });
+
+  it("passes through a well-formed payload", async () => {
+    const summary = { approvals_pending: 3, upcoming_duties_7d: 1, unfilled_gaps: 0, alerts_count: 2 };
+    vi.mocked(api.get).mockResolvedValue({ data: summary });
+    await expect(getSummary()).resolves.toEqual(summary);
   });
 });
 

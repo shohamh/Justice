@@ -90,6 +90,19 @@ export default function HomePage() {
     () => commandNodes.filter((node) => node.commander_id === user?.id),
     [commandNodes, user],
   );
+  const commandCalendarNodeIds = useMemo(() => {
+    if (commandNodesOwnedByUser.length > 0) {
+      return commandNodesOwnedByUser.map((node) => node.id);
+    }
+    if (
+      commandScopeAvailable &&
+      user?.hierarchy_node_id &&
+      (user.role === "admin" || user.role === "duty_manager" || user.is_duty_manager)
+    ) {
+      return [user.hierarchy_node_id];
+    }
+    return [];
+  }, [commandNodesOwnedByUser, commandScopeAvailable, user]);
 
   const commandAlertsQuery = useQuery({
     queryKey: queryKeys.commandDashboardAlerts(),
@@ -274,8 +287,8 @@ export default function HomePage() {
     {
       id: "calendar",
       title: t("command_dashboard.calendar"),
-      content: commandNodesOwnedByUser.length > 0 ? (
-        <UnitCalendar nodeIds={commandNodesOwnedByUser.map((node) => node.id)} />
+      content: commandCalendarNodeIds.length > 0 ? (
+        <UnitCalendar nodeIds={commandCalendarNodeIds} />
       ) : null,
     },
     {
