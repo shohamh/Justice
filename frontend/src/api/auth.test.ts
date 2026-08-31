@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./client";
-import { fetchMe } from "./auth";
+import { fetchMe, listPublicExemptionTypes } from "./auth";
 
 vi.mock("./client");
 
@@ -35,5 +35,24 @@ describe("fetchMe", () => {
     const me = await fetchMe();
 
     expect(me.active_deputy_grants).toEqual(grants);
+  });
+});
+
+describe("listPublicExemptionTypes", () => {
+  it("normalizes a malformed (non-array) response to an empty array", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { not: "an array" } });
+
+    const types = await listPublicExemptionTypes();
+
+    expect(types).toEqual([]);
+  });
+
+  it("passes through a well-formed response", async () => {
+    const types = [{ id: "et-1", name: "Medical", description: null, is_medical: true }];
+    vi.mocked(api.get).mockResolvedValue({ data: types });
+
+    const result = await listPublicExemptionTypes();
+
+    expect(result).toEqual(types);
   });
 });

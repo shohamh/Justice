@@ -146,8 +146,8 @@ export interface PublicExemptionType {
 }
 
 export async function listPublicExemptionTypes(): Promise<PublicExemptionType[]> {
-  const r = await api.get<PublicExemptionType[]>("/auth/exemption-types");
-  return r.data;
+  const r = await api.get<unknown>("/auth/exemption-types");
+  return optionalArrayResponse<PublicExemptionType>(r.data);
 }
 
 export async function checkForgotPasswordChannels(personal_number: string): Promise<string[]> {
