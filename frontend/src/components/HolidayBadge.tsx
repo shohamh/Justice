@@ -73,9 +73,10 @@ export default function HolidayBadge({ holidays }: { holidays: HolidayHit[] }) {
         <div
           ref={popoverRef}
           role="tooltip"
+          dir="rtl"
           onClick={(e) => e.stopPropagation()}
           style={popoverStyle}
-          className="z-[70] w-56 max-w-[calc(100vw-1rem)] rounded border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          className="z-[70] w-56 max-w-[calc(100vw-1rem)] rounded border border-gray-200 bg-white p-2 text-right text-xs text-gray-700 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
         >
           <p className="font-semibold mb-1">{t("holidays.calendar_legend")}</p>
           <ul className="space-y-0.5">

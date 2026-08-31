@@ -117,6 +117,28 @@ class ExemptionFileOut(BaseModel):
     created_at: str
 
 
+def _can_see_enrollment_exemptions(session: Session, user: Soldier) -> bool:
+    from app.auth.authz import dm_scope_node_ids
+    from app.db.models import HierarchyLevelType
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    try:
+        min_dm_rank = int(get_setting(session, "enrollment.min_dm_level_rank"))
+    except SettingNotFound:
+        min_dm_rank = 0
+
+    user_max_scope_rank = 0
+    for node_id in dm_scope_node_ids(session, user.id):
+        node = session.get(HierarchyNode, node_id)
+        if node:
+            level_type = session.execute(
+                select(HierarchyLevelType).where(HierarchyLevelType.key == node.level)
+            ).scalar_one_or_none()
+            if level_type and level_type.rank > user_max_scope_rank:
+                user_max_scope_rank = level_type.rank
+    return user.role == "admin" or user_max_scope_rank >= min_dm_rank
+
+
 def _file_out(session: Session, viewer: Soldier, target: Soldier, f: ExemptionRequestFile) -> ExemptionFileOut:
     can_view = can_view_medical_document(session, viewer, target)
     return ExemptionFileOut(
@@ -288,29 +310,7 @@ def get_pending_exemption_requests(
     if not root_ids:
         return []
 
-    from app.db.models import HierarchyLevelType
-    from app.services.settings_loader import get_setting, SettingNotFound
-
-    try:
-        min_dm_rank = int(get_setting(session, "enrollment.min_dm_level_rank"))
-    except SettingNotFound:
-        min_dm_rank = 0
-
-    # Compute the maximum level rank of this user's DM scope nodes
-    from app.auth.authz import dm_scope_node_ids
-    user_dm_node_ids = dm_scope_node_ids(session, user.id)
-    user_max_scope_rank = 0
-    for nid in user_dm_node_ids:
-        n = session.get(HierarchyNode, nid)
-        if n:
-            lt = session.execute(
-                select(HierarchyLevelType).where(HierarchyLevelType.key == n.level)
-            ).scalar_one_or_none()
-            if lt and lt.rank > user_max_scope_rank:
-                user_max_scope_rank = lt.rank
-    user_can_see_enrollment_exemptions = (
-        user.role == "admin" or user_max_scope_rank >= min_dm_rank
-    )
+    user_can_see_enrollment_exemptions = _can_see_enrollment_exemptions(session, user)
 
     subq = (
         select(HierarchyNode.id)
@@ -396,6 +396,7 @@ def get_pending_exemption_count(
     root_ids = scope_root_ids(session, user)
     if not root_ids:
         return {"count": 0}
+    user_can_see_enrollment_exemptions = _can_see_enrollment_exemptions(session, user)
     subq = (
         select(HierarchyNode.id)
         .where(HierarchyNode.path_ids.overlap(list(root_ids)))

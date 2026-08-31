@@ -359,7 +359,7 @@ function DroppableNodeRow({
                 ) : <span className="p-0.5 sm:p-1" aria-hidden="true">👑</span>}
                 {node.commander_name && node.commander_id ? (
                   <span className="w-12 max-w-12 line-clamp-2 whitespace-normal break-words text-center text-[9px] leading-3 text-gray-400" data-testid={`tree-commander-name-${node.id}`}>
-                    <SoldierLink id={node.commander_id} name={node.commander_name} className="block whitespace-normal break-words text-center" />
+                    <SoldierLink id={node.commander_id} name={node.commander_name} className="block w-full whitespace-normal break-words text-center" />
                   </span>
                 ) : (
                   <span className="w-12 max-w-12 text-center text-[9px] leading-3 text-red-600" data-testid={`tree-commander-unassigned-${node.id}`}>לא מוגדר</span>
@@ -387,7 +387,7 @@ function DroppableNodeRow({
                         {i > 0 && ", "}
                         <button
                           type="button"
-                          className="whitespace-normal break-words text-indigo-600 dark:text-indigo-300 hover:underline"
+                          className="block w-full whitespace-normal break-words text-center text-indigo-600 dark:text-indigo-300 hover:underline"
                           onClick={() => onOpenPortfolio(dm.soldier_id, dm.name)}
                           data-testid={`tree-dm-name-${dm.scope_id}`}
                         >
