@@ -19,6 +19,7 @@ import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
 import { formatDateTimeIsrael } from "../utils/formatDate";
 
 import { useAuth } from "../auth/AuthContext";
+import { isCommandScopeAvailable } from "../auth/dashboardRoles";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -65,7 +66,7 @@ export default function HomePage() {
   const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
   const [openRangeId, setOpenRangeId] = useState<string | null>(null);
 
-  const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+  const commandScopeAvailable = isCommandScopeAvailable(user);
 
   // These queries fetch required-object payloads (see api/scoring.ts) — a
   // malformed shape throws instead of silently rendering wrong totals, so
@@ -136,42 +137,42 @@ export default function HomePage() {
   const enrollQuery = useQuery({
     queryKey: queryKeys.pendingEnrollments(),
     queryFn: listPendingEnrollments,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingEnrollments = enrollQuery.data ?? [];
 
   const pendingSwapsQuery = useQuery({
     queryKey: queryKeys.pendingSwaps(),
     queryFn: listPendingSwaps,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingSwaps = pendingSwapsQuery.data ?? [];
 
   const pendingConstraintsQuery = useQuery({
     queryKey: queryKeys.pendingConstraintsCount(),
     queryFn: getPendingCount,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingConstraints = pendingConstraintsQuery.data ?? 0;
 
   const pendingExemptionsQuery = useQuery({
     queryKey: queryKeys.pendingExemptionsCount(),
     queryFn: getPendingExemptionCount,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingExemptions = pendingExemptionsQuery.data ?? 0;
 
   const pendingFieldUpdatesQuery = useQuery({
     queryKey: queryKeys.pendingFieldUpdatesCount(),
     queryFn: getPendingFieldUpdateCount,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingFieldUpdates = pendingFieldUpdatesQuery.data ?? 0;
 
   const pendingTransfersQuery = useQuery({
     queryKey: queryKeys.pendingHierarchyTransfers(),
     queryFn: listPendingTransferRequests,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingTransfers = pendingTransfersQuery.data ?? [];
 
@@ -307,7 +308,7 @@ export default function HomePage() {
 
         <SwapStatusWidget swaps={mySwaps} />
 
-        {canApprove && (
+        {commandScopeAvailable && (
           <PendingApprovalsWidget
             pendingEnrollments={pendingEnrollments}
             pendingSwaps={pendingSwaps}
