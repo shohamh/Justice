@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface LoginResponse {
   access_token: string;
@@ -105,7 +106,10 @@ export async function logout(): Promise<void> {
 
 export async function fetchMe(): Promise<Me> {
   const r = await api.get<Me>("/me");
-  return r.data;
+  return {
+    ...r.data,
+    active_deputy_grants: optionalArrayResponse<ActiveDeputyGrantDTO>(r.data?.active_deputy_grants),
+  };
 }
 
 export async function changePassword(current_password: string, new_password: string): Promise<void> {
