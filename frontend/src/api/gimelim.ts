@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface SoldierRef {
   id: string;
@@ -46,7 +47,15 @@ export async function previewGimelim(
   shiftId: string,
   body: { primary_assignment_id: string; rest_days: number; reason?: string; from_date: string }
 ): Promise<GimelimPreview> {
-  return (await api.post<GimelimPreview>(`/shifts/${shiftId}/gimelim/preview`, body)).data;
+  const r = await api.post<unknown>(`/shifts/${shiftId}/gimelim/preview`, body);
+  const data = requiredObjectResponse(r.data, "Invalid gimelim preview response");
+  if (typeof data.preview_token !== "string") {
+    throw new Error("Invalid gimelim preview response");
+  }
+  return {
+    ...(data as unknown as GimelimPreview),
+    warnings: optionalArrayResponse<string>(data.warnings),
+  };
 }
 
 export async function commitGimelim(
