@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import HierarchyTree from "./HierarchyTree";
 import type { NodeDTO } from "../api/hierarchy";
 import type { SoldierDTO } from "../api/soldiers";
@@ -30,7 +30,7 @@ vi.mock("../api/dmScope", () => ({
 }));
 
 vi.mock("./SoldierLink", () => ({
-  default: ({ id, name }: { id: string; name: string }) => <button data-testid={`soldier-link-${id}`}>{name}</button>,
+  default: ({ id, name, className }: { id: string; name: string; className?: string }) => <button className={className} data-testid={`soldier-link-${id}`}>{name}</button>,
 }));
 
 function node(overrides: Partial<NodeDTO> = {}): NodeDTO {
@@ -267,6 +267,8 @@ test("uses compact action icons with tooltips and places assigned names beneath 
   expect(screen.getByTestId("tree-dm-names-node-1")).toHaveClass("w-12", "line-clamp-2");
   expect(screen.getByTestId("tree-commander-name-node-1")).toHaveClass("break-words");
   expect(screen.getByTestId("tree-dm-names-node-1")).toHaveClass("break-words");
+  expect(within(screen.getByTestId("tree-commander-name-node-1")).getByTestId("soldier-link-commander-1")).toHaveClass("block", "w-full", "text-center");
+  expect(screen.getByTestId("tree-dm-name-scope-1")).toHaveClass("block", "w-full", "text-center");
   expect(screen.getByTestId("tree-action-group-node-1")).toHaveClass("grid-cols-5", "sm:grid");
   expect(screen.getByTestId("tree-commander-name-node-1")).toHaveClass("leading-3");
   expect(screen.getByTestId("tree-dm-names-node-1")).toHaveClass("leading-3");

@@ -13,6 +13,10 @@ vi.mock("../../api/bugReports", async () => ({
   clearAdminErrors: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../components/SoldierLink", () => ({
+  default: ({ name }: { id: string; name: string }) => <span data-testid="error-soldier-link">{name}</span>,
+}));
+
 function renderContent() {
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ErrorsContent /></QueryClientProvider>);
 }
@@ -31,6 +35,17 @@ it("shows correlated errors and expands sanitized details", async () => {
   expect(screen.queryByText("trace-1")).not.toBeInTheDocument();
   fireEvent.click(screen.getByTestId("admin-error-trace-1").querySelector("button")!);
   expect(screen.getByTestId("admin-error-stack-trace-1")).toHaveTextContent("RuntimeError: boom");
+});
+
+it("shows the soldier link and IP that encountered an error", async () => {
+  vi.mocked(bugReportsApi.listAdminErrors).mockResolvedValue({
+    total: 1,
+    items: [{ source: "backend", timestamp: "2026-08-28T10:00:00Z", level: "ERROR", message: "boom", request_id: "trace-identity", details: { user: { id: "soldier-1", name: "Shoham" }, ip: "192.0.2.10" }, record_key: "error-identity", unread: false }],
+  });
+  renderContent();
+
+  await waitFor(() => expect(screen.getByTestId("error-soldier-link")).toHaveTextContent("Shoham"));
+  expect(screen.getByTestId("admin-error-trace-identity")).toHaveTextContent("192.0.2.10");
 });
 
 it("renders stack trace newlines as real line breaks", async () => {

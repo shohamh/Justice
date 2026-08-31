@@ -13,6 +13,11 @@ const SENSITIVE = /password|token|secret|authorization|cookie|refresh|access/i;
 const RATE_LIMIT_MAX_PER_WINDOW = Number(import.meta.env.VITE_ERROR_RATE_LIMIT_MAX_PER_WINDOW ?? 10);
 const RATE_LIMIT_WINDOW_MS = Number(import.meta.env.VITE_ERROR_RATE_LIMIT_WINDOW_MS ?? 60_000);
 const rateLimitState = new Map<string, { windowStart: number; count: number }>();
+let errorReportingToken: string | null = null;
+
+export function setErrorReportingToken(token: string | null): void {
+  errorReportingToken = token;
+}
 
 function errorFingerprint(report: Record<string, unknown>): string {
   return [report.kind, report.message, report.filename, report.line, report.status].map(String).join("|");
@@ -53,7 +58,11 @@ export function reportFrontendError(report: Record<string, unknown>): void {
   if (!allowedByRateLimit(errorFingerprint(report))) return;
   void fetch(REPORT_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", [REQUEST_ID_HEADER]: String(report.request_id ?? "unknown") },
+    headers: {
+      "Content-Type": "application/json",
+      [REQUEST_ID_HEADER]: String(report.request_id ?? "unknown"),
+      ...(errorReportingToken ? { Authorization: `Bearer ${errorReportingToken}` } : {}),
+    },
     body: JSON.stringify(redact(report)),
     keepalive: true,
   }).catch(() => undefined);

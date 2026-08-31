@@ -100,31 +100,46 @@ async def request_data(request: Request) -> dict[str, Any]:
     }
 
 
+def _user_json(user: Any) -> dict[str, str] | None:
+    if user is None or not getattr(user, "id", None):
+        return None
+    return {"id": str(user.id), "name": str(getattr(user, "full_name", user.id))}
+
+
 def log_backend_exception(request: Request, exc: BaseException, data: dict[str, Any]) -> None:
     logger = logging.getLogger("backend.errors")
     request_id_value = getattr(request.state, "request_id", "unknown")
+    user = _user_json(getattr(request.state, "user", None))
+    ip = getattr(getattr(request, "client", None), "host", None)
     fingerprint = "backend:" + hashlib.sha256(
         f"{data.get('path', '')}|{type(exc).__name__}|{exc}".encode()
     ).hexdigest()
     allow, suppressed = _check_rate_limit(fingerprint)
     if suppressed:
+        rollup_extra: dict[str, Any] = {
+            "request_id": request_id_value,
+            "suppressed_count": suppressed,
+            "path": data.get("path"),
+            "ip": ip,
+        }
+        if user is not None:
+            rollup_extra["user"] = user
         logger.error(
             "Unhandled HTTP 500 (rate-limit rollup)",
-            extra={"request_id": request_id_value, "suppressed_count": suppressed, "path": data.get("path")},
+            extra=rollup_extra,
         )
     if not allow:
         return
+    extra: dict[str, Any] = {"request_id": request_id_value, "request": data, "traceback": "".join(traceback.format_exception(exc)), "ip": ip}
+    if user is not None:
+        extra["user"] = user
     logger.error(
         "Unhandled HTTP 500",
-        extra={
-            "request_id": request_id_value,
-            "request": data,
-            "traceback": "".join(traceback.format_exception(exc)),
-        },
+        extra=extra,
     )
 
 
-def log_frontend_error(payload: dict[str, Any]) -> None:
+def log_frontend_error(payload: dict[str, Any], *, user: Any = None, ip: str | None = None) -> None:
     logger = logging.getLogger("frontend.errors")
     request_id_value = payload.get("request_id", "unknown")
     fingerprint = "frontend:" + hashlib.sha256(
@@ -132,13 +147,21 @@ def log_frontend_error(payload: dict[str, Any]) -> None:
     ).hexdigest()
     allow, suppressed = _check_rate_limit(fingerprint)
     if suppressed:
+        rollup_extra = {"request_id": request_id_value, "suppressed_count": suppressed, "kind": payload.get("kind"), "ip": ip}
+        user_json = _user_json(user)
+        if user_json is not None:
+            rollup_extra["user"] = user_json
         logger.error(
             "Frontend error (rate-limit rollup)",
-            extra={"request_id": request_id_value, "suppressed_count": suppressed, "kind": payload.get("kind")},
+            extra=rollup_extra,
         )
     if not allow:
         return
+    user_json = _user_json(user)
+    extra = {"request_id": request_id_value, "frontend": redact(payload), "ip": ip}
+    if user_json is not None:
+        extra["user"] = user_json
     logger.error(
         "Frontend error",
-        extra={"request_id": request_id_value, "frontend": redact(payload)},
+        extra=extra,
     )

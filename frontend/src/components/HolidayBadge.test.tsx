@@ -22,6 +22,14 @@ describe("HolidayBadge", () => {
     expect(screen.getByText(/Rosh Hashanah/)).toBeInTheDocument();
   });
 
+  it("renders the holiday tooltip right-to-left", () => {
+    render(<HolidayBadge holidays={[{ date: "2026-09-12", name: "Rosh Hashanah" }]} />);
+    fireEvent.click(screen.getByTestId("holiday-badge"));
+
+    expect(screen.getByRole("tooltip")).toHaveAttribute("dir", "rtl");
+    expect(screen.getByRole("tooltip")).toHaveClass("text-right");
+  });
+
   it("lists every crossed holiday when there are multiple", () => {
     render(
       <HolidayBadge

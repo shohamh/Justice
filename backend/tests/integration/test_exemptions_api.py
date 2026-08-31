@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AuditLog, ExemptionRequest, ExemptionType, SoldierExemption
+from app.db.models import AuditLog, ExemptionRequest, ExemptionType, SoldierEnrollmentRequest, SoldierExemption
 from app.services.file_validation import MAX_EXEMPTION_FILE_BYTES
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -644,6 +644,40 @@ def test_pending_exemption_count_excludes_requests_dm_below_minimum_level_cannot
     r = client.get("/api/exemption-requests/pending/count", headers=auth_headers(dm))
     assert r.status_code == 200
     assert r.json()["count"] == 0
+
+
+def test_pending_exemption_count_handles_enrollment_linked_request(client, admin_session):
+    """Enrollment-linked requests must be filtered without crashing the count endpoint."""
+    node = create_node(admin_session, level="department", name="ex_count_enrollment_node")
+    dm = create_soldier(
+        admin_session, personal_number="ex_count_enrollment_dm", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    soldier = create_soldier(
+        admin_session, personal_number="ex_count_enrollment_sol", hierarchy_node_id=node.id,
+    )
+    enrollment = SoldierEnrollmentRequest(
+        soldier_id=soldier.id, requested_node_id=node.id, status="pending",
+    )
+    admin_session.add(enrollment)
+    admin_session.flush()
+    et = ExemptionType(name="ex-count-enrollment-type", is_medical=False)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        ExemptionRequest(
+            soldier_id=soldier.id,
+            exemption_type_id=et.id,
+            enrollment_request_id=enrollment.id,
+            status="pending_duty_manager",
+            start_date=date(2026, 1, 1),
+        )
+    )
+    admin_session.commit()
+
+    response = client.get("/api/exemption-requests/pending/count", headers=auth_headers(dm))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["count"] == 1
 
 
 def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):
