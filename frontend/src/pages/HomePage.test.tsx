@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
 import HomePage from "./HomePage";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import * as assignmentsApi from "../api/assignments";
@@ -16,9 +17,13 @@ import * as soldiersApi from "../api/soldiers";
 import * as rangesApi from "../api/ranges";
 import * as hierarchyTransfersApi from "../api/hierarchyTransfers";
 import * as publicSettingsApi from "../api/publicSettings";
+import type { PermissionUser } from "../auth/permissions";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      (options?.defaultValue as string | undefined) ?? key,
+  }),
   initReactI18next: { type: "3rdParty", init: () => {} },
 }));
 
@@ -37,14 +42,34 @@ vi.mock("../api/publicSettings");
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../components/UnitCalendar", () => ({ default: () => null }));
+
+const mockUser: PermissionUser = {
+  id: "soldier-1",
+  full_name: "חייל בדיקה",
+  role: "soldier",
+  hierarchy_node_id: null,
+  is_commander: false,
+  is_duty_manager: false,
+};
+
+vi.mock("../components/UnitCalendar", () => ({
+  default: () => <div data-testid="unit-calendar" />,
+}));
 
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "soldier-1", full_name: "חייל בדיקה", role: "soldier", hierarchy_node_id: null } }),
+  useAuth: () => ({ user: mockUser }),
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.assign(mockUser, {
+    id: "soldier-1",
+    full_name: "חייל בדיקה",
+    role: "soldier",
+    hierarchy_node_id: null,
+    is_commander: false,
+    is_duty_manager: false,
+  });
   vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([]);
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
   vi.mocked(dutyConfigApi.listLocations).mockResolvedValue([]);
@@ -76,7 +101,7 @@ function renderHome() {
           <HomePage />
         </SoldierModalProvider>
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -100,5 +125,22 @@ describe("HomePage - required scoring data load errors", () => {
 
     await screen.findByText("home.welcome");
     expect(screen.queryByText("home.score_load_error")).not.toBeInTheDocument();
+  });
+
+  it("shows the command section with a visible scope label before the personal calendar for management users", async () => {
+    Object.assign(mockUser, {
+      role: "commander",
+      hierarchy_node_id: "node-1",
+      is_commander: true,
+    });
+
+    renderHome();
+
+    const commandSection = await screen.findByRole("region", { name: "ניהול היחידה" });
+    expect(screen.getByText("היחידה / תת-העץ שבאחריותך")).toBeInTheDocument();
+
+    const calendar = screen.getByTestId("unit-calendar");
+    const position = commandSection.compareDocumentPosition(calendar);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

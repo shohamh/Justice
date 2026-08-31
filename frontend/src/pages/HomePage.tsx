@@ -285,6 +285,23 @@ export default function HomePage() {
           settings={settings}
         />
 
+        {commandScopeAvailable && (
+          <CommandDashboardSection
+            scopeLabel={t("command_dashboard.management_section_scope", {
+              defaultValue: "היחידה / תת-העץ שבאחריותך",
+            })}
+          >
+            <PendingApprovalsWidget
+              pendingEnrollments={pendingEnrollments}
+              pendingSwaps={pendingSwaps}
+              pendingConstraints={pendingConstraints}
+              pendingExemptions={pendingExemptions}
+              pendingFieldUpdates={pendingFieldUpdates}
+              pendingTransfers={pendingTransfers}
+            />
+          </CommandDashboardSection>
+        )}
+
         {user && (
           <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} />
         )}
@@ -308,20 +325,6 @@ export default function HomePage() {
         )}
 
         <SwapStatusWidget swaps={mySwaps} />
-
-        {commandScopeAvailable && (
-          <CommandDashboardSection>
-            <PendingApprovalsWidget
-              pendingEnrollments={pendingEnrollments}
-              pendingSwaps={pendingSwaps}
-              pendingConstraints={pendingConstraints}
-              pendingExemptions={pendingExemptions}
-              pendingFieldUpdates={pendingFieldUpdates}
-              pendingTransfers={pendingTransfers}
-            />
-          </CommandDashboardSection>
-        )}
-
         <DutyHistoryWidget
           duties={duties}
           typeNames={typeNames}
