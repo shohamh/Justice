@@ -110,6 +110,30 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.queryByTestId("remove-assignment-a1")).not.toBeInTheDocument();
   });
 
+  // getRangeCandidates only rejects on a genuine request failure (the
+  // adapter itself always normalizes candidates/excluded to arrays — see
+  // api/ranges.test.ts), but a rejection still needs to be visible instead
+  // of collapsing into the same "no candidates available" copy a
+  // legitimately-empty response shows.
+  it("shows a translated alert and suppresses the default empty-candidates copy when the candidates fetch fails", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockRejectedValue(new Error("network error"));
+    renderModal({ event: event([]) });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("טעינת רשימת המועמדים נכשלה");
+    expect(screen.getAllByText("שגיאה בטעינת רשימת המועמדים").length).toBeGreaterThan(0);
+    expect(screen.queryByText("אין מועמדים זמינים")).not.toBeInTheDocument();
+  });
+
+  it("does not show the candidates-load alert when the fetch succeeds", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue(
+      candidateResponse([{ soldier_id: "s1", full_name: "אורי", personal_number: "111", reason_code: "manual", explanation: "", conflict_warning: null, personal_constraint_conflict: false }])
+    );
+    renderModal({ event: event([]) });
+
+    await waitFor(() => expect(screen.getByTestId("candidate-checkbox-s1")).toBeInTheDocument());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("uses a Hebrew fallback instead of exposing raw reason API errors", async () => {
     vi.mocked(rangesApi.updateRangeAssignmentReason).mockRejectedValue({ response: { data: { detail: "custom_reason_text_required" } } });
     renderModal({ event: event([assignment("a1", "s1")]) });

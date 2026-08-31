@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface SummaryCards {
   approvals_pending: number;
@@ -81,33 +82,73 @@ export interface ApprovalItem {
 }
 
 export async function getSummary(): Promise<SummaryCards> {
-  return (await api.get<SummaryCards>("/command-dashboard/summary")).data;
+  const r = await api.get<unknown>("/command-dashboard/summary");
+  const data = requiredObjectResponse(r.data, "Invalid dashboard summary response");
+  if (
+    typeof data.approvals_pending !== "number" ||
+    typeof data.upcoming_duties_7d !== "number" ||
+    typeof data.unfilled_gaps !== "number" ||
+    typeof data.alerts_count !== "number"
+  ) {
+    throw new Error("Invalid dashboard summary response");
+  }
+  return {
+    approvals_pending: data.approvals_pending,
+    upcoming_duties_7d: data.upcoming_duties_7d,
+    unfilled_gaps: data.unfilled_gaps,
+    alerts_count: data.alerts_count,
+  };
 }
 
 export async function getDashboardSoldiers(): Promise<SoldierWithStatus[]> {
-  return (await api.get<SoldierWithStatus[]>("/command-dashboard/soldiers")).data;
+  const data = (await api.get<unknown>("/command-dashboard/soldiers")).data;
+  return optionalArrayResponse<SoldierWithStatus>(data);
 }
 
 export async function getFairnessInternal(): Promise<FairnessStats> {
-  return (await api.get<FairnessStats>("/command-dashboard/fairness/internal")).data;
+  const r = await api.get<unknown>("/command-dashboard/fairness/internal");
+  const data = requiredObjectResponse(r.data, "Invalid internal fairness response");
+  if (
+    typeof data.mean !== "number" ||
+    typeof data.median !== "number" ||
+    typeof data.min !== "number" ||
+    typeof data.max !== "number" ||
+    typeof data.stddev !== "number" ||
+    typeof data.soldier_count !== "number"
+  ) {
+    throw new Error("Invalid internal fairness response");
+  }
+  return {
+    mean: data.mean,
+    median: data.median,
+    min: data.min,
+    max: data.max,
+    stddev: data.stddev,
+    soldier_count: data.soldier_count,
+  };
 }
 
 export async function getFairnessExternal(): Promise<NodeFairness[]> {
-  return (await api.get<NodeFairness[]>("/command-dashboard/fairness/external")).data;
+  const data = (await api.get<unknown>("/command-dashboard/fairness/external")).data;
+  return optionalArrayResponse<NodeFairness>(data);
 }
 
 export async function getPotential(): Promise<PotentialCount[]> {
-  return (await api.get<PotentialCount[]>("/command-dashboard/potential")).data;
+  const data = (await api.get<unknown>("/command-dashboard/potential")).data;
+  return optionalArrayResponse<PotentialCount>(data);
 }
 
 export async function getUpcoming(): Promise<UpcomingDay[]> {
-  return (await api.get<UpcomingDay[]>("/command-dashboard/upcoming")).data;
+  const data = (await api.get<unknown>("/command-dashboard/upcoming")).data;
+  return optionalArrayResponse<UpcomingDay>(data);
 }
 
 export async function getAlerts(): Promise<Alert[]> {
-  return (await api.get<Alert[]>("/command-dashboard/alerts")).data;
+  const data = (await api.get<unknown>("/command-dashboard/alerts")).data;
+  return optionalArrayResponse<Alert>(data);
 }
 
 export async function getApprovals(): Promise<ApprovalItem[]> {
-  return (await api.get<ApprovalItem[]>("/command-dashboard/approvals")).data;
+  const data = (await api.get<unknown>("/command-dashboard/approvals")).data;
+  return optionalArrayResponse<ApprovalItem>(data);
 }

@@ -369,6 +369,24 @@ describe("MyRequestsPage - existing-tab groups", () => {
   });
 });
 
+describe("MyRequestsPage - required-data load failure", () => {
+  it("shows a role=alert banner and suppresses the affected group's empty state when a required list query fails", async () => {
+    vi.mocked(constraintsApi.listMyConstraints).mockRejectedValue(new Error("network error"));
+    renderPage();
+    await openExistingTab();
+    expect(await screen.findByRole("alert")).toHaveTextContent("my_requests.load_error");
+    expect(screen.queryByTestId("no-constraints")).not.toBeInTheDocument();
+    // Unaffected groups still show their normal empty state.
+    expect(screen.getByText("my_requests.empty_transfers")).toBeInTheDocument();
+  });
+
+  it("does not show the load-error banner when every required query succeeds", async () => {
+    renderPage();
+    await openExistingTab();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
 describe("MyRequestsPage - day-count badges", () => {
   it("shows a day-count badge next to a pending constraint row", async () => {
     renderPage();

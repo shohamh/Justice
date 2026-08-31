@@ -22,7 +22,8 @@
   "home": {
     "welcome": "שלום, {{name}}",
     "logout": "יציאה",
-    "duty_primary": "ראשי"
+    "duty_primary": "ראשי",
+    "score_load_error": "שגיאה בטעינת נתוני הניקוד"
   },
   "common": {
     "yes": "כן",
@@ -164,7 +165,8 @@
     "filter_type_label": "סוג בקשה",
     "filter_status_label": "סטטוס",
     "filter_all": "הכל",
-    "filter_pending": "ממתין"
+    "filter_pending": "ממתין",
+    "load_error": "שגיאה בטעינת הבקשות"
   },
   "my_bug_reports": {
     "load_error": "שגיאה בטעינת הדיווחים"
@@ -216,6 +218,7 @@
     "tab_constraints": "אילוצים אישיים",
     "tab_exemptions": "בקשות פטור",
     "tab_transfers": "העברות",
+    "load_error": "שגיאה בטעינת בקשות האישור",
     "exemption_none": "אין בקשות פטור ממתינות",
     "field_update_new_value": "ערך חדש: ",
     "field_update_either_approver_suffices": "מספיק אישור אחד מהשניים",
@@ -498,7 +501,9 @@
     "subunit_cv_burden_share": "פיזור (CV)",
     "subunit_sibling_gap": "פער מול אחים (יחס)",
     "subunit_global_gap": "פער מול הארגון (יחס)",
-    "no_permission": "אין לך הרשאה לצפות בדף זה"
+    "no_permission": "אין לך הרשאה לצפות בדף זה",
+    "load_error": "שגיאה בטעינת נתוני השקיפות",
+    "burden_share_breakdown_load_error": "שגיאה בטעינת פירוט חלק בנטל"
   },
   "my_duties": {
     "title": "היומן שלי",
@@ -510,7 +515,8 @@
     "showing_for_date": "תורנויות לתאריך: {{date}}",
     "show_all": "הצג הכל",
     "add_to_calendar": "הוסף ליומן",
-    "download_ics": "הורד אירוע (.ics)"
+    "download_ics": "הורד אירוע (.ics)",
+    "load_error": "שגיאה בטעינת נתוני היומן"
   },
   "unit_calendar": {
     "title": "יומן יחידה",
@@ -764,6 +770,9 @@
     "runs_title": "הרצות",
     "new_run": "+ הרצה חדשה",
     "no_runs": "אין הרצות עדיין",
+    "jobs_load_error": "שגיאה בטעינת רשימת ההרצות",
+    "job_load_error": "שגיאה בטעינת פרטי ההרצה",
+    "defaults_load_error": "שגיאה בטעינת ברירות המחדל של האלגוריתם — נעשה שימוש בערכי ברירת מחדל",
     "select_run": "בחר הרצה מהרשימה",
     "cancel_btn": "בטל הרצה",
     "cancelled": "ההרצה בוטלה",
@@ -1062,6 +1071,7 @@
     "send_to_soldier": "שלח לחייל ספציפי",
     "select_up_to": "בחר עד {{n}} חיילים לבקש מהם",
     "select_at_least_one": "יש לבחור לפחות חייל אחד",
+    "eligible_targets_load_error": "שגיאה בטעינת רשימת החיילים הזמינים",
     "no_eligible_targets": "אין חיילים זמינים וכשירים לתורנות זו",
     "no_search_results": "לא נמצאו חיילים התואמים את החיפוש",
     "loading_eligible_targets": "טוען רשימת חיילים...",
@@ -1185,7 +1195,9 @@
     "target_node": "יחידת יעד",
     "move_confirm": "שלח בקשת העברה",
     "cancel": "ביטול",
-    "view_duty_details": "צפה בפרטי התורנות"
+    "view_duty_details": "צפה בפרטי התורנות",
+    "summary_load_error": "שגיאה בטעינת נתוני הסיכום",
+    "fairness_internal_load_error": "שגיאה בטעינת מדדי ההוגנות הפנימיים"
   },
   "duty_detail": {
     "required_range": "מטווח נדרש",
@@ -1282,6 +1294,8 @@
     "all": "הכל",
     "unread": "לא נקרא",
     "none": "אין התראות",
+    "count_error": "שגיאה בטעינת מספר ההתראות שלא נקראו",
+    "load_error": "שגיאה בטעינת ההתראות",
     "sent_by": "נשלח על ידי {{name}}",
     "mark_read": "סמן כנקרא",
     "mark_all_read": "סמן הכל כנקרא",
@@ -1531,6 +1545,8 @@
     "bulk_delete_button": "מחק מטווחים",
     "bulk_delete_no_deletable": "כל המטווחים הנבחרים מכילים שיבוצים ולא ניתן למחוק אותם.",
     "load_error": "טעינת המטווחים נכשלה",
+    "detail_title": "פרטי מטווח",
+    "detail_load_error": "טעינת פרטי המטווח נכשלה",
     "view_assignments_button": "📋 שיבוצים",
     "edit_button": "✏️ עריכה",
     "delete_button": "🗑️ מחיקה",
@@ -1635,7 +1651,8 @@
       "confirm_assignments": "אישור השיבוצים נכשל",
       "save_assignments": "שמירת השיבוצים נכשלה",
       "primary_full": "אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף",
-      "reserve_full": "אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף"
+      "reserve_full": "אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף",
+      "candidates_load": "טעינת רשימת המועמדים נכשלה"
     }
   },
   "range_qualification": {

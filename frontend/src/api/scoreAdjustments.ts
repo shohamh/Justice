@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface ScoreAdjustment {
   id: string;
@@ -10,7 +11,8 @@ export interface ScoreAdjustment {
 }
 
 export async function listAdjustments(soldierId: string): Promise<ScoreAdjustment[]> {
-  return (await api.get<ScoreAdjustment[]>(`/score-adjustments`, { params: { soldier_id: soldierId } })).data;
+  const r = await api.get<unknown>(`/score-adjustments`, { params: { soldier_id: soldierId } });
+  return optionalArrayResponse<ScoreAdjustment>(r.data);
 }
 export async function createAdjustment(input: { soldier_id: string; delta: string; reason: string; duty_type_id?: string | null }): Promise<ScoreAdjustment> {
   return (await api.post<ScoreAdjustment>(`/score-adjustments`, input)).data;

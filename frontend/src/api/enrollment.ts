@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
+import { isRecord, optionalArrayResponse, requiredArrayResponse } from "./responseGuards";
 
 export interface EnrollmentExemptionDTO {
   id: string;
@@ -38,9 +39,25 @@ export interface EnrollmentRequestDTO {
   nearest_duty_manager: { id: string; name: string } | null;
 }
 
+/**
+ * Normalizes one raw enrollment-request row: drops it if the row itself
+ * isn't an object (can't identify it), otherwise keeps every field as-is
+ * except the nested `exemption_requests` array, coerced to `[]` when
+ * malformed so EnrollmentApprovalModal's `.length`/`.map` over a row's
+ * exemption requests can't throw and take the whole modal down.
+ */
+function sanitizeEnrollmentRequest(raw: unknown): EnrollmentRequestDTO | null {
+  if (!isRecord(raw)) return null;
+  return {
+    ...(raw as unknown as EnrollmentRequestDTO),
+    exemption_requests: optionalArrayResponse<EnrollmentExemptionDTO>(raw.exemption_requests),
+  };
+}
+
 export async function listPendingEnrollments(): Promise<EnrollmentRequestDTO[]> {
-  const r = await api.get<EnrollmentRequestDTO[]>("/enrollment-requests/pending");
-  return r.data;
+  const r = await api.get<unknown>("/enrollment-requests/pending");
+  const arr = requiredArrayResponse<unknown>(r.data, "Invalid pending enrollments response");
+  return arr.map(sanitizeEnrollmentRequest).filter((e): e is EnrollmentRequestDTO => e !== null);
 }
 
 export async function approveEnrollment(id: string, decision_note?: string): Promise<void> {

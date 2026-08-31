@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface DismissalRecord {
   id: string;
@@ -98,7 +99,8 @@ export async function getReserveCandidates(
   shiftId: string,
   reserveAssignmentId: string,
 ): Promise<ReserveCandidate[]> {
-  return (await api.get<ReserveCandidate[]>(`/shifts/${shiftId}/reserve-candidates/${reserveAssignmentId}`)).data;
+  const r = await api.get<unknown>(`/shifts/${shiftId}/reserve-candidates/${reserveAssignmentId}`);
+  return optionalArrayResponse<ReserveCandidate>(r.data);
 }
 
 export async function dismissAndReallocate(

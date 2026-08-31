@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { isRecord, optionalArrayResponse, requiredArrayResponse } from "./responseGuards";
 
 export interface SwapManagerApproval {
   commander_id: string;
@@ -65,6 +66,47 @@ export function isSwapActionableForUser(
   return swap.candidates.filter((candidate) => candidate.status === "pending" || candidate.status === "accepted").some((candidate) => viewerCanAct(candidate.manager_approvals));
 }
 
+/**
+ * Normalizes one raw candidate row: dropped if it isn't an object or is
+ * missing the identifying `id`/`soldier_id` fields, otherwise kept as-is
+ * except its two nested arrays (`manager_approvals`, `offered_assignment_ids`)
+ * which are coerced to `[]` when malformed.
+ */
+function sanitizeCandidate(raw: unknown): SwapCandidate | null {
+  if (!isRecord(raw) || typeof raw.id !== "string" || typeof raw.soldier_id !== "string") return null;
+  return {
+    ...(raw as unknown as SwapCandidate),
+    offered_assignment_ids: optionalArrayResponse<string>(raw.offered_assignment_ids),
+    manager_approvals: optionalArrayResponse<SwapManagerApproval>(raw.manager_approvals),
+  };
+}
+
+/**
+ * Normalizes one raw swap row: dropped if it isn't an object or is missing
+ * the identifying `id` field (can't render or key a list item without one),
+ * otherwise kept as-is except its nested `candidates` and
+ * `requester_manager_approvals` arrays, which are individually normalized so
+ * one malformed row can't crash `.filter`/`.map` calls (ApprovalsPage,
+ * MySwapCard, SwapApprovalColumns) for the whole list.
+ */
+function sanitizeSwap(raw: unknown): SwapRequest | null {
+  if (!isRecord(raw) || typeof raw.id !== "string") return null;
+  const candidates = optionalArrayResponse<unknown>(raw.candidates)
+    .map(sanitizeCandidate)
+    .filter((c): c is SwapCandidate => c !== null);
+  return {
+    ...(raw as unknown as SwapRequest),
+    requester_manager_approvals: optionalArrayResponse<SwapManagerApproval>(raw.requester_manager_approvals),
+    candidates,
+  };
+}
+
+function sanitizeSwaps(value: unknown): SwapRequest[] {
+  return optionalArrayResponse<unknown>(value)
+    .map(sanitizeSwap)
+    .filter((s): s is SwapRequest => s !== null);
+}
+
 export interface CreateSwapInput {
   duty_assignment_id: string;
   target_soldier_id?: string | null;
@@ -81,13 +123,15 @@ export interface EligibleTarget {
 }
 
 export async function listEligibleTargets(dutyAssignmentId: string): Promise<EligibleTarget[]> {
-  return (await api.get<EligibleTarget[]>("/swaps/eligible-targets", {
+  const data = (await api.get<unknown>("/swaps/eligible-targets", {
     params: { duty_assignment_id: dutyAssignmentId },
   })).data;
+  return optionalArrayResponse<EligibleTarget>(data);
 }
 
 export async function listMySwaps(): Promise<SwapRequest[]> {
-  return (await api.get<SwapRequest[]>("/me/swaps")).data;
+  const data = (await api.get<unknown>("/me/swaps")).data;
+  return sanitizeSwaps(data);
 }
 
 export interface BoardFilters {
@@ -105,7 +149,8 @@ export async function listBoard(filters?: BoardFilters): Promise<SwapRequest[]> 
   for (const id of filters?.dutyTypeIds ?? []) p.append("duty_type_id", id);
   for (const id of filters?.nodeIds ?? []) p.append("node_id", id);
   if (filters?.eligibleOnly) p.set("eligible_only", "true");
-  return (await api.get<SwapRequest[]>("/swaps/board", { params: p })).data;
+  const data = (await api.get<unknown>("/swaps/board", { params: p })).data;
+  return sanitizeSwaps(data);
 }
 
 export async function createSwap(input: CreateSwapInput): Promise<SwapRequest> {
@@ -129,7 +174,11 @@ export async function cancelSwap(id: string): Promise<void> {
 }
 
 export async function listPendingSwaps(): Promise<SwapRequest[]> {
-  return (await api.get<SwapRequest[]>("/swaps/pending")).data;
+  const arr = requiredArrayResponse<unknown>(
+    (await api.get<unknown>("/swaps/pending")).data,
+    "Invalid pending swaps response",
+  );
+  return arr.map(sanitizeSwap).filter((s): s is SwapRequest => s !== null);
 }
 
 export async function soldierApproveSwap(id: string): Promise<SwapRequest> {
@@ -154,13 +203,13 @@ export async function getIncomingSwapCount(): Promise<number> {
 }
 
 export async function listIncomingSwaps(): Promise<SwapRequest[]> {
-  const res = await api.get<SwapRequest[]>("/swaps/incoming");
-  return res.data;
+  const res = await api.get<unknown>("/swaps/incoming");
+  return sanitizeSwaps(res.data);
 }
 
 export async function listSwapsForAssignment(assignmentId: string): Promise<SwapRequest[]> {
-  const res = await api.get<SwapRequest[]>(`/swaps/for-assignment/${assignmentId}`);
-  return res.data;
+  const res = await api.get<unknown>(`/swaps/for-assignment/${assignmentId}`);
+  return sanitizeSwaps(res.data);
 }
 
 export async function takeDutyFree(dutyAssignmentId: string): Promise<SwapRequest> {

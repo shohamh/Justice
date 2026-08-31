@@ -228,6 +228,20 @@ describe("UnitCalendar", () => {
 
     expect(screen.getByText("unit_calendar.duty_type_filter_label")).toBeInTheDocument();
   });
+
+  // getCalendarShifts (via loadCalendarData) throws a descriptive error for a
+  // malformed calendar payload — the calendar must surface that failure as an
+  // accessible alert rather than a silent gap in the grid.
+  test("shows an accessible error alert when the calendar data fails to load", async () => {
+    vi.mocked(calendarDataApi.loadCalendarData).mockRejectedValue(new Error("Invalid calendar shifts response"));
+
+    renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("unit_calendar.error");
+    expect(alert).toBe(screen.getByTestId("unit-calendar-error"));
+  });
 });
 
 describe("UnitCalendar range eligibility info indicator", () => {

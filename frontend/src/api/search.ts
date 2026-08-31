@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { isRecord, optionalArrayResponse } from "./responseGuards";
 
 export interface SoldierResultDTO {
   id: string;
@@ -28,5 +29,11 @@ export interface SearchResponseDTO {
 }
 
 export async function search(q: string): Promise<SearchResponseDTO> {
-  return (await api.get<SearchResponseDTO>("/search", { params: { q } })).data;
+  const r = await api.get<unknown>("/search", { params: { q } });
+  const data = isRecord(r.data) ? r.data : {};
+  return {
+    soldiers: optionalArrayResponse<SoldierResultDTO>(data.soldiers),
+    duties: optionalArrayResponse<DutyResultDTO>(data.duties),
+    units: optionalArrayResponse<UnitResultDTO>(data.units),
+  };
 }

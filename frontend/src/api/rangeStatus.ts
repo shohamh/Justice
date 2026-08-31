@@ -1,5 +1,6 @@
 import type { RangeType } from "./ranges";
 import { api } from "./client";
+import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface RangeStatus {
   required_range_type: RangeType;
@@ -18,7 +19,14 @@ export interface SoldierRangeStatusResponse {
 }
 
 export function getSoldierRangeStatus(soldierId: string): Promise<SoldierRangeStatusResponse> {
-  return api
-    .get<SoldierRangeStatusResponse>(`/soldiers/${soldierId}/range-status`)
-    .then((response) => response.data);
+  return api.get<unknown>(`/soldiers/${soldierId}/range-status`).then((response) => {
+    const data = requiredObjectResponse(response.data, "Invalid range status response");
+    if (typeof data.soldier_id !== "string") {
+      throw new Error("Invalid range status response");
+    }
+    return {
+      ...(data as unknown as SoldierRangeStatusResponse),
+      statuses: optionalArrayResponse<RangeStatus>(data.statuses),
+    };
+  });
 }

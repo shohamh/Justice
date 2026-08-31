@@ -111,7 +111,13 @@ export default function RegisterPage() {
   const { enlistedRanks, officerRanks, officerAcademicRanks } = usePublicRankLadder();
 
   useEffect(() => {
-    listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
+    // listPublicExemptionTypes/fetchRegisterNodes only reject on request
+    // failure; a malformed-but-200 response would otherwise flow straight
+    // into state typed as an array (crashing the .map()/buildTree() calls
+    // below), so guard defensively before setState — same convention as the
+    // rest of this public, unauthenticated page: degrade to an empty list
+    // rather than throw or show a new error banner.
+    listPublicExemptionTypes().then(types => setExemptionTypes(Array.isArray(types) ? types : [])).catch(() => {});
   }, []);
 
   // Nodes are fetched after invite code is validated (see checkCode)
@@ -131,7 +137,7 @@ export default function RegisterPage() {
       const valid = await validateInviteCode(form.invite_code);
       setCodeValid(valid);
       if (valid) {
-        fetchRegisterNodes(form.invite_code).then(setNodes).catch(() => {});
+        fetchRegisterNodes(form.invite_code).then(ns => setNodes(Array.isArray(ns) ? ns : [])).catch(() => {});
       }
       return valid;
     } catch (err) {

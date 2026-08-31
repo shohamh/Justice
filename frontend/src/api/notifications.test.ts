@@ -1,5 +1,16 @@
-import { describe, it, expect } from "vitest";
-import { getNotificationLink } from "./notifications";
+import { describe, it, expect, vi } from "vitest";
+import { api } from "./client";
+import {
+  getNotificationLink,
+  getPreferences,
+  getUnreadCount,
+  listCommanderScopes,
+  listNotifications,
+  markAllRead,
+  updatePreferences,
+} from "./notifications";
+
+vi.mock("./client");
 
 describe("getNotificationLink", () => {
   it("routes swap_offer_incoming to the incoming tab", () => {
@@ -81,5 +92,42 @@ describe("getNotificationLink", () => {
   it("returns null for types with no known destination", () => {
     const link = getNotificationLink({ type: "exemption_revoked", reference_type: "soldier_exemption", reference_id: "r1" });
     expect(link).toBeNull();
+  });
+});
+
+describe("notification APIs", () => {
+  it("rejects a malformed unread count payload", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { count: "2" } });
+
+    await expect(getUnreadCount()).rejects.toThrow("Invalid unread notifications response");
+  });
+
+  it("rejects a malformed mark-all-read count payload", async () => {
+    vi.mocked(api.patch).mockResolvedValue({ data: { count: "2" } });
+
+    await expect(markAllRead()).rejects.toThrow("Invalid unread notifications response");
+  });
+
+  it("normalizes a malformed notifications items payload to an empty list", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { items: { detail: "unexpected response" }, total: 1 } });
+
+    await expect(listNotifications()).resolves.toEqual({ items: [], total: 1 });
+  });
+
+  it("normalizes a wholly malformed notifications page payload", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: "unexpected response" });
+
+    await expect(listNotifications()).resolves.toEqual({ items: [], total: 0 });
+  });
+
+  it.each([
+    ["getPreferences", () => getPreferences()],
+    ["updatePreferences", () => updatePreferences([])],
+    ["listCommanderScopes", () => listCommanderScopes()],
+  ])("returns an empty list when %s receives a non-array payload", async (_name, call) => {
+    vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
+    vi.mocked(api.put).mockResolvedValue({ data: { detail: "unexpected response" } });
+
+    await expect(call()).resolves.toEqual([]);
   });
 });

@@ -1,6 +1,13 @@
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
+import {
+  isRecord,
+  optionalArrayResponse,
+  requiredArrayResponse,
+  requiredObjectResponse,
+  requiredStringArrayField,
+} from "./responseGuards";
 
 export interface SoldierDTO {
   id: string;
@@ -67,7 +74,8 @@ export interface FieldUpdateDTO {
 }
 
 export async function listSoldiers(): Promise<SoldierDTO[]> {
-  return (await api.get<SoldierDTO[]>("/soldiers")).data;
+  const data = (await api.get<unknown>("/soldiers")).data;
+  return optionalArrayResponse<SoldierDTO>(data);
 }
 
 export async function onboardSoldier(input: {
@@ -121,7 +129,8 @@ export async function submitFieldUpdate(
 }
 
 export async function listFieldUpdates(soldierId: string): Promise<FieldUpdateDTO[]> {
-  return (await api.get<FieldUpdateDTO[]>(`/soldiers/${soldierId}/field-updates`)).data;
+  const data = (await api.get<unknown>(`/soldiers/${soldierId}/field-updates`)).data;
+  return optionalArrayResponse<FieldUpdateDTO>(data);
 }
 
 export async function getPendingFieldUpdateCount(): Promise<number> {
@@ -130,7 +139,8 @@ export async function getPendingFieldUpdateCount(): Promise<number> {
 }
 
 export async function listPendingFieldUpdates(): Promise<FieldUpdateDTO[]> {
-  return (await api.get<FieldUpdateDTO[]>(`/soldiers/field-updates/pending`)).data;
+  const data = (await api.get<unknown>(`/soldiers/field-updates/pending`)).data;
+  return requiredArrayResponse<FieldUpdateDTO>(data, "Invalid pending field updates response");
 }
 
 export async function approveFieldUpdate(
@@ -156,7 +166,13 @@ export async function rejectFieldUpdate(
 }
 
 export async function getRanks(): Promise<{ enlisted: string[]; officers: string[]; officer_academic: string[] }> {
-  return (await api.get<{ enlisted: string[]; officers: string[]; officer_academic: string[] }>("/soldiers/ranks")).data;
+  const data = requiredObjectResponse((await api.get<unknown>("/soldiers/ranks")).data, "Invalid soldier ranks response");
+  return {
+    ...data,
+    enlisted: requiredStringArrayField(data.enlisted, "Invalid soldier ranks response"),
+    officers: requiredStringArrayField(data.officers, "Invalid soldier ranks response"),
+    officer_academic: requiredStringArrayField(data.officer_academic, "Invalid soldier ranks response"),
+  } as { enlisted: string[]; officers: string[]; officer_academic: string[] };
 }
 
 export interface SoldierScoreDTO {
@@ -167,7 +183,16 @@ export interface SoldierScoreDTO {
 }
 
 export async function getSoldier(id: string): Promise<SoldierDTO> {
-  return (await api.get<SoldierDTO>(`/soldiers/${id}`)).data;
+  const data = (await api.get<unknown>(`/soldiers/${id}`)).data;
+  if (
+    !isRecord(data) ||
+    typeof data.id !== "string" ||
+    typeof data.personal_number !== "string" ||
+    typeof data.full_name !== "string"
+  ) {
+    throw new Error("Invalid soldier response");
+  }
+  return data as unknown as SoldierDTO;
 }
 
 export async function getSoldierScore(id: string): Promise<SoldierScoreDTO> {

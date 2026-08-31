@@ -1,5 +1,6 @@
 // frontend/src/api/dutyHistory.ts
 import { api } from "./client";
+import { requiredArrayResponse } from "./responseGuards";
 
 export interface TimelineEvent {
   id: string;
@@ -28,7 +29,6 @@ export async function getSoldierDutyHistory(
   includeDrafts?: boolean,
 ): Promise<TimelineEvent[]> {
   const params = includeDrafts ? "?include_drafts=true" : "";
-  return (
-    await api.get<TimelineEvent[]>(`/soldiers/${soldierId}/duty-history${params}`)
-  ).data;
+  const r = await api.get<unknown>(`/soldiers/${soldierId}/duty-history${params}`);
+  return requiredArrayResponse<TimelineEvent>(r.data, "Invalid duty history response");
 }

@@ -8,8 +8,11 @@ export interface InviteCodeDTO {
 }
 
 export async function listInviteCodes(): Promise<InviteCodeDTO[]> {
-  const r = await api.get<InviteCodeDTO[]>("/admin/invite-codes");
-  return r.data;
+  const r = await api.get<unknown>("/admin/invite-codes");
+  if (!Array.isArray(r.data)) {
+    throw new Error("Invalid invite-code list response");
+  }
+  return r.data as InviteCodeDTO[];
 }
 
 export async function createInviteCode(uses_left: number): Promise<InviteCodeDTO> {

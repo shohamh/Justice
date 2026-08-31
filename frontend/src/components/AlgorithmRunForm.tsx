@@ -52,6 +52,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [availabilityWarning, setAvailabilityWarning] = useState<AvailabilityResponse | null>(null);
+  const [defaultsError, setDefaultsError] = useState(false);
   const [search, setSearch] = useState("");
   const [filterDutyTypeId, setFilterDutyTypeId] = useState("");
 
@@ -74,7 +75,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
   useEffect(() => {
     void getAlgorithmDefaults()
       .then(d => setSettings(s => ({ ...s, T: d.T, Wt: d.Wt, R: d.R, Wr: d.Wr })))
-      .catch(() => { /* keep hardcoded defaults if unavailable */ });
+      .catch(() => setDefaultsError(true)); // keep the hardcoded DEFAULT_SETTINGS fallback
   }, []);
 
   useEffect(() => {
@@ -125,6 +126,11 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
 
   return (
     <div className="space-y-4 text-sm" dir="rtl">
+      {defaultsError && (
+        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+          {t("algorithm.defaults_load_error")}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <label className="block">
           {t("shifts.filter_from")}

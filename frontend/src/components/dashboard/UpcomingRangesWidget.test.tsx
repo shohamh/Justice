@@ -49,4 +49,14 @@ describe("UpcomingRangesWidget", () => {
     expect(screen.getByText("מטווח לייזר")).toBeInTheDocument();
     expect(screen.queryByText("laser")).not.toBeInTheDocument();
   });
+
+  it("renders the empty state instead of crashing when ranges is a malformed non-array", () => {
+    // getRanges (api/ranges.ts) is currently an unguarded pass-through — this
+    // defends the widget against a malformed API response reaching .filter().
+    const malformed = { detail: "unexpected response" } as unknown as RangeEvent[];
+
+    render(<UpcomingRangesWidget ranges={malformed} onOpenRange={() => {}} />);
+
+    expect(screen.getByText("אין מטווחים קרובים")).toBeInTheDocument();
+  });
 });

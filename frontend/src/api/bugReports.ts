@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { NavHistoryEntry } from "../hooks/useNavigationHistory";
+import { isRecord, optionalArrayResponse, requiredArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export type BugReportSeverity = "low" | "medium" | "high";
 export type BugReportStatus = "open" | "in_progress" | "resolved" | "wont_fix";
@@ -48,8 +49,32 @@ export interface BugReportFilters {
   limit?: number;
 }
 
+/**
+ * Normalizes one raw bug-report summary row: drops it if the row itself
+ * isn't an object, otherwise coerces the nested `nav_history` and
+ * `audit_snapshot` arrays so BugReportsContent's `(report.x ?? []).map`
+ * calls can't throw on a malformed (but truthy, non-array) value and take
+ * the whole reports table down.
+ */
+function sanitizeBugReportSummary(raw: unknown): BugReportSummary | null {
+  if (!isRecord(raw)) return null;
+  return {
+    ...(raw as unknown as BugReportSummary),
+    nav_history: raw.nav_history == null ? null : optionalArrayResponse<NavHistoryEntry>(raw.nav_history),
+    audit_snapshot:
+      raw.audit_snapshot == null ? null : optionalArrayResponse<Record<string, unknown>>(raw.audit_snapshot),
+  };
+}
+
 export async function listBugReports(filters: BugReportFilters): Promise<PaginatedBugReports> {
-  return (await api.get<PaginatedBugReports>("/admin/bug-reports", { params: filters })).data;
+  const r = await api.get<unknown>("/admin/bug-reports", { params: filters });
+  const data = requiredObjectResponse(r.data, "Invalid bug reports response");
+  return {
+    ...(data as unknown as PaginatedBugReports),
+    items: optionalArrayResponse<unknown>(data.items)
+      .map(sanitizeBugReportSummary)
+      .filter((item): item is BugReportSummary => item !== null),
+  };
 }
 
 export interface ErrorLogEntry {
@@ -75,7 +100,12 @@ export async function listAdminErrors(options: {
   from?: string;
   to?: string;
 } = {}): Promise<PaginatedErrorLogs> {
-  return (await api.get<PaginatedErrorLogs>("/admin/errors", { params: options })).data;
+  const r = await api.get<unknown>("/admin/errors", { params: options });
+  const data = requiredObjectResponse(r.data, "Invalid admin errors response");
+  return {
+    ...(data as unknown as PaginatedErrorLogs),
+    items: optionalArrayResponse<ErrorLogEntry>(data.items),
+  };
 }
 
 export async function getAdminErrorUnreadCount(): Promise<number> {
@@ -224,8 +254,24 @@ export interface BugReportComment {
   attachments: BugReportCommentAttachment[];
 }
 
+/**
+ * Normalizes one raw comment row: drops it if the row itself isn't an
+ * object, otherwise coerces the nested `attachments` array so
+ * BugReportCommentsPanel's `.map` over a comment's attachments can't throw
+ * and take the whole comment thread down.
+ */
+function sanitizeBugReportComment(raw: unknown): BugReportComment | null {
+  if (!isRecord(raw)) return null;
+  return {
+    ...(raw as unknown as BugReportComment),
+    attachments: optionalArrayResponse<BugReportCommentAttachment>(raw.attachments),
+  };
+}
+
 export async function listComments(reportId: string): Promise<BugReportComment[]> {
-  return (await api.get<BugReportComment[]>(`/bug-reports/${reportId}/comments`)).data;
+  const r = await api.get<unknown>(`/bug-reports/${reportId}/comments`);
+  const arr = requiredArrayResponse<unknown>(r.data, "Invalid bug report comments response");
+  return arr.map(sanitizeBugReportComment).filter((c): c is BugReportComment => c !== null);
 }
 
 export async function createComment(reportId: string, body: string): Promise<BugReportComment> {

@@ -187,7 +187,12 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
           </div>
         </div>
         <div className="overflow-y-auto flex-1 p-2 space-y-1">
-          {jobs.length === 0 && (
+          {jobsQuery.isError && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400 text-center mt-4">
+              {t("algorithm.jobs_load_error")}
+            </p>
+          )}
+          {jobs.length === 0 && !jobsQuery.isError && (
             <p className="text-sm text-gray-400 text-center mt-4">{t("algorithm.no_runs")}</p>
           )}
           {jobs.map(job => (
@@ -236,7 +241,13 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
           <p className="text-gray-400 text-sm text-center mt-16">{t("algorithm.select_run")}</p>
         )}
 
-        {selectedJobId && !selectedJob && (
+        {selectedJobId && selectedJobQuery.isError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400 text-center mt-16">
+            {t("algorithm.job_load_error")}
+          </p>
+        )}
+
+        {selectedJobId && !selectedJob && !selectedJobQuery.isError && (
           <p className="text-sm text-gray-500 animate-pulse">{t("app.loading")}</p>
         )}
 

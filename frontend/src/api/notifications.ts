@@ -1,4 +1,5 @@
 import { api as client } from "./client";
+import { isRecord, optionalArrayResponse, requiredObjectResponse, requiredNumberField } from "./responseGuards";
 
 export interface NotificationDTO {
   id: string;
@@ -139,7 +140,13 @@ export interface CommanderScope {
 }
 
 export function getUnreadCount(): Promise<UnreadCount> {
-  return client.get("/notifications/unread-count").then((r) => r.data);
+  return client.get<unknown>("/notifications/unread-count").then((r) => {
+    const data = requiredObjectResponse(r.data, "Invalid unread notifications response");
+    return {
+      ...data,
+      count: requiredNumberField(data.count, "Invalid unread notifications response"),
+    } as UnreadCount;
+  });
 }
 
 export function listNotifications(params?: {
@@ -148,7 +155,13 @@ export function listNotifications(params?: {
   offset?: number;
   limit?: number;
 }): Promise<PaginatedNotifications> {
-  return client.get("/notifications", { params }).then((r) => r.data);
+  return client.get<unknown>("/notifications", { params }).then((r) => {
+    const data = isRecord(r.data) ? r.data : {};
+    return {
+      items: optionalArrayResponse<NotificationDTO>(data.items),
+      total: typeof data.total === "number" ? data.total : 0,
+    };
+  });
 }
 
 export function markRead(id: string): Promise<NotificationDTO> {
@@ -156,7 +169,13 @@ export function markRead(id: string): Promise<NotificationDTO> {
 }
 
 export function markAllRead(): Promise<UnreadCount> {
-  return client.patch("/notifications/read-all").then((r) => r.data);
+  return client.patch<unknown>("/notifications/read-all").then((r) => {
+    const data = requiredObjectResponse(r.data, "Invalid unread notifications response");
+    return {
+      ...data,
+      count: requiredNumberField(data.count, "Invalid unread notifications response"),
+    } as UnreadCount;
+  });
 }
 
 export function deleteNotification(id: string): Promise<void> {
@@ -164,15 +183,21 @@ export function deleteNotification(id: string): Promise<void> {
 }
 
 export function getPreferences(): Promise<NotificationPref[]> {
-  return client.get("/notifications/preferences").then((r) => r.data);
+  return client
+    .get<unknown>("/notifications/preferences")
+    .then((r) => optionalArrayResponse<NotificationPref>(r.data));
 }
 
 export function updatePreferences(preferences: NotificationPref[]): Promise<NotificationPref[]> {
-  return client.put("/notifications/preferences", { preferences }).then((r) => r.data);
+  return client
+    .put<unknown>("/notifications/preferences", { preferences })
+    .then((r) => optionalArrayResponse<NotificationPref>(r.data));
 }
 
 export function listCommanderScopes(): Promise<CommanderScope[]> {
-  return client.get("/notifications/commander-scopes").then((r) => r.data);
+  return client
+    .get<unknown>("/notifications/commander-scopes")
+    .then((r) => optionalArrayResponse<CommanderScope>(r.data));
 }
 
 export function addCommanderScope(hierarchy_node_id: string, depth: number = -1): Promise<CommanderScope> {

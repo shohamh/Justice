@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { isRecord, optionalArrayResponse } from "./responseGuards";
 
 export interface DutyShift {
   id: string;
@@ -61,7 +62,8 @@ export async function listShifts(params?: {
   date_to?: string;
   duty_type_id?: string;
 }): Promise<DutyShift[]> {
-  return (await api.get<DutyShift[]>("/shifts", { params })).data;
+  const data = (await api.get<unknown>("/shifts", { params })).data;
+  return optionalArrayResponse<DutyShift>(data);
 }
 
 export async function createShift(input: CreateShiftInput): Promise<DutyShift> {
@@ -87,10 +89,10 @@ export async function getQuotaSplitPreview(
   parentNodeId: string,
   requiredCount: number
 ): Promise<QuotaSplitEntry[]> {
-  const r = await api.get<{ entries: QuotaSplitEntry[] }>("/shifts/quota-split-preview", {
+  const r = await api.get<unknown>("/shifts/quota-split-preview", {
     params: { parent_node_id: parentNodeId, required_count: requiredCount },
   });
-  return r.data.entries;
+  return optionalArrayResponse<QuotaSplitEntry>(isRecord(r.data) ? r.data.entries : undefined);
 }
 
 export interface TwoLevelSplitEntry {
@@ -102,8 +104,8 @@ export interface TwoLevelSplitEntry {
 }
 
 export async function getTwoLevelSplitPreview(shiftId: string): Promise<TwoLevelSplitEntry[]> {
-  const r = await api.get<{ entries: TwoLevelSplitEntry[] }>(`/shifts/${shiftId}/quota-split-preview-two-level`);
-  return r.data.entries;
+  const r = await api.get<unknown>(`/shifts/${shiftId}/quota-split-preview-two-level`);
+  return optionalArrayResponse<TwoLevelSplitEntry>(isRecord(r.data) ? r.data.entries : undefined);
 }
 
 export interface ResponsibilityAssignment {
@@ -113,11 +115,11 @@ export interface ResponsibilityAssignment {
 }
 
 export async function getAutoAssignResponsibilityPreview(shiftIds: string[]): Promise<ResponsibilityAssignment[]> {
-  const r = await api.post<{ assignments: ResponsibilityAssignment[] }>(
+  const r = await api.post<unknown>(
     "/shifts/auto-assign-responsibility/preview",
     { shift_ids: shiftIds }
   );
-  return r.data.assignments;
+  return optionalArrayResponse<ResponsibilityAssignment>(isRecord(r.data) ? r.data.assignments : undefined);
 }
 
 export async function assignBatch(

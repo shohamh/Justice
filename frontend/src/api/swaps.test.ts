@@ -1,5 +1,8 @@
-import { describe, expect, test } from "vitest";
-import { isSwapActionableForUser, SwapRequest } from "./swaps";
+import { describe, expect, test, vi } from "vitest";
+import { api } from "./client";
+import { isSwapActionableForUser, listPendingSwaps, SwapRequest } from "./swaps";
+
+vi.mock("./client");
 
 function makeSwap(overrides: Partial<SwapRequest> = {}): SwapRequest {
   return {
@@ -86,5 +89,57 @@ describe("isSwapActionableForUser", () => {
 
   test("counts every swap for an admin", () => {
     expect(isSwapActionableForUser(makeSwap(), "admin-1", true)).toBe(true);
+  });
+});
+
+describe("listPendingSwaps", () => {
+  test("rejects a malformed pending swaps payload", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { detail: "unexpected response" } });
+
+    await expect(listPendingSwaps()).rejects.toThrow("Invalid pending swaps response");
+  });
+
+  test("returns an equivalent pending swaps array when the payload is valid", async () => {
+    const payload = [makeSwap()];
+    vi.mocked(api.get).mockResolvedValue({ data: payload });
+
+    await expect(listPendingSwaps()).resolves.toEqual(payload);
+  });
+
+  test("drops a row with no id, normalizes a row's malformed candidates/approvals to [], and drops an unidentifiable candidate within an otherwise-valid row", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [
+        { duty_assignment_id: "no-id-row" },
+        {
+          ...makeSwap({ id: "swap-1" }),
+          requester_manager_approvals: "not-an-array",
+          candidates: [
+            "not-a-candidate-object",
+            {
+              id: "candidate-1",
+              soldier_id: "soldier-2",
+              soldier_name: null,
+              source: "invited",
+              status: "pending",
+              soldier_side_approved: null,
+              offered_assignment_ids: "not-an-array",
+              manager_approvals: { detail: "unexpected" },
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await listPendingSwaps();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("swap-1");
+    expect(result[0].requester_manager_approvals).toEqual([]);
+    expect(result[0].candidates).toHaveLength(1);
+    expect(result[0].candidates[0]).toMatchObject({
+      id: "candidate-1",
+      offered_assignment_ids: [],
+      manager_approvals: [],
+    });
   });
 });

@@ -320,6 +320,14 @@ export default function ApprovalsPage() {
   const transfersQuery = useQuery({ queryKey: queryKeys.pendingHierarchyTransfers(), queryFn: listPendingTransferRequests });
   const transferItems = transfersQuery.data ?? [];
 
+  const hasRequiredQueueLoadError =
+    constraintsQuery.isError ||
+    erQuery.isError ||
+    fuQuery.isError ||
+    swapsQuery.isError ||
+    enrollQuery.isError ||
+    transfersQuery.isError;
+
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const nodes = useMemo(() => {
     const flatNodes: { id: string; name: string }[] = [];
@@ -520,6 +528,11 @@ export default function ApprovalsPage() {
             <button className="text-red-500 hover:text-red-700" onClick={() => setActionError(null)}>✕</button>
           </div>
         )}
+        {hasRequiredQueueLoadError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400" dir="rtl">
+            {t("approvals.load_error", "שגיאה בטעינת בקשות האישור")}
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-x-4 border-b dark:border-gray-600">
           <button
@@ -575,7 +588,7 @@ export default function ApprovalsPage() {
 
         {tab === "constraints" && (
           <>
-            {items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
+            {!constraintsQuery.isError && items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
               {itemsPageItems.map((c) => {
                 const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status, c.commander_approved_by, c.commander_approved_at, c.commander_approval_note, c.decided_by, c.decided_at, c.decision_note) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
@@ -635,7 +648,7 @@ export default function ApprovalsPage() {
 
         {tab === "exemptions" && (
           <>
-            {erActionable.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
+            {!erQuery.isError && erActionable.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
             <ul className="space-y-3" data-testid="er-approvals-list">
               {erActionablePageItems.map((er) => {
                 const erGrouped = groupByKind(nearestApproversToRows(
@@ -728,7 +741,7 @@ export default function ApprovalsPage() {
 
         {tab === "field_updates" && (
           <div className="space-y-3" dir="rtl">
-            {fuActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
+            {!fuQuery.isError && fuActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {fuActionable.map(item => {
               const fuGrouped = groupByKind(nearestApproversToRows(item.nearest_commander, item.nearest_duty_manager, item.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
               // A commander can never decide most field updates (see
@@ -780,7 +793,7 @@ export default function ApprovalsPage() {
 
         {tab === "swaps" && (
           <div className="space-y-3" dir="rtl">
-            {swapsActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
+            {!swapsQuery.isError && swapsActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {swapsActionablePageItems.map(swap => {
               const reqGroups = groupByKind(swap.requester_manager_approvals);
               const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
@@ -908,7 +921,7 @@ export default function ApprovalsPage() {
         )}
         {tab === "enrollment" && (
           <div className="space-y-3" dir="rtl">
-            {enrollItems.length === 0 && <p className="text-gray-500 text-sm">{t("enrollment.none")}</p>}
+            {!enrollQuery.isError && enrollItems.length === 0 && <p className="text-gray-500 text-sm">{t("enrollment.none")}</p>}
             {enrollItems.map(req => {
               const nodeName = req.requested_node_name ?? req.requested_node_id.slice(0, 8);
               const enrollGrouped = groupByKind(nearestApproversToRows(
@@ -952,7 +965,7 @@ export default function ApprovalsPage() {
         )}
         {tab === "transfers" && (
           <div className="space-y-3" dir="rtl">
-            {transferItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.transfers_none")}</p>}
+            {!transfersQuery.isError && transferItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.transfers_none")}</p>}
             {transferItems.map((req: TransferRequest) => {
               const fromNodeName = req.from_node_id ? nodes.find(n => n.id === req.from_node_id)?.name ?? req.from_node_id.slice(0, 8) : "—";
               const toNodeName = nodes.find(n => n.id === req.to_node_id)?.name ?? req.to_node_id.slice(0, 8);
@@ -995,7 +1008,7 @@ export default function ApprovalsPage() {
         )}
         {tab === "waiting" && (
           <div className="space-y-3" dir="rtl">
-            {waitingCount === 0 && <p className="text-gray-500 text-sm">{t("approvals.waiting_none")}</p>}
+            {!constraintsQuery.isError && !erQuery.isError && !fuQuery.isError && !swapsQuery.isError && waitingCount === 0 && <p className="text-gray-500 text-sm">{t("approvals.waiting_none")}</p>}
             {waitingConstraints.map(c => (
               <div key={c.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
                 <div className="flex items-center gap-2">

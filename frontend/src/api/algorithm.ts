@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { isRecord, optionalArrayResponse, requiredNumberField, requiredObjectResponse } from "./responseGuards";
 
 export interface SolverSettings {
   K: number;
@@ -224,11 +225,25 @@ export async function checkAvailability(req: CreateJobRequest): Promise<Availabi
 }
 
 export async function pollJob(jobId: string): Promise<AlgorithmJob> {
-  return (await api.get<AlgorithmJob>(`/algorithm/jobs/${jobId}`)).data;
+  const r = await api.get<unknown>(`/algorithm/jobs/${jobId}`);
+  const data = r.data;
+  if (!isRecord(data) || typeof data.id !== "string" || typeof data.status !== "string") {
+    throw new Error("Invalid algorithm job response");
+  }
+  return {
+    ...(data as unknown as AlgorithmJob),
+    proposals: optionalArrayResponse<ProposalRow>(data.proposals),
+    batch_results: optionalArrayResponse<BatchResult>(data.batch_results),
+  };
 }
 
 export async function listJobs(limit = 20, offset = 0): Promise<JobListOut> {
-  return (await api.get<JobListOut>("/algorithm/jobs", { params: { limit, offset } })).data;
+  const r = await api.get<unknown>("/algorithm/jobs", { params: { limit, offset } });
+  const data = isRecord(r.data) ? r.data : {};
+  return {
+    items: optionalArrayResponse<JobSummaryOut>(data.items),
+    total: typeof data.total === "number" ? data.total : 0,
+  };
 }
 
 export async function markJobSeen(jobId: string): Promise<void> {
@@ -314,7 +329,14 @@ export async function getDraftsPreview(): Promise<DraftsPreviewOut> {
 }
 
 export async function getAlgorithmDefaults(): Promise<AlgorithmDefaults> {
-  return (await api.get<AlgorithmDefaults>("/algorithm/defaults")).data;
+  const r = await api.get<unknown>("/algorithm/defaults");
+  const data = requiredObjectResponse(r.data, "Invalid algorithm defaults response");
+  return {
+    T: requiredNumberField(data.T, "Invalid algorithm defaults response"),
+    Wt: requiredNumberField(data.Wt, "Invalid algorithm defaults response"),
+    R: requiredNumberField(data.R, "Invalid algorithm defaults response"),
+    Wr: requiredNumberField(data.Wr, "Invalid algorithm defaults response"),
+  };
 }
 
 export async function acceptProposalDirect(assignmentId: string): Promise<void> {

@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
+import { isRecord, optionalArrayResponse, requiredArrayResponse } from "./responseGuards";
 
 export interface Exemption {
   id: string;
@@ -37,7 +38,8 @@ export async function getExemptionDetail(soldierId: string, exemptionId: string)
 }
 
 export async function listExemptions(soldierId: string): Promise<Exemption[]> {
-  return (await api.get<Exemption[]>(`/soldiers/${soldierId}/exemptions`)).data;
+  const data = (await api.get<unknown>(`/soldiers/${soldierId}/exemptions`)).data;
+  return optionalArrayResponse<Exemption>(data);
 }
 export async function grantExemption(
   soldierId: string,
@@ -82,6 +84,27 @@ export interface ExemptionRequest {
   can_approve_duty_manager_step: boolean;
 }
 
+/**
+ * Normalizes one raw exemption-request row: drops it if the row itself
+ * isn't an object (can't identify it), otherwise keeps every field as-is
+ * except the nested `files` array, which is coerced to `[]` when malformed
+ * so ApprovalsPage's `.length`/`.map` over a row's attachments can't throw
+ * and take the whole approvals list down with it.
+ */
+function sanitizeExemptionRequest(raw: unknown): ExemptionRequest | null {
+  if (!isRecord(raw)) return null;
+  return {
+    ...(raw as unknown as ExemptionRequest),
+    files: optionalArrayResponse<ExemptionFile>(raw.files),
+  };
+}
+
+function sanitizeExemptionRequests(value: unknown): ExemptionRequest[] {
+  return optionalArrayResponse<unknown>(value)
+    .map(sanitizeExemptionRequest)
+    .filter((r): r is ExemptionRequest => r !== null);
+}
+
 export async function patchExemptionRequest(
   id: string,
   data: {
@@ -96,7 +119,8 @@ export async function patchExemptionRequest(
 }
 
 export async function listMyExemptionRequests(): Promise<ExemptionRequest[]> {
-  return (await api.get<ExemptionRequest[]>("/me/exemption-requests")).data;
+  const data = (await api.get<unknown>("/me/exemption-requests")).data;
+  return sanitizeExemptionRequests(data);
 }
 
 export async function submitExemptionRequest(
@@ -118,7 +142,11 @@ export async function submitExemptionRequest(
 }
 
 export async function listPendingExemptionRequests(): Promise<ExemptionRequest[]> {
-  return (await api.get<ExemptionRequest[]>("/exemption-requests/pending")).data;
+  const arr = requiredArrayResponse<unknown>(
+    (await api.get<unknown>("/exemption-requests/pending")).data,
+    "Invalid pending exemption requests response",
+  );
+  return arr.map(sanitizeExemptionRequest).filter((r): r is ExemptionRequest => r !== null);
 }
 
 export async function getPendingExemptionCount(): Promise<number> {
@@ -219,5 +247,6 @@ export async function escalateCommanderExemption(soldierId: string, input: {
 }
 
 export async function listExemptionRequestsForSoldier(soldierId: string): Promise<ExemptionRequest[]> {
-  return (await api.get<ExemptionRequest[]>(`/soldiers/${soldierId}/exemption-requests`)).data;
+  const data = (await api.get<unknown>(`/soldiers/${soldierId}/exemption-requests`)).data;
+  return sanitizeExemptionRequests(data);
 }

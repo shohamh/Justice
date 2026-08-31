@@ -9,7 +9,11 @@ interface Props {
 
 export default function UpcomingRangesWidget({ ranges, onOpenRange }: Props) {
   const today = new Date().toISOString().slice(0, 10);
-  const upcoming = ranges
+  // Defensive guard: getRanges (api/ranges.ts) is currently an unguarded
+  // pass-through, so a malformed non-array response would otherwise crash
+  // .filter() here. Normalize to [] rather than throwing — this widget is
+  // decorative, not a required-data screen.
+  const upcoming = (Array.isArray(ranges) ? ranges : [])
     .filter((r) => r.assigned_to_me === true && r.date >= today && r.status === "planned")
     .sort((a, b) => a.date.localeCompare(b.date));
 

@@ -68,6 +68,46 @@ describe("ineligible soldiers api", () => {
     expect(queryKeys.ineligibleSoldierCount()).toEqual(["ranges", "ineligibleSoldiers", "count"]);
   });
 
+  it("rejects a malformed ineligible soldiers response", async () => {
+    mockGet.mockResolvedValueOnce({ data: "not-an-object" });
+    const { getIneligibleSoldiers } = await import("./ineligibleSoldiers");
+
+    await expect(getIneligibleSoldiers("commander")).rejects.toThrow(
+      "Invalid ineligible soldiers response",
+    );
+  });
+
+  it("drops a non-object node/soldier row and normalizes malformed nested arrays to []", async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        count: 1,
+        nodes: [42, { id: "node-1", name: "Alpha", level: "company", parent_id: null, path_ids: "not-an-array" }],
+        soldiers: [
+          "not-an-object",
+          {
+            ...response.soldiers[0],
+            hierarchy_path_ids: null,
+            valid_qualifications: "not-an-array",
+            upcoming_weapon_duties: undefined,
+            upcoming_matching_ranges: 42,
+          },
+        ],
+      },
+    });
+    const { getIneligibleSoldiers } = await import("./ineligibleSoldiers");
+
+    const result = await getIneligibleSoldiers("commander");
+
+    expect(result.nodes).toEqual([
+      { id: "node-1", name: "Alpha", level: "company", parent_id: null, path_ids: [] },
+    ]);
+    expect(result.soldiers).toHaveLength(1);
+    expect(result.soldiers[0].hierarchy_path_ids).toEqual([]);
+    expect(result.soldiers[0].valid_qualifications).toEqual([]);
+    expect(result.soldiers[0].upcoming_weapon_duties).toEqual([]);
+    expect(result.soldiers[0].upcoming_matching_ranges).toEqual([]);
+  });
+
   it("provides the ranges qualification view Hebrew copy", () => {
     const keys = [
       "title", "tabs.schedule", "tabs.qualification", "columns.soldier", "columns.hierarchy",

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExcludedRangeCandidate, RangeAssignment, RangeCandidate, RangeEvent, batchAssignRange, getRangeCandidates, removeRangeAssignment, updateRangeAssignmentReason } from "../../api/ranges";
 import { SoldierDTO } from "../../api/soldiers";
@@ -51,6 +51,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const [rangeCandidates, setRangeCandidates] = useState<RangeCandidate[]>([]);
   const [excludedCandidates, setExcludedCandidates] = useState<ExcludedRangeCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidatesError, setCandidatesError] = useState(false);
   const [primarySelected, setPrimarySelected] = useState<Set<string>>(new Set());
   const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -74,14 +75,24 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const editable = open && canManage && event.status === "planned";
   const actionClass = "rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50";
 
+  const refreshCandidates = useCallback(async () => {
+    try {
+      const { candidates, excluded } = await getRangeCandidates(event.id);
+      setRangeCandidates(candidates);
+      setExcludedCandidates(excluded);
+      setCandidatesError(false);
+    } catch {
+      setRangeCandidates([]);
+      setExcludedCandidates([]);
+      setCandidatesError(true);
+    }
+  }, [event.id]);
+
   useEffect(() => {
     if (!editable) return;
     setCandidatesLoading(true);
-    getRangeCandidates(event.id)
-      .then(({ candidates, excluded }) => { setRangeCandidates(candidates); setExcludedCandidates(excluded); })
-      .catch(() => { setRangeCandidates([]); setExcludedCandidates([]); })
-      .finally(() => setCandidatesLoading(false));
-  }, [event.id, editable]);
+    void refreshCandidates().finally(() => setCandidatesLoading(false));
+  }, [editable, refreshCandidates]);
 
   const pendingPrimaries = useMemo(() => rangeCandidates.filter(c => primarySelected.has(c.soldier_id)), [rangeCandidates, primarySelected]);
   const pendingReserves = useMemo(() => rangeCandidates.filter(c => reserveSelected.has(c.soldier_id)), [rangeCandidates, reserveSelected]);
@@ -154,12 +165,10 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
         reserves: [...reserveSelected],
         ...(overrideReason ? { override_reason: overrideReason } : {}),
       });
-      setAssignments(current => [...current, ...created]);
+      setAssignments(current => [...current, ...(Array.isArray(created) ? created : [])]);
       setPrimarySelected(new Set());
       setReserveSelected(new Set());
-      await getRangeCandidates(event.id)
-        .then(({ candidates, excluded }) => { setRangeCandidates(candidates); setExcludedCandidates(excluded); })
-        .catch(() => { setRangeCandidates([]); setExcludedCandidates([]); });
+      await refreshCandidates();
       await onChanged();
     } catch (err) {
       setError(translateApiError(err, t, text("ranges.errors.save_assignments", "שמירת השיבוצים נכשלה")));
@@ -186,9 +195,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     try {
       await removeRangeAssignment(event.id, assignmentId, reason);
       setAssignments(current => current.filter(a => a.id !== assignmentId));
-      await getRangeCandidates(event.id)
-        .then(({ candidates, excluded }) => { setRangeCandidates(candidates); setExcludedCandidates(excluded); })
-        .catch(() => { setRangeCandidates([]); setExcludedCandidates([]); });
+      await refreshCandidates();
       await onChanged();
     } catch {
       setError(text("ranges.errors.remove_assignment", "הסרת השיבוץ נכשלה"));
@@ -363,6 +370,11 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
       </div>
 
       {editable && <>
+        {candidatesError && (
+          <p role="alert" data-testid="range-candidates-error" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
+            {text("ranges.errors.candidates_load", "טעינת רשימת המועמדים נכשלה")}
+          </p>
+        )}
         {/* Add primaries */}
         <div className="border dark:border-gray-600 rounded">
           <button type="button" onClick={() => setPrimaryPanelOpen(v => !v)} className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t">
@@ -392,6 +404,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                 testIdPrefix="candidate-checkbox"
                 full={primarySlotsLeft === 0}
                 loading={candidatesLoading}
+                error={candidatesError}
                 excluded={excludedCandidates}
               />
             </div>
@@ -427,6 +440,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                 testIdPrefix="reserve-candidate-checkbox"
                 full={reserveSlotsLeft === 0}
                 loading={candidatesLoading}
+                error={candidatesError}
                 excluded={excludedCandidates}
               />
             </div>
@@ -476,10 +490,11 @@ interface CandidateTableProps {
   testIdPrefix: string;
   full: boolean;
   loading: boolean;
+  error: boolean;
   excluded: ExcludedRangeCandidate[];
 }
 
-function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, loading, excluded }: CandidateTableProps) {
+function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, loading, error, excluded }: CandidateTableProps) {
   const { t } = useTranslation();
   return (
     <>
@@ -495,7 +510,7 @@ function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, lo
         </thead>
         <tbody>
           {candidates.length === 0 && (
-            <tr><td colSpan={4} className="p-2 text-center text-gray-400 italic">{loading ? "טוען רשימת מועמדים..." : "אין מועמדים זמינים"}</td></tr>
+            <tr><td colSpan={4} className="p-2 text-center text-gray-400 italic">{loading ? "טוען רשימת מועמדים..." : error ? "שגיאה בטעינת רשימת המועמדים" : "אין מועמדים זמינים"}</td></tr>
           )}
           {candidates.map(c => {
             const isSelected = selected.has(c.soldier_id);

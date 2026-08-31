@@ -233,6 +233,15 @@ describe("SystemSettingsContent export/import", () => {
     expect(rabatRow?.querySelector("input")?.value).toBe("");
   });
 
+  it("shows an alert and no crash when the rank ladder response is malformed", async () => {
+    vi.mocked(rankAdvancementApi.getRankLadder).mockRejectedValue(new Error("Invalid rank ladder response"));
+    renderWithProviders(<SystemSettingsContent />);
+    await waitFor(() => expect(rankAdvancementApi.getRankLadder).toHaveBeenCalled());
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("שגיאה בטעינת סולם הדרגות");
+  });
+
   it("places the rank interval table directly after the rank advancement settings group", async () => {
     renderWithProviders(<SystemSettingsContent />);
     await waitFor(() => expect(rankAdvancementApi.getRankLadder).toHaveBeenCalled());

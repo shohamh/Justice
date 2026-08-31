@@ -133,6 +133,11 @@ export default function AskSwapModal({
             בקשת הקליטה שלך למסגרת עדיין ממתינה לאישור — לא ניתן להגיש בקשות חדשות עד לאישור.
           </div>
         )}
+        {eligibleQuery.isError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400 mb-2">
+            {t("swaps.eligible_targets_load_error")}
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="flex items-center gap-2 text-sm cursor-pointer dark:text-gray-300">
             <input
@@ -162,7 +167,7 @@ export default function AskSwapModal({
             <div className="max-h-48 overflow-y-auto border rounded dark:border-gray-600">
               {eligibleQuery.isLoading ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.loading_eligible_targets")}</p>
-              ) : eligibleTargets.length === 0 ? (
+              ) : eligibleQuery.isError ? null : eligibleTargets.length === 0 ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.no_eligible_targets")}</p>
               ) : filteredTargets.length === 0 ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.no_search_results")}</p>

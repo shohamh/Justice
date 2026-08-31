@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/AuthContext";
 import { canPlan } from "../../auth/permissions";
 import { queryKeys } from "../../queryKeys";
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function RangeDetailModal({ rangeId, onClose }: Props) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const manage = canPlan(user);
@@ -33,6 +35,16 @@ export default function RangeDetailModal({ rangeId, onClose }: Props) {
     await queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(rangeId) });
     await queryClient.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(rangeId) });
   };
+
+  if (rangeEventQuery.isError) {
+    return (
+      <EventDetailModal open title={t("ranges.detail_title", "פרטי מטווח")} onClose={onClose}>
+        <p role="alert" data-testid="range-detail-error" className="text-sm text-red-600 dark:text-red-400">
+          {t("ranges.detail_load_error", "טעינת פרטי המטווח נכשלה")}
+        </p>
+      </EventDetailModal>
+    );
+  }
 
   if (!rangeEventQuery.data) return null;
 

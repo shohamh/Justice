@@ -35,15 +35,17 @@ describe("AdminInviteCodesContent", () => {
     ]);
   });
 
-  it("copies the exact active invite code and shows a Hebrew success state", async () => {
+  it("copies the exact active invite code and transitions to a checkmark", async () => {
     vi.mocked(navigator.clipboard.writeText).mockResolvedValue(undefined);
     renderPage();
 
-    const copyButton = await screen.findByRole("button", { name: "העתקת קוד ACTIVE-123" });
+    const copyButton = await screen.findByTestId("invite-code-copy-active-id");
+    expect(copyButton).toHaveAttribute("aria-label", "העתק");
     fireEvent.click(copyButton);
 
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("ACTIVE-123"));
-    expect(await screen.findByText("הועתק")).toBeInTheDocument();
+    expect(await screen.findByTestId("invite-code-copy-success-active-id")).toBeInTheDocument();
+    expect(copyButton).toHaveAttribute("aria-label", "הועתק");
     expect(screen.getByText("ACTIVE-123")).toBeInTheDocument();
   });
 
@@ -51,11 +53,20 @@ describe("AdminInviteCodesContent", () => {
     vi.mocked(navigator.clipboard.writeText).mockRejectedValue(new Error("clipboard blocked"));
     renderPage();
 
-    const copyButton = await screen.findByRole("button", { name: "העתקת קוד REVOKED-456" });
+    const copyButton = await screen.findByTestId("invite-code-copy-revoked-id");
     fireEvent.click(copyButton);
 
-    expect(await screen.findByText("לא ניתן להעתיק — נסה שוב")).toBeInTheDocument();
+    expect(await screen.findByText(/לא ניתן להעתיק/)).toBeInTheDocument();
     expect(screen.getByText("REVOKED-456")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "בטל" })).toHaveLength(2);
+  });
+
+  it("does not crash when the invite-code endpoint returns a non-array payload", async () => {
+    vi.mocked(inviteCodesApi.listInviteCodes).mockResolvedValue({ unexpected: true } as never);
+
+    renderPage();
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("ACTIVE-123")).not.toBeInTheDocument();
   });
 });

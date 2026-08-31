@@ -128,6 +128,18 @@ describe("NotificationBell icon differentiation", () => {
   });
 });
 
+describe("NotificationBell unread count error", () => {
+  it("shows an error indicator instead of a stale badge count when getUnreadCount fails", async () => {
+    vi.mocked(notificationsApi.getUnreadCount).mockReset().mockRejectedValue(new Error("Invalid unread notifications response"));
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({ items: [], total: 0 });
+
+    renderBell();
+
+    const errorBadge = await screen.findByTestId("notification-count-error");
+    expect(errorBadge).toHaveAttribute("aria-label", "notifications.count_error");
+  });
+});
+
 describe("NotificationBell quick decisions", () => {
   it("always shows mark-read and dismiss buttons regardless of type", async () => {
     vi.mocked(notificationsApi.listNotifications).mockResolvedValue({

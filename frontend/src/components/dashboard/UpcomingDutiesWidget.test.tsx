@@ -78,4 +78,17 @@ describe("UpcomingDutiesWidget", () => {
     );
     expect(screen.queryByTestId(/draft-badge-/)).not.toBeInTheDocument();
   });
+
+  it("renders the empty state instead of crashing when duties is a malformed non-array", () => {
+    // listEffectiveDuties (api/assignments.ts) is currently an unguarded
+    // pass-through — this defends the widget against a malformed API
+    // response reaching .filter().
+    const malformed = { detail: "unexpected response" } as unknown as EffectiveDuty[];
+
+    render(
+      <UpcomingDutiesWidget duties={malformed} typeNames={{ dt1: "שמירה" }} locationNames={{ loc1: "שער" }} onOpenDuty={vi.fn()} />,
+    );
+
+    expect(screen.getByText("אין תורנויות קרובות")).toBeInTheDocument();
+  });
 });

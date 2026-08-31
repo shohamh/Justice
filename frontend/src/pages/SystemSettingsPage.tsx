@@ -767,7 +767,7 @@ function RankAdvancementIntervalsSection() {
         מספר החודשים הנדרש בכל דרגה לפני קידום אוטומטי לדרגה הבאה. השאירו ריק כדי שדרגה לא תקודם אוטומטית.
       </p>
 
-      {error && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{error}</div>}
+      {error && <div role="alert" className="text-red-600 text-sm bg-red-50 rounded p-3">{error}</div>}
 
       {TRACKS.map(track => (
         <div key={track}>

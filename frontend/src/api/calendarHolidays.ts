@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface Holiday {
   date: string;
@@ -6,5 +7,6 @@ export interface Holiday {
 }
 
 export async function listHolidays(year: number): Promise<Holiday[]> {
-  return (await api.get<Holiday[]>("/calendar/holidays", { params: { year } })).data;
+  const r = await api.get<unknown>("/calendar/holidays", { params: { year } });
+  return optionalArrayResponse<Holiday>(r.data);
 }

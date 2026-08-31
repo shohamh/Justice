@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 // Wrappers for the soldier-facing "all my requests" endpoints that back
 // MyRequestsPage's existing-requests tab and its unseen-decision badge.
 /** { soldier_id, name } reference to a soldier, resolved server-side. */
@@ -29,7 +30,8 @@ export interface MyHierarchyTransfer {
 }
 
 export async function listMyHierarchyTransfers(): Promise<MyHierarchyTransfer[]> {
-  return (await api.get<MyHierarchyTransfer[]>("/me/hierarchy-transfers")).data;
+  const r = await api.get<unknown>("/me/hierarchy-transfers");
+  return optionalArrayResponse<MyHierarchyTransfer>(r.data);
 }
 
 export interface MyEnrollmentRequest {
@@ -69,7 +71,8 @@ export interface MyRangeExcusalRequest {
 }
 
 export async function listMyRangeExcusalRequests(): Promise<MyRangeExcusalRequest[]> {
-  return (await api.get<MyRangeExcusalRequest[]>("/me/range-excusal-requests")).data;
+  const r = await api.get<unknown>("/me/range-excusal-requests");
+  return optionalArrayResponse<MyRangeExcusalRequest>(r.data);
 }
 
 /** Number of the soldier's requests whose status changed to a DECISION since

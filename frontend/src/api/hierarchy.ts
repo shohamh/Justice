@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { optionalArrayResponse } from "./responseGuards";
 
 export interface DutyManagerEntry {
   scope_id: string;
@@ -21,11 +22,13 @@ export interface NodeDTO {
 }
 
 export async function fetchTree(): Promise<NodeDTO[]> {
-  return (await api.get<NodeDTO[]>("/hierarchy/tree")).data;
+  const data = (await api.get<unknown>("/hierarchy/tree")).data;
+  return optionalArrayResponse<NodeDTO>(data);
 }
 
 export async function fetchFullTree(): Promise<NodeDTO[]> {
-  return (await api.get<NodeDTO[]>("/hierarchy/tree", { params: { all: true } })).data;
+  const data = (await api.get<unknown>("/hierarchy/tree", { params: { all: true } })).data;
+  return optionalArrayResponse<NodeDTO>(data);
 }
 
 export async function createNode(input: {

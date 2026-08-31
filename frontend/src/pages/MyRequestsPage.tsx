@@ -278,6 +278,19 @@ export default function MyRequestsPage() {
   const rangeExcusalsQuery = useQuery({ queryKey: queryKeys.myRangeExcusalRequests(), queryFn: listMyRangeExcusalRequests });
   const rangeExcusals = rangeExcusalsQuery.data ?? [];
 
+  // A required-list query failing must never look like "no requests" — the
+  // "existing" tab's per-group empty states are suppressed below while this
+  // is true, and a role="alert" banner takes their place. Mirrors
+  // ApprovalsPage's hasRequiredQueueLoadError (slice 3a).
+  const hasRequiredDataLoadError =
+    constraintsQuery.isError ||
+    exemptionRequestsQuery.isError ||
+    fieldUpdatesQuery.isError ||
+    mySwapsQuery.isError ||
+    transfersQuery.isError ||
+    enrollmentQuery.isError ||
+    rangeExcusalsQuery.isError;
+
   // Existing-tab rows after the type/status filters. Swaps never carry an
   // approved bucket — open/applied both count as ממתין.
   const matchesStatus = (status: string) =>
@@ -403,6 +416,12 @@ export default function MyRequestsPage() {
           onChange={(i) => setTab(VALID_TABS[i] ?? "new")}
           badges={[null, unseenCount > 0 ? unseenCount : null]}
         />
+
+        {hasRequiredDataLoadError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400" dir="rtl">
+            {t("my_requests.load_error", "שגיאה בטעינת הבקשות")}
+          </p>
+        )}
 
         {tab === "new" && (
           <div className="space-y-4" data-testid="new-requests-tab">
@@ -693,7 +712,7 @@ export default function MyRequestsPage() {
             {showGroup("constraints") && (
             <section className="space-y-3" data-testid="group-constraints">
               <h3 className="font-medium">{t("my_requests.section_constraints")}</h3>
-              {visibleConstraints.length === 0 && <p className="text-sm text-gray-500" data-testid="no-constraints">{t("my_requests.none")}</p>}
+              {!constraintsQuery.isError && visibleConstraints.length === 0 && <p className="text-sm text-gray-500" data-testid="no-constraints">{t("my_requests.none")}</p>}
 
               {visibleConstraints.filter((c) => statusBucket(c.status) === "pending").length > 0 && (
                 <div>
@@ -848,7 +867,7 @@ export default function MyRequestsPage() {
             {showGroup("exemption_requests") && (
             <section className="space-y-2" data-testid="group-exemption-requests">
               <h3 className="font-medium">{t("exemption_requests.title")}</h3>
-              {visibleExemptionRequests.length === 0 && <p className="text-sm text-gray-500">{t("exemption_requests.none")}</p>}
+              {!exemptionRequestsQuery.isError && visibleExemptionRequests.length === 0 && <p className="text-sm text-gray-500">{t("exemption_requests.none")}</p>}
               <ul className="text-sm space-y-1" data-testid="er-list">
                 {visibleExemptionRequests.map((er) => (
                   <li key={er.id} className="flex flex-col gap-0.5">
@@ -890,7 +909,7 @@ export default function MyRequestsPage() {
             {showGroup("field_updates") && (
             <section className="space-y-2" data-testid="group-field-updates">
               <h3 className="font-medium">{t("my_requests.group_field_updates")}</h3>
-              {visibleFieldUpdates.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_field_updates")}</p>}
+              {!fieldUpdatesQuery.isError && visibleFieldUpdates.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_field_updates")}</p>}
               <div className="space-y-2 text-sm">
                 {visibleFieldUpdates.map((u) => (
                   <div key={u.id} data-testid={`field-update-row-${u.id}`} className="border dark:border-gray-600 rounded p-3 space-y-1">
@@ -929,7 +948,7 @@ export default function MyRequestsPage() {
             {showGroup("swaps") && (
             <section className="space-y-2" data-testid="group-swaps">
               <h3 className="font-medium">{t("my_requests.group_swaps")}</h3>
-              {visibleSwaps.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_swaps")}</p>}
+              {!mySwapsQuery.isError && visibleSwaps.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_swaps")}</p>}
               <ul className="space-y-2">
                 {visibleSwaps.map((s) => <MySwapCard key={s.id} swap={s} />)}
               </ul>
@@ -941,7 +960,7 @@ export default function MyRequestsPage() {
             {showGroup("transfers") && (
             <section className="space-y-2" data-testid="group-transfers">
               <h3 className="font-medium">{t("my_requests.group_transfers")}</h3>
-              {visibleTransfers.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_transfers")}</p>}
+              {!transfersQuery.isError && visibleTransfers.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_transfers")}</p>}
               <ul className="space-y-2 text-sm">
                 {visibleTransfers.map((tr) => (
                   <li key={tr.id} data-testid={`transfer-row-${tr.id}`} className="border dark:border-gray-600 rounded-lg p-3 space-y-1">
@@ -997,7 +1016,7 @@ export default function MyRequestsPage() {
                     <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {enrollmentRequest.decision_note}</p>
                   )}
                 </div>
-              ) : !enrollmentRequest ? (
+              ) : !enrollmentQuery.isError && !enrollmentRequest ? (
                 <p className="text-sm text-gray-500">{t("my_requests.empty_enrollment")}</p>
               ) : null}
             </section>
@@ -1008,7 +1027,7 @@ export default function MyRequestsPage() {
             {showGroup("range_excusals") && (
             <section className="space-y-2" data-testid="group-range-excusals">
               <h3 className="font-medium">{t("my_requests.group_range_excusals")}</h3>
-              {visibleRangeExcusals.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_range_excusals")}</p>}
+              {!rangeExcusalsQuery.isError && visibleRangeExcusals.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.empty_range_excusals")}</p>}
               <ul className="space-y-2 text-sm">
                 {visibleRangeExcusals.map((r) => (
                   <li key={r.id} data-testid={`range-excusal-row-${r.id}`} className="border dark:border-gray-600 rounded-lg p-3 space-y-1">
