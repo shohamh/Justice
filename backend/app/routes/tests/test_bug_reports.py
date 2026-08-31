@@ -530,6 +530,37 @@ def test_unseen_count_reflects_only_the_callers_own_unseen_reports(client: TestC
     assert resp.json() == {"count": 1}
 
 
+def test_mark_all_seen_clears_unseen_activity_across_own_reports_only(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugseen014", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugseen015")
+    other_reporter = create_soldier(admin_session, personal_number="bugseen016")
+    _submit(client, reporter, description="report one")
+    _submit(client, reporter, description="report two")
+    _submit(client, other_reporter, description="other reporter own report")
+    reports = {
+        report.description: report
+        for report in admin_session.query(BugReport).filter(
+            BugReport.reporter_id.in_([reporter.id, other_reporter.id])
+        ).all()
+    }
+    client.post(f"/api/bug-reports/{reports['report one'].id}/comments", json={"body": "a"}, headers=auth_headers(admin))
+    client.post(f"/api/bug-reports/{reports['report two'].id}/comments", json={"body": "b"}, headers=auth_headers(admin))
+    client.post(
+        f"/api/bug-reports/{reports['other reporter own report'].id}/comments",
+        json={"body": "c"},
+        headers=auth_headers(admin),
+    )
+
+    resp = client.post("/api/my/bug-reports/mark-all-seen", headers=auth_headers(reporter))
+    assert resp.status_code == 204
+
+    reporter_resp = client.get("/api/my/bug-reports/unseen-count", headers=auth_headers(reporter))
+    assert reporter_resp.json() == {"count": 0}
+
+    other_resp = client.get("/api/my/bug-reports/unseen-count", headers=auth_headers(other_reporter))
+    assert other_resp.json() == {"count": 1}
+
+
 def test_upload_attachment_rejects_oversized_file_without_reading_entire_body(
     client: TestClient, admin_session: Session
 ):

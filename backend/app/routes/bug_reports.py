@@ -527,6 +527,17 @@ def mark_bug_report_seen(
     session.commit()
 
 
+@router.post("/my/bug-reports/mark-all-seen", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def mark_all_my_bug_reports_seen(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    now = datetime.now(UTC)
+    for report in session.scalars(select(BugReport).where(BugReport.reporter_id == user.id)).all():
+        report.reporter_last_seen_at = now
+    session.commit()
+
+
 @router.get("/bug-reports/{report_id}/screenshot")
 def get_my_bug_report_screenshot(
     report_id: uuid.UUID,

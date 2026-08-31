@@ -238,6 +238,10 @@ export async function getMyBugReportsUnseenCount(): Promise<BugReportUnseenCount
   return (await api.get<BugReportUnseenCount>("/my/bug-reports/unseen-count")).data;
 }
 
+export async function markAllMyBugReportsSeen(): Promise<void> {
+  await api.post("/my/bug-reports/mark-all-seen");
+}
+
 export interface BugReportCommentAttachment {
   id: string;
   file_name: string;

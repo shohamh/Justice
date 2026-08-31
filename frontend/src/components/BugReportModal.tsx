@@ -78,7 +78,7 @@ export default function BugReportModal({
       data-testid="bug-report-modal-overlay"
     >
       <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full flex flex-col max-h-[calc(100dvh-2rem)]"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md sm:max-w-xl md:max-w-3xl lg:max-w-4xl flex flex-col max-h-[calc(100dvh-2rem)]"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
         data-testid="bug-report-modal-dialog"

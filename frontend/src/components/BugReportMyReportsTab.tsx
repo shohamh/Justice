@@ -5,6 +5,7 @@ import { queryKeys } from "../queryKeys";
 import {
   getMyBugReports,
   markBugReportSeen,
+  markAllMyBugReportsSeen,
   fetchMyBugReportScreenshot,
   BugReportSeverity,
   BugReportStatus,
@@ -17,6 +18,16 @@ const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   low: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
   medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+};
+
+// Same intuitive open/in-progress/resolved/wont-fix palette as the admin
+// bug reports table's STATUS_ROW_BG (BugReportsContent.tsx), just applied to
+// a badge instead of a full row background.
+const STATUS_COLORS: Record<BugReportStatus, string> = {
+  open: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  in_progress: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  resolved: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  wont_fix: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
 };
 
 export interface BugReportMyReportsTabProps {
@@ -34,6 +45,19 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
   const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
   const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [markingAllSeen, setMarkingAllSeen] = useState(false);
+  const hasUnseenActivity = reports.some((r) => r.has_unseen_activity);
+
+  async function handleMarkAllSeen() {
+    setMarkingAllSeen(true);
+    try {
+      await markAllMyBugReportsSeen();
+      await qc.invalidateQueries({ queryKey: queryKeys.myBugReports() });
+      await qc.invalidateQueries({ queryKey: queryKeys.myBugReportsUnseenCount() });
+    } finally {
+      setMarkingAllSeen(false);
+    }
+  }
 
   // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
   // accumulated without re-registering the effect on every fetch.
@@ -98,6 +122,19 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
 
   return (
     <div className="space-y-3">
+      {hasUnseenActivity && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => { void handleMarkAllSeen(); }}
+            disabled={markingAllSeen}
+            className="text-xs px-2 py-1 rounded border dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+            data-testid="my-bug-reports-mark-all-seen"
+          >
+            {t("bug_reports.mark_all_seen")}
+          </button>
+        </div>
+      )}
       {query.isLoading && (
         <p className="text-sm text-gray-500" data-testid="my-bug-reports-loading">{t("app.loading")}</p>
       )}
@@ -132,7 +169,7 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
                   <span className={`text-xs px-2 py-0.5 rounded shrink-0 ${SEVERITY_COLORS[report.severity]}`}>
                     {bugReportSeverityLabel(report.severity)}
                   </span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded shrink-0 ${STATUS_COLORS[report.status]}`}>
                     {bugReportStatusLabel(report.status)}
                   </span>
                   {!isExpanded && <span className="flex-1 min-w-0 whitespace-pre-wrap text-right">{report.description}</span>}
