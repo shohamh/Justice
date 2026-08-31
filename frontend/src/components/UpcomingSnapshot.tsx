@@ -10,6 +10,7 @@ import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
   data: UpcomingDay[] | null;
+  scope?: "personal" | "command";
 }
 
 interface DutyGroup {
@@ -104,7 +105,7 @@ function SoldierRow({
   );
 }
 
-export default function UpcomingSnapshot({ data }: Props) {
+export default function UpcomingSnapshot({ data, scope = "command" }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const publicSettings = usePublicSettings();
@@ -127,12 +128,25 @@ export default function UpcomingSnapshot({ data }: Props) {
     [data],
   );
 
-  if (!data || data.length === 0) return <p className="text-gray-500">{t("command_dashboard.no_upcoming")}</p>;
+  const scopeLabel =
+    scope === "command"
+      ? t("command_dashboard.upcoming_scope_command")
+      : t("home.upcoming_scope_personal");
+  if (!data || data.length === 0) {
+    return (
+      <section className="space-y-2" aria-label={scopeLabel}>
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{scopeLabel}</p>
+        <p className="text-gray-500">{t("command_dashboard.no_upcoming")}</p>
+      </section>
+    );
+  }
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="max-h-[28rem] overflow-y-auto space-y-2" data-testid="upcoming-snapshot">
-      {days.map((day) => {
+    <section className="space-y-2" aria-label={scopeLabel}>
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{scopeLabel}</p>
+      <div className="max-h-[28rem] overflow-y-auto space-y-2" data-testid="upcoming-snapshot">
+        {days.map((day) => {
         const isToday = day.date === today;
         const { weekday, dayMonth } = formatDate(day.date);
         return (
@@ -175,7 +189,8 @@ export default function UpcomingSnapshot({ data }: Props) {
             )}
           </div>
         );
-      })}
+        })}
+      </div>
 
       <DutyDetailModal
         duty={detailDuty}
@@ -199,6 +214,6 @@ export default function UpcomingSnapshot({ data }: Props) {
           if (target) handleForcedRelease(target);
         }}
       />
-    </div>
+    </section>
   );
 }

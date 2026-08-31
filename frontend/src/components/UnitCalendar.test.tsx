@@ -205,7 +205,7 @@ describe("filterCalendarShifts", () => {
   });
 });
 
-type CalendarProps = { nodeId?: string; nodeIds?: string[]; soldierId?: string };
+type CalendarProps = { nodeId?: string; nodeIds?: string[]; soldierId?: string; scope?: "personal" | "command" };
 
 function renderCalendar(initialProps: CalendarProps = { nodeId: "node-1" }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -223,6 +223,30 @@ function loadCalendarWith(shifts: CalendarShift[]) {
 }
 
 describe("UnitCalendar", () => {
+  test("renders a command scope label only when the parent explicitly requests command scope", () => {
+    loadCalendarWith([]);
+
+    renderCalendar({ nodeIds: ["node-1"], scope: "command" });
+
+    expect(screen.getByTestId("unit-calendar-scope-label")).toHaveTextContent("unit_calendar.scope_command");
+  });
+
+  test("renders a personal scope label only when the parent explicitly requests personal scope", () => {
+    loadCalendarWith([]);
+
+    renderCalendar({ soldierId: "soldier-1", scope: "personal" });
+
+    expect(screen.getByTestId("unit-calendar-scope-label")).toHaveTextContent("unit_calendar.scope_personal");
+  });
+
+  test("does not infer a scope label from a soldier-filtered calendar", () => {
+    loadCalendarWith([]);
+
+    renderCalendar({ soldierId: "soldier-1" });
+
+    expect(screen.queryByTestId("unit-calendar-scope-label")).not.toBeInTheDocument();
+  });
+
   test("keeps the duty-type filter visible when the calendar has no assignments", async () => {
     loadCalendarWith([]);
 

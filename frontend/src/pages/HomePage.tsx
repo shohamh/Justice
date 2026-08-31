@@ -258,12 +258,12 @@ export default function HomePage() {
     {
       id: "ineligible-soldiers",
       title: t("range_qualification.dashboard.title"),
-      content: <IneligibleSoldiersPanel />,
+      content: <IneligibleSoldiersPanel scope="command" />,
     },
     {
       id: "alerts",
       title: t("command_dashboard.alerts"),
-      content: <AlertsPanel data={commandAlerts} />,
+      content: <AlertsPanel data={commandAlerts} scope="command" />,
     },
     {
       id: "approvals",
@@ -276,25 +276,26 @@ export default function HomePage() {
           pendingExemptions={pendingExemptions}
           pendingFieldUpdates={pendingFieldUpdates}
           pendingTransfers={pendingTransfers}
+          scope="command"
         />
       ),
     },
     {
       id: "upcoming",
       title: t("command_dashboard.upcoming"),
-      content: <UpcomingSnapshot data={commandUpcoming} />,
+      content: <UpcomingSnapshot data={commandUpcoming} scope="command" />,
     },
     {
       id: "calendar",
       title: t("command_dashboard.calendar"),
       content: commandCalendarNodeIds.length > 0 ? (
-        <UnitCalendar nodeIds={commandCalendarNodeIds} />
+        <UnitCalendar nodeIds={commandCalendarNodeIds} scope="command" />
       ) : null,
     },
     {
       id: "potential",
       title: t("command_dashboard.potential"),
-      content: <DutyPotentialPanel data={commandPotential} />,
+      content: <DutyPotentialPanel data={commandPotential} scope="command" />,
     },
     {
       id: "own_potential",
@@ -462,7 +463,7 @@ export default function HomePage() {
         )}
 
         {user && (
-          <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} />
+          <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} scope="personal" />
         )}
 
         <UpcomingDutiesWidget

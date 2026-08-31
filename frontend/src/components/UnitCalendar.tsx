@@ -54,6 +54,10 @@ interface UnitCalendarProps {
   // entirely (a duty or range can involve a soldier outside its own node's
   // subtree, e.g. as a reserve or a cross-unit range assignment).
   soldierId?: string;
+  // Presentation-only scope label supplied by the parent. This must not infer
+  // viewer roles; callers choose whether this calendar is personal or command
+  // scope based on how they compose it.
+  scope?: "personal" | "command";
 }
 
 export function filterCalendarShifts(
@@ -68,7 +72,7 @@ export function filterCalendarShifts(
   );
 }
 
-export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalendarProps) {
+export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const canSeeEligibilityBadges = canApprove(user);
@@ -310,8 +314,16 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
   }
 
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
+  const scopeLabel = scope
+    ? t(scope === "command" ? "unit_calendar.scope_command" : "unit_calendar.scope_personal")
+    : null;
   return (
     <div className="space-y-4">
+      {scopeLabel && (
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400" data-testid="unit-calendar-scope-label">
+          {scopeLabel}
+        </p>
+      )}
       <div className="flex flex-wrap gap-3 text-sm items-center">
             <CheckboxListDropdown
               items={dutyTypesInView.map((dt) => ({ id: dt.id, label: dt.name }))}

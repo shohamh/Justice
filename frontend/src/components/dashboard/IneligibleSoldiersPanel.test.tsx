@@ -27,6 +27,7 @@ vi.mock("react-i18next", () => ({
       "range_qualification.emptyUnits": "אין יחידות",
       "range_qualification.filterSoldiers": "סנן חיילים",
       "range_qualification.emptySoldiersInUnit": "אין חיילים ביחידה",
+      "command_dashboard.ineligible_soldiers_scope_command": "כשירות מטווח בפיקוד",
     }[key] ?? key),
   }),
 }));
@@ -68,7 +69,7 @@ function renderPanel() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <SoldierModalProvider><IneligibleSoldiersPanel /></SoldierModalProvider>
+      <SoldierModalProvider><IneligibleSoldiersPanel scope="command" /></SoldierModalProvider>
     </QueryClientProvider>,
   );
 }
@@ -78,6 +79,7 @@ describe("IneligibleSoldiersPanel", () => {
     vi.mocked(getIneligibleSoldiers).mockResolvedValue(commanderResponse);
     renderPanel();
 
+    expect(screen.getByText("כשירות מטווח בפיקוד")).toBeInTheDocument();
     await waitFor(() => expect(getIneligibleSoldiers).toHaveBeenCalledWith("commander"));
     const table = await screen.findByTestId("ineligible-soldiers-table");
     expect(within(table).getByText("גדוד")).toBeInTheDocument();
