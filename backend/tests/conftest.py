@@ -1,6 +1,8 @@
 # tests/conftest.py
 import ast
 import os
+import shutil
+import tempfile
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -13,6 +15,8 @@ from testcontainers.postgres import PostgresContainer
 
 from tests.support import app as test_app_support
 from tests.support import database, profiling
+
+_TEST_LOG_DIR_ATTR = "_justice_test_log_dir"
 
 _SHARED_URL_KEY = "shared_postgres_url"
 _SHARED_TEMPLATE_KEY = "shared_postgres_template"
@@ -109,6 +113,24 @@ def pytest_configure(config: pytest.Config) -> None:
     # Process-wide test flag: app lifespans suppress production background
     # workers, and hash_password memoizes argon2 seeding across tests.
     os.environ.setdefault("JUSTICE_TESTING", "1")
+
+    # app.main calls logging_config.setup_logging() at import time, which
+    # attaches real RotatingFileHandlers to the process-wide "backend.errors"
+    # / "frontend.errors" loggers pointed at LOG_DIR (the real dev/prod logs/
+    # directory by default). The very first test module that imports app.main
+    # (directly or transitively) triggers this, so every test run — including
+    # tests that deliberately log synthetic "boom" errors to exercise the
+    # rate limiter — would otherwise write real-looking entries into
+    # logs/backend-errors.log and logs/frontend-errors.log, indistinguishable
+    # downstream from a live incident. Redirect LOG_DIR to a throwaway
+    # directory before any test module gets a chance to import app.main, so
+    # test-run log output never lands where a real deployment's log
+    # collection watches. Runs once per process (each xdist worker gets its
+    # own isolated directory); an operator-provided LOG_DIR is respected.
+    if "LOG_DIR" not in os.environ:
+        test_log_dir = tempfile.mkdtemp(prefix="justice-test-logs-")
+        os.environ["LOG_DIR"] = test_log_dir
+        setattr(config, _TEST_LOG_DIR_ATTR, test_log_dir)
     setattr(config, _SOLVER_PROFILES_ATTR, [])
     setattr(config, _SOLVER_PROFILE_ENABLED_ATTR, profiling.profiling_enabled(config))
     setattr(config, _SOLVER_PROFILE_WARNING_ATTR, profiling.profiling_warning(config))
@@ -188,6 +210,10 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     container = getattr(config, _SHARED_CONTAINER_ATTR, None)
     if container is not None:
         container.stop()
+
+    test_log_dir = getattr(config, _TEST_LOG_DIR_ATTR, None)
+    if test_log_dir is not None:
+        shutil.rmtree(test_log_dir, ignore_errors=True)
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config: pytest.Config) -> None:
