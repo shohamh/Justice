@@ -128,8 +128,8 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                 {(() => {
                   if (dist.length === 0) return null;
                   return (
-                    <div className="mt-2 flex items-center gap-3">
-                      <div style={{ width: 96, height: 96 }}>
+                    <div className="mt-2 flex flex-row-reverse items-center gap-3">
+                      <div data-testid="fairness-component-pie-chart" style={{ width: 96, height: 96 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
