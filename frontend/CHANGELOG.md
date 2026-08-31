@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-31 (3)
+
+### Features
+- Reorganized the commander dashboard around full-horizon upcoming duties, hierarchy-wide calendars, and a shared exemption-request form for manager-entered exemptions with attachments and automatic approval routing.
+
+### Fixes
+- Removed redundant commander-dashboard panels, improved duty-potential contrast in dark mode, and fixed bug-report modal availability from notifications and layout routes.
+
+### Chores
+- Added regression coverage for dashboard composition, multi-node calendars, exemption submissions, and bug-report provider placement.
+
 ## 2026-08-31 (2)
 
 ### Chores
