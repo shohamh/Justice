@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-31 (2)
+
+### Chores
+- Isolated the backend test suite's log directory so pytest runs no longer write synthetic test errors into the real backend-errors.log/frontend-errors.log files that production log monitoring watches.
+
 ## 2026-08-31
 
 ### Features
