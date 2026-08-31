@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-31 (4)
+
+### Features
+- Added the authenticated soldier and client IP to structured backend and frontend error records, showing the soldier as a linked name in the admin error card when available.
+
+### Fixes
+- Shared enrollment exemption visibility logic with the pending-exemption count and improved linked-name sizing in the hierarchy tree.
+
 ## 2026-08-31 (3)
 
 ### Features
