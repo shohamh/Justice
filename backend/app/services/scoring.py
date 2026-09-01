@@ -326,13 +326,43 @@ def _full_coverage_exempt_dates(
 
 def active_days(session: Session, *, soldier: Soldier) -> int:
     today = date.today()
-    raw = (today - soldier.enrolled_at).days
-    if raw < 1:
-        raw = 1  # why: avoid divide-by-zero for same-day enrolment
+    reference_date = _active_days_reference_date(session) or soldier.enrolled_at
+    effective_start, calculation_end = _active_day_interval(soldier, reference_date, today)
+    raw = max(1, (calculation_end - effective_start).days)
     exempt = _full_coverage_exempt_dates(
-        session, soldier_id=soldier.id, start=soldier.enrolled_at, end=today
+        session, soldier_id=soldier.id, start=effective_start, end=today
     )
     return max(1, raw - len(exempt))
+
+
+def effective_active_start(reference_date: date, unit_join_date: date | None) -> date:
+    """Return the later of the shared rollout date and the soldier's unit entry."""
+    return max(reference_date, unit_join_date) if unit_join_date is not None else reference_date
+
+
+def _active_days_reference_date(session: Session) -> date | None:
+    from app.services.settings_loader import (
+        ACTIVE_DAYS_REFERENCE_DATE_KEY,
+        SettingNotFound,
+        get_setting,
+    )
+
+    try:
+        return date.fromisoformat(str(get_setting(session, ACTIVE_DAYS_REFERENCE_DATE_KEY)))
+    except SettingNotFound:
+        # Databases created before the setting was introduced retain the former
+        # enrolled-at behavior until their first registration initializes it.
+        return None
+
+
+def _active_day_interval(soldier: Soldier, reference_date: date, today: date) -> tuple[date, date]:
+    effective_start = effective_active_start(reference_date, soldier.unit_join_date)
+    calculation_end = min(
+        end_date
+        for end_date in (today, soldier.discharge_date, soldier.left_at)
+        if end_date is not None
+    )
+    return effective_start, calculation_end
 
 
 def _count_exempt_days(exemptions: list, start: date, end: date) -> int:
@@ -361,9 +391,19 @@ def _count_exempt_days(exemptions: list, start: date, end: date) -> int:
 def _bulk_active_days(session: Session, soldiers: list[Soldier]) -> dict[uuid.UUID, int]:
     """Compute active_days for many soldiers using 3 DB queries total instead of 3-per-soldier."""
     today = date.today()
+    if not soldiers:
+        return {}
+    reference_date = _active_days_reference_date(session)
+
+    def raw_days(soldier: Soldier) -> tuple[date, int]:
+        effective_start, calculation_end = _active_day_interval(
+            soldier, reference_date or soldier.enrolled_at, today
+        )
+        return effective_start, max(1, (calculation_end - effective_start).days)
+
     active_dts = _active_duty_type_ids(session)
     if not active_dts:
-        return {s.id: max(1, (today - s.enrolled_at).days) for s in soldiers}
+        return {s.id: raw_days(s)[1] for s in soldiers}
 
     covered: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     for etid, dtid in session.execute(
@@ -373,7 +413,7 @@ def _bulk_active_days(session: Session, soldiers: list[Soldier]) -> dict[uuid.UU
     full_types = {etid for etid, dts in covered.items() if active_dts <= dts}
 
     if not full_types:
-        return {s.id: max(1, (today - s.enrolled_at).days) for s in soldiers}
+        return {s.id: raw_days(s)[1] for s in soldiers}
 
     soldier_ids = [s.id for s in soldiers]
     all_exemptions = (
@@ -392,8 +432,8 @@ def _bulk_active_days(session: Session, soldiers: list[Soldier]) -> dict[uuid.UU
 
     result: dict[uuid.UUID, int] = {}
     for s in soldiers:
-        raw = max(1, (today - s.enrolled_at).days)
-        exempt_count = _count_exempt_days(exemptions_by_soldier.get(s.id, []), s.enrolled_at, today)
+        effective_start, raw = raw_days(s)
+        exempt_count = _count_exempt_days(exemptions_by_soldier.get(s.id, []), effective_start, today)
         result[s.id] = max(1, raw - exempt_count)
     return result
 
