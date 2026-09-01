@@ -71,6 +71,7 @@ class SoldierOut(BaseModel):
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: date_type | None = None
     enlistment_date: date_type | None = None
+    unit_join_date: date_type | None = None
     mandatory_end_date: date_type | None = None
     discharge_date: date_type | None = None
     last_mitvahim_date: date_type | None = None
@@ -279,6 +280,7 @@ def _out(
         has_military_driving_license=None if public_mode else s.has_military_driving_license,
         military_driving_license_expiry=None if public_mode else s.military_driving_license_expiry,
         enlistment_date=s.enlistment_date,
+        unit_join_date=s.unit_join_date,
         mandatory_end_date=s.mandatory_end_date,
         discharge_date=s.discharge_date,
         last_mitvahim_date=None if public_mode else s.last_mitvahim_date,

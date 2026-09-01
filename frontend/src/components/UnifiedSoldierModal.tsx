@@ -560,6 +560,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </div>
             )}
             {soldierData.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span>{formatDate(soldierData.enlistment_date)}</span></div>}
+            {soldierData.unit_join_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.unit_join_date")}</span><span>{formatDate(soldierData.unit_join_date)}</span></div>}
             {soldierData.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span>{formatDate(soldierData.mandatory_end_date)}</span></div>}
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
             {soldierData.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldierData.last_mitvahim_date)}</span></div>}

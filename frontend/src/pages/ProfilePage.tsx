@@ -391,6 +391,7 @@ export default function ProfilePage() {
             <div><span className="font-medium">{t("soldier_profile.bahad1_graduate")}:</span> {user.bahad1_graduate ? "✓" : "—"}</div>
           )}
           {user?.enlistment_date && <div><span className="font-medium">{t("soldier_profile.enlistment_date")}:</span> {formatDate(user.enlistment_date)}</div>}
+          {user?.unit_join_date && <div><span className="font-medium">{t("soldier_profile.unit_join_date")}:</span> {formatDate(user.unit_join_date)}</div>}
           {rangeStatus && rangeStatus.statuses.length > 0 && (
             <div className="col-span-2">
               <span className="font-medium">{t("range_qualification.status.sectionTitle")}:</span>

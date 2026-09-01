@@ -45,6 +45,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
   const [rankTrack, setRankTrack] = useState<RankTrack>(req.rank_track ?? (req.is_officer ? "officer" : "enlisted"));
   const [gender, setGender] = useState(req.gender ?? "");
   const [enlistmentDate, setEnlistmentDate] = useState(req.enlistment_date ?? "");
+  const [unitJoinDate, setUnitJoinDate] = useState(req.unit_join_date ?? "");
   const [mandatoryEndDate, setMandatoryEndDate] = useState(req.mandatory_end_date ?? "");
   const [dischargeDate, setDischargeDate] = useState(req.discharge_date ?? "");
   const [lastMitvahimDate, setLastMitvahimDate] = useState(req.last_mitvahim_date ?? "");
@@ -70,6 +71,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
         email: email || null,
         gender: gender || null,
         enlistment_date: enlistmentDate || null,
+        unit_join_date: unitJoinDate || null,
         mandatory_end_date: mandatoryEndDate || null,
         discharge_date: dischargeDate || null,
         last_mitvahim_date: lastMitvahimDate || null,
@@ -202,6 +204,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
           </label>
           {[
             ["תאריך גיוס", enlistmentDate, setEnlistmentDate],
+            ["תאריך כניסה ליחידה", unitJoinDate, setUnitJoinDate],
             ["סיום חובה", mandatoryEndDate, setMandatoryEndDate],
             ["שחרור", dischargeDate, setDischargeDate],
             ["מטווח אחרון", lastMitvahimDate, setLastMitvahimDate],

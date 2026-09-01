@@ -121,6 +121,20 @@ describe("RegisterPage - rank ladder source", () => {
   });
 });
 
+describe("RegisterPage - unit join date", () => {
+  it("shows the unit join date input and Hebrew ordering validation", async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });
+    fireEvent.click(screen.getByText("register.next"));
+    await screen.findByText("register.step_personal");
+
+    fireEvent.change(screen.getByLabelText(/תאריך כניסה ליחידה/), { target: { value: "01012023" } });
+    fireEvent.change(screen.getByLabelText(/תאריך גיוס/), { target: { value: "01012024" } });
+
+    expect(screen.getByText("register.unit_join_before_enlistment")).toBeInTheDocument();
+  });
+});
+
 describe("RegisterPage - malformed public list responses", () => {
   // Both fetchRegisterNodes and listPublicExemptionTypes are public,
   // unauthenticated endpoints; a malformed-but-200 response used to flow

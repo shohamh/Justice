@@ -37,6 +37,7 @@ export interface Me {
   has_military_driving_license?: boolean | null;
   military_driving_license_expiry?: string | null;
   enlistment_date?: string | null;
+  unit_join_date?: string | null;
   mandatory_end_date?: string | null;
   discharge_date?: string | null;
   last_mitvahim_date?: string | null;
@@ -82,6 +83,7 @@ export interface RegisterPayload {
   rank: string | null;
   rank_track: RankTrack | null;
   enlistment_date: string | null;
+  unit_join_date: string | null;
   mandatory_end_date: string | null;
   discharge_date: string | null;
   last_mitvahim_date: string | null;

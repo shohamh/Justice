@@ -35,12 +35,20 @@ def _check_soldier_dates(
     *,
     rank: str | None = None,
     enlistment_date: date | None,
+    unit_join_date: date | None = None,
+    enrolled_at: date | None = None,
     discharge_date: date | None,
     mandatory_end_date: date | None,
     is_career: bool,
 ) -> None:
     if discharge_date is not None and enlistment_date is not None and discharge_date <= enlistment_date:
         raise SoldierValidationError("discharge_date_before_enlistment")
+    if unit_join_date is not None and enlistment_date is not None and unit_join_date < enlistment_date:
+        raise SoldierValidationError("unit_join_date_before_enlistment")
+    if unit_join_date is not None and enrolled_at is not None and unit_join_date > enrolled_at:
+        raise SoldierValidationError("unit_join_date_after_enrollment")
+    if unit_join_date is not None and discharge_date is not None and unit_join_date >= discharge_date:
+        raise SoldierValidationError("unit_join_date_on_or_after_discharge")
     if (
         mandatory_end_date is not None
         and enlistment_date is not None
@@ -70,6 +78,8 @@ def validate_soldier_dates(soldier: Soldier) -> None:
     _check_soldier_dates(
         rank=soldier.rank,
         enlistment_date=soldier.enlistment_date,
+        unit_join_date=soldier.unit_join_date,
+        enrolled_at=soldier.enrolled_at,
         discharge_date=soldier.discharge_date,
         mandatory_end_date=soldier.mandatory_end_date,
         is_career=soldier.is_career,

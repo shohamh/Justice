@@ -120,6 +120,18 @@ describe("UnifiedSoldierModal profile save error handling", () => {
   });
 });
 
+describe("UnifiedSoldierModal unit join date", () => {
+  test("displays the stored unit join date in the profile", async () => {
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    renderModal({ unit_join_date: "2026-01-15" });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(await screen.findByText("soldier_profile.unit_join_date")).toBeInTheDocument();
+    expect(screen.getByText("15/01/2026")).toBeInTheDocument();
+  });
+});
+
 describe("UnifiedSoldierModal full-editor access is scoped to canManage", () => {
   beforeEach(() => {
     mockUseAuth.mockReset();

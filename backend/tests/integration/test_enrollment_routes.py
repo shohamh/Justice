@@ -237,6 +237,28 @@ def test_patch_accepts_valid_phone(client, admin_session):
     assert soldier.phone == "050-1234567"
 
 
+def test_enrollment_reviewer_can_correct_unit_join_date_before_activation(client, admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    soldier.enlistment_date = date.today() - timedelta(days=30)
+    soldier.discharge_date = date.today() + timedelta(days=30)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+    admin_session.commit()
+
+    resp = client.patch(
+        f"/api/enrollment-requests/{req.id}",
+        json={"unit_join_date": soldier.enlistment_date.isoformat()},
+        headers=auth_headers(admin),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["unit_join_date"] == soldier.enlistment_date.isoformat()
+    admin_session.refresh(soldier)
+    assert soldier.unit_join_date == soldier.enlistment_date
+
+
 def test_patch_notifies_soldier_when_fields_actually_changed(client, admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)

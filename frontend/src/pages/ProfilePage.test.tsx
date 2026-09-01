@@ -129,6 +129,24 @@ describe("ProfilePage notification preferences", () => {
 
 
 describe("ProfilePage unified service-details form", () => {
+  it("displays the unit join date from the authenticated profile", async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "u1", full_name: "חייל", role: "soldier", is_commander: false,
+        is_duty_manager: false, email: null, email_verified: false,
+        gender: null, rank: null, rank_track: null, phone: null,
+        unit_join_date: "2026-01-15", last_mitvahim_date: null, last_alal_date: null,
+        mandatory_end_date: null, discharge_date: null,
+        has_military_driving_license: false, military_driving_license_expiry: null,
+      },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    renderProfilePage();
+
+    expect(await screen.findByText("soldier_profile.unit_join_date")).toBeInTheDocument();
+    expect(screen.getByText("15/01/2026")).toBeInTheDocument();
+  });
+
   it("seeds controls with the current value and disables submit while unchanged", async () => {
     mockUseAuth.mockReturnValue({
       user: {

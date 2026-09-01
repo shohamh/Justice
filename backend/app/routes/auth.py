@@ -67,6 +67,7 @@ class RegisterRequest(BaseModel):
     rank: str
     rank_track: Literal["enlisted", "officer", "officer_academic"] | None = None
     enlistment_date: date
+    unit_join_date: date | None = None
     mandatory_end_date: date
     discharge_date: date
     last_mitvahim_date: date
@@ -409,6 +410,7 @@ async def register(
             rank=body.rank,
             rank_track=body.rank_track,
             enlistment_date=body.enlistment_date,
+            unit_join_date=body.unit_join_date,
             mandatory_end_date=body.mandatory_end_date,
             discharge_date=body.discharge_date,
             last_mitvahim_date=body.last_mitvahim_date,

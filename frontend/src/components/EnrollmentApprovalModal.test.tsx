@@ -51,6 +51,7 @@ const request = {
   discharge_date: null,
   last_mitvahim_date: null,
   last_alal_date: null,
+  unit_join_date: null,
   exemption_requests: [],
   nearest_commander: null,
   nearest_duty_manager: null,
@@ -129,6 +130,27 @@ describe("EnrollmentApprovalModal", () => {
       expect(enrollmentApi.patchEnrollment).toHaveBeenCalledWith(
         req.id,
         expect.objectContaining({ rank: 'רב"ט' }),
+      );
+    });
+  });
+
+  it("sends a corrected unit join date before approving enrollment", async () => {
+    renderWithProviders(
+      <EnrollmentApprovalModal
+        req={{ ...request, unit_join_date: "2026-01-01" }}
+        nodes={[]}
+        exemptionTypes={[]}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("שמור ואשר"));
+
+    await waitFor(() => {
+      expect(enrollmentApi.patchEnrollment).toHaveBeenCalledWith(
+        request.id,
+        expect.objectContaining({ unit_join_date: "2026-01-01" }),
       );
     });
   });
