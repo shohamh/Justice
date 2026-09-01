@@ -11,6 +11,7 @@ export default defineConfig({
   retries: 0,
   use: {
     browserName: "chromium",
+    channel: "chrome",
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
     video: "off",

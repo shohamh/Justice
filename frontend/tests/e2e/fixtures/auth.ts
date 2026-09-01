@@ -40,7 +40,7 @@ export default async function authenticateSeededRoles(config: FullConfig): Promi
   }
 
   await mkdir(dirname(roleStorageState("admin")), { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ channel: "chrome" });
 
   try {
     for (const role of roles) {
