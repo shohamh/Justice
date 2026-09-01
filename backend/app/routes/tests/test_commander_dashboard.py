@@ -140,3 +140,126 @@ def test_commander_who_is_also_deputy_sees_own_node(client, admin_session):
         "commander who is also a deputy must see their OWN command's soldiers, "
         "not a swapped/arbitrary node"
     )
+
+
+def test_duty_manager_dashboard_uses_authorized_scope_and_not_other_nodes(client, admin_session):
+    import uuid
+    from app.db.models import DutyManagerScope
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    scoped_node = create_node(admin_session, level="group", name=f"dm_scope_{uuid.uuid4().hex[:8]}")
+    other_node = create_node(admin_session, level="group", name=f"dm_other_{uuid.uuid4().hex[:8]}")
+    dm = create_soldier(
+        admin_session,
+        personal_number=f"cdash_dm_{uuid.uuid4().hex[:8]}",
+        role="duty_manager",
+    )
+    admin_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=scoped_node.id))
+    scoped_soldier = create_soldier(
+        admin_session,
+        personal_number=f"cdash_dm_in_{uuid.uuid4().hex[:8]}",
+        hierarchy_node_id=scoped_node.id,
+    )
+    other_soldier = create_soldier(
+        admin_session,
+        personal_number=f"cdash_dm_out_{uuid.uuid4().hex[:8]}",
+        hierarchy_node_id=other_node.id,
+    )
+    admin_session.commit()
+
+    response = client.get(
+        f"/api/command-dashboard/soldiers?node_id={other_node.id}",
+        headers=auth_headers(dm),
+    )
+
+    assert response.status_code == 200, response.text
+    ids = {item["id"] for item in response.json()}
+    assert str(scoped_soldier.id) in ids
+    assert str(other_soldier.id) not in ids
+
+
+def test_deputy_duty_manager_dashboard_uses_principal_scope(client, admin_session):
+    import uuid
+    from datetime import date
+    from app.db.models import DutyManagerScope, RoleDeputy
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    scoped_node = create_node(admin_session, level="group", name=f"dm_deputy_{uuid.uuid4().hex[:8]}")
+    principal = create_soldier(
+        admin_session,
+        personal_number=f"cdash_dm_principal_{uuid.uuid4().hex[:8]}",
+        role="duty_manager",
+    )
+    deputy = create_soldier(
+        admin_session,
+        personal_number=f"cdash_dm_deputy_{uuid.uuid4().hex[:8]}",
+        role="soldier",
+    )
+    admin_session.add(DutyManagerScope(duty_manager_id=principal.id, hierarchy_node_id=scoped_node.id))
+    admin_session.add(
+        RoleDeputy(
+            principal_id=principal.id,
+            deputy_id=deputy.id,
+            role="duty_manager",
+            start_date=date.today(),
+            end_date=date.today(),
+        )
+    )
+    scoped_soldier = create_soldier(
+        admin_session,
+        personal_number=f"cdash_dm_deputy_in_{uuid.uuid4().hex[:8]}",
+        hierarchy_node_id=scoped_node.id,
+    )
+    admin_session.commit()
+
+    response = client.get("/api/command-dashboard/soldiers", headers=auth_headers(deputy))
+
+    assert response.status_code == 200, response.text
+    assert str(scoped_soldier.id) in {item["id"] for item in response.json()}
+
+
+def test_regular_soldier_cannot_access_command_dashboard(client, admin_session):
+    import uuid
+    from tests.helpers import auth_headers, create_soldier
+
+    soldier = create_soldier(
+        admin_session,
+        personal_number=f"cdash_regular_{uuid.uuid4().hex[:8]}",
+        role="soldier",
+    )
+    admin_session.commit()
+
+    response = client.get("/api/command-dashboard/summary", headers=auth_headers(soldier))
+
+    assert response.status_code == 403
+
+
+def test_admin_dashboard_scope_is_explicitly_all_top_level_nodes(client, admin_session):
+    import uuid
+    from tests.helpers import auth_headers, create_node, create_soldier
+
+    first = create_node(admin_session, level="group", name=f"admin_first_{uuid.uuid4().hex[:8]}")
+    second = create_node(admin_session, level="group", name=f"admin_second_{uuid.uuid4().hex[:8]}")
+    first_soldier = create_soldier(
+        admin_session,
+        personal_number=f"cdash_admin_in_1_{uuid.uuid4().hex[:8]}",
+        hierarchy_node_id=first.id,
+    )
+    second_soldier = create_soldier(
+        admin_session,
+        personal_number=f"cdash_admin_in_2_{uuid.uuid4().hex[:8]}",
+        hierarchy_node_id=second.id,
+    )
+    admin = create_soldier(
+        admin_session,
+        personal_number=f"cdash_admin_{uuid.uuid4().hex[:8]}",
+        role="admin",
+    )
+    admin_session.commit()
+
+    response = client.get("/api/command-dashboard/soldiers", headers=auth_headers(admin))
+
+    assert response.status_code == 200, response.text
+    ids = {item["id"] for item in response.json()}
+    assert str(first_soldier.id) in ids
+    assert str(second_soldier.id) in ids
