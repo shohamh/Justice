@@ -51,9 +51,13 @@ def _register(client, payload: dict[str, object]):
     return client.post("/api/auth/register", data={"payload": json.dumps(payload)})
 
 
-def test_soldier_unit_join_date_and_migration_are_nullable():
+def test_soldier_unit_join_date_and_migration_are_nullable(admin_engine):
     column = inspect(Soldier).columns["unit_join_date"]
     assert column.nullable is True
+
+    database_columns = {item["name"]: item for item in inspect(admin_engine).get_columns("soldiers")}
+    assert database_columns["unit_join_date"]["nullable"] is True
+    assert str(database_columns["unit_join_date"]["type"]).upper() == "DATE"
 
     migration = (
         Path(__file__).parents[2]
