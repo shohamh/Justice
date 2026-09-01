@@ -52,8 +52,8 @@ describe("HakpazaPage query-param pre-fill", () => {
     renderAt("/commander/hakpaza?soldierId=sol-1&assignmentId=asg-1");
     await waitFor(() => expect(soldiersApi.getSoldier).toHaveBeenCalledWith("sol-1"));
     await waitFor(() => expect(screen.getByText("דני כהן")).toBeInTheDocument());
-    // Step 2 is active (not opacity-60), and shows the assignment
-    expect(screen.getByText("10.01.2099 – 14.01.2099")).toBeInTheDocument();
+    // Step 2 is loaded asynchronously after the soldier and assignment queries.
+    await waitFor(() => expect(screen.getByText("10.01.2099 – 14.01.2099")).toBeInTheDocument());
   });
 
   it("falls back to step 1 with an error when assignmentId does not match any published assignment", async () => {
