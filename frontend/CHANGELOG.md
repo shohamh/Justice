@@ -10,6 +10,8 @@
 ### Fixes
 - Counted exemptions only within the effective active-days interval through today, discharge, or leave.
 - Clarified production deployment to rebuild the backend image so newly released database migrations are applied.
+- Restored the configured personal-constraint override behavior for manual shift candidates and stabilized related eligibility tests.
+- Stabilized the command call-up prefill test so it waits for the asynchronously loaded assignment.
 
 ## 2026-09-01
 
