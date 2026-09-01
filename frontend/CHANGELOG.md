@@ -3,6 +3,16 @@
 ## 2026-09-01
 
 ### Features
+- Added a configurable active-days reference date for rollout history, with first-registration fallback and unit-aware active-day calculations.
+- Added unit join dates to registration, soldier profiles, import/export, and the staged commander/duty-manager approval workflow for retrospective edits.
+- Added active-days help content explaining reference dates, exemptions, and personal constraints.
+
+### Fixes
+- Counted exemptions only within the effective active-days interval through today, discharge, or leave.
+
+## 2026-09-01
+
+### Features
 - Unified the soldier homepage and commander dashboard into one role-aware homepage, with highlighted management-scope widgets and a single calendar for commanders and duty managers.
 - Added distinct highlighting and the `הצג רק אירועים שלי` filter for a manager's own duties, while keeping unit-wide duty-board behavior unchanged.
 
