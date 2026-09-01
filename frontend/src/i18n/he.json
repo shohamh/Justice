@@ -1674,7 +1674,7 @@
     }
   },
   "range_qualification": {
-    "title": "חיילים ללא כשירות מטווח",
+    "title": "חיילים ללא מטווחים בתוקף",
     "tabs": {
       "schedule": "לוח מטווחים",
       "qualification": "כשירות מטווחים"
@@ -1705,7 +1705,7 @@
     "explanation": {
       "noCurrentQualification": "אין מטווחים בתוקף",
       "noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
-      "uncoveredDuty": "משובץ לתורנות {{dutyType}} שדורשת לפחות מטווח מסוג {{rangeType}} בתאריך {{date}}",
+      "uncoveredDuty": "משובץ לתורנות {{dutyType}} ב-{{date}} שדורשת {{rangeType}}",
       "plannedRangeCoverage": "מטווח מתוכנן מסוג {{rangeType}} בתאריך {{rangeDate}} מכסה את התורנות; הכשירות צפויה בתוקף עד {{projectedValidUntil}}",
       "neverQualified": "אין מטווחים בתוקף",
       "lastQualification": "מטווח אחרון - {{rangeType}} (בתוקף עד {{date}})"

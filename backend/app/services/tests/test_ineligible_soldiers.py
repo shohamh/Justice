@@ -80,6 +80,7 @@ def _range_assignment(
 
 
 def test_lists_only_soldiers_without_a_qualification_valid_today(app_session: Session) -> None:
+    _duty_type(app_session, name="Guard", required_range_type=RangeType.live)
     root = create_node(app_session, level="branch", name="Root")
     child = create_node(app_session, level="company", name="Child", parent=root)
     sibling = create_node(app_session, level="company", name="Sibling", parent=root)
@@ -131,6 +132,7 @@ def test_lists_only_soldiers_without_a_qualification_valid_today(app_session: Se
 
 
 def test_overlapping_roots_return_each_soldier_once(app_session: Session) -> None:
+    _duty_type(app_session, name="Guard", required_range_type=RangeType.live)
     root = create_node(app_session, level="branch", name="Root")
     child = create_node(app_session, level="company", name="Child", parent=root)
     sibling = create_node(app_session, level="company", name="Sibling", parent=root)
@@ -301,6 +303,7 @@ def test_partial_matching_range_does_not_cover_every_future_weapon_duty(
 
 
 def test_batches_related_records_for_all_scoped_soldiers(app_session: Session) -> None:
+    _duty_type(app_session, name="Guard", required_range_type=RangeType.live)
     root = create_node(app_session, level="branch", name="Root")
     soldiers = [
         create_soldier(app_session, personal_number=f"inq-batch-{index}", hierarchy_node_id=root.id)
