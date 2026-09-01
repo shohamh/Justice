@@ -83,7 +83,7 @@ function renderPage() {
   );
 }
 
-async function goToExemptionsStep() {
+async function goToExemptionsStep(unitJoinDateRequired = false) {
   renderPage();
   fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });
   fireEvent.click(screen.getByText("register.next"));
@@ -110,6 +110,12 @@ async function goToExemptionsStep() {
   fireEvent.pointerDown(rankOption);
   fireEvent.pointerUp(rankOption);
 
+  if (unitJoinDateRequired) {
+    fireEvent.click(screen.getByText("register.next"));
+    expect(screen.getByText("register.step_personal")).toBeInTheDocument();
+    expect(screen.getByText("register.field_required")).toBeInTheDocument();
+    return;
+  }
   await waitFor(() => expect(screen.getByText("register.next")).not.toBeDisabled());
   fireEvent.click(screen.getByText("register.next"));
   await screen.findByText("register.step_exemptions");
@@ -137,15 +143,12 @@ describe("RegisterPage - unit join date", () => {
     expect(screen.getByText("register.unit_join_before_enlistment")).toBeInTheDocument();
   });
 
-  it("requires the date when registration is after the configured reference date", async () => {
+  it("requires the date and blocks progression after the configured reference date", async () => {
     vi.mocked(registrationSettingsApi.getRegistrationPublicSettings).mockResolvedValue({
       email_domain_hint: null,
       active_days_reference_date: "2000-01-01",
     } as never);
-    renderPage();
-    fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });
-    fireEvent.click(screen.getByText("register.next"));
-    await screen.findByText("register.step_personal");
+    await goToExemptionsStep(true);
 
     const input = screen.getByLabelText(/תאריך כניסה ליחידה/);
     const label = input.closest("label");
