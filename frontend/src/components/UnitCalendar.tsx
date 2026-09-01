@@ -58,6 +58,9 @@ interface UnitCalendarProps {
   // viewer roles; callers choose whether this calendar is personal or command
   // scope based on how they compose it.
   scope?: "personal" | "command";
+  // When set for a command calendar, duties assigned to this soldier receive
+  // a distinct visual treatment and can be isolated with the personal filter.
+  highlightSoldierId?: string;
 }
 
 export function filterCalendarShifts(
@@ -72,7 +75,7 @@ export function filterCalendarShifts(
   );
 }
 
-export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope }: UnitCalendarProps) {
+export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highlightSoldierId }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const canSeeEligibilityBadges = canApprove(user);
@@ -93,6 +96,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope }: Unit
   const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
   const [showHolidays, setShowHolidays] = useState(true);
+  const [showOnlyMyDuties, setShowOnlyMyDuties] = useState(false);
   const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
   const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
 
@@ -232,9 +236,12 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope }: Unit
     [rangeTypeFilter, rangeTypeOptions],
   );
 
+  const canHighlightOwnDuties = !soldierId && Boolean(highlightSoldierId);
+
   const filteredShifts = useMemo(
-    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, false),
-    [shifts, effectiveDutyTypeFilter],
+    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, false)
+      .filter((shift) => !showOnlyMyDuties || !canHighlightOwnDuties || shift.assignees.some((assignee) => assignee.soldier_id === highlightSoldierId)),
+    [shifts, effectiveDutyTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
   );
 
   const filteredRanges = useMemo(
@@ -248,10 +255,16 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope }: Unit
       return {
         ...event,
         holidayOrder: 1,
-        classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES, ...event.classNames],
+        classNames: [
+          ...CALENDAR_EVENT_INTERACTION_CLASSES,
+          ...event.classNames,
+          ...(canHighlightOwnDuties && shift.assignees.some((assignee) => assignee.soldier_id === highlightSoldierId)
+            ? ["my-duty-calendar-event", "my-duty-sparkle-border"]
+            : []),
+        ],
       };
     }),
-    [filteredShifts],
+    [filteredShifts, canHighlightOwnDuties, highlightSoldierId],
   );
 
   const rangeCalEvents = useMemo(() =>
@@ -342,6 +355,18 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope }: Unit
               />
               <span>{t("unit_calendar.show_holidays")}</span>
             </label>
+          {canHighlightOwnDuties && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showOnlyMyDuties}
+                onChange={(event) => setShowOnlyMyDuties(event.target.checked)}
+                className="accent-sky-600"
+                aria-label="הצג רק אירועים שלי"
+              />
+              <span>הצג רק אירועים שלי</span>
+            </label>
+          )}
           {rangesEnabled && (
             <CheckboxListDropdown
               items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}

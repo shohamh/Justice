@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as calendarDataApi from "../api/calendarData";
 import type { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
+import type { RangeEvent } from "../api/ranges";
 import { useAuth } from "../auth/AuthContext";
 import UnitCalendar, { filterCalendarShifts } from "./UnitCalendar";
 
@@ -94,6 +95,8 @@ vi.mock("@fullcalendar/react", () => ({
     </div>
   ),
 }));
+
+beforeEach(() => vi.clearAllMocks());
 
 function shift(
   id: string,
@@ -205,7 +208,7 @@ describe("filterCalendarShifts", () => {
   });
 });
 
-type CalendarProps = { nodeId?: string; nodeIds?: string[]; soldierId?: string; scope?: "personal" | "command" };
+type CalendarProps = { nodeId?: string; nodeIds?: string[]; soldierId?: string; scope?: "personal" | "command"; highlightSoldierId?: string };
 
 function renderCalendar(initialProps: CalendarProps = { nodeId: "node-1" }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -218,11 +221,66 @@ function renderCalendar(initialProps: CalendarProps = { nodeId: "node-1" }) {
   return { ...result, rerenderCalendar: (props: CalendarProps) => result.rerender(calendar(props)) };
 }
 
-function loadCalendarWith(shifts: CalendarShift[]) {
-  vi.mocked(calendarDataApi.loadCalendarData).mockResolvedValue({ calendar: { shifts }, ranges: [] });
+function loadCalendarWith(shifts: CalendarShift[], ranges: RangeEvent[] = []) {
+  vi.mocked(calendarDataApi.loadCalendarData).mockResolvedValue({ calendar: { shifts }, ranges });
 }
 
 describe("UnitCalendar", () => {
+  test("shows both own and other command duties by default, highlighting own duties", async () => {
+    loadCalendarWith([
+      shift("own-duty", "guard", false, { soldier_id: "me" }),
+      shift("other-duty", "guard", false, { soldier_id: "other" }),
+    ]);
+
+    renderCalendar({ nodeId: "node-1", scope: "command", highlightSoldierId: "me" });
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("calendar-event-own-duty")).toHaveClass("my-duty-calendar-event", "my-duty-sparkle-border");
+    expect(screen.getByTestId("calendar-event-other-duty")).not.toHaveClass("my-duty-calendar-event");
+    expect(screen.getByLabelText("הצג רק אירועים שלי")).toBeInTheDocument();
+  });
+
+  test("filters only duties, leaving range events visible when showing own duties", async () => {
+    const range: RangeEvent = {
+      id: "range-1",
+      hierarchy_node_id: "node-1",
+      date: "2026-08-01",
+      range_type: "laser",
+      range_location_id: "location-1",
+      location: "Range",
+      required_count: 1,
+      reserve_count: 0,
+      status: "planned",
+      assignments: [],
+      start_time: null,
+      end_time: null,
+      primary_filled: 0,
+      reserve_filled: 0,
+    };
+    loadCalendarWith([
+      shift("own-duty", "guard", false, { soldier_id: "me" }),
+      shift("other-duty", "guard", false, { soldier_id: "other" }),
+    ], [range]);
+
+    renderCalendar({ nodeId: "node-1", scope: "command", highlightSoldierId: "me" });
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    await screen.findByTestId("calendar-event-own-duty");
+
+    fireEvent.click(screen.getByLabelText("הצג רק אירועים שלי"));
+
+    expect(screen.getByTestId("calendar-event-own-duty")).toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-event-other-duty")).not.toBeInTheDocument();
+    expect(screen.getByTestId("calendar-event-range-range-1")).toBeInTheDocument();
+  });
+
+  test("does not show the own-duty filter in personal mode", () => {
+    loadCalendarWith([]);
+
+    renderCalendar({ soldierId: "me", scope: "personal" });
+
+    expect(screen.queryByLabelText("הצג רק אירועים שלי")).not.toBeInTheDocument();
+  });
+
   test("renders a command scope label only when the parent explicitly requests command scope", () => {
     loadCalendarWith([]);
 

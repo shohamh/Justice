@@ -63,12 +63,13 @@ const mockUser: PermissionUser = {
 };
 
 vi.mock("../components/UnitCalendar", () => ({
-  default: ({ nodeIds, soldierId, scope }: { nodeIds?: string[]; soldierId?: string; scope?: string }) => (
+  default: ({ nodeIds, soldierId, scope, highlightSoldierId }: { nodeIds?: string[]; soldierId?: string; scope?: string; highlightSoldierId?: string }) => (
     <div
       data-testid={nodeIds ? "command-unit-calendar" : "personal-unit-calendar"}
       data-node-count={nodeIds?.length ?? 0}
       data-node-ids={nodeIds?.join(",") ?? ""}
       data-soldier-id={soldierId ?? ""}
+      data-highlight-soldier-id={highlightSoldierId ?? ""}
       data-scope={scope ?? ""}
     />
   ),
@@ -178,7 +179,7 @@ describe("HomePage - required scoring data load errors", () => {
     expect(screen.queryByText("home.score_load_error")).not.toBeInTheDocument();
   });
 
-  it("shows the command section with a visible scope label before the personal calendar for management users", async () => {
+  it("shows one highlighted command calendar with a visible scope label for management users", async () => {
     Object.assign(mockUser, {
       role: "commander",
       hierarchy_node_id: "node-1",
@@ -190,11 +191,11 @@ describe("HomePage - required scoring data load errors", () => {
     const commandSection = await screen.findByRole("region", { name: "ניהול היחידה" });
     expect(screen.getByText("היחידה / תת-העץ שבאחריותך")).toBeInTheDocument();
 
-    const calendar = screen.getByTestId("personal-unit-calendar");
-    const position = commandSection.compareDocumentPosition(calendar);
-    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(await screen.findByTestId("command-unit-calendar")).toHaveAttribute("data-scope", "command");
-    expect(calendar).toHaveAttribute("data-scope", "personal");
+    const calendar = await screen.findByTestId("command-unit-calendar");
+    expect(commandSection.compareDocumentPosition(calendar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(calendar).toHaveAttribute("data-scope", "command");
+    expect(calendar).toHaveAttribute("data-highlight-soldier-id", "soldier-1");
+    expect(screen.queryByTestId("personal-unit-calendar")).not.toBeInTheDocument();
   });
 
   it("keeps command queries and widgets off the regular soldier homepage while preserving personal widgets", async () => {
@@ -248,7 +249,8 @@ describe("HomePage - required scoring data load errors", () => {
     expect(screen.getByTestId("panel-potential")).toBeInTheDocument();
     expect(screen.getByTestId("panel-own_potential")).toBeInTheDocument();
     expect(screen.getByTestId("command-unit-calendar")).toHaveAttribute("data-node-count", "1");
-    expect(screen.getByTestId("personal-unit-calendar")).toHaveAttribute("data-soldier-id", "soldier-1");
+    expect(screen.queryByTestId("personal-unit-calendar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("command-unit-calendar")).toHaveAttribute("data-highlight-soldier-id", "soldier-1");
     expect(container.querySelectorAll('a[href="/approvals?tab=constraints"]')).toHaveLength(1);
 
     await waitFor(() => expect(commandDashboardApi.getAlerts).toHaveBeenCalledTimes(1));

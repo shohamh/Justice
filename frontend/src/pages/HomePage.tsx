@@ -289,7 +289,7 @@ export default function HomePage() {
       id: "calendar",
       title: t("command_dashboard.calendar"),
       content: commandCalendarNodeIds.length > 0 ? (
-        <UnitCalendar nodeIds={commandCalendarNodeIds} scope="command" />
+        <UnitCalendar nodeIds={commandCalendarNodeIds} scope="command" highlightSoldierId={user?.id} />
       ) : null,
     },
     {
@@ -462,7 +462,7 @@ export default function HomePage() {
           </CommandDashboardSection>
         )}
 
-        {user && (
+        {!commandScopeAvailable && user && (
           <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} scope="personal" />
         )}
 
