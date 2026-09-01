@@ -244,9 +244,9 @@ describe("UnitCalendar", () => {
     expect(screen.getByLabelText("הצג רק אירועים שלי")).toBeInTheDocument();
   });
 
-  test("filters only duties, leaving range events visible when showing own duties", async () => {
-    const range: RangeEvent = {
-      id: "range-1",
+  test("filters range events to my assignments while preserving holidays in command mode", async () => {
+    const ownRange: RangeEvent = {
+      id: "own-range",
       hierarchy_node_id: "node-1",
       date: "2026-08-01",
       range_type: "laser",
@@ -255,16 +255,26 @@ describe("UnitCalendar", () => {
       required_count: 1,
       reserve_count: 0,
       status: "planned",
-      assignments: [],
+      assignments: [{
+        id: "own-range-assignment",
+        soldier_id: "me",
+        is_reserve: false,
+        is_draft: false,
+        attendance_status: "pending",
+        note: null,
+        assignment_reason_code: null,
+        assignment_reason_text: null,
+      }],
       start_time: null,
       end_time: null,
       primary_filled: 0,
       reserve_filled: 0,
     };
+    const otherRange = { ...ownRange, id: "other-range", assignments: [{ ...ownRange.assignments[0], id: "other-range-assignment", soldier_id: "other" }] };
     loadCalendarWith([
       shift("own-duty", "guard", false, { soldier_id: "me" }),
       shift("other-duty", "guard", false, { soldier_id: "other" }),
-    ], [range]);
+    ], [ownRange, otherRange]);
 
     renderCalendar({ nodeId: "node-1", scope: "command", highlightSoldierId: "me" });
     fireEvent.click(screen.getByTestId("set-calendar-dates"));
@@ -274,7 +284,9 @@ describe("UnitCalendar", () => {
 
     expect(screen.getByTestId("calendar-event-own-duty")).toBeInTheDocument();
     expect(screen.queryByTestId("calendar-event-other-duty")).not.toBeInTheDocument();
-    expect(screen.getByTestId("calendar-event-range-range-1")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-event-range-own-range")).toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-event-range-other-range")).not.toBeInTheDocument();
+    expect(screen.getByTestId("calendar-event-holiday-2026-09-12")).toBeInTheDocument();
   });
 
   test("closes a selected other duty when showing only my duties", async () => {

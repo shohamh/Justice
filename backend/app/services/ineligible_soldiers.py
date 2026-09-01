@@ -19,6 +19,7 @@ from app.db.models import (
     Soldier,
     SoldierRangeQualification,
 )
+from app.services.eligibility import DutyTypeRequirements, _is_eligible
 from app.services.range_eligibility_projection import DutyEligibilityFact, project_duty_eligibility
 from app.services.ranges import _validity_days
 
@@ -209,6 +210,47 @@ def _has_matching_range_for_each_duty(
     )
 
 
+def _weapon_eligible_soldier_ids(
+    session: Session,
+    *,
+    soldiers: list[Soldier],
+    as_of: date,
+) -> set[uuid.UUID]:
+    """Return whether the soldier can structurally serve any weapon duty.
+
+    Range dates are deliberately removed from this check: this panel is meant
+    to identify soldiers who need a current range, so lacking that range must
+    not make every weapon duty appear structurally unavailable.
+    """
+    duty_types = session.execute(
+        select(DutyType).where(
+            DutyType.active.is_(True),
+            or_(DutyType.requires_weapon.is_(True), DutyType.required_range_type.is_not(None)),
+        )
+    ).scalars().all()
+    eligible_soldier_ids: set[uuid.UUID] = set()
+    for duty_type in duty_types:
+        raw_requirements = dict(duty_type.requirements or {})
+        raw_requirements["requires_mitvahim"] = False
+        raw_requirements["requires_alal"] = False
+        try:
+            requirements = DutyTypeRequirements.model_validate(raw_requirements)
+        except Exception:
+            continue
+        eligible_soldier_ids.update(
+            soldier.id
+            for soldier in soldiers
+            if _is_eligible(
+                soldier,
+                requirements,
+                mitvahim_months=6,
+                alal_months=3,
+                today=as_of,
+            )
+        )
+    return eligible_soldier_ids
+
+
 def list_ineligible_soldiers(
     session: Session,
     *,
@@ -224,6 +266,11 @@ def list_ineligible_soldiers(
         statement = statement.where(scope_clause)
 
     scoped_soldiers = session.execute(statement).all()
+    weapon_eligible_soldier_ids = _weapon_eligible_soldier_ids(
+        session,
+        soldiers=[soldier for soldier, _node in scoped_soldiers],
+        as_of=as_of,
+    )
     valid_qualifications_by_soldier = _valid_qualifications_by_soldier(
         session,
         soldier_ids={soldier.id for soldier, _node in scoped_soldiers},
@@ -247,6 +294,7 @@ def list_ineligible_soldiers(
     ineligible_soldiers = [
         (soldier, node)
         for soldier, node in scoped_soldiers
+        if soldier.id in weapon_eligible_soldier_ids
         if soldier.id not in valid_qualifications_by_soldier
         or any(
             not duty_eligibility[soldier.id, duty.assignment_id].eligible

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import require_password_changed
 from app.db.models import Soldier, SystemSetting
 from app.db.session import get_session
+from app.services.settings_loader import ACTIVE_DAYS_REFERENCE_DATE_KEY
 
 router = APIRouter(prefix="/settings/public", tags=["settings"])
 
@@ -37,9 +38,14 @@ def get_public_settings(
 
 class RegistrationPublicSettingsOut(BaseModel):
     email_domain_hint: str | None = None
+    active_days_reference_date: str | None = None
 
 
 @router.get("/registration", response_model=RegistrationPublicSettingsOut)
 def get_registration_public_settings(session: Session = Depends(get_session)) -> RegistrationPublicSettingsOut:
-    row = session.get(SystemSetting, "registration.email_domain_hint")
-    return RegistrationPublicSettingsOut(email_domain_hint=row.value if row else None)
+    email_hint = session.get(SystemSetting, "registration.email_domain_hint")
+    reference_date = session.get(SystemSetting, ACTIVE_DAYS_REFERENCE_DATE_KEY)
+    return RegistrationPublicSettingsOut(
+        email_domain_hint=email_hint.value if email_hint else None,
+        active_days_reference_date=reference_date.value if reference_date else None,
+    )

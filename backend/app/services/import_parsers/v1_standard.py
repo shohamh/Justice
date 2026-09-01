@@ -184,6 +184,7 @@ class V1StandardParser:
                 hierarchy_node_name=str(r.get("hierarchy_node_name") or "").strip() or None,
                 enrolled_at=_parse_date(r.get("enrolled_at")),
                 enlistment_date=_parse_date(r.get("enlistment_date")),
+                unit_join_date=_parse_date(r.get("unit_join_date")),
                 phone=str(r.get("phone") or "").strip() or None,
                 email=str(r.get("email") or "").strip() or None,
                 is_career=_parse_bool(r.get("is_career")),

@@ -182,6 +182,7 @@ def test_phone_not_in_public_soldier_out():
     s.food_constraints = None
     s.military_driving_license_expiry = None
     s.enlistment_date = None
+    s.unit_join_date = None
     s.mandatory_end_date = None
     s.discharge_date = None
     s.last_mitvahim_date = None

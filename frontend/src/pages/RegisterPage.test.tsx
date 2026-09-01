@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import RegisterPage from "./RegisterPage";
+import { todayIso } from "../utils/formatDate";
 import * as authApi from "../api/auth";
 import * as registrationSettingsApi from "../api/registrationSettings";
 import * as publicSettingsApi from "../api/publicSettings";
@@ -23,7 +24,10 @@ beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({
     loginWithToken: vi.fn(),
   } as unknown as ReturnType<typeof useAuth>);
-  vi.mocked(registrationSettingsApi.getRegistrationPublicSettings).mockResolvedValue({ email_domain_hint: null });
+  vi.mocked(registrationSettingsApi.getRegistrationPublicSettings).mockResolvedValue({
+    email_domain_hint: null,
+    active_days_reference_date: null,
+  });
   vi.mocked(publicSettingsApi.getPublicSettings).mockResolvedValue({});
   vi.mocked(authApi.validateInviteCode).mockResolvedValue(true);
   vi.mocked(authApi.fetchRegisterNodes).mockResolvedValue([]);
@@ -80,7 +84,7 @@ function renderPage() {
   );
 }
 
-async function goToExemptionsStep() {
+async function goToExemptionsStep(unitJoinDateRequired = false) {
   renderPage();
   fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });
   fireEvent.click(screen.getByText("register.next"));
@@ -107,6 +111,12 @@ async function goToExemptionsStep() {
   fireEvent.pointerDown(rankOption);
   fireEvent.pointerUp(rankOption);
 
+  if (unitJoinDateRequired) {
+    fireEvent.click(screen.getByText("register.next"));
+    expect(screen.getByText("register.step_personal")).toBeInTheDocument();
+    expect(screen.getByText("register.field_required")).toBeInTheDocument();
+    return;
+  }
   await waitFor(() => expect(screen.getByText("register.next")).not.toBeDisabled());
   fireEvent.click(screen.getByText("register.next"));
   await screen.findByText("register.step_exemptions");
@@ -118,6 +128,58 @@ describe("RegisterPage - rank ladder source", () => {
 
     expect(rankAdvancementApi.getPublicRankLadder).toHaveBeenCalled();
     expect(rankAdvancementApi.getRankLadder).not.toHaveBeenCalled();
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("RegisterPage - unit join date", () => {
+  it("shows the unit join date input and Hebrew ordering validation", async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });
+    fireEvent.click(screen.getByText("register.next"));
+    await screen.findByText("register.step_personal");
+
+    fireEvent.change(screen.getByLabelText(/תאריך כניסה ליחידה/), { target: { value: "01012023" } });
+    fireEvent.change(screen.getByLabelText(/תאריך גיוס/), { target: { value: "01012024" } });
+
+    expect(screen.getByText("register.unit_join_before_enlistment")).toBeInTheDocument();
+  });
+
+  it("requires the date and blocks progression after the configured reference date", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 5, 15, 0, 30));
+    expect(todayIso()).toBe("2026-06-15");
+    vi.mocked(registrationSettingsApi.getRegistrationPublicSettings).mockResolvedValue({
+      email_domain_hint: null,
+      active_days_reference_date: "2026-06-14",
+    } as never);
+    await goToExemptionsStep(true);
+
+    const input = screen.getByLabelText(/תאריך כניסה ליחידה/);
+    const label = input.closest("label");
+    expect(label).not.toBeNull();
+    expect(within(label!).getByText("*")).toBeInTheDocument();
+  });
+
+  it("keeps the date optional on the configured reference date", async () => {
+    vi.mocked(registrationSettingsApi.getRegistrationPublicSettings).mockResolvedValue({
+      email_domain_hint: null,
+      active_days_reference_date: new Date().toISOString().slice(0, 10),
+    } as never);
+    renderPage();
+    fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });
+    fireEvent.click(screen.getByText("register.next"));
+    await screen.findByText("register.step_personal");
+
+    fireEvent.click(screen.getByText("register.next"));
+    const input = screen.getByLabelText(/תאריך כניסה ליחידה/);
+    const label = input.closest("label");
+    expect(label).not.toBeNull();
+    expect(within(label!).queryByText("*")).not.toBeInTheDocument();
+    expect(within(label!).queryByText("register.field_required")).not.toBeInTheDocument();
   });
 });
 

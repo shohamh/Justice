@@ -703,16 +703,17 @@ def get_shift_candidates(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftCandidateOut]:
-    """Return eligible soldiers for a shift, sorted by burden-share ascending. Blocked soldiers (conflict/constraint) appear at end."""
+    """Return manual-assignment candidates sorted by burden-share ascending.
+
+    Approved personal constraints are warnings here: manual assignment may
+    override them with a reason. Automatic assignment remains responsible for
+    excluding constrained soldiers in the algorithm path.
+    """
     shift = _load(session, shift_id)
     authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
 
     from app.db.models import DutyType as _DutyType
     from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
-    from app.services.constraint_override_settings import manual_override_allowed
-
-    override_allowed = manual_override_allowed(session)
-
     shift_duty_type = session.get(_DutyType, shift.duty_type_id)
     required_range_type = shift_duty_type.required_range_type if shift_duty_type else None
 
@@ -846,7 +847,7 @@ def get_shift_candidates(
             for c_start, c_end in si.approved_constraint_dates
         )
         personal_constraint_warning: PersonalConstraintWarningOut | None = None
-        if has_constraint and override_allowed:
+        if has_constraint:
             constraint_row = session.execute(
                 select(PersonalConstraint).where(
                     PersonalConstraint.soldier_id == si.id,
@@ -864,8 +865,7 @@ def get_shift_candidates(
                     decided_by=decider.full_name if decider else None,
                     decided_at=constraint_row.decided_at,
                 )
-        effective_constraint_block = has_constraint and not override_allowed
-        blocked = exempted or effective_constraint_block or si.id in blocked_by_assignment
+        blocked = exempted or si.id in blocked_by_assignment
         blocked_reason: str | None = None
         blocked_detail: str | None = None
         if exempted:
@@ -877,8 +877,6 @@ def get_shift_candidates(
                     soldier, shift_duty_type, mitvahim_months=mitvahim_months, alal_months=alal_months,
                     today=shift.start_date,
                 )
-        elif effective_constraint_block:
-            blocked_reason = "constraint"
         elif si.id in blocked_by_assignment:
             blocked_reason = "assignment"
 

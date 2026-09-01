@@ -18,7 +18,11 @@ from app.db.models import (
 from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
-from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.settings_loader import (
+    SettingNotFound,
+    get_setting,
+    initialize_active_days_reference_date,
+)
 from app.services.soldiers import PasswordPolicyError, SoldierError, _check_soldier_dates, validate_password
 
 
@@ -68,6 +72,7 @@ def register(
     rank_track: str | None = None,
     food_type: str | None = None,
     food_constraints: str | None = None,
+    unit_join_date: date | None = None,
 ) -> tuple[Soldier, list[ExemptionRequest]]:
     try:
         validate_full_name(full_name)
@@ -100,11 +105,19 @@ def register(
     if discharge_date is not None and discharge_date < date.today():
         raise RegistrationError("discharge_date_in_past")
 
+    try:
+        reference_date = date.fromisoformat(get_setting(session, "scoring.active_days_reference_date"))
+    except SettingNotFound:
+        reference_date = None
+    if reference_date is not None and date.today() > reference_date and unit_join_date is None:
+        raise RegistrationError("unit_join_date_required")
+
     is_career = derive_is_career(rank, mandatory_end_date, discharge_date)
 
     try:
         _check_soldier_dates(
-            rank=rank, enlistment_date=enlistment_date, discharge_date=discharge_date,
+            rank=rank, enlistment_date=enlistment_date, unit_join_date=unit_join_date,
+            enrolled_at=date.today(), discharge_date=discharge_date,
             mandatory_end_date=mandatory_end_date, is_career=is_career,
         )
     except SoldierError as exc:
@@ -136,6 +149,7 @@ def register(
         is_career=is_career,
         bahad1_graduate=bahad1_graduate,
         enlistment_date=enlistment_date,
+        unit_join_date=unit_join_date,
         mandatory_end_date=mandatory_end_date,
         discharge_date=discharge_date,
         last_mitvahim_date=last_mitvahim_date,
@@ -212,6 +226,7 @@ def register(
         ))
 
     session.flush()
+    initialize_active_days_reference_date(session, soldier.enrolled_at or date.today())
 
     from app.services.notifications import notify_enrollment_received
     notify_enrollment_received(

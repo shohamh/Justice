@@ -22,7 +22,6 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
-from app.services.constraint_override_settings import manual_override_allowed
 from app.services.notifications import create_notification
 from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
@@ -195,8 +194,6 @@ def create_assignment(
         )
     ).scalars().first()
     if constraint is not None:
-        if not manual_override_allowed(session):
-            raise AssignmentError("personal_constraint_blocked")
         if not override_reason or not override_reason.strip():
             raise AssignmentError("override_reason_required")
     a = DutyAssignment(

@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ProfilePage from "./ProfilePage";
 import { NotificationPref } from "../api/notifications";
-import { listFieldUpdates } from "../api/soldiers";
+import { listFieldUpdates, submitFieldUpdate } from "../api/soldiers";
+import { UNIT_JOIN_DATE_CONFIRMATION } from "../constants/activeDays";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -88,6 +89,10 @@ function renderProfilePage() {
 beforeEach(() => {
   mockGetPreferences.mockReset();
   mockGetPreferences.mockResolvedValue(PREFS);
+  vi.mocked(listFieldUpdates).mockReset();
+  vi.mocked(listFieldUpdates).mockResolvedValue([]);
+  vi.mocked(submitFieldUpdate).mockReset();
+  vi.mocked(submitFieldUpdate).mockResolvedValue({} as never);
 });
 
 describe("ProfilePage notification preferences", () => {
@@ -129,6 +134,24 @@ describe("ProfilePage notification preferences", () => {
 
 
 describe("ProfilePage unified service-details form", () => {
+  it("displays the unit join date from the authenticated profile", async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "u1", full_name: "חייל", role: "soldier", is_commander: false,
+        is_duty_manager: false, email: null, email_verified: false,
+        gender: null, rank: null, rank_track: null, phone: null,
+        unit_join_date: "2026-01-15", last_mitvahim_date: null, last_alal_date: null,
+        mandatory_end_date: null, discharge_date: null,
+        has_military_driving_license: false, military_driving_license_expiry: null,
+      },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    renderProfilePage();
+
+    expect(await screen.findByText(/soldier_profile\.unit_join_date/)).toBeInTheDocument();
+    expect(screen.getByText("15.01.2026")).toBeInTheDocument();
+  });
+
   it("seeds controls with the current value and disables submit while unchanged", async () => {
     mockUseAuth.mockReturnValue({
       user: {
@@ -186,6 +209,34 @@ describe("ProfilePage unified service-details form", () => {
 
     fireEvent.change(phoneInput, { target: { value: "050-1234567" } });
     await waitFor(() => expect(submitButtons[2]).toBeEnabled());
+  });
+
+  it("confirms a unit join date correction before submitting it", async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "u1", full_name: "×—×™×™×œ", role: "soldier", is_commander: false,
+        is_duty_manager: false, email: null, email_verified: false,
+        gender: null, rank: null, rank_track: null, phone: null,
+        enlistment_date: "2020-01-01", enrolled_at: "2020-01-01", unit_join_date: "2026-01-15",
+        last_mitvahim_date: null, last_alal_date: null,
+        mandatory_end_date: null, discharge_date: null,
+        has_military_driving_license: false, military_driving_license_expiry: null,
+      },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    renderProfilePage();
+
+    const dateInput = await screen.findByTestId("unit-join-date-request-input");
+    await waitFor(() => expect(dateInput).toHaveValue("15/01/2026"));
+    fireEvent.change(dateInput, { target: { value: "01/02/2026" } });
+    fireEvent.click(screen.getByTestId("unit-join-date-submit"));
+
+    expect(await screen.findByTestId("confirm-dialog-confirm")).toBeInTheDocument();
+    expect(screen.getByText(UNIT_JOIN_DATE_CONFIRMATION)).toBeInTheDocument();
+    expect(submitFieldUpdate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+    await waitFor(() => expect(submitFieldUpdate).toHaveBeenCalledWith("u1", "unit_join_date", "2026-02-01"));
   });
 
   it("reveals the food-constraints explanation when its help icon is clicked", async () => {

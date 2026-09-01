@@ -80,6 +80,7 @@ def _range_assignment(
 
 
 def test_lists_only_soldiers_without_a_qualification_valid_today(app_session: Session) -> None:
+    _duty_type(app_session, name="Guard", required_range_type=RangeType.live)
     root = create_node(app_session, level="branch", name="Root")
     child = create_node(app_session, level="company", name="Child", parent=root)
     sibling = create_node(app_session, level="company", name="Sibling", parent=root)
@@ -131,6 +132,7 @@ def test_lists_only_soldiers_without_a_qualification_valid_today(app_session: Se
 
 
 def test_overlapping_roots_return_each_soldier_once(app_session: Session) -> None:
+    _duty_type(app_session, name="Guard", required_range_type=RangeType.live)
     root = create_node(app_session, level="branch", name="Root")
     child = create_node(app_session, level="company", name="Child", parent=root)
     sibling = create_node(app_session, level="company", name="Sibling", parent=root)
@@ -228,6 +230,24 @@ def test_future_weapon_duty_without_matching_range_is_urgent(app_session: Sessio
     assert by_soldier[draft_range.id].has_upcoming_matching_range is False
 
 
+def test_excludes_soldier_who_cannot_qualify_for_any_weapon_duty_type(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="Root")
+    structurally_ineligible = _duty_type(
+        app_session, name="Restricted weapon duty", required_range_type=RangeType.laser
+    )
+    structurally_ineligible.requirements = {"allowed_genders": ["female"]}
+    visible = create_soldier(app_session, personal_number="inq-eligible", hierarchy_node_id=node.id)
+    excluded = create_soldier(app_session, personal_number="inq-no-weapon-duty", hierarchy_node_id=node.id)
+    visible.gender = "female"
+    excluded.gender = "male"
+    _duty(app_session, soldier_id=excluded.id, duty_type=structurally_ineligible, start_date=AS_OF)
+    app_session.commit()
+
+    records = list_ineligible_soldiers(app_session, roots={node.id}, as_of=AS_OF)
+
+    assert {record.soldier_id for record in records} == {visible.id}
+
+
 def test_cancelled_matching_range_alone_does_not_cover_a_future_weapon_duty(
     app_session: Session,
 ) -> None:
@@ -283,6 +303,7 @@ def test_partial_matching_range_does_not_cover_every_future_weapon_duty(
 
 
 def test_batches_related_records_for_all_scoped_soldiers(app_session: Session) -> None:
+    _duty_type(app_session, name="Guard", required_range_type=RangeType.live)
     root = create_node(app_session, level="branch", name="Root")
     soldiers = [
         create_soldier(app_session, personal_number=f"inq-batch-{index}", hierarchy_node_id=root.id)

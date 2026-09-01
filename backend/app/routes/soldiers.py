@@ -38,6 +38,7 @@ from app.services.authority import (
     can_view_soldier_scope,
     rank_advancement_edit_authorized,
 )
+from app.services.approval_scope import UnitJoinDateEditScope
 from app.services.request_metadata import latest_activity, person_ref
 from app.services.eligibility import ENLISTED_RANKS
 from app.services.rank_advancement import OFFICER_ACADEMIC_LADDER, OFFICER_LADDER
@@ -67,10 +68,12 @@ class SoldierOut(BaseModel):
     next_rank_date: date_type | None = None
     next_rank_date_overridden: bool = False
     can_edit_rank_advancement: bool = False
+    can_request_unit_join_date: bool = False
     bahad1_graduate: bool = False
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: date_type | None = None
     enlistment_date: date_type | None = None
+    unit_join_date: date_type | None = None
     mandatory_end_date: date_type | None = None
     discharge_date: date_type | None = None
     last_mitvahim_date: date_type | None = None
@@ -173,6 +176,10 @@ class FieldUpdateOut(BaseModel):
     updated_at: Any | None = None
     waiting_on: WaitingOnOut | None = None
     commander_approved_by: PersonRefOut | None = None
+    commander_approved_at: Any | None = None
+    commander_approval_note: str | None = None
+    duty_manager_approved_by: PersonRefOut | None = None
+    duty_manager_approved_at: Any | None = None
 
 
 class TimelineEventOut(BaseModel):
@@ -237,6 +244,7 @@ def _out(
     phone_public: bool = True,
     email_public: bool = True,
     rank_scope: RankAdvancementEditScope | None = None,
+    unit_join_date_scope: UnitJoinDateEditScope | None = None,
     visibility: str = "full",
     include_hierarchy_path: bool = False,
 ) -> SoldierOut:
@@ -257,6 +265,17 @@ def _out(
         if rank_scope is not None
         else rank_advancement_edit_authorized(session, user=user, target_node=_node_of(session, s))
     )
+    from app.services.approval_scope import unit_join_date_initiator_authorized
+    can_request_unit_join_date = (
+        not public_mode
+        and (
+            unit_join_date_scope.authorized(actor=user, target=s, target_node=_node_of(session, s))
+            if unit_join_date_scope is not None
+            else unit_join_date_initiator_authorized(session, actor=user, target=s)
+        )
+        and s.enrolled_at is not None
+        and s.left_at is None
+    )
     return SoldierOut(
         id=s.id,
         personal_number=s.personal_number,
@@ -275,10 +294,12 @@ def _out(
         next_rank_date=s.next_rank_date,
         next_rank_date_overridden=False if public_mode else s.next_rank_date_overridden,
         can_edit_rank_advancement=False if public_mode else can_edit_rank_advancement,
+        can_request_unit_join_date=can_request_unit_join_date,
         bahad1_graduate=s.bahad1_graduate,
         has_military_driving_license=None if public_mode else s.has_military_driving_license,
         military_driving_license_expiry=None if public_mode else s.military_driving_license_expiry,
         enlistment_date=s.enlistment_date,
+        unit_join_date=s.unit_join_date,
         mandatory_end_date=s.mandatory_end_date,
         discharge_date=s.discharge_date,
         last_mitvahim_date=None if public_mode else s.last_mitvahim_date,
@@ -299,6 +320,14 @@ def _fu_out(
     nearest_commander: NearestApproverOut | None = None, nearest_duty_manager: NearestApproverOut | None = None,
     can_approve: bool = True,
 ) -> FieldUpdateOut:
+    if u.field_name == "unit_join_date":
+        from app.services.approval_scope import nearest_unit_join_date_approver
+        cmd_id = nearest_unit_join_date_approver(session, u.soldier_id, stage="commander")
+        dm_id = nearest_unit_join_date_approver(session, u.soldier_id, stage="duty_manager")
+        cmd = session.get(Soldier, cmd_id) if cmd_id else None
+        dm = session.get(Soldier, dm_id) if dm_id else None
+        nearest_commander = NearestApproverOut(id=cmd.id, name=cmd.full_name) if cmd else None
+        nearest_duty_manager = NearestApproverOut(id=dm.id, name=dm.full_name) if dm else None
     redact = not include_values and u.field_name in PRIVATE_FIELD_NAMES
     return FieldUpdateOut(
         id=u.id,
@@ -317,10 +346,20 @@ def _fu_out(
         nearest_duty_manager=nearest_duty_manager,
         can_approve=can_approve,
         requested_at=u.created_at,
-        updated_at=latest_activity(u.created_at, u.decided_at),
-        # Plain "pending" flow with no named commander/duty-manager step.
-        waiting_on=None,
-        commander_approved_by=None,
+        updated_at=latest_activity(u.created_at, u.decided_at, u.commander_approved_at, u.duty_manager_approved_at),
+        waiting_on=(
+            WaitingOnOut(
+                kind="commander", soldier_id=nearest_commander.id, name=nearest_commander.name,
+            ) if u.status == "pending_commander" and nearest_commander else
+            WaitingOnOut(
+                kind="duty_manager", soldier_id=nearest_duty_manager.id, name=nearest_duty_manager.name,
+            ) if u.status == "pending_duty_manager" and nearest_duty_manager else None
+        ),
+        commander_approved_by=person_ref(session, u.commander_approved_by),
+        commander_approved_at=u.commander_approved_at,
+        commander_approval_note=u.commander_approval_note,
+        duty_manager_approved_by=person_ref(session, u.duty_manager_approved_by),
+        duty_manager_approved_at=u.duty_manager_approved_at,
     )
 
 
@@ -417,17 +456,18 @@ def list_soldiers(
     # actor's commander/DM scope roots and מדור level rank a single time
     # instead of re-querying them for every soldier in the roster.
     rank_scope = RankAdvancementEditScope(session, user=user)
+    unit_join_date_scope = UnitJoinDateEditScope(session, actor=user)
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
         return [
-            _out(s, session=session, user=user, include_private=False, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope)
+            _out(s, session=session, user=user, include_private=False, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope, unit_join_date_scope=unit_join_date_scope)
             for s in rows
         ]
 
     roots = scope_root_ids(session, user)
     # Unassigned soldiers with no scope can only see themselves
     if not roots:
-        return [_out(user, session=session, user=user, include_private=True, telegram_linked=user.id in linked_ids, rank_scope=rank_scope)]
+        return [_out(user, session=session, user=user, include_private=True, telegram_linked=user.id in linked_ids, rank_scope=rank_scope, unit_join_date_scope=unit_join_date_scope)]
 
     rows = session.execute(select(Soldier)).scalars().all()
     node_ids = {s.hierarchy_node_id for s in rows if s.hierarchy_node_id}
@@ -443,17 +483,23 @@ def list_soldiers(
         node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         in_scope = node is not None and any(r in node.path_ids for r in roots)
         include_private = in_scope or s.id == user.id
-        out.append(_out(s, session=session, user=user, include_private=include_private, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope))
+        out.append(_out(s, session=session, user=user, include_private=include_private, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope, unit_join_date_scope=unit_join_date_scope))
     return out
 
 
 def _field_update_can_approve(
     session: Session, *, user: Soldier, roots: set[uuid.UUID], is_cmd: bool, is_dm: bool,
-    node: HierarchyNode | None, field_name: str,
+    node: HierarchyNode | None, field_name: str, status: str = "pending",
 ) -> bool:
     """Shared by list_all_pending_field_updates and count_pending_field_updates so
     the nav badge's count always matches which cards actually show an approve
     button — a stale duplicate here would silently drift the two out of sync."""
+    if field_name == "unit_join_date":
+        if status not in {"pending_commander", "pending_duty_manager"}:
+            return False
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        stage = "commander" if status == "pending_commander" else "duty_manager"
+        return unit_join_date_stage_authorized(session, actor=user, target_node=node, stage=stage)
     if field_name in {"rank", "rank_track", "is_officer", "next_rank_date"}:
         return rank_advancement_edit_authorized(session, user=user, target_node=node)
     decide_action = Action.MILITARY_LICENSE_DECIDE if field_name == "military_driving_license" else Action.SOLDIER_UPDATE
@@ -473,7 +519,9 @@ def list_all_pending_field_updates(
 ) -> list[FieldUpdateOut]:
     """Returns pending field updates for soldiers in the caller's scope."""
     all_pending = session.execute(
-        select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+        select(SoldierFieldUpdate).where(
+            SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager"))
+        )
     ).scalars().all()
     if not all_pending:
         return []
@@ -529,7 +577,7 @@ def list_all_pending_field_updates(
                 nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
                 can_approve = _field_update_can_approve(
                     session, user=user, roots=roots, is_cmd=user_is_commander, is_dm=user_is_duty_manager,
-                    node=node, field_name=upd.field_name,
+                    node=node, field_name=upd.field_name, status=upd.status,
                 )
                 result.append(
                     _fu_out(
@@ -548,14 +596,18 @@ def count_pending_field_updates(
 ) -> dict[str, int]:
     if user.role == "admin":
         rows = session.execute(
-            select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+            select(SoldierFieldUpdate).where(
+                SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager"))
+            )
         ).scalars().all()
         return {"count": len(rows)}
     roots = scope_root_ids(session, user)
     if not roots:
         return {"count": 0}
     all_pending = session.execute(
-        select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+        select(SoldierFieldUpdate).where(
+            SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager"))
+        )
     ).scalars().all()
     if not all_pending:
         return {"count": 0}
@@ -585,7 +637,7 @@ def count_pending_field_updates(
             # badge it feeds, with cards the viewer could never approve.
             if _field_update_can_approve(
                 session, user=user, roots=roots, is_cmd=user_is_commander, is_dm=user_is_duty_manager,
-                node=node, field_name=upd.field_name,
+                node=node, field_name=upd.field_name, status=upd.status,
             ):
                 total += 1
     return {"count": total}
@@ -816,13 +868,18 @@ def create_field_update(
     user: Soldier = Depends(require_password_changed),
 ) -> FieldUpdateOut:
     s = _load(session, soldier_id)
-    if s.id != user.id:
-        raise HTTPException(status_code=403, detail="forbidden")
     try:
+        from app.services.approval_scope import unit_join_date_initiator_authorized
+        if body.field_name == "unit_join_date" and not unit_join_date_initiator_authorized(session, actor=user, target=s):
+            raise HTTPException(status_code=403, detail="forbidden")
+        if body.field_name != "unit_join_date" and s.id != user.id:
+            raise HTTPException(status_code=403, detail="forbidden")
         req = submit_field_update(
             session, soldier_id=soldier_id, field_name=body.field_name,
             new_value=body.new_value, actor_id=user.id,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
@@ -864,7 +921,13 @@ def approve_update(
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
-    _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=True)
+    if upd.field_name == "unit_join_date":
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        stage = "commander" if upd.status == "pending_commander" else "duty_manager"
+        if not unit_join_date_stage_authorized(session, actor=user, target_node=_node_of(session, s), stage=stage):
+            raise HTTPException(status_code=403, detail="forbidden")
+    else:
+        _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=True)
     try:
         approve_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
@@ -890,7 +953,13 @@ def reject_update(
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
-    _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=False)
+    if upd.field_name == "unit_join_date":
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        stage = "commander" if upd.status == "pending_commander" else "duty_manager"
+        if not unit_join_date_stage_authorized(session, actor=user, target_node=_node_of(session, s), stage=stage):
+            raise HTTPException(status_code=403, detail="forbidden")
+    else:
+        _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=False)
     try:
         reject_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:

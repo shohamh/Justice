@@ -16,6 +16,7 @@ from app.services import enrollment as svc
 from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
 from app.services.notifications import create_notification
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
+from app.services.soldiers import SoldierError, validate_soldier_dates
 from app.services.authority import RankAdvancementEditScope, rank_advancement_edit_authorized
 from app.validation import is_valid_israeli_phone
 
@@ -33,6 +34,7 @@ _EDITABLE_FIELD_LABELS: dict[str, str] = {
     "is_officer": "קצין",
     "gender": "מגדר",
     "enlistment_date": "תאריך גיוס",
+    "unit_join_date": "תאריך כניסה ליחידה",
     "mandatory_end_date": "סיום חובה",
     "discharge_date": "שחרור",
     "last_mitvahim_date": "מטווח אחרון",
@@ -72,7 +74,9 @@ class EnrollmentRequestOut(BaseModel):
     is_career: bool = False
     can_edit_rank_advancement: bool = False
     gender: str | None = None
+    enrolled_at: date | None = None
     enlistment_date: str | None = None
+    unit_join_date: date | None = None
     mandatory_end_date: str | None = None
     discharge_date: str | None = None
     last_mitvahim_date: str | None = None
@@ -97,6 +101,7 @@ class PatchEnrollmentBody(BaseModel):
     is_officer: bool | None = None
     gender: str | None = None
     enlistment_date: str | None = None
+    unit_join_date: date | None = None
     mandatory_end_date: str | None = None
     discharge_date: str | None = None
     last_mitvahim_date: str | None = None
@@ -190,7 +195,9 @@ def _soldier_to_out(
             session.get(HierarchyNode, r.requested_node_id),
         ),
         gender=s.gender,
+        enrolled_at=s.enrolled_at,
         enlistment_date=s.enlistment_date.isoformat() if s.enlistment_date else None,
+        unit_join_date=s.unit_join_date,
         mandatory_end_date=s.mandatory_end_date.isoformat() if s.mandatory_end_date else None,
         discharge_date=s.discharge_date.isoformat() if s.discharge_date else None,
         last_mitvahim_date=s.last_mitvahim_date.isoformat() if s.last_mitvahim_date else None,
@@ -346,6 +353,8 @@ def patch_enrollment(
         _apply("gender", body.gender or None)
     if body.enlistment_date is not None:
         _apply("enlistment_date", date.fromisoformat(body.enlistment_date) if body.enlistment_date else None)
+    if body.unit_join_date is not None:
+        _apply("unit_join_date", body.unit_join_date)
     if body.mandatory_end_date is not None:
         _apply("mandatory_end_date", date.fromisoformat(body.mandatory_end_date) if body.mandatory_end_date else None)
     if body.discharge_date is not None:
@@ -376,6 +385,11 @@ def patch_enrollment(
                 track=s.rank_track,
             )
             s.next_rank_date_overridden = False
+
+    try:
+        validate_soldier_dates(s)
+    except SoldierError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if changed_fields:
         labels = [_EDITABLE_FIELD_LABELS[f] for f in changed_fields]

@@ -43,6 +43,7 @@ export interface SoldierRow extends RowBase {
   hierarchy_node_name: string | null;
   enrolled_at: string | null;
   enlistment_date: string | null;
+  unit_join_date: string | null;
   phone: string | null;
   email: string | null;
   is_career: boolean | null;

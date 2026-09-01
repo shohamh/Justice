@@ -11,6 +11,7 @@ import ConfirmDialog from "./ConfirmDialog";
 interface Props {
   data: UpcomingDay[] | null;
   scope?: "personal" | "command";
+  scopeLabel?: string;
 }
 
 interface DutyGroup {
@@ -78,7 +79,7 @@ function SoldierRow({
 }) {
   const { t } = useTranslation();
   return (
-    <li className="flex items-center gap-1.5 text-sm">
+    <li className="flex items-center gap-1.5 text-sm" onClick={(event) => event.stopPropagation()}>
       {reserve && <span className="text-xs text-amber-700 dark:text-amber-400">({t("command_dashboard.reserve", "רזרבה")})</span>}
       {a.status === "algorithm_draft" && (
         <span className="px-1 rounded bg-blue-100 text-blue-800 text-xs" data-testid={`draft-badge-${a.assignment_id}`}>
@@ -105,7 +106,7 @@ function SoldierRow({
   );
 }
 
-export default function UpcomingSnapshot({ data, scope = "command" }: Props) {
+export default function UpcomingSnapshot({ data, scope = "command", scopeLabel: customScopeLabel }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const publicSettings = usePublicSettings();
@@ -128,10 +129,11 @@ export default function UpcomingSnapshot({ data, scope = "command" }: Props) {
     [data],
   );
 
-  const scopeLabel =
+  const scopeLabel = customScopeLabel ?? (
     scope === "command"
       ? t("command_dashboard.upcoming_scope_command")
-      : t("home.upcoming_scope_personal");
+      : t("home.upcoming_scope_personal")
+  );
   if (!data || data.length === 0) {
     return (
       <section className="space-y-2" aria-label={scopeLabel}>
@@ -157,16 +159,24 @@ export default function UpcomingSnapshot({ data, scope = "command" }: Props) {
             ) : (
               <div className="space-y-2">
                 {day.groups.map((group) => (
-                  <div key={group.key} className="border border-gray-100 dark:border-gray-700 rounded p-2">
-                    <button
-                      type="button"
-                      onClick={() => openDutyDetails(group.representative)}
-                      className="text-sm font-medium text-indigo-700 dark:text-indigo-300 hover:underline"
-                    >
+                  <div
+                    key={group.key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openDutyDetails(group.representative)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openDutyDetails(group.representative);
+                      }
+                    }}
+                    className="border border-gray-100 dark:border-gray-700 rounded p-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    <div className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
                       {group.representative.duty_type_name || group.representative.duty_type_id?.slice(0, 6) || "?"}
                       {" · "}
                       {group.representative.duty_location_name || "?"}
-                    </button>
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                       {group.primaries.length > 0 && (
                         <ul className="space-y-0.5">

@@ -5,7 +5,84 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyManagerScope, HierarchyNode, Soldier
+from app.db.models import DutyManagerScope, HierarchyLevelType, HierarchyNode, Soldier
+
+UNIT_JOIN_DATE_COMMANDER_MIN_LEVEL_KEY = "group"  # seeded key for מדור
+UNIT_JOIN_DATE_DUTY_MANAGER_MIN_LEVEL_KEY = "branch"  # seeded key for ענף
+
+
+def unit_join_date_stage_authorized(
+    session: Session, *, actor: Soldier, target_node: HierarchyNode | None, stage: str,
+) -> bool:
+    if stage not in {"commander", "duty_manager"}:
+        return False
+    if actor.role == "admin":
+        return True
+    if target_node is None:
+        return False
+    from app.auth.authz import commanded_node_ids, dm_scope_node_ids
+    roots = (
+        commanded_node_ids(session, actor.id)
+        if stage == "commander" else dm_scope_node_ids(session, actor.id)
+    )
+    required_level_key = (
+        UNIT_JOIN_DATE_COMMANDER_MIN_LEVEL_KEY
+        if stage == "commander" else UNIT_JOIN_DATE_DUTY_MANAGER_MIN_LEVEL_KEY
+    )
+    from app.services.authority import dm_scope_covers_target
+    return dm_scope_covers_target(
+        session, scope_root_ids=set(roots), target_node=target_node,
+        required_level_key=required_level_key,
+    )
+
+
+def unit_join_date_initiator_authorized(session: Session, *, actor: Soldier, target: Soldier) -> bool:
+    if actor.id == target.id:
+        return True
+    target_node = session.get(HierarchyNode, target.hierarchy_node_id) if target.hierarchy_node_id else None
+    return any(unit_join_date_stage_authorized(session, actor=actor, target_node=target_node, stage=stage) for stage in ("commander", "duty_manager"))
+
+
+class UnitJoinDateEditScope:
+    """Precompute the two approval scopes used by roster edit affordances."""
+
+    __slots__ = ("is_admin", "actor_id", "_commander_roots", "_duty_manager_roots")
+
+    def __init__(self, session: Session, *, actor: Soldier) -> None:
+        self.is_admin = actor.role == "admin"
+        self.actor_id = actor.id
+        self._commander_roots: set[uuid.UUID] = set()
+        self._duty_manager_roots: set[uuid.UUID] = set()
+        if self.is_admin:
+            return
+        from app.auth.authz import commanded_node_ids, dm_scope_node_ids
+
+        level_ranks = {
+            row.key: row.rank for row in session.execute(select(HierarchyLevelType)).scalars()
+        }
+        commander_min = level_ranks.get(UNIT_JOIN_DATE_COMMANDER_MIN_LEVEL_KEY)
+        duty_manager_min = level_ranks.get(UNIT_JOIN_DATE_DUTY_MANAGER_MIN_LEVEL_KEY)
+        if commander_min is not None:
+            self._commander_roots = {
+                node_id for node_id in commanded_node_ids(session, actor.id)
+                if (node := session.get(HierarchyNode, node_id)) is not None
+                and level_ranks.get(node.level) is not None
+                and level_ranks[node.level] <= commander_min
+            }
+        if duty_manager_min is not None:
+            self._duty_manager_roots = {
+                node_id for node_id in dm_scope_node_ids(session, actor.id)
+                if (node := session.get(HierarchyNode, node_id)) is not None
+                and level_ranks.get(node.level) is not None
+                and level_ranks[node.level] <= duty_manager_min
+            }
+
+    def authorized(self, *, actor: Soldier, target: Soldier, target_node: HierarchyNode | None) -> bool:
+        if actor.id == target.id or self.is_admin:
+            return True
+        if target_node is None:
+            return False
+        return any(root in target_node.path_ids for root in self._commander_roots | self._duty_manager_roots)
 
 
 def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list[uuid.UUID]:
@@ -89,6 +166,49 @@ def nearest_commander_for_soldier(session: Session, soldier_id: uuid.UUID) -> uu
 
 def nearest_duty_manager_for_soldier(session: Session, soldier_id: uuid.UUID) -> uuid.UUID | None:
     chain = duty_manager_chain_for_soldier(session, soldier_id)
+    return chain[0] if chain else None
+
+
+def unit_join_date_approver_chain(
+    session: Session, soldier_id: uuid.UUID, *, stage: str,
+) -> list[uuid.UUID]:
+    """Return nearest-first approvers who can actually approve this stage.
+
+    The raw hierarchy/scope chains are also used for visibility and notification
+    cascades. Unit-join-date approvals require the stricter Medor/Anaph scope,
+    so filter those chains through the same authorization predicate used by the
+    approval endpoint before selecting a recipient.
+    """
+    if stage == "commander":
+        chain = commander_chain_for_soldier(session, soldier_id)
+    elif stage == "duty_manager":
+        chain = duty_manager_chain_for_soldier(session, soldier_id)
+    else:
+        return []
+    soldier = session.get(Soldier, soldier_id)
+    target_node = (
+        session.get(HierarchyNode, soldier.hierarchy_node_id)
+        if soldier is not None and soldier.hierarchy_node_id else None
+    )
+    if target_node is None:
+        return []
+    actors = {
+        actor.id: actor
+        for actor in session.execute(select(Soldier).where(Soldier.id.in_(chain))).scalars()
+    }
+    return [
+        actor_id for actor_id in chain
+        if (actor := actors.get(actor_id)) is not None
+        and unit_join_date_stage_authorized(
+            session, actor=actor, target_node=target_node, stage=stage,
+        )
+    ]
+
+
+def nearest_unit_join_date_approver(
+    session: Session, soldier_id: uuid.UUID, *, stage: str,
+) -> uuid.UUID | None:
+    chain = unit_join_date_approver_chain(session, soldier_id, stage=stage)
     return chain[0] if chain else None
 
 

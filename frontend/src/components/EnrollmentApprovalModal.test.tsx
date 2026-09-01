@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
 import EnrollmentApprovalModal from "./EnrollmentApprovalModal";
 import * as rankAdvancementApi from "../api/rankAdvancement";
@@ -47,16 +47,22 @@ const request = {
   rank_track: null,
   gender: null,
   enlistment_date: null,
+  enrolled_at: "2026-01-15",
   mandatory_end_date: null,
   discharge_date: null,
   last_mitvahim_date: null,
   last_alal_date: null,
+  unit_join_date: null,
   exemption_requests: [],
   nearest_commander: null,
   nearest_duty_manager: null,
 };
 
 describe("EnrollmentApprovalModal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("stays open when selecting a requested unit", () => {
     const onClose = vi.fn();
     renderWithProviders(
@@ -131,5 +137,48 @@ describe("EnrollmentApprovalModal", () => {
         expect.objectContaining({ rank: 'רב"ט' }),
       );
     });
+  });
+
+  it("sends a corrected unit join date before approving enrollment", async () => {
+    renderWithProviders(
+      <EnrollmentApprovalModal
+        req={{ ...request, unit_join_date: "2026-01-01" }}
+        nodes={[]}
+        exemptionTypes={[]}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("שמור ואשר"));
+
+    await waitFor(() => {
+      expect(enrollmentApi.patchEnrollment).toHaveBeenCalledWith(
+        request.id,
+        expect.objectContaining({ unit_join_date: "2026-01-01" }),
+      );
+    });
+  });
+
+  it("shows Hebrew validation and does not save a unit join date before enlistment", async () => {
+    renderWithProviders(
+      <EnrollmentApprovalModal
+        req={{
+          ...request,
+          enlistment_date: "2026-01-02",
+          unit_join_date: "2026-01-01",
+        }}
+        nodes={[]}
+        exemptionTypes={[]}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("שמור ואשר"));
+
+    expect(screen.getByText("תאריך הכניסה ליחידה לא יכול להיות לפני תאריך הגיוס")).toBeInTheDocument();
+    expect(enrollmentApi.patchEnrollment).not.toHaveBeenCalled();
+    expect(enrollmentApi.approveEnrollment).not.toHaveBeenCalled();
   });
 });

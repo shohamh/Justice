@@ -135,7 +135,10 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
   }
 
   function selectAllPrimary() {
-    const top = unblockedCandidates.slice(0, primarySlotsLeft).map(c => c.soldier_id);
+    const top = unblockedCandidates
+      .filter(c => !c.personal_constraint_warning)
+      .slice(0, primarySlotsLeft)
+      .map(c => c.soldier_id);
     setPrimarySelected(new Set(top));
     setReserveSelected(prev => {
       const next = new Set(prev);
@@ -146,6 +149,7 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
 
   function autoSelectReserves() {
     const top = reserveCandidates.unblocked
+      .filter(c => !c.personal_constraint_warning)
       .slice(0, reserveSlotsLeft)
       .map(c => c.soldier_id);
     setReserveSelected(new Set(top));

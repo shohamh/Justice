@@ -12,6 +12,7 @@ import { isDateRangeValid, lastDutyDay, toExclusiveEndDate } from "../utils/form
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "./DateInput";
 import TimeInput from "./TimeInput";
+import ConfirmDialog from "./ConfirmDialog";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface QuotaRow {
@@ -105,6 +106,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [endTime, setEndTime] = useState(initialHours.endTime);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [pendingStartDate, setPendingStartDate] = useState<string | null>(null);
   const [quotaRows, setQuotaRows] = useState<QuotaRow[]>(
     (existing?.node_quotas ?? []).map((q) => ({ hierarchy_node_id: q.hierarchy_node_id, count: q.count }))
   );
@@ -227,6 +229,23 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
     return errors;
   }
 
+  function handleStartDateChange(iso: string) {
+    if (existing && endDate && iso > endDate) {
+      setPendingStartDate(iso);
+      return;
+    }
+    setStartDate(iso);
+    setFieldErrors((prev) => ({ ...prev, startDate: "", endDate: "" }));
+  }
+
+  function confirmStartDateChange() {
+    if (!pendingStartDate) return;
+    setStartDate(pendingStartDate);
+    setEndDate("");
+    setPendingStartDate(null);
+    setFieldErrors((prev) => ({ ...prev, startDate: "", endDate: "" }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -281,6 +300,14 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
 
   return (
     <>
+    <ConfirmDialog
+      open={pendingStartDate !== null}
+      title={t("shifts.change_start_date_confirm_title", { defaultValue: "שינוי תאריך תחילת המשמרת" })}
+      message={t("shifts.change_start_date_confirm_message", { defaultValue: "תאריך ההתחלה החדש מאוחר מתאריך הסיום. האם לנקות את תאריך הסיום כדי לבחור תאריך חדש?" })}
+      confirmLabel={t("shifts.change_start_date_confirm", { defaultValue: "נקה תאריך סיום" })}
+      onConfirm={confirmStartDateChange}
+      onClose={() => setPendingStartDate(null)}
+    />
     {showAddLoc && (
       <LocationFormModal
         onCreated={loc => { setLocations(prev => [...prev, loc]); setLocId(loc.id); setShowAddLoc(false); }}
@@ -325,12 +352,12 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           )}
           <label className="block text-sm">
             {t("shifts.start_date")}
-            <DateInput value={startDate} onChange={iso => { setStartDate(iso); setFieldErrors((prev) => ({ ...prev, startDate: "", endDate: "" })); }} max={endDate || undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput key={pendingStartDate ?? startDate} value={startDate} onChange={handleStartDateChange} max={!existing ? (endDate || undefined) : undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             {fieldErrors.startDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.startDate}</p>}
           </label>
           <label className="block text-sm">
             {t("shifts.end_date")}
-            <DateInput value={endDate} onChange={iso => { setEndDate(iso); setFieldErrors((prev) => ({ ...prev, endDate: "" })); }} min={startDate || undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={endDate} onChange={iso => { setEndDate(iso); setFieldErrors((prev) => ({ ...prev, endDate: "" })); }} min={!existing ? (startDate || undefined) : undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             {fieldErrors.endDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.endDate}</p>}
           </label>
           <label className="block text-sm">

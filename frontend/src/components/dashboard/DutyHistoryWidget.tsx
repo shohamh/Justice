@@ -6,6 +6,7 @@ import { TransparencyRow, BurdenShare, BurdenShareBreakdown } from "../../api/sc
 import { formatDutyRange } from "../../utils/formatDate";
 import BurdenShareBreakdownModal from "../BurdenShareBreakdownModal";
 import BurdenShareTrendChart from "./BurdenShareTrendChart";
+import HelpModal from "../HelpModal";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -30,6 +31,7 @@ export default function DutyHistoryWidget({
 }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const [breakdownModalOpen, setBreakdownModalOpen] = useState(false);
+  const [activeDaysHelpOpen, setActiveDaysHelpOpen] = useState(false);
   const today = new Date().toISOString().split("T")[0];
   const past = duties
     // end_date is exclusive, so "over" means end_date is today or earlier.
@@ -77,7 +79,10 @@ export default function DutyHistoryWidget({
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgScore}</div>
         </div>
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
-          <div className="text-xs text-gray-500 mb-1">ימים פעילים</div>
+          <div className="text-xs text-gray-500 mb-1 inline-flex items-center gap-1">
+            ימים פעילים
+            <button type="button" onClick={() => setActiveDaysHelpOpen(true)} className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center" aria-label="הסבר על ימים פעילים">?</button>
+          </div>
           <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{myRow?.active_days ?? 0}</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgActiveDays}</div>
         </div>
@@ -101,6 +106,7 @@ export default function DutyHistoryWidget({
           </div>
         </div>
       </div>
+      {activeDaysHelpOpen && <HelpModal onClose={() => setActiveDaysHelpOpen(false)} initialTab="active_days" />}
 
       {/* חלק בנטל — comparison group context, distribution, trend, breakdown */}
       {burdenShare && (

@@ -5,9 +5,10 @@ import { formatDate } from "../../utils/formatDate";
 interface Props {
   ranges: RangeEvent[];
   onOpenRange: (range: RangeEvent) => void;
+  title?: string;
 }
 
-export default function UpcomingRangesWidget({ ranges, onOpenRange }: Props) {
+export default function UpcomingRangesWidget({ ranges, onOpenRange, title }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   // Defensive guard: getRanges (api/ranges.ts) is currently an unguarded
   // pass-through, so a malformed non-array response would otherwise crash
@@ -19,7 +20,7 @@ export default function UpcomingRangesWidget({ ranges, onOpenRange }: Props) {
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
-      <h2 className="text-lg font-semibold mb-3">מטווחים קרובים</h2>
+      <h2 className="text-lg font-semibold mb-3">{title ?? "מטווחים קרובים"}</h2>
       {upcoming.length === 0 ? (
         <p className="text-sm text-gray-500">אין מטווחים קרובים</p>
       ) : (

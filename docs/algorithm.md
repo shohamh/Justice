@@ -6,6 +6,11 @@ The system uses a **CP-SAT constraint-programming solver** (Google OR-Tools) to 
 
 ## The core fairness goal
 
+Active days begin at the later of the configured rollout reference date and the
+soldier's unit-entry date (legacy records without one use the reference date),
+and end at today or an earlier discharge/leave date. Full exemptions overlapping
+that interval are subtracted; personal constraints affect eligibility only.
+
 Every soldier accumulates a **normalised score** — their total duty score divided by the number of days they have been active in the unit. Soldiers who joined recently or spent time on reserve/exemption have a lower denominator, so they accumulate score more slowly and end up with a lower normalised score than veterans if assignments were random. The algorithm's primary job is to close that gap: when it finishes, the highest normalised score across all soldiers minus the lowest is at most **K** (default 8 points). This is enforced as a hard constraint, not just a goal, so the solver cannot produce a solution that violates it.
 
 ---

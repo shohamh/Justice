@@ -36,6 +36,7 @@ import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getRanges } from "../api/ranges";
+import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
 import { listPendingTransferRequests } from "../api/hierarchyTransfers";
 import { lastDutyDay } from "../utils/formatDate";
 import { fetchFullTree } from "../api/hierarchy";
@@ -79,6 +80,12 @@ export default function HomePage() {
   const [openRangeId, setOpenRangeId] = useState<string | null>(null);
 
   const commandScopeAvailable = isCommandScopeAvailable(user);
+  const ineligibleSoldiersQuery = useQuery({
+    queryKey: queryKeys.ineligibleSoldiers("commander"),
+    queryFn: () => getIneligibleSoldiers("commander"),
+    enabled: commandScopeAvailable,
+    retry: false,
+  });
 
   const commandNodesQuery = useQuery({
     queryKey: queryKeys.hierarchyTree(),
@@ -254,10 +261,23 @@ export default function HomePage() {
   });
   const pendingTransfers = pendingTransfersQuery.data ?? [];
 
-  const commandPanels: { id: string; title: string; content: ReactNode }[] = [
+  const commandPanels: { id: string; title: ReactNode; content: ReactNode }[] = [
     {
       id: "ineligible-soldiers",
-      title: t("range_qualification.dashboard.title"),
+      title: (
+        <span className="flex items-center justify-between gap-3">
+          <span>חיילים ללא מטווחים בתוקף</span>
+          <span
+            data-testid="ineligible-range-badge"
+            aria-label={`חיילים ללא מטווחים בתוקף: ${ineligibleSoldiersQuery.data?.count ?? 0}`}
+            className={`rounded-full px-2 py-0.5 text-sm font-semibold text-white ${
+              (ineligibleSoldiersQuery.data?.count ?? 0) > 0 ? "bg-red-600" : "bg-green-600"
+            }`}
+          >
+            {ineligibleSoldiersQuery.data?.count ?? 0}
+          </span>
+        </span>
+      ),
       content: <IneligibleSoldiersPanel scope="command" />,
     },
     {
@@ -283,7 +303,7 @@ export default function HomePage() {
     {
       id: "upcoming",
       title: t("command_dashboard.upcoming"),
-      content: <UpcomingSnapshot data={commandUpcoming} scope="command" />,
+      content: <UpcomingSnapshot data={commandUpcoming} scope="command" scopeLabel="תורנויות קרובות של חיילים שלך" />,
     },
     {
       id: "calendar",
@@ -448,7 +468,7 @@ export default function HomePage() {
               {commandPanels.map((panel) => (
                 <details
                   key={panel.id}
-                  open
+                  open={panel.id !== "ineligible-soldiers"}
                   className="bg-white dark:bg-gray-800 rounded-lg shadow p-4"
                   data-testid={`panel-${panel.id}`}
                 >
@@ -466,17 +486,22 @@ export default function HomePage() {
           <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} scope="personal" />
         )}
 
-        <UpcomingDutiesWidget
-          duties={duties}
-          typeNames={typeNames}
-          locationNames={locationNames}
-          onOpenDuty={handleOpenDuty}
-        />
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-4" aria-labelledby="personal-data-heading" data-testid="personal-data-panel">
+          <h2 id="personal-data-heading" className="text-xl font-semibold">הנתונים שלי</h2>
+
+          <UpcomingDutiesWidget
+            duties={duties}
+            typeNames={typeNames}
+            locationNames={locationNames}
+            onOpenDuty={handleOpenDuty}
+            title="תורנויות קרובות שלי"
+          />
 
         {publicSettings?.["mitvachim.enabled"] === true && (
           <UpcomingRangesWidget
             ranges={ranges}
             onOpenRange={(range) => setOpenRangeId(range.id)}
+            title="מטווחים קרובים שלי"
           />
         )}
 
@@ -554,6 +579,7 @@ export default function HomePage() {
             </table>
           </div>
         )}
+        </section>
       </div>
 
       <DutyDetailModal
