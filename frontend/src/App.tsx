@@ -21,7 +21,6 @@ import TeamHierarchyPage from "./pages/TeamHierarchyPage";
 import SwapsPage from "./pages/SwapsPage";
 import TransparencyPage from "./pages/TransparencyPage";
 import UnitCalendarPage from "./pages/UnitCalendarPage";
-import CommandDashboardPage from "./pages/CommandDashboardPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -102,7 +101,6 @@ export default function App() {
                   <Route path="/unit-calendar" element={<AppGate><UnitCalendarPage /></AppGate>} />
                   <Route path="/swaps" element={<AppGate><SwapsPage /></AppGate>} />
                   <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
-                  <Route path="/command-dashboard" element={<AppGate><CommandDashboardPage /></AppGate>} />
                   <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
                   <Route path="/announcements" element={<AppGate><AnnouncementsPage /></AppGate>} />
                   {/* Planning pages */}

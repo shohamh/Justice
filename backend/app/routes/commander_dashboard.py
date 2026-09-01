@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize, commanded_node_ids, dm_scope_node_ids
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, Soldier
 from app.db.session import get_session
@@ -110,34 +110,51 @@ def _get_subtree_ids(session: Session, node_id: uuid.UUID) -> list[uuid.UUID]:
     return [node_id] + list(descendants)
 
 
-def _commander_node(session: Session, user: Soldier) -> uuid.UUID | None:
-    from app.auth.authz import commanded_node_ids
+def _dashboard_root_ids(session: Session, user: Soldier) -> list[uuid.UUID]:
+    """Resolve the caller's explicit command-dashboard scope."""
+    if user.role == "admin":
+        # Admin access is intentionally all top-level hierarchy subtrees.
+        return list(
+            session.execute(
+                select(HierarchyNode.id).where(HierarchyNode.parent_id.is_(None))
+            ).scalars().all()
+        )
 
     # Prefer a node the soldier genuinely commands themselves. A commander
     # who is also an active deputy for another commander must still land on
     # their own dashboard, not have it silently swapped for a deputized one.
-    own_ids = (
+    own_ids = list(
         session.execute(
             select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
-        )
-        .scalars()
-        .all()
+        ).scalars().all()
     )
     if own_ids:
-        return min(own_ids)
+        return sorted(own_ids)
+
+    commander_ids = commanded_node_ids(session, user.id)
+    if commander_ids:
+        return sorted(commander_ids)
 
     # No direct command of their own — fall back to nodes commanded via an
     # active deputy grant. Pick deterministically (smallest UUID) if several.
-    ids = commanded_node_ids(session, user.id)
-    return min(ids) if ids else None
+    # Duty managers are scoped by DutyManagerScope, not commander_id.
+    return sorted(dm_scope_node_ids(session, user.id))
 
 
-def _assert_commander(session: Session, user: Soldier) -> uuid.UUID:
-    node_id = _commander_node(session, user)
-    if node_id is None:
+def _assert_commander(session: Session, user: Soldier) -> list[uuid.UUID]:
+    root_ids = _dashboard_root_ids(session, user)
+    if not root_ids and user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not_a_commander")
-    authorize(session, user, Action.HIERARCHY_READ, target_node=session.get(HierarchyNode, node_id))
-    return node_id
+    for root_id in root_ids:
+        authorize(session, user, Action.HIERARCHY_READ, target_node=session.get(HierarchyNode, root_id))
+    return root_ids
+
+
+def _authorized_subtree_ids(session: Session, root_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    subtree: set[uuid.UUID] = set()
+    for root_id in root_ids:
+        subtree.update(_get_subtree_ids(session, root_id))
+    return list(subtree)
 
 
 @router.get("/summary", response_model=SummaryCards)
@@ -145,8 +162,8 @@ def get_summary(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> SummaryCards:
-    node_id = _assert_commander(session, user)
-    subtree = _get_subtree_ids(session, node_id)
+    root_ids = _assert_commander(session, user)
+    subtree = _authorized_subtree_ids(session, root_ids)
     return svc.summary_cards(session, subtree_ids=subtree)
 
 
@@ -155,8 +172,8 @@ def get_soldiers(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SoldierWithStatus]:
-    node_id = _assert_commander(session, user)
-    subtree = _get_subtree_ids(session, node_id)
+    root_ids = _assert_commander(session, user)
+    subtree = _authorized_subtree_ids(session, root_ids)
     return svc.soldiers_in_subtree(session, subtree_ids=subtree)
 
 
@@ -165,8 +182,8 @@ def fairness_internal(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> FairnessStats:
-    node_id = _assert_commander(session, user)
-    subtree = _get_subtree_ids(session, node_id)
+    root_ids = _assert_commander(session, user)
+    subtree = _authorized_subtree_ids(session, root_ids)
     return svc.fairness_stats(session, subtree_ids=subtree)
 
 
@@ -175,7 +192,10 @@ def fairness_external(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[NodeFairness]:
-    node_id = _assert_commander(session, user)
+    root_ids = _assert_commander(session, user)
+    if not root_ids:
+        return []
+    node_id = root_ids[0]
     node = session.get(HierarchyNode, node_id)
     if node is None or node.parent_id is None:
         return []
@@ -215,8 +235,8 @@ def potential(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[PotentialCount]:
-    node_id = _assert_commander(session, user)
-    subtree = _get_subtree_ids(session, node_id)
+    root_ids = _assert_commander(session, user)
+    subtree = _authorized_subtree_ids(session, root_ids)
     return svc.potential_counts(session, subtree_ids=subtree)
 
 
@@ -225,8 +245,8 @@ def upcoming(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[UpcomingDay]:
-    node_id = _assert_commander(session, user)
-    subtree = _get_subtree_ids(session, node_id)
+    root_ids = _assert_commander(session, user)
+    subtree = _authorized_subtree_ids(session, root_ids)
     return svc.upcoming_duties(session, subtree_ids=subtree, days=None)
 
 
@@ -235,8 +255,8 @@ def alerts(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[Alert]:
-    node_id = _assert_commander(session, user)
-    subtree = _get_subtree_ids(session, node_id)
+    root_ids = _assert_commander(session, user)
+    subtree = _authorized_subtree_ids(session, root_ids)
     return svc.alerts(session, subtree_ids=subtree)
 
 
@@ -245,6 +265,6 @@ def approvals(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ApprovalItem]:
-    node_id = _assert_commander(session, user)
-    subtree = _get_subtree_ids(session, node_id)
+    root_ids = _assert_commander(session, user)
+    subtree = _authorized_subtree_ids(session, root_ids)
     return svc.pending_approvals(session, subtree_ids=subtree)

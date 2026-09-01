@@ -29,6 +29,12 @@ describe("searchRegistry pages", () => {
     expect(entries.find((e) => e.id === "page-my-duties")!.canAccess(soldier)).toBe(true);
   });
 
+  test("does not expose the retired command dashboard page", () => {
+    const entries = getPageEntries();
+    expect(entries.some((entry) => entry.id === "page-command-dashboard")).toBe(false);
+    expect(entries.some((entry) => entry.path === "/command-dashboard")).toBe(false);
+  });
+
   test("admin settings page requires admin role", () => {
     const entries = getPageEntries();
     const settings = entries.find((e) => e.id === "page-admin-settings")!;

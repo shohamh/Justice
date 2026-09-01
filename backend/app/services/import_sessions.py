@@ -1545,6 +1545,11 @@ def confirm_session(
             errors.append({"row": row["row"], "type": "soldiers", "error": str(exc)})
 
     # ── Duty shifts ─────────────────────────────────────────────────────
+    # Profile range dates also drive persisted weapon-ineligibility caches.
+    from app.services.duty_eligibility_watch import recheck_soldier_assignments
+    for soldier_id in created_soldiers:
+        recheck_soldier_assignments(session, uuid.UUID(soldier_id))
+
     for row in state.get("duty_shifts", []):
         effective = _effective_action(selections, "duty_shifts", row)
         if row["action"] in ("error", "out_of_scope") or effective == "skip":

@@ -29,7 +29,7 @@ def test_worker_calls_both_checks_each_cycle() -> None:
 
 
 def test_check_mitvahim_expiry_notifies_at_exact_warn_day(app_session) -> None:
-    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "mitvachim.live_validity_days", 180, actor_id=None)
     set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000101")
     s.last_mitvahim_date = date(2026, 1, 1)  # expiry = 2026-06-30; today+30 = 2026-06-30
@@ -50,7 +50,7 @@ def test_check_mitvahim_expiry_notifies_at_exact_warn_day(app_session) -> None:
 
 
 def test_check_mitvahim_expiry_notifies_expired_on_exact_expiry_day(app_session) -> None:
-    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "mitvachim.live_validity_days", 180, actor_id=None)
     set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000102")
     s.last_mitvahim_date = date(2026, 1, 1)  # expiry = 2026-06-30
@@ -71,7 +71,7 @@ def test_check_mitvahim_expiry_notifies_expired_on_exact_expiry_day(app_session)
 
 
 def test_check_mitvahim_expiry_does_not_notify_outside_exact_days(app_session) -> None:
-    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "mitvachim.live_validity_days", 180, actor_id=None)
     set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000103")
     s.last_mitvahim_date = date(2026, 1, 1)  # expiry = 2026-06-30
@@ -92,7 +92,7 @@ def test_check_mitvahim_expiry_does_not_notify_outside_exact_days(app_session) -
 
 
 def test_check_mitvahim_expiry_skips_departed_soldiers(app_session) -> None:
-    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "mitvachim.live_validity_days", 180, actor_id=None)
     set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000104")
     s.last_mitvahim_date = date(2026, 1, 1)
@@ -111,7 +111,7 @@ def test_check_mitvahim_expiry_skips_departed_soldiers(app_session) -> None:
 
 
 def test_check_alal_expiry_skips_soldiers_who_are_not_alal_relevant(app_session) -> None:
-    set_setting(app_session, "home.alal_validity_days", 90, actor_id=None)
+    set_setting(app_session, "mitvachim.alal_validity_days", 90, actor_id=None)
     set_setting(app_session, "home.alal_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000105")
     s.last_alal_date = date(2026, 1, 1)  # expiry = 2026-04-01
@@ -133,7 +133,7 @@ def test_check_alal_expiry_skips_soldiers_who_are_not_alal_relevant(app_session)
 
 
 def test_check_alal_expiry_notifies_relevant_soldier_on_expiry_day(app_session) -> None:
-    set_setting(app_session, "home.alal_validity_days", 90, actor_id=None)
+    set_setting(app_session, "mitvachim.alal_validity_days", 90, actor_id=None)
     set_setting(app_session, "home.alal_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000106")
     s.last_alal_date = date(2026, 1, 1)  # expiry = 2026-04-01
@@ -176,7 +176,7 @@ def test_check_mitvahim_expiry_commits_and_persists_after_session_close(app_sess
 
 
 def test_check_mitvahim_expiry_catches_up_after_a_missed_cycle(app_session) -> None:
-    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "mitvachim.live_validity_days", 180, actor_id=None)
     set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000108")
     s.last_mitvahim_date = date(2026, 1, 1)  # expiry = 2026-06-30
@@ -197,7 +197,7 @@ def test_check_mitvahim_expiry_catches_up_after_a_missed_cycle(app_session) -> N
 
 
 def test_check_mitvahim_expiry_does_not_duplicate_on_a_second_run(app_session) -> None:
-    set_setting(app_session, "home.mitvahim_validity_days", 180, actor_id=None)
+    set_setting(app_session, "mitvachim.live_validity_days", 180, actor_id=None)
     set_setting(app_session, "home.mitvahim_warn_days", 30, actor_id=None)
     s = create_soldier(app_session, personal_number="1000109")
     s.last_mitvahim_date = date(2026, 1, 1)  # expiry = 2026-06-30

@@ -1,13 +1,6 @@
 import { api } from "./client";
 import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
-export interface SummaryCards {
-  approvals_pending: number;
-  upcoming_duties_7d: number;
-  unfilled_gaps: number;
-  alerts_count: number;
-}
-
 export interface SoldierWithStatus {
   id: string;
   personal_number: string;
@@ -79,25 +72,6 @@ export interface ApprovalItem {
   request_type: string;
   summary: string;
   created_at: string;
-}
-
-export async function getSummary(): Promise<SummaryCards> {
-  const r = await api.get<unknown>("/command-dashboard/summary");
-  const data = requiredObjectResponse(r.data, "Invalid dashboard summary response");
-  if (
-    typeof data.approvals_pending !== "number" ||
-    typeof data.upcoming_duties_7d !== "number" ||
-    typeof data.unfilled_gaps !== "number" ||
-    typeof data.alerts_count !== "number"
-  ) {
-    throw new Error("Invalid dashboard summary response");
-  }
-  return {
-    approvals_pending: data.approvals_pending,
-    upcoming_duties_7d: data.upcoming_duties_7d,
-    unfilled_gaps: data.unfilled_gaps,
-    alerts_count: data.alerts_count,
-  };
 }
 
 export async function getDashboardSoldiers(): Promise<SoldierWithStatus[]> {

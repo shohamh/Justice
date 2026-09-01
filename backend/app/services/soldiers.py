@@ -410,6 +410,9 @@ def update_soldier_profile(
         entity_id=soldier.id,
         after=audit_after,
     )
+    if {"last_mitvahim_date", "last_alal_date"} & fields.keys():
+        from app.services.duty_eligibility_watch import recheck_soldier_assignments
+        recheck_soldier_assignments(session, soldier.id)
     return soldier
 
 
@@ -600,6 +603,9 @@ def approve_field_update(
         entity_id=update.id,
         after={"field": field, "value": raw},
     )
+    if field in {"last_mitvahim_date", "last_alal_date"}:
+        from app.services.duty_eligibility_watch import recheck_soldier_assignments
+        recheck_soldier_assignments(session, soldier.id)
     return update
 
 

@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
@@ -13,12 +13,18 @@ import UpcomingRangesWidget from "../components/dashboard/UpcomingRangesWidget";
 import RangeDetailModal from "../components/ranges/RangeDetailModal";
 import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
+import CommandDashboardSection from "../components/dashboard/CommandDashboardSection";
+import IneligibleSoldiersPanel from "../components/dashboard/IneligibleSoldiersPanel";
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
 import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
+import UpcomingSnapshot from "../components/UpcomingSnapshot";
+import AlertsPanel from "../components/AlertsPanel";
+import DutyPotentialPanel from "../components/DutyPotentialPanel";
 import { formatDateTimeIsrael } from "../utils/formatDate";
 
 import { useAuth } from "../auth/AuthContext";
+import { isCommandScopeAvailable } from "../auth/dashboardRoles";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -32,6 +38,13 @@ import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getRanges } from "../api/ranges";
 import { listPendingTransferRequests } from "../api/hierarchyTransfers";
 import { lastDutyDay } from "../utils/formatDate";
+import { fetchFullTree } from "../api/hierarchy";
+import {
+  getAlerts as getCommandAlerts,
+  getPotential as getCommandPotential,
+  getUpcoming as getCommandUpcoming,
+} from "../api/commanderDashboard";
+import { getPotential as getNodePotential, type PotentialResult } from "../api/potential";
 
 function offsetDate(days: number): string {
   const d = new Date();
@@ -65,7 +78,73 @@ export default function HomePage() {
   const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
   const [openRangeId, setOpenRangeId] = useState<string | null>(null);
 
-  const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+  const commandScopeAvailable = isCommandScopeAvailable(user);
+
+  const commandNodesQuery = useQuery({
+    queryKey: queryKeys.hierarchyTree(),
+    queryFn: fetchFullTree,
+    enabled: commandScopeAvailable,
+  });
+  const commandNodes = useMemo(() => commandNodesQuery.data ?? [], [commandNodesQuery.data]);
+  const commandNodesOwnedByUser = useMemo(
+    () => commandNodes.filter((node) => node.commander_id === user?.id),
+    [commandNodes, user],
+  );
+  const commandCalendarNodeIds = useMemo(() => {
+    if (commandNodesOwnedByUser.length > 0) {
+      return commandNodesOwnedByUser.map((node) => node.id);
+    }
+    if (
+      commandScopeAvailable &&
+      user?.hierarchy_node_id &&
+      (user.role === "admin" || user.role === "duty_manager" || user.is_duty_manager)
+    ) {
+      return [user.hierarchy_node_id];
+    }
+    return [];
+  }, [commandNodesOwnedByUser, commandScopeAvailable, user]);
+
+  const commandAlertsQuery = useQuery({
+    queryKey: queryKeys.commandDashboardAlerts(),
+    queryFn: getCommandAlerts,
+    enabled: commandScopeAvailable,
+  });
+  const commandAlerts = commandAlertsQuery.data ?? null;
+
+  const commandUpcomingQuery = useQuery({
+    queryKey: queryKeys.commandDashboardUpcoming(),
+    queryFn: getCommandUpcoming,
+    enabled: commandScopeAvailable,
+  });
+  const commandUpcoming = commandUpcomingQuery.data ?? null;
+
+  const commandPotentialQuery = useQuery({
+    queryKey: queryKeys.commandDashboardPotential(),
+    queryFn: getCommandPotential,
+    enabled: commandScopeAvailable,
+  });
+  const commandPotential = commandPotentialQuery.data ?? null;
+
+  const ownPotentialQueries = useQueries({
+    queries: commandNodesOwnedByUser.map((node) => ({
+      queryKey: queryKeys.commandDashboardOwnPotential(node.id),
+      queryFn: () => getNodePotential(node.id),
+      enabled: commandScopeAvailable,
+    })),
+  });
+
+  const ownPotential = useMemo(() => {
+    const byId: Record<string, PotentialResult> = {};
+    commandNodesOwnedByUser.forEach((node, index) => {
+      const result = ownPotentialQueries[index];
+      if (result?.data) {
+        byId[node.id] = result.data;
+      } else if (result?.isError) {
+        console.error(`Failed to fetch potential for node ${node.id}:`, result.error);
+      }
+    });
+    return byId;
+  }, [commandNodesOwnedByUser, ownPotentialQueries]);
 
   // These queries fetch required-object payloads (see api/scoring.ts) — a
   // malformed shape throws instead of silently rendering wrong totals, so
@@ -136,44 +215,120 @@ export default function HomePage() {
   const enrollQuery = useQuery({
     queryKey: queryKeys.pendingEnrollments(),
     queryFn: listPendingEnrollments,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingEnrollments = enrollQuery.data ?? [];
 
   const pendingSwapsQuery = useQuery({
     queryKey: queryKeys.pendingSwaps(),
     queryFn: listPendingSwaps,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingSwaps = pendingSwapsQuery.data ?? [];
 
   const pendingConstraintsQuery = useQuery({
     queryKey: queryKeys.pendingConstraintsCount(),
     queryFn: getPendingCount,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingConstraints = pendingConstraintsQuery.data ?? 0;
 
   const pendingExemptionsQuery = useQuery({
     queryKey: queryKeys.pendingExemptionsCount(),
     queryFn: getPendingExemptionCount,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingExemptions = pendingExemptionsQuery.data ?? 0;
 
   const pendingFieldUpdatesQuery = useQuery({
     queryKey: queryKeys.pendingFieldUpdatesCount(),
     queryFn: getPendingFieldUpdateCount,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingFieldUpdates = pendingFieldUpdatesQuery.data ?? 0;
 
   const pendingTransfersQuery = useQuery({
     queryKey: queryKeys.pendingHierarchyTransfers(),
     queryFn: listPendingTransferRequests,
-    enabled: canApprove,
+    enabled: commandScopeAvailable,
   });
   const pendingTransfers = pendingTransfersQuery.data ?? [];
+
+  const commandPanels: { id: string; title: string; content: ReactNode }[] = [
+    {
+      id: "ineligible-soldiers",
+      title: t("range_qualification.dashboard.title"),
+      content: <IneligibleSoldiersPanel scope="command" />,
+    },
+    {
+      id: "alerts",
+      title: t("command_dashboard.alerts"),
+      content: <AlertsPanel data={commandAlerts} scope="command" />,
+    },
+    {
+      id: "approvals",
+      title: t("command_dashboard.approvals"),
+      content: (
+        <PendingApprovalsWidget
+          pendingEnrollments={pendingEnrollments}
+          pendingSwaps={pendingSwaps}
+          pendingConstraints={pendingConstraints}
+          pendingExemptions={pendingExemptions}
+          pendingFieldUpdates={pendingFieldUpdates}
+          pendingTransfers={pendingTransfers}
+          scope="command"
+        />
+      ),
+    },
+    {
+      id: "upcoming",
+      title: t("command_dashboard.upcoming"),
+      content: <UpcomingSnapshot data={commandUpcoming} scope="command" />,
+    },
+    {
+      id: "calendar",
+      title: t("command_dashboard.calendar"),
+      content: commandCalendarNodeIds.length > 0 ? (
+        <UnitCalendar nodeIds={commandCalendarNodeIds} scope="command" highlightSoldierId={user?.id} />
+      ) : null,
+    },
+    {
+      id: "potential",
+      title: t("command_dashboard.potential"),
+      content: <DutyPotentialPanel data={commandPotential} scope="command" />,
+    },
+    {
+      id: "own_potential",
+      title: t("command_dashboard.own_potential"),
+      content: commandNodesOwnedByUser.length === 0 ? (
+        <p className="text-gray-500">{t("command_dashboard.no_own_potential")}</p>
+      ) : (
+        <table className="w-full border-collapse" data-testid="own-potential-table">
+          <thead>
+            <tr>
+              <th className="border p-2">{t("command_dashboard.node")}</th>
+              <th className="border p-2">{t("command_dashboard.eligible")}</th>
+              <th className="border p-2">{t("command_dashboard.modifiers")}</th>
+              <th className="border p-2">{t("command_dashboard.final_potential")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {commandNodesOwnedByUser.map((node) => {
+              const result = ownPotential[node.id];
+              return (
+                <tr key={node.id}>
+                  <td className="border p-2">{node.name}</td>
+                  <td className="border p-2">{result?.raw_eligible_count ?? "-"}</td>
+                  <td className="border p-2">{result ? result.modifiers.reduce((sum, modifier) => sum + modifier.delta, 0) : "-"}</td>
+                  <td className="border p-2">{result?.final_potential ?? "-"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ),
+    },
+  ];
 
   function handleOpenDuty(duty: EffectiveDuty) {
     setSelectedDuty(duty);
@@ -283,8 +438,32 @@ export default function HomePage() {
           settings={settings}
         />
 
-        {user && (
-          <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} />
+        {commandScopeAvailable && (
+          <CommandDashboardSection
+            scopeLabel={t("command_dashboard.management_section_scope", {
+              defaultValue: "היחידה / תת-העץ שבאחריותך",
+            })}
+          >
+            <div className="space-y-3">
+              {commandPanels.map((panel) => (
+                <details
+                  key={panel.id}
+                  open
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow p-4"
+                  data-testid={`panel-${panel.id}`}
+                >
+                  <summary className="cursor-pointer font-medium text-lg mb-2 dark:text-gray-100">
+                    {panel.title}
+                  </summary>
+                  {panel.content}
+                </details>
+              ))}
+            </div>
+          </CommandDashboardSection>
+        )}
+
+        {!commandScopeAvailable && user && (
+          <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} scope="personal" />
         )}
 
         <UpcomingDutiesWidget
@@ -306,18 +485,6 @@ export default function HomePage() {
         )}
 
         <SwapStatusWidget swaps={mySwaps} />
-
-        {canApprove && (
-          <PendingApprovalsWidget
-            pendingEnrollments={pendingEnrollments}
-            pendingSwaps={pendingSwaps}
-            pendingConstraints={pendingConstraints}
-            pendingExemptions={pendingExemptions}
-            pendingFieldUpdates={pendingFieldUpdates}
-            pendingTransfers={pendingTransfers}
-          />
-        )}
-
         <DutyHistoryWidget
           duties={duties}
           typeNames={typeNames}

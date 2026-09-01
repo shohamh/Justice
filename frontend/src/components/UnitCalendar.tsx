@@ -54,6 +54,13 @@ interface UnitCalendarProps {
   // entirely (a duty or range can involve a soldier outside its own node's
   // subtree, e.g. as a reserve or a cross-unit range assignment).
   soldierId?: string;
+  // Presentation-only scope label supplied by the parent. This must not infer
+  // viewer roles; callers choose whether this calendar is personal or command
+  // scope based on how they compose it.
+  scope?: "personal" | "command";
+  // When set for a command calendar, duties assigned to this soldier receive
+  // a distinct visual treatment and can be isolated with the personal filter.
+  highlightSoldierId?: string;
 }
 
 export function filterCalendarShifts(
@@ -68,7 +75,7 @@ export function filterCalendarShifts(
   );
 }
 
-export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalendarProps) {
+export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highlightSoldierId }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const canSeeEligibilityBadges = canApprove(user);
@@ -89,6 +96,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
   const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
   const [showHolidays, setShowHolidays] = useState(true);
+  const [showOnlyMyDuties, setShowOnlyMyDuties] = useState(false);
   const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
   const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
 
@@ -102,7 +110,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
   const nodeIdsKey = effectiveNodeIds.join(",");
 
   const fetchData = useCallback(async (from: string, to: string) => {
-    if (effectiveNodeIds.length === 0 && !soldierId) return;
+    if (effectiveNodeIds.length === 0 && !soldierId && !highlightSoldierId) return;
     setLoading(true);
     setError(null);
     try {
@@ -125,9 +133,19 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
             )
           )
         );
+        // A manager's own assignment can be cross-unit and therefore absent
+        // from the managed subtree. Merge the personal result into the command
+        // scope so the single Homepage calendar always includes the manager.
+        const personal = highlightSoldierId
+          ? [await loadCalendarData(
+              () => getCalendarShifts({ soldierId: highlightSoldierId, date_from: from, date_to: to }),
+              () => getMyRanges(highlightSoldierId, from, to),
+              rangesEnabled,
+            )]
+          : [];
         const shiftsById = new Map<string, CalendarShift>();
         const rangesById = new Map<string, RangeEvent>();
-        for (const { calendar, ranges: rangeEvents } of perNode) {
+        for (const { calendar, ranges: rangeEvents } of [...perNode, ...personal]) {
           for (const s of calendar.shifts) shiftsById.set(s.id, s);
           for (const r of rangeEvents) rangesById.set(r.id, r);
         }
@@ -142,7 +160,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId, rangesEnabled, t]);
+  }, [nodeIdsKey, soldierId, highlightSoldierId, rangesEnabled, t]);
 
   useEffect(() => {
     dateRangeRef.current = null;
@@ -150,7 +168,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
     setRanges([]);
     setSelectedShift(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId]);
+  }, [nodeIdsKey, soldierId, highlightSoldierId]);
 
   // The duty-type filter should list every active duty type, not just the
   // ones that happen to have a shift in the currently-loaded date range —
@@ -228,10 +246,19 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
     [rangeTypeFilter, rangeTypeOptions],
   );
 
+  const canHighlightOwnDuties = !soldierId && Boolean(highlightSoldierId);
+
   const filteredShifts = useMemo(
-    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, false),
-    [shifts, effectiveDutyTypeFilter],
+    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, false)
+      .filter((shift) => !showOnlyMyDuties || !canHighlightOwnDuties || shift.assignees.some((assignee) => assignee.soldier_id === highlightSoldierId)),
+    [shifts, effectiveDutyTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
   );
+
+  useEffect(() => {
+    if (selectedShift && !filteredShifts.some((shift) => shift.id === selectedShift.id)) {
+      setSelectedShift(null);
+    }
+  }, [filteredShifts, selectedShift]);
 
   const filteredRanges = useMemo(
     () => ranges.filter(r => effectiveRangeTypeFilter.includes(r.range_type)),
@@ -244,10 +271,16 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
       return {
         ...event,
         holidayOrder: 1,
-        classNames: [...CALENDAR_EVENT_INTERACTION_CLASSES, ...event.classNames],
+        classNames: [
+          ...CALENDAR_EVENT_INTERACTION_CLASSES,
+          ...event.classNames,
+          ...(canHighlightOwnDuties && shift.assignees.some((assignee) => assignee.soldier_id === highlightSoldierId)
+            ? ["my-duty-calendar-event", "my-duty-sparkle-border"]
+            : []),
+        ],
       };
     }),
-    [filteredShifts],
+    [filteredShifts, canHighlightOwnDuties, highlightSoldierId],
   );
 
   const rangeCalEvents = useMemo(() =>
@@ -310,8 +343,16 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
   }
 
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
+  const scopeLabel = scope
+    ? t(scope === "command" ? "unit_calendar.scope_command" : "unit_calendar.scope_personal")
+    : null;
   return (
     <div className="space-y-4">
+      {scopeLabel && (
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400" data-testid="unit-calendar-scope-label">
+          {scopeLabel}
+        </p>
+      )}
       <div className="flex flex-wrap gap-3 text-sm items-center">
             <CheckboxListDropdown
               items={dutyTypesInView.map((dt) => ({ id: dt.id, label: dt.name }))}
@@ -330,6 +371,18 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId }: UnitCalenda
               />
               <span>{t("unit_calendar.show_holidays")}</span>
             </label>
+          {canHighlightOwnDuties && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showOnlyMyDuties}
+                onChange={(event) => setShowOnlyMyDuties(event.target.checked)}
+                className="accent-sky-600"
+                aria-label="הצג רק אירועים שלי"
+              />
+              <span>הצג רק אירועים שלי</span>
+            </label>
+          )}
           {rangesEnabled && (
             <CheckboxListDropdown
               items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}

@@ -235,6 +235,30 @@ body {
   background-color: rgb(253 230 138 / 0.5) !important;
 }
 
+/* A cool, distinct treatment for the viewer's duties in a command calendar. */
+.my-duty-calendar-event {
+  color: #082f49;
+  background: linear-gradient(135deg, #bae6fd, #38bdf8) !important;
+  border-width: 2px !important;
+}
+
+.my-duty-sparkle-border {
+  animation: my-duty-sparkle 1.8s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgb(14 165 233 / 0.4), 0 0 8px rgb(56 189 248 / 0.7);
+}
+
+@keyframes my-duty-sparkle {
+  0%, 100% { box-shadow: 0 0 0 1px rgb(14 165 233 / 0.4), 0 0 5px rgb(56 189 248 / 0.45); }
+  50% { box-shadow: 0 0 0 2px rgb(2 132 199 / 0.85), 0 0 12px rgb(56 189 248 / 0.95); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-duty-sparkle-border,
+  .holiday-sparkle-border {
+    animation: none;
+  }
+}
+
 /* In-app DateInput calendar */
 .date-picker-calendar {
   width: 100%;

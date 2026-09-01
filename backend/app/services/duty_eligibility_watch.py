@@ -32,7 +32,9 @@ def _info_body(soldier_name: str, duty_type_name: str, duty_date, range_type: st
     )
 
 
-def recheck_assignments(session: Session, assignment_ids: Sequence[uuid.UUID]) -> int:
+def recheck_assignments(
+    session: Session, assignment_ids: Sequence[uuid.UUID], *, commit: bool = True,
+) -> int:
     """Re-evaluate weapon eligibility for published assignments with a required
     weapon tier, updating the cache and notifying only on False->True. Assignments
     whose duty type no longer requires a tier only have stale cache fields cleared.
@@ -183,5 +185,20 @@ def recheck_assignments(session: Session, assignment_ids: Sequence[uuid.UUID]) -
             exclude_soldier_ids=notified_ids,
         )
 
-    session.commit()
+    if commit:
+        session.commit()
     return newly_ineligible
+
+
+def recheck_soldier_assignments(session: Session, soldier_id: uuid.UUID) -> int:
+    """Refresh published weapon-duty caches after a soldier profile change."""
+    assignment_ids = session.execute(
+        select(DutyAssignment.id)
+        .join(DutyType, DutyAssignment.duty_type_id == DutyType.id)
+        .where(
+            DutyAssignment.soldier_id == soldier_id,
+            DutyAssignment.status == "published",
+            DutyType.required_range_type.is_not(None),
+        )
+    ).scalars().all()
+    return recheck_assignments(session, assignment_ids, commit=False)

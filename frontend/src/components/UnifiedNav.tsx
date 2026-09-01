@@ -202,7 +202,6 @@ export default function UnifiedNav() {
   const commanderItems = [
     { label: t("nav.team_hierarchy"), to: "/team", testId: "nav-team" },
     { label: t("nav.approvals"), to: "/approvals", badge: pendingCount, badgeColor: "blue" as BadgeColor, testId: "nav-approvals" },
-    { label: t("nav.command_dashboard"), to: "/command-dashboard", testId: "nav-command-dashboard" },
     { label: t("nav.announcements"), to: "/announcements", testId: "nav-announcements" },
     ...(hakpazaEnabled
       ? [{ label: "הקפצה פיקודית", to: "/commander/hakpaza", testId: "nav-hakpaza" }]

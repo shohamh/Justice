@@ -30,6 +30,7 @@ describe("FairnessComponentsCard", () => {
     render(<FairnessComponentsCard />);
 
     await waitFor(() => expect(screen.getByTestId("fairness-component-pie-chart")).toBeInTheDocument());
-    expect(screen.getByTestId("fairness-component-pie-chart").parentElement).toHaveClass("flex-row-reverse");
+    expect(screen.getByTestId("fairness-component-pie-chart").parentElement).toHaveClass("md:pr-16");
+    expect(screen.getByTestId("fairness-component-pie-chart").parentElement).not.toHaveClass("flex-row-reverse");
   });
 });

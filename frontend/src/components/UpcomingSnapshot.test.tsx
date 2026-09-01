@@ -6,6 +6,8 @@ import type { UpcomingDay } from "../api/commanderDashboard";
 import { listDutyTypes } from "../api/dutyConfig";
 
 const dict: Record<string, string> = {
+  "command_dashboard.upcoming_scope_command": "תורנויות קרובות בפיקוד",
+  "home.upcoming_scope_personal": "התורנויות האישיות הקרובות",
   "command_dashboard.view_duty_details": "צפה בפרטי התורנות",
   "duty_detail.required_range": "מטווח נדרש",
   "duty_detail.no_required_range": "לא נדרש",
@@ -165,6 +167,26 @@ function renderWithRouter(days: UpcomingDay[] = data) {
 }
 
 describe("UpcomingSnapshot grouping", () => {
+  it("labels command-scope upcoming duties explicitly", () => {
+    render(
+      <MemoryRouter>
+        <UpcomingSnapshot scope="command" data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("תורנויות קרובות בפיקוד")).toBeInTheDocument();
+  });
+
+  it("keeps personal upcoming wording only when the parent explicitly passes personal scope", () => {
+    render(
+      <MemoryRouter>
+        <UpcomingSnapshot scope="personal" data={[]} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("התורנויות האישיות הקרובות")).toBeInTheDocument();
+  });
+
   it("groups primary and reserve soldiers under one duty row", () => {
     renderWithRouter();
     expect(screen.getByText(/שמירות/)).toBeInTheDocument();
