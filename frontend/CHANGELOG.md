@@ -9,6 +9,7 @@
 
 ### Fixes
 - Counted exemptions only within the effective active-days interval through today, discharge, or leave.
+- Clarified production deployment to rebuild the backend image so newly released database migrations are applied.
 
 ## 2026-09-01
 
