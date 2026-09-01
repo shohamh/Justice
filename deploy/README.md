@@ -43,7 +43,7 @@ cd frontend && npm ci && npm run build && cd ..
 sudo mkdir -p /opt/justice/pgdata /opt/justice/backups /opt/justice/logs /opt/justice/wal-archive
 
 # 5. Start services
-docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d --build
 
 # 6. Schedule backups
 (crontab -l 2>/dev/null; echo "0 2 * * * /opt/justice/deploy/backup.sh >> /opt/justice/logs/backup.log 2>&1") | crontab -
