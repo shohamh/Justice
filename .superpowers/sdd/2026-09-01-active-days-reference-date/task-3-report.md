@@ -62,3 +62,5 @@ The earlier unverified results above are superseded by these completed checks:
 - Passed: `git diff --check` — no whitespace errors.
 
 The focused verification confirms the two reviewer findings: enrollment accepts and validates `unit_join_date` as a date, and registration requiredness/feedback follows the configured public reference date. Regression coverage includes enrollment correction and invalid ordering, plus registration required-after-reference and optional-at-reference-boundary behavior.
+
+Focused code commit: `9fcca8c4` (`fix: complete active days reference date task 3`).
