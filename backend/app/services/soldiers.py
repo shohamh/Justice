@@ -35,12 +35,20 @@ def _check_soldier_dates(
     *,
     rank: str | None = None,
     enlistment_date: date | None,
+    unit_join_date: date | None = None,
+    enrolled_at: date | None = None,
     discharge_date: date | None,
     mandatory_end_date: date | None,
     is_career: bool,
 ) -> None:
     if discharge_date is not None and enlistment_date is not None and discharge_date <= enlistment_date:
         raise SoldierValidationError("discharge_date_before_enlistment")
+    if unit_join_date is not None and enlistment_date is not None and unit_join_date < enlistment_date:
+        raise SoldierValidationError("unit_join_date_before_enlistment")
+    if unit_join_date is not None and enrolled_at is not None and unit_join_date > enrolled_at:
+        raise SoldierValidationError("unit_join_date_after_enrollment")
+    if unit_join_date is not None and discharge_date is not None and unit_join_date >= discharge_date:
+        raise SoldierValidationError("unit_join_date_on_or_after_discharge")
     if (
         mandatory_end_date is not None
         and enlistment_date is not None
@@ -70,6 +78,8 @@ def validate_soldier_dates(soldier: Soldier) -> None:
     _check_soldier_dates(
         rank=soldier.rank,
         enlistment_date=soldier.enlistment_date,
+        unit_join_date=soldier.unit_join_date,
+        enrolled_at=soldier.enrolled_at,
         discharge_date=soldier.discharge_date,
         mandatory_end_date=soldier.mandatory_end_date,
         is_career=soldier.is_career,
@@ -473,7 +483,7 @@ def _is_same_value(soldier: Soldier, field_name: str, new_value: str) -> bool:
             and expiry == current_expiry
         )
     if field_name in {
-        "last_mitvahim_date", "last_alal_date", "mandatory_end_date", "discharge_date",
+        "last_mitvahim_date", "last_alal_date", "mandatory_end_date", "discharge_date", "unit_join_date",
     }:
         current = getattr(soldier, field_name, None)
         return _normalize_optional_str(raw) == (current.isoformat() if current else None)
@@ -492,21 +502,47 @@ def submit_field_update(
     from app.services.eligibility import SOLDIER_EDITABLE_FIELDS
     if field_name not in SOLDIER_EDITABLE_FIELDS:
         raise SoldierError("field_not_editable")
-    soldier = session.get(Soldier, soldier_id)
+    soldier = session.execute(
+        select(Soldier).where(Soldier.id == soldier_id).with_for_update()
+    ).scalar_one_or_none()
     if soldier is None:
         raise SoldierError("soldier_not_found")
     if _is_same_value(soldier, field_name, new_value):
         raise SoldierError("same_value")
+    actor = session.get(Soldier, actor_id)
+    if actor is None:
+        raise SoldierError("actor_not_found")
+    if field_name == "unit_join_date":
+        from app.services.approval_scope import (
+            nearest_unit_join_date_approver,
+            unit_join_date_initiator_authorized,
+            unit_join_date_stage_authorized,
+        )
+        from app.services.notifications import notify_field_update_stage
+        if soldier.left_at is not None or soldier.enrolled_at is None:
+            raise SoldierError("soldier_not_active")
+        if not unit_join_date_initiator_authorized(session, actor=actor, target=soldier):
+            raise SoldierError("forbidden")
+        try:
+            candidate = date.fromisoformat(new_value)
+        except ValueError as exc:
+            raise SoldierValidationError("unit_join_date_invalid") from exc
+        _check_soldier_dates(
+            rank=soldier.rank, enlistment_date=soldier.enlistment_date,
+            unit_join_date=candidate, enrolled_at=soldier.enrolled_at,
+            discharge_date=soldier.discharge_date, mandatory_end_date=soldier.mandatory_end_date,
+            is_career=soldier.is_career,
+        )
     # Cancel any existing pending update for the same field to avoid spamming commanders
     existing = session.execute(
         select(SoldierFieldUpdate).where(
             SoldierFieldUpdate.soldier_id == soldier_id,
             SoldierFieldUpdate.field_name == field_name,
-            SoldierFieldUpdate.status == "pending",
+            SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager")),
         )
     ).scalars().all()
     for old in existing:
-        old.status = "cancelled"
+        old.status = "superseded" if field_name == "unit_join_date" else "cancelled"
     req = SoldierFieldUpdate(
         soldier_id=soldier_id,
         field_name=field_name,
@@ -514,12 +550,60 @@ def submit_field_update(
         new_value=new_value,
     )
     session.add(req)
+    session.flush()
+    if field_name == "unit_join_date":
+        target_node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
+        auto_commander = (
+            actor.id != soldier.id
+            and unit_join_date_stage_authorized(
+                session, actor=actor, target_node=target_node, stage="commander"
+            )
+        )
+        auto_duty_manager = (
+            actor.id != soldier.id
+            and unit_join_date_stage_authorized(
+                session, actor=actor, target_node=target_node, stage="duty_manager"
+            )
+        )
+        if auto_commander:
+            req.commander_approved_by = actor.id
+            req.commander_approved_at = datetime.now(tz=timezone.utc)
+            write_audit(session, actor_id=actor_id, action="soldier.field_update.commander_approve", entity_type="soldier_field_update", entity_id=req.id, after={"field": field_name})
+        if auto_duty_manager:
+            req.duty_manager_approved_by = actor.id
+            req.duty_manager_approved_at = datetime.now(tz=timezone.utc)
+            write_audit(session, actor_id=actor_id, action="soldier.field_update.duty_manager_approve", entity_type="soldier_field_update", entity_id=req.id, after={"field": field_name})
+        if auto_commander and auto_duty_manager:
+            soldier.unit_join_date = candidate
+            req.status = "approved"
+            req.decided_by = actor.id
+            req.decided_at = datetime.now(tz=timezone.utc)
+            notify_field_update_stage(
+                session, soldier_id=soldier_id, approver_id=soldier_id,
+                update_id=req.id, pending=False, actor_id=actor_id,
+            )
+        elif auto_commander:
+            req.status = "pending_duty_manager"
+            dm_id = nearest_unit_join_date_approver(session, soldier_id, stage="duty_manager")
+            if dm_id:
+                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=dm_id, update_id=req.id, pending=True, actor_id=actor_id)
+        elif auto_duty_manager:
+            req.decided_by = actor.id
+            req.status = "pending_commander"
+            cmd_id = nearest_unit_join_date_approver(session, soldier_id, stage="commander")
+            if cmd_id:
+                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=cmd_id, update_id=req.id, pending=True, actor_id=actor_id)
+        else:
+            req.status = "pending_commander"
+            cmd_id = nearest_unit_join_date_approver(session, soldier_id, stage="commander")
+            if cmd_id:
+                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=cmd_id, update_id=req.id, pending=True, actor_id=actor_id)
     write_audit(
         session,
         actor_id=actor_id,
         action="soldier.field_update.submit",
         entity_type="soldier_field_update",
-        entity_id=None,
+        entity_id=req.id,
         after={"soldier_id": str(soldier_id), "field": field_name, "value": new_value},
     )
     return req
@@ -533,17 +617,82 @@ def approve_field_update(
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
     from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
-    if update.status != "pending":
+    requested_status = update.status
+    update = session.execute(
+        select(SoldierFieldUpdate)
+        .where(SoldierFieldUpdate.id == update.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if update is None:
+        raise SoldierError("not_found")
+    if requested_status not in {"pending", "pending_commander", "pending_duty_manager"}:
+        raise SoldierError("not_pending")
+    if update.status != requested_status:
         raise SoldierError("not_pending")
     soldier = session.get(Soldier, update.soldier_id)
     if soldier is None:
         raise SoldierError("soldier_not_found")
     field = update.field_name
     raw = update.new_value
+    if field == "unit_join_date":
+        actor = session.get(Soldier, actor_id)
+        target_node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        from app.services.notifications import notify_field_update_stage
+        stage = "commander" if update.status == "pending_commander" else "duty_manager"
+        if not actor or not unit_join_date_stage_authorized(session, actor=actor, target_node=target_node, stage=stage):
+            raise SoldierError("forbidden")
+        if stage == "commander" and update.duty_manager_approved_by == actor_id:
+            raise SoldierError("self_approval_forbidden")
+        if stage == "duty_manager" and update.commander_approved_by == actor_id:
+            raise SoldierError("self_approval_forbidden")
+        try:
+            candidate = date.fromisoformat(raw)
+        except ValueError as exc:
+            raise SoldierValidationError("unit_join_date_invalid") from exc
+        _check_soldier_dates(rank=soldier.rank, enlistment_date=soldier.enlistment_date, unit_join_date=candidate,
+                             enrolled_at=soldier.enrolled_at, discharge_date=soldier.discharge_date,
+                             mandatory_end_date=soldier.mandatory_end_date, is_career=soldier.is_career)
+        if stage == "commander":
+            update.commander_approved_by = actor_id
+            update.commander_approved_at = datetime.now(tz=timezone.utc)
+            update.commander_approval_note = decision_note
+            action = "soldier.field_update.commander_approve"
+            if update.duty_manager_approved_by:
+                soldier.unit_join_date = candidate
+                update.status = "approved"
+                notify_field_update_stage(
+                    session, soldier_id=soldier.id, approver_id=soldier.id,
+                    update_id=update.id, pending=False, actor_id=actor_id,
+                )
+            else:
+                update.status = "pending_duty_manager"
+                from app.services.approval_scope import nearest_unit_join_date_approver
+                dm_id = nearest_unit_join_date_approver(session, soldier.id, stage="duty_manager")
+                if dm_id:
+                    notify_field_update_stage(session, soldier_id=soldier.id, approver_id=dm_id, update_id=update.id, pending=True, actor_id=actor_id)
+        else:
+            soldier.unit_join_date = candidate
+            update.duty_manager_approved_by = actor_id
+            update.duty_manager_approved_at = datetime.now(tz=timezone.utc)
+            update.status = "approved"
+            action = "soldier.field_update.duty_manager_approve"
+            notify_field_update_stage(
+                session, soldier_id=soldier.id, approver_id=soldier.id,
+                update_id=update.id, pending=False, actor_id=actor_id,
+            )
+        update.decided_by = actor_id
+        update.decided_at = datetime.now(tz=timezone.utc)
+        update.decision_note = decision_note
+        write_audit(session, actor_id=actor_id, action=action, entity_type="soldier_field_update", entity_id=update.id, after={"field": field, "value": raw, "status": update.status})
+        return update
     if field == "last_mitvahim_date":
         soldier.last_mitvahim_date = date.fromisoformat(raw)
     elif field == "last_alal_date":
         soldier.last_alal_date = date.fromisoformat(raw)
+    elif field == "unit_join_date":
+        soldier.unit_join_date = date.fromisoformat(raw)
     elif field == "mandatory_end_date":
         soldier.mandatory_end_date = date.fromisoformat(raw)
     elif field == "discharge_date":
@@ -616,8 +765,23 @@ def reject_field_update(
     actor_id: uuid.UUID,
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
-    if update.status != "pending":
+    if update.status not in {"pending", "pending_commander", "pending_duty_manager"}:
         raise SoldierError("not_pending")
+    if update.field_name == "unit_join_date":
+        actor = session.get(Soldier, actor_id)
+        soldier = session.get(Soldier, update.soldier_id)
+        target_node = (
+            session.get(HierarchyNode, soldier.hierarchy_node_id)
+            if soldier is not None and soldier.hierarchy_node_id else None
+        )
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        stage = "commander" if update.status == "pending_commander" else "duty_manager"
+        if not actor or not unit_join_date_stage_authorized(session, actor=actor, target_node=target_node, stage=stage):
+            raise SoldierError("forbidden")
+        if stage == "commander" and update.duty_manager_approved_by == actor_id:
+            raise SoldierError("self_approval_forbidden")
+        if stage == "duty_manager" and update.commander_approved_by == actor_id:
+            raise SoldierError("self_approval_forbidden")
     update.status = "rejected"
     update.decided_by = actor_id
     update.decided_at = datetime.now(tz=timezone.utc)

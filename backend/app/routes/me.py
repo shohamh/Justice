@@ -52,6 +52,7 @@ class MeResponse(BaseModel):
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: str | None = None
     enlistment_date: str | None = None
+    unit_join_date: str | None = None
     mandatory_end_date: str | None = None
     discharge_date: str | None = None
     last_mitvahim_date: str | None = None
@@ -168,6 +169,7 @@ def me(
         has_military_driving_license=user.has_military_driving_license,
         military_driving_license_expiry=_date(user.military_driving_license_expiry),
         enlistment_date=_date(user.enlistment_date),
+        unit_join_date=_date(user.unit_join_date),
         mandatory_end_date=_date(user.mandatory_end_date),
         discharge_date=_date(user.discharge_date),
         last_mitvahim_date=_date(user.last_mitvahim_date),

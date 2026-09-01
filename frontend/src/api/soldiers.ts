@@ -27,10 +27,12 @@ export interface SoldierDTO {
   next_rank_date: string | null;
   next_rank_date_overridden: boolean;
   can_edit_rank_advancement: boolean;
+  can_request_unit_join_date?: boolean;
   bahad1_graduate: boolean;
   has_military_driving_license: boolean | null;
   military_driving_license_expiry: string | null;
   enlistment_date: string | null;
+  unit_join_date: string | null;
   mandatory_end_date: string | null;
   discharge_date: string | null;
   last_mitvahim_date: string | null;
@@ -57,6 +59,10 @@ export interface FieldUpdateDTO {
   waiting_on: WaitingOnRef | null;
   decided_by: SoldierRef | null;
   commander_approved_by: SoldierRef | null;
+  commander_approved_at?: string | null;
+  commander_approval_note?: string | null;
+  duty_manager_approved_by?: SoldierRef | null;
+  duty_manager_approved_at?: string | null;
   id: string;
   soldier_id: string;
   soldier_name: string;
@@ -64,7 +70,7 @@ export interface FieldUpdateDTO {
   field_name: string;
   previous_value: string | null;
   new_value: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled" | "superseded";
   decided_at: string | null;
   decision_note: string | null;
   created_at: string;

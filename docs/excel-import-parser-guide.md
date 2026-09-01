@@ -25,7 +25,7 @@ The workbook may contain up to three sheets, each optional: `soldiers`,
 ### `soldiers` sheet columns
 
 `personal_number`, `full_name`, `rank`, `gender`, `is_officer`,
-`hierarchy_node_name`, `enrolled_at`, `enlistment_date`, `phone`, `email`
+`hierarchy_node_name`, `enrolled_at`, `enlistment_date`, `unit_join_date`, `phone`, `email`
 
 - `personal_number` is the unique key: if it matches an existing soldier,
   the row becomes an update; otherwise it's a new soldier.
@@ -35,6 +35,10 @@ The workbook may contain up to three sheets, each optional: `soldiers`,
 - `enrolled_at` and `enlistment_date` are dates, parsed by `_parse_date` in
   `backend/app/routes/import_excel.py`: both `dd.mm.yyyy` and ISO
   `yyyy-mm-dd` are accepted.
+- `unit_join_date` is optional for legacy rows and must be between enlistment
+  and enrollment when supplied. Changing it for an active existing soldier is
+  not applied directly by import; submit the change through the unit-entry
+  approval workflow.
 
 ### `assignments` sheet columns
 

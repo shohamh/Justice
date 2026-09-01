@@ -793,6 +793,7 @@ export default function ImportSessionReviewPage() {
                                 { key: "hierarchy_node_name", label: "יחידה", value: row.hierarchy_node_name },
                                 { key: "enrolled_at", label: "תאריך שיבוץ", value: row.enrolled_at, editable: { type: "date", onChange: (v) => setFieldOverride("soldiers", row.row, "enrolled_at", v) } },
                                 { key: "enlistment_date", label: "תאריך גיוס", value: row.enlistment_date, editable: { type: "date", onChange: (v) => setFieldOverride("soldiers", row.row, "enlistment_date", v) } },
+                                { key: "unit_join_date", label: "תאריך כניסה ליחידה", value: row.unit_join_date, editable: { type: "date", onChange: (v) => setFieldOverride("soldiers", row.row, "unit_join_date", v) } },
                                 { key: "is_career", label: "קבע", value: row.is_career, editable: { type: "checkbox", onChange: (v) => setFieldOverride("soldiers", row.row, "is_career", v) } },
                                 { key: "next_rank_date", label: "תאריך דרגה הבאה", value: row.next_rank_date, editable: { type: "date", onChange: (v) => setFieldOverride("soldiers", row.row, "next_rank_date", v) } },
                                 { key: "bahad1_graduate", label: "בוגר בה\"ד 1", value: row.bahad1_graduate, editable: { type: "checkbox", onChange: (v) => setFieldOverride("soldiers", row.row, "bahad1_graduate", v) } },

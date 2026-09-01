@@ -29,7 +29,9 @@ export interface EnrollmentRequestDTO {
   is_career: boolean;
   can_edit_rank_advancement: boolean;
   gender: string | null;
+  enrolled_at: string | null;
   enlistment_date: string | null;
+  unit_join_date: string | null;
   mandatory_end_date: string | null;
   discharge_date: string | null;
   last_mitvahim_date: string | null;
@@ -81,6 +83,7 @@ export async function patchEnrollment(
     is_officer?: boolean | null;
     gender?: string | null;
     enlistment_date?: string | null;
+    unit_join_date?: string | null;
     mandatory_end_date?: string | null;
     discharge_date?: string | null;
     last_mitvahim_date?: string | null;

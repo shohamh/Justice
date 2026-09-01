@@ -298,6 +298,7 @@ export default function TransparencyPage() {
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
   const [burdenShareBreakdownFor, setBurdenShareBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
   const [showFairnessHelp, setShowFairnessHelp] = useState(false);
+  const [showActiveDaysHelp, setShowActiveDaysHelp] = useState(false);
 
   const canViewTransparency = user?.can_view_transparency ?? true; // true until /me loads, avoids a flash-then-hide for allowed users
   const transparencyQuery = useQuery({
@@ -584,7 +585,7 @@ export default function TransparencyPage() {
       exportValue: (r) => r.exemptions_display || "—",
     },
     { id: "enrolled_at", header: t("transparency.enrolled_at"), cell: (r) => formatDate(r.enrolled_at), sortValue: (r) => r.enrolled_at },
-    { id: "active_days", header: t("transparency.active_days"), cell: (r) => r.active_days, sortValue: (r) => r.active_days },
+    { id: "active_days", header: t("transparency.active_days"), onHeaderHelpClick: () => setShowActiveDaysHelp(true), cell: (r) => r.active_days, sortValue: (r) => r.active_days },
     {
       id: "rank", header: t("transparency.rank"),
       cell: (r) => r.rank ?? "—",
@@ -1146,6 +1147,9 @@ export default function TransparencyPage() {
       )}
       {showFairnessHelp && (
         <HelpModal onClose={() => setShowFairnessHelp(false)} initialTab="fairness" />
+      )}
+      {showActiveDaysHelp && (
+        <HelpModal onClose={() => setShowActiveDaysHelp(false)} initialTab="active_days" />
       )}
     </Layout>
   );

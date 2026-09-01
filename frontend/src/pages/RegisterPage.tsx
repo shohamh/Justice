@@ -13,7 +13,7 @@ import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 import PasswordInput from "../components/PasswordInput";
 import { queryKeys } from "../queryKeys";
-import { isDateRangeValid } from "../utils/formatDate";
+import { isDateRangeValid, todayIso } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
 import { fullNameValid } from "../utils/nameValidation";
 import { personalNumberValid } from "../utils/personalNumberValidation";
@@ -57,7 +57,7 @@ interface FormData {
   invite_code: string; personal_number: string; full_name: string;
   password: string; confirm_password: string; phone: string; email: string;
   gender: string; is_officer: boolean; rank: string; rank_track: RankTrack;
-  enlistment_date: string; mandatory_end_date: string; discharge_date: string;
+  enlistment_date: string; unit_join_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
   has_military_driving_license: boolean; military_driving_license_expiry: string;
   food_type: string; food_constraints: string;
@@ -69,7 +69,7 @@ interface FormData {
 const INITIAL: FormData = {
   invite_code: "", personal_number: "", full_name: "", password: "",
   confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "", rank_track: "enlisted",
-  enlistment_date: "", mandatory_end_date: "",
+  enlistment_date: "", unit_join_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   has_military_driving_license: false, military_driving_license_expiry: "",
   food_type: "", food_constraints: "",
@@ -105,6 +105,11 @@ export default function RegisterPage() {
   });
   const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
   const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : undefined;
+  const activeDaysReferenceDate = registrationSettingsQuery.data?.active_days_reference_date;
+  const unitJoinDateRequired = Boolean(
+    activeDaysReferenceDate
+    && todayIso() > activeDaysReferenceDate,
+  );
 
   // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
   // come from the unauthenticated endpoint — see usePublicRankLadder.
@@ -166,6 +171,7 @@ export default function RegisterPage() {
         rank: form.rank || null,
         rank_track: form.rank ? form.rank_track : null,
         enlistment_date: form.enlistment_date || null,
+        unit_join_date: form.unit_join_date || null,
         mandatory_end_date: form.mandatory_end_date || null,
         discharge_date: form.discharge_date || null,
         last_mitvahim_date: form.last_mitvahim_date || null,
@@ -239,12 +245,19 @@ export default function RegisterPage() {
   const rankTrackError = form.rank && !isRankTrackCompatible(form.rank, isCareer)
     ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
     : null;
-  const dischargeDateError = form.discharge_date && form.discharge_date < new Date().toISOString().slice(0, 10)
+  const dischargeDateError = form.discharge_date && form.discharge_date < todayIso()
     ? t("register.discharge_date_must_be_future")
     : null;
   const mandatoryEndBeforeEnlistmentError = form.mandatory_end_date && form.enlistment_date
     && form.mandatory_end_date < form.enlistment_date
     ? t("register.mandatory_end_before_enlistment")
+    : null;
+  const unitJoinDateError = form.unit_join_date && form.enlistment_date && form.unit_join_date < form.enlistment_date
+    ? t("register.unit_join_before_enlistment")
+    : form.unit_join_date && form.discharge_date && form.unit_join_date >= form.discharge_date
+    ? t("register.unit_join_must_be_before_discharge")
+    : form.unit_join_date && form.unit_join_date > todayIso()
+    ? t("register.unit_join_after_enrollment")
     : null;
   const emailError = form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
     ? t("register.email_invalid")
@@ -258,7 +271,7 @@ export default function RegisterPage() {
   const step2Invalid =
     !form.personal_number || !!personalNumberError || !form.full_name || !!fullNameError || !isValidIsraeliPhone(form.phone) || !form.email || !!emailError ||
     !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
-    !!mandatoryEndBeforeEnlistmentError || !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
+    !!mandatoryEndBeforeEnlistmentError || !!unitJoinDateError || (unitJoinDateRequired && !form.unit_join_date) || !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
     !passwordValid(form.password) || form.password !== form.confirm_password;
 
   return (
@@ -329,14 +342,17 @@ export default function RegisterPage() {
               </select>
               {step2Attempted && !form.gender && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
-            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","תאריך שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
-              <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
+            {([["enlistment_date","תאריך גיוס"],["unit_join_date","תאריך כניסה ליחידה"],["mandatory_end_date","סיום חובה"],["discharge_date","תאריך שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
+              <label key={key as string} className="block text-sm">{label} {(key !== "unit_join_date" || unitJoinDateRequired) && <span className="text-red-500">*</span>}
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={iso => set(key, iso)} />
                 {key === "mandatory_end_date" && mandatoryEndBeforeEnlistmentError && (
                   <p className="text-red-600 text-xs mt-1">{mandatoryEndBeforeEnlistmentError}</p>
                 )}
-                {step2Attempted && !form[key] && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
+                {key === "unit_join_date" && unitJoinDateError && (
+                  <p className="text-red-600 text-xs mt-1">{unitJoinDateError}</p>
+                )}
+                {step2Attempted && !form[key] && (key !== "unit_join_date" || unitJoinDateRequired) && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
               </label>
             ))}
             <label className="block text-sm">דרגה <span className="text-red-500">*</span>

@@ -86,6 +86,95 @@ def test_register_rejects_discharge_before_enlistment(admin_session):
         )
 
 
+def test_register_allows_unit_join_date_at_enlistment_and_enrollment_boundaries(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    soldier, _ = register(
+        admin_session, invite_code=invite.code, requested_node_id=node.id,
+        exemption_requests=[], personal_constraints=[],
+        **_base(
+            enlistment_date=date.today(),
+            unit_join_date=date.today(),
+            mandatory_end_date=date.today() + timedelta(days=30),
+            discharge_date=date.today() + timedelta(days=60),
+        ),
+    )
+    admin_session.commit()
+
+    assert soldier.unit_join_date == date.today()
+    assert soldier.enrolled_at == date.today()
+
+
+def test_register_rejects_unit_join_date_on_discharge_date(admin_session):
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+    discharge_date = date.today()
+
+    with pytest.raises(RegistrationError, match="unit_join_date_on_or_after_discharge"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[], personal_constraints=[],
+            **_base(
+                enlistment_date=date.today() - timedelta(days=30),
+                unit_join_date=discharge_date,
+                mandatory_end_date=date.today() + timedelta(days=30),
+                discharge_date=discharge_date,
+            ),
+        )
+
+
+def test_register_requires_unit_join_date_after_reference_date(admin_session):
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    admin_session.add(SystemSetting(
+        key="scoring.active_days_reference_date",
+        value=(date.today() - timedelta(days=1)).isoformat(),
+        updated_by=None,
+    ))
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    with pytest.raises(RegistrationError, match="unit_join_date_required"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[], personal_constraints=[], **_base(),
+        )
+
+
+def test_register_preserves_nullable_unit_join_date_at_reference_boundary(admin_session):
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import register
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    admin_session.add(SystemSetting(
+        key="scoring.active_days_reference_date", value=date.today().isoformat(), updated_by=None,
+    ))
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    soldier, _ = register(
+        admin_session, invite_code=invite.code, requested_node_id=node.id,
+        exemption_requests=[], personal_constraints=[], **_base(),
+    )
+    admin_session.commit()
+
+    assert soldier.unit_join_date is None
+
+
 def test_register_rejects_incompatible_rank_track(admin_session):
     # is_career is derived from mandatory_end_date/discharge_date (see
     # test_register_allows_keva_only_rank_once_mandatory_service_has_ended);

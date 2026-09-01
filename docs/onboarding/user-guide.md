@@ -249,8 +249,11 @@ no management scope.
 - **Cumulative score** = sum over all duty-days effectively assigned to you of
   the duty type's *score per day*, plus any manual score adjustments. Harder /
   less desirable duties carry more points per day.
-- **Active days** = days since you enrolled, minus days fully covered by an
-  exemption.
+- **Active days** = days from the later of the system rollout reference date and
+  your unit-entry date, through today (or discharge/leave), minus full exemption
+  days that overlap that interval. Legacy records without a unit-entry date use
+  the system reference date. Personal constraints affect eligibility, not this
+  denominator.
 - **Normalised score** = cumulative ÷ active days. This is the fair comparison:
   it accounts for how long you've been around and time you were exempt. The
   שקיפות table is the shared view of this.
