@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
-import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
+import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks, submitFieldUpdate } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import { translateApiError } from "../utils/translateApiError";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint, cancelConstraintForManager } from "../api/constraints";
@@ -23,6 +23,8 @@ import ReasonPromptModal from "./ReasonPromptModal";
 import ApprovalStageIcons from "./ApprovalStageIcons";
 import InputDialog from "./InputDialog";
 import MessageDialog from "./MessageDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { UNIT_JOIN_DATE_CONFIRMATION } from "../constants/activeDays";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -113,6 +115,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileRank, setProfileRank] = useState(soldier.rank ?? "");
   const [profileRankTrack, setProfileRankTrack] = useState<RankTrack>(soldier.rank_track ?? (soldier.is_officer ? "officer" : "enlisted"));
   const [profileEnlistment, setProfileEnlistment] = useState(soldier.enlistment_date ?? "");
+  const [unitJoinDateReq, setUnitJoinDateReq] = useState(soldier.unit_join_date ?? "");
+  const [unitJoinDateToConfirm, setUnitJoinDateToConfirm] = useState<string | null>(null);
   const [profileMandEnd, setProfileMandEnd] = useState(soldier.mandatory_end_date ?? "");
   const [profileDischarge, setProfileDischarge] = useState(soldier.discharge_date ?? "");
   const [profileMitvahim, setProfileMitvahim] = useState(soldier.last_mitvahim_date ?? "");
@@ -132,6 +136,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [rankEditing, setRankEditing] = useState(false);
   const [nextRankDate, setNextRankDate] = useState(soldier.next_rank_date ?? "");
   const canEditRankNarrow = soldierData.can_edit_rank_advancement && !canManage;
+  const canRequestUnitJoinDate = !isPublic && (isSelf || isAdmin || isCommander || isDutyManager) && !!soldierData.enrolled_at && !soldierData.left_at;
   // Second line of defense (finding 1 of the final-review fix wave): the
   // backend now compares rank/rank_track values, not key presence, but the
   // frontend still shouldn't send unchanged rank/next-rank-date fields on an
@@ -178,6 +183,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     setProfileIsOfficer(soldierData.is_officer ?? false);
     setProfileRankTrack(soldierData.rank_track ?? (soldierData.is_officer ? "officer" : "enlisted"));
     setNextRankDate(soldierData.next_rank_date ?? "");
+    setUnitJoinDateReq(soldierData.unit_join_date ?? "");
   }, [soldierData]);
 
   useEffect(() => {
@@ -284,6 +290,21 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       onRefresh();
       setRankEditing(false);
     } catch (err: unknown) {
+      setProfileError(translateApiError(err, t));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function handleUnitJoinDateUpdate() {
+    if (!unitJoinDateToConfirm) return;
+    setSavingProfile(true);
+    setProfileError(null);
+    try {
+      await submitFieldUpdate(soldierData.id, "unit_join_date", unitJoinDateToConfirm);
+      setUnitJoinDateToConfirm(null);
+      onRefresh();
+    } catch (err) {
       setProfileError(translateApiError(err, t));
     } finally {
       setSavingProfile(false);
@@ -561,6 +582,28 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             )}
             {soldierData.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span>{formatDate(soldierData.enlistment_date)}</span></div>}
             {soldierData.unit_join_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.unit_join_date")}</span><span>{formatDate(soldierData.unit_join_date)}</span></div>}
+            {canRequestUnitJoinDate && (
+              <div className="border-t dark:border-gray-600 pt-2 space-y-2">
+                <label className="block text-xs text-gray-500 dark:text-gray-400">
+                  {t("soldier_profile.unit_join_date")}
+                  <DateInput
+                    className="border rounded p-1 w-full text-sm mt-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    value={unitJoinDateReq}
+                    onChange={setUnitJoinDateReq}
+                    data-testid="modal-unit-join-date-request-input"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => unitJoinDateReq && unitJoinDateReq !== (soldierData.unit_join_date ?? "") && setUnitJoinDateToConfirm(unitJoinDateReq)}
+                  disabled={savingProfile || !unitJoinDateReq || unitJoinDateReq === (soldierData.unit_join_date ?? "")}
+                  className="bg-blue-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
+                  data-testid="modal-unit-join-date-submit"
+                >
+                  {t("soldier_profile.submit_update")}
+                </button>
+              </div>
+            )}
             {soldierData.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span>{formatDate(soldierData.mandatory_end_date)}</span></div>}
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
             {soldierData.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldierData.last_mitvahim_date)}</span></div>}
@@ -834,6 +877,15 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           title={t("common.error")}
           message={rejectError ?? ""}
           onClose={() => setRejectError(null)}
+        />
+        <ConfirmDialog
+          open={unitJoinDateToConfirm !== null}
+          title={t("soldier_profile.unit_join_date")}
+          message={UNIT_JOIN_DATE_CONFIRMATION}
+          confirmLabel={t("soldier_profile.submit_update")}
+          confirmDisabled={savingProfile}
+          onConfirm={() => void handleUnitJoinDateUpdate()}
+          onClose={() => setUnitJoinDateToConfirm(null)}
         />
 
         {tab === "duty_history" && (

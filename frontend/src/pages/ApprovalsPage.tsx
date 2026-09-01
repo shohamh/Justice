@@ -137,7 +137,7 @@ function fieldAllowsCommanderApproval(fieldName: string): boolean {
 function nearestApproversToRows(
   nearestCommander: { id: string; name: string } | null,
   nearestDutyManager: { id: string; name: string } | null,
-  status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled",
+  status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled" | "superseded",
   commanderApprovedBy?: { soldier_id: string; name: string } | null,
   commanderApprovedAt?: string | null,
   commanderApprovalNote?: string | null,
@@ -743,12 +743,22 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {!fuQuery.isError && fuActionable.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {fuActionable.map(item => {
-              const fuGrouped = groupByKind(nearestApproversToRows(item.nearest_commander, item.nearest_duty_manager, item.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
+              const fuGrouped = groupByKind(nearestApproversToRows(
+                item.nearest_commander,
+                item.nearest_duty_manager,
+                item.status,
+                item.commander_approved_by,
+                item.commander_approved_at,
+                item.commander_approval_note,
+                item.decided_by,
+                item.decided_at,
+                item.decision_note,
+              ) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
               // A commander can never decide most field updates (see
               // fieldAllowsCommanderApproval) — showing their name as if they
               // were a decider here is what made this confusing, so hide that
               // row entirely for fields where it's never true.
-              const showCommanderRow = fieldAllowsCommanderApproval(item.field_name) && fuGrouped.commander.length > 0;
+              const showCommanderRow = (fieldAllowsCommanderApproval(item.field_name) || item.field_name === "unit_join_date") && fuGrouped.commander.length > 0;
               const showDutyManagerRow = fuGrouped.duty_manager.length > 0;
               return (
               <div key={item.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
@@ -760,10 +770,15 @@ export default function ApprovalsPage() {
                 </div>
                 <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.previous_value, t)}</span></div>
                 <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.new_value, t)}</strong></div>
+                {(item.status === "pending_commander" || item.status === "pending_duty_manager") && (
+                  <div className="text-xs text-indigo-700 dark:text-indigo-300">
+                    {item.status === "pending_commander" ? "שלב 1/2 — ממתין לאישור מפקד" : "שלב 2/2 — ממתין לאישור אחראי תורנויות"}
+                  </div>
+                )}
                 <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap">
                   {showCommanderRow && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={fuGrouped.commander} /></span>}
                   {showDutyManagerRow && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={fuGrouped.duty_manager} /></span>}
-                  {showCommanderRow && showDutyManagerRow && (
+                  {showCommanderRow && showDutyManagerRow && item.field_name !== "unit_join_date" && (
                     <span className="italic">({t("approvals.field_update_either_approver_suffices")})</span>
                   )}
                 </div>
@@ -1023,7 +1038,9 @@ export default function ApprovalsPage() {
             ))}
             {fuWaiting.map(item => {
               const isRankField = ["rank", "rank_track", "is_officer", "next_rank_date"].includes(item.field_name);
-              const waitingForName = isRankField
+              const waitingForName = item.field_name === "unit_join_date"
+                ? (item.status === "pending_commander" ? (item.nearest_commander?.name ?? "—") : (item.nearest_duty_manager?.name ?? "—"))
+                : isRankField
                 ? t("approvals.waiting_for_rank_authority")
                 : fieldAllowsCommanderApproval(item.field_name)
                 ? (item.nearest_duty_manager?.name ?? item.nearest_commander?.name ?? "—")

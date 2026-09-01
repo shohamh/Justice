@@ -5,10 +5,14 @@ import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import type { SoldierDTO } from "../api/soldiers";
 
 const mockUpdateSoldierProfile = vi.fn();
+const mockSubmitFieldUpdate = vi.fn();
+const mockListFieldUpdates = vi.fn().mockResolvedValue([]);
 const mockGetRanks = vi.fn().mockResolvedValue({ enlisted: ["טוראי"], officers: ["רסן"], officer_academic: ["סרן"] });
 vi.mock("../api/soldiers", () => ({
   updateSoldier: vi.fn(),
   updateSoldierProfile: (...args: unknown[]) => mockUpdateSoldierProfile(...args),
+  submitFieldUpdate: (...args: unknown[]) => mockSubmitFieldUpdate(...args),
+  listFieldUpdates: (...args: unknown[]) => mockListFieldUpdates(...args),
   getRanks: (...args: unknown[]) => mockGetRanks(...args),
 }));
 
@@ -121,6 +125,12 @@ describe("UnifiedSoldierModal profile save error handling", () => {
 });
 
 describe("UnifiedSoldierModal unit join date", () => {
+  beforeEach(() => {
+    mockSubmitFieldUpdate.mockReset();
+    mockListFieldUpdates.mockReset();
+    mockListFieldUpdates.mockResolvedValue([]);
+  });
+
   test("displays the stored unit join date in the profile", async () => {
     mockUseAuth.mockReturnValue({ user: ADMIN_USER });
     renderModal({ unit_join_date: "2026-01-15" });
@@ -129,6 +139,24 @@ describe("UnifiedSoldierModal unit join date", () => {
 
     expect(await screen.findByText("soldier_profile.unit_join_date")).toBeInTheDocument();
     expect(screen.getByText("15.01.2026")).toBeInTheDocument();
+  });
+
+  test("a commander confirms a unit join date correction before submitting it", async () => {
+    mockUseAuth.mockReturnValue({ user: ELIGIBLE_COMMANDER_USER });
+    mockSubmitFieldUpdate.mockResolvedValueOnce({});
+    renderModal({ unit_join_date: "2026-01-15", enrolled_at: "2026-01-01" });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+    const dateInput = await screen.findByTestId("modal-unit-join-date-request-input");
+    fireEvent.change(dateInput, { target: { value: "01/02/2026" } });
+    fireEvent.click(screen.getByTestId("modal-unit-join-date-submit"));
+
+    expect(await screen.findByTestId("confirm-dialog-confirm")).toBeInTheDocument();
+    expect(screen.getByText(/תאריך הכניסה ליחידה משפיע/)).toBeInTheDocument();
+    expect(mockSubmitFieldUpdate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+    await waitFor(() => expect(mockSubmitFieldUpdate).toHaveBeenCalledWith("s1", "unit_join_date", "2026-02-01"));
   });
 
 });

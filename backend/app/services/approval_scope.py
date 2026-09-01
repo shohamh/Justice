@@ -7,6 +7,41 @@ from sqlalchemy.orm import Session
 
 from app.db.models import DutyManagerScope, HierarchyNode, Soldier
 
+UNIT_JOIN_DATE_COMMANDER_MIN_LEVEL_KEY = "group"  # seeded key for מדור
+UNIT_JOIN_DATE_DUTY_MANAGER_MIN_LEVEL_KEY = "branch"  # seeded key for ענף
+
+
+def unit_join_date_stage_authorized(
+    session: Session, *, actor: Soldier, target_node: HierarchyNode | None, stage: str,
+) -> bool:
+    if stage not in {"commander", "duty_manager"}:
+        return False
+    if actor.role == "admin":
+        return True
+    if target_node is None:
+        return False
+    from app.auth.authz import commanded_node_ids, dm_scope_node_ids
+    roots = (
+        commanded_node_ids(session, actor.id)
+        if stage == "commander" else dm_scope_node_ids(session, actor.id)
+    )
+    required_level_key = (
+        UNIT_JOIN_DATE_COMMANDER_MIN_LEVEL_KEY
+        if stage == "commander" else UNIT_JOIN_DATE_DUTY_MANAGER_MIN_LEVEL_KEY
+    )
+    from app.services.authority import dm_scope_covers_target
+    return dm_scope_covers_target(
+        session, scope_root_ids=set(roots), target_node=target_node,
+        required_level_key=required_level_key,
+    )
+
+
+def unit_join_date_initiator_authorized(session: Session, *, actor: Soldier, target: Soldier) -> bool:
+    if actor.id == target.id:
+        return True
+    target_node = session.get(HierarchyNode, target.hierarchy_node_id) if target.hierarchy_node_id else None
+    return any(unit_join_date_stage_authorized(session, actor=actor, target_node=target_node, stage=stage) for stage in ("commander", "duty_manager"))
+
 
 def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list[uuid.UUID]:
     """Every distinct commander from the soldier's own node up to the root of

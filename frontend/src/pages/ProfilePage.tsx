@@ -30,6 +30,8 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import MessageDialog from "../components/MessageDialog";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { UNIT_JOIN_DATE_CONFIRMATION } from "../constants/activeDays";
 
 // Notification types that are never sent to a plain soldier — only to their
 // commander(s), duty managers, or admins (see notify_* call sites in
@@ -59,6 +61,8 @@ export default function ProfilePage() {
   const [alalReq, setAlalReq] = useState("");
   const [mandatoryEndReq, setMandatoryEndReq] = useState("");
   const [dischargeReq, setDischargeReq] = useState("");
+  const [unitJoinDateReq, setUnitJoinDateReq] = useState("");
+  const [unitJoinDateToConfirm, setUnitJoinDateToConfirm] = useState<string | null>(null);
   const [genderReq, setGenderReq] = useState("");
   const [rankReq, setRankReq] = useState("");
   const [phoneReq, setPhoneReq] = useState("");
@@ -99,6 +103,7 @@ export default function ProfilePage() {
   }, [location.hash]);
 
   const isCommanderLike = !!(user?.role === "admin" || user?.is_commander || user?.is_duty_manager);
+  const canRequestUnitJoinDate = !!user?.enrolled_at && !user?.left_at;
 
   const visiblePrefs = useMemo(
     () => isCommanderLike ? prefs : prefs.filter((p) => !MANAGER_ONLY_NOTIFICATION_TYPES.has(p.notification_type)),
@@ -124,7 +129,7 @@ export default function ProfilePage() {
   const pendingByField = useMemo(() => {
     const m = new Map<string, string>();
     for (const u of fieldUpdates) {
-      if (u.status === "pending" && u.new_value != null && !m.has(u.field_name)) {
+      if (["pending", "pending_commander", "pending_duty_manager"].includes(u.status) && u.new_value != null && !m.has(u.field_name)) {
         m.set(u.field_name, u.new_value);
       }
     }
@@ -194,6 +199,7 @@ export default function ProfilePage() {
       last_alal_date: strPending("last_alal_date") ?? user?.last_alal_date ?? "",
       mandatory_end_date: strPending("mandatory_end_date") ?? user?.mandatory_end_date ?? "",
       discharge_date: strPending("discharge_date") ?? user?.discharge_date ?? "",
+      unit_join_date: strPending("unit_join_date") ?? user?.unit_join_date ?? "",
       rank_selection_id: rank,
       license,
     };
@@ -211,6 +217,7 @@ export default function ProfilePage() {
     setAlalReq(effectiveValues.last_alal_date);
     setMandatoryEndReq(effectiveValues.mandatory_end_date);
     setDischargeReq(effectiveValues.discharge_date);
+    setUnitJoinDateReq(effectiveValues.unit_join_date);
     setRankReq(effectiveValues.rank_selection_id);
     setLicenseHasReq(effectiveValues.license.has);
     setLicenseExpiryReq(effectiveValues.license.expiry);
@@ -281,6 +288,18 @@ export default function ProfilePage() {
     } catch {
       // submission failed silently — backend returns error detail
     }
+  }
+
+  function requestUnitJoinDateUpdate() {
+    if (unitJoinDateReq && unitJoinDateReq !== effectiveValues.unit_join_date) {
+      setUnitJoinDateToConfirm(unitJoinDateReq);
+    }
+  }
+
+  async function confirmUnitJoinDateUpdate() {
+    if (!unitJoinDateToConfirm) return;
+    await requestUpdate("unit_join_date", unitJoinDateToConfirm);
+    setUnitJoinDateToConfirm(null);
   }
 
   async function handleLinkTelegram() {
@@ -414,6 +433,24 @@ export default function ProfilePage() {
 
         <div className="space-y-2 text-sm">
           <p className="font-medium">{t("soldier_profile.submit_update")}</p>
+          {canRequestUnitJoinDate && <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.unit_join_date")}</label>
+            <DateInput
+              data-testid="unit-join-date-request-input"
+              value={unitJoinDateReq}
+              onChange={setUnitJoinDateReq}
+              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+            />
+            <button
+              type="button"
+              data-testid="unit-join-date-submit"
+              onClick={requestUnitJoinDateUpdate}
+              disabled={!unitJoinDateReq || unitJoinDateReq === effectiveValues.unit_join_date}
+              className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+            >
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>}
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
             <label className="w-full sm:w-40 shrink-0">{t("soldier_profile.gender")}</label>
             <select value={genderReq} onChange={e => setGenderReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
@@ -613,10 +650,12 @@ export default function ProfilePage() {
               <div key={u.id} className="border dark:border-gray-600 rounded p-3 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{t(`soldier_profile.${u.field_name}`)}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${u.status === "pending" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : u.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
-                    {t(`soldier_profile.update_${u.status}`)}
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${["pending", "pending_commander", "pending_duty_manager"].includes(u.status) ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : u.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
+                    {t(`soldier_profile.update_${["pending_commander", "pending_duty_manager"].includes(u.status) ? "pending" : u.status}`)}
                   </span>
                 </div>
+                {u.status === "pending_commander" && <p className="text-xs text-amber-700 dark:text-amber-400">ממתין לאישור מפקד</p>}
+                {u.status === "pending_duty_manager" && <p className="text-xs text-amber-700 dark:text-amber-400">ממתין לאישור אחראי תורנויות</p>}
                 <div className="text-gray-500">
                   {t("soldier_profile.previous_value")}: <span className="font-mono">{formatFieldUpdateValue(u.field_name, u.previous_value, t)}</span>
                 </div>
@@ -673,6 +712,15 @@ export default function ProfilePage() {
         )}
       </section>
       )}
+      <ConfirmDialog
+        open={unitJoinDateToConfirm !== null}
+        title={t("soldier_profile.unit_join_date")}
+        message={UNIT_JOIN_DATE_CONFIRMATION}
+        confirmLabel={t("soldier_profile.submit_update")}
+        confirmDisabled={fieldUpdatesQuery.isFetching}
+        onConfirm={() => void confirmUnitJoinDateUpdate()}
+        onClose={() => setUnitJoinDateToConfirm(null)}
+      />
 
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.preferences")}</h3>

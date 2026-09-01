@@ -58,6 +58,10 @@ export interface FieldUpdateDTO {
   waiting_on: WaitingOnRef | null;
   decided_by: SoldierRef | null;
   commander_approved_by: SoldierRef | null;
+  commander_approved_at?: string | null;
+  commander_approval_note?: string | null;
+  duty_manager_approved_by?: SoldierRef | null;
+  duty_manager_approved_at?: string | null;
   id: string;
   soldier_id: string;
   soldier_name: string;
@@ -65,7 +69,7 @@ export interface FieldUpdateDTO {
   field_name: string;
   previous_value: string | null;
   new_value: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled" | "superseded";
   decided_at: string | null;
   decision_note: string | null;
   created_at: string;

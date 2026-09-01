@@ -836,6 +836,35 @@ describe("ApprovalsPage - field update approver clarity", () => {
     expect(screen.getByText("אחראי רישיון")).toBeInTheDocument();
     expect(screen.getByText("approvals.field_update_either_approver_suffices", { exact: false })).toBeInTheDocument();
   });
+
+  it("shows the staged two-step approval state for a unit join date update", async () => {
+    vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([
+      {
+        id: "fu4", soldier_id: "sol-8", soldier_name: "H", node_name: null, field_name: "unit_join_date",
+        previous_value: "2026-01-01", new_value: "2026-02-01", status: "pending_duty_manager",
+        decided_by: null, decided_at: null, decision_note: null, created_at: "2026-01-01",
+        commander_approved_by: { soldier_id: "cmd-3", name: "×ž×¤×§×“ ×ž×“×•×¨" },
+        commander_approved_at: "2026-01-02", commander_approval_note: null,
+        nearest_commander: { id: "cmd-3", name: "×ž×¤×§×“ ×ž×“×•×¨" },
+        nearest_duty_manager: { id: "dm-3", name: "××—×¨××™ ×ª×•×¨× ×•×ª" }, can_approve: true,
+      } as soldiersApi.FieldUpdateDTO,
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByTestId("approvals-tab-field-updates"));
+
+    expect(await screen.findByText("שלב 2/2 — ממתין לאישור אחראי תורנויות")).toBeInTheDocument();
+    expect(screen.getByText("swaps.approver_kind_commander", { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText("approvals.field_update_either_approver_suffices", { exact: false })).not.toBeInTheDocument();
+  });
 });
 
 describe("ApprovalsPage - in-flight approve button", () => {

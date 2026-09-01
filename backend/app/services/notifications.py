@@ -70,6 +70,8 @@ _FRONTEND_PATHS: dict[str, str] = {
     "algorithm_job_done": "/planning/shifts",
     "algorithm_job_failed": "/planning/shifts",
     "enrollment_request_received": "/approvals?tab=enrollment",
+    "field_update_pending": "/approvals?tab=field_updates",
+    "field_update_approved": "/profile",
     "enrollment_approved": "/profile",
     "enrollment_rejected": "/profile",
     "gimelim_dismissed": "/my-duties",
@@ -582,6 +584,22 @@ def _create_notif(
         reference_type=reference_type,
         reference_id=reference_id,
         soldier_gender=soldier.gender if soldier else None,
+    )
+
+
+def notify_field_update_stage(
+    session: Session, *, soldier_id: uuid.UUID, approver_id: uuid.UUID,
+    update_id: uuid.UUID, pending: bool, actor_id: uuid.UUID | None = None,
+) -> None:
+    target = session.get(Soldier, soldier_id)
+    if target is None:
+        return
+    _create_notif(
+        session, soldier_id=approver_id,
+        type=NotificationType.field_update_pending if pending else NotificationType.field_update_approved,
+        title=f"{target.full_name}: עדכון תאריך כניסה ליחידה", body=None,
+        reference_type="soldier_field_update", reference_id=update_id,
+        actor_id=actor_id, metadata={"target_tab": "field_updates"} if pending else None,
     )
 
 

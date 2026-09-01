@@ -839,6 +839,7 @@
     "update_approved": "אושר",
     "update_rejected": "נדחה",
     "update_cancelled": "בוטל",
+    "update_superseded": "הוחלף בבקשה חדשה",
     "previous_value": "ערך נוכחי",
     "new_value": "ערך מבוקש",
     "field_updates_tab": "עדכוני פרופיל",

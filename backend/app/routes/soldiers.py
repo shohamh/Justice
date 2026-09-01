@@ -174,6 +174,10 @@ class FieldUpdateOut(BaseModel):
     updated_at: Any | None = None
     waiting_on: WaitingOnOut | None = None
     commander_approved_by: PersonRefOut | None = None
+    commander_approved_at: Any | None = None
+    commander_approval_note: str | None = None
+    duty_manager_approved_by: PersonRefOut | None = None
+    duty_manager_approved_at: Any | None = None
 
 
 class TimelineEventOut(BaseModel):
@@ -319,10 +323,20 @@ def _fu_out(
         nearest_duty_manager=nearest_duty_manager,
         can_approve=can_approve,
         requested_at=u.created_at,
-        updated_at=latest_activity(u.created_at, u.decided_at),
-        # Plain "pending" flow with no named commander/duty-manager step.
-        waiting_on=None,
-        commander_approved_by=None,
+        updated_at=latest_activity(u.created_at, u.decided_at, u.commander_approved_at, u.duty_manager_approved_at),
+        waiting_on=(
+            WaitingOnOut(
+                kind="commander", soldier_id=nearest_commander.id, name=nearest_commander.name,
+            ) if u.status == "pending_commander" and nearest_commander else
+            WaitingOnOut(
+                kind="duty_manager", soldier_id=nearest_duty_manager.id, name=nearest_duty_manager.name,
+            ) if u.status == "pending_duty_manager" and nearest_duty_manager else None
+        ),
+        commander_approved_by=person_ref(session, u.commander_approved_by),
+        commander_approved_at=u.commander_approved_at,
+        commander_approval_note=u.commander_approval_note,
+        duty_manager_approved_by=person_ref(session, u.duty_manager_approved_by),
+        duty_manager_approved_at=u.duty_manager_approved_at,
     )
 
 
@@ -451,11 +465,17 @@ def list_soldiers(
 
 def _field_update_can_approve(
     session: Session, *, user: Soldier, roots: set[uuid.UUID], is_cmd: bool, is_dm: bool,
-    node: HierarchyNode | None, field_name: str,
+    node: HierarchyNode | None, field_name: str, status: str = "pending",
 ) -> bool:
     """Shared by list_all_pending_field_updates and count_pending_field_updates so
     the nav badge's count always matches which cards actually show an approve
     button — a stale duplicate here would silently drift the two out of sync."""
+    if field_name == "unit_join_date":
+        if status not in {"pending_commander", "pending_duty_manager"}:
+            return False
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        stage = "commander" if status == "pending_commander" else "duty_manager"
+        return unit_join_date_stage_authorized(session, actor=user, target_node=node, stage=stage)
     if field_name in {"rank", "rank_track", "is_officer", "next_rank_date"}:
         return rank_advancement_edit_authorized(session, user=user, target_node=node)
     decide_action = Action.MILITARY_LICENSE_DECIDE if field_name == "military_driving_license" else Action.SOLDIER_UPDATE
@@ -475,7 +495,9 @@ def list_all_pending_field_updates(
 ) -> list[FieldUpdateOut]:
     """Returns pending field updates for soldiers in the caller's scope."""
     all_pending = session.execute(
-        select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+        select(SoldierFieldUpdate).where(
+            SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager"))
+        )
     ).scalars().all()
     if not all_pending:
         return []
@@ -531,7 +553,7 @@ def list_all_pending_field_updates(
                 nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
                 can_approve = _field_update_can_approve(
                     session, user=user, roots=roots, is_cmd=user_is_commander, is_dm=user_is_duty_manager,
-                    node=node, field_name=upd.field_name,
+                    node=node, field_name=upd.field_name, status=upd.status,
                 )
                 result.append(
                     _fu_out(
@@ -550,14 +572,18 @@ def count_pending_field_updates(
 ) -> dict[str, int]:
     if user.role == "admin":
         rows = session.execute(
-            select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+            select(SoldierFieldUpdate).where(
+                SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager"))
+            )
         ).scalars().all()
         return {"count": len(rows)}
     roots = scope_root_ids(session, user)
     if not roots:
         return {"count": 0}
     all_pending = session.execute(
-        select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+        select(SoldierFieldUpdate).where(
+            SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager"))
+        )
     ).scalars().all()
     if not all_pending:
         return {"count": 0}
@@ -587,7 +613,7 @@ def count_pending_field_updates(
             # badge it feeds, with cards the viewer could never approve.
             if _field_update_can_approve(
                 session, user=user, roots=roots, is_cmd=user_is_commander, is_dm=user_is_duty_manager,
-                node=node, field_name=upd.field_name,
+                node=node, field_name=upd.field_name, status=upd.status,
             ):
                 total += 1
     return {"count": total}
@@ -818,13 +844,18 @@ def create_field_update(
     user: Soldier = Depends(require_password_changed),
 ) -> FieldUpdateOut:
     s = _load(session, soldier_id)
-    if s.id != user.id:
-        raise HTTPException(status_code=403, detail="forbidden")
     try:
+        from app.services.approval_scope import unit_join_date_initiator_authorized
+        if body.field_name == "unit_join_date" and not unit_join_date_initiator_authorized(session, actor=user, target=s):
+            raise HTTPException(status_code=403, detail="forbidden")
+        if body.field_name != "unit_join_date" and s.id != user.id:
+            raise HTTPException(status_code=403, detail="forbidden")
         req = submit_field_update(
             session, soldier_id=soldier_id, field_name=body.field_name,
             new_value=body.new_value, actor_id=user.id,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
@@ -866,7 +897,13 @@ def approve_update(
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
-    _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=True)
+    if upd.field_name == "unit_join_date":
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        stage = "commander" if upd.status == "pending_commander" else "duty_manager"
+        if not unit_join_date_stage_authorized(session, actor=user, target_node=_node_of(session, s), stage=stage):
+            raise HTTPException(status_code=403, detail="forbidden")
+    else:
+        _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=True)
     try:
         approve_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
@@ -892,7 +929,13 @@ def reject_update(
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
-    _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=False)
+    if upd.field_name == "unit_join_date":
+        from app.services.approval_scope import unit_join_date_stage_authorized
+        stage = "commander" if upd.status == "pending_commander" else "duty_manager"
+        if not unit_join_date_stage_authorized(session, actor=user, target_node=_node_of(session, s), stage=stage):
+            raise HTTPException(status_code=403, detail="forbidden")
+    else:
+        _authorize_field_update_decision(session, user, s, upd.field_name, is_approval=False)
     try:
         reject_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
