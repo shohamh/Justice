@@ -143,8 +143,8 @@ describe("ProfilePage unified service-details form", () => {
     });
     renderProfilePage();
 
-    expect(await screen.findByText("soldier_profile.unit_join_date")).toBeInTheDocument();
-    expect(screen.getByText("15/01/2026")).toBeInTheDocument();
+    expect(await screen.findByText(/soldier_profile\.unit_join_date/)).toBeInTheDocument();
+    expect(screen.getByText("15.01.2026")).toBeInTheDocument();
   });
 
   it("seeds controls with the current value and disables submit while unchanged", async () => {

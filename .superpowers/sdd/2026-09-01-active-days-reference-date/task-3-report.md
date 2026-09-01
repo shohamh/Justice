@@ -27,3 +27,38 @@
 
 - This task intentionally leaves post-activation changes read-only. The existing field-update approval flow will be extended in Task 4.
 - Re-run focused backend/frontend checks from a worktree with its own installed dependencies (and a responsive test database) before integration.
+
+## Fix round 1 (2026-09-01)
+
+### Findings addressed
+
+- Enrollment PATCH now parses `unit_join_date` as a Pydantic `date` before assignment and shared soldier-date validation. Valid pre-activation corrections persist successfully; dates before enlistment return the expected 400 validation code instead of raising `TypeError`.
+- The unauthenticated registration-settings DTO now exposes `active_days_reference_date`. Registration mirrors backend requiredness: `unit_join_date` is required only when today is after that configured date, blocks step progression when missing, and shows the existing Hebrew required-field feedback.
+- Enrollment DTOs now expose `enrolled_at`, allowing the approval modal to apply the same enlistment/enrollment/discharge ordering checks with Hebrew messages before sending the PATCH.
+- Repaired the abandoned assertions to use the application's established dot-formatted date display and added regressions for enrollment correction, invalid enrollment ordering, registration required/reference-boundary behavior, and legacy profile fallback display.
+
+### Verification
+
+The earlier unverified results above are superseded by these completed checks:
+
+- `C:\Users\Shoham\workspace\Justice\backend\.venv\Scripts\python.exe -m pytest -q -n 0 app/services/tests/test_registration.py::test_register_rejects_unit_join_date_on_discharge_date tests/integration/test_enrollment_routes.py::test_enrollment_reviewer_can_correct_unit_join_date_before_activation tests/integration/test_enrollment_routes.py::test_enrollment_reviewer_cannot_set_unit_join_date_before_enlistment tests/integration/test_public_settings.py::test_registration_public_settings_no_auth_required tests/integration/test_public_settings.py::test_registration_public_settings_defaults_to_none` — passed, 5 tests.
+- `C:\Users\Shoham\workspace\Justice\backend\.venv\Scripts\python.exe -m pytest -q -n 0 app/services/tests/test_registration.py tests/integration/test_registration_routes.py tests/integration/test_enrollment_routes.py tests/integration/test_public_settings.py tests/integration/test_me_capabilities.py tests/integration/test_soldier_profile.py tests/integration/test_soldiers_api.py` — passed, 125 tests.
+- `npx vitest run src/pages/RegisterPage.test.tsx src/components/EnrollmentApprovalModal.test.tsx src/components/UnifiedSoldierModal.test.tsx src/pages/ProfilePage.test.tsx --maxWorkers=1 --no-file-parallelism` — passed before final scope cleanup, 4 files / 54 tests; the final focused rerun is recorded below.
+- `npm run typecheck` — passed (`tsc --noEmit`).
+- `npm run lint` — passed (`tsc --noEmit` and ESLint with zero warnings).
+- `git diff --check` — passed.
+
+### Remaining scope and concerns
+
+- Post-activation changes remain intentionally excluded; Task 4 owns the approval workflow.
+- `npm ci` reported 9 dependency audit findings (4 moderate, 5 high); no dependency versions were changed in Task 3.
+
+### Final verification before focused commit (2026-09-01)
+
+- Passed: `C:\Users\Shoham\workspace\Justice\backend\.venv\Scripts\python.exe -m pytest -q -n 0 app/services/tests/test_registration.py tests/integration/test_registration_routes.py tests/integration/test_enrollment_routes.py tests/integration/test_public_settings.py tests/integration/test_me_capabilities.py tests/integration/test_soldier_profile.py tests/integration/test_soldiers_api.py` — 125 tests passed in 61.6 seconds.
+- Passed: `npx vitest run src/pages/RegisterPage.test.tsx src/components/EnrollmentApprovalModal.test.tsx src/components/UnifiedSoldierModal.test.tsx src/pages/ProfilePage.test.tsx --maxWorkers=1 --no-file-parallelism` — 4 files and 52 tests passed in 46.08 seconds.
+- Passed: `npm run typecheck` — `tsc --noEmit` exited 0.
+- Passed: `npm run lint` — TypeScript and ESLint exited 0 with zero warnings.
+- Passed: `git diff --check` — no whitespace errors.
+
+The focused verification confirms the two reviewer findings: enrollment accepts and validates `unit_join_date` as a date, and registration requiredness/feedback follows the configured public reference date. Regression coverage includes enrollment correction and invalid ordering, plus registration required-after-reference and optional-at-reference-boundary behavior.

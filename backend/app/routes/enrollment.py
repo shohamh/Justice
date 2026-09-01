@@ -74,6 +74,7 @@ class EnrollmentRequestOut(BaseModel):
     is_career: bool = False
     can_edit_rank_advancement: bool = False
     gender: str | None = None
+    enrolled_at: date | None = None
     enlistment_date: str | None = None
     unit_join_date: date | None = None
     mandatory_end_date: str | None = None
@@ -100,7 +101,7 @@ class PatchEnrollmentBody(BaseModel):
     is_officer: bool | None = None
     gender: str | None = None
     enlistment_date: str | None = None
-    unit_join_date: str | None = None
+    unit_join_date: date | None = None
     mandatory_end_date: str | None = None
     discharge_date: str | None = None
     last_mitvahim_date: str | None = None
@@ -194,8 +195,9 @@ def _soldier_to_out(
             session.get(HierarchyNode, r.requested_node_id),
         ),
         gender=s.gender,
+        enrolled_at=s.enrolled_at,
         enlistment_date=s.enlistment_date.isoformat() if s.enlistment_date else None,
-        unit_join_date=s.unit_join_date.isoformat() if s.unit_join_date else None,
+        unit_join_date=s.unit_join_date,
         mandatory_end_date=s.mandatory_end_date.isoformat() if s.mandatory_end_date else None,
         discharge_date=s.discharge_date.isoformat() if s.discharge_date else None,
         last_mitvahim_date=s.last_mitvahim_date.isoformat() if s.last_mitvahim_date else None,

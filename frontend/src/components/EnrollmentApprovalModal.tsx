@@ -57,9 +57,19 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
   const { enlistedRanks: RANKS_ENLISTED, officerRanks: RANKS_OFFICER, officerAcademicRanks: RANKS_OFFICER_ACADEMIC } = useRankLadder();
 
   const typeById = Object.fromEntries(exemptionTypes.map(et => [et.id, et.name]));
+  const unitJoinDateError = unitJoinDate && enlistmentDate && unitJoinDate < enlistmentDate
+    ? t("errors.unit_join_date_before_enlistment")
+    : unitJoinDate && req.enrolled_at && unitJoinDate > req.enrolled_at
+    ? t("errors.unit_join_date_after_enrollment")
+    : unitJoinDate && dischargeDate && unitJoinDate >= dischargeDate
+    ? t("errors.unit_join_date_on_or_after_discharge")
+    : null;
 
   async function handleSaveAndApprove(e: FormEvent) {
     e.preventDefault();
+    if (unitJoinDateError) {
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -218,6 +228,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
               />
             </label>
           ))}
+          {unitJoinDateError && <p className="text-red-600 text-xs">{unitJoinDateError}</p>}
           {(isOfficer || req.is_career) && (
             <label className="block">
               <span className="text-xs text-gray-500">אל&quot;ל אחרון</span>

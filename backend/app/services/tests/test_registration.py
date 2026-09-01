@@ -118,7 +118,7 @@ def test_register_rejects_unit_join_date_on_discharge_date(admin_session):
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
-    discharge_date = date.today() + timedelta(days=60)
+    discharge_date = date.today()
 
     with pytest.raises(RegistrationError, match="unit_join_date_on_or_after_discharge"):
         register(

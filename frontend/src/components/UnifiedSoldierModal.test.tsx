@@ -128,8 +128,9 @@ describe("UnifiedSoldierModal unit join date", () => {
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
 
     expect(await screen.findByText("soldier_profile.unit_join_date")).toBeInTheDocument();
-    expect(screen.getByText("15/01/2026")).toBeInTheDocument();
+    expect(screen.getByText("15.01.2026")).toBeInTheDocument();
   });
+
 });
 
 describe("UnifiedSoldierModal full-editor access is scoped to canManage", () => {

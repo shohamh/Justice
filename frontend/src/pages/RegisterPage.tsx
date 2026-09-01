@@ -105,6 +105,11 @@ export default function RegisterPage() {
   });
   const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
   const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : undefined;
+  const activeDaysReferenceDate = registrationSettingsQuery.data?.active_days_reference_date;
+  const unitJoinDateRequired = Boolean(
+    activeDaysReferenceDate
+    && new Date().toISOString().slice(0, 10) > activeDaysReferenceDate,
+  );
 
   // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
   // come from the unauthenticated endpoint — see usePublicRankLadder.
@@ -266,7 +271,7 @@ export default function RegisterPage() {
   const step2Invalid =
     !form.personal_number || !!personalNumberError || !form.full_name || !!fullNameError || !isValidIsraeliPhone(form.phone) || !form.email || !!emailError ||
     !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
-    !!mandatoryEndBeforeEnlistmentError || !!unitJoinDateError || !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
+    !!mandatoryEndBeforeEnlistmentError || !!unitJoinDateError || (unitJoinDateRequired && !form.unit_join_date) || !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
     !passwordValid(form.password) || form.password !== form.confirm_password;
 
   return (
@@ -338,7 +343,7 @@ export default function RegisterPage() {
               {step2Attempted && !form.gender && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
             {([["enlistment_date","תאריך גיוס"],["unit_join_date","תאריך כניסה ליחידה"],["mandatory_end_date","סיום חובה"],["discharge_date","תאריך שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
-              <label key={key as string} className="block text-sm">{label} {key !== "unit_join_date" && <span className="text-red-500">*</span>}
+              <label key={key as string} className="block text-sm">{label} {(key !== "unit_join_date" || unitJoinDateRequired) && <span className="text-red-500">*</span>}
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={iso => set(key, iso)} />
                 {key === "mandatory_end_date" && mandatoryEndBeforeEnlistmentError && (
@@ -347,7 +352,7 @@ export default function RegisterPage() {
                 {key === "unit_join_date" && unitJoinDateError && (
                   <p className="text-red-600 text-xs mt-1">{unitJoinDateError}</p>
                 )}
-                {step2Attempted && !form[key] && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
+                {step2Attempted && !form[key] && (key !== "unit_join_date" || unitJoinDateRequired) && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
               </label>
             ))}
             <label className="block text-sm">דרגה <span className="text-red-500">*</span>
