@@ -13,7 +13,7 @@ import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 import PasswordInput from "../components/PasswordInput";
 import { queryKeys } from "../queryKeys";
-import { isDateRangeValid } from "../utils/formatDate";
+import { isDateRangeValid, todayIso } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
 import { fullNameValid } from "../utils/nameValidation";
 import { personalNumberValid } from "../utils/personalNumberValidation";
@@ -108,7 +108,7 @@ export default function RegisterPage() {
   const activeDaysReferenceDate = registrationSettingsQuery.data?.active_days_reference_date;
   const unitJoinDateRequired = Boolean(
     activeDaysReferenceDate
-    && new Date().toISOString().slice(0, 10) > activeDaysReferenceDate,
+    && todayIso() > activeDaysReferenceDate,
   );
 
   // /register is a PUBLIC route (outside <ProtectedRoute>), so the ladder must
@@ -245,7 +245,7 @@ export default function RegisterPage() {
   const rankTrackError = form.rank && !isRankTrackCompatible(form.rank, isCareer)
     ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
     : null;
-  const dischargeDateError = form.discharge_date && form.discharge_date < new Date().toISOString().slice(0, 10)
+  const dischargeDateError = form.discharge_date && form.discharge_date < todayIso()
     ? t("register.discharge_date_must_be_future")
     : null;
   const mandatoryEndBeforeEnlistmentError = form.mandatory_end_date && form.enlistment_date
@@ -256,7 +256,7 @@ export default function RegisterPage() {
     ? t("register.unit_join_before_enlistment")
     : form.unit_join_date && form.discharge_date && form.unit_join_date >= form.discharge_date
     ? t("register.unit_join_must_be_before_discharge")
-    : form.unit_join_date && form.unit_join_date > new Date().toISOString().slice(0, 10)
+    : form.unit_join_date && form.unit_join_date > todayIso()
     ? t("register.unit_join_after_enrollment")
     : null;
   const emailError = form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)

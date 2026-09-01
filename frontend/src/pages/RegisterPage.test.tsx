@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import RegisterPage from "./RegisterPage";
+import { todayIso } from "../utils/formatDate";
 import * as authApi from "../api/auth";
 import * as registrationSettingsApi from "../api/registrationSettings";
 import * as publicSettingsApi from "../api/publicSettings";
@@ -130,6 +131,10 @@ describe("RegisterPage - rank ladder source", () => {
   });
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("RegisterPage - unit join date", () => {
   it("shows the unit join date input and Hebrew ordering validation", async () => {
     renderPage();
@@ -144,9 +149,12 @@ describe("RegisterPage - unit join date", () => {
   });
 
   it("requires the date and blocks progression after the configured reference date", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 5, 15, 0, 30));
+    expect(todayIso()).toBe("2026-06-15");
     vi.mocked(registrationSettingsApi.getRegistrationPublicSettings).mockResolvedValue({
       email_domain_hint: null,
-      active_days_reference_date: "2000-01-01",
+      active_days_reference_date: "2026-06-14",
     } as never);
     await goToExemptionsStep(true);
 

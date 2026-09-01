@@ -71,3 +71,12 @@ Focused code commit: `9fcca8c4` (`fix: complete active days reference date task 
 - Final Task 3 commit range: `9fcca8c4..d0cfc8c4` (inclusive commits: `9fcca8c4`, `83b10a26`, `d0cfc8c4`).
 - Final focused regression after the hardening change: `npx vitest run src/pages/RegisterPage.test.tsx --maxWorkers=1 --no-file-parallelism` — 1 file and 11 tests passed in 3.32 seconds.
 - Final worktree status: tracked Task 3 files clean; intentionally preserved unrelated untracked files are `docs/superpowers/plans/2026-09-01-active-days-reference-date.md` and `docs/superpowers/specs/2026-09-01-active-days-reference-date.md`.
+
+## Fix round 2 (2026-09-01)
+
+- Replaced `RegisterPage` UTC calendar-day calculations with the shared local-date `todayIso()` helper, including configured requiredness and the page's related date-order checks.
+- Added a local Israel-time boundary regression at `2026-06-15 00:30`, where UTC is still June 14; the test verifies `todayIso()` returns June 15 and registration remains required when the reference date is June 14. The regression failed against the old UTC implementation and passed after the fix.
+- Passed: `npx vitest run src/pages/RegisterPage.test.tsx --maxWorkers=1 --no-file-parallelism` — 1 file and 11 tests passed in 5.56 seconds.
+- Passed: `npm run typecheck` — `tsc --noEmit` exited 0.
+- Passed: `npm run lint` — TypeScript and ESLint exited 0 with zero warnings.
+- Passed: `git diff --check` — no whitespace errors.
