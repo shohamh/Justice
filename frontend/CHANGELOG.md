@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-01
+
+### Features
+- Unified the soldier homepage and commander dashboard into one role-aware homepage, with highlighted management-scope widgets and a single calendar for commanders and duty managers.
+- Added distinct highlighting and the `הצג רק אירועים שלי` filter for a manager's own duties, while keeping unit-wide duty-board behavior unchanged.
+
+### Fixes
+- Treated profile `last_mitvahim_date` as live-range qualification and `last_alal_date` as alal qualification throughout eligibility, coverage, auto-assignment, and expiry notifications.
+- Added duty-manager and deputy duty-manager authorization for command dashboard data, with server-derived subtree scope and no arbitrary-node bypass.
+
+### Chores
+- Removed the legacy standalone commander dashboard route, page, navigation entry, search entry, and obsolete summary API.
+
 ## 2026-08-31 (6)
 
 ### Fixes
