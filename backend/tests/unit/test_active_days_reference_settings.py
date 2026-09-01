@@ -36,6 +36,7 @@ def _registration_payload(invite_code: str, node_id: uuid.UUID) -> dict[str, obj
         "is_officer": False,
         "rank": "טוראי",
         "enlistment_date": (date.today() - timedelta(days=600)).isoformat(),
+        "unit_join_date": (date.today() - timedelta(days=590)).isoformat(),
         "mandatory_end_date": (date.today() + timedelta(days=200)).isoformat(),
         "discharge_date": (date.today() + timedelta(days=600)).isoformat(),
         "last_mitvahim_date": (date.today() - timedelta(days=30)).isoformat(),
