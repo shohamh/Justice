@@ -261,8 +261,10 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   }, [filteredShifts, selectedShift]);
 
   const filteredRanges = useMemo(
-    () => ranges.filter(r => effectiveRangeTypeFilter.includes(r.range_type)),
-    [ranges, effectiveRangeTypeFilter],
+    () => ranges
+      .filter(r => effectiveRangeTypeFilter.includes(r.range_type))
+      .filter((range) => !showOnlyMyDuties || !canHighlightOwnDuties || range.assignments.some((assignment) => assignment.soldier_id === highlightSoldierId)),
+    [ranges, effectiveRangeTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
   );
 
   const shiftEvents = useMemo(
