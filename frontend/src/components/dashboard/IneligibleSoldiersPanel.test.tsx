@@ -99,7 +99,10 @@ describe("IneligibleSoldiersPanel", () => {
     const soldierTable = screen.getByTestId("ineligible-soldiers-node-company");
     expect(within(soldierTable).getByRole("button", { name: "נועם כהן" })).toBeInTheDocument();
     expect(within(soldierTable).getByRole("button", { name: "אורי פרץ" })).toBeInTheDocument();
-    expect(within(soldierTable).getByText("מוצב לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026 אין מטווחים בתוקף")).toBeInTheDocument();
+    const soldierRow = within(soldierTable).getByRole("button", { name: "אורי פרץ" }).closest("tr");
+    expect(soldierRow).not.toBeNull();
+    expect(soldierRow).toHaveTextContent("אין כשירות מטווח בתוקף");
+    expect(within(soldierRow!).getByTestId("ineligible-warning-soldier-2")).toHaveTextContent("מוצב לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026");
 
     const hierarchyTable = screen.getByTestId("ineligible-soldiers-table");
     await act(async () => {

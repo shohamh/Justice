@@ -69,6 +69,17 @@ def _add_future_weapon_duty_and_matching_range(session, *, soldier, node) -> Non
     session.commit()
 
 
+def _add_active_weapon_duty_type(session) -> DutyType:
+    duty_type = DutyType(
+        name=f"scope-weapon-duty-{_uid()}",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+    )
+    session.add(duty_type)
+    session.flush()
+    return duty_type
+
+
 def test_commander_view_includes_descendants_and_excludes_duty_manager_only_nodes(
     client, admin_session
 ) -> None:
@@ -154,6 +165,7 @@ def test_commander_view_includes_descendants_and_excludes_duty_manager_only_node
 def test_planning_view_combines_all_duty_manager_roots_and_deduplicates_overlap(
     client, admin_session
 ) -> None:
+    _add_active_weapon_duty_type(admin_session)
     planning_root = create_node(admin_session, level="division", name=f"planning-root-{_uid()}")
     planning_child = create_node(
         admin_session, level="unit", name=f"planning-child-{_uid()}", parent=planning_root
@@ -246,6 +258,7 @@ def test_planning_view_combines_all_duty_manager_roots_and_deduplicates_overlap(
 
 
 def test_admin_sees_all_nodes_and_count_matches_planning_list(client, admin_session) -> None:
+    _add_active_weapon_duty_type(admin_session)
     first_node = create_node(admin_session, level="division", name=f"admin-first-{_uid()}")
     second_node = create_node(admin_session, level="division", name=f"admin-second-{_uid()}")
     first_soldier = create_soldier(
@@ -421,6 +434,7 @@ def test_projects_actual_higher_tier_of_covering_planned_range(client, admin_ses
 
 
 def test_nested_scope_roots_do_not_expose_ancestor_metadata(client, admin_session) -> None:
+    _add_active_weapon_duty_type(admin_session)
     ancestor = create_node(admin_session, level="division", name=f"ancestor-{_uid()}")
     commander = create_soldier(
         admin_session, personal_number=f"nested-commander-{_uid()}", role="commander"
