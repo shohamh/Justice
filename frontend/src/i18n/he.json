@@ -835,6 +835,7 @@
     "has_driving_license": "רישיון נהיגה צבאי",
     "driving_license_expiry": "תוקף רישיון נהיגה צבאי",
     "submit_update": "שלח בקשת עדכון",
+    "submit_for_approval": "שלח לאישור",
     "update_pending": "ממתין לאישור",
     "update_approved": "אושר",
     "update_rejected": "נדחה",

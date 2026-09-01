@@ -135,6 +135,124 @@ def test_unit_join_date_requires_medor_commander_and_anaph_duty_manager_scope(cl
     assert _approve(client, junior_dm, soldier, update_id).status_code == 403
 
 
+def test_unit_join_date_notifies_only_the_nearest_authorized_approvers(client, admin_session):
+    soldier, commander, duty_manager = _approval_tree(admin_session)
+    target_node = admin_session.get(HierarchyNode, soldier.hierarchy_node_id)
+    junior_commander = create_soldier(admin_session, personal_number=_uid("junior_cmd"), role="commander")
+    target_node.commander_id = junior_commander.id
+    junior_dm = create_soldier(admin_session, personal_number=_uid("junior_dm"), role="duty_manager")
+    admin_session.add(DutyManagerScope(duty_manager_id=junior_dm.id, hierarchy_node_id=target_node.id))
+    admin_session.commit()
+
+    submitted = _submit(client, soldier, soldier)
+    assert submitted.status_code == 201, submitted.text
+    assert submitted.json()["waiting_on"]["soldier_id"] == str(commander.id)
+    update_id = uuid.UUID(submitted.json()["id"])
+    assert admin_session.query(Notification).filter_by(
+        reference_type="soldier_field_update", reference_id=update_id, soldier_id=junior_commander.id,
+    ).count() == 0
+    assert admin_session.query(Notification).filter_by(
+        reference_type="soldier_field_update", reference_id=update_id, soldier_id=commander.id,
+    ).count() == 1
+
+    approved = _approve(client, commander, soldier, update_id)
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "pending_duty_manager"
+    assert approved.json()["waiting_on"]["soldier_id"] == str(duty_manager.id)
+    assert admin_session.query(Notification).filter_by(
+        reference_type="soldier_field_update", reference_id=update_id, soldier_id=junior_dm.id,
+    ).count() == 0
+    assert admin_session.query(Notification).filter_by(
+        reference_type="soldier_field_update", reference_id=update_id, soldier_id=duty_manager.id,
+    ).count() == 1
+
+
+def test_concurrent_unit_join_date_submissions_leave_one_pending_request(admin_session, admin_engine):
+    import threading
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.services.soldiers import submit_field_update
+
+    soldier, _commander, _duty_manager = _approval_tree(admin_session)
+    SessionLocal = sessionmaker(bind=admin_engine, expire_on_commit=False)
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def submit(value: str) -> None:
+        try:
+            with SessionLocal() as session:
+                barrier.wait(timeout=30)
+                submit_field_update(session, soldier_id=soldier.id, field_name="unit_join_date", new_value=value, actor_id=soldier.id)
+                session.commit()
+        except BaseException as exc:  # noqa: BLE001 - re-raised below
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=submit, args=("2026-02-01",)),
+        threading.Thread(target=submit, args=("2026-03-01",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not errors
+    pending = admin_session.query(SoldierFieldUpdate).filter(
+        SoldierFieldUpdate.soldier_id == soldier.id,
+        SoldierFieldUpdate.status.in_(("pending", "pending_commander", "pending_duty_manager")),
+    ).all()
+    assert len(pending) == 1
+
+
+def test_concurrent_unit_join_date_approvals_transition_once_and_notify_once(admin_session, admin_engine):
+    import threading
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.services.soldiers import approve_field_update, submit_field_update
+
+    soldier, commander, duty_manager = _approval_tree(admin_session)
+    update = submit_field_update(
+        admin_session, soldier_id=soldier.id, field_name="unit_join_date", new_value="2026-02-01", actor_id=soldier.id,
+    )
+    admin_session.commit()
+    update_id = update.id
+    SessionLocal = sessionmaker(bind=admin_engine, expire_on_commit=False)
+    barrier = threading.Barrier(2)
+    outcomes: list[str] = []
+    errors: list[BaseException] = []
+
+    def approve() -> None:
+        try:
+            with SessionLocal() as session:
+                row = session.get(SoldierFieldUpdate, update_id)
+                barrier.wait(timeout=30)
+                approve_field_update(session, update=row, actor_id=commander.id)
+                session.commit()
+                outcomes.append("approved")
+        except Exception as exc:
+            from app.services.soldiers import SoldierError
+            if isinstance(exc, SoldierError) and str(exc) == "not_pending":
+                outcomes.append("not_pending")
+            else:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=approve), threading.Thread(target=approve)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not errors
+    assert sorted(outcomes) == ["approved", "not_pending"]
+    assert admin_session.query(Notification).filter_by(
+        soldier_id=duty_manager.id, reference_type="soldier_field_update", reference_id=update_id,
+    ).count() == 1
+    admin_session.refresh(update)
+    assert update.status == "pending_duty_manager"
+
+
 def test_duty_manager_stage_requires_anaph_or_higher_scope(client, admin_session):
     soldier, commander, _duty_manager = _approval_tree(admin_session)
     submitted = _submit(client, soldier, soldier)

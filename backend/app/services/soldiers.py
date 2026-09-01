@@ -499,7 +499,9 @@ def submit_field_update(
     from app.services.eligibility import SOLDIER_EDITABLE_FIELDS
     if field_name not in SOLDIER_EDITABLE_FIELDS:
         raise SoldierError("field_not_editable")
-    soldier = session.get(Soldier, soldier_id)
+    soldier = session.execute(
+        select(Soldier).where(Soldier.id == soldier_id).with_for_update()
+    ).scalar_one_or_none()
     if soldier is None:
         raise SoldierError("soldier_not_found")
     if _is_same_value(soldier, field_name, new_value):
@@ -509,8 +511,7 @@ def submit_field_update(
         raise SoldierError("actor_not_found")
     if field_name == "unit_join_date":
         from app.services.approval_scope import (
-            commander_chain_for_soldier,
-            duty_manager_chain_for_soldier,
+            nearest_unit_join_date_approver,
             unit_join_date_initiator_authorized,
             unit_join_date_stage_authorized,
         )
@@ -580,20 +581,20 @@ def submit_field_update(
             )
         elif auto_commander:
             req.status = "pending_duty_manager"
-            dm_ids = duty_manager_chain_for_soldier(session, soldier_id)
-            if dm_ids:
-                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=dm_ids[0], update_id=req.id, pending=True, actor_id=actor_id)
+            dm_id = nearest_unit_join_date_approver(session, soldier_id, stage="duty_manager")
+            if dm_id:
+                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=dm_id, update_id=req.id, pending=True, actor_id=actor_id)
         elif auto_duty_manager:
             req.decided_by = actor.id
             req.status = "pending_commander"
-            cmd_ids = commander_chain_for_soldier(session, soldier_id)
-            if cmd_ids:
-                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=cmd_ids[0], update_id=req.id, pending=True, actor_id=actor_id)
+            cmd_id = nearest_unit_join_date_approver(session, soldier_id, stage="commander")
+            if cmd_id:
+                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=cmd_id, update_id=req.id, pending=True, actor_id=actor_id)
         else:
             req.status = "pending_commander"
-            cmd_ids = commander_chain_for_soldier(session, soldier_id)
-            if cmd_ids:
-                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=cmd_ids[0], update_id=req.id, pending=True, actor_id=actor_id)
+            cmd_id = nearest_unit_join_date_approver(session, soldier_id, stage="commander")
+            if cmd_id:
+                notify_field_update_stage(session, soldier_id=soldier_id, approver_id=cmd_id, update_id=req.id, pending=True, actor_id=actor_id)
     write_audit(
         session,
         actor_id=actor_id,
@@ -613,7 +614,18 @@ def approve_field_update(
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
     from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
-    if update.status not in {"pending", "pending_commander", "pending_duty_manager"}:
+    requested_status = update.status
+    update = session.execute(
+        select(SoldierFieldUpdate)
+        .where(SoldierFieldUpdate.id == update.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if update is None:
+        raise SoldierError("not_found")
+    if requested_status not in {"pending", "pending_commander", "pending_duty_manager"}:
+        raise SoldierError("not_pending")
+    if update.status != requested_status:
         raise SoldierError("not_pending")
     soldier = session.get(Soldier, update.soldier_id)
     if soldier is None:
@@ -653,8 +665,8 @@ def approve_field_update(
                 )
             else:
                 update.status = "pending_duty_manager"
-                from app.services.approval_scope import nearest_duty_manager_for_soldier
-                dm_id = nearest_duty_manager_for_soldier(session, soldier.id)
+                from app.services.approval_scope import nearest_unit_join_date_approver
+                dm_id = nearest_unit_join_date_approver(session, soldier.id, stage="duty_manager")
                 if dm_id:
                     notify_field_update_stage(session, soldier_id=soldier.id, approver_id=dm_id, update_id=update.id, pending=True, actor_id=actor_id)
         else:

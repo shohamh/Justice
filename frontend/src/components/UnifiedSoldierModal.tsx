@@ -136,7 +136,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [rankEditing, setRankEditing] = useState(false);
   const [nextRankDate, setNextRankDate] = useState(soldier.next_rank_date ?? "");
   const canEditRankNarrow = soldierData.can_edit_rank_advancement && !canManage;
-  const canRequestUnitJoinDate = !isPublic && (isSelf || isAdmin || isCommander || isDutyManager) && !!soldierData.enrolled_at && !soldierData.left_at;
+  const canRequestUnitJoinDate = !isPublic && Boolean(soldierData.can_request_unit_join_date) && !!soldierData.enrolled_at && !soldierData.left_at;
   // Second line of defense (finding 1 of the final-review fix wave): the
   // backend now compares rank/rank_track values, not key presence, but the
   // frontend still shouldn't send unchanged rank/next-rank-date fields on an
@@ -600,7 +600,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   className="bg-blue-600 text-white px-3 py-1 rounded text-xs disabled:opacity-50"
                   data-testid="modal-unit-join-date-submit"
                 >
-                  {t("soldier_profile.submit_update")}
+                  {t("soldier_profile.submit_for_approval")}
                 </button>
               </div>
             )}
@@ -882,7 +882,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           open={unitJoinDateToConfirm !== null}
           title={t("soldier_profile.unit_join_date")}
           message={UNIT_JOIN_DATE_CONFIRMATION}
-          confirmLabel={t("soldier_profile.submit_update")}
+          confirmLabel={t("soldier_profile.submit_for_approval")}
           confirmDisabled={savingProfile}
           onConfirm={() => void handleUnitJoinDateUpdate()}
           onClose={() => setUnitJoinDateToConfirm(null)}

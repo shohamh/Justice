@@ -865,6 +865,36 @@ describe("ApprovalsPage - field update approver clarity", () => {
     expect(screen.getByText("swaps.approver_kind_commander", { exact: false })).toBeInTheDocument();
     expect(screen.queryByText("approvals.field_update_either_approver_suffices", { exact: false })).not.toBeInTheDocument();
   });
+
+  it("renders an automatically approved duty-manager stage from its own metadata", async () => {
+    vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([
+      {
+        id: "fu5", soldier_id: "sol-9", soldier_name: "I", node_name: null, field_name: "unit_join_date",
+        previous_value: "2026-01-01", new_value: "2026-02-01", status: "pending_commander",
+        decided_by: { soldier_id: "cmd-4", name: "×ž×¤×§×“ ×¡×•×£" }, decided_at: null, decision_note: null,
+        created_at: "2026-01-01", commander_approved_by: null, commander_approved_at: null,
+        commander_approval_note: null, duty_manager_approved_by: { soldier_id: "dm-4", name: "××—×¨××™ ××•×˜×•×ž×˜×™" },
+        duty_manager_approved_at: "2026-01-02", nearest_commander: { id: "cmd-4", name: "×ž×¤×§×“ ×¡×•×£" },
+        nearest_duty_manager: { id: "dm-4", name: "××—×¨××™ ××•×˜×•×ž×˜×™" }, can_approve: true,
+      } as soldiersApi.FieldUpdateDTO,
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByTestId("approvals-tab-field-updates"));
+
+    const checkmarks = await screen.findAllByTestId("approval-checkmark");
+    expect(checkmarks).toHaveLength(1);
+    fireEvent.click(checkmarks[0]);
+    expect(await screen.findByTestId("approval-decision-details")).toHaveTextContent("××—×¨××™ ××•×˜×•×ž×˜×™");
+  });
 });
 
 describe("ApprovalsPage - in-flight approve button", () => {

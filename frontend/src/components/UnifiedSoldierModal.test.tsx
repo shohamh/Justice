@@ -41,7 +41,9 @@ vi.mock("../api/dutyConfig", () => ({
 // `useEffect([isActive, soldierId, load])` that unconditionally calls
 // setState) causes an infinite render loop the moment DutyHistoryPanel
 // actually mounts. Mirrors DutyHistoryPanel.test.tsx's `mockT` pattern.
-const mockT = (key: string) => (key === "errors.rank_track_incompatible" ? "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר" : key);
+const mockT = (key: string) => key === "errors.rank_track_incompatible"
+  ? "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר"
+  : key === "soldier_profile.submit_for_approval" ? "שלח לאישור" : key;
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mockT }),
 }));
@@ -81,6 +83,8 @@ const soldier: SoldierDTO = {
   next_rank_date: null,
   next_rank_date_overridden: false,
   can_edit_rank_advancement: false,
+  unit_join_date: null,
+  can_request_unit_join_date: false,
 };
 
 function renderModal(soldierOverrides: Partial<SoldierDTO> = {}, initialEditing = false) {
@@ -144,7 +148,7 @@ describe("UnifiedSoldierModal unit join date", () => {
   test("a commander confirms a unit join date correction before submitting it", async () => {
     mockUseAuth.mockReturnValue({ user: ELIGIBLE_COMMANDER_USER });
     mockSubmitFieldUpdate.mockResolvedValueOnce({});
-    renderModal({ unit_join_date: "2026-01-15", enrolled_at: "2026-01-01" });
+    renderModal({ unit_join_date: "2026-01-15", enrolled_at: "2026-01-01", can_request_unit_join_date: true });
 
     fireEvent.click(screen.getByTestId("modal-tab-profile"));
     const dateInput = await screen.findByTestId("modal-unit-join-date-request-input");
@@ -157,6 +161,24 @@ describe("UnifiedSoldierModal unit join date", () => {
 
     fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
     await waitFor(() => expect(mockSubmitFieldUpdate).toHaveBeenCalledWith("s1", "unit_join_date", "2026-02-01"));
+  });
+
+  test("uses the exact send-for-approval action label", async () => {
+    mockUseAuth.mockReturnValue({ user: ELIGIBLE_COMMANDER_USER });
+    renderModal({ unit_join_date: "2026-01-15", enrolled_at: "2026-01-01", can_request_unit_join_date: true });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.getByTestId("modal-unit-join-date-submit")).toHaveTextContent("שלח לאישור");
+  });
+
+  test("does not expose initiation to a commander without target-specific authority", async () => {
+    mockUseAuth.mockReturnValue({ user: INELIGIBLE_COMMANDER_USER });
+    renderModal({ unit_join_date: "2026-01-15", enrolled_at: "2026-01-01" });
+
+    fireEvent.click(screen.getByTestId("modal-tab-profile"));
+
+    expect(screen.queryByTestId("modal-unit-join-date-submit")).not.toBeInTheDocument();
   });
 
 });

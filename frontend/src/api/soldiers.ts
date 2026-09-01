@@ -27,6 +27,7 @@ export interface SoldierDTO {
   next_rank_date: string | null;
   next_rank_date_overridden: boolean;
   can_edit_rank_advancement: boolean;
+  can_request_unit_join_date?: boolean;
   bahad1_graduate: boolean;
   has_military_driving_license: boolean | null;
   military_driving_license_expiry: string | null;

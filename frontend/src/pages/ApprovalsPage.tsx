@@ -141,6 +141,8 @@ function nearestApproversToRows(
   commanderApprovedBy?: { soldier_id: string; name: string } | null,
   commanderApprovedAt?: string | null,
   commanderApprovalNote?: string | null,
+  dutyManagerApprovedBy?: { soldier_id: string; name: string } | null,
+  dutyManagerApprovedAt?: string | null,
   decidedBy?: { name: string } | null,
   decidedAt?: string | null,
   decisionNote?: string | null,
@@ -163,10 +165,10 @@ function nearestApproversToRows(
   if (nearestDutyManager) {
     rows.push({
       commander_id: nearestDutyManager.id, commander_name: nearestDutyManager.name,
-      approved: status === "approved", rejected: status === "rejected",
-      approved_by_name: status === "approved" ? decidedBy?.name : undefined,
-      approved_at: status === "approved" ? decidedAt : undefined,
-      decision_note: status === "approved" ? decisionNote : undefined,
+      approved: Boolean(dutyManagerApprovedBy) || status === "approved", rejected: status === "rejected",
+      approved_by_name: dutyManagerApprovedBy?.name ?? (status === "approved" ? decidedBy?.name : undefined),
+      approved_at: dutyManagerApprovedAt ?? (status === "approved" ? decidedAt : undefined),
+      decision_note: dutyManagerApprovedBy ? undefined : (status === "approved" ? decisionNote : undefined),
       rejected_by_name: status === "rejected" ? decidedBy?.name : undefined,
       rejected_at: status === "rejected" ? decidedAt : undefined,
       rejected_note: status === "rejected" ? decisionNote : undefined,
@@ -591,7 +593,7 @@ export default function ApprovalsPage() {
             {!constraintsQuery.isError && items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
               {itemsPageItems.map((c) => {
-                const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status, c.commander_approved_by, c.commander_approved_at, c.commander_approval_note, c.decided_by, c.decided_at, c.decision_note) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
+                const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status, c.commander_approved_by, c.commander_approved_at, c.commander_approval_note, undefined, undefined, c.decided_by, c.decided_at, c.decision_note) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={c.id} className="border dark:border-gray-600 rounded p-3" data-testid={`approval-row-${c.id}`}>
                   <div className="flex items-center gap-2 mb-1">
@@ -653,7 +655,7 @@ export default function ApprovalsPage() {
               {erActionablePageItems.map((er) => {
                 const erGrouped = groupByKind(nearestApproversToRows(
                   er.nearest_commander, er.nearest_duty_manager,
-                  er.status === "approved" ? "approved" : er.status === "rejected" ? "rejected" : "pending", er.commander_approved_by, er.commander_approved_at, er.commander_approval_note, er.decided_by, er.decided_at, er.decision_note,
+                  er.status === "approved" ? "approved" : er.status === "rejected" ? "rejected" : "pending", er.commander_approved_by, er.commander_approved_at, er.commander_approval_note, undefined, undefined, er.decided_by, er.decided_at, er.decision_note,
                 ) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={er.id} className="border dark:border-gray-600 rounded p-3" data-testid={`er-approval-row-${er.id}`}>
@@ -750,6 +752,8 @@ export default function ApprovalsPage() {
                 item.commander_approved_by,
                 item.commander_approved_at,
                 item.commander_approval_note,
+                item.duty_manager_approved_by,
+                item.duty_manager_approved_at,
                 item.decided_by,
                 item.decided_at,
                 item.decision_note,

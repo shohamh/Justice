@@ -38,6 +38,7 @@ from app.services.authority import (
     can_view_soldier_scope,
     rank_advancement_edit_authorized,
 )
+from app.services.approval_scope import UnitJoinDateEditScope
 from app.services.request_metadata import latest_activity, person_ref
 from app.services.eligibility import ENLISTED_RANKS
 from app.services.rank_advancement import OFFICER_ACADEMIC_LADDER, OFFICER_LADDER
@@ -67,6 +68,7 @@ class SoldierOut(BaseModel):
     next_rank_date: date_type | None = None
     next_rank_date_overridden: bool = False
     can_edit_rank_advancement: bool = False
+    can_request_unit_join_date: bool = False
     bahad1_graduate: bool = False
     has_military_driving_license: bool | None = None
     military_driving_license_expiry: date_type | None = None
@@ -242,6 +244,7 @@ def _out(
     phone_public: bool = True,
     email_public: bool = True,
     rank_scope: RankAdvancementEditScope | None = None,
+    unit_join_date_scope: UnitJoinDateEditScope | None = None,
     visibility: str = "full",
     include_hierarchy_path: bool = False,
 ) -> SoldierOut:
@@ -262,6 +265,17 @@ def _out(
         if rank_scope is not None
         else rank_advancement_edit_authorized(session, user=user, target_node=_node_of(session, s))
     )
+    from app.services.approval_scope import unit_join_date_initiator_authorized
+    can_request_unit_join_date = (
+        not public_mode
+        and (
+            unit_join_date_scope.authorized(actor=user, target=s, target_node=_node_of(session, s))
+            if unit_join_date_scope is not None
+            else unit_join_date_initiator_authorized(session, actor=user, target=s)
+        )
+        and s.enrolled_at is not None
+        and s.left_at is None
+    )
     return SoldierOut(
         id=s.id,
         personal_number=s.personal_number,
@@ -280,6 +294,7 @@ def _out(
         next_rank_date=s.next_rank_date,
         next_rank_date_overridden=False if public_mode else s.next_rank_date_overridden,
         can_edit_rank_advancement=False if public_mode else can_edit_rank_advancement,
+        can_request_unit_join_date=can_request_unit_join_date,
         bahad1_graduate=s.bahad1_graduate,
         has_military_driving_license=None if public_mode else s.has_military_driving_license,
         military_driving_license_expiry=None if public_mode else s.military_driving_license_expiry,
@@ -305,6 +320,14 @@ def _fu_out(
     nearest_commander: NearestApproverOut | None = None, nearest_duty_manager: NearestApproverOut | None = None,
     can_approve: bool = True,
 ) -> FieldUpdateOut:
+    if u.field_name == "unit_join_date":
+        from app.services.approval_scope import nearest_unit_join_date_approver
+        cmd_id = nearest_unit_join_date_approver(session, u.soldier_id, stage="commander")
+        dm_id = nearest_unit_join_date_approver(session, u.soldier_id, stage="duty_manager")
+        cmd = session.get(Soldier, cmd_id) if cmd_id else None
+        dm = session.get(Soldier, dm_id) if dm_id else None
+        nearest_commander = NearestApproverOut(id=cmd.id, name=cmd.full_name) if cmd else None
+        nearest_duty_manager = NearestApproverOut(id=dm.id, name=dm.full_name) if dm else None
     redact = not include_values and u.field_name in PRIVATE_FIELD_NAMES
     return FieldUpdateOut(
         id=u.id,
@@ -433,17 +456,18 @@ def list_soldiers(
     # actor's commander/DM scope roots and מדור level rank a single time
     # instead of re-querying them for every soldier in the roster.
     rank_scope = RankAdvancementEditScope(session, user=user)
+    unit_join_date_scope = UnitJoinDateEditScope(session, actor=user)
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
         return [
-            _out(s, session=session, user=user, include_private=False, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope)
+            _out(s, session=session, user=user, include_private=False, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope, unit_join_date_scope=unit_join_date_scope)
             for s in rows
         ]
 
     roots = scope_root_ids(session, user)
     # Unassigned soldiers with no scope can only see themselves
     if not roots:
-        return [_out(user, session=session, user=user, include_private=True, telegram_linked=user.id in linked_ids, rank_scope=rank_scope)]
+        return [_out(user, session=session, user=user, include_private=True, telegram_linked=user.id in linked_ids, rank_scope=rank_scope, unit_join_date_scope=unit_join_date_scope)]
 
     rows = session.execute(select(Soldier)).scalars().all()
     node_ids = {s.hierarchy_node_id for s in rows if s.hierarchy_node_id}
@@ -459,7 +483,7 @@ def list_soldiers(
         node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         in_scope = node is not None and any(r in node.path_ids for r in roots)
         include_private = in_scope or s.id == user.id
-        out.append(_out(s, session=session, user=user, include_private=include_private, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope))
+        out.append(_out(s, session=session, user=user, include_private=include_private, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public, rank_scope=rank_scope, unit_join_date_scope=unit_join_date_scope))
     return out
 
 
