@@ -244,6 +244,12 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
     [shifts, effectiveDutyTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
   );
 
+  useEffect(() => {
+    if (selectedShift && !filteredShifts.some((shift) => shift.id === selectedShift.id)) {
+      setSelectedShift(null);
+    }
+  }, [filteredShifts, selectedShift]);
+
   const filteredRanges = useMemo(
     () => ranges.filter(r => effectiveRangeTypeFilter.includes(r.range_type)),
     [ranges, effectiveRangeTypeFilter],

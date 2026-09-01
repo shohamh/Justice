@@ -37,6 +37,10 @@ vi.mock("../api/calendarHolidays", () => ({
   ]),
 }));
 
+vi.mock("./ShiftDetailPanel", () => ({
+  default: ({ shift }: { shift: CalendarShift }) => <div role="dialog">{shift.id}</div>,
+}));
+
 vi.mock("@fullcalendar/react", () => ({
   default: ({ datesSet, events, eventContent, dayCellClassNames, eventClick }: {
     datesSet: (arg: unknown) => void;
@@ -271,6 +275,26 @@ describe("UnitCalendar", () => {
     expect(screen.getByTestId("calendar-event-own-duty")).toBeInTheDocument();
     expect(screen.queryByTestId("calendar-event-other-duty")).not.toBeInTheDocument();
     expect(screen.getByTestId("calendar-event-range-range-1")).toBeInTheDocument();
+  });
+
+  test("closes a selected other duty when showing only my duties", async () => {
+    loadCalendarWith([
+      shift("own-duty", "guard", false, { soldier_id: "me" }),
+      shift("other-duty", "guard", false, { soldier_id: "other" }),
+    ]);
+
+    renderCalendar({ nodeId: "node-1", scope: "command", highlightSoldierId: "me" });
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    await screen.findByTestId("calendar-event-other-duty");
+
+    fireEvent.click(screen.getByTestId("calendar-event-other-duty"));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("הצג רק אירועים שלי"));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByTestId("calendar-event-own-duty")).toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-event-other-duty")).not.toBeInTheDocument();
   });
 
   test("does not show the own-duty filter in personal mode", () => {
