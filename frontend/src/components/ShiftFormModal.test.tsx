@@ -281,3 +281,56 @@ test("rerun-algorithm button submits a job scoped to the existing shift", async 
   );
   expect(await screen.findByText(/rerun_algorithm_success/)).toBeInTheDocument();
 });
+
+test("asks before moving an edited shift start past its end date", async () => {
+  const existingShift = {
+    id: "shift-42",
+    duty_type_id: "d1",
+    duty_location_id: "l1",
+    start_date: "2026-07-01",
+    end_date: "2026-07-02",
+    required_count: 1,
+    notes: null,
+    assigned_count: 0,
+    reserve_assigned_count: 0,
+    fill_status: "empty" as const,
+    status: "active" as const,
+    node_quotas: [],
+  };
+
+  render(<ShiftFormModal dutyTypes={dutyTypes} locations={locations} existing={existingShift} onSaved={() => {}} onClose={() => {}} />);
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.change(screen.getAllByDisplayValue("01/07/2026")[0], { target: { value: "02/07/2026" } });
+
+  expect(await screen.findByTestId("confirm-dialog-confirm")).toBeInTheDocument();
+  expect(screen.getAllByDisplayValue("01/07/2026")).toHaveLength(2);
+  fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+  expect(screen.getAllByDisplayValue("01/07/2026")).toHaveLength(2);
+});
+
+test("clears the end date after confirming a start-date move past it", async () => {
+  const existingShift = {
+    id: "shift-43",
+    duty_type_id: "d1",
+    duty_location_id: "l1",
+    start_date: "2026-07-01",
+    end_date: "2026-07-02",
+    required_count: 1,
+    notes: null,
+    assigned_count: 0,
+    reserve_assigned_count: 0,
+    fill_status: "empty" as const,
+    status: "active" as const,
+    node_quotas: [],
+  };
+
+  render(<ShiftFormModal dutyTypes={dutyTypes} locations={locations} existing={existingShift} onSaved={() => {}} onClose={() => {}} />);
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.change(screen.getAllByDisplayValue("01/07/2026")[0], { target: { value: "02/07/2026" } });
+  fireEvent.click(await screen.findByTestId("confirm-dialog-confirm"));
+
+  expect(screen.getByDisplayValue("02/07/2026")).toBeInTheDocument();
+  expect(screen.queryByDisplayValue("01/07/2026")).not.toBeInTheDocument();
+});
