@@ -303,7 +303,7 @@ export default function HomePage() {
     {
       id: "upcoming",
       title: t("command_dashboard.upcoming"),
-      content: <UpcomingSnapshot data={commandUpcoming} scope="command" />,
+      content: <UpcomingSnapshot data={commandUpcoming} scope="command" scopeLabel="תורנויות קרובות של חיילים שלך" />,
     },
     {
       id: "calendar",
