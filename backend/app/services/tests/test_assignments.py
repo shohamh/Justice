@@ -54,18 +54,24 @@ def test_create_assignment_copies_times_from_linked_shift(admin_session):
     assert a.end_time == "17:00"
 
 
-def test_blocks_when_setting_off(admin_session):
+def test_allows_manual_override_when_setting_off_but_requires_reason(admin_session):
     dt, loc = _seed(admin_session)
     soldier = create_soldier(admin_session, personal_number="8400103")
     start, end = date.today(), date.today() + timedelta(days=1)
     _approved_constraint(admin_session, soldier.id, start, end)
     set_setting(admin_session, "constraints.allow_manual_override", False, actor_id=None)
 
-    with pytest.raises(svc.AssignmentError, match="personal_constraint_blocked"):
+    with pytest.raises(svc.AssignmentError, match="override_reason_required"):
         svc.create_assignment(
             admin_session, soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
             start_date=start, end_date=end,
         )
+
+    assignment = svc.create_assignment(
+        admin_session, soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=start, end_date=end, override_reason="צורך מבצעי",
+    )
+    assert assignment.id is not None
 
 
 def test_requires_reason_when_setting_on(admin_session):
