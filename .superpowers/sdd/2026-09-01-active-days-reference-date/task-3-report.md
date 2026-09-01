@@ -64,3 +64,10 @@ The earlier unverified results above are superseded by these completed checks:
 The focused verification confirms the two reviewer findings: enrollment accepts and validates `unit_join_date` as a date, and registration requiredness/feedback follows the configured public reference date. Regression coverage includes enrollment correction and invalid ordering, plus registration required-after-reference and optional-at-reference-boundary behavior.
 
 Focused code commit: `9fcca8c4` (`fix: complete active days reference date task 3`).
+
+### Final commit/status reconciliation (2026-09-01)
+
+- Task-scoped regression hardening commit: `d0cfc8c4` (`test: cover registration date requiredness progression`).
+- Final Task 3 commit range: `9fcca8c4..d0cfc8c4` (inclusive commits: `9fcca8c4`, `83b10a26`, `d0cfc8c4`).
+- Final focused regression after the hardening change: `npx vitest run src/pages/RegisterPage.test.tsx --maxWorkers=1 --no-file-parallelism` — 1 file and 11 tests passed in 3.32 seconds.
+- Final worktree status: tracked Task 3 files clean; intentionally preserved unrelated untracked files are `docs/superpowers/plans/2026-09-01-active-days-reference-date.md` and `docs/superpowers/specs/2026-09-01-active-days-reference-date.md`.
