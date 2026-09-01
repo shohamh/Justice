@@ -354,6 +354,22 @@ describe("UnitCalendar", () => {
     expect(calendarDataApi.loadCalendarData).toHaveBeenCalledTimes(2);
   });
 
+  test("merges a manager's personal cross-unit duty into the command calendar", async () => {
+    const results = [
+      { calendar: { shifts: [shift("subtree-duty", "guard", false, { soldier_id: "other" })] }, ranges: [] },
+      { calendar: { shifts: [shift("own-cross-unit-duty", "guard", false, { soldier_id: "me" })] }, ranges: [] },
+    ];
+    let call = 0;
+    vi.mocked(calendarDataApi.loadCalendarData).mockImplementation(() => Promise.resolve(results[call++]));
+
+    renderCalendar({ nodeIds: ["node-1"], scope: "command", highlightSoldierId: "me" });
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    expect(await screen.findByTestId("calendar-event-subtree-duty")).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-event-own-cross-unit-duty")).toBeInTheDocument();
+    expect(calendarDataApi.loadCalendarData).toHaveBeenCalledTimes(2);
+  });
+
   // getCalendarShifts (via loadCalendarData) throws a descriptive error for a
   // malformed calendar payload — the calendar must surface that failure as an
   // accessible alert rather than a silent gap in the grid.

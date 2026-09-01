@@ -110,7 +110,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const nodeIdsKey = effectiveNodeIds.join(",");
 
   const fetchData = useCallback(async (from: string, to: string) => {
-    if (effectiveNodeIds.length === 0 && !soldierId) return;
+    if (effectiveNodeIds.length === 0 && !soldierId && !highlightSoldierId) return;
     setLoading(true);
     setError(null);
     try {
@@ -133,9 +133,19 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
             )
           )
         );
+        // A manager's own assignment can be cross-unit and therefore absent
+        // from the managed subtree. Merge the personal result into the command
+        // scope so the single Homepage calendar always includes the manager.
+        const personal = highlightSoldierId
+          ? [await loadCalendarData(
+              () => getCalendarShifts({ soldierId: highlightSoldierId, date_from: from, date_to: to }),
+              () => getMyRanges(highlightSoldierId, from, to),
+              rangesEnabled,
+            )]
+          : [];
         const shiftsById = new Map<string, CalendarShift>();
         const rangesById = new Map<string, RangeEvent>();
-        for (const { calendar, ranges: rangeEvents } of perNode) {
+        for (const { calendar, ranges: rangeEvents } of [...perNode, ...personal]) {
           for (const s of calendar.shifts) shiftsById.set(s.id, s);
           for (const r of rangeEvents) rangesById.set(r.id, r);
         }
@@ -150,7 +160,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId, rangesEnabled, t]);
+  }, [nodeIdsKey, soldierId, highlightSoldierId, rangesEnabled, t]);
 
   useEffect(() => {
     dateRangeRef.current = null;
@@ -158,7 +168,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
     setRanges([]);
     setSelectedShift(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId]);
+  }, [nodeIdsKey, soldierId, highlightSoldierId]);
 
   // The duty-type filter should list every active duty type, not just the
   // ones that happen to have a shift in the currently-loaded date range —
