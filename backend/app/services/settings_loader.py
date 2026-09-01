@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -29,6 +31,7 @@ class SettingsValidationError(ValueError):
 # (internal/read-only). Canonical location — routes/config_export.py import
 # this rather than redefining it.
 _HIDDEN_KEYS = {"system.holding_node_id"}
+ACTIVE_DAYS_REFERENCE_DATE_KEY = "scoring.active_days_reference_date"
 
 _DENSITY_DEFAULTS = {
     "algorithm.max_duties_per_window": 8,
@@ -95,6 +98,17 @@ def validate_settings_update(current: dict[str, Any], updates: dict[str, Any]) -
     if merged.get("telegram.enabled") is False:
         merged["registration.telegram_required"] = False
 
+    if ACTIVE_DAYS_REFERENCE_DATE_KEY in updates:
+        reference_date = updates[ACTIVE_DAYS_REFERENCE_DATE_KEY]
+        if not isinstance(reference_date, str):
+            raise SettingsValidationError("active_days_reference_date_invalid")
+        try:
+            parsed_reference_date = date.fromisoformat(reference_date)
+        except ValueError as exc:
+            raise SettingsValidationError("active_days_reference_date_invalid") from exc
+        if parsed_reference_date > date.today():
+            raise SettingsValidationError("active_days_reference_date_in_future")
+
     def _density(key: str) -> int:
         return int(merged.get(key, _DENSITY_DEFAULTS[key]))
 
@@ -109,6 +123,19 @@ def validate_settings_update(current: dict[str, Any], updates: dict[str, Any]) -
         raise SettingsValidationError("relax_ceiling_invalid")
 
     return merged
+
+
+def initialize_active_days_reference_date(session: Session, registration_date: date) -> None:
+    """Set the shared reference date exactly once, without overwriting an admin value."""
+    session.execute(
+        insert(SystemSetting)
+        .values(
+            key=ACTIVE_DAYS_REFERENCE_DATE_KEY,
+            value=registration_date.isoformat(),
+            updated_by=None,
+        )
+        .on_conflict_do_nothing(index_elements=[SystemSetting.key])
+    )
 
 
 _WEAPON_ENFORCE_KEY = "weapon_qualification.enforce_eligibility"

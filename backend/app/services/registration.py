@@ -18,7 +18,11 @@ from app.db.models import (
 from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
-from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.settings_loader import (
+    SettingNotFound,
+    get_setting,
+    initialize_active_days_reference_date,
+)
 from app.services.soldiers import PasswordPolicyError, SoldierError, _check_soldier_dates, validate_password
 
 
@@ -212,6 +216,7 @@ def register(
         ))
 
     session.flush()
+    initialize_active_days_reference_date(session, soldier.enrolled_at or date.today())
 
     from app.services.notifications import notify_enrollment_received
     notify_enrollment_received(

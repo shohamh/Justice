@@ -37,6 +37,7 @@ class Soldier(Base):
     enrolled_at: Mapped[date] = mapped_column(
         Date, server_default=text("CURRENT_DATE"), default=None
     )
+    unit_join_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     left_at: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     phone: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     email: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
