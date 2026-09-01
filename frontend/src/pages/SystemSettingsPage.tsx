@@ -22,6 +22,18 @@ interface SettingDef {
 
 const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
+    label: "שקיפות וניקוד",
+    settings: [
+      {
+        key: "scoring.active_days_reference_date",
+        label: "תאריך ייחוס לימים פעילים",
+        description: "מועד תחילת תיעוד התורנויות עבור חישוב שקיפות. שינוי התאריך עשוי לשנות בדיעבד את השקיפות והניקוד.",
+        type: "date" as const,
+        defaultValue: "",
+      },
+    ],
+  },
+  {
     label: "חיילים",
     settings: [
       {

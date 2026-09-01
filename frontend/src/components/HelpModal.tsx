@@ -26,6 +26,7 @@ const TAB_DEFS: HelpTabDef[] = [
   { id: "swaps", label: "🔄 החלפות", visible: (u) => authenticated(u) },
   { id: "algorithm", label: "⚙️ האלגוריתם", visible: (u) => authenticated(u) },
   { id: "scoring", label: "🏅 ניקוד", visible: (u) => authenticated(u) },
+  { id: "active_days", label: "❔ ימים פעילים", visible: (u) => authenticated(u) },
   { id: "fairness", label: "⚖️ הוגנות ושקיפות", visible: (u) => authenticated(u) },
   { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
   { id: "approvals", label: "✅ אישורים", visible: (u) => canApprove(u) },
@@ -263,6 +264,17 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ActiveDaysTab() {
+  return (
+    <div className="space-y-3 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך מחושבים ימים פעילים?</h3>
+      <p>ימים פעילים הם הימים שחלפו מנקודת ההתחלה המאוחרת מבין תאריך הייחוס של המערכת ותאריך הכניסה ליחידה, ועד היום (או עד השחרור/עזיבה, אם הם מוקדמים יותר).</p>
+      <p>החישוב כולל לפחות יום פעיל אחד עבור חייל שכבר הגיע לנקודת ההתחלה. פטור מלא מתורנויות מפחית ימים רק אם הוא חל בפועל בתוך התקופה הזו; פטור לפני תחילת התקופה או אחרי היום אינו נספר.</p>
+      <p>אילוצים אישיים אינם מפחיתים את המכנה של ימים פעילים. הם משפיעים על בדיקת ההתאמה והשיבוץ לתורנויות, בעוד שימים פעילים משמשים להשוואת ניקוד לאורך זמן.</p>
     </div>
   );
 }
@@ -1452,6 +1464,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, hakpazaEnab
           {activeTab === "swaps" && <SwapsTab />}
           {activeTab === "algorithm" && <AlgorithmTab user={user as PermissionUser | null} />}
           {activeTab === "scoring" && <ScoringTab />}
+          {activeTab === "active_days" && <ActiveDaysTab />}
           {activeTab === "fairness" && <FairnessTab />}
           {activeTab === "deep" && <DeepDiveTab />}
           {activeTab === "approvals" && <ApprovalsTab />}

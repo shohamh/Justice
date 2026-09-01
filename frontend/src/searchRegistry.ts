@@ -61,6 +61,7 @@ export function getHelpTopicEntries(gimelimEnabled: boolean, hakpazaEnabled: boo
     { id: "swaps", labelKey: "search.help.swaps", keywords: ["החלפות", "swap"], canAccess: authenticated },
     { id: "algorithm", labelKey: "search.help.algorithm", keywords: ["אלגוריתם", "algorithm"], canAccess: authenticated },
     { id: "fairness", labelKey: "search.help.fairness", keywords: ["הוגנות", "שקיפות", "fairness"], canAccess: authenticated },
+    { id: "active_days", labelKey: "search.help.active_days", keywords: ["ימים פעילים", "active days"], canAccess: authenticated },
     { id: "deep", labelKey: "search.help.deep", keywords: ["מאחורי הקלעים", "deep"], canAccess: authenticated },
     { id: "approvals", labelKey: "search.help.approvals", keywords: ["אישורים", "approvals"], canAccess: canApprove },
     { id: "hierarchy", labelKey: "search.help.hierarchy", keywords: ["היררכיה", "כשירות", "hierarchy"], canAccess: authenticated },

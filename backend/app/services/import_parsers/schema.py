@@ -18,6 +18,7 @@ class ImportSoldierRow(BaseModel):
     hierarchy_node_name: str | None = None
     enrolled_at: str | None = None
     enlistment_date: str | None = None
+    unit_join_date: str | None = None
     phone: str | None = None
     email: str | None = None
     is_career: bool | None = None

@@ -60,6 +60,7 @@ class SoldierRowPreview(BaseModel):
     hierarchy_node_name: str | None
     enrolled_at: str | None
     enlistment_date: str | None
+    unit_join_date: str | None = None
     phone: str | None
     email: str | None
     existing_id: uuid.UUID | None
@@ -97,6 +98,7 @@ class ApplySoldierRow(BaseModel):
     hierarchy_node_id: uuid.UUID | None
     enrolled_at: str | None
     enlistment_date: str | None
+    unit_join_date: str | None = None
     phone: str | None
     email: str | None
     existing_id: uuid.UUID | None
@@ -200,6 +202,7 @@ def _parse_soldiers_sheet(wb, soldiers_by_pn, nodes_by_name) -> list[SoldierRowP
             hierarchy_node_name=node_name,
             enrolled_at=_parse_date(data.get("enrolled_at")),
             enlistment_date=_parse_date(data.get("enlistment_date")),
+            unit_join_date=_parse_date(data.get("unit_join_date")),
             phone=str(data.get("phone") or "").strip() or None,
             email=str(data.get("email") or "").strip() or None,
             existing_id=existing.id if existing else None,
@@ -323,6 +326,8 @@ def apply(
                     new_soldier.enrolled_at = date_type.fromisoformat(row.enrolled_at)
                 if row.enlistment_date:
                     new_soldier.enlistment_date = date_type.fromisoformat(row.enlistment_date)
+                if row.unit_join_date:
+                    new_soldier.unit_join_date = date_type.fromisoformat(row.unit_join_date)
                 session.add(new_soldier)
                 created += 1
             elif row.action == "update" and row.existing_id:
@@ -346,6 +351,14 @@ def apply(
                         s.enrolled_at = date_type.fromisoformat(row.enrolled_at)
                     if row.enlistment_date:
                         s.enlistment_date = date_type.fromisoformat(row.enlistment_date)
+                    if row.unit_join_date:
+                        requested_unit_join_date = date_type.fromisoformat(row.unit_join_date)
+                        if s.enrolled_at is not None and s.left_at is None and requested_unit_join_date != s.unit_join_date:
+                            errors.append(
+                                f"Row {row.row}: unit_join_date changes for active soldiers must be submitted through the approval workflow"
+                            )
+                        else:
+                            s.unit_join_date = requested_unit_join_date
                     updated += 1
 
         session.flush()
@@ -567,7 +580,7 @@ def export_current_data(
     if "soldiers" in requested:
         ws_s = wb.create_sheet("soldiers")
         ws_s.append(["personal_number", "full_name", "rank", "rank_track", "gender", "is_officer",
-                      "hierarchy_node_name", "enrolled_at", "enlistment_date", "next_rank_date",
+                      "hierarchy_node_name", "enrolled_at", "enlistment_date", "unit_join_date", "next_rank_date",
                       "phone", "email", "mandatory_end_date", "discharge_date",
                       "has_military_driving_license", "military_driving_license_expiry",
                       "last_mitvahim_date", "last_alal_date", "left_at"])
@@ -580,6 +593,7 @@ def export_current_data(
                 node.name if node else "",
                 s.enrolled_at.strftime("%d.%m.%Y") if s.enrolled_at else "",
                 s.enlistment_date.strftime("%d.%m.%Y") if s.enlistment_date else "",
+                s.unit_join_date.strftime("%d.%m.%Y") if s.unit_join_date else "",
                 s.next_rank_date.strftime("%d.%m.%Y") if s.next_rank_date else "",
                 s.phone or "", s.email or "",
                 s.mandatory_end_date.strftime("%d.%m.%Y") if s.mandatory_end_date else "",
