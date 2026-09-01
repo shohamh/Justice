@@ -19,8 +19,10 @@ from app.db.models import (
     Soldier,
     SoldierRangeQualification,
 )
+from app.services.eligibility import DutyTypeRequirements, _is_eligible
 from app.services.range_eligibility_projection import DutyEligibilityFact, project_duty_eligibility
 from app.services.ranges import _validity_days
+from app.services.settings_loader import SettingNotFound, get_setting
 
 
 @dataclass(frozen=True)
@@ -209,6 +211,52 @@ def _has_matching_range_for_each_duty(
     )
 
 
+def _has_weapon_eligible_duty_type(
+    session: Session,
+    *,
+    soldier: Soldier,
+    as_of: date,
+) -> bool:
+    """Return whether the soldier can structurally serve any weapon duty.
+
+    Range dates are deliberately removed from this check: this panel is meant
+    to identify soldiers who need a current range, so lacking that range must
+    not make every weapon duty appear structurally unavailable.
+    """
+    try:
+        mitvahim_months = int(get_setting(session, "eligibility.mitvahim_months"))
+    except (SettingNotFound, ValueError):
+        mitvahim_months = 6
+    try:
+        alal_months = int(get_setting(session, "eligibility.alal_months"))
+    except (SettingNotFound, ValueError):
+        alal_months = 3
+
+    duty_types = session.execute(
+        select(DutyType).where(
+            DutyType.active.is_(True),
+            or_(DutyType.requires_weapon.is_(True), DutyType.required_range_type.is_not(None)),
+        )
+    ).scalars()
+    for duty_type in duty_types:
+        raw_requirements = dict(duty_type.requirements or {})
+        raw_requirements["requires_mitvahim"] = False
+        raw_requirements["requires_alal"] = False
+        try:
+            requirements = DutyTypeRequirements.model_validate(raw_requirements)
+        except Exception:
+            continue
+        if _is_eligible(
+            soldier,
+            requirements,
+            mitvahim_months=mitvahim_months,
+            alal_months=alal_months,
+            today=as_of,
+        ):
+            return True
+    return False
+
+
 def list_ineligible_soldiers(
     session: Session,
     *,
@@ -247,6 +295,7 @@ def list_ineligible_soldiers(
     ineligible_soldiers = [
         (soldier, node)
         for soldier, node in scoped_soldiers
+        if _has_weapon_eligible_duty_type(session, soldier=soldier, as_of=as_of)
         if soldier.id not in valid_qualifications_by_soldier
         or any(
             not duty_eligibility[soldier.id, duty.assignment_id].eligible
