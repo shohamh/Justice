@@ -201,6 +201,8 @@ describe("HomePage - required scoring data load errors", () => {
   it("keeps command queries and widgets off the regular soldier homepage while preserving personal widgets", async () => {
     renderHome();
 
+    expect(await screen.findByTestId("personal-data-panel")).toHaveAccessibleName("הנתונים שלי");
+    expect(screen.getByText("תורנויות קרובות שלי")).toBeInTheDocument();
     expect(await screen.findByTestId("personal-unit-calendar")).toHaveAttribute("data-soldier-id", "soldier-1");
     expect(screen.getByTestId("personal-unit-calendar")).toHaveAttribute("data-scope", "personal");
     expect(screen.queryByText("ניהול היחידה")).not.toBeInTheDocument();

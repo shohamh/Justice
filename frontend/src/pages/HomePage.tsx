@@ -486,17 +486,22 @@ export default function HomePage() {
           <UnitCalendar nodeId={user.hierarchy_node_id ?? undefined} soldierId={user.id} scope="personal" />
         )}
 
-        <UpcomingDutiesWidget
-          duties={duties}
-          typeNames={typeNames}
-          locationNames={locationNames}
-          onOpenDuty={handleOpenDuty}
-        />
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-4" aria-labelledby="personal-data-heading" data-testid="personal-data-panel">
+          <h2 id="personal-data-heading" className="text-xl font-semibold">הנתונים שלי</h2>
+
+          <UpcomingDutiesWidget
+            duties={duties}
+            typeNames={typeNames}
+            locationNames={locationNames}
+            onOpenDuty={handleOpenDuty}
+            title="תורנויות קרובות שלי"
+          />
 
         {publicSettings?.["mitvachim.enabled"] === true && (
           <UpcomingRangesWidget
             ranges={ranges}
             onOpenRange={(range) => setOpenRangeId(range.id)}
+            title="מטווחים קרובים שלי"
           />
         )}
 
@@ -574,6 +579,7 @@ export default function HomePage() {
             </table>
           </div>
         )}
+        </section>
       </div>
 
       <DutyDetailModal

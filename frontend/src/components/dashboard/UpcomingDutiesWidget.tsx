@@ -8,6 +8,7 @@ interface Props {
   typeNames: Record<string, string>;
   locationNames: Record<string, string>;
   onOpenDuty: (duty: EffectiveDuty) => void;
+  title?: string;
 }
 
 function statusLabel(t: TFunction, d: EffectiveDuty): { text: string; calledUp: boolean } {
@@ -20,7 +21,7 @@ function statusLabel(t: TFunction, d: EffectiveDuty): { text: string; calledUp: 
   return { text: d.is_reserve ? t("reserve_standby") : t("home.duty_primary"), calledUp: false };
 }
 
-export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty }: Props) {
+export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty, title }: Props) {
   const { t } = useTranslation();
   const today = new Date().toISOString().split("T")[0];
   // Defensive guard: listEffectiveDuties (api/assignments.ts) is currently
@@ -33,7 +34,7 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
-      <h2 className="text-lg font-semibold mb-3">תורנויות קרובות</h2>
+      <h2 className="text-lg font-semibold mb-3">{title ?? "תורנויות קרובות"}</h2>
       {upcoming.length === 0 ? (
         <p className="text-sm text-gray-500">אין תורנויות קרובות</p>
       ) : (
