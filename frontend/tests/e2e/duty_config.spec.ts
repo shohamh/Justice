@@ -1,33 +1,16 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures/test";
 
-// The bootstrap admin's one-time forced password change is consumed by whichever
-// spec runs first against a given DB. So this helper tolerates both states:
-// first login (forced change) and an already-changed admin (log in with new pw).
-async function loginAsAdmin(page: Page) {
-  await page.goto("/login");
-  await page.getByTestId("personal-number-input").fill("1000001");
-  await page.getByTestId("password-input").fill("ChangeMeOnFirstLogin!");
-  await page.getByTestId("login-submit").click();
-  try {
-    await page.waitForURL(/\/change-password$/, { timeout: 4000 });
-    await page.getByTestId("current-password").fill("ChangeMeOnFirstLogin!");
-    await page.getByTestId("new-password").fill("AdminNewPassw0rd");
-    await page.getByTestId("change-password-submit").click();
-  } catch {
-    await page.getByTestId("password-input").fill("AdminNewPassw0rd");
-    await page.getByTestId("login-submit").click();
-  }
-  await expect(page).toHaveURL("/");
-}
+import { roleStorageState } from "./fixtures/auth";
+import { createUniqueName } from "./fixtures/data";
+
+test.use({ storageState: roleStorageState("admin") });
 
 test("admin configures a duty type, location, and exemption type with mapping", async ({ page }) => {
-  await loginAsAdmin(page);
-
   await page.getByTestId("nav-planning").click();
   await page.getByTestId("nav-duty-config").click();
   await expect(page).toHaveURL(/\/planning\/config/);
 
-  const suffix = `${Date.now() % 100000}`;
+  const suffix = createUniqueName("e2e");
   const dtName = `שמירה-${suffix}`;
   const locName = `מוצב-${suffix}`;
   const etName = `פטור-${suffix}`;

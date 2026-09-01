@@ -1,25 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures/test";
 
-async function loginAsAdmin(page: Page) {
-  await page.goto("/login");
-  await page.getByTestId("personal-number-input").fill("1000001");
-  await page.getByTestId("password-input").fill("ChangeMeOnFirstLogin!");
-  await page.getByTestId("login-submit").click();
-  try {
-    await page.waitForURL(/\/change-password$/, { timeout: 4000 });
-    await page.getByTestId("current-password").fill("ChangeMeOnFirstLogin!");
-    await page.getByTestId("new-password").fill("AdminNewPassw0rd");
-    await page.getByTestId("change-password-submit").click();
-  } catch {
-    await page.getByTestId("password-input").fill("AdminNewPassw0rd");
-    await page.getByTestId("login-submit").click();
-  }
-  await expect(page).toHaveURL("/");
-}
+import { roleStorageState } from "./fixtures/auth";
+
+test.use({ storageState: roleStorageState("admin") });
 
 test.describe("Hierarchy tree", () => {
   test("admin sees tree, adds child node, assigns commander, renames node", async ({ page }) => {
-    await loginAsAdmin(page);
     await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
@@ -49,7 +35,6 @@ test.describe("Hierarchy tree", () => {
   });
 
   test("admin can add soldier to node via quick-add button", async ({ page }) => {
-    await loginAsAdmin(page);
     await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
@@ -61,7 +46,6 @@ test.describe("Hierarchy tree", () => {
   });
 
   test("soldiers appear under tree node with edit button", async ({ page }) => {
-    await loginAsAdmin(page);
     await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
@@ -91,7 +75,6 @@ test.describe("Hierarchy tree", () => {
   });
 
   test("soldier appears only under their assigned hierarchy node", async ({ page }) => {
-    await loginAsAdmin(page);
     await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
@@ -129,7 +112,6 @@ test.describe("Hierarchy tree", () => {
   });
 
   test("adding existing soldier via quick-add moves them to the new node", async ({ page }) => {
-    await loginAsAdmin(page);
     await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
