@@ -24,32 +24,20 @@ for (const role of roles) {
     }
   });
 
-  test(`roleStorageState restores the seeded ${role} session`, async ({ browser }) => {
-    const context = await browser.newContext({ storageState: roleStorageState(role) });
-    const page = await context.newPage();
+  test.describe(`saved ${role} session`, () => {
+    test.use({ storageState: roleStorageState(role) });
 
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByTestId("login-form")).toHaveCount(0);
-
-    await context.close();
+    test("roleStorageState restores authentication", async ({ page }) => {
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByTestId("login-form")).toHaveCount(0);
+    });
   });
 }
 
-test.describe("authenticated page fixture", () => {
+test.describe("scenario data", () => {
   test.use({ storageState: roleStorageState("admin") });
 
-  test("opens the saved admin session on the home page", async ({ page }) => {
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByTestId("login-form")).toHaveCount(0);
-  });
-});
-
-test("scenario data creates uniquely named configuration prerequisites", async ({ browser }) => {
-  const context = await browser.newContext({ storageState: roleStorageState("admin") });
-  const page = await context.newPage();
-
-  try {
+  test("creates uniquely named configuration prerequisites", async ({ page }) => {
     const first = await createScenarioData(page.request);
     const second = await createScenarioData(page.request);
 
@@ -83,7 +71,5 @@ test("scenario data creates uniquely named configuration prerequisites", async (
     expect(dutyTypeRows).toContainEqual(expect.objectContaining(first.dutyType));
     expect(locationRows).toContainEqual(expect.objectContaining(first.location));
     expect(exemptionTypeRows).toContainEqual(expect.objectContaining(first.exemptionType));
-  } finally {
-    await context.close();
-  }
+  });
 });

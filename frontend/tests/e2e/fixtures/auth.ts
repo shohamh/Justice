@@ -1,12 +1,14 @@
 import { chromium, expect, type FullConfig, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const roles = ["soldier", "commander", "dutyManager", "admin"] as const;
 
 export type Role = (typeof roles)[number];
 
 const SEED_PASSWORD = "1234567890";
+const authStateDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "../../../.playwright/auth");
 
 const seededAccounts: Record<Role, { personalNumber: string }> = {
   soldier: { personalNumber: "1000003" },
@@ -16,7 +18,7 @@ const seededAccounts: Record<Role, { personalNumber: string }> = {
 };
 
 export function roleStorageState(role: Role): string {
-  return resolve(process.cwd(), ".playwright", "auth", `${role}.json`);
+  return resolve(authStateDirectory, `${role}.json`);
 }
 
 export async function loginAs(page: Page, role: Role): Promise<Page> {
