@@ -67,6 +67,34 @@ def test_no_requirements_passes():
     assert _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
 
 
+def test_profile_mitvachim_date_is_live_coverage(app_session):
+    soldier = create_soldier(app_session, personal_number="profile-live")
+    soldier.last_mitvahim_date = TODAY - timedelta(days=5)
+    app_session.commit()
+
+    coverage = get_range_coverage(
+        app_session, soldier_id=soldier.id, required_range_type=RangeType.live, as_of=TODAY,
+    )
+
+    assert coverage.qualified is True
+    assert coverage.coverage_kind == "qualification"
+    assert coverage.source_range_type == RangeType.live
+
+
+def test_profile_alal_date_is_alal_coverage(app_session):
+    soldier = create_soldier(app_session, personal_number="profile-alal")
+    soldier.last_alal_date = TODAY - timedelta(days=5)
+    app_session.commit()
+
+    coverage = get_range_coverage(
+        app_session, soldier_id=soldier.id, required_range_type=RangeType.alal, as_of=TODAY,
+    )
+
+    assert coverage.qualified is True
+    assert coverage.coverage_kind == "qualification"
+    assert coverage.source_range_type == RangeType.alal
+
+
 def test_gender_restriction_passes():
     s = _soldier(gender="male")
     reqs = DutyTypeRequirements(allowed_genders=["male"])

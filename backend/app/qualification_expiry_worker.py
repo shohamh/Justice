@@ -35,7 +35,7 @@ def _active_soldiers_with_date(session, *, date_column, today: date):
 def _check_mitvahim_expiry() -> None:
     today = date.today()
     with session_scope() as session:
-        validity_days = get_setting_int(session, "home.mitvahim_validity_days", 180)
+        validity_days = get_setting_int(session, "mitvachim.live_validity_days", 180)
         warn_days = get_setting_int(session, "home.mitvahim_warn_days", 30)
         soldiers = _active_soldiers_with_date(session, date_column=Soldier.last_mitvahim_date, today=today)
         for s in soldiers:
@@ -50,7 +50,7 @@ def _check_mitvahim_expiry() -> None:
 def _check_alal_expiry() -> None:
     today = date.today()
     with session_scope() as session:
-        validity_days = get_setting_int(session, "home.alal_validity_days", 90)
+        validity_days = get_setting_int(session, "mitvachim.alal_validity_days", 90)
         warn_days = get_setting_int(session, "home.alal_warn_days", 30)
         soldiers = _active_soldiers_with_date(session, date_column=Soldier.last_alal_date, today=today)
         duty_types = active_alal_duty_types(session)

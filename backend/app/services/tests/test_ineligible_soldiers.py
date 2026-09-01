@@ -91,7 +91,15 @@ def test_lists_only_soldiers_without_a_qualification_valid_today(app_session: Se
     valid_later = create_soldier(
         app_session, personal_number="inq-004", hierarchy_node_id=sibling.id
     )
+    profile_mitvachim = create_soldier(
+        app_session, personal_number="inq-006", hierarchy_node_id=child.id
+    )
+    profile_alal = create_soldier(
+        app_session, personal_number="inq-007", hierarchy_node_id=child.id
+    )
     outside = create_soldier(app_session, personal_number="inq-005")
+    profile_mitvachim.last_mitvahim_date = AS_OF - timedelta(days=5)
+    profile_alal.last_alal_date = AS_OF - timedelta(days=5)
     app_session.add_all(
         [
             SoldierRangeQualification(

@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -20,6 +20,7 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.range_eligibility_projection import DutyEligibilityFact, project_duty_eligibility
+from app.services.ranges import _validity_days
 
 
 @dataclass(frozen=True)
@@ -81,24 +82,47 @@ def _valid_qualifications_by_soldier(
     qualifications_by_soldier: defaultdict[uuid.UUID, list[QualificationSummary]] = defaultdict(
         list
     )
-    qualifications = (
-        session.execute(
-            select(SoldierRangeQualification)
-            .where(
-                SoldierRangeQualification.soldier_id.in_(soldier_ids),
+    rows = session.execute(
+        select(Soldier, SoldierRangeQualification)
+        .outerjoin(
+            SoldierRangeQualification,
+            and_(
+                SoldierRangeQualification.soldier_id == Soldier.id,
                 SoldierRangeQualification.valid_until >= as_of,
-            )
-            .order_by(SoldierRangeQualification.range_type, SoldierRangeQualification.valid_until)
+            ),
         )
-        .scalars()
-        .all()
-    )
-    for qualification in qualifications:
-        qualifications_by_soldier[qualification.soldier_id].append(
-            QualificationSummary(
-                range_type=qualification.range_type, valid_until=qualification.valid_until
+        .where(Soldier.id.in_(soldier_ids))
+        .order_by(SoldierRangeQualification.range_type, SoldierRangeQualification.valid_until)
+    ).all()
+    for soldier, qualification in rows:
+        if qualification is not None:
+            qualifications_by_soldier[qualification.soldier_id].append(
+                QualificationSummary(
+                    range_type=qualification.range_type, valid_until=qualification.valid_until
+                )
             )
-        )
+
+    profile_rows = {
+        soldier.id: (soldier.last_mitvahim_date, soldier.last_alal_date)
+        for soldier, _qualification in rows
+    }
+    profile_validity_days = {
+        range_type: _validity_days(session, range_type)
+        for range_type, field_index in ((RangeType.live, 0), (RangeType.alal, 1))
+        if any(profile_dates[field_index] is not None for profile_dates in profile_rows.values())
+    }
+    for soldier_id, (last_mitvahim_date, last_alal_date) in profile_rows.items():
+        for range_type, completed_date in (
+            (RangeType.live, last_mitvahim_date),
+            (RangeType.alal, last_alal_date),
+        ):
+            if completed_date is None:
+                continue
+            valid_until = completed_date + timedelta(days=profile_validity_days[range_type])
+            if valid_until >= as_of:
+                qualifications_by_soldier[soldier_id].append(
+                    QualificationSummary(range_type=range_type, valid_until=valid_until)
+                )
     return {
         soldier_id: tuple(summaries) for soldier_id, summaries in qualifications_by_soldier.items()
     }

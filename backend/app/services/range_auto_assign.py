@@ -72,18 +72,29 @@ def _earliest_future_range_relevant_duty_start(
 
 
 def _last_qualification_valid_until(
-    session: Session, *, soldier_id: uuid.UUID, range_type: str,
+    session: Session, *, soldier_id: uuid.UUID, range_type: str, as_of: date,
 ) -> date | None:
     """Most recent valid_until among the soldier's qualification rows at range_type or
     higher, whether or not it's still valid — used to explain how long they've been
     unqualified. None if they've never held one."""
     candidate_types = _qualification_types_at_or_above(range_type)
-    return session.execute(
+    table_valid_until = session.execute(
         select(func.max(SoldierRangeQualification.valid_until)).where(
             SoldierRangeQualification.soldier_id == soldier_id,
             SoldierRangeQualification.range_type.in_(candidate_types),
         )
     ).scalar_one_or_none()
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None:
+        return table_valid_until
+    profile_date = (
+        soldier.last_alal_date if range_type == "alal" else soldier.last_mitvahim_date
+    )
+    if profile_date is None or profile_date > as_of:
+        return table_valid_until
+    profile_range_type = "alal" if range_type == "alal" else "live"
+    profile_valid_until = profile_date + timedelta(days=_validity_days(session, profile_range_type))
+    return max(table_valid_until or profile_valid_until, profile_valid_until)
 
 
 def _rank_from_coverage(
@@ -138,7 +149,7 @@ def _rank_candidate(session: Session, *, soldier: Soldier, event: RangeEvent) ->
             relevant_duty_type_ids=relevant_duty_type_ids,
         ),
         last_valid_until=_last_qualification_valid_until(
-            session, soldier_id=soldier.id, range_type=event.range_type,
+            session, soldier_id=soldier.id, range_type=event.range_type, as_of=event.date,
         ),
         event_date=event.date,
         validity_days=_validity_days(session, coverage.source_range_type or event.range_type),
@@ -420,6 +431,20 @@ def _bulk_rank(
         .group_by(SoldierRangeQualification.soldier_id)
     ).all():
         last_valid_until_by_soldier[soldier_id] = valid_until
+
+    for soldier_id, mitvachim_date, alal_date in session.execute(
+        select(Soldier.id, Soldier.last_mitvahim_date, Soldier.last_alal_date).where(
+            Soldier.id.in_(soldier_ids)
+        )
+    ).all():
+        profile_date = alal_date if event.range_type == "alal" else mitvachim_date
+        if profile_date is None or profile_date > event.date:
+            continue
+        profile_range_type = "alal" if event.range_type == "alal" else "live"
+        profile_valid_until = profile_date + timedelta(days=_validity_days(session, profile_range_type))
+        last_valid_until_by_soldier[soldier_id] = max(
+            last_valid_until_by_soldier.get(soldier_id, profile_valid_until), profile_valid_until,
+        )
 
     coverage_by_soldier = get_range_coverages(
         session,
