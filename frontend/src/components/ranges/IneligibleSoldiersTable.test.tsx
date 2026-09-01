@@ -16,7 +16,7 @@ vi.mock("react-i18next", () => ({
       "range_qualification.columns.context": "הקשר עתידי",
       "range_qualification.explanation.noCurrentQualification": "אין מטווחים בתוקף",
       "range_qualification.explanation.noWeaponDuty": "טרם שובץ לתורנות שדורשת נשק",
-      "range_qualification.explanation.uncoveredDuty": `משובץ לתורנות ${options?.dutyType} שדורשת לפחות מטווח מסוג ${options?.rangeType} בתאריך ${options?.date}`,
+      "range_qualification.explanation.uncoveredDuty": `משובץ לתורנות ${options?.dutyType} ב-${options?.date} שדורשת ${options?.rangeType}`,
       "range_qualification.explanation.plannedRangeCoverage": `מטווח מתוכנן מסוג ${options?.rangeType} בתאריך ${options?.rangeDate} מכסה את התורנות; הכשירות צפויה בתוקף עד ${options?.projectedValidUntil}`,
       "range_qualification.soldiersLoading": "טוען חיילים ללא הסמכה...",
       "range_qualification.soldiersError": "טעינת החיילים ללא הסמכה נכשלה",
@@ -115,7 +115,7 @@ describe("IneligibleSoldiersTable", () => {
     fireEvent.click(within(screen.getByTestId("ineligible-node-company")).getByRole("button"));
 
     expect(screen.getByTestId("ineligible-soldiers-node-company")).toBeInTheDocument();
-    expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveTextContent("משובץ לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026");
+    expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveTextContent("משובץ לתורנות סיור ב-12.08.2026 שדורשת מטווח חי");
     expect(screen.queryByRole("button", { name: /שבץ|הסמך|עדכן/ })).not.toBeInTheDocument();
   });
 
@@ -126,7 +126,7 @@ describe("IneligibleSoldiersTable", () => {
     expect(screen.getByTestId("ineligible-warning-soldier-1")).toHaveTextContent("מטווח מתוכנן מסוג מטווח לייזר בתאריך 20.08.2026 מכסה את התורנות; הכשירות צפויה בתוקף עד 20.02.2027");
     expect(screen.getByTestId("ineligible-warning-soldier-2")).toHaveTextContent("טרם שובץ לתורנות שדורשת נשק");
     expect(screen.getByTestId("ineligible-warning-soldier-2")).toHaveClass("bg-amber-100", "dark:bg-amber-900/40");
-    expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveTextContent("משובץ לתורנות סיור שדורשת לפחות מטווח מסוג מטווח חי בתאריך 12.08.2026");
+    expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveTextContent("משובץ לתורנות סיור ב-12.08.2026 שדורשת מטווח חי");
     expect(screen.getByTestId("ineligible-warning-soldier-3")).toHaveClass("bg-red-100", "dark:bg-red-900/40");
   });
 
