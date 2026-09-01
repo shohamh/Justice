@@ -105,6 +105,15 @@ describe("App - ranges routing", () => {
   });
 });
 
+describe("App - retired command dashboard route", () => {
+  it("does not register the old command dashboard path", () => {
+    mockUsePublicSettings.mockReturnValue({});
+    renderApp("/command-dashboard");
+
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+  });
+});
+
 describe("TelegramGate routing", () => {
   it("renders the actual TelegramSetupPage content when settings are still loading and telegramRequired is true", async () => {
     mockUseAuth.mockReturnValue({

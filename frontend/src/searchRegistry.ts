@@ -37,7 +37,6 @@ export function getPageEntries(): PageEntry[] {
     { id: "page-unit-calendar", labelKey: "search.pages.unit_calendar", keywords: ["לוח שנה יחידתי"], path: "/unit-calendar", canAccess: authenticated },
     { id: "page-swaps", labelKey: "search.pages.swaps", keywords: ["החלפות"], path: "/swaps", canAccess: authenticated },
     { id: "page-profile", labelKey: "search.pages.profile", keywords: ["פרופיל"], path: "/profile", canAccess: authenticated },
-    { id: "page-command-dashboard", labelKey: "search.pages.command_dashboard", keywords: ["דשבורד מפקד"], path: "/command-dashboard", canAccess: canApprove },
     { id: "page-notifications", labelKey: "search.pages.notifications", keywords: ["התראות"], path: "/notifications", canAccess: authenticated },
     { id: "page-planning-shifts", labelKey: "search.pages.planning_shifts", keywords: ["ניהול משמרות"], path: "/planning/shifts", canAccess: canPlan },
     { id: "page-planning-config", labelKey: "search.pages.planning_config", keywords: ["הגדרות תכנון"], path: "/planning/config", canAccess: canPlan },
