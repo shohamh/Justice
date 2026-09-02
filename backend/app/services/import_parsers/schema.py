@@ -21,8 +21,18 @@ class ImportSoldierRow(BaseModel):
     unit_join_date: str | None = None
     phone: str | None = None
     email: str | None = None
+    food_type: str | None = None
+    food_constraints: str | None = None
+    profile_picture_url: str | None = None
+    telegram_chat_id: int | None = None
+    telegram_username: str | None = None
+    telegram_is_verified: bool | None = None
+    telegram_notifications_enabled: bool | None = None
+    telegram_verified_at: str | None = None
     is_career: bool | None = None
     next_rank_date: str | None = None
+    next_rank_date_overridden: bool | None = None
+    current_rank_since: str | None = None
     bahad1_graduate: bool | None = None
     rank_track: str | None = None
     has_military_driving_license: bool | None = None
@@ -150,6 +160,7 @@ class ImportRangeEventRow(BaseModel):
     contact_phone: str | None = None
     notes: str | None = None
     status: str | None = None
+    responsible_duty_manager_personal_number: str | None = None
 
 
 class ImportRangeAssignmentRow(BaseModel):
@@ -262,6 +273,7 @@ class ImportSoldierExemptionRow(BaseModel):
     start_date: str
     end_date: str | None = None
     reason: str | None = None
+    is_medical: bool | None = None
     granted_by_personal_number: str | None = None
     revoked: bool = False
     revoke_reason: str | None = None

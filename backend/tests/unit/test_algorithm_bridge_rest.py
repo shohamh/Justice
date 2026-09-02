@@ -11,13 +11,14 @@ from tests.helpers import create_soldier
 
 
 def test_load_duty_blocks_uses_type_override(admin_session):
+    start = date.today() + timedelta(days=1)
     dt = DutyType(name="dt-rest-a", score_per_day=Decimal("1.00"), requirements={"rest_hours": 8})
     loc = DutyLocation(name="loc-rest-a")
     admin_session.add_all([dt, loc])
     admin_session.flush()
     shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 9, 1), end_date=date(2026, 9, 2), required_count=1,
+        start_date=start, end_date=start + timedelta(days=1), required_count=1,
     )
     admin_session.add(shift)
     admin_session.flush()
@@ -28,6 +29,7 @@ def test_load_duty_blocks_uses_type_override(admin_session):
 
 
 def test_load_duty_blocks_uses_global_default(admin_session):
+    start = date.today() + timedelta(days=1)
     admin_session.merge(SystemSetting(key="duty.default_rest_hours", value=12))
     dt = DutyType(name="dt-rest-b", score_per_day=Decimal("1.00"))
     loc = DutyLocation(name="loc-rest-b")
@@ -35,7 +37,7 @@ def test_load_duty_blocks_uses_global_default(admin_session):
     admin_session.flush()
     shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 9, 1), end_date=date(2026, 9, 2), required_count=1,
+        start_date=start, end_date=start + timedelta(days=1), required_count=1,
     )
     admin_session.add(shift)
     admin_session.flush()

@@ -106,8 +106,9 @@ def test_block_start_time_resets_to_midnight_when_truncated_to_today(admin_sessi
 def test_multiple_shifts_combined(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    s1 = _shift(admin_session, dt, loc, date(2026, 9, 1), date(2026, 9, 2), count=2)
-    s2 = _shift(admin_session, dt, loc, date(2026, 9, 2), date(2026, 9, 3), count=3)
+    start = date.today() + timedelta(days=1)
+    s1 = _shift(admin_session, dt, loc, start, start + timedelta(days=1), count=2)
+    s2 = _shift(admin_session, dt, loc, start + timedelta(days=1), start + timedelta(days=2), count=3)
     admin_session.commit()
 
     blocks, b2s = load_duty_blocks_from_shifts(admin_session, shift_ids=[s1.id, s2.id])

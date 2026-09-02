@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import openpyxl
@@ -9,8 +9,9 @@ import pytest
 
 from sqlalchemy import select
 
-from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyShiftNodeQuota, RangeAssignment, RangeEvent
+from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyShiftNodeQuota, RangeAssignment, RangeEvent, TelegramLink
 from app.services.duty_config import create_duty_type
+from app.services.excel_bilingual import HE_HEADERS
 from app.services.import_sessions import confirm_session, create_session
 from tests.helpers import (
     auth_headers,
@@ -34,6 +35,23 @@ def test_export_round_trips_soldiers_duty_shifts_and_assignments(client, admin_s
     admin_session.add(loc)
     admin_session.flush()
     soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}", hierarchy_node_id=node.id)
+    soldier.unit_join_date = date(2024, 1, 15)
+    soldier.food_type = "vegetarian"
+    soldier.food_constraints = "No dairy"
+    soldier.rank = "טוראי"
+    soldier.rank_track = "enlisted"
+    soldier.next_rank_date = date(2027, 1, 15)
+    soldier.next_rank_date_overridden = True
+    soldier.current_rank_since = date(2025, 1, 15)
+    soldier.profile_picture_url = "https://example.test/profile.png"
+    admin_session.add(TelegramLink(
+        soldier_id=soldier.id,
+        telegram_chat_id=123456789,
+        telegram_username="soldier_test",
+        is_verified=True,
+        notifications_enabled=False,
+        verified_at=datetime(2026, 1, 15, 10, 30),
+    ))
     shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
         start_date=date(2024, 6, 15), end_date=date(2024, 6, 16),
@@ -60,8 +78,74 @@ def test_export_round_trips_soldiers_duty_shifts_and_assignments(client, admin_s
         "ימי מטווח", "שיבוצי מטווח", "מועדי קידום",
     }
 
-    soldier_rows = list(wb["חיילים"].iter_rows(min_row=2, values_only=True))
+    soldiers_sheet = wb["חיילים"]
+    soldier_headers = [cell.value for cell in next(soldiers_sheet.iter_rows(min_row=1, max_row=1))]
+    soldier_header_index = {}
+    for index, header in enumerate(soldier_headers):
+        soldier_header_index[header] = index
+        soldier_header_index[HE_HEADERS.get(header, header)] = index
+        for english, hebrew in HE_HEADERS.items():
+            if header == hebrew:
+                soldier_header_index[english] = index
+    soldier_rows = list(soldiers_sheet.iter_rows(min_row=2, values_only=True))
     assert any(r[0] == soldier.personal_number for r in soldier_rows)
+    soldier_row = next(r for r in soldier_rows if r[0] == soldier.personal_number)
+    assert soldier_row[9] == "15.01.2024"  # unit_join_date
+    assert soldier_row[13] == "vegetarian"  # food_type
+    assert soldier_row[14] == "No dairy"  # food_constraints
+    assert soldier_row[soldier_header_index["profile_picture_url"]] == "https://example.test/profile.png"
+    assert soldier_row[soldier_header_index["telegram_chat_id"]] == 123456789
+    assert soldier_row[soldier_header_index["telegram_username"]] == "soldier_test"
+    assert soldier_row[soldier_header_index["telegram_is_verified"]] == "true"
+    assert soldier_row[soldier_header_index["telegram_notifications_enabled"]] == "false"
+    assert soldier_row[soldier_header_index["telegram_verified_at"]] == "2026-01-15T10:30:00+00:00"
+    assert soldier_row[soldier_header_index["next_rank_date_overridden"]] == "true"
+    assert "current_rank_since" in soldier_header_index or HE_HEADERS["current_rank_since"] in soldier_header_index, soldier_headers
+    assert soldier_row[soldier_header_index.get("current_rank_since", soldier_header_index[HE_HEADERS["current_rank_since"]])] == "15.01.2025"
+
+    import_session = create_session(
+        admin_session,
+        filename="soldiers-roundtrip.xlsx",
+        content=resp.content,
+        actor=admin,
+        parser_id="v1_standard",
+    )
+    parsed_soldier = next(
+        r for r in import_session.parsed_state["soldiers"]
+        if r["personal_number"] == soldier.personal_number
+    )
+    assert parsed_soldier["unit_join_date"] == "2024-01-15"
+    assert parsed_soldier["food_type"] == "vegetarian"
+    assert parsed_soldier["food_constraints"] == "No dairy"
+    assert parsed_soldier["profile_picture_url"] == "https://example.test/profile.png"
+    assert parsed_soldier["telegram_chat_id"] == 123456789
+    assert parsed_soldier["telegram_username"] == "soldier_test"
+    assert parsed_soldier["telegram_is_verified"] is True
+    assert parsed_soldier["telegram_notifications_enabled"] is False
+    assert parsed_soldier["telegram_verified_at"] == "2026-01-15T10:30:00+00:00"
+    assert parsed_soldier["next_rank_date"] == "2027-01-15"
+    assert parsed_soldier["next_rank_date_overridden"] is True
+    assert parsed_soldier["current_rank_since"] == "2025-01-15"
+    assert parsed_soldier["action"] == "update"
+    confirm_session(admin_session, session_id=import_session.id, actor=admin)
+    admin_session.refresh(soldier)
+    assert soldier.unit_join_date == date(2024, 1, 15)
+    assert soldier.food_type == "vegetarian"
+    assert soldier.food_constraints == "No dairy"
+    assert soldier.profile_picture_url == "https://example.test/profile.png"
+    link = admin_session.execute(
+        select(TelegramLink).where(TelegramLink.soldier_id == soldier.id)
+    ).scalar_one()
+    assert link.telegram_chat_id == 123456789
+    assert link.telegram_username == "soldier_test"
+    assert link.is_verified is True
+    assert link.notifications_enabled is False
+    assert link.verified_at.isoformat() == "2026-01-15T10:30:00+00:00"
+    assert soldier.rank == "טוראי"
+    assert soldier.rank_track == "enlisted"
+    assert soldier.next_rank_date == date(2027, 1, 15)
+    assert soldier.next_rank_date_overridden is True
+    assert soldier.current_rank_since == date(2025, 1, 15)
 
     shift_rows = list(wb["משמרות"].iter_rows(min_row=2, values_only=True))
     matching_shift = next(r for r in shift_rows if r[0] == dt.name and r[1] == loc.name)
@@ -138,10 +222,12 @@ def test_range_events_and_assignments_export_import_round_trip(client, admin_ses
     node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
     loc = create_range_location(admin_session, name=f"מטווח_{_uid()}")
     soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}", hierarchy_node_id=node.id)
+    manager = create_soldier(admin_session, personal_number=f"dm_{_uid()}", role="duty_manager")
     event = create_range_event(
         admin_session, hierarchy_node=node, range_location=loc,
         range_type="live", event_date=date(2024, 6, 20), required_count=3,
     )
+    event.responsible_duty_manager_id = manager.id
     create_range_assignment(admin_session, range_event=event, soldier=soldier, attendance_status="present")
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     admin_session.commit()
@@ -176,6 +262,8 @@ def test_range_events_and_assignments_export_import_round_trip(client, admin_ses
     assert event_row["action"] == "new"
     assert event_row["range_type"] == "live"
     assert event_row["status"] == "planned"
+    assert event_row["responsible_duty_manager_personal_number"] == manager.personal_number
+    assert event_row["responsible_duty_manager_id"] == str(manager.id)
     assert assignment_row["errors"] == []
     assert assignment_row["resolved_range_event_id"] == str(event.id)
     assert assignment_row["action"] == "skip"  # soldier already assigned to this exact event
@@ -188,6 +276,12 @@ def test_range_events_and_assignments_export_import_round_trip(client, admin_ses
     ).scalars().all()
     assert len(events) == 2  # the original + the re-imported "new" row
     assert any(e.required_count == 3 and e.range_type == "live" for e in events)
+    assert any(
+        e.required_count == 3
+        and e.range_type == "live"
+        and e.responsible_duty_manager_id == manager.id
+        for e in events
+    )
 
     assignments = admin_session.execute(
         select(RangeAssignment).where(RangeAssignment.soldier_id == soldier.id)

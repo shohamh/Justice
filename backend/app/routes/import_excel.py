@@ -4,7 +4,7 @@ import io
 import logging
 import secrets
 import uuid
-from datetime import date as date_type
+from datetime import date as date_type, datetime
 from typing import Any, Literal
 
 import openpyxl
@@ -32,7 +32,7 @@ from app.db.models import (
     RankAdvancementInterval,
     ShiftTemplate,
     Soldier,
-    RankAdvancementInterval,
+    TelegramLink,
 )
 from app.db.session import get_session
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
@@ -54,6 +54,7 @@ class SoldierRowPreview(BaseModel):
     personal_number: str
     full_name: str
     rank: str | None
+    rank_track: str | None = None
     gender: str | None
     is_officer: bool | None
     hierarchy_node_id: uuid.UUID | None
@@ -63,6 +64,17 @@ class SoldierRowPreview(BaseModel):
     unit_join_date: str | None = None
     phone: str | None
     email: str | None
+    food_type: str | None = None
+    food_constraints: str | None = None
+    profile_picture_url: str | None = None
+    telegram_chat_id: int | None = None
+    telegram_username: str | None = None
+    telegram_is_verified: bool | None = None
+    telegram_notifications_enabled: bool | None = None
+    telegram_verified_at: str | None = None
+    next_rank_date: str | None = None
+    next_rank_date_overridden: bool | None = None
+    current_rank_since: str | None = None
     existing_id: uuid.UUID | None
     errors: list[str]
 
@@ -93,6 +105,7 @@ class ApplySoldierRow(BaseModel):
     personal_number: str
     full_name: str
     rank: str | None
+    rank_track: str | None = None
     gender: str | None
     is_officer: bool | None
     hierarchy_node_id: uuid.UUID | None
@@ -101,6 +114,17 @@ class ApplySoldierRow(BaseModel):
     unit_join_date: str | None = None
     phone: str | None
     email: str | None
+    food_type: str | None = None
+    food_constraints: str | None = None
+    profile_picture_url: str | None = None
+    telegram_chat_id: int | None = None
+    telegram_username: str | None = None
+    telegram_is_verified: bool | None = None
+    telegram_notifications_enabled: bool | None = None
+    telegram_verified_at: str | None = None
+    next_rank_date: str | None = None
+    next_rank_date_overridden: bool | None = None
+    current_rank_since: str | None = None
     existing_id: uuid.UUID | None
 
 
@@ -196,6 +220,7 @@ def _parse_soldiers_sheet(wb, soldiers_by_pn, nodes_by_name) -> list[SoldierRowP
             personal_number=pn,
             full_name=full_name,
             rank=str(data.get("rank") or "").strip() or None,
+            rank_track=str(data.get("rank_track") or "").strip() or None,
             gender=str(data.get("gender") or "").strip() or None,
             is_officer=_parse_bool(data.get("is_officer")),
             hierarchy_node_id=node.id if node else None,
@@ -205,6 +230,21 @@ def _parse_soldiers_sheet(wb, soldiers_by_pn, nodes_by_name) -> list[SoldierRowP
             unit_join_date=_parse_date(data.get("unit_join_date")),
             phone=str(data.get("phone") or "").strip() or None,
             email=str(data.get("email") or "").strip() or None,
+            food_type=str(data.get("food_type") or "").strip() or None,
+            food_constraints=str(data.get("food_constraints") or "").strip() or None,
+            profile_picture_url=str(data.get("profile_picture_url") or "").strip() or None,
+            telegram_chat_id=(
+                int(data["telegram_chat_id"])
+                if data.get("telegram_chat_id") not in (None, "")
+                else None
+            ),
+            telegram_username=str(data.get("telegram_username") or "").strip() or None,
+            telegram_is_verified=_parse_bool(data.get("telegram_is_verified")),
+            telegram_notifications_enabled=_parse_bool(data.get("telegram_notifications_enabled")),
+            telegram_verified_at=str(data.get("telegram_verified_at") or "").strip() or None,
+            next_rank_date=_parse_date(data.get("next_rank_date")),
+            next_rank_date_overridden=_parse_bool(data.get("next_rank_date_overridden")),
+            current_rank_since=_parse_date(data.get("current_rank_since")),
             existing_id=existing.id if existing else None,
             errors=errors,
         ))
@@ -317,10 +357,13 @@ def apply(
                     rank=row.rank,
                     gender=row.gender,
                     is_officer=row.is_officer,
-                    rank_track=resolve_track(row.rank, None),
+                    rank_track=resolve_track(row.rank, row.rank_track),
                     hierarchy_node_id=row.hierarchy_node_id,
                     phone=row.phone,
                     email=row.email,
+                    food_type=row.food_type,
+                    food_constraints=row.food_constraints,
+                    profile_picture_url=row.profile_picture_url,
                 )
                 if row.enrolled_at:
                     new_soldier.enrolled_at = date_type.fromisoformat(row.enrolled_at)
@@ -328,7 +371,40 @@ def apply(
                     new_soldier.enlistment_date = date_type.fromisoformat(row.enlistment_date)
                 if row.unit_join_date:
                     new_soldier.unit_join_date = date_type.fromisoformat(row.unit_join_date)
+                if row.next_rank_date:
+                    new_soldier.next_rank_date = date_type.fromisoformat(row.next_rank_date)
+                if row.current_rank_since:
+                    new_soldier.current_rank_since = date_type.fromisoformat(row.current_rank_since)
+                if row.next_rank_date_overridden is not None:
+                    new_soldier.next_rank_date_overridden = row.next_rank_date_overridden
                 session.add(new_soldier)
+                session.flush()
+                if any(
+                    value is not None
+                    for value in (
+                        row.telegram_chat_id,
+                        row.telegram_username,
+                        row.telegram_is_verified,
+                        row.telegram_notifications_enabled,
+                        row.telegram_verified_at,
+                    )
+                ):
+                    session.add(TelegramLink(
+                        soldier_id=new_soldier.id,
+                        telegram_chat_id=row.telegram_chat_id,
+                        telegram_username=row.telegram_username,
+                        is_verified=row.telegram_is_verified or False,
+                        notifications_enabled=(
+                            row.telegram_notifications_enabled
+                            if row.telegram_notifications_enabled is not None
+                            else True
+                        ),
+                        verified_at=(
+                            datetime.fromisoformat(row.telegram_verified_at)
+                            if row.telegram_verified_at
+                            else None
+                        ),
+                    ))
                 created += 1
             elif row.action == "update" and row.existing_id:
                 s = session.get(Soldier, row.existing_id)
@@ -337,6 +413,8 @@ def apply(
                     if row.rank is not None:
                         s.rank = row.rank
                         s.rank_track = resolve_track(s.rank, s.rank_track)
+                    if row.rank_track is not None:
+                        s.rank_track = row.rank_track
                     if row.gender is not None:
                         s.gender = row.gender
                     if row.is_officer is not None:
@@ -347,6 +425,44 @@ def apply(
                         s.phone = row.phone
                     if row.email is not None:
                         s.email = row.email
+                    if row.food_type is not None:
+                        s.food_type = row.food_type
+                    if row.food_constraints is not None:
+                        s.food_constraints = row.food_constraints
+                    if row.profile_picture_url is not None:
+                        s.profile_picture_url = row.profile_picture_url
+                    if row.next_rank_date is not None:
+                        s.next_rank_date = date_type.fromisoformat(row.next_rank_date)
+                    if row.current_rank_since is not None:
+                        s.current_rank_since = date_type.fromisoformat(row.current_rank_since)
+                    if row.next_rank_date_overridden is not None:
+                        s.next_rank_date_overridden = row.next_rank_date_overridden
+                    link = session.execute(
+                        select(TelegramLink).where(TelegramLink.soldier_id == s.id)
+                    ).scalar_one_or_none()
+                    if link is None and any(
+                        value is not None
+                        for value in (
+                            row.telegram_chat_id,
+                            row.telegram_username,
+                            row.telegram_is_verified,
+                            row.telegram_notifications_enabled,
+                            row.telegram_verified_at,
+                        )
+                    ):
+                        link = TelegramLink(soldier_id=s.id)
+                        session.add(link)
+                    if link is not None:
+                        if row.telegram_chat_id is not None:
+                            link.telegram_chat_id = row.telegram_chat_id
+                        if row.telegram_username is not None:
+                            link.telegram_username = row.telegram_username
+                        if row.telegram_is_verified is not None:
+                            link.is_verified = row.telegram_is_verified
+                        if row.telegram_notifications_enabled is not None:
+                            link.notifications_enabled = row.telegram_notifications_enabled
+                        if row.telegram_verified_at is not None:
+                            link.verified_at = datetime.fromisoformat(row.telegram_verified_at)
                     if row.enrolled_at:
                         s.enrolled_at = date_type.fromisoformat(row.enrolled_at)
                     if row.enlistment_date:
@@ -573,6 +689,10 @@ def export_current_data(
     wb.remove(wb.active)
 
     nodes_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars()}
+    soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
+    telegram_links_by_soldier_id = {
+        link.soldier_id: link for link in session.execute(select(TelegramLink)).scalars()
+    }
     duty_types_by_id = {dt.id: dt for dt in session.execute(select(DutyType)).scalars()}
     locations_by_id = {loc.id: loc for loc in session.execute(select(DutyLocation)).scalars()}
     range_locations_by_id = {loc.id: loc for loc in session.execute(select(RangeLocation)).scalars()}
@@ -581,9 +701,12 @@ def export_current_data(
         ws_s = wb.create_sheet("soldiers")
         ws_s.append(["personal_number", "full_name", "rank", "rank_track", "gender", "is_officer",
                       "hierarchy_node_name", "enrolled_at", "enlistment_date", "unit_join_date", "next_rank_date",
-                      "phone", "email", "mandatory_end_date", "discharge_date",
+                      "phone", "email", "food_type", "food_constraints", "mandatory_end_date", "discharge_date",
                       "has_military_driving_license", "military_driving_license_expiry",
-                      "last_mitvahim_date", "last_alal_date", "left_at"])
+                      "last_mitvahim_date", "last_alal_date", "left_at", "profile_picture_url",
+                      "telegram_chat_id", "telegram_username", "telegram_is_verified",
+                      "telegram_notifications_enabled", "telegram_verified_at",
+                      "next_rank_date_overridden", "current_rank_since"])
         for s in session.execute(select(Soldier)).scalars():
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
             ws_s.append([
@@ -595,7 +718,7 @@ def export_current_data(
                 s.enlistment_date.strftime("%d.%m.%Y") if s.enlistment_date else "",
                 s.unit_join_date.strftime("%d.%m.%Y") if s.unit_join_date else "",
                 s.next_rank_date.strftime("%d.%m.%Y") if s.next_rank_date else "",
-                s.phone or "", s.email or "",
+                s.phone or "", s.email or "", getattr(s.food_type, "value", s.food_type) or "", s.food_constraints or "",
                 s.mandatory_end_date.strftime("%d.%m.%Y") if s.mandatory_end_date else "",
                 s.discharge_date.strftime("%d.%m.%Y") if s.discharge_date else "",
                 "" if s.has_military_driving_license is None else ("true" if s.has_military_driving_license else "false"),
@@ -603,6 +726,24 @@ def export_current_data(
                 s.last_mitvahim_date.strftime("%d.%m.%Y") if s.last_mitvahim_date else "",
                 s.last_alal_date.strftime("%d.%m.%Y") if s.last_alal_date else "",
                 s.left_at.strftime("%d.%m.%Y") if s.left_at else "",
+                s.profile_picture_url or "",
+                telegram_links_by_soldier_id.get(s.id).telegram_chat_id
+                if telegram_links_by_soldier_id.get(s.id) is not None
+                else "",
+                telegram_links_by_soldier_id.get(s.id).telegram_username
+                if telegram_links_by_soldier_id.get(s.id) is not None
+                else "",
+                (
+                    "true" if telegram_links_by_soldier_id[s.id].is_verified else "false"
+                ) if s.id in telegram_links_by_soldier_id else "",
+                (
+                    "true" if telegram_links_by_soldier_id[s.id].notifications_enabled else "false"
+                ) if s.id in telegram_links_by_soldier_id else "",
+                telegram_links_by_soldier_id[s.id].verified_at.isoformat()
+                if telegram_links_by_soldier_id.get(s.id) and telegram_links_by_soldier_id[s.id].verified_at
+                else "",
+                "true" if s.next_rank_date_overridden else "false",
+                s.current_rank_since.strftime("%d.%m.%Y") if s.current_rank_since else "",
             ])
 
     # `assignments` needs shift lookups even when the `duty_shifts` sheet itself isn't requested.
@@ -669,6 +810,7 @@ def export_current_data(
             "hierarchy_node_name", "range_type", "date", "range_location_name",
             "required_count", "reserve_count", "start_time", "end_time",
             "arrival_instructions", "contact_name", "contact_phone", "notes", "status",
+            "responsible_duty_manager_personal_number",
         ])
         for ev in range_events:
             node = nodes_by_id.get(ev.hierarchy_node_id)
@@ -678,6 +820,9 @@ def export_current_data(
                 loc.name if loc else "", ev.required_count, ev.reserve_count,
                 ev.start_time or "", ev.end_time or "", ev.arrival_instructions or "",
                 ev.contact_name or "", ev.contact_phone or "", ev.notes or "", ev.status.value,
+                soldiers_by_id[ev.responsible_duty_manager_id].personal_number
+                if ev.responsible_duty_manager_id in soldiers_by_id
+                else "",
             ])
 
     if "range_assignments" in requested:

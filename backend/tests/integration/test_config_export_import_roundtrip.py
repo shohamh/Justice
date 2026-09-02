@@ -4,7 +4,11 @@ import uuid
 from decimal import Decimal
 
 from app.db.models import DutyLocation
-from app.services.duty_config import create_duty_type, create_exemption_type, set_exemption_duty_types
+from app.services.duty_config import (
+    create_duty_type,
+    create_exemption_type,
+    set_exemption_duty_types,
+)
 from app.services.hierarchy import create_node, set_commander
 from app.services.import_sessions import confirm_session, create_session
 from app.services.range_locations import create_range_location
@@ -26,8 +30,13 @@ def test_export_then_reimport_resolves_everything_as_update(client, admin_sessio
     set_commander(admin_session, node_id=node.id, commander_id=commander.id, actor_id=admin.id)
     loc = DutyLocation(name=f"שער_{_uid()}", base="בסיס א")
     admin_session.add(loc)
-    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
-    et = create_exemption_type(admin_session, name=f"et_{_uid()}")
+    dt = create_duty_type(
+        admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type="live",
+    )
+    et = create_exemption_type(
+        admin_session, name=f"et_{_uid()}", forbids_weapons=True, active=False,
+    )
     set_exemption_duty_types(admin_session, exemption_type_id=et.id, duty_type_ids=[dt.id])
     admin_session.commit()
 
@@ -47,6 +56,13 @@ def test_export_then_reimport_resolves_everything_as_update(client, admin_sessio
     for group in ("duty_locations", "hierarchy", "duty_types", "exemption_types"):
         for row in preview[group]:
             assert row["action"] == "update", f"{group} row {row['row']} expected update, got {row['action']}: {row['errors']}"
+
+    dt_row = next(row for row in preview["duty_types"] if row["name"] == dt.name)
+    assert dt_row["requires_weapon"] is True
+    assert dt_row["required_range_type"] == "live"
+    et_row = next(row for row in preview["exemption_types"] if row["name"] == et.name)
+    assert et_row["active"] is False
+    assert et_row["forbids_weapons"] is True
 
 
 def test_range_location_export_import_round_trip(client, admin_session):

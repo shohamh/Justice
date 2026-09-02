@@ -11,12 +11,26 @@ from sqlalchemy.orm import Session
 from app.auth.authz import can_see_private
 from app.auth.deps import require_duty_manager_or_admin
 from app.db.models import (
-    ExemptionRequest, ExemptionRequestFile, ExemptionType, HierarchyNode,
-    PersonalConstraint, RangeAssignment, RangeExcusalRequest, RangeEvent, RangeLocation,
-    Soldier, SoldierEnrollmentRequest, SoldierExemption,
-    SoldierFieldUpdate, SoldierRangeQualification, SwapCandidate, SwapManagerApproval, SwapRequest,
+    ExemptionRequest,
+    ExemptionRequestFile,
+    ExemptionType,
+    HierarchyNode,
+    PersonalConstraint,
+    RangeAssignment,
+    RangeEvent,
+    RangeExcusalRequest,
+    RangeLocation,
+    Soldier,
+    SoldierEnrollmentRequest,
+    SoldierExemption,
+    SoldierFieldUpdate,
+    SoldierRangeQualification,
+    SwapCandidate,
+    SwapManagerApproval,
+    SwapRequest,
 )
 from app.db.session import get_session
+from app.services.excel_bilingual import finalize_bilingual_workbook
 
 router = APIRouter(prefix="/approvals", tags=["approvals-export"])
 
@@ -96,7 +110,7 @@ def _write_soldier_exemptions(wb: openpyxl.Workbook, session: Session, actor: So
     ws = wb.create_sheet("soldier_exemptions")
     ws.append([
         "id", "soldier_personal_number", "soldier_name", "exemption_type_name",
-        "start_date", "end_date", "reason", "granted_by_personal_number", "granted_at",
+        "start_date", "end_date", "reason", "is_medical", "granted_by_personal_number", "granted_at",
         "revoked_at", "revoked_by_personal_number", "revoke_reason",
     ])
     soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
@@ -109,7 +123,7 @@ def _write_soldier_exemptions(wb: openpyxl.Workbook, session: Session, actor: So
         ws.append([
             str(e.id), pn, name, et.name if et else "",
             e.start_date.isoformat(), e.end_date.isoformat() if e.end_date else "",
-            e.reason, granted_pn, e.granted_at.isoformat(),
+            e.reason, e.is_medical, granted_pn, e.granted_at.isoformat(),
             e.revoked_at.isoformat() if e.revoked_at else "", revoked_pn, e.revoke_reason,
         ])
 
@@ -299,6 +313,8 @@ def export_approvals(
     wb.remove(wb.active)
     for sheet_name in requested:
         _WRITERS[sheet_name](wb, session, actor)
+
+    finalize_bilingual_workbook(wb)
 
     buf = io.BytesIO()
     wb.save(buf)

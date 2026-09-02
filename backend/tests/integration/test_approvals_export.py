@@ -23,6 +23,7 @@ from app.db.models import (
     SwapManagerApproval,
     SwapRequest,
 )
+from app.services.excel_bilingual import canonical_headers, canonical_sheet_name
 from app.services.hierarchy import create_node as create_hierarchy_node
 from tests.helpers import (
     auth_headers,
@@ -39,6 +40,37 @@ def _uid() -> str:
 
 def _token(soldier) -> str:
     return auth_headers(soldier)["Authorization"].split(" ", 1)[1]
+
+
+def _load_workbook(content: bytes):
+    wb = openpyxl.load_workbook(io.BytesIO(content))
+    for ws in wb.worksheets:
+        ws.title = canonical_sheet_name(ws.title)
+        for cell in ws[1]:
+            cell.value = canonical_headers(ws.title, [cell.value])[0]
+    return wb
+
+
+def test_approvals_export_uses_bilingual_sheet_names_and_headers(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    resp = client.get(
+        "/api/approvals/export?sheets=personal_constraints,swap_requests",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content), read_only=True)
+    assert wb.sheetnames == ["אילוצים אישיים", "בקשות חילוף"]
+    assert next(wb["אילוצים אישיים"].iter_rows(max_row=1, values_only=True)) == (
+        "מזהה", "מס אישי חייל", "שם חייל", "תאריך התחלה", "תאריך סיום",
+        "סיבה", "סטטוס", "מס אישי מחליט", "הערת החלטה", "נוצר בתאריך",
+    )
+    assert next(wb["בקשות חילוף"].iter_rows(max_row=1, values_only=True)) == (
+        "מזהה", "מס אישי פונה", "שם פונה", "מס אישי יעד", "מס אישי מכסה",
+        "תאריך תפקיד", "סטטוס", "סיבה", "אישור צד מבקש", "אישור צד מכסה",
+        "מס אישי דוחה", "הערת החלטה", "יומן אישורים", "נוצר בתאריך", "עודכן בתאריך",
+    )
 
 
 def test_export_personal_constraints_sheet(client, admin_session):
@@ -69,7 +101,7 @@ def test_export_personal_constraints_sheet(client, admin_session):
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
     assert resp.status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     assert wb.sheetnames == ["personal_constraints"]
     ws = wb["personal_constraints"]
     header = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
@@ -115,7 +147,7 @@ def test_export_personal_constraints_sheet_redacts_reason_when_actor_out_of_scop
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
     assert resp.status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     ws = wb["personal_constraints"]
     rows = list(ws.iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == str(constraint.id))
@@ -185,7 +217,7 @@ def test_export_swap_requests_sheet(client, admin_session):
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
     assert resp.status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     assert wb.sheetnames == ["swap_requests"]
     ws = wb["swap_requests"]
     header = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
@@ -224,7 +256,7 @@ def test_export_defaults_to_all_sheets(client, admin_session):
         "/api/approvals/export", headers={"Authorization": f"Bearer {_token(admin)}"}
     )
     assert resp.status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     assert set(wb.sheetnames) == {
         "swap_requests", "exemption_requests", "soldier_field_updates",
         "soldier_enrollment_requests", "personal_constraints", "soldier_exemptions",
@@ -259,7 +291,7 @@ def test_export_includes_range_sheets(client, admin_session):
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
     assert resp.status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     assert set(wb.sheetnames) == {"soldier_range_qualifications", "range_excusal_requests"}
 
     q_rows = list(wb["soldier_range_qualifications"].iter_rows(min_row=2, values_only=True))
@@ -292,7 +324,7 @@ def test_export_soldier_field_updates_sheet(client, admin_session):
         "/api/approvals/export?sheets=soldier_field_updates",
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     rows = list(wb["soldier_field_updates"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == str(update.id))
     assert row[1] == soldier.personal_number
@@ -314,7 +346,7 @@ def test_export_soldier_enrollment_requests_sheet(client, admin_session):
         "/api/approvals/export?sheets=soldier_enrollment_requests",
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     rows = list(wb["soldier_enrollment_requests"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == str(req.id))
     assert row[1] == soldier.personal_number
@@ -342,14 +374,15 @@ def test_export_soldier_exemptions_sheet(client, admin_session):
         "/api/approvals/export?sheets=soldier_exemptions",
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     rows = list(wb["soldier_exemptions"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == str(exemption.id))
     assert row[1] == soldier.personal_number
     assert row[3] == et.name
     assert row[4] == "2026-02-01"
     assert row[6] == "פציעה"
-    assert row[7] == admin.personal_number
+    assert row[7] is False
+    assert row[8] == admin.personal_number
 
 
 def test_export_exemption_requests_sheet(client, admin_session):
@@ -376,7 +409,7 @@ def test_export_exemption_requests_sheet(client, admin_session):
         "/api/approvals/export?sheets=exemption_requests",
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     rows = list(wb["exemption_requests"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == str(req.id))
     assert row[1] == soldier.personal_number
@@ -414,7 +447,7 @@ def test_export_exemption_requests_sheet_survives_permanent_request(client, admi
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
     assert resp.status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     rows = list(wb["exemption_requests"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == str(req.id))
     assert not row[4]
@@ -447,7 +480,7 @@ def test_export_exemption_requests_sheet_redacts_reason_when_actor_out_of_scope(
         "/api/approvals/export?sheets=exemption_requests",
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
-    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    wb = _load_workbook(resp.content)
     rows = list(wb["exemption_requests"].iter_rows(min_row=2, values_only=True))
     row = next(r for r in rows if r[0] == str(req.id))
     assert row[1] == soldier.personal_number

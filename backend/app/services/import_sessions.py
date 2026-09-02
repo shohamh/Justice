@@ -42,6 +42,7 @@ from app.db.models import (
     SwapManagerApproval,
     SwapRequest,
     SystemSetting,
+    TelegramLink,
 )
 from app.services.dm_scope import assign_dm_scope, remove_dm_scope
 from app.services.duty_config import (
@@ -104,15 +105,31 @@ def _resolve_soldiers(
         personal_number = field("personal_number", row.personal_number)
         full_name = field("full_name", row.full_name)
         rank = field("rank", row.rank)
+        rank_track = field("rank_track", row.rank_track)
         gender = field("gender", row.gender)
         is_officer = field("is_officer", row.is_officer)
         hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
         enrolled_at = field("enrolled_at", row.enrolled_at)
         enlistment_date = field("enlistment_date", row.enlistment_date)
+        unit_join_date = field("unit_join_date", row.unit_join_date)
         phone = field("phone", row.phone)
         email = field("email", row.email)
+        food_type = field("food_type", row.food_type)
+        food_constraints = field("food_constraints", row.food_constraints)
+        profile_picture_url = field("profile_picture_url", row.profile_picture_url)
+        telegram_chat_id = field("telegram_chat_id", row.telegram_chat_id)
+        telegram_username = field("telegram_username", row.telegram_username)
+        telegram_is_verified = field("telegram_is_verified", row.telegram_is_verified)
+        telegram_notifications_enabled = field(
+            "telegram_notifications_enabled", row.telegram_notifications_enabled
+        )
+        telegram_verified_at = field("telegram_verified_at", row.telegram_verified_at)
         is_career = field("is_career", row.is_career)
         next_rank_date = field("next_rank_date", row.next_rank_date)
+        next_rank_date_overridden = field(
+            "next_rank_date_overridden", row.next_rank_date_overridden
+        )
+        current_rank_since = field("current_rank_since", row.current_rank_since)
         bahad1_graduate = field("bahad1_graduate", row.bahad1_graduate)
         has_military_driving_license = field("has_military_driving_license", row.has_military_driving_license)
         military_driving_license_expiry = field("military_driving_license_expiry", row.military_driving_license_expiry)
@@ -154,6 +171,18 @@ def _resolve_soldiers(
                     f"שם '{full_name}' אינו חד משמעי (מספר אישי '{personal_number}' לא נמצא)"
                 )
 
+        active_unit_join_date_changed = (
+            existing is not None
+            and unit_join_date is not None
+            and existing.enrolled_at is not None
+            and existing.left_at is None
+            and unit_join_date != (
+                existing.unit_join_date.isoformat() if existing.unit_join_date is not None else None
+            )
+        )
+        if active_unit_join_date_changed:
+            errors.append("שינוי unit_join_date לחייל פעיל חייב לעבור בתהליך אישור")
+
         if errors:
             action = "error"
         elif existing is not None:
@@ -175,16 +204,28 @@ def _resolve_soldiers(
             "personal_number": personal_number,
             "full_name": full_name,
             "rank": rank,
+            "rank_track": rank_track,
             "gender": gender,
             "is_officer": is_officer,
             "hierarchy_node_id": str(node.id) if node is not None else None,
             "hierarchy_node_name": hierarchy_node_name,
             "enrolled_at": enrolled_at,
             "enlistment_date": enlistment_date,
+            "unit_join_date": unit_join_date,
             "phone": phone,
             "email": email,
+            "food_type": food_type,
+            "food_constraints": food_constraints,
+            "profile_picture_url": profile_picture_url,
+            "telegram_chat_id": telegram_chat_id,
+            "telegram_username": telegram_username,
+            "telegram_is_verified": telegram_is_verified,
+            "telegram_notifications_enabled": telegram_notifications_enabled,
+            "telegram_verified_at": telegram_verified_at,
             "is_career": is_career,
             "next_rank_date": next_rank_date,
+            "next_rank_date_overridden": next_rank_date_overridden,
+            "current_rank_since": current_rank_since,
             "bahad1_graduate": bahad1_graduate,
             "has_military_driving_license": has_military_driving_license,
             "military_driving_license_expiry": military_driving_license_expiry,
@@ -283,6 +324,10 @@ def _resolve_range_events(
     overrides = overrides or {}
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
     locations_by_name = {loc.name: loc for loc in session.execute(select(RangeLocation)).scalars()}
+    duty_managers_by_pn = {
+        s.personal_number: s
+        for s in session.execute(select(Soldier).where(Soldier.role == "duty_manager")).scalars()
+    }
 
     out = []
     for row in data.range_events:
@@ -305,6 +350,10 @@ def _resolve_range_events(
         contact_phone = field("contact_phone", row.contact_phone)
         notes = field("notes", row.notes)
         status = field("status", row.status) or RangeEventStatus.planned.value
+        responsible_duty_manager_personal_number = field(
+            "responsible_duty_manager_personal_number",
+            row.responsible_duty_manager_personal_number,
+        )
 
         node = None
         if hierarchy_node_name:
@@ -331,6 +380,14 @@ def _resolve_range_events(
         if status not in (s.value for s in RangeEventStatus):
             errors.append(f"סטטוס לא תקין '{status}'")
 
+        responsible_duty_manager = None
+        if responsible_duty_manager_personal_number:
+            responsible_duty_manager = duty_managers_by_pn.get(responsible_duty_manager_personal_number)
+            if responsible_duty_manager is None:
+                errors.append(
+                    f"אחראי תורן לא מזוהה '{responsible_duty_manager_personal_number}'"
+                )
+
         action = "error" if errors else "new"
 
         if action == "new" and node is not None and actor.role != "admin":
@@ -356,6 +413,10 @@ def _resolve_range_events(
             "contact_phone": contact_phone,
             "notes": notes,
             "status": status,
+            "responsible_duty_manager_personal_number": responsible_duty_manager_personal_number,
+            "responsible_duty_manager_id": (
+                str(responsible_duty_manager.id) if responsible_duty_manager is not None else None
+            ),
         })
     return out
 
@@ -728,6 +789,8 @@ def _resolve_duty_types(
             "reserve_ratio": str(reserve_ratio) if reserve_ratio is not None else None,
             "reserve_minimum": field("reserve_minimum", row.reserve_minimum),
             "is_external": field("is_external", row.is_external),
+            "requires_weapon": field("requires_weapon", row.requires_weapon),
+            "required_range_type": field("required_range_type", row.required_range_type),
             "contact_name": field("contact_name", row.contact_name),
             "contact_phone": field("contact_phone", row.contact_phone),
             "start_time": field("start_time", row.start_time),
@@ -791,9 +854,13 @@ def _resolve_exemption_types(
         is_global_raw = field("is_global", row.is_global)
         is_medical_raw = field("is_medical", row.is_medical)
         is_commander_exemption_raw = field("is_commander_exemption", row.is_commander_exemption)
+        active_raw = field("active", row.active)
+        forbids_weapons_raw = field("forbids_weapons", row.forbids_weapons)
         is_global = is_global_raw if is_global_raw is not None else False
         is_medical = is_medical_raw if is_medical_raw is not None else False
         is_commander_exemption = is_commander_exemption_raw if is_commander_exemption_raw is not None else False
+        active = active_raw if active_raw is not None else True
+        forbids_weapons = forbids_weapons_raw if forbids_weapons_raw is not None else False
 
         existing = existing_by_name.get(name) if name else None
         action = "error" if errors else ("update" if existing else "new")
@@ -807,6 +874,8 @@ def _resolve_exemption_types(
             "is_global": is_global,
             "is_medical": is_medical,
             "is_commander_exemption": is_commander_exemption,
+            "active": active,
+            "forbids_weapons": forbids_weapons,
             "resolved_duty_type_ids": resolved_duty_type_ids,
             "existing_id": str(existing.id) if existing is not None else None,
         })
@@ -1354,6 +1423,34 @@ def _effective_action(selections: dict, group: str, row: dict) -> str:
     return selections.get(group, {}).get(str(row["row"]), row["action"])
 
 
+def _apply_telegram_link_from_row(session: Session, soldier_id: uuid.UUID, row: dict) -> None:
+    values = {
+        "telegram_chat_id": row.get("telegram_chat_id"),
+        "telegram_username": row.get("telegram_username"),
+        "is_verified": row.get("telegram_is_verified"),
+        "notifications_enabled": row.get("telegram_notifications_enabled"),
+        "verified_at": row.get("telegram_verified_at"),
+    }
+    if not any(value is not None for value in values.values()):
+        return
+    link = session.execute(
+        select(TelegramLink).where(TelegramLink.soldier_id == soldier_id)
+    ).scalar_one_or_none()
+    if link is None:
+        link = TelegramLink(soldier_id=soldier_id)
+        session.add(link)
+    if values["telegram_chat_id"] is not None:
+        link.telegram_chat_id = values["telegram_chat_id"]
+    if values["telegram_username"] is not None:
+        link.telegram_username = values["telegram_username"]
+    if values["is_verified"] is not None:
+        link.is_verified = values["is_verified"]
+    if values["notifications_enabled"] is not None:
+        link.notifications_enabled = values["notifications_enabled"]
+    if values["verified_at"] is not None:
+        link.verified_at = datetime.fromisoformat(values["verified_at"])
+
+
 def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dict) -> None:
     """Initialize next_rank_date/current_rank_since/next_rank_date_overridden
     for an imported soldier row that sets a rank — mirroring the
@@ -1373,7 +1470,9 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
     if row.get("rank") is None:
         return
     from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
-    if row.get("enlistment_date"):
+    if row.get("current_rank_since"):
+        since = date_type.fromisoformat(row["current_rank_since"])
+    elif row.get("enlistment_date"):
         since = date_type.fromisoformat(row["enlistment_date"])
     elif row.get("enrolled_at"):
         since = date_type.fromisoformat(row["enrolled_at"])
@@ -1381,7 +1480,17 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
         since = date_type.today()
     soldier.rank_track = resolve_track(soldier.rank, soldier.rank_track)
     soldier.current_rank_since = since
-    if row.get("next_rank_date"):
+    if row.get("next_rank_date_overridden") is not None:
+        soldier.next_rank_date_overridden = bool(row["next_rank_date_overridden"])
+        if not soldier.next_rank_date_overridden:
+            soldier.next_rank_date = compute_initial_next_rank_date(
+                session,
+                rank=soldier.rank,
+                enlistment_date=soldier.enlistment_date,
+                fallback_since=since,
+                track=soldier.rank_track,
+            )
+    elif row.get("next_rank_date"):
         soldier.next_rank_date_overridden = True
     else:
         soldier.next_rank_date = compute_initial_next_rank_date(
@@ -1434,6 +1543,7 @@ def confirm_session(
                     password_hash=hash_password(secrets.token_hex(16)),
                     must_change_password=True,
                     rank=row.get("rank"),
+                    rank_track=row.get("rank_track"),
                     gender=row.get("gender"),
                     is_officer=row.get("is_officer"),
                     hierarchy_node_id=(
@@ -1443,6 +1553,9 @@ def confirm_session(
                     ),
                     phone=row.get("phone"),
                     email=row.get("email"),
+                    food_type=row.get("food_type"),
+                    food_constraints=row.get("food_constraints"),
+                    profile_picture_url=row.get("profile_picture_url"),
                     is_career=row.get("is_career") or False,
                     bahad1_graduate=row.get("bahad1_graduate") or False,
                     has_military_driving_license=row.get("has_military_driving_license"),
@@ -1451,6 +1564,10 @@ def confirm_session(
                     new_soldier.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
                 if row.get("enlistment_date"):
                     new_soldier.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                if row.get("unit_join_date"):
+                    new_soldier.unit_join_date = date_type.fromisoformat(row["unit_join_date"])
+                if row.get("current_rank_since"):
+                    new_soldier.current_rank_since = date_type.fromisoformat(row["current_rank_since"])
                 if row.get("next_rank_date"):
                     new_soldier.next_rank_date = date_type.fromisoformat(row["next_rank_date"])
                 if row.get("military_driving_license_expiry"):
@@ -1470,6 +1587,7 @@ def confirm_session(
                 _init_rank_advancement_from_row(session, new_soldier, row)
                 session.add(new_soldier)
                 session.flush()
+                _apply_telegram_link_from_row(session, new_soldier.id, row)
                 created += 1
                 created_soldiers.append(str(new_soldier.id))
             elif effective == "update" and row.get("existing_id"):
@@ -1482,6 +1600,8 @@ def confirm_session(
                         s.rank = row["rank"]
                         from app.services.rank_advancement import resolve_track
                         s.rank_track = resolve_track(s.rank, s.rank_track)
+                    if row.get("rank_track") is not None:
+                        s.rank_track = row["rank_track"]
                     if row.get("gender") is not None:
                         s.gender = row["gender"]
                     if row.get("is_officer") is not None:
@@ -1492,6 +1612,14 @@ def confirm_session(
                         s.phone = row["phone"]
                     if row.get("email") is not None:
                         s.email = row["email"]
+                    if row.get("food_type") is not None:
+                        s.food_type = row["food_type"]
+                    if row.get("food_constraints") is not None:
+                        s.food_constraints = row["food_constraints"]
+                    if row.get("profile_picture_url") is not None:
+                        s.profile_picture_url = row["profile_picture_url"]
+                    if row.get("current_rank_since"):
+                        s.current_rank_since = date_type.fromisoformat(row["current_rank_since"])
                     if row.get("is_career") is not None:
                         s.is_career = row["is_career"]
                     if row.get("bahad1_graduate") is not None:
@@ -1502,8 +1630,13 @@ def confirm_session(
                         s.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
                     if row.get("enlistment_date"):
                         s.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                    if row.get("unit_join_date"):
+                        s.unit_join_date = date_type.fromisoformat(row["unit_join_date"])
                     if row.get("next_rank_date"):
                         s.next_rank_date = date_type.fromisoformat(row["next_rank_date"])
+                    if row.get("next_rank_date_overridden") is not None:
+                        s.next_rank_date_overridden = bool(row["next_rank_date_overridden"])
+                    _apply_telegram_link_from_row(session, s.id, row)
                     if row.get("military_driving_license_expiry"):
                         s.military_driving_license_expiry = date_type.fromisoformat(
                             row["military_driving_license_expiry"]
@@ -1742,6 +1875,11 @@ def confirm_session(
                     contact_phone=row.get("contact_phone"),
                     notes=row.get("notes"),
                     created_by=actor.id,
+                    responsible_duty_manager_id=(
+                        uuid.UUID(row["responsible_duty_manager_id"])
+                        if row.get("responsible_duty_manager_id")
+                        else actor.id
+                    ),
                 )
                 session.add(event)
                 session.flush()
@@ -2036,6 +2174,7 @@ def confirm_session(
                         is_medical=bool(row.get("is_medical")),
                         is_commander_exemption=bool(row.get("is_commander_exemption")),
                         forbids_weapons=bool(row.get("forbids_weapons")),
+                        active=bool(row.get("active")),
                         actor_id=actor.id,
                     )
                     if duty_type_ids:
@@ -2287,6 +2426,7 @@ def confirm_session(
                             date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
                         ),
                         reason=row.get("reason"),
+                        is_medical=bool(row.get("is_medical")),
                     )
                     if row.get("resolved_granted_by_id"):
                         se.granted_by = uuid.UUID(row["resolved_granted_by_id"])
@@ -2318,6 +2458,7 @@ def confirm_session(
                             date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
                         )
                         se.reason = row.get("reason")
+                        se.is_medical = bool(row.get("is_medical"))
                         if row.get("resolved_granted_by_id"):
                             se.granted_by = uuid.UUID(row["resolved_granted_by_id"])
                         if row.get("revoked"):
