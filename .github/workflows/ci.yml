@@ -163,11 +163,17 @@ jobs:
       # ── Playwright ──
       - name: Install Playwright browsers
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chrome
 
       - name: Run Playwright tests
         working-directory: frontend
-        run: npx playwright test
+        run: npm run test:e2e
+
+      - name: Run forced-password Playwright flow
+        working-directory: frontend
+        run: |
+          export PATH="$GITHUB_WORKSPACE/backend/.venv/bin:$PATH"
+          npm run test:e2e:admin-flow
 
       - name: Upload Playwright report
         if: failure()

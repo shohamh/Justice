@@ -12,7 +12,8 @@
     "test": "vitest run",
     "lint:oxlint": "oxlint src",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:admin-flow": "playwright test --config=playwright.admin-flow.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

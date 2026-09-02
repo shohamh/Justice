@@ -31,7 +31,11 @@ for (const role of roles) {
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByTestId("login-form")).toHaveCount(0);
 
-      const me = await page.request.get("/api/me");
+      const refresh = await page.request.post("/api/auth/refresh");
+      expect(refresh.ok()).toBe(true);
+      const { access_token } = await refresh.json() as { access_token: string };
+      const headers = { Authorization: `Bearer ${access_token}` };
+      const me = await page.request.get("/api/me", { headers });
       expect(me.ok()).toBe(true);
       expect(await me.json()).toEqual(expect.objectContaining({
         personal_number: {
