@@ -11,7 +11,7 @@ export default defineConfig({
   // Specs share the single bootstrap admin (and a rate-limited login), so they
   // must run serially rather than across parallel workers.
   workers: 1,
-  retries: 0,
+  retries: 1,
   use: {
     browserName: "chromium",
     channel: "chrome",

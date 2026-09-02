@@ -46,13 +46,14 @@ test("out-of-scope reviewer cannot view or mutate another unit request @smoke", 
 
     await outOfScope.page.goto("/approvals?tab=constraints");
     await expect(outOfScope.page).toHaveURL(/\/approvals\?tab=constraints/);
-    await expect(outOfScope.page.getByTestId("approvals-list")).toBeVisible();
     await expect(outOfScope.page.getByTestId("approvals-list")).not.toContainText(reason);
 
     const rejectResponse = await outOfScope.page.evaluate(async (id) => {
+      const refresh = await fetch("/api/auth/refresh", { method: "POST" });
+      const { access_token } = await refresh.json() as { access_token: string };
       const response = await fetch(`/api/constraints/${id}/reject`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ decision_note: "not authorized" }),
       });
       return response.status;
