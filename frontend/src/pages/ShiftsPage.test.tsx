@@ -96,6 +96,14 @@ function renderShifts(shifts: shiftsApi.DutyShift[]) {
   );
 }
 
+test("exposes stable shift creation, row, and manual assignment controls", async () => {
+  renderShifts([shift("shift-1")]);
+
+  expect(await screen.findByTestId("shift-row-shift-1")).toBeVisible();
+  expect(screen.getByTestId("shift-create-button")).toBeEnabled();
+  expect(screen.getByTestId("manual-assignment-open-shift-1")).toBeEnabled();
+});
+
 test("requires a styled confirmation before clearing selected shift assignments", async () => {
   const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   vi.mocked(shiftsApi.clearShiftAssignments).mockResolvedValue(undefined);
@@ -290,8 +298,8 @@ test("filters planning rows to weapon-ineligible shifts from the query parameter
     </MemoryRouter>
   );
 
-  expect(await screen.findByTestId("ineligible-shift")).toBeInTheDocument();
-  expect(screen.queryByTestId("eligible-shift")).not.toBeInTheDocument();
+  expect(await screen.findByTestId("shift-row-ineligible-shift")).toBeInTheDocument();
+  expect(screen.queryByTestId("shift-row-eligible-shift")).not.toBeInTheDocument();
 });
 
 test("selecting a duty type in the quick filter checks all matching shift rows", async () => {

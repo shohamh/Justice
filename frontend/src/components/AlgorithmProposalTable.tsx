@@ -246,7 +246,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const publishedWithIssues = !isDraft && (hasUnfilledShifts || hasBatchIssues);
 
   return (
-    <div className="space-y-3" dir="rtl">
+    <div className="space-y-3" dir="rtl" data-testid="algorithm-proposal-review">
       {isDraft ? (
         <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded p-3 text-sm text-amber-700 dark:text-amber-300 font-medium">
           {"⚠️ טיוטה — תוצאות לא פורסמו. לחץ \"אשר ופרסם (הפוך לרשמי)\" להחלת השיבוצים."}
@@ -280,6 +280,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
             </button>
             <button
               type="button"
+              data-testid="algorithm-publish-proposals"
               onClick={handleApproveSelected}
               disabled={pendingProposals.length === 0 || approving}
               className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 disabled:opacity-40 flex items-center gap-1.5"
@@ -322,6 +323,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
           <DataTable
             columns={cols}
             data={filteredProposals}
+            rowTestId={(proposal) => `algorithm-proposal-${proposal.assignment_id}`}
             filterPlaceholder={t("table.filter_placeholder")}
             rowClassName={(p) =>
               p.status === "published" ? "bg-green-50 dark:bg-green-950" : p.status === "algorithm_rejected" ? "bg-gray-100 dark:bg-gray-700 opacity-50" : ""

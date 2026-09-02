@@ -65,6 +65,17 @@ beforeEach(() => {
   mockGetQuotaSplitPreview.mockClear();
 });
 
+test("exposes stable duty-creation inputs and submit control", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+
+  await waitFor(() => expect(screen.getByTestId("shift-create-form")).toBeVisible());
+  expect(screen.getByTestId("shift-start-date")).toBeVisible();
+  expect(screen.getByTestId("shift-end-date")).toBeVisible();
+  expect(screen.getByTestId("shift-create-submit")).toBeEnabled();
+});
+
 test("allows adding a node quota row", async () => {
   render(
     <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />

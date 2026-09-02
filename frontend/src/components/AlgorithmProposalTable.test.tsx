@@ -33,6 +33,14 @@ const job: AlgorithmJob = {
 };
 
 describe("AlgorithmProposalTable", () => {
+  it("exposes the proposal review and publication boundaries for browser automation", () => {
+    render(<AlgorithmProposalTable job={job} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "Dani Cohen" }]} dutyTypes={[{ id: "type-1", name: "Guard" }]} isDraft onProposalUpdate={vi.fn()} />);
+
+    expect(screen.getByTestId("algorithm-proposal-review")).toBeVisible();
+    expect(screen.getByTestId("algorithm-publish-proposals")).toBeEnabled();
+    expect(screen.getByTestId("algorithm-proposal-assignment-1")).toBeVisible();
+  });
+
   it("does not reject a draft until its translated confirmation is accepted", async () => {
     vi.mocked(bulkRejectProposals).mockResolvedValue(undefined);
     render(<AlgorithmProposalTable job={job} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "דני כהן" }]} dutyTypes={[{ id: "type-1", name: "שמירה" }]} isDraft onProposalUpdate={vi.fn()} />);

@@ -786,6 +786,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             <button
               type="button"
               onClick={() => setEditAssignmentsShift(s)}
+              data-testid={`manual-assignment-open-${s.id}`}
               title="ערוך שיבוצים"
               className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
             >
@@ -835,6 +836,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           <button
             type="button"
             onClick={() => setShowCreate(true)}
+            data-testid="shift-create-button"
             className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
           >
             {t("shifts.create")}
@@ -982,7 +984,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
                   sortDescFirst: column.sortDescFirst,
                 }))}
                 rows={displayedShifts}
-                getRowId={shift => shift.id}
+                getRowId={shift => `shift-row-${shift.id}`}
                 getRowLabel={shift => `${dtName(shift.duty_type_id)} ${shift.start_date}`}
                 onRowClick={setEditShift}
                 rowClassName={shift => shift.status === "cancelled" ? "opacity-50" : ""}

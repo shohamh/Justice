@@ -320,7 +320,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           <h3 className="text-lg font-semibold">{existing ? t("shifts.edit") : t("shifts.create")}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
-        <form onSubmit={handleSubmit} noValidate className="space-y-3">
+        <form onSubmit={handleSubmit} noValidate className="space-y-3" data-testid={existing ? "shift-edit-form" : "shift-create-form"}>
           {!existing && (
             <>
               <div>
@@ -352,12 +352,12 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           )}
           <label className="block text-sm">
             {t("shifts.start_date")}
-            <DateInput key={pendingStartDate ?? startDate} value={startDate} onChange={handleStartDateChange} max={!existing ? (endDate || undefined) : undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput key={pendingStartDate ?? startDate} value={startDate} onChange={handleStartDateChange} max={!existing ? (endDate || undefined) : undefined} data-testid="shift-start-date" className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             {fieldErrors.startDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.startDate}</p>}
           </label>
           <label className="block text-sm">
             {t("shifts.end_date")}
-            <DateInput value={endDate} onChange={iso => { setEndDate(iso); setFieldErrors((prev) => ({ ...prev, endDate: "" })); }} min={!existing ? (startDate || undefined) : undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={endDate} onChange={iso => { setEndDate(iso); setFieldErrors((prev) => ({ ...prev, endDate: "" })); }} min={!existing ? (startDate || undefined) : undefined} data-testid="shift-end-date" className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             {fieldErrors.endDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.endDate}</p>}
           </label>
           <label className="block text-sm">
@@ -467,7 +467,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">{t("shifts.cancel")}</button>
-            <button type="submit" disabled={quotaOverAllocated} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("shifts.save")}</button>
+            <button type="submit" disabled={quotaOverAllocated} data-testid={existing ? "shift-edit-submit" : "shift-create-submit"} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("shifts.save")}</button>
           </div>
         </form>
       </div>
