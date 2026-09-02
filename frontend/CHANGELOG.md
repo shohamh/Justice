@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-02
+
+### Features
+- Completed bilingual import/export round trips for soldier profile fields, including unit join dates, food preferences and constraints, profile pictures, safe Telegram linkage, rank advancement dates, rank track, and manual-versus-automatic next-rank provenance.
+- Preserved exemption medical classification, revocation metadata, duty configuration fields, and responsible range-manager linkage through export and approved import flows.
+
+### Fixes
+- Persisted unit join dates and newly supported profile/linkage fields in both legacy and staged import paths, with fail-closed handling for active soldiers requiring approval.
+- Stabilized date-sensitive algorithm and range UI regression fixtures and updated approval tests for the required decision body.
+
 ## 2026-09-01
 
 ### Features
