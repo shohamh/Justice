@@ -35,7 +35,7 @@ import { roleStorageState, type Role } from "../fixtures/auth";
  *   endpoints under /exemption-requests/<request>.
  * - Gimelim: a duty detail's DismissalModal exposes the visible mode
  *   "גימלים", medical-reason input, preview, and commit. It calls
- *   POST /shifts/<shift>/gimelim/preview and /gimelim/commit. It is reached
+ *   POST /shifts/<shift>/gimelim/preview and /shifts/<shift>/gimelim/commit. It is reached
  *   from ShiftDetailPanel only for a duty manager/admin and currently has no
  *   soldier submission route or stable browser selectors for its states.
  * - Hakpaza Pikudit: /commander/hakpaza is settings-gated. Its visible staged
