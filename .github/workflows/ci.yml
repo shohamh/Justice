@@ -165,15 +165,15 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chrome
 
-      - name: Run Playwright tests
+      - name: Run Playwright smoke tests
+        if: github.event_name == 'pull_request'
         working-directory: frontend
-        run: npm run test:e2e
+        run: npm run test:e2e:smoke
 
-      - name: Run forced-password Playwright flow
+      - name: Run Playwright full tests
+        if: github.event_name == 'push'
         working-directory: frontend
-        run: |
-          export PATH="$GITHUB_WORKSPACE/backend/.venv/bin:$PATH"
-          npm run test:e2e:admin-flow
+        run: npm run test:e2e:full
 
       - name: Upload Playwright report
         if: failure()
