@@ -45,3 +45,15 @@ Complete. The real planning UI now exposes stable browser boundaries for future-
 
 - The review-fix tests and typecheck require a later focused run before integration because this handoff was explicitly committed without waiting for them.
 - Browser-level assignment remains unverified; Task 4 still owns the real UI mutation helper and full serial journey.
+
+## Review-fix verification completion
+
+### Correction
+
+- Corrected the proposal-publication test to match the existing UI contract: after all proposals are published, the proposal row visibly enters its published state and the publish button remains rendered, disabled, with a zero count.
+- No production behavior or post-assignment problem flow changed.
+
+### Verification
+
+- `npx vitest run src/components/AlgorithmInlinePanel.test.tsx src/components/AlgorithmProposalTable.test.tsx src/components/ShiftFormModal.test.tsx src/components/ShiftEditAssignmentsModal.test.tsx src/pages/ShiftsPage.test.tsx --maxWorkers=1 --no-file-parallelism` — 5 test files passed, 38 tests passed.
+- `npm run typecheck` — passed (`tsc --noEmit`).

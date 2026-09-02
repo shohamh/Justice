@@ -46,8 +46,11 @@ describe("AlgorithmProposalTable", () => {
     fireEvent.click(screen.getByTestId("algorithm-publish-proposals"));
 
     await waitFor(() => expect(bulkAcceptProposals).toHaveBeenCalledWith("job-1", ["assignment-1"]));
-    expect(screen.getByTestId("algorithm-proposal-assignment-1")).toHaveClass("bg-green-50");
-    expect(screen.queryByTestId("algorithm-publish-proposals")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("algorithm-proposal-assignment-1")).toHaveClass("bg-green-50");
+      expect(screen.getByTestId("algorithm-publish-proposals")).toBeDisabled();
+      expect(screen.getByTestId("algorithm-publish-proposals")).toHaveTextContent("(0)");
+    });
   });
 
   it("does not reject a draft until its translated confirmation is accepted", async () => {
