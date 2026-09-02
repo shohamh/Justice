@@ -23,6 +23,9 @@
 - Restored the configured personal-constraint override behavior for manual shift candidates and stabilized related eligibility tests.
 - Stabilized the command call-up prefill test so it waits for the asynchronously loaded assignment.
 
+### Chores
+- Split the primary backend test suite from the complete service-test suite, with a dedicated script for running both trees.
+
 ## 2026-09-01
 
 ### Features
