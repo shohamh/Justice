@@ -44,8 +44,10 @@ dev = [
 
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "app/services/tests"]
-# Default run is the fast suite, parallel across a fixed worker count (~1.5 min;
+testpaths = ["tests"]
+# Default run is the primary local suite, parallel across a fixed worker count.
+# The complete suite, including app/services/tests, is run with
+# scripts/test-full.ps1 so local feedback does not silently pay for both trees.
 # see pg_container in conftest.py for the fsync/full_page_writes tuning that
 # brought this down from ~8 min by making the per-test TRUNCATE nearly free).
 # Capped at 4 rather than `-n auto`: auto sizes off the host's logical CPU count,
