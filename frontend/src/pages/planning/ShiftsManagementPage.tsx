@@ -113,7 +113,7 @@ export default function ShiftsManagementPage() {
             </div>
           </button>
           {runsOpen && (
-            <div className="h-[600px]">
+            <div className="h-[600px]" data-testid={latestJobId ? `algorithm-run-review-${latestJobId}` : "algorithm-run-review"}>
               <AlgorithmContent initialJobId={latestJobId} />
             </div>
           )}

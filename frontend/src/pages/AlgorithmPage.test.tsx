@@ -4,8 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AlgorithmContent } from "./AlgorithmPage";
 import * as algorithmApi from "../api/algorithm";
+import type { AlgorithmJob } from "../api/algorithm";
 import * as dutyConfigApi from "../api/dutyConfig";
 import * as soldiersApi from "../api/soldiers";
+import * as shiftsApi from "../api/shifts";
 import { AlgorithmSeenProvider } from "../contexts/AlgorithmSeenContext";
 
 vi.mock("react-i18next", () => ({
@@ -19,12 +21,18 @@ vi.mock("../api/algorithm", async () => {
     listJobs: vi.fn(),
     pollJob: vi.fn(),
     cancelJob: vi.fn(),
+    markJobSeen: vi.fn(),
+    markAllJobsSeen: vi.fn(),
   };
 });
 vi.mock("../api/dutyConfig");
 vi.mock("../api/soldiers");
+vi.mock("../api/shifts", async () => {
+  const actual = await vi.importActual<typeof import("../api/shifts")>("../api/shifts");
+  return { ...actual, listShifts: vi.fn() };
+});
 
-function renderPage() {
+function renderPage(initialJobId?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -32,7 +40,7 @@ function renderPage() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <AlgorithmSeenProvider>
-          <AlgorithmContent />
+          <AlgorithmContent initialJobId={initialJobId} />
         </AlgorithmSeenProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -59,6 +67,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
   vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([]);
+  vi.mocked(shiftsApi.listShifts).mockResolvedValue([]);
 });
 
 describe("AlgorithmPage - job list load error", () => {
@@ -95,5 +104,51 @@ describe("AlgorithmPage - selected job load error", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("algorithm.job_load_error");
     });
     expect(screen.queryByText("app.loading")).not.toBeInTheDocument();
+  });
+});
+
+describe("AlgorithmPage - returned job review", () => {
+  it("opens the exact submitted job directly at its proposal review", async () => {
+    const reviewJob: AlgorithmJob = {
+      id: "returned-job-42",
+      status: "done",
+      mode: "shadow",
+      planning_start: "2026-09-10",
+      planning_end: "2026-09-11",
+      started_at: null,
+      finished_at: null,
+      error_message: null,
+      progress_message: null,
+      solver_metrics: {},
+      relaxed: [],
+      reasons: [],
+      batch_results: [],
+      result_metadata: null,
+      proposals: [{
+        assignment_id: "returned-assignment-1",
+        soldier_id: "soldier-1",
+        duty_type_id: "type-1",
+        duty_location_id: "location-1",
+        start_date: "2026-09-10",
+        end_date: "2026-09-10",
+        status: "algorithm_draft",
+        reserve_soldier_id: null,
+        norm_score_before: null,
+        norm_score_after: null,
+        duty_shift_id: "shift-1",
+        candidate_rank: null,
+        candidate_pool_size: null,
+        batch_index: null,
+      }],
+    };
+    vi.mocked(algorithmApi.listJobs).mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(algorithmApi.pollJob).mockResolvedValue(reviewJob);
+
+    renderPage("returned-job-42");
+
+    await waitFor(() => expect(algorithmApi.pollJob).toHaveBeenCalledWith("returned-job-42"));
+    expect(await screen.findByTestId("algorithm-job-review-returned-job-42")).toBeVisible();
+    expect(await screen.findByTestId("algorithm-proposal-review")).toBeVisible();
+    expect(screen.getByTestId("algorithm-proposal-returned-assignment-1")).toBeVisible();
   });
 });

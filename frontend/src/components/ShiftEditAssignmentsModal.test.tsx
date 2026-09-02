@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ShiftEditAssignmentsModal from "./ShiftEditAssignmentsModal";
 import * as assignmentsApi from "../api/assignments";
 import * as calendarApi from "../api/calendar";
+import * as shiftsApi from "../api/shifts";
 import type { DutyShift } from "../api/shifts";
 
 vi.mock("react-i18next", () => ({
@@ -30,6 +31,7 @@ const shift: DutyShift = {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
     {
       soldier_id: "soldier-candidate",
@@ -89,5 +91,37 @@ describe("ShiftEditAssignmentsModal", () => {
     expect(screen.getByTestId("assignment-primary-primary-1")).toBeVisible();
     expect(screen.getByTestId("assignment-reserve-reserve-1")).toBeVisible();
     expect(screen.getByTestId("manual-assignment-save")).toBeDisabled();
+  });
+
+  it("selects a primary candidate, saves it, and keeps the pending assignment visible", async () => {
+    vi.mocked(calendarApi.getCalendarShift).mockResolvedValue({
+      assignees: [],
+    } as Awaited<ReturnType<typeof calendarApi.getCalendarShift>>);
+    vi.mocked(shiftsApi.assignBatch).mockResolvedValue({
+      primary_assignment_ids: ["created-primary-1"],
+      reserve_assignment_ids: [],
+      reserve_links_created: 0,
+    });
+    const onSaved = vi.fn();
+
+    render(
+      <ShiftEditAssignmentsModal
+        shift={{ ...shift, assigned_count: 0, reserve_assigned_count: 0 }}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        onSaved={onSaved}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await screen.findByTestId("manual-primary-candidate-soldier-candidate"));
+    expect(screen.getByTestId("assignment-primary-pending-soldier-candidate")).toBeVisible();
+    fireEvent.click(screen.getByTestId("manual-assignment-save"));
+
+    await waitFor(() => expect(shiftsApi.assignBatch).toHaveBeenCalledWith("shift-1", {
+      primaries: ["soldier-candidate"],
+      reserves: [],
+    }));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("assignment-primary-pending-soldier-candidate")).toBeVisible();
   });
 });

@@ -20,7 +20,11 @@ vi.mock("../components/AlgorithmInlinePanel", () => ({
   default: () => <div data-testid="algorithm-panel" />,
 }));
 vi.mock("../components/ShiftFormModal", () => ({
-  default: () => <div data-testid="shift-form-modal" />,
+  default: ({ onSaved }: { onSaved: () => void | Promise<void> }) => (
+    <div data-testid="shift-form-modal">
+      <button type="button" onClick={() => void onSaved()}>complete shift create</button>
+    </div>
+  ),
 }));
 vi.mock("../components/ShiftEditAssignmentsModal", () => ({
   default: () => <div data-testid="shift-assignments-modal" />,
@@ -102,6 +106,26 @@ test("exposes stable shift creation, row, and manual assignment controls", async
   expect(await screen.findByTestId("shift-row-shift-1")).toBeVisible();
   expect(screen.getByTestId("shift-create-button")).toBeEnabled();
   expect(screen.getByTestId("manual-assignment-open-shift-1")).toBeEnabled();
+});
+
+test("refreshes the planning table with the created shift after the create modal succeeds", async () => {
+  seedShiftQueries([]);
+  vi.mocked(shiftsApi.listShifts)
+    .mockResolvedValueOnce([])
+    .mockResolvedValue([shift("created-shift")]);
+
+  render(
+    <BrowserRouter>
+      <QueryClientProvider client={createTestQueryClient()}>
+        <ShiftsContent />
+      </QueryClientProvider>
+    </BrowserRouter>,
+  );
+
+  fireEvent.click(await screen.findByTestId("shift-create-button"));
+  fireEvent.click(screen.getByRole("button", { name: "complete shift create" }));
+
+  expect(await screen.findByTestId("shift-row-created-shift")).toBeVisible();
 });
 
 test("requires a styled confirmation before clearing selected shift assignments", async () => {

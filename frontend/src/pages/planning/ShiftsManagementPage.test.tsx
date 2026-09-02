@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ShiftsManagementPage from "./ShiftsManagementPage";
 import { AlgorithmSeenProvider } from "../../contexts/AlgorithmSeenContext";
@@ -19,7 +19,9 @@ vi.mock("../../components/Layout", () => ({
 }));
 
 vi.mock("../ShiftsPage", () => ({
-  ShiftsContent: () => <div data-testid="shifts-content" />,
+  ShiftsContent: ({ onJobSubmitted }: { onJobSubmitted?: (jobId: string) => void }) => (
+    <button type="button" data-testid="shifts-content" onClick={() => onJobSubmitted?.("returned-job-42")}>submit inline job</button>
+  ),
 }));
 
 vi.mock("../ShiftTemplatesPage", () => ({
@@ -116,5 +118,18 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
     );
 
     expect(await screen.findByTestId("algo-badge-failed")).toHaveTextContent("1");
+  });
+
+  test("opens a stable review boundary for the exact job returned by the inline run", async () => {
+    mockListJobs.mockResolvedValue({ items: [], total: 0 });
+    renderWithProviders(
+      <AlgorithmSeenProvider>
+        <ShiftsManagementPage />
+      </AlgorithmSeenProvider>
+    );
+
+    fireEvent.click(await screen.findByTestId("shifts-content"));
+
+    expect(await screen.findByTestId("algorithm-run-review-returned-job-42")).toBeVisible();
   });
 });
