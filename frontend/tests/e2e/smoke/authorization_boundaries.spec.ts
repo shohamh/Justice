@@ -36,7 +36,8 @@ test("out-of-scope reviewer cannot view or mutate another unit request @smoke", 
   const soldier = await contextWithState(browser, "soldier");
   const outOfScope = await contextWithState(browser, "soldier");
   try {
-    await submitConstraint(soldier.page, reason, isoDaysFromNow(38), isoDaysFromNow(40));
+    const rangeOffset = Math.floor(Math.random() * 300);
+    await submitConstraint(soldier.page, reason, isoDaysFromNow(38 + rangeOffset), isoDaysFromNow(40 + rangeOffset));
     await soldier.page.goto("/my-requests?tab=existing&type=constraints&status=pending");
     const row = soldier.page.getByTestId("constraints-list").locator('[data-testid^="constraint-row-"]', { hasText: reason }).first();
     await expect(row).toBeVisible();

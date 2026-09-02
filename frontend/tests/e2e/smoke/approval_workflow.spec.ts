@@ -65,8 +65,9 @@ test.describe.configure({ mode: "serial" });
 
 test("authorized commander and duty manager approve a request across role contexts @smoke", async ({ browser }) => {
   const reason = `אישור-${createUniqueName("approval-flow")}`;
-  const startDate = isoDaysFromNow(24);
-  const endDate = isoDaysFromNow(27);
+  const rangeOffset = Math.floor(Math.random() * 300);
+  const startDate = isoDaysFromNow(24 + rangeOffset);
+  const endDate = isoDaysFromNow(27 + rangeOffset);
 
   const resources: BrowserContext[] = [];
   const closeAll = async () => Promise.all(resources.map((context) => context.close()));
@@ -115,8 +116,9 @@ test("authorized commander and duty manager approve a request across role contex
 test("rejection requires a reason and the soldier sees the rejected status and note @smoke", async ({ browser }) => {
   const reason = `דחייה-${createUniqueName("approval-reject")}`;
   const rejectNote = `הערת-דחייה-${createUniqueName("approval-note")}`;
-  const startDate = isoDaysFromNow(30);
-  const endDate = isoDaysFromNow(32);
+  const rangeOffset = Math.floor(Math.random() * 300);
+  const startDate = isoDaysFromNow(30 + rangeOffset);
+  const endDate = isoDaysFromNow(32 + rangeOffset);
 
   const resources: BrowserContext[] = [];
   const closeAll = async () => Promise.all(resources.map((context) => context.close()));

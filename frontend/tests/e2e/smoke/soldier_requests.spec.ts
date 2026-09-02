@@ -13,8 +13,9 @@ function isoDaysFromNow(days: number): string {
 
 test("soldier submits a future personal-constraint request and sees it in the existing list @smoke", async ({ page }) => {
   const reason = `אילוץ-${createUniqueName("soldier-request")}`;
-  const startDate = isoDaysFromNow(16);
-  const endDate = isoDaysFromNow(18);
+  const rangeOffset = Math.floor(Math.random() * 300);
+  const startDate = isoDaysFromNow(16 + rangeOffset);
+  const endDate = isoDaysFromNow(18 + rangeOffset);
 
   await page.goto("/my-requests");
   await expect(page).toHaveURL(/\/my-requests$/);
