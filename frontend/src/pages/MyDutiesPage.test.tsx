@@ -236,6 +236,13 @@ describe("MyDutiesPage required scoring data load errors", () => {
 });
 
 describe("MyDutiesPage absence reporting", () => {
+  it("exposes a soldier-side gimelim entry point for a shift-backed duty", async () => {
+    vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([makeDuty({ assignment_id: "a-gimelim", shift_id: "shift-gimelim" })]);
+    renderPage();
+
+    expect(await screen.findByTestId("report-gimelim-a-gimelim")).toHaveTextContent("דווח גימלים");
+  });
+
   it("lets a soldier report inability to attend a primary upcoming duty", async () => {
     vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([makeDuty({ assignment_id: "a-absent" })]);
     vi.mocked(reservesApi.reportCannotAttend).mockClear();

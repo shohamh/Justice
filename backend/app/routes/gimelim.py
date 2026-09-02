@@ -34,7 +34,9 @@ def _require_gimelim_permission(
     user: Soldier,
     primary_soldier_id: uuid.UUID,
 ) -> None:
-    """Admin or commander/DM in scope of the primary soldier."""
+    """The soldier may report their own gimelim; managers act in scope."""
+    if user.id == primary_soldier_id:
+        return
     if user.role == "admin":
         return
     soldier = session.get(Soldier, primary_soldier_id)

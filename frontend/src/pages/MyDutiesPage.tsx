@@ -20,6 +20,8 @@ import { listEffectiveDuties } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
 import { getReserveStats } from "../api/soldiers";
 import { reportCannotAttend } from "../api/reserves";
+import { getCalendarShift, CalendarShift } from "../api/calendar";
+import DismissalModal from "../components/DismissalModal";
 import { queryKeys } from "../queryKeys";
 import { formatDateTimeIsrael, formatDutyRange, lastDutyDay } from "../utils/formatDate";
 
@@ -64,6 +66,9 @@ export default function MyDutiesPage() {
   const [absenceReason, setAbsenceReason] = useState("");
   const [absenceError, setAbsenceError] = useState<string | null>(null);
   const [absenceSubmitting, setAbsenceSubmitting] = useState(false);
+  const [gimelimShift, setGimelimShift] = useState<CalendarShift | null>(null);
+  const [gimelimLoading, setGimelimLoading] = useState<string | null>(null);
+  const [gimelimError, setGimelimError] = useState<string | null>(null);
 
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
@@ -99,6 +104,8 @@ export default function MyDutiesPage() {
   const upcomingDuties = (dutiesQuery.data ?? [])
     .filter((d) => d.end_date > today)
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const gimelimPrimary = gimelimShift?.assignees.find((a) => a.soldier_id === user?.id && !a.is_reserve)
+    ?? gimelimShift?.assignees[0];
 
   const loading = transparencyQuery.isLoading || breakdownQuery.isLoading || dutiesQuery.isLoading;
   // Both queries fetch required-object payloads (see api/scoring.ts) — a
@@ -281,14 +288,37 @@ export default function MyDutiesPage() {
                     </div>
                   )}
                   {!d.is_reserve && (
-                    <button
-                      type="button"
-                      data-testid={`report-absence-${d.assignment_id}`}
-                      className="mt-1 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-200"
-                      onClick={() => { setAbsenceDuty({ assignment_id: d.assignment_id, start_date: d.start_date, end_date: d.end_date, duty_type_name: d.duty_type_name }); setAbsenceReason(""); setAbsenceError(null); }}
-                    >
-                      לא יכול להגיע
-                    </button>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        data-testid={`report-absence-${d.assignment_id}`}
+                        className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-200"
+                        onClick={() => { setAbsenceDuty({ assignment_id: d.assignment_id, start_date: d.start_date, end_date: d.end_date, duty_type_name: d.duty_type_name }); setAbsenceReason(""); setAbsenceError(null); }}
+                      >
+                        לא יכול להגיע
+                      </button>
+                      {d.shift_id && (
+                        <button
+                          type="button"
+                          data-testid={`report-gimelim-${d.assignment_id}`}
+                          className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-800 hover:bg-red-200 disabled:opacity-50"
+                          disabled={gimelimLoading === d.assignment_id}
+                          onClick={async () => {
+                            setGimelimLoading(d.assignment_id);
+                            setGimelimError(null);
+                            try {
+                              setGimelimShift(await getCalendarShift(d.shift_id!));
+                            } catch {
+                              setGimelimError("לא ניתן לטעון את פרטי התורנות");
+                            } finally {
+                              setGimelimLoading(null);
+                            }
+                          }}
+                        >
+                          {gimelimLoading === d.assignment_id ? "טוען..." : "דווח גימלים"}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </li>
               ))}
@@ -343,6 +373,17 @@ export default function MyDutiesPage() {
               </div>
             </form>
           </div>
+        )}
+        {gimelimError && <p role="alert" className="text-sm text-red-600">{gimelimError}</p>}
+        {gimelimShift && user && gimelimPrimary && (
+          <DismissalModal
+            shift={gimelimShift}
+            primary={gimelimPrimary}
+            canGimelim
+            defaultRestDays={7}
+            onClose={() => setGimelimShift(null)}
+            onDone={() => { setGimelimShift(null); void dutiesQuery.refetch(); }}
+          />
         )}
       </div>
     </Layout>
