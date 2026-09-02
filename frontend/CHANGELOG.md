@@ -22,6 +22,8 @@
 - Clarified production deployment to rebuild the backend image so newly released database migrations are applied.
 - Restored the configured personal-constraint override behavior for manual shift candidates and stabilized related eligibility tests.
 - Stabilized the command call-up prefill test so it waits for the asynchronously loaded assignment.
+- Preserved exemption approval decision notes, added scoped commander approval coverage, and surfaced translated approval-action failures.
+- Improved admin error diagnostics with explicit traceback/details sections and distinct frontend error coloring.
 
 ### Chores
 - Split the primary backend test suite from the complete service-test suite, with a dedicated script for running both trees.
