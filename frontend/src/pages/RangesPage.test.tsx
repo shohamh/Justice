@@ -856,7 +856,7 @@ describe("RangesPage assignment editor integration", () => {
     // event, instead of fetching each event's assignments and removing them
     // one at a time — see RangesPage.tsx's bulkClear.
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
-      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2099-09-01",
         location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
     ]);
     vi.mocked(rangesApi.clearRangeAssignments).mockResolvedValue({ cleared_assignments: 1 });
@@ -873,7 +873,7 @@ describe("RangesPage assignment editor integration", () => {
 
   it("shows an error message when a bulk action fails", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
-      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2099-09-01",
         location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
     ]);
     // bulkClear uses Promise.allSettled, so a per-event failure surfaces as a
@@ -909,7 +909,7 @@ describe("RangesPage assignment editor integration", () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       { id: "event-past", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-08-01",
         location: "מטווח שכבר התקיים", required_count: 1, reserve_count: 0, status: "completed", assignments: [] },
-      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2099-09-01",
         location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
     ]);
     renderWithQuery(<RangesPage />);
