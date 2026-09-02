@@ -210,7 +210,8 @@ docker-compose down                  # stop all services
 uv run uvicorn app.main:app --reload --port 8000   # dev server (hot reload)
 uv run alembic upgrade head                         # apply migrations
 uv run alembic revision -m "describe change"        # new migration
-uv run pytest -q                                    # all tests (needs Docker for testcontainers)
+uv run pytest -q                                    # primary local suite (needs Docker for testcontainers)
+backend\scripts\test-full.ps1                     # complete suite, including app/services/tests
 uv run ruff check app tests                         # lint
 uv run ruff format app tests                        # format
 uv run mypy app                                     # type check
