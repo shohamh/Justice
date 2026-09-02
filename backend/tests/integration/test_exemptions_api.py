@@ -680,6 +680,55 @@ def test_pending_exemption_count_handles_enrollment_linked_request(client, admin
     assert response.json()["count"] == 1
 
 
+def test_approve_commander_step_accepts_decision_note_and_advances_request(client, admin_session):
+    admin = create_soldier(admin_session, personal_number="ex-approve-admin", role="admin")
+    target = create_soldier(admin_session, personal_number="ex-approve-target")
+    et = _et(admin_session, "ex-approve-type")
+    req = ExemptionRequest(
+        soldier_id=target.id, exemption_type_id=et.id, status="pending_commander",
+        start_date=date(2026, 1, 1), reason="approval test",
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{req.id}/approve-commander",
+        headers=auth_headers(admin), json={"decision_note": "approved by commander"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "pending_duty_manager"
+    assert response.json()["commander_approval_note"] == "approved by commander"
+
+
+def test_mador_commander_can_approve_team_commanders_request(client, admin_session):
+    mador = create_node(admin_session, level="group", name="ex-approve-mador")
+    team = create_node(admin_session, level="team", name="ex-approve-team", parent=mador)
+    mador_commander = create_soldier(
+        admin_session, personal_number="ex-approve-mador-cmd", role="commander",
+    )
+    team_commander = create_soldier(
+        admin_session, personal_number="ex-approve-team-cmd", role="commander", hierarchy_node_id=team.id,
+    )
+    mador.commander_id = mador_commander.id
+    team.commander_id = team_commander.id
+    et = _et(admin_session, "ex-approve-team-type")
+    req = ExemptionRequest(
+        soldier_id=team_commander.id, exemption_type_id=et.id, status="pending_commander",
+        start_date=date(2026, 1, 1), reason="team commander request",
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{req.id}/approve-commander",
+        headers=auth_headers(mador_commander), json={"decision_note": "approved"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "pending_duty_manager"
+
+
 def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):
     from app.db.models import ExemptionType
     from app.services.settings_loader import set_setting

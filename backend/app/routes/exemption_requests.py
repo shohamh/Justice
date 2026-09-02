@@ -508,6 +508,7 @@ def patch_exemption_request(
 @router.post("/exemption-requests/{request_id}/approve-commander", response_model=ExemptionRequestOut)
 def approve_exemption_request_commander_step(
     request_id: uuid.UUID,
+    body: ApproveRejectRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> ExemptionRequestOut:

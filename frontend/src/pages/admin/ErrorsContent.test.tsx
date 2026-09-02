@@ -35,6 +35,19 @@ it("shows correlated errors and expands sanitized details", async () => {
   expect(screen.queryByText("trace-1")).not.toBeInTheDocument();
   fireEvent.click(screen.getByTestId("admin-error-trace-1").querySelector("button")!);
   expect(screen.getByTestId("admin-error-stack-trace-1")).toHaveTextContent("RuntimeError: boom");
+  expect(screen.getByText("Traceback")).toBeInTheDocument();
+  expect(screen.getByText("Full details (JSON)")).toBeInTheDocument();
+});
+
+it("uses blue for frontend errors", async () => {
+  vi.mocked(bugReportsApi.listAdminErrors).mockResolvedValue({
+    total: 1,
+    items: [{ source: "frontend", timestamp: "2026-08-28T10:00:00Z", level: "ERROR", message: "Frontend error", request_id: "trace-blue", details: {}, record_key: "error-blue", unread: false }],
+  });
+  renderContent();
+  const source = await screen.findByText("frontend");
+  expect(source).toHaveClass("text-blue-600");
+  expect(source).not.toHaveClass("text-orange-600");
 });
 
 it("shows the soldier link and IP that encountered an error", async () => {

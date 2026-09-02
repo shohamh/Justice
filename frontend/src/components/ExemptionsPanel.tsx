@@ -59,6 +59,7 @@ export default function ExemptionsPanel({
   const [denied, setDenied] = useState(false);
   const [commanderReason, setCommanderReason] = useState("");
   const [commanderError, setCommanderError] = useState<string | null>(null);
+  const [requestActionError, setRequestActionError] = useState<string | null>(null);
   const [commanderEscalate, setCommanderEscalate] = useState(!canApplyImmediately);
   const [commanderOfficialTypeId, setCommanderOfficialTypeId] = useState("");
   const [commanderApplyImmediately, setCommanderApplyImmediately] = useState(false);
@@ -184,13 +185,23 @@ export default function ExemptionsPanel({
   }
 
   async function onApproveCommanderStep(id: string) {
-    await approveExemptionRequestCommanderStep(id);
-    await refreshRequests();
+    setRequestActionError(null);
+    try {
+      await approveExemptionRequestCommanderStep(id);
+      await refreshRequests();
+    } catch (err) {
+      setRequestActionError(translateApiError(err, t, "שגיאה באישור הבקשה"));
+    }
   }
 
   async function onApproveDutyManagerStep(id: string) {
-    await approveExemptionRequestDutyManagerStep(id);
-    await refreshRequests();
+    setRequestActionError(null);
+    try {
+      await approveExemptionRequestDutyManagerStep(id);
+      await refreshRequests();
+    } catch (err) {
+      setRequestActionError(translateApiError(err, t, "שגיאה באישור הבקשה"));
+    }
   }
 
   async function onRejectRequest(id: string) {
@@ -396,6 +407,8 @@ export default function ExemptionsPanel({
               {t("exemptions.requests_none")}
             </p>
           ) : (
+            <>
+            {requestActionError && <p role="alert" className="text-sm text-red-600" data-testid="exemption-request-action-error">{requestActionError}</p>}
             <ul className="space-y-2" data-testid="exemption-requests-list">
               {requests.map((request) => (
                 <li
@@ -476,6 +489,7 @@ export default function ExemptionsPanel({
                 </li>
               ))}
             </ul>
+            </>
           )}
         </div>
       )}
