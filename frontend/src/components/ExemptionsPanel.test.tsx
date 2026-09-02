@@ -254,6 +254,17 @@ describe("ExemptionsPanel", () => {
     expect(screen.getByTestId("exemption-request-approve-req-1")).toBeTruthy();
   });
 
+  test("shows an indicative error when approving a request from the soldier modal fails", async () => {
+    vi.mocked(exemptionsApi.approveExemptionRequestDutyManagerStep).mockRejectedValueOnce({
+      response: { status: 500, data: { detail: "internal_error" } },
+    });
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+
+    fireEvent.click(await screen.findByTestId("exemption-request-approve-req-1"));
+
+    expect(await screen.findByTestId("exemption-request-action-error")).toHaveTextContent("שגיאה באישור הבקשה");
+  });
+
   test("hides the duty-manager-step approve button for a commander-only viewer", async () => {
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={false} />);
     await screen.findByTestId("exemption-request-row-req-1");

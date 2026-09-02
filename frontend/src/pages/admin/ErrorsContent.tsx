@@ -134,7 +134,7 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
         <button type="button" onClick={(event) => { event.stopPropagation(); toggle(); }} className="flex-1 text-right">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             {entry.unread && <span className="inline-block h-2 w-2 rounded-full bg-red-500 shrink-0" data-testid={`admin-error-unread-${entry.record_key}`} aria-label="לא נקרא" />}
-            <span className={`font-semibold ${entry.source === "backend" ? "text-red-600" : "text-orange-600"}`}>{entry.source}</span>
+            <span className={`font-semibold ${entry.source === "backend" ? "text-red-600" : "text-blue-600 dark:text-blue-400"}`}>{entry.source}</span>
             <span>{entry.timestamp ? new Date(entry.timestamp).toLocaleString("he-IL") : "—"}</span>
           </div>
         </button>
@@ -149,7 +149,8 @@ function ErrorRow({ entry, onOpen }: { entry: ErrorLogEntry; onOpen: () => void 
       {entry.source === "frontend" && frontendRequest && <p dir="ltr" className="mt-1 text-xs text-gray-600 dark:text-gray-300 text-left" data-testid={`admin-error-request-${entry.request_id ?? "unknown"}`}>{frontendRequest}</p>}
       {entry.source === "backend" && typeof path === "string" && <p dir="ltr" className="mt-1 text-xs text-gray-600 dark:text-gray-300 text-left" data-testid={`admin-error-path-${entry.request_id ?? "unknown"}`}>{path}</p>}
       {expanded && <>
-        {typeof stack === "string" && <CopyBlock value={stack} testId={`admin-error-stack-${entry.request_id ?? "unknown"}`} copyTestId={`admin-error-copy-stack-${entry.request_id ?? "unknown"}`} />}
+        {typeof stack === "string" && <><h3 className="mt-3 text-sm font-semibold">Traceback</h3><CopyBlock value={stack} testId={`admin-error-stack-${entry.request_id ?? "unknown"}`} copyTestId={`admin-error-copy-stack-${entry.request_id ?? "unknown"}`} /></>}
+        <h3 className="mt-3 text-sm font-semibold">Full details (JSON)</h3>
         <CopyBlock value={JSON.stringify(entry.details, null, 2)} testId={`admin-error-json-${entry.request_id ?? "unknown"}`} copyTestId={`admin-error-copy-json-${entry.request_id ?? "unknown"}`} />
       </>}
     </article>
