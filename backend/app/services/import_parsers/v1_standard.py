@@ -4,9 +4,9 @@ from typing import Any
 
 import openpyxl
 
+from app.services.excel_bilingual import canonical_headers, canonical_sheet_name, resolve_sheet_name
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
-from app.services.excel_bilingual import canonical_headers, canonical_sheet_name, resolve_sheet_name
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportAssignmentRow,
@@ -21,9 +21,9 @@ from app.services.import_parsers.schema import (
     ImportPersonalConstraintRow,
     ImportRangeAssignmentRow,
     ImportRangeEventRow,
-    ImportRankAdvancementIntervalRow,
     ImportRangeExcusalRequestRow,
     ImportRangeLocationRow,
+    ImportRankAdvancementIntervalRow,
     ImportShiftTemplateRow,
     ImportSoldierEnrollmentRequestRow,
     ImportSoldierExemptionRow,
@@ -187,8 +187,22 @@ class V1StandardParser:
                 unit_join_date=_parse_date(r.get("unit_join_date")),
                 phone=str(r.get("phone") or "").strip() or None,
                 email=str(r.get("email") or "").strip() or None,
+                food_type=str(r.get("food_type") or "").strip() or None,
+                food_constraints=str(r.get("food_constraints") or "").strip() or None,
+                profile_picture_url=str(r.get("profile_picture_url") or "").strip() or None,
+                telegram_chat_id=(
+                    int(r["telegram_chat_id"])
+                    if r.get("telegram_chat_id") not in (None, "")
+                    else None
+                ),
+                telegram_username=str(r.get("telegram_username") or "").strip() or None,
+                telegram_is_verified=_parse_bool(r.get("telegram_is_verified")),
+                telegram_notifications_enabled=_parse_bool(r.get("telegram_notifications_enabled")),
+                telegram_verified_at=str(r.get("telegram_verified_at") or "").strip() or None,
                 is_career=_parse_bool(r.get("is_career")),
                 next_rank_date=_parse_date(r.get("next_rank_date")),
+                next_rank_date_overridden=_parse_bool(r.get("next_rank_date_overridden")),
+                current_rank_since=_parse_date(r.get("current_rank_since")),
                 bahad1_graduate=_parse_bool(r.get("bahad1_graduate")),
                 rank_track=str(r.get("rank_track") or "").strip() or None,
                 has_military_driving_license=_parse_bool(r.get("has_military_driving_license")),
@@ -257,6 +271,7 @@ class V1StandardParser:
                 is_global=_parse_bool(r.get("is_global")),
                 is_medical=_parse_bool(r.get("is_medical")),
                 is_commander_exemption=_parse_bool(r.get("is_commander_exemption")),
+                active=_parse_bool(r.get("active")),
                 applies_to_duty_type_names=_parse_name_list(r.get("applies_to_duty_types")),
                 forbids_weapons=_parse_bool(r.get("forbids_weapons")),
             )
@@ -427,6 +442,7 @@ class V1StandardParser:
                 start_date=_parse_date(r.get("start_date")) or "",
                 end_date=_parse_date(r.get("end_date")),
                 reason=str(r.get("reason") or "").strip() or None,
+                is_medical=_parse_bool(r.get("is_medical")),
                 granted_by_personal_number=str(r.get("granted_by_personal_number") or "").strip() or None,
                 revoked=bool(_parse_bool(r.get("revoked"))),
                 revoke_reason=str(r.get("revoke_reason") or "").strip() or None,
@@ -497,6 +513,9 @@ class V1StandardParser:
                 contact_phone=str(r.get("contact_phone") or "").strip() or None,
                 notes=str(r.get("notes") or "").strip() or None,
                 status=str(r.get("status") or "").strip() or None,
+                responsible_duty_manager_personal_number=(
+                    str(r.get("responsible_duty_manager_personal_number") or "").strip() or None
+                ),
             )
             for r in _sheet_rows(wb, "range_events")
         ]

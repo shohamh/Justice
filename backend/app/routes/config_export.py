@@ -4,8 +4,6 @@ import io
 import json
 
 import openpyxl
-
-from app.services.excel_bilingual import finalize_bilingual_workbook
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -25,6 +23,7 @@ from app.db.models import (
     SystemSetting,
 )
 from app.db.session import get_session
+from app.services.excel_bilingual import finalize_bilingual_workbook
 from app.services.settings_loader import _HIDDEN_KEYS
 
 router = APIRouter(prefix="/config", tags=["config-export"])
@@ -77,7 +76,7 @@ def _write_duty_types(wb: openpyxl.Workbook, session: Session) -> None:
     ws.append([
         "name", "score_per_day", "description", "active", "reserve_ratio", "reserve_minimum",
         "is_external", "contact_name", "contact_phone", "start_time", "end_time",
-        "instructions", "eligible_units", "requirements_json",
+        "instructions", "eligible_units", "requires_weapon", "required_range_type", "requirements_json",
     ])
     nodes_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars()}
     for dt in session.execute(select(DutyType)).scalars():
@@ -90,14 +89,18 @@ def _write_duty_types(wb: openpyxl.Workbook, session: Session) -> None:
             dt.contact_name, dt.contact_phone,
             dt.start_time.strftime("%H:%M") if dt.start_time else "",
             dt.end_time.strftime("%H:%M") if dt.end_time else "",
-            dt.instructions, eligible,
+            dt.instructions, eligible, dt.requires_weapon,
+            getattr(dt.required_range_type, "value", dt.required_range_type),
             json.dumps(dt.requirements, ensure_ascii=False) if dt.requirements else "",
         ])
 
 
 def _write_exemption_types(wb: openpyxl.Workbook, session: Session) -> None:
     ws = wb.create_sheet("exemption_types")
-    ws.append(["name", "description", "is_global", "is_medical", "is_commander_exemption", "applies_to_duty_types"])
+    ws.append([
+        "name", "description", "is_global", "is_medical", "is_commander_exemption",
+        "active", "forbids_weapons", "applies_to_duty_types",
+    ])
     duty_types_by_id = {dt.id: dt for dt in session.execute(select(DutyType)).scalars()}
     map_rows = list(session.execute(select(ExemptionDutyTypeMap)).scalars())
     applies_by_et: dict = {}
@@ -110,7 +113,8 @@ def _write_exemption_types(wb: openpyxl.Workbook, session: Session) -> None:
             for dtid in applies_by_et.get(et.id, []) if dtid in duty_types_by_id
         )
         ws.append([
-            et.name, et.description, et.is_global, et.is_medical, et.is_commander_exemption, applies,
+            et.name, et.description, et.is_global, et.is_medical, et.is_commander_exemption,
+            et.active, et.forbids_weapons, applies,
         ])
 
 

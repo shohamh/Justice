@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import select
 
 from app.db.models import DutyLocation, HierarchyLevelType, RangeLocation, Soldier
@@ -9,6 +11,7 @@ from app.services.import_parsers.schema import (
     ImportRangeAssignmentRow,
     ImportRangeEventRow,
     ImportRangeLocationRow,
+    ImportSoldierRow,
     ParsedImportData,
 )
 from app.services.import_sessions import (
@@ -17,6 +20,7 @@ from app.services.import_sessions import (
     _resolve_range_assignments,
     _resolve_range_events,
     _resolve_range_locations,
+    _resolve_soldiers,
 )
 from tests.helpers import create_node, create_range_event, create_range_location, create_soldier
 
@@ -85,6 +89,31 @@ def test_resolve_duty_locations_empty_sheet(app_session):
 
 def _admin(app_session):
     return create_soldier(app_session, personal_number="admin-1", role="admin")
+
+
+def test_resolve_soldiers_rejects_active_unit_join_date_change(app_session):
+    admin = _admin(app_session)
+    soldier = create_soldier(app_session, personal_number="active-soldier")
+    soldier.enrolled_at = date(2026, 8, 1)
+    soldier.unit_join_date = date(2026, 8, 2)
+    app_session.flush()
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        soldiers=[
+            ImportSoldierRow(
+                source_row=2,
+                personal_number=soldier.personal_number,
+                full_name=soldier.full_name,
+                unit_join_date="2026-08-03",
+            ),
+        ],
+    )
+
+    result = _resolve_soldiers(app_session, data, admin)
+
+    assert result[0]["action"] == "error"
+    assert "unit_join_date" in result[0]["errors"][0]
 
 
 def test_resolve_hierarchy_parent_forward_reference(app_session):

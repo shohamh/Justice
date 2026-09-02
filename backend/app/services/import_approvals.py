@@ -8,14 +8,29 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    BugReport, ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
-    RangeAssignment, RangeEvent, RangeExcusalRequest, RangeExcusalStatus, RangeLocation,
-    RangeType, Soldier, SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
-    SoldierRangeQualification, SwapCandidate, SwapRequest, SystemSetting,
+    BugReport,
+    ExemptionRequest,
+    ExemptionType,
+    HierarchyNode,
+    PersonalConstraint,
+    RangeAssignment,
+    RangeEvent,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
+    RangeLocation,
+    RangeType,
+    Soldier,
+    SoldierEnrollmentRequest,
+    SoldierExemption,
+    SoldierFieldUpdate,
+    SoldierRangeQualification,
+    SwapCandidate,
+    SwapRequest,
+    SystemSetting,
 )
 from app.services import settings_loader
 from app.services.import_parsers.schema import ParsedImportData
-from app.services.settings_loader import SettingsValidationError, _HIDDEN_KEYS
+from app.services.settings_loader import _HIDDEN_KEYS, SettingsValidationError
 
 # The four settings whose combined values are cross-validated as a batch by
 # validate_settings_update (t/r density ordering + relax-ceiling ordering).
@@ -207,6 +222,7 @@ def resolve_soldier_exemptions(session: Session, data: ParsedImportData, overrid
         start_date = field("start_date", row.start_date)
         end_date = field("end_date", row.end_date)
         reason = field("reason", row.reason)
+        is_medical = field("is_medical", row.is_medical)
         granted_by_pn = field("granted_by_personal_number", row.granted_by_personal_number)
         revoked = field("revoked", row.revoked)
         revoke_reason = field("revoke_reason", row.revoke_reason)
@@ -236,6 +252,7 @@ def resolve_soldier_exemptions(session: Session, data: ParsedImportData, overrid
             "exemption_type_name": exemption_type_name,
             "resolved_exemption_type_id": str(exemption_type.id) if exemption_type else None,
             "start_date": start_date, "end_date": end_date, "reason": reason,
+            "is_medical": is_medical,
             "granted_by_personal_number": granted_by_pn,
             "resolved_granted_by_id": str(granted_by.id) if granted_by else None,
             "revoked": revoked, "revoke_reason": revoke_reason,

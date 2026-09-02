@@ -26,6 +26,7 @@ from app.db.models import (
     SwapManagerApproval,
     SwapRequest,
 )
+from app.services.excel_bilingual import hebrew_headers
 from app.services.hierarchy import create_node
 from app.services.import_sessions import confirm_session, create_session
 from tests.helpers import auth_headers, create_range_event, create_range_location, create_soldier
@@ -169,9 +170,9 @@ def test_personal_constraint_import_coerces_legacy_pending_status(admin_session,
     # Simulate a pre-Task-9 export: rewrite the status cell to the legacy
     # literal "pending" value that older exports would still carry.
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes))
-    ws = wb["personal_constraints"]
+    ws = wb["אילוצים אישיים"]
     header = [cell.value for cell in ws[1]]
-    status_col = header.index("status") + 1
+    status_col = header.index(hebrew_headers("personal_constraints", ["status"])[0]) + 1
     ws.cell(row=2, column=status_col, value="pending")
     buf = io.BytesIO()
     wb.save(buf)
@@ -263,7 +264,7 @@ def test_soldier_exemption_export_import_round_trip(admin_session, client):
     admin_session.flush()
     original = SoldierExemption(
         soldier_id=soldier.id, exemption_type_id=et.id, start_date=date_type(2026, 2, 1),
-        end_date=date_type(2026, 2, 10), reason="פציעה", granted_by=granter.id,
+        end_date=date_type(2026, 2, 10), reason="פציעה", is_medical=True, granted_by=granter.id,
     )
     admin_session.add(original)
     admin_session.commit()
@@ -281,6 +282,7 @@ def test_soldier_exemption_export_import_round_trip(admin_session, client):
     admin_session.refresh(original)
 
     assert original.reason == "פציעה"
+    assert original.is_medical is True
     assert original.granted_by == granter.id
     assert original.start_date == date_type(2026, 2, 1)
     assert original.end_date == date_type(2026, 2, 10)

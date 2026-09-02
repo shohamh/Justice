@@ -269,6 +269,7 @@ def create_exemption_type(
     is_medical: bool = False,
     is_commander_exemption: bool = False,
     forbids_weapons: bool = False,
+    active: bool = True,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
     if session.execute(select(ExemptionType.id).where(ExemptionType.name == name)).first():
@@ -280,6 +281,7 @@ def create_exemption_type(
         is_medical=is_medical,
         is_commander_exemption=is_commander_exemption,
         forbids_weapons=forbids_weapons,
+        active=active,
     )
     session.add(et)
     session.flush()
