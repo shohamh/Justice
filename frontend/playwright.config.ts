@@ -2,6 +2,9 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // The bootstrap-admin journey has a different database precondition and is
+  // run explicitly with playwright.admin-flow.config.ts.
+  testIgnore: ["**/admin_flow.spec.ts"],
   globalSetup: "./tests/e2e/fixtures/auth.ts",
   timeout: 30_000,
   fullyParallel: false,

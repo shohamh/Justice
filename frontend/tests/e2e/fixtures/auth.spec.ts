@@ -30,6 +30,18 @@ for (const role of roles) {
     test("roleStorageState restores authentication", async ({ page }) => {
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByTestId("login-form")).toHaveCount(0);
+
+      const me = await page.request.get("/api/me");
+      expect(me.ok()).toBe(true);
+      expect(await me.json()).toEqual(expect.objectContaining({
+        personal_number: {
+          soldier: "1000003",
+          commander: "2000001",
+          dutyManager: "2500001",
+          admin: "1000001",
+        }[role],
+        role: role === "dutyManager" ? "duty_manager" : role,
+      }));
     });
   });
 }
