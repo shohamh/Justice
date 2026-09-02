@@ -48,6 +48,14 @@ class CalendarShiftAssigneeDismissal(BaseModel):
     reason: str | None
 
 
+class CalendarDutyProblem(BaseModel):
+    kind: str
+    source_id: uuid.UUID
+    from_date: date
+    to_date: date
+    reason: str | None
+
+
 class CalendarRangeEligibilityFact(BaseModel):
     eligible: bool
     required_range_type: str | None
@@ -79,6 +87,7 @@ class CalendarShiftAssignee(BaseModel):
     weapon_ineligible: bool = False
     weapon_ineligible_reason: str | None = None
     range_eligibility: CalendarRangeEligibilityFact | None = None
+    problems: list[CalendarDutyProblem] = []
 
 
 class CalendarShiftOut(BaseModel):
@@ -170,6 +179,10 @@ def _redact_shift_reasons(shift: CalendarShiftOut, user: Soldier, roots: set[uui
         for d in assignee.dismissals:
             d.reason = _visible_reason(
                 user, assignee.soldier_id, assignee.hierarchy_path_ids, roots, d.reason
+            )
+        for problem in assignee.problems:
+            problem.reason = _visible_reason(
+                user, assignee.soldier_id, assignee.hierarchy_path_ids, roots, problem.reason
             )
 
 @router.get("/shifts/{shift_id}", response_model=CalendarShiftOut)

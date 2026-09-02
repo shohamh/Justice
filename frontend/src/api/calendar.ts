@@ -33,6 +33,17 @@ export interface CalendarShiftAssigneeDismissal {
   dismissed_from: string;
   dismissed_to: string;
   reason: string | null;
+  is_gimelim: boolean;
+}
+
+export type CalendarDutyProblemKind = "duty_exemption" | "gimelim" | "inability_to_attend" | "hakpaza_pikudit";
+
+export interface CalendarDutyProblem {
+  kind: CalendarDutyProblemKind;
+  source_id: string;
+  from_date: string;
+  to_date: string;
+  reason: string | null;
 }
 
 export interface CalendarShiftAssignee {
@@ -52,6 +63,7 @@ export interface CalendarShiftAssignee {
   weapon_ineligible: boolean;
   weapon_ineligible_reason: string | null;
   range_eligibility: DutyEligibilityFact | null;
+  problems: CalendarDutyProblem[];
 }
 
 export async function dismissReserve(
