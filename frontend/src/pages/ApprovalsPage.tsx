@@ -379,7 +379,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(translateApiError(err, i18n.t.bind(i18n), "שגיאה באישור בקשת הפטור"));
     }
   }
   async function onErApproveDutyManager(id: string) {
@@ -388,7 +388,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(translateApiError(err, i18n.t.bind(i18n), "שגיאה באישור בקשת הפטור"));
     }
   }
   async function onErReject(id: string) {

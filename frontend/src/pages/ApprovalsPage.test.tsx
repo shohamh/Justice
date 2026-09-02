@@ -156,6 +156,30 @@ beforeEach(() => {
 });
 
 describe("ApprovalsPage - action error banner", () => {
+  it("shows the backend error when approving an exemption request fails", async () => {
+    vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
+    vi.mocked(exemptionsApi.approveExemptionRequestCommanderStep).mockRejectedValue({
+      response: { status: 500, data: { detail: "internal_error" } },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    fireEvent.click(await screen.findByTestId("approvals-tab-exemptions"));
+    fireEvent.click(await screen.findByTestId("er-approve-er1"));
+
+    await waitFor(() => expect(screen.getByText("שגיאה באישור בקשת הפטור")).toBeInTheDocument());
+  });
+
   it("shows the backend error message when approving a constraint fails", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
