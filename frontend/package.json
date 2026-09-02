@@ -13,7 +13,7 @@
     "lint:oxlint": "oxlint src",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test --grep smoke --project=desktop --project=mobile-390",
+    "test:e2e:smoke": "playwright test tests/e2e/smoke --project=desktop --project=mobile-390",
     "test:e2e:full": "playwright test && playwright test --config=playwright.admin-flow.config.ts",
     "test:e2e:admin-flow": "playwright test --config=playwright.admin-flow.config.ts"
   },
