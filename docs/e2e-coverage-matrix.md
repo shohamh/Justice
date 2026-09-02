@@ -11,5 +11,6 @@ The default browser projects are Chrome at 1440x1000 and 390x844. Tests run seri
 | Admin | Planning configuration | Configuration page renders real duty types/locations | Desktop/mobile | Full | `smoke/admin_configuration.spec.ts` |
 | Admin | Hierarchy table | Filtering, sorting, and empty state are usable | Desktop/mobile | Full | `smoke/table_interactions.spec.ts` |
 | Admin | Seeded navigation | Hierarchy, calendar, transparency render seeded data | Desktop/mobile | Smoke | `seed_views.spec.ts` |
+| Duty manager, commander, soldiers, reserves | Multi-user duty problems | Algorithm and manual assignment plus exemption, Gimelim, absence, Hakpaza, reserve replacement, and visible commander problem state | Desktop | Full | `smoke/multi_user_duty_problems.spec.ts` |
 
 Retry-passing tests remain failures for triage; a retry is diagnostic evidence, not a clean pass.

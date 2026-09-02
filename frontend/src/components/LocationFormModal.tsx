@@ -45,6 +45,7 @@ export default function LocationFormModal({ onCreated, onClose }: Props) {
               autoFocus
               value={name}
               onChange={e => setName(e.target.value)}
+              data-testid="location-create-name"
               className="mt-1 block w-full border rounded p-1.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             />
           </label>
@@ -54,6 +55,7 @@ export default function LocationFormModal({ onCreated, onClose }: Props) {
               {t("duty_config.cancel", "ביטול")}
             </button>
             <button type="submit" disabled={saving || !name.trim()}
+              data-testid="location-create-submit"
               className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
               {t("duty_config.add")}
             </button>

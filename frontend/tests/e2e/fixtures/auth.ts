@@ -12,8 +12,8 @@ export const journeyActors = {
   assignedGimelim: "1000010",
   assignedAbsent: "1000011",
   assignedHakpaza: "1000012",
-  firstReserve: "1000013",
-  secondReserve: "1000015",
+  firstReserve: "1000002",
+  secondReserve: "1000003",
 } as const;
 
 export type JourneyActor = keyof typeof journeyActors;
