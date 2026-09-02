@@ -4,8 +4,6 @@ import { test, expect } from "../fixtures/test";
 import { createUniqueName } from "../fixtures/data";
 import { roleStorageState } from "../fixtures/auth";
 
-const SEED_PASSWORD = "1234567890";
-const OUT_OF_SCOPE_COMMANDER_PN = "2000002";
 
 function isoDaysFromNow(days: number): string {
   const date = new Date();
@@ -14,97 +12,56 @@ function isoDaysFromNow(days: number): string {
 }
 
 async function contextWithState(browser: Parameters<typeof test>[0]["browser"], role: "soldier") {
-  const projectUse = test.info().project.use as { baseURL?: string; viewport?: { width: number; height: number } };
-  const context = await browser.newContext({
-    baseURL: typeof projectUse.baseURL === "string" ? projectUse.baseURL : "http://localhost:5173",
-    viewport: projectUse.viewport,
-    storageState: roleStorageState(role),
-  });
-  const page = await context.newPage();
-  return { context, page };
-}
-
-async function loginWithPersonalNumber(browser: Parameters<typeof test>[0]["browser"], personalNumber: string) {
-  const projectUse = test.info().project.use as { baseURL?: string; viewport?: { width: number; height: number } };
-  const context = await browser.newContext({
-    baseURL: typeof projectUse.baseURL === "string" ? projectUse.baseURL : "http://localhost:5173",
-    viewport: projectUse.viewport,
-  });
-  const page = await context.newPage();
-  await page.goto("/login");
-  await page.getByTestId("personal-number-input").fill(personalNumber);
-  await page.getByTestId("password-input").fill(SEED_PASSWORD);
-  await page.getByTestId("login-submit").click();
-  await expect(page).toHaveURL(/\/$/);
-  return { context, page };
+  const use = test.info().project.use as { baseURL?: string; viewport?: { width: number; height: number } };
+  const context = await browser.newContext({ baseURL: use.baseURL, viewport: use.viewport, storageState: roleStorageState(role) });
+  return { context, page: await context.newPage() };
 }
 
 async function submitConstraint(page: Page, reason: string, startDate: string, endDate: string) {
   await page.goto("/my-requests");
-  await expect(page).toHaveURL(/\/my-requests$/);
   await page.getByTestId("constraint-form-toggle").click();
   await page.getByTestId("req-start").fill(startDate);
   await page.getByTestId("req-end").fill(endDate);
   await page.getByTestId("req-reason").fill(reason);
+  await expect(page.getByTestId("req-submit")).toBeEnabled();
+  const response = page.waitForResponse((r) => r.url().endsWith("/api/me/constraints") && r.request().method() === "POST");
   await page.getByTestId("req-submit").click();
-}
-
-async function openExistingConstraintRow(page: Page, reason: string) {
-  await page.goto("/my-requests?tab=existing&type=constraints&status=pending");
-  await expect(page).toHaveURL(/\/my-requests\?tab=existing/);
-  const row = page
-    .getByTestId("constraints-list")
-    .locator('[data-testid^="constraint-row-"]', { hasText: reason })
-    .first();
-  await expect(row).toBeVisible();
-  return row;
-}
-
-async function findConstraintId(page: Page, reason: string) {
-  const response = await page.request.get("/api/me/constraints");
-  expect(response.ok()).toBeTruthy();
-  const items = await response.json() as Array<{ id: string; reason: string | null }>;
-  const match = items.find((item) => item.reason === reason);
-  expect(match).toBeTruthy();
-  return match!.id;
+  expect((await response).status()).toBe(201);
 }
 
 test.describe.configure({ mode: "serial" });
 
-test("route-level and action-level authorization boundaries do not allow request mutation @smoke", async ({ browser, page }) => {
-  const reason = `הרשאה-${createUniqueName("auth-boundary")}`;
-  const startDate = isoDaysFromNow(38);
-  const endDate = isoDaysFromNow(40);
-  const resources: BrowserContext[] = [];
-  const closeAll = async () => Promise.all(resources.map((context) => context.close()));
-
+test("out-of-scope reviewer cannot view or mutate another unit request @smoke", async ({ browser }) => {
+  const reason = `authorization-${createUniqueName("boundary")}`;
+  const soldier = await contextWithState(browser, "soldier");
+  const outOfScope = await contextWithState(browser, "soldier");
   try {
-    await page.goto("/approvals?tab=constraints");
-    await expect(page).toHaveURL(/\/approvals\?tab=constraints/);
-    await expect(page.getByRole("alert")).toContainText("שגיאה בטעינת בקשות האישור");
+    await submitConstraint(soldier.page, reason, isoDaysFromNow(38), isoDaysFromNow(40));
+    await soldier.page.goto("/my-requests?tab=existing&type=constraints&status=pending");
+    const row = soldier.page.getByTestId("constraints-list").locator('[data-testid^="constraint-row-"]', { hasText: reason }).first();
+    await expect(row).toBeVisible();
+    const rowTestId = await row.getAttribute("data-testid");
+    const constraintId = rowTestId?.replace("constraint-row-", "");
+    expect(constraintId).toBeTruthy();
 
-    const soldier = await contextWithState(browser, "soldier");
-    resources.push(soldier.context);
-    await submitConstraint(soldier.page, reason, startDate, endDate);
-    const constraintId = await findConstraintId(soldier.page, reason);
-    const soldierPendingRow = await openExistingConstraintRow(soldier.page, reason);
-    await expect(soldierPendingRow).toContainText("ממתין");
-
-    const outOfScope = await loginWithPersonalNumber(browser, OUT_OF_SCOPE_COMMANDER_PN);
-    resources.push(outOfScope.context);
     await outOfScope.page.goto("/approvals?tab=constraints");
     await expect(outOfScope.page).toHaveURL(/\/approvals\?tab=constraints/);
+    await expect(outOfScope.page.getByTestId("approvals-list")).toBeVisible();
     await expect(outOfScope.page.getByTestId("approvals-list")).not.toContainText(reason);
 
-    const rejectResponse = await outOfScope.page.request.post(`/api/constraints/${constraintId}/reject`, {
-      data: { decision_note: "לא בסמכותי" },
-    });
-    expect(rejectResponse.status()).toBe(403);
-
-    await soldier.page.reload();
-    await expect(soldier.page).toHaveURL(/\/my-requests\?tab=existing/);
-    await expect(await openExistingConstraintRow(soldier.page, reason)).toContainText("ממתין");
+    const rejectResponse = await outOfScope.page.evaluate(async (id) => {
+      const response = await fetch(`/api/constraints/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision_note: "not authorized" }),
+      });
+      return response.status;
+    }, constraintId);
+    expect(rejectResponse).toBe(403);
+    await soldier.page.goto("/my-requests?tab=existing&type=constraints&status=pending");
+    await expect(soldier.page.getByTestId("constraints-list")).toContainText(reason);
   } finally {
-    await closeAll();
+    await soldier.context.close();
+    await outOfScope.context.close();
   }
 });

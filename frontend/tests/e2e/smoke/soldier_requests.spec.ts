@@ -26,7 +26,12 @@ test("soldier submits a future personal-constraint request and sees it in the ex
   await page.getByTestId("req-start").fill(startDate);
   await page.getByTestId("req-end").fill(endDate);
   await page.getByTestId("req-reason").fill(reason);
+  await expect(page.getByTestId("req-submit")).toBeEnabled();
+  const submitResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/me/constraints") && response.request().method() === "POST",
+  );
   await page.getByTestId("req-submit").click();
+  expect((await submitResponse).status()).toBe(201);
 
   await page.goto("/my-requests?tab=existing&type=constraints&status=pending");
   await expect(page).toHaveURL(/\/my-requests\?tab=existing/);
