@@ -199,7 +199,8 @@ def dismiss(
     user: Soldier = Depends(require_password_changed),
 ) -> DismissalOut:
     a = _load_assignment(session, assignment_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, a))
+    if a.soldier_id != user.id:
+        authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, a))
     try:
         d = svc.dismiss_primary(
             session,

@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 
 import { expect, test } from "../fixtures/test";
-import { roleStorageState, type Role } from "../fixtures/auth";
+import { journeyActorStorageState, roleStorageState, type Role, type JourneyActor as AuthJourneyActor } from "../fixtures/auth";
 
 /**
  * Task 1 UI seam inventory (read-only; later tasks must drive every mutation
@@ -65,10 +65,6 @@ type JourneyActor =
   | "firstReserve"
   | "secondReserve";
 
-// Task 1 deliberately opens separate browser contexts. The current fixture
-// has one seeded soldier account, so the six soldier-labelled contexts are
-// isolated sessions but not yet six distinct identities. Task 4 must extend
-// the fixture only if dedicated seeded accounts are made available.
 const actorStorageRole: Record<JourneyActor, Role> = {
   dutyManager: "dutyManager",
   commander: "commander",
@@ -80,6 +76,15 @@ const actorStorageRole: Record<JourneyActor, Role> = {
   secondReserve: "soldier",
 };
 
+const journeyStorageActor: Partial<Record<JourneyActor, AuthJourneyActor>> = {
+  assignedExemption: "assignedExemption",
+  assignedGimelim: "assignedGimelim",
+  assignedAbsent: "assignedAbsent",
+  assignedHakpaza: "assignedHakpaza",
+  firstReserve: "firstReserve",
+  secondReserve: "secondReserve",
+};
+
 type RoleContext = { context: BrowserContext; page: Page };
 
 async function openRoleContext(browser: Browser, actor: JourneyActor): Promise<RoleContext> {
@@ -87,10 +92,11 @@ async function openRoleContext(browser: Browser, actor: JourneyActor): Promise<R
     baseURL?: string;
     viewport?: { width: number; height: number };
   };
+  const journeyActor = journeyStorageActor[actor];
   const context = await browser.newContext({
     baseURL: projectUse.baseURL ?? "http://localhost:5173",
     viewport: projectUse.viewport,
-    storageState: roleStorageState(actorStorageRole[actor]),
+    storageState: journeyActor ? journeyActorStorageState(journeyActor) : roleStorageState(actorStorageRole[actor]),
   });
   return { context, page: await context.newPage() };
 }

@@ -19,8 +19,9 @@ import { useAuth } from "../auth/AuthContext";
 import { listEffectiveDuties } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
 import { getReserveStats } from "../api/soldiers";
+import { reportCannotAttend } from "../api/reserves";
 import { queryKeys } from "../queryKeys";
-import { formatDateTimeIsrael, formatDutyRange } from "../utils/formatDate";
+import { formatDateTimeIsrael, formatDutyRange, lastDutyDay } from "../utils/formatDate";
 
 function avg(rows: TransparencyRow[], key: "normalised_score" | "active_days" | "shift_count"): number {
   if (rows.length === 0) return 0;
@@ -59,6 +60,10 @@ export default function MyDutiesPage() {
     end_date: string;
     duty_type_name: string;
   } | null>(null);
+  const [absenceDuty, setAbsenceDuty] = useState<typeof askSwapDuty>(null);
+  const [absenceReason, setAbsenceReason] = useState("");
+  const [absenceError, setAbsenceError] = useState<string | null>(null);
+  const [absenceSubmitting, setAbsenceSubmitting] = useState(false);
 
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
@@ -275,6 +280,16 @@ export default function MyDutiesPage() {
                       </button>
                     </div>
                   )}
+                  {!d.is_reserve && (
+                    <button
+                      type="button"
+                      data-testid={`report-absence-${d.assignment_id}`}
+                      className="mt-1 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-200"
+                      onClick={() => { setAbsenceDuty({ assignment_id: d.assignment_id, start_date: d.start_date, end_date: d.end_date, duty_type_name: d.duty_type_name }); setAbsenceReason(""); setAbsenceError(null); }}
+                    >
+                      לא יכול להגיע
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -288,6 +303,46 @@ export default function MyDutiesPage() {
             onClose={() => setAskSwapDuty(null)}
             onCreated={() => setAskSwapDuty(null)}
           />
+        )}
+        {absenceDuty && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+            <form
+              dir="rtl"
+              data-testid="absence-report-modal"
+              className="w-full max-w-md space-y-4 rounded-lg bg-white p-5 shadow-xl dark:bg-gray-800"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (!user || !absenceReason.trim()) return;
+                setAbsenceSubmitting(true);
+                setAbsenceError(null);
+                try {
+                  await reportCannotAttend(absenceDuty.assignment_id, { from_date: absenceDuty.start_date, to_date: lastDutyDay(absenceDuty.end_date), reason: absenceReason.trim() });
+                  await dutiesQuery.refetch();
+                  setAbsenceDuty(null);
+                } catch (error) {
+                  setAbsenceError(error instanceof Error ? error.message : "לא ניתן לדווח על אי-התייצבות");
+                } finally {
+                  setAbsenceSubmitting(false);
+                }
+              }}
+            >
+              <h3 className="text-lg font-semibold">דיווח אי-יכולת להתייצב — {absenceDuty.duty_type_name}</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-300">{formatDutyRange(absenceDuty.start_date, absenceDuty.end_date)}</p>
+              {absenceError && <p role="alert" className="text-sm text-red-600">{absenceError}</p>}
+              <textarea
+                required
+                value={absenceReason}
+                onChange={(event) => setAbsenceReason(event.target.value)}
+                data-testid="absence-reason"
+                placeholder="סיבה לדיווח"
+                className="min-h-24 w-full rounded border p-2 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <div className="flex justify-end gap-2">
+                <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setAbsenceDuty(null)}>ביטול</button>
+                <button type="submit" data-testid="absence-submit" disabled={absenceSubmitting || !absenceReason.trim()} className="rounded bg-amber-600 px-3 py-1.5 text-sm text-white disabled:opacity-50">{absenceSubmitting ? "שולח..." : "שלח דיווח"}</button>
+              </div>
+            </form>
+          </div>
         )}
       </div>
     </Layout>

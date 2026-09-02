@@ -6,6 +6,7 @@ import MyDutiesPage from "./MyDutiesPage";
 import * as assignmentsApi from "../api/assignments";
 import * as swapsApi from "../api/swaps";
 import * as scoringApi from "../api/scoring";
+import * as reservesApi from "../api/reserves";
 import type { EffectiveDuty } from "../api/assignments";
 
 const mockUseAuth = vi.fn(() => ({ user: null }));
@@ -48,6 +49,10 @@ vi.mock("../api/swaps", () => ({
   getSwapConfig: vi.fn(() => Promise.resolve({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 })),
   createSwap: vi.fn(() => Promise.resolve({})),
   takeDutyFree: vi.fn(() => Promise.resolve({})),
+}));
+
+vi.mock("../api/reserves", () => ({
+  reportCannotAttend: vi.fn(() => Promise.resolve({})),
 }));
 
 const mockCreateSwap = vi.mocked(swapsApi.createSwap);
@@ -227,5 +232,24 @@ describe("MyDutiesPage required scoring data load errors", () => {
 
     await screen.findByTestId("my-diary-page");
     expect(screen.queryByText("my_duties.load_error")).not.toBeInTheDocument();
+  });
+});
+
+describe("MyDutiesPage absence reporting", () => {
+  it("lets a soldier report inability to attend a primary upcoming duty", async () => {
+    vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([makeDuty({ assignment_id: "a-absent" })]);
+    vi.mocked(reservesApi.reportCannotAttend).mockClear();
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("report-absence-a-absent"));
+    expect(screen.getByTestId("absence-report-modal")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("absence-reason"), { target: { value: "לא יכול להגיע" } });
+    fireEvent.click(screen.getByTestId("absence-submit"));
+
+    await waitFor(() => expect(reservesApi.reportCannotAttend).toHaveBeenCalledWith("a-absent", {
+      from_date: "2099-01-10",
+      to_date: "2099-01-10",
+      reason: "לא יכול להגיע",
+    }));
   });
 });

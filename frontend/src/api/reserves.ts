@@ -54,6 +54,13 @@ export async function dismissPrimary(
   return (await api.post<DismissalRecord>(`/duty-assignments/${assignmentId}/dismissals`, { from_date, to_date, reason })).data;
 }
 
+export async function reportCannotAttend(
+  assignmentId: string,
+  body: { from_date: string; to_date: string; reason: string },
+): Promise<DismissalRecord> {
+  return dismissPrimary(assignmentId, body.from_date, body.to_date, body.reason);
+}
+
 export async function deleteDismissal(assignmentId: string, dismissalId: string): Promise<void> {
   await api.delete(`/duty-assignments/${assignmentId}/dismissals/${dismissalId}`);
 }
