@@ -4,7 +4,7 @@ import { roleStorageState } from "./fixtures/auth";
 
 test.use({ storageState: roleStorageState("admin") });
 
-test("seeded data renders correctly across pages", async ({ page }) => {
+test("seeded data renders correctly across pages @smoke", async ({ page }) => {
   await page.getByTestId("nav-commander").click();
   await page.getByTestId("nav-team").click();
   await expect(page.getByTestId("node-tree")).toBeVisible();

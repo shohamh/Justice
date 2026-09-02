@@ -8,13 +8,21 @@ const ADMIN_PERSONAL_NUMBER = "1000001";
 const ADMIN_BOOTSTRAP_PASSWORD = "ChangeMeOnFirstLogin!";
 
 async function findPython(backendDirectory: string): Promise<string> {
-  const venvPython = resolve(backendDirectory, ".venv", "Scripts", "python.exe");
-  try {
-    await access(venvPython);
-    return venvPython;
-  } catch {
-    return "python";
+  const venvPythons = [
+    resolve(backendDirectory, ".venv", "Scripts", "python.exe"),
+    resolve(backendDirectory, ".venv", "bin", "python"),
+  ];
+
+  for (const venvPython of venvPythons) {
+    try {
+      await access(venvPython);
+      return venvPython;
+    } catch {
+      // Try the next platform-specific virtualenv location.
+    }
   }
+
+  return "python";
 }
 
 export default async function prepareAdminFlow(_config: FullConfig): Promise<void> {

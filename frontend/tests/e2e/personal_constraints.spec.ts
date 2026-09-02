@@ -4,7 +4,7 @@ import { roleStorageState } from "./fixtures/auth";
 
 test.use({ storageState: roleStorageState("admin") });
 
-test("soldier submits personal constraint, sees Hebrew error for past date", async ({ page }) => {
+test("soldier submits personal constraint, sees Hebrew error for past date @smoke", async ({ page }) => {
   await page.getByTestId("nav-my-requests").click();
   await expect(page).toHaveURL(/\/my-requests$/);
 
