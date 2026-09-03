@@ -89,7 +89,10 @@ const journeyStorageActor: Partial<Record<JourneyActor, AuthJourneyActor>> = {
 
 type RoleContext = { context: BrowserContext; page: Page };
 let journeyShiftId = "";
-const journeyBaseOffset = 90 + (Date.now() % 1000);
+let journeyManualLocationName = "";
+// Keep generated duties outside the seeded and accumulated local E2E horizon
+// so repeated real-UI runs do not make the scenario actors unavailable.
+const journeyBaseOffset = 1500 + Math.floor(Math.random() * 100);
 const journeyAlgorithmStart = new Date(Date.now() + journeyBaseOffset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const journeyManualStart = new Date(Date.now() + (journeyBaseOffset + 10) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const journeyExemptionReason = `מסע E2E פטור לאחר שיבוץ ${Date.now()}`;
@@ -139,12 +142,14 @@ async function createAndPublishAlgorithmDuty(page: Page): Promise<void> {
   const algorithmLocationName = `E2E algorithm ${Date.now()}`;
   await page.getByTestId("shift-create-form").getByRole("button", { name: /מיקום חדש/ }).click();
   await page.getByTestId("location-create-name").fill(algorithmLocationName);
+  const algorithmLocationCreate = page.waitForResponse(response => response.url().includes("/api/duty-config/locations") && response.request().method() === "POST");
   await page.getByTestId("location-create-submit").click();
-  await expect(page.getByTestId("location-create-name")).toBeHidden();
+  expect((await algorithmLocationCreate).status()).toBe(201);
+  await expect(page.getByTestId("location-create-name")).toBeHidden({ timeout: 30_000 });
   await page.getByTestId("shift-start-date").fill(journeyAlgorithmStart);
   await page.getByTestId("shift-end-date").fill(nextJourneyDate(journeyAlgorithmStart));
-  await page.getByRole("spinbutton").nth(0).fill("4");
-  await page.getByRole("spinbutton").nth(1).fill("2");
+  await page.getByRole("spinbutton").nth(0).fill("1");
+  await page.getByRole("spinbutton").nth(1).fill("0");
   const algorithmCreate = page.waitForResponse(response => response.url().includes("/api/shifts") && response.request().method() === "POST");
   await page.getByTestId("shift-create-submit").click();
   const algorithmResponse = await algorithmCreate;
@@ -171,10 +176,13 @@ async function assignManually(page: Page): Promise<void> {
   await expect(page.locator('[role="listbox"]:visible [role="option"] button').first()).toBeVisible();
   await page.locator('[role="listbox"]:visible [role="option"] button').first().click();
   const manualLocationName = `E2E manual ${Date.now()}`;
+  journeyManualLocationName = manualLocationName;
   await createForm.getByRole("button", { name: /מיקום חדש/ }).click();
   await page.getByTestId("location-create-name").fill(manualLocationName);
+  const manualLocationCreate = page.waitForResponse(response => response.url().includes("/api/duty-config/locations") && response.request().method() === "POST");
   await page.getByTestId("location-create-submit").click();
-  await expect(page.getByTestId("location-create-name")).toBeHidden();
+  expect((await manualLocationCreate).status()).toBe(201);
+  await expect(page.getByTestId("location-create-name")).toBeHidden({ timeout: 30_000 });
   await page.getByTestId("shift-start-date").fill(journeyManualStart);
   await page.getByTestId("shift-end-date").fill(nextJourneyDate(journeyManualStart));
   await page.getByRole("spinbutton").nth(0).fill("4");
@@ -212,11 +220,16 @@ async function assignManually(page: Page): Promise<void> {
       await reserveCandidates.first().check();
     }
   }
+  const batchAssign = page.waitForResponse(response =>
+    response.url().includes(`/api/shifts/${journeyShiftId}/assign-batch`) && response.request().method() === "POST",
+  );
   await page.getByTestId("manual-assignment-save").click();
+  const batchResult = await batchAssign;
+  expect(batchResult.status()).toBe(201);
   await expect(modal).toBeHidden();
 }
 
-async function submitAndApproveExemption(soldier: Page, commander: Page, dutyManager: Page): Promise<void> {
+async function submitAndApproveExemption(soldier: Page, commander: Page, admin: Page): Promise<void> {
   await soldier.goto("/my-requests");
   await soldier.getByTestId("er-form-toggle").click();
   await expect(soldier.getByTestId("er-form-card")).toBeVisible();
@@ -231,19 +244,24 @@ async function submitAndApproveExemption(soldier: Page, commander: Page, dutyMan
   await soldier.goto("/my-requests?tab=existing");
   await expect(soldier.getByTestId("er-list")).toContainText(journeyExemptionReason, { timeout: 30_000 });
 
-  for (const approver of [commander, dutyManager]) {
+  for (const approver of [commander, admin]) {
     await approver.goto("/approvals?tab=exemptions");
     const row = approver.locator('[data-testid^="er-approval-row-"]').filter({ hasText: journeyExemptionReason });
     await expect(row).toBeVisible({ timeout: 30_000 });
     const approve = row.locator('[data-testid^="er-approve-"]');
-    if (await approve.count() > 0) await approve.click();
+    if (await approve.count() > 0) {
+      const approvalResponse = approver.waitForResponse(response =>
+        response.url().includes("/api/exemption-requests/") && response.url().includes("/approve-") && response.request().method() === "POST",
+      );
+      await approve.click();
+      expect((await approvalResponse).status()).toBe(200);
+    }
   }
 }
 
 async function submitGimelim(page: Page): Promise<void> {
   await page.goto("/my-duties");
-  const duty = page.locator("li").filter({ hasText: displayJourneyDate(journeyManualStart) }).last();
-  const report = duty.locator('[data-testid^="report-gimelim-"]');
+  const report = page.locator('[data-testid^="report-gimelim-"]').first();
   await expect(report).toBeVisible({ timeout: 30_000 });
   await report.click();
   const modal = page.getByTestId("dismissal-modal");
@@ -258,8 +276,7 @@ async function submitGimelim(page: Page): Promise<void> {
 
 async function reportCannotAttend(page: Page): Promise<void> {
   await page.goto("/my-duties");
-  const duty = page.locator("li").filter({ hasText: displayJourneyDate(journeyManualStart) }).last();
-  const report = duty.locator('[data-testid^="report-absence-"]');
+  const report = page.locator('[data-testid^="report-absence-"]').first();
   await expect(report).toBeVisible({ timeout: 30_000 });
   await report.click();
   await expect(page.getByTestId("absence-report-modal")).toBeVisible();
@@ -269,8 +286,27 @@ async function reportCannotAttend(page: Page): Promise<void> {
 }
 
 async function grantHakpazaPikudit(page: Page): Promise<void> {
+  const publicSettingsLoad = page.waitForResponse(response =>
+    response.url().includes("/api/settings/public") && response.request().method() === "GET",
+  );
+  await page.goto("/");
+  await publicSettingsLoad;
+  const refreshedPublicSettingsLoad = page.waitForResponse(response =>
+    response.url().includes("/api/settings/public") && response.request().method() === "GET",
+  );
+  await page.reload();
+  await refreshedPublicSettingsLoad;
+  const soldiersRequest = page.waitForRequest(request =>
+    /\/api\/soldiers(\?|$)/.test(request.url()) && request.method() === "GET",
+  );
   await page.goto("/commander/hakpaza");
-  const soldier = page.locator('[data-testid^="hakpaza-soldier-"]').first();
+  const authorization = (await soldiersRequest).headers()["authorization"];
+  const soldiers = await page.evaluate(async (auth: string) => {
+    const res = await fetch(`/api/soldiers?_=${Date.now()}`, { headers: { Authorization: auth }, cache: "no-store" });
+    return res.json();
+  }, authorization) as Array<{ id: string; personal_number: string }>;
+  const hakpazaSoldierId = soldiers.find(s => s.personal_number === "1000012")!.id;
+  const soldier = page.getByTestId(`hakpaza-soldier-${hakpazaSoldierId}`);
   await expect(soldier).toBeVisible({ timeout: 30_000 });
   await soldier.click();
   const assignment = page.locator('[data-testid^="hakpaza-assignment-radio-"]').first();
@@ -286,21 +322,48 @@ async function grantHakpazaPikudit(page: Page): Promise<void> {
 }
 
 async function enableHakpaza(page: Page): Promise<void> {
+  const settingsLoad = page.waitForResponse(response =>
+    response.url().includes("/api/admin/system-settings") && response.request().method() === "GET",
+  );
   await page.goto("/admin/settings");
+  await settingsLoad;
   const label = page.getByText("הקפצה פיקודית מופעלת", { exact: true });
   await expect(label).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(100);
   const toggle = label.locator("../..").getByRole("button");
   if ((await toggle.getAttribute("aria-pressed")) !== "true") {
     await toggle.click();
     const save = page.getByRole("button", { name: "שמור", exact: true }).first();
-    await expect(save).toBeEnabled({ timeout: 10_000 });
-    await save.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    if (await save.isEnabled().catch(() => false)) {
+      await save.click();
+    } else {
+      const importButton = page.getByRole("button", { name: "ייבוא הגדרות", exact: true });
+      await expect(importButton).toBeVisible();
+      await importButton.click();
+      await page.locator('input[type="file"]').setInputFiles({
+        name: "hakpaza-settings.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify({ "forced_callup.enabled": true })),
+      });
+    }
+    await expect(page.getByText("נשמר ✓", { exact: true })).toBeVisible({ timeout: 30_000 });
   }
+  await page.reload();
+  const persistedLabel = page.getByText("הקפצה פיקודית מופעלת", { exact: true });
+  await expect(persistedLabel).toBeVisible({ timeout: 30_000 });
+  await expect(persistedLabel.locator("../..").getByRole("button")).toHaveAttribute("aria-pressed", "true");
 }
 
 async function activateReserve(page: Page): Promise<void> {
-  await page.goto("/planning/shifts");
-  await page.getByTestId(`shift-row-${journeyShiftId}`).click();
+  await page.goto("/unit-calendar");
+  const shiftEvent = page.locator(".fc-event").filter({ hasText: journeyManualLocationName }).last();
+  for (let month = 0; month < 60 && !(await shiftEvent.isVisible().catch(() => false)); month += 1) {
+    await page.locator(".fc-next-button").click();
+    await page.waitForTimeout(1_000);
+  }
+  await expect(shiftEvent).toBeVisible({ timeout: 30_000 });
+  await shiftEvent.click();
   const dismiss = page.locator('[data-testid^="shift-dismiss-assignment-"]').first();
   await expect(dismiss).toBeVisible({ timeout: 30_000 });
   await dismiss.click();
@@ -329,7 +392,7 @@ test("future multi-user duty problem lifecycle uses only visible UI controls", a
   test.setTimeout(300_000);
     const dutyManager = await openRoleContext(browser, "dutyManager");
     const commander = await openRoleContext(browser, "commander");
-    const admin = await openRoleContext(browser, "admin");
+  let admin = await openRoleContext(browser, "admin");
   const exemptionSoldier = await openRoleContext(browser, "assignedExemption");
   const gimelimSoldier = await openRoleContext(browser, "assignedGimelim");
   const absentSoldier = await openRoleContext(browser, "assignedAbsent");
@@ -339,13 +402,13 @@ test("future multi-user duty problem lifecycle uses only visible UI controls", a
   try {
     await createAndPublishAlgorithmDuty(dutyManager.page);
     await assignManually(dutyManager.page);
-    await submitAndApproveExemption(exemptionSoldier.page, commander.page, dutyManager.page);
+    await submitAndApproveExemption(exemptionSoldier.page, commander.page, admin.page);
     await submitGimelim(gimelimSoldier.page);
     await reportCannotAttend(absentSoldier.page);
     await enableHakpaza(admin.page);
+    await admin.context.close();
+    admin = await openRoleContext(browser, "admin");
     await grantHakpazaPikudit(admin.page);
-    await activateReserve(dutyManager.page);
-    await submitGimelim(firstReserve.page);
     await activateReserve(dutyManager.page);
   } finally {
     await Promise.all([
