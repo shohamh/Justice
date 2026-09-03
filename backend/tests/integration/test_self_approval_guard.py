@@ -135,6 +135,7 @@ def test_commander_cannot_approve_own_exemption_request(client: TestClient, admi
 
     resp = client.post(
         f"/api/exemption-requests/{req.id}/approve-commander",
+        json={},
         headers=auth_headers(commander),
     )
     assert resp.status_code == 403, resp.text
