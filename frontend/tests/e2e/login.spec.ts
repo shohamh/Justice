@@ -5,7 +5,7 @@ test.describe("login", () => {
   // flow (covered by change_password.spec.ts) and a normal admin login landing
   // on "/" (covered by soldiers.spec.ts). This file keeps the order-independent
   // wrong-password case.
-  test("login with wrong password shows Hebrew error", async ({ page }) => {
+  test("login with wrong password shows Hebrew error @smoke", async ({ page }) => {
     await page.goto("/login");
     await page.getByTestId("personal-number-input").fill("1000001");
     await page.getByTestId("password-input").fill("wrong-password");

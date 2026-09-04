@@ -41,6 +41,7 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     HierarchyNode,
+    HierarchyTransferRequest,
     PersonalConstraint,
     RangeAssignment,
     RangeAttendanceStatus,
@@ -133,6 +134,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             session.query(DutyShift).delete()
             session.query(SoldierEnrollmentRequest).delete()
             session.query(SoldierFieldUpdate).delete()
+            # No DB-level cascade from hierarchy_nodes to
+            # hierarchy_transfer_requests (to_node_id/from_node_id are plain
+            # FKs, unlike soldier_id's ON DELETE CASCADE) — must clear these
+            # explicitly before deleting HierarchyNode rows, or --clear fails
+            # with a ForeignKeyViolation on any DB where a transfer request
+            # was ever created (e.g. after running
+            # smoke/hierarchy_transfers.spec.ts).
+            session.query(HierarchyTransferRequest).delete()
             session.query(HierarchyNode).delete()
             session.query(Soldier).delete()
             session.query(ShiftTemplate).delete()

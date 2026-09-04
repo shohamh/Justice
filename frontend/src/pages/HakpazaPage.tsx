@@ -245,6 +245,7 @@ export default function HakpazaPage() {
                   .filter((s) => !soldierSearch || s.full_name.includes(soldierSearch))
                   .map((s) => (
                     <button
+                      data-testid={`hakpaza-soldier-${s.id}`}
                       key={s.id}
                       type="button"
                       className="w-full text-right px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center justify-between gap-2"
@@ -295,13 +296,15 @@ export default function HakpazaPage() {
                 {assignments.map((a) => (
                   <label
                     key={a.id}
+                    data-testid={`hakpaza-assignment-${a.id}`}
                     className={`flex items-center gap-3 p-2 border rounded cursor-pointer ${
                       selectedAssignment?.id === a.id
                         ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950"
                         : "border-gray-200 dark:border-gray-700"
                     }`}
                   >
-                    <input
+                      <input
+                        data-testid={`hakpaza-assignment-radio-${a.id}`}
                       type="radio"
                       name="assignment"
                       onChange={() => {
@@ -332,6 +335,7 @@ export default function HakpazaPage() {
 
             {step === 2 && (
               <button
+                data-testid="hakpaza-find-candidates"
                 className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                 disabled={!selectedAssignment || loading}
                 onClick={() => void handleFindCandidates()}
@@ -367,6 +371,7 @@ export default function HakpazaPage() {
                     {candidates.map((c) => (
                       <tr
                         key={c.soldier_id}
+                        data-testid={`hakpaza-candidate-${c.soldier_id}`}
                         className={`border-b dark:border-gray-700 cursor-pointer ${
                           selectedCandidate?.soldier_id === c.soldier_id
                             ? "bg-indigo-50 dark:bg-indigo-950"
@@ -396,6 +401,7 @@ export default function HakpazaPage() {
 
             {step === 3 && selectedCandidate && (
               <button
+                data-testid="hakpaza-review-candidate"
                 className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700"
                 onClick={() => setStep(4)}
               >
@@ -428,12 +434,14 @@ export default function HakpazaPage() {
             </div>
             <div className="flex flex-wrap gap-3">
               <button
+                data-testid="hakpaza-back-to-candidates"
                 className="border border-gray-300 px-4 py-2 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
                 onClick={() => setStep(3)}
               >
                 חזור
               </button>
               <button
+                data-testid="hakpaza-submit"
                 className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                 disabled={loading}
                 onClick={() => void handleSubmit()}

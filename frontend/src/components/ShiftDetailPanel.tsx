@@ -223,6 +223,15 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
     shift.required_range_type
   );
 
+  const problemLabels: Record<string, string> = {
+    duty_exemption: "פטור מתורנות",
+    gimelim: "גימלים",
+    inability_to_attend: "אי-יכולת להתייצב",
+    hakpaza_pikudit: "הקפצה פיקודית",
+  };
+  const problemAssignees = shift.assignees.filter((a) => a.problems.length > 0);
+  const calledUpReserves = shift.assignees.filter((a) => a.is_reserve && a.called_up_from);
+
   const assigneeById = Object.fromEntries(
     shift.assignees.map((a) => [a.assignment_id, { soldierId: a.soldier_id, name: a.soldier_name }])
   );
@@ -285,6 +294,51 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
               {dutyRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}
             </ul>
           </div>
+        )}
+        {problemAssignees.length > 0 && (
+          <section
+            data-testid="shift-problem-panel"
+            className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-800 dark:bg-red-950/30"
+            dir="rtl"
+          >
+            <h4 className="mb-2 font-semibold text-red-800 dark:text-red-200">{t("shift_problems.title", "בעיות בתורנות")}</h4>
+            <div className="space-y-2">
+              {problemAssignees.map((assignee) => (
+                <div key={assignee.assignment_id} className="rounded border border-red-200 bg-white/70 p-2 dark:border-red-800 dark:bg-gray-800/60">
+                  <div className="font-medium text-gray-800 dark:text-gray-100">
+                    <SoldierLink id={assignee.soldier_id} name={assignee.soldier_name} />
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {assignee.problems.map((problem) => (
+                      <span
+                        key={`${problem.kind}-${problem.source_id}`}
+                        data-testid={`problem-badge-${problem.kind}`}
+                        className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-800 dark:bg-red-900 dark:text-red-200"
+                        title={problem.reason ?? undefined}
+                      >
+                        {t(`shift_problems.${problem.kind}`, problemLabels[problem.kind] ?? problem.kind)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {calledUpReserves.some((a) => a.primary_assignment_ids.length > 0) && (
+          <section data-testid="replacement-history" className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm dark:border-blue-800 dark:bg-blue-950/30">
+            <h4 className="mb-2 font-semibold text-blue-800 dark:text-blue-200">{t("shift_problems.replacement_history", "היסטוריית החלפות")}</h4>
+            <div className="space-y-2">
+              {calledUpReserves.filter((a) => a.primary_assignment_ids.length > 0).map((reserve) => (
+                <div key={reserve.assignment_id} data-testid={`replacement-row-${reserve.assignment_id}`} className="flex flex-wrap items-center gap-2">
+                  <SoldierLink id={reserve.soldier_id} name={reserve.soldier_name} />
+                  <span className="text-xs text-blue-700 dark:text-blue-300">{t("shift_problems.active_reserve", "רזרבה פעילה")}</span>
+                  <span className="text-xs text-gray-600 dark:text-gray-300">{t("shift_problems.replaces", "מחליף:")}</span>
+                  {reserve.primary_assignment_ids.map((id) => <React.Fragment key={id}>{soldierNode(id)}</React.Fragment>)}
+                </div>
+              ))}
+            </div>
+          </section>
         )}
         {(() => {
           const dt = shiftDutyTypes[shift.duty_type_id];
@@ -363,6 +417,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                           )}
                           {(user?.role === "admin" || user?.is_duty_manager) && (
                             <button
+                              data-testid={`shift-dismiss-assignment-${a.assignment_id}`}
                               className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
                               onClick={() => setDismissTarget(a)}
                             >

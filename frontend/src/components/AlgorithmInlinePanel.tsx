@@ -53,7 +53,7 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
   }
 
   return (
-    <div className="border dark:border-gray-600 rounded-lg bg-indigo-50 dark:bg-indigo-950 p-4 space-y-3 text-sm" dir="rtl">
+    <div className="border dark:border-gray-600 rounded-lg bg-indigo-50 dark:bg-indigo-950 p-4 space-y-3 text-sm" dir="rtl" data-testid="algorithm-run-panel">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-indigo-800 dark:text-indigo-200">
           {selectedShiftIds.length} משמרות נבחרות
@@ -74,6 +74,7 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
         <div className="flex rounded border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
           <button
             type="button"
+            data-testid="algorithm-run-draft-mode"
             className={`px-3 py-1 ${mode === "draft" ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
             onClick={() => setMode("draft")}
           >
@@ -174,6 +175,7 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
 
       <button
         type="button"
+        data-testid="algorithm-run-submit"
         onClick={handleSubmit}
         disabled={submitting || selectedShiftIds.length === 0}
         className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"

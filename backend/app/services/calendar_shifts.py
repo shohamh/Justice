@@ -15,7 +15,10 @@ from app.db.models import (
     DutyShift,
     DutyType,
     DutyLocation,
+    ExemptionDutyTypeMap,
+    ForcedCallup,
     HierarchyNode,
+    SoldierExemption,
     Soldier,
     SystemSetting,
 )
@@ -85,6 +88,84 @@ def _attach_range_eligibility_facts(session: Session, shifts: list[dict[str, Any
                 if fact is not None
                 else None
             )
+
+
+def _attach_duty_problems(session: Session, shifts: list[dict[str, Any]]) -> None:
+    """Attach non-sensitive operational conflicts to each displayed assignment."""
+    entries = [
+        (shift, assignee)
+        for shift in shifts
+        for assignee in shift["assignees"]
+    ]
+    if not entries:
+        return
+
+    assignment_ids = {assignee["assignment_id"] for _shift, assignee in entries}
+    by_assignment = {assignee["assignment_id"]: (shift, assignee) for shift, assignee in entries}
+    for _shift, assignee in entries:
+        assignee["problems"] = []
+
+    for dismissal in session.execute(
+        select(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids))
+    ).scalars():
+        target = by_assignment.get(dismissal.duty_assignment_id)
+        if target is None:
+            continue
+        _shift, assignee = target
+        kind = "gimelim" if dismissal.is_gimelim else "inability_to_attend"
+        assignee["problems"].append({
+            "kind": kind,
+            "source_id": dismissal.id,
+            "from_date": dismissal.dismissed_from,
+            "to_date": dismissal.dismissed_to,
+            "reason": dismissal.reason,
+        })
+
+    soldier_ids = {assignee["soldier_id"] for _shift, assignee in entries}
+    exemptions = session.execute(
+        select(SoldierExemption).where(
+            SoldierExemption.soldier_id.in_(soldier_ids),
+            SoldierExemption.revoked_at.is_(None),
+        )
+    ).scalars().all()
+    mapped_duty_types = {
+        (row.exemption_type_id, row.duty_type_id)
+        for row in session.execute(select(ExemptionDutyTypeMap)).scalars()
+    }
+    for exemption in exemptions:
+        for shift, assignee in entries:
+            if assignee["soldier_id"] != exemption.soldier_id:
+                continue
+            if (exemption.exemption_type_id, shift["duty_type_id"]) not in mapped_duty_types:
+                continue
+            last_day = shift["end_date"] - timedelta(days=1)
+            if exemption.start_date > last_day or (exemption.end_date and exemption.end_date < shift["start_date"]):
+                continue
+            assignee["problems"].append({
+                "kind": "duty_exemption",
+                "source_id": exemption.id,
+                "from_date": max(exemption.start_date, shift["start_date"]),
+                "to_date": min(exemption.end_date or last_day, last_day),
+                "reason": None,
+            })
+
+    for callup in session.execute(
+        select(ForcedCallup).where(
+            ForcedCallup.original_assignment_id.in_(assignment_ids),
+            ForcedCallup.status == "approved",
+        )
+    ).scalars():
+        target = by_assignment.get(callup.original_assignment_id)
+        if target is None:
+            continue
+        shift, assignee = target
+        assignee["problems"].append({
+            "kind": "hakpaza_pikudit",
+            "source_id": callup.id,
+            "from_date": callup.pull_date,
+            "to_date": shift["end_date"] - timedelta(days=1),
+            "reason": None,
+        })
 
 
 def get_calendar_shifts(
@@ -367,6 +448,7 @@ def get_calendar_shifts(
             }
         )
 
+    _attach_duty_problems(session, result)
     if include_eligibility_facts:
         _attach_range_eligibility_facts(session, result)
     return result
@@ -561,5 +643,6 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
         "reserve_count": reserve_count,
         "assignees": assignees,
     }
+    _attach_duty_problems(session, [result])
     _attach_range_eligibility_facts(session, [result])
     return result

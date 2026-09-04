@@ -207,7 +207,7 @@ export default function DismissalModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+    <div data-testid="dismissal-modal" className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-5">
           <div>
@@ -223,6 +223,7 @@ export default function DismissalModal({
           <div className="flex gap-1 mb-5 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               type="button"
+              data-testid="dismissal-mode-regular"
               onClick={() => setMode("regular")}
               className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${mode === "regular" ? "bg-white dark:bg-gray-800 shadow font-medium" : "text-gray-500"}`}
             >
@@ -230,6 +231,7 @@ export default function DismissalModal({
             </button>
             <button
               type="button"
+              data-testid="dismissal-mode-gimelim"
               onClick={() => setMode("gimelim")}
               className={`flex-1 text-sm py-1.5 rounded-md transition-colors ${mode === "gimelim" ? "bg-white dark:bg-gray-800 shadow font-medium text-red-700" : "text-gray-500"}`}
             >
@@ -300,6 +302,7 @@ export default function DismissalModal({
                   }))}
                   value={selectedReserveId}
                   onChange={setSelectedReserveId}
+                  testId="dismissal-covering-reserve"
                 />
               )}
             </div>
@@ -327,6 +330,7 @@ export default function DismissalModal({
                 {t("dismiss_modal.cancel")}
               </button>
               <button
+                data-testid="dismissal-save-replacement"
                 onClick={() => mutation.mutate()}
                 disabled={mutation.isPending || selectedReserveId === ""}
                 className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
@@ -471,6 +475,7 @@ export default function DismissalModal({
                 ביטול
               </button>
               <button
+                data-testid="gimelim-preview-action"
                 onClick={handlePreviewClick}
                 disabled={previewMutation.isPending}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors shadow-sm"
@@ -483,7 +488,7 @@ export default function DismissalModal({
 
         {mode === "gimelim" && gimelimStep === "preview" && preview && (
           <>
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-3 text-sm space-y-1">
+            <div data-testid="gimelim-preview" className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-3 text-sm space-y-1">
               <div className="font-semibold text-gray-700 dark:text-gray-200 mb-1">
                 ⬛ תורנות נוכחית — {preview.current_shift.duty_type_name}
               </div>
@@ -564,6 +569,7 @@ export default function DismissalModal({
                 ⟵ חזור לעריכה
               </button>
               <button
+                data-testid="gimelim-commit-action"
                 onClick={() => commitMutation.mutate()}
                 disabled={commitMutation.isPending}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors shadow-sm"

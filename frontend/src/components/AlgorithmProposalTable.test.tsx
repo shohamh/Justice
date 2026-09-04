@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import AlgorithmProposalTable from "./AlgorithmProposalTable";
 import type { AlgorithmJob } from "../api/algorithm";
-import { bulkRejectProposals } from "../api/algorithm";
+import { bulkAcceptProposals, bulkRejectProposals } from "../api/algorithm";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -33,6 +34,25 @@ const job: AlgorithmJob = {
 };
 
 describe("AlgorithmProposalTable", () => {
+  it("publishes the reviewed proposals and renders their successful state", async () => {
+    vi.mocked(bulkAcceptProposals).mockResolvedValue({ accepted: 1 });
+    function Harness() {
+      const [currentJob, setCurrentJob] = useState(job);
+      return <AlgorithmProposalTable job={currentJob} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "Dani Cohen" }]} dutyTypes={[{ id: "type-1", name: "Guard" }]} isDraft={currentJob.proposals.some(proposal => proposal.status === "algorithm_draft")} onProposalUpdate={setCurrentJob} />;
+    }
+    render(<Harness />);
+
+    expect(screen.getByTestId("algorithm-proposal-review")).toBeVisible();
+    fireEvent.click(screen.getByTestId("algorithm-publish-proposals"));
+
+    await waitFor(() => expect(bulkAcceptProposals).toHaveBeenCalledWith("job-1", ["assignment-1"]));
+    await waitFor(() => {
+      expect(screen.getByTestId("algorithm-proposal-assignment-1")).toHaveClass("bg-green-50");
+      expect(screen.getByTestId("algorithm-publish-proposals")).toBeDisabled();
+      expect(screen.getByTestId("algorithm-publish-proposals")).toHaveTextContent("(0)");
+    });
+  });
+
   it("does not reject a draft until its translated confirmation is accepted", async () => {
     vi.mocked(bulkRejectProposals).mockResolvedValue(undefined);
     render(<AlgorithmProposalTable job={job} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "דני כהן" }]} dutyTypes={[{ id: "type-1", name: "שמירה" }]} isDraft onProposalUpdate={vi.fn()} />);

@@ -20,7 +20,11 @@ vi.mock("../components/AlgorithmInlinePanel", () => ({
   default: () => <div data-testid="algorithm-panel" />,
 }));
 vi.mock("../components/ShiftFormModal", () => ({
-  default: () => <div data-testid="shift-form-modal" />,
+  default: ({ onSaved }: { onSaved: () => void | Promise<void> }) => (
+    <div data-testid="shift-form-modal">
+      <button type="button" onClick={() => void onSaved()}>complete shift create</button>
+    </div>
+  ),
 }));
 vi.mock("../components/ShiftEditAssignmentsModal", () => ({
   default: () => <div data-testid="shift-assignments-modal" />,
@@ -95,6 +99,34 @@ function renderShifts(shifts: shiftsApi.DutyShift[]) {
     </BrowserRouter>,
   );
 }
+
+test("exposes stable shift creation, row, and manual assignment controls", async () => {
+  renderShifts([shift("shift-1")]);
+
+  expect(await screen.findByTestId("shift-row-shift-1")).toBeVisible();
+  expect(screen.getByTestId("shift-create-button")).toBeEnabled();
+  expect(screen.getByTestId("manual-assignment-open-shift-1")).toBeEnabled();
+});
+
+test("refreshes the planning table with the created shift after the create modal succeeds", async () => {
+  seedShiftQueries([]);
+  vi.mocked(shiftsApi.listShifts)
+    .mockResolvedValueOnce([])
+    .mockResolvedValue([shift("created-shift")]);
+
+  render(
+    <BrowserRouter>
+      <QueryClientProvider client={createTestQueryClient()}>
+        <ShiftsContent />
+      </QueryClientProvider>
+    </BrowserRouter>,
+  );
+
+  fireEvent.click(await screen.findByTestId("shift-create-button"));
+  fireEvent.click(screen.getByRole("button", { name: "complete shift create" }));
+
+  expect(await screen.findByTestId("shift-row-created-shift")).toBeVisible();
+});
 
 test("requires a styled confirmation before clearing selected shift assignments", async () => {
   const nativeConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -290,8 +322,8 @@ test("filters planning rows to weapon-ineligible shifts from the query parameter
     </MemoryRouter>
   );
 
-  expect(await screen.findByTestId("ineligible-shift")).toBeInTheDocument();
-  expect(screen.queryByTestId("eligible-shift")).not.toBeInTheDocument();
+  expect(await screen.findByTestId("shift-row-ineligible-shift")).toBeInTheDocument();
+  expect(screen.queryByTestId("shift-row-eligible-shift")).not.toBeInTheDocument();
 });
 
 test("selecting a duty type in the quick filter checks all matching shift rows", async () => {

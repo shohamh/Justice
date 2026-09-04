@@ -701,7 +701,10 @@ def list_range_events(
 
 class RangeExcusalOut(BaseModel):
     id: uuid.UUID
-    range_assignment_id: uuid.UUID
+    # Nullable: approved primary (and self-service reserve) excusals delete the
+    # underlying assignment and the FK is ON DELETE SET NULL — see the model's
+    # own comment on RangeExcusalRequest.range_assignment_id.
+    range_assignment_id: uuid.UUID | None
     requested_by: uuid.UUID | None
     reason: str
     status: str

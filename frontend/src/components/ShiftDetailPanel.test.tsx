@@ -1,5 +1,6 @@
 // frontend/src/components/ShiftDetailPanel.test.tsx
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
@@ -89,6 +90,7 @@ function makeAssignee(overrides: Partial<CalendarShiftAssignee>): CalendarShiftA
     weapon_ineligible: false,
     weapon_ineligible_reason: null,
     range_eligibility: null,
+    problems: [],
     ...overrides,
   };
 }
@@ -120,9 +122,11 @@ function makeShift(assignees: CalendarShiftAssignee[], overrides: Partial<Calend
 function renderPanel(shift: CalendarShift) {
   const onRefreshNeeded = vi.fn();
   render(
-    <SoldierModalProvider>
-      <ShiftDetailPanel shift={shift} onClose={vi.fn()} onRefreshNeeded={onRefreshNeeded} />
-    </SoldierModalProvider>
+    <QueryClientProvider client={new QueryClient()}>
+      <SoldierModalProvider>
+        <ShiftDetailPanel shift={shift} onClose={vi.fn()} onRefreshNeeded={onRefreshNeeded} />
+      </SoldierModalProvider>
+    </QueryClientProvider>
   );
   return { onRefreshNeeded };
 }
@@ -324,6 +328,43 @@ describe("ShiftDetailPanel weapon-ineligibility markers", () => {
   });
 });
 
+describe("ShiftDetailPanel duty problems", () => {
+  it("distinguishes each operational problem and preserves replacement history", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "cmd-1", role: "commander", is_commander: true, is_duty_manager: false } });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          assignment_id: "primary-1",
+          soldier_name: "חייל פטור",
+          problems: [
+            { kind: "duty_exemption", source_id: "exemption-1", from_date: "2026-08-10", to_date: "2026-08-10", reason: null },
+            { kind: "gimelim", source_id: "gimelim-1", from_date: "2026-08-10", to_date: "2026-08-10", reason: "מחלה" },
+            { kind: "inability_to_attend", source_id: "absence-1", from_date: "2026-08-10", to_date: "2026-08-10", reason: "לא יכול להגיע" },
+            { kind: "hakpaza_pikudit", source_id: "hakpaza-1", from_date: "2026-08-10", to_date: "2026-08-10", reason: null },
+          ],
+          dismissals: [{ id: "gimelim-1", dismissed_from: "2026-08-10", dismissed_to: "2026-08-10", reason: "מחלה", is_gimelim: true }],
+        }),
+        makeAssignee({
+          assignment_id: "reserve-1",
+          soldier_name: "רזרבה פעילה",
+          is_reserve: true,
+          called_up_from: "2026-08-10",
+          called_up_to: "2026-08-10",
+          primary_assignment_ids: ["primary-1"],
+        }),
+      ]),
+    );
+
+    const panel = screen.getByTestId("shift-problem-panel");
+    expect(within(panel).getByTestId("problem-badge-duty_exemption")).toHaveTextContent("פטור מתורנות");
+    expect(within(panel).getByTestId("problem-badge-gimelim")).toHaveTextContent("גימלים");
+    expect(within(panel).getByTestId("problem-badge-inability_to_attend")).toHaveTextContent("אי-יכולת להתייצב");
+    expect(within(panel).getByTestId("problem-badge-hakpaza_pikudit")).toHaveTextContent("הקפצה פיקודית");
+    expect(screen.getByTestId("replacement-row-reserve-1")).toHaveTextContent("רזרבה פעילה");
+    expect(screen.getByTestId("replacement-history")).toHaveTextContent("חייל פטור");
+  });
+});
+
 describe("ShiftDetailPanel duty requirements", () => {
   beforeEach(() => {
     vi.mocked(dutyConfigApi.listDutyTypes).mockReset().mockResolvedValue([]);
@@ -519,6 +560,17 @@ describe("ShiftDetailPanel Replace action", () => {
       expect(shiftsApi.removeShiftAssignment).toHaveBeenCalledWith("shift-1", "a-called-up");
       expect(shiftsApi.getShift).toHaveBeenCalledWith("shift-1");
     });
+  });
+});
+
+describe("ShiftDetailPanel dismissal action selector", () => {
+  it("opens the existing dismissal modal from the stable assignment action", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
+    renderPanel(makeShift([makeAssignee({ assignment_id: "primary-dismissal", soldier_name: "Dismissed Soldier" })]));
+
+    fireEvent.click(screen.getByTestId("shift-dismiss-assignment-primary-dismissal"));
+
+    expect(screen.getByTestId("dismissal-modal")).toHaveTextContent("Dismissed Soldier");
   });
 });
 

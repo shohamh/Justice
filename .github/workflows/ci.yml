@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   pull_request:
-    branches: [master]
+    branches: [master, dev]
 
 jobs:
   # ─────────────────────────────────────────
@@ -163,11 +163,17 @@ jobs:
       # ── Playwright ──
       - name: Install Playwright browsers
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chrome
 
-      - name: Run Playwright tests
+      - name: Run Playwright smoke tests
+        if: github.event_name == 'pull_request'
         working-directory: frontend
-        run: npx playwright test
+        run: npm run test:e2e:smoke
+
+      - name: Run Playwright full tests
+        if: github.event_name == 'push'
+        working-directory: frontend
+        run: npm run test:e2e:full
 
       - name: Upload Playwright report
         if: failure()

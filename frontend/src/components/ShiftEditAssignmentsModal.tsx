@@ -319,7 +319,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
         {loading && <p className="text-sm text-gray-500 py-6 text-center">טוען...</p>}
 
         {!loading && (
-          <div className="overflow-y-auto flex-1 space-y-5">
+          <div className="overflow-y-auto flex-1 space-y-5" data-testid={`manual-assignment-modal-${shift.id}`}>
             {/* Summary table — current + pending */}
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -353,7 +353,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                           ? <span className="text-indigo-500 dark:text-indigo-300">{pendingReserveName} <span className="text-xs opacity-60">טרם נשמר</span></span>
                           : <span className="text-gray-400 dark:text-gray-500">{savedReserveName ?? "—"}</span>;
                         return (
-                          <tr key={a.assignment_id} className="border-t dark:border-gray-600">
+                          <tr key={a.assignment_id} data-testid={`assignment-primary-${a.assignment_id}`} className="border-t dark:border-gray-600">
                             <td className="p-2">
                               {a.soldier_name}
                               {a.called_up_from && <span className="mr-2 text-amber-600 dark:text-amber-400">הוקפץ</span>}
@@ -371,7 +371,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                         );
                       })}
                       {pendingPrimaries.filter(c => matchesQuery(c.full_name, c.personal_number, summarySearch)).map(c => (
-                        <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50 dark:bg-indigo-950/40">
+                        <tr key={c.soldier_id} data-testid={`assignment-primary-pending-${c.soldier_id}`} className="border-t dark:border-gray-600 bg-indigo-50 dark:bg-indigo-950/40">
                           <td className="p-2 text-indigo-700 dark:text-indigo-300">
                             {c.full_name}
                             <span className="mr-2 text-xs text-indigo-400">טרם נשמר</span>
@@ -394,7 +394,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                           .filter(Boolean)
                           .join(", ") || "—";
                         return (
-                          <tr key={a.assignment_id} className="border-t dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/30">
+                          <tr key={a.assignment_id} data-testid={`assignment-reserve-${a.assignment_id}`} className="border-t dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/30">
                             <td className="p-2 text-gray-600 dark:text-gray-400">{a.soldier_name}</td>
                             <td className="p-2 text-gray-400">רזרבה</td>
                             <td className="p-2 text-gray-400 dark:text-gray-500 max-w-[140px] truncate" title={coveredNames}>{coveredNames}</td>
@@ -411,7 +411,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                       {pendingReserves.filter(c => matchesQuery(c.full_name, c.personal_number, summarySearch)).map(c => {
                         const coveringPrimaryNames = reserveCandidateCoverage[c.soldier_id]?.join(", ") || "—";
                         return (
-                        <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50/50 dark:bg-indigo-950/20">
+                        <tr key={c.soldier_id} data-testid={`assignment-reserve-pending-${c.soldier_id}`} className="border-t dark:border-gray-600 bg-indigo-50/50 dark:bg-indigo-950/20">
                           <td className="p-2 text-indigo-600 dark:text-indigo-300">
                             {c.full_name}
                             <span className="mr-2 text-xs text-indigo-300">טרם נשמר</span>
@@ -437,6 +437,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
             <div className="border dark:border-gray-600 rounded">
               <button
                 type="button"
+                data-testid="manual-add-primary"
                 onClick={() => setPrimaryPanelOpen(v => !v)}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t"
               >
@@ -485,6 +486,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
             <div className="border dark:border-gray-600 rounded">
               <button
                 type="button"
+                data-testid="manual-add-reserve"
                 onClick={() => setReservePanelOpen(v => !v)}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-t"
               >
@@ -542,6 +544,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
           </button>
           <button
             type="button"
+            data-testid="manual-assignment-save"
             onClick={handleSave}
             disabled={!canSave || saving}
             className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
@@ -584,6 +587,7 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
             const isDisabled = full && !isSelected;
             return (
               <tr key={c.soldier_id}
+                data-testid={`manual-primary-candidate-${c.soldier_id}`}
                 className={`border-t dark:border-gray-600 ${isDisabled ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"}`}
                 onClick={() => !isDisabled && onToggle(c.soldier_id)}>
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
@@ -652,6 +656,7 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
             const isDisabled = full && !isSelected;
             return (
               <tr key={c.soldier_id}
+                data-testid={`manual-reserve-candidate-${c.soldier_id}`}
                 className={`border-t dark:border-gray-600 ${isDisabled ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"}`}
                 onClick={() => !isDisabled && onToggle(c.soldier_id)}>
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>

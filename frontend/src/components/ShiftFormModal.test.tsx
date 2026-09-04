@@ -65,6 +65,26 @@ beforeEach(() => {
   mockGetQuotaSplitPreview.mockClear();
 });
 
+test("submits a valid duty and completes the create flow", async () => {
+  const onSaved = vi.fn();
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={onSaved} onClose={() => {}} />
+  );
+
+  await waitFor(() => expect(screen.getByTestId("shift-create-form")).toBeVisible());
+  fireEvent.change(screen.getByTestId("shift-start-date"), { target: { value: "10092026" } });
+  fireEvent.change(screen.getByTestId("shift-end-date"), { target: { value: "11092026" } });
+  fireEvent.click(screen.getByTestId("shift-create-submit"));
+
+  await waitFor(() => expect(mockCreateShift).toHaveBeenCalledWith(expect.objectContaining({
+    duty_type_id: "d1",
+    duty_location_id: "l1",
+    start_date: "2026-09-10",
+    end_date: "2026-09-12",
+  })));
+  expect(onSaved).toHaveBeenCalledTimes(1);
+});
+
 test("allows adding a node quota row", async () => {
   render(
     <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />

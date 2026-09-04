@@ -252,7 +252,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
         )}
 
         {selectedJob && (
-          <div className="space-y-4">
+          <div className="space-y-4" data-testid={`algorithm-job-review-${selectedJob.id}`}>
             {/* Job header */}
             <div className="text-sm space-y-1 border-b dark:border-gray-600 pb-3">
               <div className="flex items-center gap-3">

@@ -15,6 +15,7 @@ from app.db.models import DutyAssignment, DutyDismissal, GimelimAttachment, Hier
 from app.db.session import get_session
 from app.services import gimelim as svc
 from app.services.gimelim import GimelimError
+from app.services.reserves import ReserveError
 from app.services.settings_loader import SettingNotFound, get_setting
 
 router = APIRouter(tags=["gimelim"])
@@ -34,7 +35,9 @@ def _require_gimelim_permission(
     user: Soldier,
     primary_soldier_id: uuid.UUID,
 ) -> None:
-    """Admin or commander/DM in scope of the primary soldier."""
+    """The soldier may report their own gimelim; managers act in scope."""
+    if user.id == primary_soldier_id:
+        return
     if user.role == "admin":
         return
     soldier = session.get(Soldier, primary_soldier_id)
@@ -223,6 +226,8 @@ def commit_gimelim_route(
     except GimelimError as exc:
         code = status.HTTP_409_CONFLICT if "stale" in str(exc) or "expired" in str(exc) else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=code, detail=str(exc)) from exc
+    except ReserveError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     session.commit()
     # Only consume the token once the commit has actually succeeded, so a

@@ -55,6 +55,20 @@ test("run button enabled when shifts selected", () => {
   expect(screen.getByRole("button", { name: /הרץ שיבוץ/ })).toBeEnabled();
 });
 
+test("exposes stable controls for a browser-driven algorithm run", () => {
+  render(
+    <AlgorithmInlinePanel
+      selectedShiftIds={["s1"]}
+      onJobSubmitted={vi.fn()}
+      onClose={vi.fn()}
+    />
+  );
+
+  expect(screen.getByTestId("algorithm-run-panel")).toBeVisible();
+  expect(screen.getByTestId("algorithm-run-draft-mode")).toBeEnabled();
+  expect(screen.getByTestId("algorithm-run-submit")).toBeEnabled();
+});
+
 test("calls submitJob and onJobSubmitted on run", async () => {
   const mockSubmit = vi.mocked(algorithmApi.submitJob).mockResolvedValue({
     id: "job-123",
