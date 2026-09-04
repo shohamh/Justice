@@ -26,7 +26,11 @@
 
 **Scope:** the user asked for multiple distinct swap sub-journeys, not one happy path. Six real, distinct code paths exist and must each get their own `test()` block in one spec file (serial, sharing setup helpers): marketplace claim, shift-modal claim, proactive "offer to replace," free cover, trade-with-another-duty cover, and notification click-through — plus approval exercised from **both** a commander and a duty_manager independently (confirmed in research: these are two independent `(side, approver_kind)` rows, not a chain — a commander approving one side does not require a duty_manager to go first).
 
-**Confirmed not testable through the UI:** `POST /swaps/take-free` has zero call sites in `frontend/src/**` — no button invokes it. Do not attempt to test it directly; "take for free" in this plan means `CoverOfferModal` with `cover_mode` = free (the actual free-cover path a user can reach), which is different from the dead `take-free` endpoint. Note this explicitly in the spec's seam-inventory comment so a future reader doesn't assume `take-free` has coverage.
+**CORRECTED (was wrong in an earlier draft — verified against source directly):** `POST /swaps/take-free` **does** have a UI call site: `OfferSwapModal.tsx` (not `CoverOfferModal.tsx` — a separate component), reached from `ShiftDetailPanel`'s `swaps.offer_replace` button when viewing **another soldier's** duty that has no existing open swap on it yet. `OfferSwapModal` has its own `mode: "swap" | "free"` toggle:
+- `mode: "free"` → `takeDutyFree(targetAssignmentId)` → `POST /swaps/take-free`. Server-side (`backend/app/services/swaps.py::take_free`), this creates a `SwapRequest` with `requesting_soldier_id = ` the **original duty owner** (not the acting/covering soldier) and a `SwapCandidate` for the acting soldier already `status="accepted"`. A `swap_offer` notification fires to the original owner ("another soldier wants to take your duty — approval required"). So taking-free is **not** instant — it still needs the original owner's soldier-side approval, then manager approval, same pipeline as any other swap. This is the "take for free" scenario.
+- `mode: "swap"` → `createSwap({duty_assignment_id: <acting soldier's own duty>, target_soldier_id: <the duty owner being viewed>, reason})` → `POST /me/swaps`. Verified in `create_request` (`backend/app/services/swaps.py:90-119`): `requesting_soldier_id` must own `duty_assignment_id` (enforced via `_effective_soldier_on_date(...) == requesting_soldier_id`), so this is the **acting** soldier proactively offering **their own** duty to a specific target soldier — not a request created "on behalf of" the target, and not an automatic two-duty trade (the target's own duty doesn't move unless they separately publish it too). This is the "offer" scenario: a soldier proactively offering their own duty, from the shift-modal context, to a specific person.
+
+The genuine two-duty trade mechanic is `CoverOfferModal`'s trade mode (below): a soldier claiming someone else's **already-open** ask can add one of their own duties into the offer, so two duties actually change hands. That satisfies "swap with another duty."
 
 **Files:**
 - Create: `frontend/tests/e2e/smoke/swaps.spec.ts`
@@ -36,7 +40,7 @@
 **Interfaces (verified endpoints/testids/text — not guesses):**
 - Entry point A — marketplace: `SwapsPage` "mine" tab (`swaps.ask_swap` button, no testid, text-select) → `AskSwapModal` → checkbox `ask-swap-marketplace-checkbox` → `POST /api/me/swaps`. Claim from `SwapsPage` board tab (`?tab=1`, `swaps.cover` button, text-select scoped to the card) → `CoverOfferModal`.
 - Entry point B — shift modal: `/unit-calendar` → open a shift → `ShiftDetailPanel` → an *existing* open swap on that shift shows a `swaps.cover` button (text-select) → same `CoverOfferModal`. This is the identical modal as entry point A, reached from a different page — the test proves both navigation paths converge on the same working flow.
-- Entry point C — proactive offer: `ShiftDetailPanel` → `swaps.offer_replace` button (text-select) → a distinct target-preselected create-swap component (not `AskSwapModal`) → creates a swap on behalf of another soldier. Read `ShiftDetailPanel.tsx` around the `offerSwapTarget` state (~line 356-362, 470-476, 556-560) to get this component's exact form fields before writing the test — the research pass identified the button and the state variable but not the modal component's internal field testids.
+- Entry point C — proactive offer/take: `ShiftDetailPanel` → `swaps.offer_replace` button (text-select, shown when viewing another soldier's duty with no open swap yet) → `OfferSwapModal.tsx` (mode toggle `"swap" | "free"`, no testids on the toggle — select by role+label text). `mode="free"` → `takeDutyFree()` → `POST /swaps/take-free` (original owner must soldier-approve, then manager-approve — see the corrected note above). `mode="swap"` → `createSwap()` with the acting soldier's own duty + the viewed soldier as `target_soldier_id` → `POST /me/swaps` (the target soldier must soldier-approve, then manager-approve). Read `ShiftDetailPanel.tsx`'s `offerSwapTarget` state (~line 356-362, 470-476, 556-560) and `OfferSwapModal.tsx` in full for exact field selectors before writing the test.
 - `CoverOfferModal` (`frontend/src/components/CoverOfferModal.tsx`): radio group `name="cover_mode"`, no testids — select by role+label text `t("swaps.cover_free")` (free) vs `t("swaps.offer_trade")` (trade). Trade mode reveals a checkbox list of the covering soldier's own duties (`swaps.select_duties_to_offer`, plain checkboxes, no testid — select the first `input[type=checkbox]` in that list, or by matching the duty date/location text created for that actor). Submit → `POST /api/swaps/{id}/offer`.
 - Soldier-side accept (both requester-approves-cover and candidate-approves-invite use the same pair): buttons with text `approvals.approve` / `approvals.reject` on `SwapsPage` incoming/mine cards → `POST /api/me/swaps/{id}/approve` / `/reject`.
 - Manager approval: `SwapsPage` pending tab (`?tab=3`) → `PendingApprovalCard` → `SwapApprovalColumns` approve/reject buttons (text-select, same i18n keys) → `POST /api/swaps/{id}/manager-approve` (body `{side, candidate_id?}`) / `manager-reject`. **Test both approver kinds separately**: log in as `commander`, approve the requester side of swap A; log in as `dutyManager`, approve the covering side of the *same* swap A — confirm both succeed independently and the swap only finalizes once both required `(side, kind)` rows exist (read `_try_finalize`'s exact requirement — whether duty-manager approval is required in addition to commander depends on the `require_duty_manager_approval` setting from `GET /api/swaps/config`, fetch it during setup rather than assuming).
@@ -62,11 +66,15 @@
 
   `swapRequesterB` creates+publishes (entry point A is fine for creation; the point under test here is the *claim* path). `swapCoveringB` navigates to `/unit-calendar`, opens the shift via `ShiftDetailPanel`, claims through the `swaps.cover` button found there (entry point B), selects `cover_mode` trade, picks one of their own duties to offer, submits. Approve through both roles as in Step 4 (reusing the helper built there). Assert both sides' assignment ownership swapped correctly — this is the one scenario where *two* duties change hands, so assert both `/my-duties` views.
 
-- [ ] **Step 6: Test — proactive "offer to replace" (entry point C)**
+- [ ] **Step 6: Test — take for free (entry point C, `mode="free"`)**
 
-  As `commander` or `dutyManager` (whichever role the guard on `offerSwapTarget`/`swaps.offer_replace` in `ShiftDetailPanel.tsx` actually authorizes — verify before writing), open a duty belonging to a third soldier (reuse one of the existing role fixtures, e.g. `assignedExemption`, on a freshly-assigned duty) and use `swaps.offer_replace` to create a swap on that soldier's behalf. Assert the swap appears in the target soldier's "mine" tab as if they'd created it themselves.
+  Assign a fresh duty to a third actor (e.g. `assignedExemption`, on a new far-future date). As `swapCoveringA` (or a fresh actor if A/B are busy with Steps 4-5), navigate to `/unit-calendar`, open that soldier's duty, click `swaps.offer_replace`, select `mode="free"`, submit. Wait for `POST /api/swaps/take-free` 2xx. As the original owner (`assignedExemption`), navigate to `/swaps`, approve (soldier-side). As `commander`/`dutyManager` (whichever `GET /api/swaps/config` requires), approve. Assert the duty now appears in the taker's `/my-duties`.
 
-- [ ] **Step 7: Run against a freshly seeded DB, twice**
+- [ ] **Step 7: Test — proactive offer (entry point C, `mode="swap"`)**
+
+  Assign a fresh duty to a fourth actor (e.g. `assignedGimelim`, another existing journey-actor fixture — no new personal numbers needed for Steps 6-7). As `swapRequesterB` (or another free actor not already occupied by Steps 4-5's own assertions), navigate to `/unit-calendar`, open that soldier's duty, click `swaps.offer_replace`, select `mode="swap"`, choose one of the acting soldier's own duties to offer, submit. Wait for `POST /api/me/swaps` 2xx. As the target soldier, approve. As the required manager role, approve. Assert the acting soldier's original duty now appears in the target's `/my-duties` (ownership moved as the acting soldier proposed).
+
+- [ ] **Step 8: Run against a freshly seeded DB, twice**
 
   ```powershell
   cd backend
@@ -77,7 +85,7 @@
   ```
   Repeat twice. Both runs must pass with no retries.
 
-- [ ] **Step 8: Update the coverage matrix and commit**
+- [ ] **Step 9: Update the coverage matrix and commit**
 
   Add a row to `docs/e2e-coverage-matrix.md` covering all six sub-journeys and noting `take-free` is intentionally out of scope (dead endpoint, no UI).
 
