@@ -14,6 +14,16 @@ export const journeyActors = {
   assignedHakpaza: "1000012",
   firstReserve: "1000002",
   secondReserve: "1000003",
+  // Swaps journey (frontend/tests/e2e/smoke/swaps.spec.ts). Team "רוקט"'s
+  // four non-officer, non-leader members: 1000015-1000018. Verified against
+  // the seeded DB directly (not just seed.py's team-size arithmetic) —
+  // 1000014 is that team's leader (role="commander") and 1000019 is an
+  // officer (is_officer=true, blocked from most duty types by rank rules),
+  // neither a plain assignable soldier.
+  swapRequesterA: "1000015",
+  swapCoveringA: "1000016",
+  swapRequesterB: "1000017",
+  swapCoveringB: "1000018",
 } as const;
 
 export type JourneyActor = keyof typeof journeyActors;
