@@ -24,6 +24,23 @@ export const journeyActors = {
   swapCoveringA: "1000016",
   swapRequesterB: "1000017",
   swapCoveringB: "1000018",
+  // Hierarchy transfers journey (frontend/tests/e2e/smoke/hierarchy_transfers.spec.ts).
+  // "צוות ריי" (team "Ray", under branch "פוקוס" -> mador "שבירה"), a plain
+  // non-officer, non-leader member ("ריי 3") — verified against seed.py's
+  // team-soldier numbering directly: `next_pn()` is first called in the
+  // team-leader loop, so with all_teams ordered מארס/טוקסיק/רוקט/ורטיגו
+  // (under מחקר) then פלאש/ריי/ספארק (under שבירה) then ארק/אקסודוס/נילוס
+  // (under גוליבר), team "ריי" (6th team, index 5) gets leader pn 1000032
+  // and members 1000033-1000037; this is member index 2 (0-based),
+  // i.e. 1000035. Used as the *transferred soldier* to view their own
+  // rejection notice on /my-requests — NOT as the actor who submits or
+  // approves the transfer (those roles are covered by the existing
+  // `commander`/`dutyManager` role fixtures, which are already scoped, via
+  // seed.py's branch-wide commander/DutyManagerScope assignment, across the
+  // entire "פוקוס" branch subtree — including both "ריי" and its sibling
+  // team "ספארק" used as source/destination — so no separate actor is
+  // needed for the create/approve/reject actions themselves).
+  transferSoldier: "1000035",
 } as const;
 
 export type JourneyActor = keyof typeof journeyActors;
