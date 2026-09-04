@@ -417,6 +417,12 @@ async function assertDutyNotOwnedBy(page: Page, args: { dutyDate: string }): Pro
 
 test.describe.configure({ mode: "serial" });
 
+// Desktop-only per the plan's Global Constraints: this journey's click paths
+// are not guaranteed to be reachable at the mobile-390 viewport.
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only journey per plan's Global Constraints");
+});
+
 test("marketplace claim, free cover, dual-role manager approval, notification click-through @smoke", async ({ browser }) => {
   test.setTimeout(600_000);
   const dutyManager = await openActorContext(browser, "dutyManager");
@@ -443,7 +449,15 @@ test("marketplace claim, free cover, dual-role manager approval, notification cl
     await bell.click();
     const dropdown = requester.page.getByTestId("notification-dropdown");
     await expect(dropdown).toBeVisible();
-    const notifItem = dropdown.locator("button.text-sm.font-medium.truncate").first();
+    // Filtered by the notification's own translated type text ("הצעת
+    // החלפה" == notifications.type_swap_offer, see he.json) rather than a
+    // blind .first() -- swap_offer notifications carry no location/duty
+    // text of their own (create_notification's title is a static Hebrew
+    // string, see swaps.py), so the type text is the only reliable
+    // disambiguator available in the DOM. This matters because `requester`
+    // is a shared journey actor that other specs in a full-suite run can
+    // also notify.
+    const notifItem = dropdown.locator("button.text-sm.font-medium.truncate").filter({ hasText: /^הצעת החלפה$/ }).first();
     await expect(notifItem).toBeVisible({ timeout: 30_000 });
     await notifItem.click();
     await expect(requester.page).toHaveURL(/\/swaps\?tab=incoming/);
@@ -587,7 +601,13 @@ test("proactively offer own duty via offer-replace (Entry Point C, swap mode) wi
     await bell.click();
     const dropdown = target.page.getByTestId("notification-dropdown");
     await expect(dropdown).toBeVisible();
-    const notifItem = dropdown.locator("button.text-sm.font-medium.truncate").first();
+    // Filtered by the notification's own translated type text ("הצעת
+    // החלפה נכנסת" == notifications.type_swap_offer_incoming, see he.json)
+    // rather than a blind .first() -- `target` here is `assignedGimelim`
+    // (personal number 1000010), a shared journey actor also used by
+    // ranges.spec.ts, so a full-suite run can leave an unrelated (e.g.
+    // range_*) notification ahead of this one in the dropdown.
+    const notifItem = dropdown.locator("button.text-sm.font-medium.truncate").filter({ hasText: /^הצעת החלפה נכנסת$/ }).first();
     await expect(notifItem).toBeVisible({ timeout: 30_000 });
     await notifItem.click();
     await expect(target.page).toHaveURL(/\/swaps\?tab=incoming/);

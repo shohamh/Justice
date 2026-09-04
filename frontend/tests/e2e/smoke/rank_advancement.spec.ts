@@ -236,6 +236,12 @@ async function submitRankCorrection(
 
 test.describe.configure({ mode: "serial" });
 
+// Desktop-only per the plan's Global Constraints: this journey's click paths
+// are not guaranteed to be reachable at the mobile-390 viewport.
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only journey per plan's Global Constraints");
+});
+
 test("admin edits a rank-advancement interval and it persists @smoke", async ({ browser }) => {
   test.setTimeout(600_000);
   const admin = await openActorContext(browser, "admin");
@@ -269,6 +275,21 @@ test("admin edits a rank-advancement interval and it persists @smoke", async ({ 
     const reloadedInput = admin.page.getByTestId("rank-interval-months-enlisted-טוראי");
     await expect(reloadedInput).toBeVisible({ timeout: 30_000 });
     await expect(reloadedInput).toHaveValue(newValue);
+
+    // Restore the original value via the same save mechanism: this test
+    // mutates a real, global system setting (not per-actor state), so
+    // leaving it changed would carry over to anything that runs after it in
+    // the same DB session (harmless on a single clean-reseeded run, but
+    // wrong on repeated non-reseeded local runs).
+    await reloadedInput.fill(currentValue);
+    const restoreSaveButton = section.getByRole("button", { name: "שמור" });
+    await expect(restoreSaveButton).toBeEnabled();
+    const restorePut = admin.page.waitForResponse(
+      r => r.url().endsWith("/api/soldiers/rank-advancement-intervals") && r.request().method() === "PUT",
+    );
+    await restoreSaveButton.click();
+    const restoreResponse = await restorePut;
+    expect(restoreResponse.status()).toBe(200);
   } finally {
     await admin.context.close();
   }
@@ -319,7 +340,9 @@ test("a soldier due for promotion is actually promoted by the real worker functi
     // This is the one deliberately non-UI step in this spec -- see the
     // top-of-file seam inventory for why it's here and what it proves.
     const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../backend");
-    const pythonExe = resolve(backendDir, ".venv/Scripts/python.exe");
+    const pythonExe = process.platform === "win32"
+      ? resolve(backendDir, ".venv/Scripts/python.exe")
+      : resolve(backendDir, ".venv/bin/python");
     const databaseUrl = process.env.DATABASE_URL ?? "postgresql+psycopg://app:app_pw@localhost:5432/justice_e2e";
     let scriptOutput: string;
     try {

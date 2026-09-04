@@ -360,6 +360,13 @@ async function assertSoldierNotInNode(page: Page, args: { nodeId: string; person
 
 test.describe.configure({ mode: "serial" });
 
+// Desktop-only per the plan's Global Constraints: the click-based creation
+// path targets a control that is `display:none` below the `sm` breakpoint
+// (hidden sm:grid in HierarchyTree.tsx), so it cannot pass at mobile-390.
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only journey per plan's Global Constraints");
+});
+
 test("hierarchy transfer via click, approve, and verify placement @smoke", async ({ browser }) => {
   test.setTimeout(600_000);
   const dutyManager = await openActorContext(browser, "dutyManager");

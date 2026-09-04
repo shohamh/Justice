@@ -288,6 +288,12 @@ async function assertIneligibleWarningForTeamMars(page: Page): Promise<void> {
 
 test.describe.configure({ mode: "serial" });
 
+// Desktop-only per the plan's Global Constraints: this journey's click paths
+// are not guaranteed to be reachable at the mobile-390 viewport.
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only journey per plan's Global Constraints");
+});
+
 test("range scheduling, assignment, attendance, excusal, and qualification journey @smoke", async ({ browser }) => {
   test.setTimeout(600_000);
   const dutyManager = await openActorContext(browser, "dutyManager");
