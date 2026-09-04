@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend the real-stack Playwright suite in `frontend/tests/e2e/smoke` with four new journeys — duty swaps, range scheduling/attendance/qualification, hierarchy transfer requests, and rank-advancement interval configuration — closing the largest remaining gaps identified against `docs/e2e-coverage-matrix.md`.
+**Goal:** Extend the real-stack Playwright suite in `frontend/tests/e2e/smoke` with four new journeys — duty swaps (marketplace, shift-modal, proactive offer, free/trade cover, notifications, dual-role approval), range scheduling/attendance/qualification, hierarchy transfer requests (click-based and drag-and-drop), and rank advancement (manual rank/next-rank-date editing, interval configuration, and an actually-triggered promotion) — closing the largest remaining gaps identified against `docs/e2e-coverage-matrix.md`.
 
 **Architecture:** Same pattern as `frontend/tests/e2e/smoke/multi_user_duty_problems.spec.ts`: real FastAPI + PostgreSQL backend, role-based browser contexts from `tests/e2e/fixtures/auth.ts`, every mutation driven through visible UI controls and confirmed via `page.waitForResponse` on the real API call, cross-role state re-read after refresh rather than trusting HTTP status alone.
 
@@ -24,67 +24,49 @@
 
 ### Task 1: Swaps journey (`frontend/tests/e2e/smoke/swaps.spec.ts`)
 
+**Scope:** the user asked for multiple distinct swap sub-journeys, not one happy path. Six real, distinct code paths exist and must each get their own `test()` block in one spec file (serial, sharing setup helpers): marketplace claim, shift-modal claim, proactive "offer to replace," free cover, trade-with-another-duty cover, and notification click-through — plus approval exercised from **both** a commander and a duty_manager independently (confirmed in research: these are two independent `(side, approver_kind)` rows, not a chain — a commander approving one side does not require a duty_manager to go first).
+
+**Confirmed not testable through the UI:** `POST /swaps/take-free` has zero call sites in `frontend/src/**` — no button invokes it. Do not attempt to test it directly; "take for free" in this plan means `CoverOfferModal` with `cover_mode` = free (the actual free-cover path a user can reach), which is different from the dead `take-free` endpoint. Note this explicitly in the spec's seam-inventory comment so a future reader doesn't assume `take-free` has coverage.
+
 **Files:**
 - Create: `frontend/tests/e2e/smoke/swaps.spec.ts`
-- Modify: `frontend/tests/e2e/fixtures/auth.ts` — add two journey actors: `swapRequester: "1000013"`, `swapCovering: "1000014"` (both plain soldiers, next free personal numbers after `1000012`)
-- Modify: `backend/app/scripts/seed.py` — only if `1000013`/`1000014` collide with existing seed rows; otherwise no backend changes needed since new soldiers aren't required (any two `role: "soldier"` seed accounts eligible for the same duty type/hierarchy scope work — confirm via `GET /api/soldiers` during Step 1 before adding new fixtures)
-- Modify: `docs/e2e-coverage-matrix.md` — add the new row
+- Modify: `frontend/tests/e2e/fixtures/auth.ts` — add four journey actors, next free personal numbers after `1000012`: `swapRequesterA: "1000013"`, `swapCoveringA: "1000014"`, `swapRequesterB: "1000015"`, `swapCoveringB: "1000016"` (two independent requester/covering pairs so the marketplace test and the shift-modal test don't fight over the same duty/notification state)
+- Modify: `docs/e2e-coverage-matrix.md`
 
-**Interfaces (from research — verified endpoints/testids, not guesses):**
-- Create request: `AskSwapModal` → checkbox `ask-swap-marketplace-checkbox`, search input `ask-swap-target-search` → `POST /api/me/swaps`
-- Marketplace claim/offer: `SwapsPage` board tab (`?tab=1`) → per-card button text `t("swaps.cover")` (no testid — select via `getByRole("button", { name: /לכסות|cover/ })` scoped to the specific card, or by row text matching the shift/location name created earlier in the test) → `CoverOfferModal` → radio group `cover_mode` (free/trade) → submit → `POST /api/swaps/{id}/offer`
-- Soldier-side accept: `SwapsPage` incoming tab (`?tab=2`) → buttons with i18n text `approvals.approve` / `approvals.reject` (no testid) → `POST /api/me/swaps/{id}/approve` or `/reject`
-- Manager approval: `SwapsPage` pending tab (`?tab=3`, role-gated to admin/duty_manager/commander) → `SwapApprovalColumns` approve/reject buttons (no testid, same i18n keys) → `POST /api/swaps/{id}/manager-approve` (body `{side: "requester"|"covering", candidate_id?}`) / `manager-reject`
-- Final state: swap row badge color/text via `STATUS_COLORS`/`statusKey` on `MySwapCard` (`data-testid="swap-row-${id}"`)
+**Interfaces (verified endpoints/testids/text — not guesses):**
+- Entry point A — marketplace: `SwapsPage` "mine" tab (`swaps.ask_swap` button, no testid, text-select) → `AskSwapModal` → checkbox `ask-swap-marketplace-checkbox` → `POST /api/me/swaps`. Claim from `SwapsPage` board tab (`?tab=1`, `swaps.cover` button, text-select scoped to the card) → `CoverOfferModal`.
+- Entry point B — shift modal: `/unit-calendar` → open a shift → `ShiftDetailPanel` → an *existing* open swap on that shift shows a `swaps.cover` button (text-select) → same `CoverOfferModal`. This is the identical modal as entry point A, reached from a different page — the test proves both navigation paths converge on the same working flow.
+- Entry point C — proactive offer: `ShiftDetailPanel` → `swaps.offer_replace` button (text-select) → a distinct target-preselected create-swap component (not `AskSwapModal`) → creates a swap on behalf of another soldier. Read `ShiftDetailPanel.tsx` around the `offerSwapTarget` state (~line 356-362, 470-476, 556-560) to get this component's exact form fields before writing the test — the research pass identified the button and the state variable but not the modal component's internal field testids.
+- `CoverOfferModal` (`frontend/src/components/CoverOfferModal.tsx`): radio group `name="cover_mode"`, no testids — select by role+label text `t("swaps.cover_free")` (free) vs `t("swaps.offer_trade")` (trade). Trade mode reveals a checkbox list of the covering soldier's own duties (`swaps.select_duties_to_offer`, plain checkboxes, no testid — select the first `input[type=checkbox]` in that list, or by matching the duty date/location text created for that actor). Submit → `POST /api/swaps/{id}/offer`.
+- Soldier-side accept (both requester-approves-cover and candidate-approves-invite use the same pair): buttons with text `approvals.approve` / `approvals.reject` on `SwapsPage` incoming/mine cards → `POST /api/me/swaps/{id}/approve` / `/reject`.
+- Manager approval: `SwapsPage` pending tab (`?tab=3`) → `PendingApprovalCard` → `SwapApprovalColumns` approve/reject buttons (text-select, same i18n keys) → `POST /api/swaps/{id}/manager-approve` (body `{side, candidate_id?}`) / `manager-reject`. **Test both approver kinds separately**: log in as `commander`, approve the requester side of swap A; log in as `dutyManager`, approve the covering side of the *same* swap A — confirm both succeed independently and the swap only finalizes once both required `(side, kind)` rows exist (read `_try_finalize`'s exact requirement — whether duty-manager approval is required in addition to commander depends on the `require_duty_manager_approval` setting from `GET /api/swaps/config`, fetch it during setup rather than assuming).
+- Notifications: bell `data-testid="notification-bell"`, dropdown `data-testid="notification-dropdown"`, items are untested plain `<div>`s with no testid — select by containing text (the swap's duty/location name) inside the dropdown. Confirmed notification-firing points: `swap_offer` fires when `swapCoveringA` offers on A's request (assert this notification appears in `swapRequesterA`'s bell/dropdown); `swap_accepted`/`swap_rejected` fire on finalization (assert on both winner and any losing candidate if the test creates more than one candidate — optional, only if time allows). Click a notification and assert it navigates via `getNotificationLink` (e.g. a `swap_offer_incoming` notification routes to `/swaps?tab=incoming`) — this is the "clickable" requirement; assert the URL actually changes and the swap row is visible on the destination tab, not just that the click didn't error.
 
-- [ ] **Step 1: Confirm actor eligibility and add journey actors**
+- [ ] **Step 1: Add journey actors and confirm they're free**
 
-  Run against a running dev stack: `GET /api/soldiers` as admin and inspect personal numbers `1000013`/`1000014` are unused (seed creates 116 soldiers; confirm the exact ceiling by checking `backend/app/scripts/seed.py`'s soldier-creation loop, `pn_counter = 1000001` at line 259, and how many soldiers it increments through). If they collide, pick the next free pair instead and use that pair consistently below.
-
-  Add to `frontend/tests/e2e/fixtures/auth.ts`:
-  ```ts
-  export const journeyActors = {
-    assignedExemption: "1000009",
-    assignedGimelim: "1000010",
-    assignedAbsent: "1000011",
-    assignedHakpaza: "1000012",
-    firstReserve: "1000002",
-    secondReserve: "1000003",
-    swapRequester: "1000013",
-    swapCovering: "1000014",
-  } as const;
-  ```
-  (Keep `journeyActorStorageState`/`roleStorageState` machinery unchanged — it already generalizes over the `journeyActors` map.)
+  Confirm `1000013`-`1000016` are unused the same way as before (check seed's soldier-creation ceiling), then add all four to `journeyActors` in `frontend/tests/e2e/fixtures/auth.ts`.
 
 - [ ] **Step 2: Write the spec skeleton with a seam-inventory header comment**
 
-  Model the file on `multi_user_duty_problems.spec.ts`'s structure: imports from `../fixtures/test` and `../fixtures/auth`, a top-of-file comment block listing every control/endpoint pair from the Interfaces section above (this is required by the existing pattern — it's what let us quickly diagnose the gimelim `ReserveError` bug during the last round of work), then helper functions per step, then `test.describe.configure({ mode: "serial" })`.
+  List every entry point (A/B/C above), every modal, every endpoint, and explicitly the "take-free has no UI" note, matching the header-comment convention in `multi_user_duty_problems.spec.ts`.
 
-- [ ] **Step 3: Build a real duty to swap**
+- [ ] **Step 3: Shared setup helper — two real duties to swap**
 
-  Reuse `createAndPublishAlgorithmDuty`-style helper (copy and adapt from `multi_user_duty_problems.spec.ts`, or better, factor the shared shift-creation logic into `frontend/tests/e2e/support/data.ts` if it doesn't already exist there — check first) as `dutyManager`, then manually assign `swapRequester` (`1000013`) as primary via `assignManually`-style flow. Use a far-future date offset (`1500 + Math.floor(Math.random() * 100)` days out, matching the established convention) to avoid colliding with other suites' seeded/accumulated data.
+  One helper creates and manually assigns two separate future duties (far-future date offset, established convention), one primary'd to `swapRequesterA`, one to `swapRequesterB`, as `dutyManager`.
 
-- [ ] **Step 4: `swapRequester` creates and publishes a swap request**
+- [ ] **Step 4: Test — marketplace claim, free cover, dual-role approval, notification click-through**
 
-  As `swapRequester`, navigate to `/swaps?tab=0`, open `AskSwapModal` from the duty row, check `ask-swap-marketplace-checkbox`, submit. Wait for `POST /api/me/swaps` to return 2xx and capture the created `request_id` from the response body for later assertions.
+  `swapRequesterA` creates+publishes via entry point A. `swapCoveringA` claims via the board tab with `cover_mode` free. Assert `swapRequesterA` sees a `swap_offer` notification in the bell (`notification-bell` shows a nonzero count, open `notification-dropdown`, assert the item text matches, click it, assert navigation to `/swaps?tab=incoming` and the row visible there). `swapRequesterA` approves. `commander` approves one side via `/swaps?tab=3`; `dutyManager` approves the other side. Assert the swap's status badge reads finalized for `swapRequesterA` and that `/my-duties` for `swapCoveringA` now shows the duty (assignment ownership actually moved).
 
-- [ ] **Step 5: `swapCovering` claims/offers on the marketplace**
+- [ ] **Step 5: Test — shift-modal claim + trade-with-another-duty**
 
-  As `swapCovering`, navigate to `/swaps?tab=1` (board). Locate the card for the duty created in Step 3 (match by location/date text, not `.first()` — apply the lesson from the Hakpaza fix: if multiple cards could plausibly match due to DB accumulation across local runs, resolve the correct swap's id via an authenticated fetch of `GET /api/swaps/board` intercepted from the page's own request, the same pattern used for `/api/soldiers` in `multi_user_duty_problems.spec.ts`'s `grantHakpazaPikudit`). Open `CoverOfferModal`, select `cover_mode` "free", submit. Wait for `POST /api/swaps/{id}/offer` to return 2xx.
+  `swapRequesterB` creates+publishes (entry point A is fine for creation; the point under test here is the *claim* path). `swapCoveringB` navigates to `/unit-calendar`, opens the shift via `ShiftDetailPanel`, claims through the `swaps.cover` button found there (entry point B), selects `cover_mode` trade, picks one of their own duties to offer, submits. Approve through both roles as in Step 4 (reusing the helper built there). Assert both sides' assignment ownership swapped correctly — this is the one scenario where *two* duties change hands, so assert both `/my-duties` views.
 
-- [ ] **Step 6: `swapRequester` approves the covering offer**
+- [ ] **Step 6: Test — proactive "offer to replace" (entry point C)**
 
-  As `swapRequester`, navigate to `/swaps?tab=2` (incoming) or `?tab=0` depending on which side the approval surfaces on (verify by reading `SwapsPage.tsx`'s tab-routing logic for the requester-approve case — `soldierApproveSwap` — before writing the selector). Click the approve control, wait for `POST /api/me/swaps/{id}/approve` to return 2xx.
+  As `commander` or `dutyManager` (whichever role the guard on `offerSwapTarget`/`swaps.offer_replace` in `ShiftDetailPanel.tsx` actually authorizes — verify before writing), open a duty belonging to a third soldier (reuse one of the existing role fixtures, e.g. `assignedExemption`, on a freshly-assigned duty) and use `swaps.offer_replace` to create a swap on that soldier's behalf. Assert the swap appears in the target soldier's "mine" tab as if they'd created it themselves.
 
-- [ ] **Step 7: Manager approves both sides and the swap finalizes**
-
-  As `dutyManager` (or whichever role `GET /api/swaps/config` reports as required approver — read `require_manager_approval`/`require_duty_manager_approval` from that endpoint during setup rather than assuming), navigate to `/swaps?tab=3`, find the pending row, approve requester side then covering side via `SwapApprovalColumns`, waiting for `POST /api/swaps/{id}/manager-approve` after each click. After the second approval, assert the finalized status server-side effect is visible: refresh `/swaps?tab=0` as `swapRequester` and assert the row's status badge text reflects completion (not just that the API returned 2xx — this is the "assert visible post-mutation state" constraint from the spec).
-
-- [ ] **Step 8: Cross-role visibility check**
-
-  As `swapCovering`, navigate to `/my-duties` and assert the duty now appears in their upcoming list (the swap's real consequence — the assignment ownership actually moved).
-
-- [ ] **Step 9: Run against a freshly seeded DB, twice**
+- [ ] **Step 7: Run against a freshly seeded DB, twice**
 
   ```powershell
   cd backend
@@ -93,16 +75,15 @@
   Remove-Item -Recurse -Force .playwright\auth
   npx playwright test --grep swaps --project=desktop --retries=0
   ```
-  Repeat the reseed+run twice. Both runs must pass with no retries.
+  Repeat twice. Both runs must pass with no retries.
 
-- [ ] **Step 10: Update the coverage matrix and commit**
+- [ ] **Step 8: Update the coverage matrix and commit**
 
-  Add a row to `docs/e2e-coverage-matrix.md`:
-  `| Soldier, soldier, duty manager | Duty swap | Claimed swap finalizes and assignment ownership visibly transfers | Desktop | Full | \`smoke/swaps.spec.ts\` |`
+  Add a row to `docs/e2e-coverage-matrix.md` covering all six sub-journeys and noting `take-free` is intentionally out of scope (dead endpoint, no UI).
 
   ```bash
   git add frontend/tests/e2e/smoke/swaps.spec.ts frontend/tests/e2e/fixtures/auth.ts docs/e2e-coverage-matrix.md
-  git commit -m "test: cover duty swap marketplace and approval journey"
+  git commit -m "test: cover duty swap marketplace, shift-modal, offer, and dual-role approval journeys"
   ```
 
 ---
@@ -165,84 +146,119 @@ No new journey actors strictly required — the seeded past/upcoming `RangeEvent
 - Modify: `frontend/tests/e2e/fixtures/auth.ts` — add one journey actor if needed: `transferSoldier` (a soldier eligible to move between two hierarchy nodes the seed already creates — confirm two sibling/parent nodes with distinct commanders exist in seed's 19 hierarchy nodes before picking source/destination)
 - Modify: `docs/e2e-coverage-matrix.md`
 
+**Scope:** the user asked for drag-and-drop coverage in addition to the click-based flow. Confirmed via research: `HierarchyTree.tsx` already implements soldier drag using `@dnd-kit/core` (pointer-sensor based, **not** native HTML5 drag events) — dragging a soldier row onto a node calls the exact same `createTransferRequest` flow as the click-based "quick add," just via `handleDragEnd` instead of a click handler. So drag-and-drop is a second *interaction mechanism* onto identical backend behavior, not a separate feature — write it as an additional `test()` that proves the mechanism works, not a full re-test of the approval flow (that's already covered by the click-based test).
+
 **Interfaces (verified):**
-- Create: `HierarchyTree.tsx` (or `UnifiedSoldierModal.tsx`/`EntriesExitsPanel.tsx`) form field `transfer-reason` → `POST /api/hierarchy-transfers`
+- Create (click-based): `HierarchyTree.tsx` → `transfer-reason` form field → `POST /api/hierarchy-transfers`
+- Create (drag-and-drop): soldier row drag handle `data-testid="tree-soldier-${personal_number}"` (only rendered when `canEdit`) → drop onto a node row (target the node's name element, `data-testid="tree-name-${nodeId}"` per the drop-target pattern in `HierarchyTree.tsx` — confirm the exact drop-target testid by reading `DroppableNodeRow` around line 127-202 before writing the test) → `handleDragEnd` → same `openTransferConfirmation` → `ConfirmDialog`/`transfer-reason` form → `POST /api/hierarchy-transfers`. **Not** the node-drag-to-move feature (`moveNode`, `POST /hierarchy/nodes/{id}/move`) — that's a different, immediate, no-approval hierarchy edit and is out of scope for this task (it's a structural admin action, not a "transfer request").
+- Drag simulation: dnd-kit's `PointerSensor` needs `activationConstraint: { distance: 8 }` cleared — use `locator.hover()` → `page.mouse.down()` → several small incremental `page.mouse.move()` calls (not one large jump) ending over the target row → `page.mouse.up()`. Native `dispatchEvent`-based HTML5 drag simulation will **not** trigger this and must not be used.
 - Requester view: `MyRequestsPage` "transfers" tab
 - Approver view: `ApprovalsPage`, tab `approvals-tab-transfers` → `onTransferApprove`/`onTransferReject` handlers → `POST /api/hierarchy-transfers/{id}/approve` / `/reject`
 
 - [ ] **Step 1: Identify two hierarchy nodes with distinct approvers**
 
-  Read `backend/app/scripts/seed.py`'s hierarchy-node creation block and pick a source node (holding a soldier we can move) and a destination node with a commander/duty-manager distinct from the source's, so the approval step exercises real cross-scope authorization rather than a same-person edge case. Record the node names/ids needed for the UI navigation.
+  Read `backend/app/scripts/seed.py`'s hierarchy-node creation block and pick a source node (holding a soldier we can move) and a destination node with a commander/duty-manager distinct from the source's. Record node names/ids for UI navigation.
 
-- [ ] **Step 2: Write the spec skeleton with seam-inventory header** (same convention)
+- [ ] **Step 2: Confirm the exact drop-target testid and drag affordance**
 
-- [ ] **Step 3: Create the transfer request**
+  Read `frontend/src/components/HierarchyTree.tsx`'s `DroppableNodeRow` (~line 127-202) and `DraggableSoldier` (~line 82-125) in full to pin down the literal testid strings and the `canEdit`/`can_edit` gating conditions (the drag handle only renders when these are true — confirm which role/scope satisfies them so the test logs in as the right actor).
 
-  As `commander` (or whichever role `HierarchyTree.tsx`'s create entry point authorizes — confirm by reading the component's guard before assuming `commander` is correct), navigate to `/team`, open the tree, select the soldier to move, fill `transfer-reason`, submit. Wait for `POST /api/hierarchy-transfers` 2xx and capture the request id.
+- [ ] **Step 3: Write the spec skeleton with seam-inventory header**
 
-- [ ] **Step 4: Requester-side visibility**
+  Include both interaction mechanisms and the explicit note that node-drag (`moveNode`) is out of scope.
 
-  As the same commander (or the soldier, per whatever the actual requester role turns out to be from Step 3), navigate to `/my-requests`, select the transfers tab, assert the new request appears pending.
+- [ ] **Step 4: Test — create via click, approve, verify (baseline)**
 
-- [ ] **Step 5: Destination approver decides**
+  As the role confirmed in Step 2, navigate to `/team`, open the tree, use the click-based "quick add" or direct soldier-row action to select a soldier and destination node, fill `transfer-reason`, submit. Wait for `POST /api/hierarchy-transfers` 2xx. As the destination approver, navigate to `/approvals`, `approvals-tab-transfers`, approve. Wait for the approve endpoint 2xx. Refresh `/team` and assert the soldier now appears under the destination node.
 
-  As the destination node's commander/duty-manager, navigate to `/approvals`, select `approvals-tab-transfers`, locate the row, click approve. Wait for `POST /api/hierarchy-transfers/{id}/approve` 2xx.
+- [ ] **Step 5: Test — create via drag-and-drop, approve, verify**
 
-- [ ] **Step 6: Cross-role visibility check**
+  Using a *second* soldier (to avoid colliding with Step 4's now-moved soldier), perform the mouse-based drag sequence from the soldier's `tree-soldier-${personal_number}` handle onto the destination node's row. Assert the `ConfirmDialog`/`transfer-reason` form opens as a result of the drop (proving `handleDragEnd` fired and routed into the same confirmation flow), fill the reason, submit, wait for `POST /api/hierarchy-transfers` 2xx. Approve as in Step 4. Assert the soldier appears under the destination node after refresh.
 
-  Refresh `/team` as an admin or the destination commander and assert the soldier now appears under the destination node (the transfer's real consequence, not just a 2xx).
+- [ ] **Step 6: Test — rejection path**
 
-- [ ] **Step 7: Rejection path (second test in the same spec)**
+  Repeat the click-based creation with a third soldier, then have the destination approver reject with a required reason via `onTransferReject`. Assert the requester sees the rejection reason in `/my-requests`.
 
-  Repeat Steps 3-4 with a fresh soldier/date, then have the destination approver reject with a required reason via `onTransferReject`, and assert the requester sees the rejection reason in `/my-requests`.
+- [ ] **Step 7: Run against a freshly seeded DB, twice** (`--grep hierarchy_transfers`)
 
-- [ ] **Step 8: Run against a freshly seeded DB, twice** (`--grep hierarchy_transfers`)
+- [ ] **Step 8: Update coverage matrix and commit**
 
-- [ ] **Step 9: Update coverage matrix and commit**
+  Add a row noting both interaction mechanisms are covered, and that node-drag-to-move is a separate, uncovered feature (flag it as a follow-up gap, don't silently imply it's tested).
 
   ```bash
   git add frontend/tests/e2e/smoke/hierarchy_transfers.spec.ts frontend/tests/e2e/fixtures/auth.ts docs/e2e-coverage-matrix.md
-  git commit -m "test: cover hierarchy transfer request approve/reject journey"
+  git commit -m "test: cover hierarchy transfer request via click and drag-and-drop, plus approve/reject"
   ```
 
 ---
 
-### Task 4: Rank advancement interval configuration (`frontend/tests/e2e/smoke/rank_advancement_config.spec.ts`)
+### Task 4: Rank advancement — manual edit, interval config, and an actual triggered promotion (`frontend/tests/e2e/smoke/rank_advancement.spec.ts`)
 
-**Scope note:** Actual rank promotion only happens via the daily `run_rank_advancement_worker()` background job (`backend/app/rank_advancement_worker.py`) — there is no UI control that triggers a promotion, so promotion itself is explicitly **out of scope** for browser E2E (per the Global Constraints rule on not forcing untestable UI state). This task covers the one real user-facing surface: the admin interval editor, whose side effect (recomputing `next_rank_date` for affected soldiers) *is* observable and worth asserting.
+**Scope:** the user wants promotion to genuinely happen and be observed, not scoped out. Promotion itself only fires from `_promote_due_soldiers()` inside the 24h-poll `rank_advancement_worker.py` — there is still no UI or HTTP trigger for it (confirmed again in the follow-up research pass). The honest way to "make it work end-to-end" without inventing a fake UI action: **manual UI edit sets the precondition, a small real backend utility runs the actual promotion function once, then the UI verifies the result.** This is a hybrid step and must be labeled as such in the spec comment — it is not a pure-browser action, but it exercises the real production promotion code path (not a mock), which is what actually proves promotion "works."
 
 **Files:**
-- Create: `frontend/tests/e2e/smoke/rank_advancement_config.spec.ts`
+- Create: `frontend/tests/e2e/smoke/rank_advancement.spec.ts`
+- Create: `backend/app/scripts/run_rank_advancement_once.py` — a small script that imports and calls `_promote_due_soldiers()` from `backend.app.rank_advancement_worker` once against `DATABASE_URL` and exits (mirrors the existing pattern of small one-shot scripts already in `backend/app/scripts/`; this is a genuinely useful ops utility too, not test-only scaffolding — an admin could run it manually to force a promotion pass without waiting for the daily poll)
+- Modify: `frontend/src/pages/UnifiedSoldierModal.tsx` — no `data-testid` gaps found for the rank-editing controls (see Interfaces below, all already have testids); modify only if implementation reveals a missing one
 - Modify: `docs/e2e-coverage-matrix.md`
 
 **Interfaces (verified):**
-- Page: `SystemSettingsPage.tsx`, `RankAdvancementIntervalsSection` (select the "עליית דרגה" settings group first)
-- Inputs: months input and career-entry checkbox keyed by `draftKey(track, rank)` — **no `data-testid` exists on these inputs yet**; this task must add one before it can select reliably (see Step 1)
-- API: `GET /api/soldiers/rank-ladder`, `PUT /api/soldiers/rank-advancement-intervals` (admin-only)
+- Manual rank edit: `UnifiedSoldierModal.tsx` — narrow flow `data-testid="rank-correction-toggle"` → form `data-testid="rank-correction-form"` → rank combo (bound to `profileRank`/`profileRankTrack`, no dedicated testid — select via its label/role) → submit `data-testid="rank-correction-submit"`. Full-profile flow has the same rank combo pattern, gated on `can_edit_rank_advancement`.
+- Manual next-rank-date edit: `data-testid="next-rank-date-input"` (appears in both the narrow and full-profile forms) → same submit button → `PATCH /api/soldiers/{soldier_id}/profile` (fields `rank`, `rank_track`, `next_rank_date` gated by `rank_advancement_edit_authorized`, `backend/app/routes/soldiers.py:39,406-407,811,835`).
+- Persisted-state indicator: `soldierData.next_rank_date_overridden` renders badge text `next_rank_date_manual` vs `next_rank_date_automatic` (~line 578) — use this to assert a manual edit actually flipped the flag, not just that the date changed.
+- Promotion precondition (from worker tests): a soldier is due when `next_rank_date IS NOT NULL AND next_rank_date <= today`, `discharge_date IS NULL OR discharge_date > today`, `left_at IS NULL OR left_at > today`.
+- Interval config: `SystemSettingsPage.tsx`, `RankAdvancementIntervalsSection` — inputs keyed by `draftKey(track, rank)`, **no testid exists yet**, must be added (see Step 3). API: `GET /api/soldiers/rank-ladder`, `PUT /api/soldiers/rank-advancement-intervals` (admin-only).
 
-- [ ] **Step 1: Add `data-testid` to the interval inputs**
+- [ ] **Step 1: Write `run_rank_advancement_once.py`**
 
-  Read `frontend/src/pages/SystemSettingsPage.tsx` around `RankAdvancementIntervalsSection` (line ~675-820) and add `data-testid={\`rank-interval-months-${track}-${rank}\`}` to the months input and `data-testid={\`rank-interval-career-entry-${track}-${rank}\`}` to the checkbox, using the existing `draftKey(track, rank)` values so the ids are stable and predictable. This is the one production-code change in this task — keep it minimal, matching the existing selector-naming convention used elsewhere in the file.
+  ```python
+  """One-shot rank-advancement pass. Runs the same promotion logic the daily
+  worker runs, without waiting for its poll interval. Safe to run manually
+  in any environment — it only promotes soldiers already due."""
+  from app.db.session import session_scope
+  from app.rank_advancement_worker import _promote_due_soldiers
+
+  def main() -> None:
+      with session_scope() as session:
+          _promote_due_soldiers(session)
+          session.commit()
+
+  if __name__ == "__main__":
+      main()
+  ```
+  Read `backend/app/rank_advancement_worker.py`'s actual `_promote_due_soldiers` signature first (line ~84-97) — confirm whether it takes a session argument or opens its own `session_scope()` internally (the research pass's snippet suggests the latter — adjust the wrapper accordingly so it doesn't double-open a session). Test it directly: `cd backend && .venv\Scripts\python.exe -m app.scripts.run_rank_advancement_once` against the E2E database and confirm it exits 0 with no soldiers due (fresh seed has none due).
 
 - [ ] **Step 2: Write the spec skeleton with seam-inventory header**
 
-- [ ] **Step 3: Admin edits an interval and it persists**
+  Explicitly document the hybrid nature of the promotion test (UI setup → out-of-band script → UI verification) so a future reader isn't confused about why this spec shells out.
 
-  As `admin`, navigate to `/admin/settings`, select the rank-advancement settings group, change one track/rank's months value via the new testid, save. Wait for `PUT /api/soldiers/rank-advancement-intervals` 2xx. Reload the page and assert the changed value is still shown (persisted, not just accepted).
+- [ ] **Step 3: Add testids to the interval inputs**
 
-- [ ] **Step 4: Assert the recompute side effect on an affected soldier**
+  Read `frontend/src/pages/SystemSettingsPage.tsx` around `RankAdvancementIntervalsSection` (~line 675-820), add `data-testid={\`rank-interval-months-${track}-${rank}\`}` to the months input and `data-testid={\`rank-interval-career-entry-${track}-${rank}\`}` to the checkbox, using the existing `draftKey(track, rank)` values.
 
-  Pick a soldier on the edited track/rank (from seed data — identify one via `GET /api/soldiers` filtered by rank, same authenticated-fetch pattern as the swap-board resolution in Task 1 to avoid a `.first()`-style mismatch). Navigate to their profile as admin, assert the displayed "next rank date" reflects the new interval (read the exact field/testid from `ProfilePage.tsx` before writing the assertion — the research pass only confirmed rank is *shown*, not the exact next-rank-date selector, so verify this during implementation).
+- [ ] **Step 4: Test — admin edits an interval and it persists**
 
-- [ ] **Step 5: Run against a freshly seeded DB, twice** (`--grep rank_advancement_config`)
+  As `admin`, navigate to `/admin/settings`, select the rank-advancement group, change one track/rank's months value, save, wait for `PUT /api/soldiers/rank-advancement-intervals` 2xx, reload, assert the value persisted.
 
-- [ ] **Step 6: Update coverage matrix and commit**
+- [ ] **Step 5: Test — manual rank and next-rank-date edit**
 
-  Add a row noting promotion itself is worker-only and explicitly out of scope, so a future reader doesn't assume this spec covers actual promotions.
+  As a user with `can_edit_rank_advancement` (check seed for which commander/duty-manager has this — the research pass confirmed the gate exists but not which seeded actor satisfies it; if none do, this step also needs an admin path since admins should implicitly qualify — verify), open a soldier via `UnifiedSoldierModal`, use `rank-correction-toggle` → `rank-correction-form`, set a new rank via the combo and a new `next-rank-date-input` value, submit via `rank-correction-submit`. Wait for the `PATCH .../profile` 2xx. Reload and assert both the new rank displays and the `next_rank_date_manual` badge text shows (proving `next_rank_date_overridden` flipped to true).
+
+- [ ] **Step 6: Test — trigger and observe an actual promotion**
+
+  As the same authorized actor, pick a *different* soldier (not the one from Step 5, to keep assertions independent) and set their `next-rank-date-input` to today's date via the same edit flow, submit, wait for the 2xx. Then run the one-shot script from the test (Node `child_process.execSync`, pointed at the same `backend\.venv\Scripts\python.exe -m app.scripts.run_rank_advancement_once`, with `DATABASE_URL` set to the E2E database the running backend actually uses — read it from the same env convention as `scripts/e2e.ps1`). After the script exits 0, reload the soldier's profile/modal in the browser and assert their `rank` field now shows the *next* rank in the ladder (per `get_next_rank`) and that `next_rank_date_overridden` reset to `false` (automatic) with a newly-computed future date — this proves the real promotion function ran and its effect is visible through the UI, not just that a script executed.
+
+- [ ] **Step 7: Run against a freshly seeded DB, twice** (`--grep rank_advancement`)
+
+  Note: Step 6 mutates real backend state outside the browser — when reseeding between runs, confirm the reseed also resets any soldier the previous run promoted (a `--clear` reseed does this automatically since it rebuilds the whole DB).
+
+- [ ] **Step 8: Update coverage matrix and commit**
+
+  Add a row noting the promotion assertion is a hybrid (UI + one-shot script) test and why.
 
   ```bash
-  git add frontend/tests/e2e/smoke/rank_advancement_config.spec.ts frontend/src/pages/SystemSettingsPage.tsx docs/e2e-coverage-matrix.md
-  git commit -m "test: cover rank advancement interval configuration and recompute"
+  git add frontend/tests/e2e/smoke/rank_advancement.spec.ts backend/app/scripts/run_rank_advancement_once.py frontend/src/pages/SystemSettingsPage.tsx docs/e2e-coverage-matrix.md
+  git commit -m "test: cover rank advancement manual edit, interval config, and a triggered promotion"
   ```
 
 ---
@@ -252,7 +268,7 @@ No new journey actors strictly required — the seeded past/upcoming `RangeEvent
 Run from `frontend` unless noted, against a freshly reseeded E2E database (see Global Constraints):
 
 ```powershell
-npx playwright test --grep "swaps|ranges|hierarchy_transfers|rank_advancement_config" --project=desktop --retries=0
+npx playwright test --grep "swaps|ranges|hierarchy_transfers|rank_advancement" --project=desktop --retries=0
 ```
 
 Run each spec individually at least twice from a clean reseed before considering its task done. Before claiming any task complete, verify: fresh-database repeatability (2x), no reliance on `.first()` where DB accumulation could make it ambiguous, failure artifacts are produced on an intentionally-broken run, and the coverage matrix row is accurate. Treat timeouts or interrupted commands as unverified.
