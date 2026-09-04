@@ -811,6 +811,7 @@ function RankAdvancementIntervalsSection() {
                       onChange={e => setMonthsValue(track, entry.rank, e.target.value)}
                       className="w-28 border rounded px-2 py-1 text-sm text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       dir="ltr"
+                      data-testid={`rank-interval-months-${track}-${entry.rank}`}
                     />
                   </td>
                   <td className="py-1">
@@ -818,6 +819,7 @@ function RankAdvancementIntervalsSection() {
                       type="checkbox"
                       checked={draft[draftKey(track, entry.rank)]?.advance_on_career_entry ?? false}
                       onChange={e => setCareerEntryValue(track, entry.rank, e.target.checked)}
+                      data-testid={`rank-interval-career-entry-${track}-${entry.rank}`}
                     />
                   </td>
                 </tr>
