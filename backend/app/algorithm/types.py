@@ -35,6 +35,7 @@ class SoldierInput:
     cumulative_score: Decimal
     active_days: int
     hierarchy_node_id: uuid.UUID | None = None
+    unit_join_date: date | None = None
     path_ids: list[uuid.UUID] = field(default_factory=list)
     approved_constraint_dates: list[tuple[date, date]] = field(default_factory=list)
     exempted_duty_type_ids: set[uuid.UUID] = field(default_factory=set)

@@ -361,6 +361,7 @@ def load_soldier_inputs(
             SoldierInput(
                 id=s.id,
                 enrolled_at=s.enrolled_at,
+                unit_join_date=s.unit_join_date,
                 cumulative_score=cum,
                 active_days=ad,
                 hierarchy_node_id=s.hierarchy_node_id,

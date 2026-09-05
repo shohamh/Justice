@@ -177,6 +177,30 @@ def test_soldier_input_has_effort_fields():
     assert s.effort_per_milli == 0
 
 
+def test_soldier_input_has_unit_join_date_field():
+    from app.algorithm.types import SoldierInput
+    import uuid
+    from datetime import date
+    from decimal import Decimal
+
+    s = SoldierInput(
+        id=uuid.uuid4(),
+        enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"),
+        active_days=90,
+    )
+    assert s.unit_join_date is None
+
+    s2 = SoldierInput(
+        id=uuid.uuid4(),
+        enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"),
+        active_days=90,
+        unit_join_date=date(2025, 6, 1),
+    )
+    assert s2.unit_join_date == date(2025, 6, 1)
+
+
 def test_inject_effort_scores():
     """After injection, effort_per_milli = int(C_over_D × EFFORT_SCALE) when unit_score > 0."""
     sid = uuid.uuid4()
