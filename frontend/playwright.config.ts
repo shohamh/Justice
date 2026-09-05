@@ -15,7 +15,7 @@ export default defineConfig({
   use: {
     browserName: "chromium",
     channel: "chrome",
-    baseURL: "http://localhost:5173",
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
     trace: "on-first-retry",
     video: "off",
   },
