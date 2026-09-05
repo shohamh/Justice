@@ -53,6 +53,12 @@ from app.services.dm_scope import assign_dm_scope
 from app.services.rank_advancement import resolve_track
 from app.services.settings_loader import initialize_active_days_reference_date
 
+def _safe_print(s: str) -> None:
+    import sys
+
+    sys.stdout.buffer.write(s.encode("utf-8", errors="replace") + b"\n")
+
+
 HISTORY_START = date(2026, 7, 1)
 POLARIS_JOIN_DATE = date(2026, 9, 1)
 PN_BASE = 6000001
@@ -319,7 +325,7 @@ def _vary_focus_unit_join_dates(session, focus_soldiers: list[Soldier], rng: ran
 
 def _backfill_focus_history(session, focus_branch: HierarchyNode, s_admin: Soldier, today: date, rng: random.Random) -> None:
     if session.get(SystemSetting, _FOCUS_BACKFILL_MARKER_KEY) is not None:
-        print("פוקוס duty history already backfilled — skipping.")
+        _safe_print("פוקוס duty history already backfilled — skipping.")
         return
 
     all_nodes = session.query(HierarchyNode).all()
@@ -328,7 +334,7 @@ def _backfill_focus_history(session, focus_branch: HierarchyNode, s_admin: Soldi
         session.query(Soldier).filter(Soldier.hierarchy_node_id.in_(focus_node_ids)).all()
     )
     if not focus_soldiers:
-        print("No פוקוס soldiers found — skipping duty history backfill.")
+        _safe_print("No פוקוס soldiers found — skipping duty history backfill.")
         return
 
     _vary_focus_unit_join_dates(session, focus_soldiers, rng)
@@ -340,7 +346,7 @@ def _backfill_focus_history(session, focus_branch: HierarchyNode, s_admin: Soldi
     duty_types = {dt.name: dt for dt in session.query(DutyType).all()}
     locations = session.query(DutyLocation).all()
     if not locations:
-        print("No duty locations found — skipping duty history backfill.")
+        _safe_print("No duty locations found — skipping duty history backfill.")
         return
 
     first_mon = _first_weekday_on_or_after(HISTORY_START, 0)
@@ -444,7 +450,7 @@ def _backfill_focus_history(session, focus_branch: HierarchyNode, s_admin: Soldi
 
     session.add(SystemSetting(key=_FOCUS_BACKFILL_MARKER_KEY, value=True, updated_by=s_admin.id))
     session.flush()
-    print(
+    _safe_print(
         f"פוקוס history: {shifts_created} duty shifts, {assignments_created} assignments "
         f"since {HISTORY_START.isoformat()} across {len(focus_soldiers)} soldiers."
     )
@@ -486,11 +492,11 @@ def seed_polaris(*, clear_polaris: bool = False) -> None:
             existing_polaris = None
 
         if existing_polaris is not None:
-            print("פולאריס branch already exists — skipping (pass --clear-polaris to rebuild).")
+            _safe_print("פולאריס branch already exists — skipping (pass --clear-polaris to rebuild).")
         else:
             polaris_soldiers = _create_polaris_branch(session, psips, hashed, today)
             session.commit()
-            print(f"Created פולאריס branch: {len(polaris_soldiers)} soldiers, all joined {POLARIS_JOIN_DATE.isoformat()}.")
+            _safe_print(f"Created פולאריס branch: {len(polaris_soldiers)} soldiers, all joined {POLARIS_JOIN_DATE.isoformat()}.")
 
         _backfill_focus_history(session, focus_branch, s_admin, today, rng)
         session.commit()
