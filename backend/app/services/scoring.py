@@ -1676,8 +1676,6 @@ def burden_shares_by_soldier(
 
     from app.services.effort_score import compute_effort_data
 
-    reset_date = _burden_share_reset_date(session)
-
     today = date.today()
 
     from sqlalchemy import func as sql_func
@@ -1694,7 +1692,6 @@ def burden_shares_by_soldier(
         soldiers=soldiers,
         planning_start=planning_start,
         planning_end=planning_start,
-        reset_date=reset_date,
     )
     return {sid: float(data.effort_score) for sid, data in effort_map.items()}
 
@@ -1857,7 +1854,6 @@ def _legacy_transparency_rows(
 
     # Compute effort scores for all active soldiers
     today = date.today()
-    reset_date = _burden_share_reset_date(session)
 
     # Include future published assignments by using the day after the latest
     # published assignment as the planning horizon.  Without this, effort_score
@@ -1876,7 +1872,6 @@ def _legacy_transparency_rows(
         soldiers=list(soldiers),
         planning_start=planning_start,
         planning_end=planning_start,
-        reset_date=reset_date,
     )
 
     rows: list[dict[str, Any]] = []

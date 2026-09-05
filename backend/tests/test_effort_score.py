@@ -1047,3 +1047,48 @@ def test_compute_effort_data_explicit_reset_date_still_forces_uniform_date(admin
     # -> C_over_D≈0.0001167 -- clearly different from 0.0001, so this assertion
     # would catch that regression.
     assert abs(result[s.id].C_over_D - Decimal("0.0001")) < Decimal("0.0000001")
+
+
+def test_run_algorithm_job_does_not_force_global_reset_date():
+    """run_algorithm_job must let compute_effort_data auto-resolve reset date
+    per soldier — passing an explicit reset_date= here would silently defeat
+    every hierarchy override for the live solve."""
+    import inspect
+    from app.services import algorithm_bridge as ab
+
+    src = inspect.getsource(ab.run_algorithm_job)
+    assert "reset_date=" not in src, (
+        "run_algorithm_job must not pass an explicit reset_date to compute_effort_data"
+    )
+
+
+def test_export_solver_inputs_does_not_force_global_reset_date():
+    import inspect
+    from app.services import algorithm_bridge as ab
+
+    src = inspect.getsource(ab.export_solver_inputs)
+    assert "reset_date=" not in src
+
+
+def test_legacy_transparency_rows_does_not_force_global_reset_date():
+    import inspect
+    from app.services import scoring as sc
+
+    src = inspect.getsource(sc._legacy_transparency_rows)
+    assert "reset_date=" not in src
+
+
+def test_burden_share_breakdown_route_does_not_force_global_reset_date():
+    import inspect
+    from app.routes import scoring as scoring_routes
+
+    src = inspect.getsource(scoring_routes.burden_share_breakdown)
+    assert "reset_date=" not in src
+
+
+def test_preview_adjustment_route_does_not_force_global_reset_date():
+    import inspect
+    from app.routes import score_adjustments
+
+    src = inspect.getsource(score_adjustments.preview_adjustment)
+    assert "reset_date=" not in src
