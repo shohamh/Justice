@@ -96,6 +96,41 @@ def _alal_dates_before_ganash(ganash_dates: list[date]) -> list[date]:
     return [ganash_date - timedelta(days=1) for ganash_date in ganash_dates]
 
 
+# Mandatory service: men 32 months (2 yrs 8 mo), women 24 months (2 yrs)
+_MANDATORY_MONTHS = {"male": 32, "female": 24}
+
+
+def _mandatory_end(enlist: date, gender: str = "male") -> date:
+    m = enlist.month + _MANDATORY_MONTHS[gender]
+    y = enlist.year + (m - 1) // 12
+    mo = ((m - 1) % 12) + 1
+    d = min(enlist.day, 28)
+    return date(y, mo, d)
+
+
+def _next_weekday(from_date: date, target: int) -> date:
+    days = (target - from_date.weekday()) % 7
+    return from_date + timedelta(days=7 if days == 0 else days)
+
+
+def _duty_hours(dt: DutyType) -> tuple[str, str]:
+    """Hours are a feature of the duty type: read its own configured
+    start_time/end_time rather than defaulting to a full calendar day."""
+    start_time = dt.start_time.strftime("%H:%M") if dt.start_time else "00:00"
+    end_time = dt.end_time.strftime("%H:%M") if dt.end_time else "23:59"
+    return start_time, end_time
+
+
+def _single_day_shift_span(day: date, dt: DutyType) -> tuple[date, date, str, str]:
+    """A single-day duty slot for `dt`. When the duty type's own hours cross
+    midnight (e.g. an overnight ליווים shift), the span covers two calendar
+    days so the night is fully represented."""
+    start_time, end_time = _duty_hours(dt)
+    crosses_midnight = end_time <= start_time
+    end_date = day + timedelta(days=2 if crosses_midnight else 1)
+    return day, end_date, start_time, end_time
+
+
 def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = False):
     # Deferred (not module-level): app.db.session builds its engine from the
     # ambient DATABASE_URL at import time, and test fixtures can later call
@@ -244,16 +279,6 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             raise RuntimeError(f"Soldier {pn} not created yet — ordering bug")
 
         seed_today = date.today()
-
-        # Mandatory service: men 32 months (2 yrs 8 mo), women 24 months (2 yrs)
-        _MANDATORY_MONTHS = {"male": 32, "female": 24}
-
-        def _mandatory_end(enlist: date, gender: str = "male") -> date:
-            m = enlist.month + _MANDATORY_MONTHS[gender]
-            y = enlist.year + (m - 1) // 12
-            mo = ((m - 1) % 12) + 1
-            d = min(enlist.day, 28)
-            return date(y, mo, d)
 
         all_nodes = [psips] + branches + focus_groups + alom_groups + all_teams
         pn_counter = 1000001
@@ -1045,27 +1070,6 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         import itertools
 
         today = date.today()
-
-        def _next_weekday(from_date: date, target: int) -> date:
-            days = (target - from_date.weekday()) % 7
-            return from_date + timedelta(days=7 if days == 0 else days)
-
-        def _duty_hours(dt: DutyType) -> tuple[str, str]:
-            """Hours are a feature of the duty type: read its own configured
-            start_time/end_time (set in dt_defs above) rather than defaulting
-            to a full calendar day."""
-            start_time = dt.start_time.strftime("%H:%M") if dt.start_time else "00:00"
-            end_time = dt.end_time.strftime("%H:%M") if dt.end_time else "23:59"
-            return start_time, end_time
-
-        def _single_day_shift_span(day: date, dt: DutyType) -> tuple[date, date, str, str]:
-            """A single-day duty slot for `dt`. When the duty type's own
-            hours cross midnight (e.g. an overnight ליווים shift), the span
-            covers two calendar days so the night is fully represented."""
-            start_time, end_time = _duty_hours(dt)
-            crosses_midnight = end_time <= start_time
-            end_date = day + timedelta(days=2 if crosses_midnight else 1)
-            return day, end_date, start_time, end_time
 
         next_mon = _next_weekday(today, 0)
         next_thu = _next_weekday(today, 3)
