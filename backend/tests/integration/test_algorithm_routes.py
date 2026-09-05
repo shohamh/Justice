@@ -129,6 +129,36 @@ def test_create_job_accepts_auto_relax_node_quotas(client, admin_session):
     assert job.settings_json["auto_relax_node_quotas"] is True
 
 
+def test_create_job_omits_enforce_weapon_qualification_when_not_specified(client, admin_session):
+    """Regression: SolverSettingsIn defaulted enforce_weapon_qualification=True, so
+    model_dump() always baked a literal True into settings_json even when the client
+    (every reachable UI surface) never sent the field. That permanently masked the
+    admin's weapon_qualification.enforce_eligibility system setting for every job
+    created through POST /api/algorithm/jobs, since resolve_solver_settings only
+    falls back to the system setting when the key is entirely absent.
+    """
+    dm, _node = _setup_dm(admin_session, "route_alg_ewq")
+    shift, _dt, _loc = _make_shift(admin_session, "route_ewq", "2027-07-06")
+    create_soldier(admin_session, personal_number="route_soldier_ewq", role="soldier")
+
+    resp = client.post(
+        "/api/algorithm/jobs",
+        json={
+            "shift_ids": [str(shift.id)],
+            "mode": "shadow",
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 15},
+        },
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 202, resp.text
+    job_id = resp.json()["id"]
+
+    admin_session.expire_all()
+    job = admin_session.get(AlgorithmJob, job_id)
+    assert "enforce_weapon_qualification" not in job.settings_json
+    assert "auto_relax_node_quotas" not in job.settings_json
+
+
 def test_create_job_with_eligible_node_ids_returns_202(client, admin_session):
     """Regression test: SolverSettingsIn.eligible_node_ids is list[uuid.UUID] | None.
     Pydantic's default model_dump() leaves those as UUID objects, which are not
