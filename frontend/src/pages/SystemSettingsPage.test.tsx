@@ -5,6 +5,9 @@ import "../i18n";
 import { SystemSettingsContent } from "./SystemSettingsPage";
 import * as systemSettingsApi from "../api/systemSettings";
 import * as rankAdvancementApi from "../api/rankAdvancement";
+import * as hierarchyApi from "../api/hierarchy";
+
+vi.mock("../api/hierarchy");
 
 vi.mock("../api/systemSettings", async () => {
   const actual = await vi.importActual<typeof import("../api/systemSettings")>("../api/systemSettings");
@@ -349,5 +352,47 @@ describe("SystemSettingsContent reset-date overrides", () => {
     await screen.findByDisplayValue("20/08/2026");
     fireEvent.click(screen.getByRole("button", { name: "הסר" }));
     expect(screen.queryByDisplayValue("20/08/2026")).not.toBeInTheDocument();
+  });
+
+  // Regression: newly-added override rows used to seed with an empty date
+  // string. If the admin picked a node and saved before setting a date (the
+  // literal default flow), the backend rejected the blank date and discarded
+  // every other unsaved edit on the page. Fix: seed with the current global
+  // fairness.reset_date value so a freshly-added row is always valid.
+  it("seeds a newly-added override row with the global default date, not blank", async () => {
+    vi.mocked(systemSettingsApi.getSystemSettings).mockResolvedValue({
+      "fairness.reset_date": "2026-05-10",
+      "fairness.reset_date_overrides": {
+        "11111111-1111-1111-1111-111111111111": "2026-08-20",
+      },
+    });
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+      {
+        id: "unit-new", level: "unit" as const, name: "יחידה חדשה", parent_id: null,
+        commander_id: null, commander_name: null, path_ids: ["unit-new"],
+        duty_managers: [], dm_manageable: false, can_edit: true, children: [],
+      },
+    ]);
+
+    renderWithProviders(<SystemSettingsContent />);
+    // Wait for the existing override row to render, confirming the section
+    // has loaded before we interact with the picker.
+    await screen.findByDisplayValue("20/08/2026");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ הוסף עקיפה" }));
+    await waitFor(() => expect(screen.getByText("יחידה חדשה")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "בחר" }));
+
+    // The new override row must show the global default (2026-05-10 ->
+    // 10/05/2026), not a blank date input. Scope to the new row itself (via
+    // its node-name label) since the page's own global "fairness.reset_date"
+    // field also displays "10/05/2026" and would otherwise be an ambiguous
+    // match for a page-wide findByDisplayValue query.
+    const newRowLabel = await screen.findByText("יחידה חדשה");
+    const newRow = newRowLabel.closest("div.flex.items-center.justify-between");
+    expect(newRow).not.toBeNull();
+    const dateInput = newRow!.querySelector('input[placeholder="dd/mm/yyyy"]') as HTMLInputElement | null;
+    expect(dateInput).not.toBeNull();
+    expect(dateInput!.value).toBe("10/05/2026");
   });
 });

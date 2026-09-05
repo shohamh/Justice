@@ -714,10 +714,10 @@ def _reset_date_overrides(session: Session) -> dict[str, str]:
     """Raw {node_id_str: iso_date} from fairness.reset_date_overrides, or {}
     if unset/malformed. Validation of well-formedness happens at write time
     (settings_loader.validate_settings_update) — this is a defensive read."""
-    from app.services.settings_loader import SettingNotFound, get_setting
+    from app.services.settings_loader import RESET_DATE_OVERRIDES_KEY, SettingNotFound, get_setting
 
     try:
-        raw = get_setting(session, "fairness.reset_date_overrides")
+        raw = get_setting(session, RESET_DATE_OVERRIDES_KEY)
     except SettingNotFound:
         return {}
     return raw if isinstance(raw, dict) else {}
@@ -1627,7 +1627,7 @@ def _try_projected_burden_share_breakdown(
     W_i = Decimal("0")
     for q_start_d, q_end_d, calendar_qs in windows:
         q_days = (q_end_d - q_start_d).days + 1
-        soldier_start = max(soldier.enrolled_at, q_start_d)
+        soldier_start = max(soldier.unit_join_date or soldier.enrolled_at, q_start_d)
         if soldier_start > q_end_d:
             continue
 

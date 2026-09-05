@@ -649,6 +649,7 @@ export function SystemSettingsContent() {
           <ResetDateOverridesSection
             value={(draft["fairness.reset_date_overrides"] as Record<string, string>) ?? {}}
             onChange={(next) => setValue("fairness.reset_date_overrides", next)}
+            globalDefault={String(draft["fairness.reset_date"] ?? "")}
           />
         )}
         </Fragment>
@@ -668,16 +669,18 @@ export function SystemSettingsContent() {
 function ResetDateOverridesSection({
   value,
   onChange,
+  globalDefault,
 }: {
   value: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
+  globalDefault: string;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [nodeNames, setNodeNames] = useState<Record<string, string>>({});
 
   function handlePicked(nodeId: string, nodeName: string) {
     setNodeNames((prev) => ({ ...prev, [nodeId]: nodeName }));
-    onChange({ ...value, [nodeId]: value[nodeId] ?? "" });
+    onChange({ ...value, [nodeId]: value[nodeId] ?? globalDefault });
     setPickerOpen(false);
   }
 

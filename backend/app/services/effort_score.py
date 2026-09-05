@@ -309,7 +309,7 @@ def _build_future_quarters(
 def compute_effort_data(
     session: Session,
     *,
-    soldiers: list[Any],    # objects with .id (UUID) and .enrolled_at (date)
+    soldiers: list[Any],    # objects with .id (UUID), .hierarchy_node_id, .unit_join_date, and .enrolled_at (date)
     planning_start: date,
     planning_end: date,
     reset_date: date | None = None,
@@ -322,6 +322,9 @@ def compute_effort_data(
     Uses effective_duty_days() from scoring.py (same source-of-truth as score calculations).
     Loads history from reset_date up to (but not including) planning_start, PLUS any
     published assignments after planning_end (future duties beyond the planning window).
+
+    reset_date=None auto-resolves per-hierarchy via resolve_reset_dates_for_soldiers;
+    an explicit reset_date forces that single date for every soldier.
 
     `pending_duties` are duties the algorithm is ABOUT TO assign this run (not yet
     published). Each one's score is added to whichever quarter(s) it falls in as a
@@ -437,7 +440,7 @@ def compute_effort_data(
 def compute_burden_share_breakdown(
     session: Session,
     *,
-    soldier: Any,   # object with .id (UUID) and .enrolled_at (date)
+    soldier: Any,   # object with .id (UUID), .hierarchy_node_id, .unit_join_date, and .enrolled_at (date)
     planning_start: date,
     planning_end: date,
     reset_date: date | None = None,
@@ -450,6 +453,9 @@ def compute_burden_share_breakdown(
     Includes manual score adjustments (ScoreAdjustment records) in the calculation.
     Pass extra_adj_delta + extra_adj_date to simulate a hypothetical future adjustment
     (used by the preview endpoint).
+
+    reset_date=None auto-resolves this soldier's own date via
+    resolve_reset_dates_for_soldiers, while an explicit value forces that date.
 
     Returns BurdenShareBreakdown with one BurdenShareQuarterDetail per historical quarter
     (past and future beyond planning window) plus the aggregate burden_share and C_over_D.
@@ -472,9 +478,22 @@ def compute_burden_share_breakdown(
     from app.services.scoring import resolve_reset_dates_for_soldiers
 
     if reset_date is None:
-        reset_date = resolve_reset_dates_for_soldiers(session, [soldier])[soldier.id]
-    # else: an explicit reset_date forces that single date, matching today's
-    # single-global-date callers — same back-compat rule as compute_effort_data.
+        own_reset = resolve_reset_dates_for_soldiers(session, [soldier])[soldier.id]
+    else:
+        own_reset = reset_date
+        # explicit reset_date forces this soldier's own floor too — same
+        # back-compat rule as compute_effort_data.
+
+    # The unit-total denominator (q_unit_scores below) must reflect the WHOLE
+    # org's activity since the earliest applicable date -- matching what a
+    # batched compute_effort_data() call aggregates for the same quarter --
+    # NOT just this one soldier's own (possibly later) resolved reset date.
+    # Using own_reset alone here would silently exclude other soldiers'
+    # duty data that a multi-soldier compute_effort_data() call includes,
+    # producing a different burden_share for the same soldier depending on
+    # which function computed it (this is exactly the bug this fix closes).
+    query_floor = min(global_default, own_reset)
+    reset_date = query_floor
 
     from sqlalchemy import select
     from app.db.models import DutyType, ScoreAdjustment
@@ -557,7 +576,7 @@ def compute_burden_share_breakdown(
     W_i = Decimal("0")  # Σ(U_q × active_frac_q)
 
     for q_start_d, q_end_d in quarters:
-        own_floor = max(q_start_d, reset_date)
+        own_floor = max(q_start_d, own_reset)
         if own_floor > q_end_d:
             continue
         q_days = (q_end_d - own_floor).days + 1

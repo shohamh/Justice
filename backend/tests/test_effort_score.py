@@ -992,6 +992,77 @@ def test_compute_effort_data_resolves_reset_date_per_hierarchy(admin_session):
     assert abs(result[polaris_soldier.id].C_over_D - Decimal("0.00005")) < Decimal("0.0000001")
 
 
+def test_compute_burden_share_breakdown_agrees_with_compute_effort_data_across_branches(admin_session):
+    """Whole-branch-review finding: compute_burden_share_breakdown (single-soldier)
+    and compute_effort_data (batch) must produce the SAME effort_score/burden_share
+    for the same soldier. Before the fix, compute_burden_share_breakdown used the
+    overridden soldier's OWN resolved reset date as the query floor, which narrowed
+    the duty-day query and excluded other branches' earlier duty data from the
+    unit-total denominator (q_unit_scores) -- silently disagreeing with
+    compute_effort_data, which always floors the query at the org-wide minimum
+    resolved date. This reuses the exact two-branch/override fixture from
+    test_compute_effort_data_resolves_reset_date_per_hierarchy and asserts the two
+    entry points now agree for the overridden (Polaris) soldier."""
+    from datetime import date as date_cls
+    from app.db.models import DutyLocation, DutyType, HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    focus = HierarchyNode(level="division", name="focus2", path_ids=[])
+    polaris = HierarchyNode(level="division", name="polaris2", path_ids=[])
+    admin_session.add_all([focus, polaris])
+    admin_session.flush()
+    focus.path_ids = [focus.id]
+    polaris.path_ids = [polaris.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides", value={str(polaris.id): "2026-08-20"}
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "cross-branch-agree")
+
+    focus_soldier = create_soldier(admin_session, personal_number="9920001")
+    focus_soldier.hierarchy_node_id = focus.id
+    focus_soldier.enrolled_at = date_cls(2025, 1, 1)
+    polaris_soldier = create_soldier(admin_session, personal_number="9920002")
+    polaris_soldier.hierarchy_node_id = polaris.id
+    polaris_soldier.enrolled_at = date_cls(2026, 7, 20)
+    admin_session.flush()
+
+    create_assignment(
+        admin_session, soldier_id=focus_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 7, 5), end_date=date_cls(2026, 7, 15), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=polaris_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 8, 25), end_date=date_cls(2026, 9, 4), actor_id=None,
+    )
+    admin_session.flush()
+
+    planning_start = date_cls(2026, 10, 1)
+    planning_end = date_cls(2026, 10, 1)
+
+    batch_result = compute_effort_data(
+        admin_session,
+        soldiers=[focus_soldier, polaris_soldier],
+        planning_start=planning_start,
+        planning_end=planning_end,
+    )
+
+    single_result = compute_burden_share_breakdown(
+        admin_session,
+        soldier=polaris_soldier,
+        planning_start=planning_start,
+        planning_end=planning_end,
+    )
+
+    # The two entry points must agree on the Polaris soldier's burden_share /
+    # effort_score, even though compute_burden_share_breakdown only ever sees
+    # ONE soldier while compute_effort_data sees both branches at once.
+    assert single_result.burden_share == batch_result[polaris_soldier.id].effort_score
+
+
 def test_compute_effort_data_explicit_reset_date_still_forces_uniform_date(admin_session):
     """Backward compatibility: passing reset_date explicitly still forces
     that single date for every soldier, ignoring any hierarchy overrides.
