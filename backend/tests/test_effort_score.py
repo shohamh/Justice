@@ -757,3 +757,67 @@ def test_contribution_multiplier_reflects_dismissal(admin_session):
     assert len(paid) == 1 and paid[0].days == 2 and paid[0].score == Decimal("2")
     assert len(zeroed) == 1 and zeroed[0].days == 2 and zeroed[0].score == Decimal("0")
     assert "שחרור" in (zeroed[0].detail or "")
+
+def test_resolve_reset_dates_uses_nearest_ancestor_override(admin_session):
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from app.services.scoring import resolve_reset_dates_for_soldiers
+    from tests.helpers import create_soldier
+
+    root = HierarchyNode(level="corps", name="root", path_ids=[])
+    admin_session.add(root)
+    admin_session.flush()
+    root.path_ids = [root.id]
+
+    branch = HierarchyNode(level="division", name="polaris", parent_id=root.id, path_ids=[])
+    admin_session.add(branch)
+    admin_session.flush()
+    branch.path_ids = [root.id, branch.id]
+
+    team = HierarchyNode(level="unit", name="polaris-team", parent_id=branch.id, path_ids=[])
+    admin_session.add(team)
+    admin_session.flush()
+    team.path_ids = [root.id, branch.id, team.id]
+    admin_session.flush()
+
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides",
+        value={str(branch.id): "2026-08-20"},
+    ))
+    admin_session.flush()
+
+    soldier_on_team = create_soldier(admin_session, personal_number="9900001")
+    soldier_on_team.hierarchy_node_id = team.id
+    soldier_no_node = create_soldier(admin_session, personal_number="9900002")
+    soldier_no_node.hierarchy_node_id = None
+    admin_session.flush()
+
+    resolved = resolve_reset_dates_for_soldiers(admin_session, [soldier_on_team, soldier_no_node])
+
+    # soldier_on_team's own node (team) has no override, but its ancestor
+    # (branch) does -> nearest-ancestor wins over the global default.
+    assert resolved[soldier_on_team.id] == date_cls(2026, 8, 20)
+    # No hierarchy node at all -> global default.
+    assert resolved[soldier_no_node.id] == date_cls(2026, 7, 1)
+
+
+def test_resolve_reset_dates_falls_back_to_global_default(admin_session):
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from app.services.scoring import resolve_reset_dates_for_soldiers
+    from tests.helpers import create_soldier
+
+    node = HierarchyNode(level="division", name="focus", path_ids=[])
+    admin_session.add(node)
+    admin_session.flush()
+    node.path_ids = [node.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.flush()
+
+    s = create_soldier(admin_session, personal_number="9900003")
+    s.hierarchy_node_id = node.id
+    admin_session.flush()
+
+    resolved = resolve_reset_dates_for_soldiers(admin_session, [s])
+    assert resolved[s.id] == date_cls(2026, 7, 1)

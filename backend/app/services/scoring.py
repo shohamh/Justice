@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -707,6 +708,71 @@ def _burden_share_reset_date(session: Session) -> date:
     if first_start is not None:
         return quarter_start(first_start)
     return quarter_start(date(date.today().year - 2, date.today().month, 1))
+
+
+def _reset_date_overrides(session: Session) -> dict[str, str]:
+    """Raw {node_id_str: iso_date} from fairness.reset_date_overrides, or {}
+    if unset/malformed. Validation of well-formedness happens at write time
+    (settings_loader.validate_settings_update) — this is a defensive read."""
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    try:
+        raw = get_setting(session, "fairness.reset_date_overrides")
+    except SettingNotFound:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _resolve_reset_date_from_path(
+    path_ids: list[uuid.UUID], overrides: dict[str, str], default: date
+) -> date:
+    """Nearest-ancestor override, else default. path_ids is root-to-self
+    (HierarchyNode.path_ids convention — see hierarchy.py's
+    `path_ids = [*parent.path_ids, node.id]`), so walking it in reverse
+    checks the soldier's own node first, then each ancestor toward the root."""
+    for node_id in reversed(path_ids):
+        raw = overrides.get(str(node_id))
+        if raw is not None:
+            return date.fromisoformat(raw)
+    return default
+
+
+def resolve_reset_dates_for_soldiers(
+    session: Session, soldiers: Sequence[Any]
+) -> dict[uuid.UUID, date]:
+    """Per-soldier effective fairness reset date: nearest-ancestor override
+    from fairness.reset_date_overrides, else the global fairness.reset_date
+    default. `soldiers` need `.id` and `.hierarchy_node_id` (works for both
+    `Soldier` ORM rows and `SoldierInput`).
+
+    One query for the distinct hierarchy nodes actually present among
+    `soldiers` (not the whole tree), then each distinct node's ancestor walk
+    runs once and is cached — O(distinct_nodes) resolutions, O(soldiers) dict
+    lookups, regardless of how many soldiers share a node."""
+    overrides = _reset_date_overrides(session)
+    default = _burden_share_reset_date(session)
+
+    distinct_node_ids = {s.hierarchy_node_id for s in soldiers if s.hierarchy_node_id is not None}
+    node_path_map: dict[uuid.UUID, list[uuid.UUID]] = {}
+    if distinct_node_ids:
+        node_path_map = {
+            n.id: list(n.path_ids)
+            for n in session.execute(
+                select(HierarchyNode.id, HierarchyNode.path_ids).where(
+                    HierarchyNode.id.in_(distinct_node_ids)
+                )
+            ).all()
+        }
+
+    node_resolved: dict[uuid.UUID, date] = {
+        node_id: _resolve_reset_date_from_path(node_path_map.get(node_id, []), overrides, default)
+        for node_id in distinct_node_ids
+    }
+
+    return {
+        s.id: node_resolved.get(s.hierarchy_node_id, default)
+        for s in soldiers
+    }
 
 
 def _burden_share_planning_start(session: Session) -> date:
