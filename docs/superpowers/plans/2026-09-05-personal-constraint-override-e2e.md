@@ -122,7 +122,7 @@
 
 - [ ] **Step 4: Update the coverage matrix and commit**
 
-  Add a row to `docs/e2e-coverage-matrix.md` explicitly noting: duty manual override tested via the `ShiftAssignModal`/Replace path (the only working one) with the `ShiftEditAssignmentsModal` gap documented as a known follow-up; CP-SAT hard-excludes unconditionally; range manual override works directly through `RangeEditAssignmentsModal`; range auto-select is a soft conflict requiring the same override gate on save, not a hard exclusion — do not describe range auto-select as "excluding" the constrained soldier, since it doesn't.
+  Add a row to `docs/e2e-coverage-matrix.md` explicitly noting: duty-side manual override is a documented product gap on both paths — `ShiftAssignModal`'s Replace flow has real override UI but its weapon-ineligible-assignee precondition is unreachable through any live UI path, and the standard bulk `ShiftEditAssignmentsModal` has no override-reason UI at all — per the RESCOPED ruling above, neither path is exercised as a working override in this suite; CP-SAT hard-excludes unconditionally; range manual override works directly through `RangeEditAssignmentsModal`; range auto-select is a soft conflict requiring the same override gate on save, not a hard exclusion — do not describe range auto-select as "excluding" the constrained soldier, since it doesn't.
 
   ```bash
   git add frontend/tests/e2e/smoke/personal_constraint_override.spec.ts docs/e2e-coverage-matrix.md

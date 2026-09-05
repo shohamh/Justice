@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext, Page } from "@playwright/test";
 
 import { expect, test } from "../fixtures/test";
-import { journeyActorStorageState, roleStorageState, type Role } from "../fixtures/auth";
+import { journeyActors, journeyActorStorageState, roleStorageState, type Role } from "../fixtures/auth";
 
 /**
  * Seam inventory (read-only; every mutation below is driven through one of
@@ -37,7 +37,10 @@ import { journeyActorStorageState, roleStorageState, type Role } from "../fixtur
  *   causes.
  *
  * - Duty manual override — the real, pre-existing product gap this suite
- *   documents (not a defect in the test): the standard bulk
+ *   documents (not a defect in the test), tracked together with the
+ *   Replace-flow trigger gap above as background task task_af3d0c50
+ *   ("ShiftEditAssignmentsModal has no override UI; ShiftAssignModal's
+ *   Replace-flow trigger is unreachable"): the standard bulk
  *   ShiftEditAssignmentsModal (opened via [data-testid^=
  *   "manual-assignment-open-"], the same modal exercised in
  *   multi_user_duty_problems.spec.ts) has NO override-reason UI at all. A
@@ -152,7 +155,9 @@ import { journeyActorStorageState, roleStorageState, type Role } from "../fixtur
  *   enforce_weapon_qualification=False — this mechanism cannot work
  *   regardless of how carefully the admin-toggle UI is scripted. (This is a
  *   real, independently-worth-fixing product bug — flagged separately, not
- *   fixed here.) The custom-laser-duty-type helpers this second attempt wrote
+ *   fixed here, as background task task_f58fff09 ("Fix
+ *   enforce_weapon_qualification admin toggle never reaching solver").) The
+ *   custom-laser-duty-type helpers this second attempt wrote
  *   were removed from this file along with it; do not recreate them without
  *   first fixing the SolverSettingsIn default (or the fallback would still
  *   never engage).
@@ -185,13 +190,25 @@ async function openConstrainedSoldierContext(browser: Browser): Promise<RoleCont
   return { context, page: await context.newPage() };
 }
 
-const CONSTRAINED_SOLDIER_PN = "1000036";
+const CONSTRAINED_SOLDIER_PN = journeyActors.constrainedSoldier;
+// Hebrew display name for CONSTRAINED_SOLDIER_PN — not sourced from auth.ts
+// (which only stores personal numbers), but derived from seed.py's
+// `_team_profiles`/`f"{short} {i+1}"` naming convention for this actor's team
+// and index. If seed.py's naming scheme or team assignment for this actor
+// ever changes, this literal will need to be updated by hand.
 const CONSTRAINED_SOLDIER_NAME = "ריי 4";
 const TEAM_NODE_NAME = "צוות ריי";
 
 // Keep this journey's dates far outside the seeded/other-spec horizon, like
 // multi_user_duty_problems.spec.ts, but in a distinct offset band so a
 // whole-suite run never collides with that spec's 1500-1600 window.
+//
+// NOTE: this spec also requires a fresh reseed between runs (not just fresh
+// dates) — submit_constraint's cap-period check (backend constraints.py,
+// computed from start_date) means two runs whose randomly-offset 14-day
+// windows happen to land in the same quarter will make the second run's
+// setup test fail with a confusing cap-exceeded error. Always reseed the DB
+// before re-running this spec against the same database.
 const constraintBaseOffset = 1650 + Math.floor(Math.random() * 50);
 
 function isoDate(offsetDays: number): string {
@@ -355,7 +372,17 @@ test("setup: constrainedSoldier's personal constraint is submitted and fully app
       (r) => r.url().includes("/api/me/constraints") && r.request().method() === "POST",
     );
     await soldier.page.getByTestId("req-submit").click();
-    expect((await submit).status()).toBe(201);
+    const submitResponse = await submit;
+    expect(submitResponse.status()).toBe(201);
+    // Derive constrainedSoldierId from this response body (ConstraintOut,
+    // which always carries soldier_id) rather than from a later test's
+    // incidental candidates read — this is the setup test every other test
+    // in this file already depends on, so deriving it here keeps the other
+    // tests' dependency honest instead of silently riding on a test (the
+    // duty-side "documented product gap" one) whose entire purpose is to be
+    // deleted or rewritten once that gap closes.
+    constrainedSoldierId = (await submitResponse.json()).soldier_id as string;
+    expect(constrainedSoldierId).toBeTruthy();
 
     for (const approver of [commander.page, dutyManager.page]) {
       await approver.goto("/approvals?tab=constraints");
@@ -413,7 +440,12 @@ test("duty-side manual override precondition (a weapon-ineligible original assig
 
     const constrained = candidates.find((c) => c.personal_number === CONSTRAINED_SOLDIER_PN);
     expect(constrained, "constrainedSoldier must be a candidate for שמירות (in scope, not officer-only)").toBeTruthy();
-    constrainedSoldierId = constrained!.soldier_id;
+    // constrainedSoldierId is derived in the setup test above (from that
+    // test's own constraint-submit response), not here — this test's own
+    // purpose is to document a product gap and may be deleted/rewritten once
+    // that gap closes, so it must not be load-bearing for the other tests'
+    // shared state. Cross-check it against this independent read instead.
+    expect(constrained!.soldier_id).toBe(constrainedSoldierId);
 
     // The real assertion: EVERY candidate in team ריי — not just
     // constrainedSoldier — is blocked by the unrelated requires_mitvahim gate
