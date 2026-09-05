@@ -75,8 +75,8 @@ class SolverSettingsIn(BaseModel):
     Wr: int = 28
     alpha: float = 1.0
     time_limit_seconds: int = Field(default=30, ge=5, le=120)
-    auto_relax_node_quotas: bool = False
-    enforce_weapon_qualification: bool = True
+    auto_relax_node_quotas: bool | None = None
+    enforce_weapon_qualification: bool | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
 
@@ -548,7 +548,8 @@ def create_job(
 
     job = _submit_job(
         session, background_tasks,
-        shift_ids=body.shift_ids, mode=body.mode, settings_json=body.settings.model_dump(mode="json"),
+        shift_ids=body.shift_ids, mode=body.mode,
+        settings_json=body.settings.model_dump(mode="json", exclude_none=True),
         actor_id=user.id,
     )
     return {"id": str(job.id), "status": job.status}
@@ -571,7 +572,7 @@ def check_availability(
     items = analyze_shift_availability(
         session,
         shift_ids=body.shift_ids,
-        settings_json=body.settings.model_dump(mode="json"),
+        settings_json=body.settings.model_dump(mode="json", exclude_none=True),
     )
     return {
         "has_shortage": any(item["shortfall"] > 0 for item in items),
