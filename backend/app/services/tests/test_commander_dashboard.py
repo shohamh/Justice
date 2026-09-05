@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import event
@@ -266,7 +266,23 @@ def test_alerts_includes_soon_expiring_exemption(admin_session):
 
     matching = [a for a in result if a["soldier_id"] == soldier.id and a["severity"] == "info"]
     assert len(matching) == 1
-    assert str(se.end_date) in matching[0]["message"]
+    assert se.end_date.strftime("%d.%m.%Y") in matching[0]["message"]
+
+
+def test_alerts_excludes_revoked_exemption(admin_session):
+    """A revoked exemption is no longer in effect, so it must not still page the
+    commander with a stale "about to expire" alert."""
+    node = create_node(admin_session, level="unit", name="alerts_revoked_exemption_test")
+    soldier = create_soldier(admin_session, personal_number="7953002", hierarchy_node_id=node.id)
+    today = date.today()
+    se = _grant_exemption(admin_session, soldier.id, end_date=today + timedelta(days=3))
+    se.revoked_at = datetime.now(timezone.utc)
+    admin_session.commit()
+
+    result = alerts(admin_session, subtree_ids=[node.id])
+
+    matching = [a for a in result if a["soldier_id"] == soldier.id and a["severity"] == "info"]
+    assert matching == []
 
 
 def test_score_data_aggregates_assignment_history_in_database(admin_session):

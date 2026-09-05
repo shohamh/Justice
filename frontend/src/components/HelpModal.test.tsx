@@ -173,6 +173,17 @@ it("scoring tab lists duty types with their score_per_day", async () => {
   expect(screen.getByText("ישן")).toBeInTheDocument();
 });
 
+it("scoring tab's fairness mention is a link that switches to the fairness tab", async () => {
+  setUser("soldier");
+  const { listDutyTypes } = await import("../api/dutyConfig");
+  (listDutyTypes as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  render(<HelpModal onClose={() => {}} initialTab="scoring" />);
+
+  fireEvent.click(screen.getByTestId("scoring-tab-fairness-link"));
+
+  expect(screen.getByText("הוגנות ושקיפות")).toBeInTheDocument();
+});
+
 it("Deep Dive worked example toggles between assignment A and B instead of showing both at once", () => {
   setUser("admin");
   render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="deep" />);

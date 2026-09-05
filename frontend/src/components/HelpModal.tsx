@@ -279,7 +279,7 @@ function ActiveDaysTab() {
   );
 }
 
-function ScoringTab() {
+function ScoringTab({ onNavigateToFairness }: { onNavigateToFairness: () => void }) {
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
 
   useEffect(() => {
@@ -333,7 +333,16 @@ function ScoringTab() {
 
       <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
         📌 הניקוד שנצבר מכל התורנויות משמש לחישוב חלק הבנטל שלך, שקובע את סדר העדיפויות
-        בשיבוץ הבא — ראו טאב &quot;⚖️ הוגנות ושקיפות&quot; להסבר המלא.
+        בשיבוץ הבא — ראו טאב{" "}
+        <button
+          type="button"
+          onClick={onNavigateToFairness}
+          data-testid="scoring-tab-fairness-link"
+          className="underline font-medium hover:text-amber-900 dark:hover:text-amber-100"
+        >
+          ⚖️ הוגנות ושקיפות
+        </button>{" "}
+        להסבר המלא.
       </div>
     </div>
   );
@@ -1463,7 +1472,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, hakpazaEnab
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {activeTab === "swaps" && <SwapsTab />}
           {activeTab === "algorithm" && <AlgorithmTab user={user as PermissionUser | null} />}
-          {activeTab === "scoring" && <ScoringTab />}
+          {activeTab === "scoring" && <ScoringTab onNavigateToFairness={() => setActiveTab("fairness")} />}
           {activeTab === "active_days" && <ActiveDaysTab />}
           {activeTab === "fairness" && <FairnessTab />}
           {activeTab === "deep" && <DeepDiveTab />}

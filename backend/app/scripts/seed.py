@@ -1001,7 +1001,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 start_date=today + timedelta(days=i * 3),
                 end_date=today + timedelta(days=i * 3 + randint(2, 7)),
                 reason=reason,
-                status="pending",
+                status="pending_commander",
             )
             session.add(er)
 

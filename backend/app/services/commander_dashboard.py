@@ -69,6 +69,7 @@ def _soon_expiring_exemptions(
         .join(ExemptionType, ExemptionType.id == SoldierExemption.exemption_type_id)
         .where(
             uuid_any("soldier_exemptions.soldier_id", soldier_ids),
+            SoldierExemption.revoked_at.is_(None),
             SoldierExemption.end_date.isnot(None),
             SoldierExemption.end_date <= end,
             SoldierExemption.end_date >= start,
@@ -400,7 +401,7 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
                 "severity": "info",
                 "soldier_id": soldier_id,
                 "soldier_name": name_by_id.get(soldier_id, ""),
-                "message": f"תוקף {exemption_type_name} מסתיים ב-{end_date}",
+                "message": f"תוקף {exemption_type_name} מסתיים ב-{end_date.strftime('%d.%m.%Y')}",
             }
         )
 
