@@ -10,6 +10,7 @@ import changelogRaw from "../../CHANGELOG.md?raw";
 import { queryKeys } from "../queryKeys";
 import { useLevelTypes } from "../hooks/useLevelTypes";
 import DateInput from "../components/DateInput";
+import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
 
 interface SettingDef {
   key: string;
@@ -508,7 +509,7 @@ export function SystemSettingsContent() {
     e.target.value = "";
   }
 
-  function setValue(key: string, value: string | number | boolean | string[]) {
+  function setValue(key: string, value: string | number | boolean | string[] | Record<string, string>) {
     setDraft(prev => ({ ...prev, [key]: value }));
     setSaved(false);
   }
@@ -644,8 +645,91 @@ export function SystemSettingsContent() {
           })}
         </div>
         {group.label === "עליית דרגה" && <RankAdvancementIntervalsSection />}
+        {group.label === "אלגוריתם — הוגנות" && (
+          <ResetDateOverridesSection
+            value={(draft["fairness.reset_date_overrides"] as Record<string, string>) ?? {}}
+            onChange={(next) => setValue("fairness.reset_date_overrides", next)}
+          />
+        )}
         </Fragment>
       ))}
+    </div>
+  );
+}
+
+// ── Fairness reset-date overrides ───────────────────────────────────────────
+// A per-hierarchy-node override for fairness.reset_date, stored as a JSON
+// dict {node_id: iso_date} — doesn't fit the flat SettingDef shape above (it's
+// a list of rows, not a single value), so it gets its own small section, the
+// same way RankAdvancementIntervalsSection does below. Unlike that section,
+// this one round-trips through the SAME generic draft/save state as every
+// other setting (fairness.reset_date_overrides is a plain SystemSetting key),
+// so it takes `value`/`onChange` as props instead of managing its own query.
+function ResetDateOverridesSection({
+  value,
+  onChange,
+}: {
+  value: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [nodeNames, setNodeNames] = useState<Record<string, string>>({});
+
+  function handlePicked(nodeId: string, nodeName: string) {
+    setNodeNames((prev) => ({ ...prev, [nodeId]: nodeName }));
+    onChange({ ...value, [nodeId]: value[nodeId] ?? "" });
+    setPickerOpen(false);
+  }
+
+  function setDate(nodeId: string, isoDate: string) {
+    onChange({ ...value, [nodeId]: isoDate });
+  }
+
+  function removeRow(nodeId: string) {
+    const next = { ...value };
+    delete next[nodeId];
+    onChange(next);
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow p-5 space-y-3 dark:bg-gray-800">
+      <h2 className="font-semibold text-gray-700 border-b pb-2 dark:text-gray-200 dark:border-gray-600">
+        עקיפת תאריך איפוס הוגנות לפי היררכיה
+      </h2>
+      <p className="text-xs text-gray-400 dark:text-gray-300">
+        קובע תאריך איפוס שונה מברירת המחדל הגלובלית עבור חיילים תחת יחידה מסוימת (ומתחתיה) — למשל ענף שמצטרף למערכת בשלב מאוחר יותר של הפריסה.
+      </p>
+      {Object.entries(value).map(([nodeId, isoDate]) => (
+        <div key={nodeId} className="flex items-center justify-between gap-4">
+          <span className="text-sm text-gray-800 dark:text-gray-100">
+            {nodeNames[nodeId] ?? nodeId}
+          </span>
+          <div className="flex items-center gap-2">
+            <DateInput
+              value={isoDate}
+              onChange={(next) => setDate(nodeId, next)}
+              className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => removeRow(nodeId)}
+              className="text-xs text-red-600 hover:underline"
+            >
+              הסר
+            </button>
+          </div>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => setPickerOpen(true)}
+        className="text-sm text-indigo-600 hover:underline"
+      >
+        + הוסף עקיפה
+      </button>
+      {pickerOpen && (
+        <HierarchyNodePickerModal onClose={() => setPickerOpen(false)} onPicked={handlePicked} />
+      )}
     </div>
   );
 }

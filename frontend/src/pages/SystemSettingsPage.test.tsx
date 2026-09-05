@@ -321,3 +321,33 @@ describe("SystemSettingsContent export/import", () => {
     expect((await screen.findAllByTitle("אם מסומן, החייל יקודם אוטומטית לדרגה הבאה ברגע שהוא נכנס לשירות קבע, גם אם התאריך המתוכנן לקידום לדרגה זו עדיין לא הגיע.")).length).toBeGreaterThan(0);
   });
 });
+
+describe("SystemSettingsContent reset-date overrides", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(systemSettingsApi.getSystemSettings).mockResolvedValue({
+      "fairness.reset_date_overrides": {
+        "11111111-1111-1111-1111-111111111111": "2026-08-20",
+      },
+    });
+    vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue({
+      enlisted: [], officer: [], officer_academic: [],
+    });
+  });
+
+  // DateInput always displays dd/mm/yyyy (never the raw ISO value it's given
+  // — see d9690957 "use Israeli dd/mm/yyyy format for all date inputs"), so
+  // the override row's stored ISO date "2026-08-20" renders on screen as
+  // "20/08/2026".
+  it("renders an existing override row with its date", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+    expect(await screen.findByDisplayValue("20/08/2026")).toBeInTheDocument();
+  });
+
+  it("removes an override row when its remove button is clicked", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+    await screen.findByDisplayValue("20/08/2026");
+    fireEvent.click(screen.getByRole("button", { name: "הסר" }));
+    expect(screen.queryByDisplayValue("20/08/2026")).not.toBeInTheDocument();
+  });
+});
