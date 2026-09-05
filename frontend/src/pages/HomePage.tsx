@@ -46,6 +46,15 @@ import {
   getUpcoming as getCommandUpcoming,
 } from "../api/commanderDashboard";
 import { getPotential as getNodePotential, type PotentialResult } from "../api/potential";
+import { useLevelTypes } from "../hooks/useLevelTypes";
+
+// Hebrew-style "X, Y and Z" join: comma-separates all but the last item,
+// then attaches the last with "ו" (no comma) — e.g. "המדור, הפלוגה והמרכז".
+function joinHebrewList(items: string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(", ")} ו${items[items.length - 1]}`;
+}
 
 function offsetDate(days: number): string {
   const d = new Date();
@@ -110,6 +119,17 @@ export default function HomePage() {
     }
     return [];
   }, [commandNodesOwnedByUser, commandScopeAvailable, user]);
+
+  const { levelTypes } = useLevelTypes();
+  const commandScopeLabel = useMemo(() => {
+    const scopeNodes = commandNodes.filter((node) => commandCalendarNodeIds.includes(node.id));
+    if (scopeNodes.length === 0) return undefined;
+    const labelByKey = new Map(levelTypes.map((lt) => [lt.key, lt.label]));
+    const uniqueLabels = Array.from(
+      new Set(scopeNodes.map((node) => labelByKey.get(node.level) ?? node.level)),
+    );
+    return `${joinHebrewList(uniqueLabels.map((label) => `ה${label}`))} שבאחריותך`;
+  }, [commandNodes, commandCalendarNodeIds, levelTypes]);
 
   const commandAlertsQuery = useQuery({
     queryKey: queryKeys.commandDashboardAlerts(),
@@ -460,9 +480,12 @@ export default function HomePage() {
 
         {commandScopeAvailable && (
           <CommandDashboardSection
-            scopeLabel={t("command_dashboard.management_section_scope", {
-              defaultValue: "היחידה / תת-העץ שבאחריותך",
-            })}
+            scopeLabel={
+              commandScopeLabel ??
+              t("command_dashboard.management_section_scope", {
+                defaultValue: "היחידה שבאחריותך",
+              })
+            }
           >
             <div className="space-y-3">
               {commandPanels.map((panel) => (

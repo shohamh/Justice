@@ -188,14 +188,56 @@ describe("HomePage - required scoring data load errors", () => {
 
     renderHome();
 
-    const commandSection = await screen.findByRole("region", { name: "ניהול היחידה" });
-    expect(screen.getByText("היחידה / תת-העץ שבאחריותך")).toBeInTheDocument();
+    const commandSection = await screen.findByRole("region", { name: "דאשבורד מפקד" });
+    expect(screen.getByText("הteam שבאחריותך")).toBeInTheDocument();
 
     const calendar = await screen.findByTestId("command-unit-calendar");
     expect(commandSection.compareDocumentPosition(calendar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(calendar).toHaveAttribute("data-scope", "command");
     expect(calendar).toHaveAttribute("data-highlight-soldier-id", "soldier-1");
     expect(screen.queryByTestId("personal-unit-calendar")).not.toBeInTheDocument();
+  });
+
+  it("joins multiple owned hierarchy levels into a single Hebrew scope label", async () => {
+    Object.assign(mockUser, {
+      role: "commander",
+      hierarchy_node_id: "node-1",
+      is_commander: true,
+    });
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+      {
+        id: "node-1",
+        level: "department",
+        name: "מדור א",
+        parent_id: null,
+        commander_id: "soldier-1",
+        commander_name: "חייל בדיקה",
+        path_ids: ["node-1"],
+        duty_managers: [],
+        dm_manageable: true,
+        can_edit: true,
+      },
+      {
+        id: "node-2",
+        level: "unit",
+        name: "מרכז ב",
+        parent_id: null,
+        commander_id: "soldier-1",
+        commander_name: "חייל בדיקה",
+        path_ids: ["node-2"],
+        duty_managers: [],
+        dm_manageable: true,
+        can_edit: true,
+      },
+    ]);
+    vi.mocked(levelTypesApi.listLevelTypes).mockResolvedValue([
+      { id: "lt-1", key: "department", label: "מדור", rank: 1 },
+      { id: "lt-2", key: "unit", label: "מרכז", rank: 2 },
+    ]);
+
+    renderHome();
+
+    expect(await screen.findByText("המדור והמרכז שבאחריותך")).toBeInTheDocument();
   });
 
   it("keeps command queries and widgets off the regular soldier homepage while preserving personal widgets", async () => {
@@ -205,7 +247,7 @@ describe("HomePage - required scoring data load errors", () => {
     expect(screen.getByText("תורנויות קרובות שלי")).toBeInTheDocument();
     expect(await screen.findByTestId("personal-unit-calendar")).toHaveAttribute("data-soldier-id", "soldier-1");
     expect(screen.getByTestId("personal-unit-calendar")).toHaveAttribute("data-scope", "personal");
-    expect(screen.queryByText("ניהול היחידה")).not.toBeInTheDocument();
+    expect(screen.queryByText("דאשבורד מפקד")).not.toBeInTheDocument();
     expect(screen.queryByTestId("command-unit-calendar")).not.toBeInTheDocument();
 
     await waitFor(() =>
@@ -242,7 +284,7 @@ describe("HomePage - required scoring data load errors", () => {
 
     const { container } = renderHome();
 
-    expect(await screen.findByText("ניהול היחידה")).toBeInTheDocument();
+    expect(await screen.findByText("דאשבורד מפקד")).toBeInTheDocument();
     expect(await screen.findByTestId("panel-ineligible-soldiers")).toBeInTheDocument();
     expect(screen.getByTestId("panel-alerts")).toBeInTheDocument();
     expect(screen.getByTestId("panel-approvals")).toBeInTheDocument();

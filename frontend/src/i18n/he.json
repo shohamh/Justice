@@ -1178,7 +1178,7 @@
     "upcoming": "תורנויות קרובות",
     "alerts": "התראות",
     "pending_approvals_scope_command": "אישורים ממתינים בפיקוד",
-    "alerts_scope_command": "התראות יחידה / פיקוד",
+    "alerts_scope_command": "התראות רלוונטיות על חיילים שלך",
     "upcoming_scope_command": "תורנויות קרובות ביחידה / פיקוד",
     "potential_scope_command": "פוטנציאל תורנויות ביחידה / פיקוד",
     "ineligible_soldiers_scope_command": "כשירות מטווח ביחידה / פיקוד",
@@ -1723,7 +1723,7 @@
     "shiftDetail": {
       "requiredRange": "נדרש לפחות מטווח מסוג {{rangeType}}",
       "noRequiredRange": "לא נדרש מטווח לתורנות זו",
-      "warning": "חוסר כשירות מטווחים",
+      "warning": "מטווחים לא בתוקף",
       "unavailable": "נתוני כשירות מטווחים אינם זמינים",
       "info": "מטווח מתוכנן יכסה את התורנות"
     },

@@ -118,6 +118,7 @@ function RangeEligibilityBadge({
           style={popoverStyle}
           className="z-[70] w-56 max-w-[calc(100vw-1rem)] whitespace-pre-line rounded border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
         >
+          <p className="mb-1 font-semibold">{label}</p>
           {explanation}
         </div>
       )}

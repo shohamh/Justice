@@ -33,19 +33,31 @@ describe("BugReportTrigger", () => {
   });
 
   test("captures a screenshot of the page BEFORE opening the modal, then opens it", async () => {
+    let releaseCapture: (url: string) => void = () => {};
+    vi.mocked(toPng).mockReturnValueOnce(
+      new Promise((resolve) => { releaseCapture = resolve; }),
+    );
+
     renderTrigger();
 
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
+    // The spinner must be showing (i.e. painted) before the heavy capture work
+    // (which briefly blocks the main thread) begins.
+    expect(screen.getByTestId("bug-report-trigger-spinner")).toBeInTheDocument();
+    expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
+
     // toPng must be called against a capture-only representation while the
     // modal (and its dimming overlay) is still absent.
-    expect(toPng).toHaveBeenCalled();
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
     const [captureNode, options] = vi.mocked(toPng).mock.calls[0];
     expect(captureNode).not.toBe(document.body);
     expect(options).toEqual(expect.objectContaining({ pixelRatio: 1 }));
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
+
+    releaseCapture("data:image/png;base64,AAA");
 
     await waitFor(() =>
       expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull(),
@@ -105,7 +117,9 @@ describe("BugReportTrigger", () => {
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
     expect(screen.getByTestId("bug-report-trigger")).toBeDisabled();
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+    // Advance past the capture timeout, plus the small rAF/setTimeout yield
+    // that now happens before capture starts.
+    await act(async () => { await vi.advanceTimersByTimeAsync(6100); });
 
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull();
     expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
@@ -126,7 +140,7 @@ describe("BugReportTrigger", () => {
 
     // Our own mousedown handler (bound directly on the button) must run
     // before the event bubbles up to trigger document-level listeners.
-    expect(toPng).toHaveBeenCalled();
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
     expect(outsideClickHandler).toHaveBeenCalled();
 
     document.removeEventListener("mousedown", outsideClickHandler);

@@ -64,6 +64,19 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+// Cloning document.body and rasterizing it are both synchronous-heavy work that
+// blocks the main thread, so setCapturing(true) alone isn't enough — React only
+// queues the spinner render, it doesn't paint it until the browser gets a turn.
+// Without yielding here first, the button would freeze on the pre-capture frame
+// for the whole capture instead of showing the spinner. rAF runs just before the
+// next repaint; the following setTimeout runs just after it, once that repaint
+// has actually made it to the screen.
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+  });
+}
+
 export default function BugReportTrigger() {
   const { openBugReportModal } = useBugReportModal();
   const [capturing, setCapturing] = useState(false);
@@ -96,6 +109,7 @@ export default function BugReportTrigger() {
     setCapturing(true);
     let screenshot: string | null = null;
     try {
+      await nextPaint();
       // pixelRatio: 1 avoids multiplying the capture by devicePixelRatio, which is
       // often the single biggest driver of an oversized PNG on retina/high-DPI
       // displays. width/height clamp the capture to the viewport instead of the
