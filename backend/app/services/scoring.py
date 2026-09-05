@@ -1503,6 +1503,11 @@ def _try_projected_effort_data(
     from app.services.effort_score import _compute_effort_data
 
     reset_date = _burden_share_reset_date(session)
+    soldier_reset_dates = resolve_reset_dates_for_soldiers(session, soldiers)
+    if any(d != reset_date for d in soldier_reset_dates.values()):
+        return None  # a hierarchy override applies to at least one soldier; the
+                      # cache's precomputed windows assume one global date — defer
+                      # to compute_effort_data's live, override-aware recompute.
     planning_start = _burden_share_planning_start(session)
     projection_inputs = _projection_burden_share_inputs(
         session,
@@ -1525,7 +1530,7 @@ def _try_projected_effort_data(
             q_start: q_soldier_scores.get(calendar_qs, {})
             for q_start, _q_end, calendar_qs in windows
         },
-        soldier_reset_dates={s.id: reset_date for s in soldiers},
+        soldier_reset_dates=soldier_reset_dates,
     )
     return data
 
@@ -1559,6 +1564,10 @@ def _try_projected_burden_share_breakdown(
 
     if reset_date != quarter_start(reset_date):
         logger.warning("effort breakdown fell back because reset_date is not quarter-aligned")
+        return None
+
+    resolved = resolve_reset_dates_for_soldiers(session, [soldier])[soldier.id]
+    if resolved != reset_date:
         return None
 
     windows = _burden_share_quarter_windows(
