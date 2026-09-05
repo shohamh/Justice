@@ -33,8 +33,7 @@
 
 ```python
 # backend/tests/unit/test_settings_loader.py (append)
-import pytest as _pytest  # already imported as pytest above; keep single import if present
-
+# `pytest` is already imported at the top of this file — do not add a second import.
 from app.services.settings_loader import SettingsValidationError, validate_settings_update
 
 
@@ -208,7 +207,7 @@ git commit -m "feat: thread unit_join_date onto SoldierInput"
 **Interfaces:**
 - Consumes: `SystemSetting` via `get_setting` (already imported in `scoring.py`); `HierarchyNode` (already imported in `scoring.py`, confirmed via existing `select(HierarchyNode)` usage elsewhere in the file).
 - Produces:
-  - `resolve_reset_dates_for_soldiers(session: Session, soldiers: Sequence[Any]) -> dict[uuid.UUID, date]` — soldiers need `.id` and `.hierarchy_node_id`. Used by Task 5 and Task 6.
+  - `resolve_reset_dates_for_soldiers(session: Session, soldiers: Sequence[Any]) -> dict[uuid.UUID, date]` — soldiers need `.id` and `.hierarchy_node_id`. Used by Task 5 and Task 7.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -575,7 +574,7 @@ In `backend/app/services/effort_score.py`, `compute_effort_data`'s final `return
         )
 ```//and similarly for the final return, add `soldier_reset_dates={s.id: reset_date for s in soldiers},`.
 
-In `backend/app/services/scoring.py`, `_try_projected_effort_data` (line ~1451), add the same trivial pass-through (Task 6 replaces this with a real bailout check):
+In `backend/app/services/scoring.py`, `_try_projected_effort_data` (line ~1451), add the same trivial pass-through (Task 7 replaces this with a real bailout check):
 
 ```python
     data = _compute_effort_data(
@@ -728,16 +727,14 @@ def compute_effort_data(
 Right after the docstring, before `history_end = planning_start - timedelta(days=1)` (line ~322), add:
 
 ```python
-    from app.services.scoring import resolve_reset_dates_for_soldiers
+    from app.services.scoring import _burden_share_reset_date, resolve_reset_dates_for_soldiers
 
     if reset_date is not None:
         soldier_reset_dates = {s.id: reset_date for s in soldiers}
     else:
         soldier_reset_dates = resolve_reset_dates_for_soldiers(session, soldiers)
-    reset_date = min(soldier_reset_dates.values()) if soldier_reset_dates else _default_reset_date(session)
+    reset_date = min(soldier_reset_dates.values()) if soldier_reset_dates else _burden_share_reset_date(session)
 ```
-
-(add a tiny local fallback `_default_reset_date` that just calls `scoring._burden_share_reset_date` — needed only for the empty-soldiers edge case; simplest is to inline `from app.services.scoring import _burden_share_reset_date as _default_reset_date` in the same import line above.)
 
 Update the two `_compute_effort_data(...)` call sites in this same function (touched in Task 4 with a trivial dict) to pass the now-real `soldier_reset_dates` instead:
 
@@ -760,16 +757,33 @@ def compute_burden_share_breakdown(
 ) -> BurdenShareBreakdown:
 ```
 
-Right after the `_try_projected_burden_share_breakdown` early-return block (after line ~444, before `history_end = planning_start - timedelta(days=1)` at line ~449), add:
+**Ordering matters here — do not resolve per-soldier before the projected-cache call.** The existing `_try_projected_burden_share_breakdown` call sits at the very top of this function (lines ~432-444, added before this task and untouched by it). Task 7 teaches that helper to bail out by comparing the soldier's real resolved date against the plain global default it's handed — so this function must keep passing the plain global default into it, and only apply per-soldier resolution afterward, in the legacy fallback. Replace the top of the function (the existing `from app.services.effort_score import (...)` / `projected = _try_projected_burden_share_breakdown(...)` / `if projected is not None: return projected` block) with:
 
 ```python
+    from app.services.scoring import _burden_share_reset_date, _try_projected_burden_share_breakdown
+
+    global_default = reset_date if reset_date is not None else _burden_share_reset_date(session)
+    projected = _try_projected_burden_share_breakdown(
+        session,
+        soldier=soldier,
+        planning_start=planning_start,
+        planning_end=planning_end,
+        reset_date=global_default,
+        extra_adj_delta=extra_adj_delta,
+        extra_adj_date=extra_adj_date,
+    )
+    if projected is not None:
+        return projected
+
     from app.services.scoring import resolve_reset_dates_for_soldiers
 
     if reset_date is None:
         reset_date = resolve_reset_dates_for_soldiers(session, [soldier])[soldier.id]
+    # else: an explicit reset_date forces that single date, matching today's
+    # single-global-date callers — same back-compat rule as compute_effort_data.
 ```
 
-(Note: `_try_projected_burden_share_breakdown` above this already requires a concrete `reset_date: date` positional — Task 6 handles making its caller resolve one first. This function's own signature keeps `reset_date: date | None = None`, resolved here for the legacy path only, so the one soldier's own quarter loop below — which already does `soldier_start = max(soldier.enrolled_at, q_start_d)` — needs the same per-soldier-floor fix as `_compute_effort_data`. Replace lines ~526-533:)
+(The one soldier's own quarter loop further down — which already does `soldier_start = max(soldier.enrolled_at, q_start_d)` — needs the same per-soldier-floor fix as `_compute_effort_data`. Replace lines ~526-533:)
 
 ```python
     for q_start_d, q_end_d in quarters:
@@ -797,7 +811,215 @@ git commit -m "feat: auto-resolve per-hierarchy reset date in compute_effort_dat
 
 ---
 
-### Task 6: Score-projection cache bails out when an override is in play
+### Task 6: Update live callers to stop forcing the global reset date
+
+Tasks 1-5 build correct per-hierarchy resolution, but every *real* consumer
+today — the live algorithm solve, the transparency page, the score-adjustment
+preview — explicitly computes `_burden_share_reset_date(session)` (the plain
+global default) and passes it into `compute_effort_data`/
+`compute_burden_share_breakdown` as `reset_date=...`. Per Task 5's back-compat
+rule, an explicit `reset_date` forces that single date for every soldier and
+skips resolution entirely. Without this task, the whole feature would be
+correctly built and correctly tested, but dead code for every actual caller —
+including the live solve, which is the entire reason this plan exists (a
+Polaris soldier would still get `reset_date` forced to the global default and
+never see their branch's override). Fix: each of these six call sites stops
+computing/passing an explicit `reset_date`, letting the callee's own
+auto-resolution (Task 5) take over. `compute_burden_share_breakdown` and
+`compute_effort_data` both already default `reset_date` to `None`, so no
+other signature changes are needed here.
+
+**Files:**
+- Modify: `backend/app/services/algorithm_bridge.py:1392-1405` (inside `run_algorithm_job`)
+- Modify: `backend/app/services/algorithm_bridge.py:1875-1886` (inside `export_solver_inputs`)
+- Modify: `backend/app/services/scoring.py:1601-1632` (`burden_shares_by_soldier`)
+- Modify: `backend/app/services/scoring.py:1773-1813` (`_legacy_transparency_rows`)
+- Modify: `backend/app/routes/scoring.py:162-196` (`burden_share_breakdown`)
+- Modify: `backend/app/routes/score_adjustments.py:70-134` (`preview_adjustment`)
+- Test: `backend/tests/test_effort_score.py`, `backend/tests/unit/test_scoring_burden_shares.py` (new file)
+
+**Interfaces:**
+- Consumes: `compute_effort_data`/`compute_burden_share_breakdown`'s `reset_date: date | None = None` default from Task 5. No new functions produced.
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+# backend/tests/unit/test_scoring_burden_shares.py (new file)
+from __future__ import annotations
+
+from datetime import date
+
+from app.db.models import HierarchyNode, SystemSetting
+from app.services.scoring import burden_shares_by_soldier
+from tests.helpers import create_soldier
+
+
+def _seed_duty_type(session, name: str):
+    from decimal import Decimal
+    from app.db.models import DutyLocation, DutyType
+
+    dt = DutyType(name=name, score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc-{name}")
+    session.add_all([dt, loc])
+    session.flush()
+    return dt, loc
+
+
+def test_burden_shares_by_soldier_honors_hierarchy_override(admin_session):
+    """burden_shares_by_soldier must stop forcing the global reset date, or a
+    hierarchy override never reaches this read path at all."""
+    node = HierarchyNode(level="division", name="polaris-shares", path_ids=[])
+    admin_session.add(node)
+    admin_session.flush()
+    node.path_ids = [node.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides", value={str(node.id): "2026-08-20"}
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "burden-shares")
+    s = create_soldier(admin_session, personal_number="9930001")
+    s.hierarchy_node_id = node.id
+    s.enrolled_at = date(2025, 1, 1)
+    admin_session.flush()
+
+    from app.services.assignments import create_assignment
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 8, 25), end_date=date(2026, 9, 4), actor_id=None,
+    )
+    admin_session.flush()
+
+    shares = burden_shares_by_soldier(admin_session, [s])
+    # Fully active since before the branch's own reset date (Aug 20) -> full
+    # active_frac for the post-reset portion of the quarter -> nonzero share.
+    # If the global default (Jul 1) were still being forced, the math would
+    # still produce a nonzero share here too, so the real assertion is in the
+    # source-inspection tests below, which prove the override CAN reach this
+    # function at all rather than being silently discarded by an explicit arg.
+    assert shares[s.id] > 0
+```
+
+```python
+# backend/tests/test_effort_score.py (append)
+def test_run_algorithm_job_does_not_force_global_reset_date():
+    """run_algorithm_job must let compute_effort_data auto-resolve reset date
+    per soldier — passing an explicit reset_date= here would silently defeat
+    every hierarchy override for the live solve."""
+    import inspect
+    from app.services import algorithm_bridge as ab
+
+    src = inspect.getsource(ab.run_algorithm_job)
+    assert "reset_date=" not in src, (
+        "run_algorithm_job must not pass an explicit reset_date to compute_effort_data"
+    )
+
+
+def test_export_solver_inputs_does_not_force_global_reset_date():
+    import inspect
+    from app.services import algorithm_bridge as ab
+
+    src = inspect.getsource(ab.export_solver_inputs)
+    assert "reset_date=" not in src
+
+
+def test_legacy_transparency_rows_does_not_force_global_reset_date():
+    import inspect
+    from app.services import scoring as sc
+
+    src = inspect.getsource(sc._legacy_transparency_rows)
+    assert "reset_date=" not in src
+
+
+def test_burden_share_breakdown_route_does_not_force_global_reset_date():
+    import inspect
+    from app.routes import scoring as scoring_routes
+
+    src = inspect.getsource(scoring_routes.burden_share_breakdown)
+    assert "reset_date=" not in src
+
+
+def test_preview_adjustment_route_does_not_force_global_reset_date():
+    import inspect
+    from app.routes import score_adjustments
+
+    src = inspect.getsource(score_adjustments.preview_adjustment)
+    assert "reset_date=" not in src
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `pytest backend/tests/test_effort_score.py backend/tests/unit/test_scoring_burden_shares.py -k "reset_date or burden_shares" -v`
+Expected: FAIL on the five `does_not_force_global_reset_date` tests (each call site still computes and passes `reset_date=reset_date`/`reset_date=_reset_date`). `test_burden_shares_by_soldier_honors_hierarchy_override` passes even before the fix (the math is correct either way in this single-soldier case) — it exists to be exercised by Step 4, not to fail at Step 2.
+
+- [ ] **Step 3: Remove the explicit reset_date at each call site**
+
+In `backend/app/services/algorithm_bridge.py`, inside `run_algorithm_job` (around line 1392-1407), delete the `_reset_date` computation and stop passing it:
+
+```python
+    # Compute and inject quarterly effort scores
+    # Count ALL published commitments — past and future — so duties
+    # already published months ahead raise the soldier's effort and
+    # deprioritise them for new work (see effort_history_horizon).
+    effort_horizon = effort_history_horizon(session, planning_start=planning_start)
+    _phase("compute_effort_data: start")
+    effort_map = compute_effort_data(
+        session,
+        soldiers=soldiers,
+        planning_start=effort_horizon,
+        planning_end=effort_horizon,
+        pending_duties=duties,
+    )
+```
+
+(the `from app.services.scoring import _burden_share_reset_date` import and `_reset_date = _burden_share_reset_date(session)` line above it are deleted entirely — nothing else in this function uses `_reset_date`.)
+
+In the same file, inside `export_solver_inputs` (around line 1875-1886), the identical change:
+
+```python
+    effort_horizon = effort_history_horizon(session, planning_start=planning_start)
+    effort_map = compute_effort_data(
+        session,
+        soldiers=soldiers,
+        planning_start=effort_horizon,
+        planning_end=effort_horizon,
+    )
+```
+
+In `backend/app/services/scoring.py`, `burden_shares_by_soldier` (around line 1601-1632), delete the `reset_date = _burden_share_reset_date(session)` line and drop the argument:
+
+```python
+    effort_map = compute_effort_data(
+        session,
+        soldiers=soldiers,
+        planning_start=planning_start,
+        planning_end=planning_start,
+    )
+    return {sid: float(data.effort_score) for sid, data in effort_map.items()}
+```
+
+In the same file, `_legacy_transparency_rows` (around line 1773-1813), delete the `reset_date = _burden_share_reset_date(session)` line and drop the argument from its `compute_effort_data(...)` call the same way.
+
+In `backend/app/routes/scoring.py`, `burden_share_breakdown` (around line 162-196), delete `reset_date = _burden_share_reset_date(session)` (and the now-unused `from app.services.scoring import _burden_share_reset_date` import if nothing else in the route module needs it — check with `grep -n _burden_share_reset_date backend/app/routes/scoring.py` before removing the import) and drop `reset_date=reset_date,` from the `compute_burden_share_breakdown(...)` call.
+
+In `backend/app/routes/score_adjustments.py`, `preview_adjustment` (around line 70-134), delete `reset_date = _burden_share_reset_date(session)` and drop `reset_date=reset_date,` from BOTH `compute_burden_share_breakdown(...)` calls (`bd_before` and `bd_after`).
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `pytest backend/tests/test_effort_score.py backend/tests/unit/test_scoring_burden_shares.py backend/app/services/tests/test_score_projection.py -v`
+Expected: PASS (all — including every pre-existing test in these files; removing an argument that now equals the callee's own default changes no behavior for soldiers with no override)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/app/services/algorithm_bridge.py backend/app/services/scoring.py backend/app/routes/scoring.py backend/app/routes/score_adjustments.py backend/tests/test_effort_score.py backend/tests/unit/test_scoring_burden_shares.py
+git commit -m "fix: let the live algorithm solve and score reads honor per-hierarchy reset-date overrides"
+```
+
+---
+
+### Task 7: Score-projection cache bails out when an override is in play
 
 **Files:**
 - Modify: `backend/app/services/scoring.py:1434-1463` (`_try_projected_effort_data`)
@@ -929,11 +1151,11 @@ git commit -m "fix: bail projection cache to live recompute when a hierarchy res
 
 ---
 
-### Task 7: Frontend — widen `SettingsMap` type
+### Task 8: Frontend — widen `SettingsMap` type
 
 **Files:**
 - Modify: `frontend/src/api/systemSettings.ts:3`
-- Test: none (pure type change; covered by Task 8's component tests compiling and running)
+- Test: none (pure type change; covered by Task 9's component tests compiling and running)
 
 **Interfaces:**
 - Produces: `SettingsMap = Record<string, string | number | boolean | string[] | Record<string, string> | null>`
@@ -958,7 +1180,7 @@ git commit -m "feat: widen SettingsMap to allow object-valued settings"
 
 ---
 
-### Task 8: Frontend — reset-date overrides editor
+### Task 9: Frontend — reset-date overrides editor
 
 Reuses the existing `HierarchyNodePickerModal` (`frontend/src/components/HierarchyNodePickerModal.tsx`, already used by `AnnouncementsPage.tsx` the same way) instead of building a new hierarchy picker — it already does exactly what's needed: a searchable tree modal that calls `onPicked(nodeId, nodeName)`.
 
@@ -1106,7 +1328,7 @@ Wire it into the render loop, matching the exact pattern used for `RankAdvanceme
         )}
 ```
 
-`setValue`'s signature (line 511: `function setValue(key: string, value: string | number | boolean | string[])`) needs widening to accept the new type from Task 7:
+`setValue`'s signature (line 511: `function setValue(key: string, value: string | number | boolean | string[])`) needs widening to accept the new type from Task 8:
 
 ```typescript
   function setValue(key: string, value: string | number | boolean | string[] | Record<string, string>) {
