@@ -67,21 +67,41 @@ def test_seed_creates_stable_range_scenarios_without_duplicates(db_admin_url: st
     from app.scripts import seed as seed_module
 
     seed_module.seed(force=True)
+
+    with SessionLocal() as s:
+        first_run_count = s.query(RangeEvent).count()
+
+    # A second, non-force seed() must be a complete no-op for range data (the
+    # `if session.query(RangeEvent.id).first() is not None: return` guard in
+    # seed.py) — whatever the first call created, re-running must not add or
+    # duplicate any of it. The exact total isn't asserted against a literal:
+    # seed.py has grown extra decorative range events over time (e.g. one
+    # אל"ל event per seeded הגנ"ש week) independently of this test.
     seed_module.seed()
 
     with SessionLocal() as s:
         assert s.get(SystemSetting, "mitvachim.enabled").value is True
         events = s.query(RangeEvent).all()
-        assert len(events) == 3
+        assert len(events) == first_run_count, "reseeding must not duplicate range events"
+
         past_no_show = [e for e in events if e.date < date.today() and any(
             a.attendance_status == RangeAttendanceStatus.no_show
             for a in s.query(RangeAssignment).filter_by(range_event_id=e.id).all()
         )]
         upcoming_staffed = [e for e in events if e.date > date.today() and s.query(RangeAssignment).filter_by(range_event_id=e.id).count() > 0]
-        upcoming_empty = [e for e in events if e.date > date.today() and s.query(RangeAssignment).filter_by(range_event_id=e.id).count() == 0]
+        # Filtered to the one canonical "far-out, no roster yet" scenario by
+        # its notes text — several of the later decorative events (additional
+        # laser/live ranges, the אל"ל-before-הגנ"ש series) are also future and
+        # unstaffed, so a bare date+empty-roster filter would over-match them.
+        upcoming_empty_canonical = [
+            e for e in events
+            if e.date > date.today()
+            and s.query(RangeAssignment).filter_by(range_event_id=e.id).count() == 0
+            and e.notes == "אימון לפני לחימה - שיבוץ יבוצע בהמשך"
+        ]
         assert len(past_no_show) == 1
         assert len(upcoming_staffed) == 1
-        assert len(upcoming_empty) == 1
+        assert len(upcoming_empty_canonical) == 1
 
 
 def test_seed_duty_types_require_at_least_a_laser_range(db_admin_url: str):
