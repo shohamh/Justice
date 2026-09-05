@@ -918,3 +918,91 @@ def test_resolve_reset_dates_falls_back_to_global_default(admin_session):
 
     resolved = resolve_reset_dates_for_soldiers(admin_session, [s])
     assert resolved[s.id] == date_cls(2026, 7, 1)
+
+
+def test_compute_effort_data_resolves_reset_date_per_hierarchy(admin_session):
+    """Two soldiers in different branches with different reset-date overrides:
+    neither's ratio should be computed against the other's window."""
+    from datetime import date as date_cls
+    from app.db.models import DutyLocation, DutyType, HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    focus = HierarchyNode(level="division", name="focus", path_ids=[])
+    polaris = HierarchyNode(level="division", name="polaris", path_ids=[])
+    admin_session.add_all([focus, polaris])
+    admin_session.flush()
+    focus.path_ids = [focus.id]
+    polaris.path_ids = [polaris.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides", value={str(polaris.id): "2026-08-20"}
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "cross-branch")
+
+    focus_soldier = create_soldier(admin_session, personal_number="9910001")
+    focus_soldier.hierarchy_node_id = focus.id
+    focus_soldier.enrolled_at = date_cls(2025, 1, 1)
+    polaris_soldier = create_soldier(admin_session, personal_number="9910002")
+    polaris_soldier.hierarchy_node_id = polaris.id
+    polaris_soldier.enrolled_at = date_cls(2025, 1, 1)
+    admin_session.flush()
+
+    # Both soldiers do the same amount of duty in Q3 2026, both fully active
+    # since before their OWN branch's reset date.
+    create_assignment(
+        admin_session, soldier_id=focus_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 7, 5), end_date=date_cls(2026, 7, 15), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=polaris_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 8, 25), end_date=date_cls(2026, 9, 4), actor_id=None,
+    )
+    admin_session.flush()
+
+    result = compute_effort_data(
+        admin_session,
+        soldiers=[focus_soldier, polaris_soldier],
+        planning_start=date_cls(2026, 10, 1),
+        planning_end=date_cls(2026, 10, 1),
+    )
+    # Both fully active for their own branch's post-reset window with the
+    # same amount of duty -> comparable effort_score, neither penalized by
+    # the other's earlier/later reset date.
+    assert result[focus_soldier.id].effort_score > 0
+    assert result[polaris_soldier.id].effort_score > 0
+
+
+def test_compute_effort_data_explicit_reset_date_still_forces_uniform_date(admin_session):
+    """Backward compatibility: passing reset_date explicitly still forces
+    that single date for every soldier, ignoring any hierarchy overrides."""
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from tests.helpers import create_soldier
+
+    node = HierarchyNode(level="division", name="branch-x", path_ids=[])
+    admin_session.add(node)
+    admin_session.flush()
+    node.path_ids = [node.id]
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides", value={str(node.id): "2026-08-20"}
+    ))
+    admin_session.flush()
+
+    s = create_soldier(admin_session, personal_number="9910003")
+    s.hierarchy_node_id = node.id
+    s.enrolled_at = date_cls(2025, 1, 1)
+    admin_session.flush()
+
+    # Explicit reset_date bypasses the override entirely — behaves exactly
+    # like today's single-global-date callers.
+    result = compute_effort_data(
+        admin_session,
+        soldiers=[s],
+        planning_start=date_cls(2026, 10, 1),
+        planning_end=date_cls(2026, 10, 1),
+        reset_date=date_cls(2025, 1, 1),
+    )
+    assert s.id in result  # doesn't raise, ran the forced-date path

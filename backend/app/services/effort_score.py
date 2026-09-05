@@ -312,7 +312,7 @@ def compute_effort_data(
     soldiers: list[Any],    # objects with .id (UUID) and .enrolled_at (date)
     planning_start: date,
     planning_end: date,
-    reset_date: date,
+    reset_date: date | None = None,
     pending_duties: Sequence[Any] = (),  # DutyBlock-like: about to be planned, not yet published
 ) -> dict[uuid.UUID, EffortData]:
     """
@@ -333,6 +333,14 @@ def compute_effort_data(
     """
     from sqlalchemy import select
     from app.db.models import DutyType, ScoreAdjustment
+
+    from app.services.scoring import _burden_share_reset_date, resolve_reset_dates_for_soldiers
+
+    if reset_date is not None:
+        soldier_reset_dates = {s.id: reset_date for s in soldiers}
+    else:
+        soldier_reset_dates = resolve_reset_dates_for_soldiers(session, soldiers)
+    reset_date = min(soldier_reset_dates.values()) if soldier_reset_dates else _burden_share_reset_date(session)
 
     history_end = planning_start - timedelta(days=1)
 
@@ -378,7 +386,7 @@ def compute_effort_data(
             quarters=[],
             quarter_unit_scores={},
             quarter_soldier_scores={},
-            soldier_reset_dates={s.id: reset_date for s in soldiers},
+            soldier_reset_dates=soldier_reset_dates,
         )
 
     # Fetch duty type scores
@@ -422,7 +430,7 @@ def compute_effort_data(
         quarters=all_quarters,
         quarter_unit_scores=q_unit_scores,
         quarter_soldier_scores=q_soldier_scores,
-        soldier_reset_dates={s.id: reset_date for s in soldiers},
+        soldier_reset_dates=soldier_reset_dates,
     )
 
 
@@ -432,7 +440,7 @@ def compute_burden_share_breakdown(
     soldier: Any,   # object with .id (UUID) and .enrolled_at (date)
     planning_start: date,
     planning_end: date,
-    reset_date: date,
+    reset_date: date | None = None,
     extra_adj_delta: Decimal = Decimal("0"),
     extra_adj_date: date | None = None,
 ) -> BurdenShareBreakdown:
@@ -446,19 +454,27 @@ def compute_burden_share_breakdown(
     Returns BurdenShareBreakdown with one BurdenShareQuarterDetail per historical quarter
     (past and future beyond planning window) plus the aggregate burden_share and C_over_D.
     """
-    from app.services.scoring import _try_projected_burden_share_breakdown
+    from app.services.scoring import _burden_share_reset_date, _try_projected_burden_share_breakdown
 
+    global_default = reset_date if reset_date is not None else _burden_share_reset_date(session)
     projected = _try_projected_burden_share_breakdown(
         session,
         soldier=soldier,
         planning_start=planning_start,
         planning_end=planning_end,
-        reset_date=reset_date,
+        reset_date=global_default,
         extra_adj_delta=extra_adj_delta,
         extra_adj_date=extra_adj_date,
     )
     if projected is not None:
         return projected
+
+    from app.services.scoring import resolve_reset_dates_for_soldiers
+
+    if reset_date is None:
+        reset_date = resolve_reset_dates_for_soldiers(session, [soldier])[soldier.id]
+    # else: an explicit reset_date forces that single date, matching today's
+    # single-global-date callers — same back-compat rule as compute_effort_data.
 
     from sqlalchemy import select
     from app.db.models import DutyType, ScoreAdjustment
@@ -541,10 +557,14 @@ def compute_burden_share_breakdown(
     W_i = Decimal("0")  # Σ(U_q × active_frac_q)
 
     for q_start_d, q_end_d in quarters:
-        q_days = (q_end_d - q_start_d).days + 1
-        soldier_start = max(soldier.enrolled_at, q_start_d)
+        own_floor = max(q_start_d, reset_date)
+        if own_floor > q_end_d:
+            continue
+        q_days = (q_end_d - own_floor).days + 1
+        activation = soldier.unit_join_date or soldier.enrolled_at
+        soldier_start = max(own_floor, activation)
         if soldier_start > q_end_d:
-            continue  # not enrolled in this quarter
+            continue  # not active in this quarter
 
         active_in_q = (q_end_d - soldier_start).days + 1
         active_frac = Decimal(active_in_q) / Decimal(q_days)
