@@ -41,6 +41,21 @@ export const journeyActors = {
   // team "ספארק" used as source/destination — so no separate actor is
   // needed for the create/approve/reject actions themselves).
   transferSoldier: "1000035",
+  // Personal constraint override journey (frontend/tests/e2e/smoke/personal_constraint_override.spec.ts).
+  // Same team "צוות ריי" as transferSoldier (1000035, member index 2). This is
+  // member index 3 (0-based) of that team's _team_profiles table — a plain
+  // enlisted-קבע NCO ("רסר"), non-officer — verified against seed.py's
+  // next_pn() sequence directly: team leaders/members are
+  // assigned 6 personal numbers per team in all_teams order (leader + 5
+  // members); team "ריי" is the 6th team (index 5), so its leader is
+  // 1000002 + 6*5 = 1000032 and its members are 1000033-1000037. Member index 3
+  // (0-based) is pn 1000036, profile `(2019, 6, "רסר", False, 2035, "male")` —
+  // non-officer, קבע, so eligible for non-officer/non-weapon duty types like
+  // 'עבודות רס"ר' used by the CP-SAT exclusion test. 1000036/1000037 were free
+  // (only 1000035 was previously claimed by transferSoldier); picked 1000036
+  // over the 5th member (1000037, an officer) since several of this journey's
+  // duty types are officers_allowed=false.
+  constrainedSoldier: "1000036",
 } as const;
 
 export type JourneyActor = keyof typeof journeyActors;
