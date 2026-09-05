@@ -947,7 +947,7 @@ def test_compute_effort_data_resolves_reset_date_per_hierarchy(admin_session):
     focus_soldier.enrolled_at = date_cls(2025, 1, 1)
     polaris_soldier = create_soldier(admin_session, personal_number="9910002")
     polaris_soldier.hierarchy_node_id = polaris.id
-    polaris_soldier.enrolled_at = date_cls(2025, 1, 1)
+    polaris_soldier.enrolled_at = date_cls(2026, 7, 20)
     admin_session.flush()
 
     # Both soldiers do the same amount of duty in Q3 2026, both fully active
@@ -968,18 +968,42 @@ def test_compute_effort_data_resolves_reset_date_per_hierarchy(admin_session):
         planning_start=date_cls(2026, 10, 1),
         planning_end=date_cls(2026, 10, 1),
     )
-    # Both fully active for their own branch's post-reset window with the
-    # same amount of duty -> comparable effort_score, neither penalized by
-    # the other's earlier/later reset date.
-    assert result[focus_soldier.id].effort_score > 0
-    assert result[polaris_soldier.id].effort_score > 0
+    # effort_score alone can't discriminate correct vs. broken resolution here:
+    # A_i/W_i cancels active_frac out of the ratio whenever only one quarter
+    # contributes (same phenomenon Task 4 hit) — so this asserts C_over_D
+    # (proportional to W_i directly) instead, which does NOT cancel it.
+    #
+    # Focus: own_floor=Jul1 (their own resolved date, = global default),
+    # q_days=92 (full Q3), active since 2025 -> active_in_q=92 -> frac=1.0.
+    # W_i = unit_score(Q3)=20 (10-day Focus duty + 10-day Polaris duty) * 1.0 = 20.
+    # C_over_D = 1/(20*1000) = 0.00005.
+    assert abs(result[focus_soldier.id].C_over_D - Decimal("0.00005")) < Decimal("0.0000001")
+    # Polaris: own_floor=Aug20 (THEIR OWN branch override, not the global Jul1
+    # default). activation=Jul20 < Aug20 -> soldier_start=Aug20 -> q_days=42
+    # (Aug20..Sep30), active_in_q=42 -> frac=1.0. W_i=20*1.0=20 -> C_over_D=0.00005
+    # -- same as Focus, proving Polaris got a full-active_frac window measured
+    # against THEIR OWN reset date, not a truncated one.
+    #
+    # If resolution had silently forced the global default (Jul1) onto Polaris
+    # instead of their branch's Aug20 override, own_floor would be Jul1,
+    # q_days=92, soldier_start=max(Jul1,Jul20)=Jul20 -> active_in_q=73 ->
+    # frac=73/92 -> W_i=20*73/92=365/23≈15.87 -> C_over_D≈0.000063 -- clearly
+    # different from 0.00005, so this assertion WOULD catch that regression.
+    assert abs(result[polaris_soldier.id].C_over_D - Decimal("0.00005")) < Decimal("0.0000001")
 
 
 def test_compute_effort_data_explicit_reset_date_still_forces_uniform_date(admin_session):
     """Backward compatibility: passing reset_date explicitly still forces
-    that single date for every soldier, ignoring any hierarchy overrides."""
+    that single date for every soldier, ignoring any hierarchy overrides.
+    The soldier's own node has an override (Aug 20) but the caller forces
+    Sep 1 explicitly; activation (Aug 25) sits strictly between the two so
+    the test can tell "the forced date actually applied" apart from "the
+    override leaked through despite being explicit" -- with activation
+    outside both candidate windows, active_frac would come out identical
+    either way and the test couldn't tell them apart."""
     from datetime import date as date_cls
     from app.db.models import HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
     from tests.helpers import create_soldier
 
     node = HierarchyNode(level="division", name="branch-x", path_ids=[])
@@ -991,18 +1015,35 @@ def test_compute_effort_data_explicit_reset_date_still_forces_uniform_date(admin
     ))
     admin_session.flush()
 
+    dt, loc = _seed_duty_type(admin_session, "explicit-reset-date")
     s = create_soldier(admin_session, personal_number="9910003")
     s.hierarchy_node_id = node.id
-    s.enrolled_at = date_cls(2025, 1, 1)
+    s.enrolled_at = date_cls(2026, 8, 25)
     admin_session.flush()
 
-    # Explicit reset_date bypasses the override entirely — behaves exactly
-    # like today's single-global-date callers.
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 9, 5), end_date=date_cls(2026, 9, 15), actor_id=None,
+    )
+    admin_session.flush()
+
+    # Explicit reset_date (Sep 1) must be what actually governs -- NOT the
+    # node's Aug 20 override.
     result = compute_effort_data(
         admin_session,
         soldiers=[s],
         planning_start=date_cls(2026, 10, 1),
         planning_end=date_cls(2026, 10, 1),
-        reset_date=date_cls(2025, 1, 1),
+        reset_date=date_cls(2026, 9, 1),
     )
-    assert s.id in result  # doesn't raise, ran the forced-date path
+    # Correct (forced Sep 1 wins): own_floor=Sep1, q_days=30 (Sep1..Sep30).
+    # activation=Aug25 < Sep1 -> soldier_start=Sep1 -> active_in_q=30 -> frac=1.0.
+    # W_i = unit_score(Q3, the one 10-day duty) * 1.0 = 10.
+    # C_over_D = 1/(10*1000) = 0.0001.
+    #
+    # If the Aug20 override had wrongly leaked through instead of the explicit
+    # Sep1: own_floor=Aug20, q_days=42, soldier_start=max(Aug20,Aug25)=Aug25
+    # (activation wins here) -> active_in_q=36 -> frac=36/42 -> W_i=10*36/42≈8.57
+    # -> C_over_D≈0.0001167 -- clearly different from 0.0001, so this assertion
+    # would catch that regression.
+    assert abs(result[s.id].C_over_D - Decimal("0.0001")) < Decimal("0.0000001")
