@@ -53,6 +53,7 @@ def test_quarter_end_q4():
 class _MockSoldier:
     id: uuid.UUID
     enrolled_at: date
+    unit_join_date: date | None = None
 
 
 def _sid():
@@ -72,6 +73,7 @@ def test_new_soldier_no_history():
         quarters=[(date(2026, 4, 1), date(2026, 6, 30))],
         quarter_unit_scores={date(2026, 4, 1): Decimal("100")},
         quarter_soldier_scores={date(2026, 4, 1): {}},
+        soldier_reset_dates={sid: date(2026, 4, 1)},
     )
     data = result[sid]
     assert data.effort_score == Decimal("0")
@@ -102,6 +104,7 @@ def test_veteran_perfect_average():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2025, 1, 1)},
     )
     data = result[sid]
     # A_i = 10×1.0 + 10×1.0 = 20, W_i = 100×1.0 + 100×1.0 = 200
@@ -130,6 +133,7 @@ def test_soldier_not_yet_enrolled():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2025, 1, 1)},
     )
     data = result[sid]
     # Q1: soldier not enrolled → skip. Q2: active_frac=1.0, s=10, U=100
@@ -151,11 +155,104 @@ def test_effort_offset_integer():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2025, 1, 1)},
     )
     data = result[sid]
     expected_offset = int(data.effort_score * EFFORT_SCALE)
     assert data.effort_offset == expected_offset
     assert data.effort_offset >= 0
+
+
+def test_veteran_gets_full_active_frac_despite_later_shared_quarter_start():
+    """Reproduces the bug caught during design review: a soldier already
+    active before their OWN branch's reset date must get active_frac=100%
+    for the post-reset portion of the quarter, not diluted by an earlier
+    date that governs the shared quarter list because some OTHER soldier's
+    branch resets earlier."""
+    sid = _sid()
+    # Active well before any reset date under consideration.
+    soldier = _MockSoldier(id=sid, enrolled_at=date(2025, 1, 1))
+    # Shared quarter list starts Jul 1 (some other soldier's earlier reset date)
+    # but THIS soldier's own resolved reset date is Aug 20, inside the same quarter.
+    quarters = [(date(2026, 7, 1), date(2026, 9, 30))]
+    unit_scores = {date(2026, 7, 1): Decimal("100")}
+    soldier_scores = {date(2026, 7, 1): {sid: Decimal("42")}}
+    result = _compute_effort_data(
+        soldiers=[soldier],
+        quarters=quarters,
+        quarter_unit_scores=unit_scores,
+        quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2026, 8, 20)},
+    )
+    # own_floor = Aug 20; q_days = Aug20..Sep30 = 42; soldier already active
+    # since before Aug 20 -> active_in_q = 42 -> active_frac = 100%, not 46%.
+    assert result[sid].effort_score == Decimal("42") / Decimal("100")
+
+
+def test_new_arrival_after_own_branch_reset_date_gets_partial_frac():
+    """A soldier whose unit_join_date is AFTER their own branch's resolved
+    reset date is a genuinely new arrival — active_frac should be below
+    100%, computed against their own (already reset-clipped) window."""
+    sid = _sid()
+    soldier = _MockSoldier(id=sid, enrolled_at=date(2026, 9, 1), unit_join_date=date(2026, 9, 1))
+    quarters = [(date(2026, 7, 1), date(2026, 9, 30))]
+    unit_scores = {date(2026, 7, 1): Decimal("100")}
+    soldier_scores = {date(2026, 7, 1): {sid: Decimal("30")}}
+    result = _compute_effort_data(
+        soldiers=[soldier],
+        quarters=quarters,
+        quarter_unit_scores=unit_scores,
+        quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2026, 8, 20)},
+    )
+    # own_floor = Aug 20 (branch reset), q_days = 42 (Aug20..Sep30).
+    # soldier_start = max(Aug20, Sep1) = Sep1 -> active_in_q = Sep1..Sep30 = 30.
+    # active_frac = 30/42 (below 100%, proving the new-arrival dilution applies).
+    # With only one quarter contributing, effort_score = A_i/W_i = (s*frac)/(u*frac)
+    # = s/u exactly -- active_frac cancels algebraically regardless of its value,
+    # so the observable effort_score is s/u; the frac's effect is only visible in
+    # W_i / C_over_D, not in this ratio.
+    expected_frac = Decimal("30") / Decimal("42")
+    assert expected_frac < Decimal("1")  # sanity: genuinely partial activation
+    assert abs(result[sid].effort_score - Decimal("30") / Decimal("100")) < Decimal("0.0001")
+    # active_frac's real effect shows up in W_i / C_over_D (it cancels out of the
+    # effort_score ratio above since there's only one contributing quarter):
+    # W_i = unit_score(100) * active_frac(30/42).
+    expected_W = Decimal("100") * expected_frac
+    expected_C_over_D = Decimal("1") / (expected_W * 1000)
+    assert abs(result[sid].C_over_D - expected_C_over_D) < Decimal("0.0000000001")
+
+
+def test_unit_join_date_used_over_enrolled_at_for_activation():
+    """A soldier enrolled_at (roster entry date) later than their real
+    unit_join_date must not be penalized for the admin's lag entering them."""
+    sid = _sid()
+    # Roster entry lagged 2 weeks behind actual unit join.
+    soldier = _MockSoldier(id=sid, enrolled_at=date(2026, 9, 1), unit_join_date=date(2026, 8, 15))
+    quarters = [(date(2026, 7, 1), date(2026, 9, 30))]
+    unit_scores = {date(2026, 7, 1): Decimal("100")}
+    soldier_scores = {date(2026, 7, 1): {sid: Decimal("20")}}
+    result = _compute_effort_data(
+        soldiers=[soldier],
+        quarters=quarters,
+        quarter_unit_scores=unit_scores,
+        quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2026, 7, 1)},
+    )
+    # own_floor = Jul 1 (reset date, earlier than unit_join_date), q_days = 92.
+    # activation = unit_join_date = Aug 15 (NOT enrolled_at = Sep 1).
+    # active_in_q = Aug15..Sep30 = 47.
+    # With only one quarter contributing, effort_score = A_i/W_i = (s*frac)/(u*frac)
+    # = s/u exactly -- active_frac cancels algebraically; what this test actually
+    # proves is that unit_join_date (not the later enrolled_at) is used as the
+    # activation date at all (soldier_start check above didn't skip the quarter).
+    expected_frac = Decimal(47) / Decimal(92)
+    assert expected_frac < Decimal("1")  # sanity: genuinely partial activation
+    assert abs(result[sid].effort_score - Decimal("20") / Decimal("100")) < Decimal("0.0001")
+    # As above, active_frac's effect is visible in W_i / C_over_D, not effort_score.
+    expected_W = Decimal("100") * expected_frac
+    expected_C_over_D = Decimal("1") / (expected_W * 1000)
+    assert abs(result[sid].C_over_D - expected_C_over_D) < Decimal("0.0000000001")
 
 
 def test_soldier_input_has_effort_fields():

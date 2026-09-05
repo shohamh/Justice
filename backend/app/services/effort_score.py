@@ -206,10 +206,11 @@ def _pending_quarter_scores(pending_duties: Sequence[Any]) -> dict[date, Decimal
 
 def _compute_effort_data(
     *,
-    soldiers: list[Any],   # objects with .id (UUID) and .enrolled_at (date)
+    soldiers: list[Any],   # objects with .id (UUID), .enrolled_at (date), .unit_join_date (date | None)
     quarters: list[tuple[date, date]],
     quarter_unit_scores: dict[date, Decimal],   # keyed by quarter_start date
     quarter_soldier_scores: dict[date, dict[uuid.UUID, Decimal]],  # keyed by quarter_start date
+    soldier_reset_dates: dict[uuid.UUID, date],
 ) -> dict[uuid.UUID, EffortData]:
     """
     Pure-logic core: compute EffortData per soldier given pre-aggregated quarter scores.
@@ -225,6 +226,14 @@ def _compute_effort_data(
     converges toward that: as future quarters accumulate work, a soldier's overloaded
     historical share dilutes naturally without needing retroactive reassignment.
 
+    Both active_in_q (numerator) and q_days (denominator) clip to the SAME
+    per-soldier floor: max(quarter_start, this soldier's own resolved reset
+    date). Clipping only the numerator (the historical bug this replaces)
+    understates active_frac for any soldier whose own reset date is later
+    than whichever date the shared `quarters` list happened to be built
+    from — which now happens routinely once reset dates vary per hierarchy
+    node instead of being one global value for the whole run.
+
     C_over_D = 1 / (max(W_i, 1) × 1000)
         Used by the bridge as: effort_per_milli = int(C_over_D × EFFORT_SCALE)
         (no unit_score_milli division — the score units cancel differently now).
@@ -234,10 +243,16 @@ def _compute_effort_data(
     for soldier in soldiers:
         A_i = Decimal("0")  # Σ(s_q × active_frac_q)
         W_i = Decimal("0")  # Σ(U_q × active_frac_q)
+        own_reset = soldier_reset_dates[soldier.id]
+        activation = soldier.unit_join_date or soldier.enrolled_at
 
         for q_start, q_end in quarters:
-            q_days = (q_end - q_start).days + 1
-            soldier_start = max(soldier.enrolled_at, q_start)
+            own_floor = max(q_start, own_reset)
+            if own_floor > q_end:
+                continue  # this quarter is entirely before the soldier's own reset date
+            q_days = (q_end - own_floor).days + 1
+
+            soldier_start = max(own_floor, activation)
             if soldier_start > q_end:
                 continue  # soldier not enrolled in this quarter
 
@@ -363,6 +378,7 @@ def compute_effort_data(
             quarters=[],
             quarter_unit_scores={},
             quarter_soldier_scores={},
+            soldier_reset_dates={s.id: reset_date for s in soldiers},
         )
 
     # Fetch duty type scores
@@ -406,6 +422,7 @@ def compute_effort_data(
         quarters=all_quarters,
         quarter_unit_scores=q_unit_scores,
         quarter_soldier_scores=q_soldier_scores,
+        soldier_reset_dates={s.id: reset_date for s in soldiers},
     )
 
 

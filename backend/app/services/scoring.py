@@ -1525,6 +1525,7 @@ def _try_projected_effort_data(
             q_start: q_soldier_scores.get(calendar_qs, {})
             for q_start, _q_end, calendar_qs in windows
         },
+        soldier_reset_dates={s.id: reset_date for s in soldiers},
     )
     return data
 
