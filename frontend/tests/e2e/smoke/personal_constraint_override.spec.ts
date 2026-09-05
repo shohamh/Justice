@@ -71,15 +71,29 @@ import { journeyActorStorageState, roleStorageState, type Role } from "../fixtur
  *   the duty, before asserting their absence from the published result — so
  *   the absence is attributable to the hard exclusion, not to being out of
  *   scope or never loaded in the first place.
- *   NOT tested in this file: range auto-select's real behavior is the
- *   opposite of CP-SAT's — it is a *soft* conflict (RangeEditAssignmentsModal
- *   /range_auto_assign.py only hard-excludes when allow_manual_override is
- *   off, not the default), so auto-select CAN include a constrained soldier
- *   and saving that selection then requires the same override-reason gate as
- *   a manual pick. That asymmetry, and the range-side override UI itself,
- *   are Task 2's job in this same spec file, reusing this file's constraint
- *   setup helper — do not describe range auto-select as "excluding" a
- *   constrained soldier when that work lands.
+ *   Range-side is the opposite of CP-SAT's: it is a *soft* conflict
+ *   (RangeEditAssignmentsModal / range_auto_assign.py's _bulk_eligibility only
+ *   hard-excludes a constrained soldier when the constraints.allow_manual_override
+ *   system setting is off, which is not this fixture's default) — see the two
+ *   range tests below. Manual selection via RangeEditAssignmentsModal's
+ *   candidate table shows the same conflict marker (a titled ⚠️ next to the
+ *   name, driven by RangeCandidate.conflict_warning) and saving routes through
+ *   the same OverrideReasonModal pattern, POSTing /api/ranges/{id}/assignments
+ *   /batch with override_reason (services/ranges.py's assign_batch, batched
+ *   version of _validate_and_build_assignment, raises RangeValidationError
+ *   ("override_reason_required") server-side too if it's missing — so the
+ *   client-side gate in saveSelection() is a UX convenience layered on top of
+ *   a real server-side requirement, not the only thing enforcing it). Auto-select
+ *   (autoSelectPrimary/autoSelectReserve in RangeEditAssignmentsModal.tsx) does
+ *   NOT filter by personal_constraint_conflict or auto_selectable at all — unlike
+ *   RangeBulkAutoAssignModal's bulk path, it just takes the top
+ *   `primarySlotsLeft` of the already-ranked candidate list — so a constrained
+ *   soldier who ranks well can end up in the auto-selected set, and saving that
+ *   selection then requires the same override-reason gate as a manual pick.
+ *   The test below forces this non-vacuously by scoping required_count well
+ *   above the whole branch-scoped candidate pool so auto-select's slice takes
+ *   every eligible candidate (constrainedSoldier included) rather than relying
+ *   on guessing exact rank order.
  *
  * - Weapon-ineligibility precondition — TWO INDEPENDENT INVESTIGATIONS, TWO
  *   INDEPENDENT DEAD ENDS. Both confirmed by actually running things and
@@ -212,6 +226,12 @@ const cpsatStart = isoDate(constraintBaseOffset + 7);
 const cpsatEnd = nextDay(cpsatStart);
 const cpsatLocation = `E2E cpsat exclude ${Date.now()}`;
 
+const rangeManualDate = isoDate(constraintBaseOffset + 9);
+const rangeManualLocation = `E2E range manual ${Date.now()}`;
+
+const rangeAutoDate = isoDate(constraintBaseOffset + 11);
+const rangeAutoLocation = `E2E range auto ${Date.now()}`;
+
 const constraintReason = `מסע E2E אילוץ אישי ${Date.now()}`;
 
 let constrainedSoldierId = "";
@@ -271,6 +291,52 @@ async function createShift(
   const checkbox = page.getByTestId(`shift-row-checkbox-${shiftId}`);
   await expect(checkbox).toBeVisible({ timeout: 30_000 });
   return shiftId;
+}
+
+async function createRangeLocation(page: Page, name: string): Promise<void> {
+  await page.goto("/ranges?tab=locations");
+  await expect(page.getByTestId("range-locations-content")).toBeVisible({ timeout: 30_000 });
+  await page.getByLabel("שם המיקום").fill(name);
+  const create = page.waitForResponse(
+    (r) => new URL(r.url()).pathname.endsWith("/api/range-locations") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "הוסף מיקום", exact: true }).click();
+  expect((await create).status()).toBe(201);
+  await expect(page.getByText(name, { exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
+async function selectComboboxOption(page: Page, testId: string, name: string): Promise<void> {
+  const combobox = page.getByTestId(testId);
+  await combobox.click();
+  await combobox.fill(name);
+  const option = page
+    .locator('[role="listbox"]:visible [role="option"] button')
+    .filter({ hasText: new RegExp(`^${escapeRegExp(name)}$`) });
+  await expect(option.first()).toBeVisible({ timeout: 30_000 });
+  await option.first().click();
+}
+
+async function createRangeEvent(
+  page: Page,
+  opts: { locationName: string; date: string; requiredCount: number; reserveCount?: number },
+): Promise<string> {
+  await createRangeLocation(page, opts.locationName);
+  await page.goto("/ranges");
+  await expect(page.getByTestId("ranges-page")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("create-event-button").click();
+  const form = page.getByTestId("create-event-form");
+  await expect(form).toBeVisible();
+  await selectComboboxOption(page, "new-range-location", opts.locationName);
+  await page.getByTestId("new-date").fill(opts.date);
+  await page.getByTestId("new-required-count").fill(String(opts.requiredCount));
+  await page.getByTestId("new-reserve-count").fill(String(opts.reserveCount ?? 0));
+  const create = page.waitForResponse(
+    (r) => new URL(r.url()).pathname.endsWith("/api/ranges") && r.request().method() === "POST",
+  );
+  await form.getByRole("button", { name: "שמור", exact: true }).click();
+  const created = await create;
+  expect(created.status()).toBe(201);
+  return (await created.json()).id as string;
 }
 
 test("setup: constrainedSoldier's personal constraint is submitted and fully approved", async ({ browser }) => {
@@ -492,6 +558,147 @@ test("CP-SAT auto-assign always hard-excludes the constrained soldier", async ({
     // required slots were filled from the 4-person eligible pool minus the
     // one hard-excluded soldier, not left empty for unrelated reasons.
     await expect(review).toContainText("ריי");
+  } finally {
+    await dutyManager.context.close();
+  }
+});
+
+test("range manual override: selecting constrainedSoldier as a candidate with an override reason succeeds", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const dutyManager = await openRoleContext(browser, "dutyManager");
+  try {
+    expect(constrainedSoldierId).toBeTruthy();
+
+    const eventId = await createRangeEvent(dutyManager.page, {
+      locationName: rangeManualLocation,
+      date: rangeManualDate,
+      requiredCount: 1,
+      reserveCount: 0,
+    });
+
+    // RangeEditAssignmentsModal fetches candidates itself as soon as it opens
+    // (its own `editable` useEffect) — this is a real read of that same
+    // network response, not a mock, used only as an anti-vacuousness check
+    // (same pattern as the CP-SAT test's export-inputs read above): confirm
+    // constrainedSoldier is genuinely a live, non-excluded candidate here,
+    // carrying the soft-conflict marker, before trusting the UI affordance.
+    const candidatesPromise = dutyManager.page.waitForResponse(
+      (r) => r.url().includes(`/ranges/${eventId}/candidates`) && r.request().method() === "GET",
+    );
+    await dutyManager.page.getByTestId(`view-assignments-${eventId}`).click();
+    const candidatesPayload = (await (await candidatesPromise).json()) as {
+      candidates: Array<{ soldier_id: string; personal_constraint_conflict: boolean; conflict_warning: string | null }>;
+    };
+    const constrainedCandidate = candidatesPayload.candidates.find((c) => c.soldier_id === constrainedSoldierId);
+    expect(constrainedCandidate, "constrainedSoldier must be a real, non-excluded range candidate").toBeTruthy();
+    expect(constrainedCandidate!.personal_constraint_conflict).toBe(true);
+    expect(constrainedCandidate!.conflict_warning).toBeTruthy();
+
+    const checkbox = dutyManager.page.getByTestId(`candidate-checkbox-${constrainedSoldierId}`);
+    await expect(checkbox).toBeVisible({ timeout: 30_000 });
+    // The ⚠️ marker (title = conflict_warning) rendered next to the name is
+    // the same row's visible confirmation of the conflict the JSON above
+    // already proved — both must agree, not just one or the other.
+    const row = dutyManager.page.locator("tr", { has: checkbox });
+    await expect(row.getByText("⚠️")).toBeVisible({ timeout: 30_000 });
+    await checkbox.check();
+
+    await dutyManager.page.getByTestId("save-assignments").click();
+    // Client-side gate: RangeEditAssignmentsModal's saveSelection() detects
+    // personal_constraint_conflict on the selection and opens
+    // OverrideReasonModal *before* any network call — no request has been
+    // sent yet at this point.
+    const reasonInput = dutyManager.page.getByPlaceholder("נימוק העקיפה...");
+    await expect(reasonInput).toBeVisible({ timeout: 30_000 });
+    await reasonInput.fill("חריגה מאושרת למטווח E2E");
+
+    const batchAssign = dutyManager.page.waitForResponse(
+      (r) => r.url().includes(`/ranges/${eventId}/assignments/batch`) && r.request().method() === "POST",
+    );
+    await dutyManager.page.getByRole("button", { name: "אישור", exact: true }).click();
+    const batchResult = await batchAssign;
+    expect(batchResult.status()).toBe(200);
+    expect((batchResult.request().postDataJSON() as { override_reason?: string }).override_reason).toBeTruthy();
+
+    // Refresh and re-open: assert the visible roster, not just the 2xx.
+    await dutyManager.page.reload();
+    await dutyManager.page.getByTestId(`view-assignments-${eventId}`).click();
+    const dialog = dutyManager.page.getByRole("dialog");
+    await expect(dialog.getByText(CONSTRAINED_SOLDIER_NAME)).toBeVisible({ timeout: 30_000 });
+  } finally {
+    await dutyManager.context.close();
+  }
+});
+
+test("range auto-select's real behavior is a soft conflict, not a hard exclusion — saving still requires the override reason", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const dutyManager = await openRoleContext(browser, "dutyManager");
+  try {
+    expect(constrainedSoldierId).toBeTruthy();
+
+    // required_count (100) is deliberately far above the whole branch-scoped
+    // candidate pool (dutyManager's DutyManagerScope covers branch "פוקוס",
+    // ~10 teams × 6 soldiers ≈ 63 people, before range-structural filtering
+    // narrows it further) so that autoSelectPrimary's `.slice(0,
+    // primarySlotsLeft)` — which does NOT filter by personal_constraint_conflict
+    // or auto_selectable, see the seam-inventory note above — takes every
+    // eligible candidate, constrainedSoldier included, rather than depending on
+    // guessing exact rank order among tied candidates.
+    const eventId = await createRangeEvent(dutyManager.page, {
+      locationName: rangeAutoLocation,
+      date: rangeAutoDate,
+      requiredCount: 100,
+      reserveCount: 0,
+    });
+
+    const candidatesPromise = dutyManager.page.waitForResponse(
+      (r) => r.url().includes(`/ranges/${eventId}/candidates`) && r.request().method() === "GET",
+    );
+    await dutyManager.page.getByTestId(`view-assignments-${eventId}`).click();
+    const candidatesPayload = (await (await candidatesPromise).json()) as {
+      candidates: Array<{ soldier_id: string; personal_constraint_conflict: boolean }>;
+    };
+    expect(
+      candidatesPayload.candidates.some((c) => c.soldier_id === constrainedSoldierId),
+      "constrainedSoldier must be a real range candidate here too (precondition for the auto-select assertion below)",
+    ).toBe(true);
+
+    await dutyManager.page.getByTestId("range-auto-select-primary").click();
+
+    // Non-vacuous, read from the real rendered UI state (not assumed from the
+    // fixture math above): the pending-selection summary row for
+    // constrainedSoldier, tagged "טרם נשמר", must actually be there.
+    const dialog = dutyManager.page.getByRole("dialog");
+    await expect(dialog.getByText(CONSTRAINED_SOLDIER_NAME).first()).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.getByText("טרם נשמר").first()).toBeVisible({ timeout: 30_000 });
+
+    await dutyManager.page.getByTestId("save-assignments").click();
+    // Same client-side gate as the manual test above, now triggered by an
+    // auto-selected (not manually clicked) candidate — this is the crux of
+    // the asymmetry with CP-SAT: auto-select included constrainedSoldier
+    // instead of excluding them, and saving is gated the same way a manual
+    // pick would be.
+    const reasonInput = dutyManager.page.getByPlaceholder("נימוק העקיפה...");
+    await expect(reasonInput).toBeVisible({ timeout: 30_000 });
+    await reasonInput.fill("חריגה מאושרת לבחירה אוטומטית E2E");
+
+    const batchAssign = dutyManager.page.waitForResponse(
+      (r) => r.url().includes(`/ranges/${eventId}/assignments/batch`) && r.request().method() === "POST",
+    );
+    await dutyManager.page.getByRole("button", { name: "אישור", exact: true }).click();
+    const batchResult = await batchAssign;
+    expect(batchResult.status()).toBe(200);
+    const batchBody = batchResult.request().postDataJSON() as { override_reason?: string; primaries: string[] };
+    expect(batchBody.override_reason).toBeTruthy();
+    expect(batchBody.primaries).toContain(constrainedSoldierId);
+    // Non-vacuous the other direction too: auto-select picked more than just
+    // the one constrained soldier out of the whole eligible pool.
+    expect(batchBody.primaries.length).toBeGreaterThan(1);
+
+    await dutyManager.page.reload();
+    await dutyManager.page.getByTestId(`view-assignments-${eventId}`).click();
+    const reloadedDialog = dutyManager.page.getByRole("dialog");
+    await expect(reloadedDialog.getByText(CONSTRAINED_SOLDIER_NAME)).toBeVisible({ timeout: 30_000 });
   } finally {
     await dutyManager.context.close();
   }
