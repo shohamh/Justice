@@ -561,3 +561,86 @@ def test_dashboard_summary_uses_projected_scores_without_expanding_history(
     projected = commander_dashboard.summary_cards(admin_session, subtree_ids=[node.id])
 
     assert projected == legacy
+
+
+def test_projected_burden_share_breakdown_uses_unit_join_date_not_enrolled_at(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    """Whole-branch-review finding: the CACHED single-soldier breakdown path
+    (_try_projected_burden_share_breakdown) computed each quarter's active_frac
+    from soldier.enrolled_at alone, while the LIVE path (compute_burden_share_
+    breakdown's own per-quarter loop in effort_score.py) already correctly uses
+    soldier.unit_join_date or soldier.enrolled_at. Since unit_join_date is
+    commonly set to a different (later) date than enrolled_at at registration,
+    any soldier with that gap got stale activation semantics whenever the
+    projection cache was warm -- the common case -- even with no reset-date
+    override at all.
+
+    This soldier's enrolled_at (Apr 1) and unit_join_date (May 15) sit in the
+    SAME quarter (Q2 2026) as the global fairness.reset_date, so the two
+    definitions of "activation" produce genuinely different active_frac values
+    for that quarter -- discriminating the bug the way the C_over_D-style
+    assertions elsewhere in this suite discriminate their own regressions.
+    """
+    reset_date = date(2026, 4, 1)
+    set_setting(admin_session, "fairness.reset_date", "2026-04-01", actor_id=None)
+
+    soldier = create_soldier(admin_session, personal_number="projected-unit-join-date")
+    soldier.enrolled_at = date(2026, 4, 1)
+    soldier.unit_join_date = date(2026, 5, 15)
+    admin_session.flush()
+
+    duty_type = DutyType(name="projected-unit-join-duty", score_per_day=Decimal("1.00"))
+    duty_location = DutyLocation(name="projected-unit-join-location")
+    admin_session.add_all([duty_type, duty_location])
+    admin_session.flush()
+    admin_session.add(
+        DutyAssignment(
+            soldier_id=soldier.id,
+            duty_type_id=duty_type.id,
+            duty_location_id=duty_location.id,
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 10),
+            status="published",
+        )
+    )
+    admin_session.flush()
+
+    planning_start = date(2026, 10, 1)
+
+    # Legacy (live) path: already fixed, uses unit_join_date as the activation
+    # floor. Captured BEFORE the cache is warmed, so this necessarily takes the
+    # live code path in effort_score.py, not the cached one under test.
+    legacy = compute_burden_share_breakdown(
+        admin_session,
+        soldier=soldier,
+        planning_start=planning_start,
+        planning_end=planning_start,
+        reset_date=reset_date,
+    )
+    q2_legacy = next(q for q in legacy.quarters if q.quarter_start == date(2026, 4, 1))
+
+    # Sanity check the scenario actually discriminates: active_frac computed
+    # from unit_join_date (May 15) must differ from what enrolled_at (Apr 1)
+    # alone would have produced (which would be active_frac == 1, full quarter).
+    assert q2_legacy.active_frac < Decimal("1")
+
+    _completed_backfill(admin_session)
+    admin_session.flush()
+
+    monkeypatch.setattr(effort_score, "effective_duty_days", _fail_if_expands_duty_days)
+    _forbid_normal_projection_expansion(monkeypatch)
+
+    # Cached path: this must now use unit_join_date exactly like the live path,
+    # per the fix to _try_projected_burden_share_breakdown in scoring.py.
+    projected = compute_burden_share_breakdown(
+        admin_session,
+        soldier=soldier,
+        planning_start=planning_start,
+        planning_end=planning_start,
+        reset_date=reset_date,
+    )
+    q2_projected = next(q for q in projected.quarters if q.quarter_start == date(2026, 4, 1))
+
+    assert q2_projected.active_frac == q2_legacy.active_frac
+    assert projected.burden_share == legacy.burden_share

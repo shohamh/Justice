@@ -361,6 +361,7 @@ def load_soldier_inputs(
             SoldierInput(
                 id=s.id,
                 enrolled_at=s.enrolled_at,
+                unit_join_date=s.unit_join_date,
                 cumulative_score=cum,
                 active_days=ad,
                 hierarchy_node_id=s.hierarchy_node_id,
@@ -1389,9 +1390,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 _phase("future_eligibility: done")
 
                 # Compute and inject quarterly effort scores
-                from app.services.scoring import _burden_share_reset_date
-
-                _reset_date = _burden_share_reset_date(session)
                 # Count ALL published commitments — past and future — so duties
                 # already published months ahead raise the soldier's effort and
                 # deprioritise them for new work (see effort_history_horizon).
@@ -1402,7 +1400,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     soldiers=soldiers,
                     planning_start=effort_horizon,
                     planning_end=effort_horizon,
-                    reset_date=_reset_date,
                     pending_duties=duties,
                 )
                 _phase("compute_effort_data: done")
@@ -1872,17 +1869,12 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
         eligible_node_ids=job.settings_json.get("eligible_node_ids"),
     )
 
-    from app.services.scoring import _burden_share_reset_date
-
-    _reset_date = _burden_share_reset_date(session)
-
     effort_horizon = effort_history_horizon(session, planning_start=planning_start)
     effort_map = compute_effort_data(
         session,
         soldiers=soldiers,
         planning_start=effort_horizon,
         planning_end=effort_horizon,
-        reset_date=_reset_date,
     )
     # Side effects only (effort_offset/effort_per_milli per soldier). The returned
     # whole-job range is intentionally NOT stamped onto settings — see the matching

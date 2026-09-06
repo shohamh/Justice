@@ -32,6 +32,7 @@ class SettingsValidationError(ValueError):
 # this rather than redefining it.
 _HIDDEN_KEYS = {"system.holding_node_id"}
 ACTIVE_DAYS_REFERENCE_DATE_KEY = "scoring.active_days_reference_date"
+RESET_DATE_OVERRIDES_KEY = "fairness.reset_date_overrides"
 
 _DENSITY_DEFAULTS = {
     "algorithm.max_duties_per_window": 8,
@@ -108,6 +109,22 @@ def validate_settings_update(current: dict[str, Any], updates: dict[str, Any]) -
             raise SettingsValidationError("active_days_reference_date_invalid") from exc
         if parsed_reference_date > date.today():
             raise SettingsValidationError("active_days_reference_date_in_future")
+
+    if RESET_DATE_OVERRIDES_KEY in updates:
+        overrides = updates[RESET_DATE_OVERRIDES_KEY]
+        if not isinstance(overrides, dict):
+            raise SettingsValidationError("reset_date_overrides_invalid")
+        for node_key, date_value in overrides.items():
+            try:
+                uuid.UUID(str(node_key))
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise SettingsValidationError("reset_date_overrides_invalid") from exc
+            if not isinstance(date_value, str):
+                raise SettingsValidationError("reset_date_overrides_invalid")
+            try:
+                date.fromisoformat(date_value)
+            except ValueError as exc:
+                raise SettingsValidationError("reset_date_overrides_invalid") from exc
 
     def _density(key: str) -> int:
         return int(merged.get(key, _DENSITY_DEFAULTS[key]))

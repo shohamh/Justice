@@ -53,6 +53,7 @@ def test_quarter_end_q4():
 class _MockSoldier:
     id: uuid.UUID
     enrolled_at: date
+    unit_join_date: date | None = None
 
 
 def _sid():
@@ -72,6 +73,7 @@ def test_new_soldier_no_history():
         quarters=[(date(2026, 4, 1), date(2026, 6, 30))],
         quarter_unit_scores={date(2026, 4, 1): Decimal("100")},
         quarter_soldier_scores={date(2026, 4, 1): {}},
+        soldier_reset_dates={sid: date(2026, 4, 1)},
     )
     data = result[sid]
     assert data.effort_score == Decimal("0")
@@ -102,6 +104,7 @@ def test_veteran_perfect_average():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2025, 1, 1)},
     )
     data = result[sid]
     # A_i = 10×1.0 + 10×1.0 = 20, W_i = 100×1.0 + 100×1.0 = 200
@@ -130,6 +133,7 @@ def test_soldier_not_yet_enrolled():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2025, 1, 1)},
     )
     data = result[sid]
     # Q1: soldier not enrolled → skip. Q2: active_frac=1.0, s=10, U=100
@@ -151,11 +155,104 @@ def test_effort_offset_integer():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2025, 1, 1)},
     )
     data = result[sid]
     expected_offset = int(data.effort_score * EFFORT_SCALE)
     assert data.effort_offset == expected_offset
     assert data.effort_offset >= 0
+
+
+def test_veteran_gets_full_active_frac_despite_later_shared_quarter_start():
+    """Reproduces the bug caught during design review: a soldier already
+    active before their OWN branch's reset date must get active_frac=100%
+    for the post-reset portion of the quarter, not diluted by an earlier
+    date that governs the shared quarter list because some OTHER soldier's
+    branch resets earlier."""
+    sid = _sid()
+    # Active well before any reset date under consideration.
+    soldier = _MockSoldier(id=sid, enrolled_at=date(2025, 1, 1))
+    # Shared quarter list starts Jul 1 (some other soldier's earlier reset date)
+    # but THIS soldier's own resolved reset date is Aug 20, inside the same quarter.
+    quarters = [(date(2026, 7, 1), date(2026, 9, 30))]
+    unit_scores = {date(2026, 7, 1): Decimal("100")}
+    soldier_scores = {date(2026, 7, 1): {sid: Decimal("42")}}
+    result = _compute_effort_data(
+        soldiers=[soldier],
+        quarters=quarters,
+        quarter_unit_scores=unit_scores,
+        quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2026, 8, 20)},
+    )
+    # own_floor = Aug 20; q_days = Aug20..Sep30 = 42; soldier already active
+    # since before Aug 20 -> active_in_q = 42 -> active_frac = 100%, not 46%.
+    assert result[sid].effort_score == Decimal("42") / Decimal("100")
+
+
+def test_new_arrival_after_own_branch_reset_date_gets_partial_frac():
+    """A soldier whose unit_join_date is AFTER their own branch's resolved
+    reset date is a genuinely new arrival — active_frac should be below
+    100%, computed against their own (already reset-clipped) window."""
+    sid = _sid()
+    soldier = _MockSoldier(id=sid, enrolled_at=date(2026, 9, 1), unit_join_date=date(2026, 9, 1))
+    quarters = [(date(2026, 7, 1), date(2026, 9, 30))]
+    unit_scores = {date(2026, 7, 1): Decimal("100")}
+    soldier_scores = {date(2026, 7, 1): {sid: Decimal("30")}}
+    result = _compute_effort_data(
+        soldiers=[soldier],
+        quarters=quarters,
+        quarter_unit_scores=unit_scores,
+        quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2026, 8, 20)},
+    )
+    # own_floor = Aug 20 (branch reset), q_days = 42 (Aug20..Sep30).
+    # soldier_start = max(Aug20, Sep1) = Sep1 -> active_in_q = Sep1..Sep30 = 30.
+    # active_frac = 30/42 (below 100%, proving the new-arrival dilution applies).
+    # With only one quarter contributing, effort_score = A_i/W_i = (s*frac)/(u*frac)
+    # = s/u exactly -- active_frac cancels algebraically regardless of its value,
+    # so the observable effort_score is s/u; the frac's effect is only visible in
+    # W_i / C_over_D, not in this ratio.
+    expected_frac = Decimal("30") / Decimal("42")
+    assert expected_frac < Decimal("1")  # sanity: genuinely partial activation
+    assert abs(result[sid].effort_score - Decimal("30") / Decimal("100")) < Decimal("0.0001")
+    # active_frac's real effect shows up in W_i / C_over_D (it cancels out of the
+    # effort_score ratio above since there's only one contributing quarter):
+    # W_i = unit_score(100) * active_frac(30/42).
+    expected_W = Decimal("100") * expected_frac
+    expected_C_over_D = Decimal("1") / (expected_W * 1000)
+    assert abs(result[sid].C_over_D - expected_C_over_D) < Decimal("0.0000000001")
+
+
+def test_unit_join_date_used_over_enrolled_at_for_activation():
+    """A soldier enrolled_at (roster entry date) later than their real
+    unit_join_date must not be penalized for the admin's lag entering them."""
+    sid = _sid()
+    # Roster entry lagged 2 weeks behind actual unit join.
+    soldier = _MockSoldier(id=sid, enrolled_at=date(2026, 9, 1), unit_join_date=date(2026, 8, 15))
+    quarters = [(date(2026, 7, 1), date(2026, 9, 30))]
+    unit_scores = {date(2026, 7, 1): Decimal("100")}
+    soldier_scores = {date(2026, 7, 1): {sid: Decimal("20")}}
+    result = _compute_effort_data(
+        soldiers=[soldier],
+        quarters=quarters,
+        quarter_unit_scores=unit_scores,
+        quarter_soldier_scores=soldier_scores,
+        soldier_reset_dates={sid: date(2026, 7, 1)},
+    )
+    # own_floor = Jul 1 (reset date, earlier than unit_join_date), q_days = 92.
+    # activation = unit_join_date = Aug 15 (NOT enrolled_at = Sep 1).
+    # active_in_q = Aug15..Sep30 = 47.
+    # With only one quarter contributing, effort_score = A_i/W_i = (s*frac)/(u*frac)
+    # = s/u exactly -- active_frac cancels algebraically; what this test actually
+    # proves is that unit_join_date (not the later enrolled_at) is used as the
+    # activation date at all (soldier_start check above didn't skip the quarter).
+    expected_frac = Decimal(47) / Decimal(92)
+    assert expected_frac < Decimal("1")  # sanity: genuinely partial activation
+    assert abs(result[sid].effort_score - Decimal("20") / Decimal("100")) < Decimal("0.0001")
+    # As above, active_frac's effect is visible in W_i / C_over_D, not effort_score.
+    expected_W = Decimal("100") * expected_frac
+    expected_C_over_D = Decimal("1") / (expected_W * 1000)
+    assert abs(result[sid].C_over_D - expected_C_over_D) < Decimal("0.0000000001")
 
 
 def test_soldier_input_has_effort_fields():
@@ -175,6 +272,30 @@ def test_soldier_input_has_effort_fields():
     assert hasattr(s, "effort_per_milli")
     assert s.effort_offset == 0
     assert s.effort_per_milli == 0
+
+
+def test_soldier_input_has_unit_join_date_field():
+    from app.algorithm.types import SoldierInput
+    import uuid
+    from datetime import date
+    from decimal import Decimal
+
+    s = SoldierInput(
+        id=uuid.uuid4(),
+        enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"),
+        active_days=90,
+    )
+    assert s.unit_join_date is None
+
+    s2 = SoldierInput(
+        id=uuid.uuid4(),
+        enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"),
+        active_days=90,
+        unit_join_date=date(2025, 6, 1),
+    )
+    assert s2.unit_join_date == date(2025, 6, 1)
 
 
 def test_inject_effort_scores():
@@ -733,3 +854,312 @@ def test_contribution_multiplier_reflects_dismissal(admin_session):
     assert len(paid) == 1 and paid[0].days == 2 and paid[0].score == Decimal("2")
     assert len(zeroed) == 1 and zeroed[0].days == 2 and zeroed[0].score == Decimal("0")
     assert "שחרור" in (zeroed[0].detail or "")
+
+def test_resolve_reset_dates_uses_nearest_ancestor_override(admin_session):
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from app.services.scoring import resolve_reset_dates_for_soldiers
+    from tests.helpers import create_soldier
+
+    root = HierarchyNode(level="corps", name="root", path_ids=[])
+    admin_session.add(root)
+    admin_session.flush()
+    root.path_ids = [root.id]
+
+    branch = HierarchyNode(level="division", name="polaris", parent_id=root.id, path_ids=[])
+    admin_session.add(branch)
+    admin_session.flush()
+    branch.path_ids = [root.id, branch.id]
+
+    team = HierarchyNode(level="unit", name="polaris-team", parent_id=branch.id, path_ids=[])
+    admin_session.add(team)
+    admin_session.flush()
+    team.path_ids = [root.id, branch.id, team.id]
+    admin_session.flush()
+
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides",
+        value={str(branch.id): "2026-08-20"},
+    ))
+    admin_session.flush()
+
+    soldier_on_team = create_soldier(admin_session, personal_number="9900001")
+    soldier_on_team.hierarchy_node_id = team.id
+    soldier_no_node = create_soldier(admin_session, personal_number="9900002")
+    soldier_no_node.hierarchy_node_id = None
+    admin_session.flush()
+
+    resolved = resolve_reset_dates_for_soldiers(admin_session, [soldier_on_team, soldier_no_node])
+
+    # soldier_on_team's own node (team) has no override, but its ancestor
+    # (branch) does -> nearest-ancestor wins over the global default.
+    assert resolved[soldier_on_team.id] == date_cls(2026, 8, 20)
+    # No hierarchy node at all -> global default.
+    assert resolved[soldier_no_node.id] == date_cls(2026, 7, 1)
+
+
+def test_resolve_reset_dates_falls_back_to_global_default(admin_session):
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from app.services.scoring import resolve_reset_dates_for_soldiers
+    from tests.helpers import create_soldier
+
+    node = HierarchyNode(level="division", name="focus", path_ids=[])
+    admin_session.add(node)
+    admin_session.flush()
+    node.path_ids = [node.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.flush()
+
+    s = create_soldier(admin_session, personal_number="9900003")
+    s.hierarchy_node_id = node.id
+    admin_session.flush()
+
+    resolved = resolve_reset_dates_for_soldiers(admin_session, [s])
+    assert resolved[s.id] == date_cls(2026, 7, 1)
+
+
+def test_compute_effort_data_resolves_reset_date_per_hierarchy(admin_session):
+    """Two soldiers in different branches with different reset-date overrides:
+    neither's ratio should be computed against the other's window."""
+    from datetime import date as date_cls
+    from app.db.models import DutyLocation, DutyType, HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    focus = HierarchyNode(level="division", name="focus", path_ids=[])
+    polaris = HierarchyNode(level="division", name="polaris", path_ids=[])
+    admin_session.add_all([focus, polaris])
+    admin_session.flush()
+    focus.path_ids = [focus.id]
+    polaris.path_ids = [polaris.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides", value={str(polaris.id): "2026-08-20"}
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "cross-branch")
+
+    focus_soldier = create_soldier(admin_session, personal_number="9910001")
+    focus_soldier.hierarchy_node_id = focus.id
+    focus_soldier.enrolled_at = date_cls(2025, 1, 1)
+    polaris_soldier = create_soldier(admin_session, personal_number="9910002")
+    polaris_soldier.hierarchy_node_id = polaris.id
+    polaris_soldier.enrolled_at = date_cls(2026, 7, 20)
+    admin_session.flush()
+
+    # Both soldiers do the same amount of duty in Q3 2026, both fully active
+    # since before their OWN branch's reset date.
+    create_assignment(
+        admin_session, soldier_id=focus_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 7, 5), end_date=date_cls(2026, 7, 15), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=polaris_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 8, 25), end_date=date_cls(2026, 9, 4), actor_id=None,
+    )
+    admin_session.flush()
+
+    result = compute_effort_data(
+        admin_session,
+        soldiers=[focus_soldier, polaris_soldier],
+        planning_start=date_cls(2026, 10, 1),
+        planning_end=date_cls(2026, 10, 1),
+    )
+    # effort_score alone can't discriminate correct vs. broken resolution here:
+    # A_i/W_i cancels active_frac out of the ratio whenever only one quarter
+    # contributes (same phenomenon Task 4 hit) — so this asserts C_over_D
+    # (proportional to W_i directly) instead, which does NOT cancel it.
+    #
+    # Focus: own_floor=Jul1 (their own resolved date, = global default),
+    # q_days=92 (full Q3), active since 2025 -> active_in_q=92 -> frac=1.0.
+    # W_i = unit_score(Q3)=20 (10-day Focus duty + 10-day Polaris duty) * 1.0 = 20.
+    # C_over_D = 1/(20*1000) = 0.00005.
+    assert abs(result[focus_soldier.id].C_over_D - Decimal("0.00005")) < Decimal("0.0000001")
+    # Polaris: own_floor=Aug20 (THEIR OWN branch override, not the global Jul1
+    # default). activation=Jul20 < Aug20 -> soldier_start=Aug20 -> q_days=42
+    # (Aug20..Sep30), active_in_q=42 -> frac=1.0. W_i=20*1.0=20 -> C_over_D=0.00005
+    # -- same as Focus, proving Polaris got a full-active_frac window measured
+    # against THEIR OWN reset date, not a truncated one.
+    #
+    # If resolution had silently forced the global default (Jul1) onto Polaris
+    # instead of their branch's Aug20 override, own_floor would be Jul1,
+    # q_days=92, soldier_start=max(Jul1,Jul20)=Jul20 -> active_in_q=73 ->
+    # frac=73/92 -> W_i=20*73/92=365/23≈15.87 -> C_over_D≈0.000063 -- clearly
+    # different from 0.00005, so this assertion WOULD catch that regression.
+    assert abs(result[polaris_soldier.id].C_over_D - Decimal("0.00005")) < Decimal("0.0000001")
+
+
+def test_compute_burden_share_breakdown_agrees_with_compute_effort_data_across_branches(admin_session):
+    """Whole-branch-review finding: compute_burden_share_breakdown (single-soldier)
+    and compute_effort_data (batch) must produce the SAME effort_score/burden_share
+    for the same soldier. Before the fix, compute_burden_share_breakdown used the
+    overridden soldier's OWN resolved reset date as the query floor, which narrowed
+    the duty-day query and excluded other branches' earlier duty data from the
+    unit-total denominator (q_unit_scores) -- silently disagreeing with
+    compute_effort_data, which always floors the query at the org-wide minimum
+    resolved date. This reuses the exact two-branch/override fixture from
+    test_compute_effort_data_resolves_reset_date_per_hierarchy and asserts the two
+    entry points now agree for the overridden (Polaris) soldier."""
+    from datetime import date as date_cls
+    from app.db.models import DutyLocation, DutyType, HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    focus = HierarchyNode(level="division", name="focus2", path_ids=[])
+    polaris = HierarchyNode(level="division", name="polaris2", path_ids=[])
+    admin_session.add_all([focus, polaris])
+    admin_session.flush()
+    focus.path_ids = [focus.id]
+    polaris.path_ids = [polaris.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides", value={str(polaris.id): "2026-08-20"}
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "cross-branch-agree")
+
+    focus_soldier = create_soldier(admin_session, personal_number="9920001")
+    focus_soldier.hierarchy_node_id = focus.id
+    focus_soldier.enrolled_at = date_cls(2025, 1, 1)
+    polaris_soldier = create_soldier(admin_session, personal_number="9920002")
+    polaris_soldier.hierarchy_node_id = polaris.id
+    polaris_soldier.enrolled_at = date_cls(2026, 7, 20)
+    admin_session.flush()
+
+    create_assignment(
+        admin_session, soldier_id=focus_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 7, 5), end_date=date_cls(2026, 7, 15), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=polaris_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 8, 25), end_date=date_cls(2026, 9, 4), actor_id=None,
+    )
+    admin_session.flush()
+
+    planning_start = date_cls(2026, 10, 1)
+    planning_end = date_cls(2026, 10, 1)
+
+    batch_result = compute_effort_data(
+        admin_session,
+        soldiers=[focus_soldier, polaris_soldier],
+        planning_start=planning_start,
+        planning_end=planning_end,
+    )
+
+    single_result = compute_burden_share_breakdown(
+        admin_session,
+        soldier=polaris_soldier,
+        planning_start=planning_start,
+        planning_end=planning_end,
+    )
+
+    # The two entry points must agree on the Polaris soldier's burden_share /
+    # effort_score, even though compute_burden_share_breakdown only ever sees
+    # ONE soldier while compute_effort_data sees both branches at once.
+    assert single_result.burden_share == batch_result[polaris_soldier.id].effort_score
+
+
+def test_compute_effort_data_explicit_reset_date_still_forces_uniform_date(admin_session):
+    """Backward compatibility: passing reset_date explicitly still forces
+    that single date for every soldier, ignoring any hierarchy overrides.
+    The soldier's own node has an override (Aug 20) but the caller forces
+    Sep 1 explicitly; activation (Aug 25) sits strictly between the two so
+    the test can tell "the forced date actually applied" apart from "the
+    override leaked through despite being explicit" -- with activation
+    outside both candidate windows, active_frac would come out identical
+    either way and the test couldn't tell them apart."""
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    node = HierarchyNode(level="division", name="branch-x", path_ids=[])
+    admin_session.add(node)
+    admin_session.flush()
+    node.path_ids = [node.id]
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides", value={str(node.id): "2026-08-20"}
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "explicit-reset-date")
+    s = create_soldier(admin_session, personal_number="9910003")
+    s.hierarchy_node_id = node.id
+    s.enrolled_at = date_cls(2026, 8, 25)
+    admin_session.flush()
+
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 9, 5), end_date=date_cls(2026, 9, 15), actor_id=None,
+    )
+    admin_session.flush()
+
+    # Explicit reset_date (Sep 1) must be what actually governs -- NOT the
+    # node's Aug 20 override.
+    result = compute_effort_data(
+        admin_session,
+        soldiers=[s],
+        planning_start=date_cls(2026, 10, 1),
+        planning_end=date_cls(2026, 10, 1),
+        reset_date=date_cls(2026, 9, 1),
+    )
+    # Correct (forced Sep 1 wins): own_floor=Sep1, q_days=30 (Sep1..Sep30).
+    # activation=Aug25 < Sep1 -> soldier_start=Sep1 -> active_in_q=30 -> frac=1.0.
+    # W_i = unit_score(Q3, the one 10-day duty) * 1.0 = 10.
+    # C_over_D = 1/(10*1000) = 0.0001.
+    #
+    # If the Aug20 override had wrongly leaked through instead of the explicit
+    # Sep1: own_floor=Aug20, q_days=42, soldier_start=max(Aug20,Aug25)=Aug25
+    # (activation wins here) -> active_in_q=36 -> frac=36/42 -> W_i=10*36/42≈8.57
+    # -> C_over_D≈0.0001167 -- clearly different from 0.0001, so this assertion
+    # would catch that regression.
+    assert abs(result[s.id].C_over_D - Decimal("0.0001")) < Decimal("0.0000001")
+
+
+def test_run_algorithm_job_does_not_force_global_reset_date():
+    """run_algorithm_job must let compute_effort_data auto-resolve reset date
+    per soldier — passing an explicit reset_date= here would silently defeat
+    every hierarchy override for the live solve."""
+    import inspect
+    from app.services import algorithm_bridge as ab
+
+    src = inspect.getsource(ab.run_algorithm_job)
+    assert "reset_date=" not in src, (
+        "run_algorithm_job must not pass an explicit reset_date to compute_effort_data"
+    )
+
+
+def test_export_solver_inputs_does_not_force_global_reset_date():
+    import inspect
+    from app.services import algorithm_bridge as ab
+
+    src = inspect.getsource(ab.export_solver_inputs)
+    assert "reset_date=" not in src
+
+
+def test_legacy_transparency_rows_does_not_force_global_reset_date():
+    import inspect
+    from app.services import scoring as sc
+
+    src = inspect.getsource(sc._legacy_transparency_rows)
+    assert "reset_date=" not in src
+
+
+def test_burden_share_breakdown_route_does_not_force_global_reset_date():
+    import inspect
+    from app.routes import scoring as scoring_routes
+
+    src = inspect.getsource(scoring_routes.burden_share_breakdown)
+    assert "reset_date=" not in src
+
+
+def test_preview_adjustment_route_does_not_force_global_reset_date():
+    import inspect
+    from app.routes import score_adjustments
+
+    src = inspect.getsource(score_adjustments.preview_adjustment)
+    assert "reset_date=" not in src

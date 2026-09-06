@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 import logging
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -707,6 +708,71 @@ def _burden_share_reset_date(session: Session) -> date:
     if first_start is not None:
         return quarter_start(first_start)
     return quarter_start(date(date.today().year - 2, date.today().month, 1))
+
+
+def _reset_date_overrides(session: Session) -> dict[str, str]:
+    """Raw {node_id_str: iso_date} from fairness.reset_date_overrides, or {}
+    if unset/malformed. Validation of well-formedness happens at write time
+    (settings_loader.validate_settings_update) — this is a defensive read."""
+    from app.services.settings_loader import RESET_DATE_OVERRIDES_KEY, SettingNotFound, get_setting
+
+    try:
+        raw = get_setting(session, RESET_DATE_OVERRIDES_KEY)
+    except SettingNotFound:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _resolve_reset_date_from_path(
+    path_ids: list[uuid.UUID], overrides: dict[str, str], default: date
+) -> date:
+    """Nearest-ancestor override, else default. path_ids is root-to-self
+    (HierarchyNode.path_ids convention — see hierarchy.py's
+    `path_ids = [*parent.path_ids, node.id]`), so walking it in reverse
+    checks the soldier's own node first, then each ancestor toward the root."""
+    for node_id in reversed(path_ids):
+        raw = overrides.get(str(node_id))
+        if raw is not None:
+            return date.fromisoformat(raw)
+    return default
+
+
+def resolve_reset_dates_for_soldiers(
+    session: Session, soldiers: Sequence[Any]
+) -> dict[uuid.UUID, date]:
+    """Per-soldier effective fairness reset date: nearest-ancestor override
+    from fairness.reset_date_overrides, else the global fairness.reset_date
+    default. `soldiers` need `.id` and `.hierarchy_node_id` (works for both
+    `Soldier` ORM rows and `SoldierInput`).
+
+    One query for the distinct hierarchy nodes actually present among
+    `soldiers` (not the whole tree), then each distinct node's ancestor walk
+    runs once and is cached — O(distinct_nodes) resolutions, O(soldiers) dict
+    lookups, regardless of how many soldiers share a node."""
+    overrides = _reset_date_overrides(session)
+    default = _burden_share_reset_date(session)
+
+    distinct_node_ids = {s.hierarchy_node_id for s in soldiers if s.hierarchy_node_id is not None}
+    node_path_map: dict[uuid.UUID, list[uuid.UUID]] = {}
+    if distinct_node_ids:
+        node_path_map = {
+            n.id: list(n.path_ids)
+            for n in session.execute(
+                select(HierarchyNode.id, HierarchyNode.path_ids).where(
+                    HierarchyNode.id.in_(distinct_node_ids)
+                )
+            ).all()
+        }
+
+    node_resolved: dict[uuid.UUID, date] = {
+        node_id: _resolve_reset_date_from_path(node_path_map.get(node_id, []), overrides, default)
+        for node_id in distinct_node_ids
+    }
+
+    return {
+        s.id: node_resolved.get(s.hierarchy_node_id, default)
+        for s in soldiers
+    }
 
 
 def _burden_share_planning_start(session: Session) -> date:
@@ -1437,6 +1503,11 @@ def _try_projected_effort_data(
     from app.services.effort_score import _compute_effort_data
 
     reset_date = _burden_share_reset_date(session)
+    soldier_reset_dates = resolve_reset_dates_for_soldiers(session, soldiers)
+    if any(d != reset_date for d in soldier_reset_dates.values()):
+        return None  # a hierarchy override applies to at least one soldier; the
+                      # cache's precomputed windows assume one global date — defer
+                      # to compute_effort_data's live, override-aware recompute.
     planning_start = _burden_share_planning_start(session)
     projection_inputs = _projection_burden_share_inputs(
         session,
@@ -1459,6 +1530,7 @@ def _try_projected_effort_data(
             q_start: q_soldier_scores.get(calendar_qs, {})
             for q_start, _q_end, calendar_qs in windows
         },
+        soldier_reset_dates=soldier_reset_dates,
     )
     return data
 
@@ -1492,6 +1564,10 @@ def _try_projected_burden_share_breakdown(
 
     if reset_date != quarter_start(reset_date):
         logger.warning("effort breakdown fell back because reset_date is not quarter-aligned")
+        return None
+
+    resolved = resolve_reset_dates_for_soldiers(session, [soldier])[soldier.id]
+    if resolved != reset_date:
         return None
 
     windows = _burden_share_quarter_windows(
@@ -1551,7 +1627,7 @@ def _try_projected_burden_share_breakdown(
     W_i = Decimal("0")
     for q_start_d, q_end_d, calendar_qs in windows:
         q_days = (q_end_d - q_start_d).days + 1
-        soldier_start = max(soldier.enrolled_at, q_start_d)
+        soldier_start = max(soldier.unit_join_date or soldier.enrolled_at, q_start_d)
         if soldier_start > q_end_d:
             continue
 
@@ -1609,8 +1685,6 @@ def burden_shares_by_soldier(
 
     from app.services.effort_score import compute_effort_data
 
-    reset_date = _burden_share_reset_date(session)
-
     today = date.today()
 
     from sqlalchemy import func as sql_func
@@ -1627,7 +1701,6 @@ def burden_shares_by_soldier(
         soldiers=soldiers,
         planning_start=planning_start,
         planning_end=planning_start,
-        reset_date=reset_date,
     )
     return {sid: float(data.effort_score) for sid, data in effort_map.items()}
 
@@ -1790,7 +1863,6 @@ def _legacy_transparency_rows(
 
     # Compute effort scores for all active soldiers
     today = date.today()
-    reset_date = _burden_share_reset_date(session)
 
     # Include future published assignments by using the day after the latest
     # published assignment as the planning horizon.  Without this, effort_score
@@ -1809,7 +1881,6 @@ def _legacy_transparency_rows(
         soldiers=list(soldiers),
         planning_start=planning_start,
         planning_end=planning_start,
-        reset_date=reset_date,
     )
 
     rows: list[dict[str, Any]] = []

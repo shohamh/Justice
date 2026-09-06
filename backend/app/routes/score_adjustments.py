@@ -104,10 +104,6 @@ def preview_adjustment(
 
     # Compute burden share before/after using the breakdown service
     today = date.today()
-    from app.services.scoring import _burden_share_reset_date
-
-    reset_date = _burden_share_reset_date(session)
-
 
     latest_published_end = session.execute(
         select(func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
@@ -122,14 +118,12 @@ def preview_adjustment(
         soldier=s,
         planning_start=planning_start,
         planning_end=planning_start,
-        reset_date=reset_date,
     )
     bd_after = compute_burden_share_breakdown(
         session,
         soldier=s,
         planning_start=planning_start,
         planning_end=planning_start,
-        reset_date=reset_date,
         extra_adj_delta=delta,
         extra_adj_date=today,
     )

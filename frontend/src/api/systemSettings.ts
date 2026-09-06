@@ -1,6 +1,6 @@
 import { api } from "./client";
 
-export type SettingsMap = Record<string, string | number | boolean | string[] | null>;
+export type SettingsMap = Record<string, string | number | boolean | string[] | Record<string, string> | null>;
 
 export async function getSystemSettings(): Promise<SettingsMap> {
   const r = await api.get<{ settings: SettingsMap }>("/admin/system-settings");

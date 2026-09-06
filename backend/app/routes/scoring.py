@@ -166,7 +166,6 @@ def burden_share_breakdown(
     user: Soldier = Depends(require_password_changed),
 ) -> BurdenShareBreakdownOut:
     from app.services.effort_score import compute_burden_share_breakdown
-    from app.services.scoring import _burden_share_reset_date
 
     s = session.get(Soldier, soldier_id)
     if s is None:
@@ -174,8 +173,6 @@ def burden_share_breakdown(
     if s.id != user.id:
         if not can_view_soldier_scope(session, user, _node_of(session, s)):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
-
-    reset_date = _burden_share_reset_date(session)
 
     today = date.today()
 
@@ -192,7 +189,6 @@ def burden_share_breakdown(
         soldier=s,
         planning_start=planning_start,
         planning_end=planning_start,
-        reset_date=reset_date,
     )
     return BurdenShareBreakdownOut(
         quarters=[
