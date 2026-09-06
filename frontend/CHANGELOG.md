@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-06 (2)
+
+### Chores
+- Bumped CI's Node version so the frontend test job (and the e2e job gated behind it) stops failing on every push.
+- Fixed an e2e test left pointing at a removed nav link; it now reaches the page directly.
+- Seeded more realistic range-qualification history across most soldiers, and added coverage proving the duty-side constraint override is reachable via the Replace flow.
+
 ## 2026-09-06
 
 ### Fixes
