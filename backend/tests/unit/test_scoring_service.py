@@ -18,7 +18,16 @@ from app.services.scoring import (
     soldier_score_breakdown,
     transparency_rows,
 )
+from app.services.settings_loader import FAIRNESS_RESET_DATE_KEY, set_setting
 from tests.helpers import create_soldier
+
+
+def _set_reference_date(session, reference_date: date) -> None:
+    # active_days is now gated by the shared fairness.reset_date setting (see
+    # scoring._burden_share_reset_date) rather than falling back to
+    # soldier.enrolled_at, so tests that pin an enrolled_at must also pin this
+    # to the same date to get a deterministic active_days.
+    set_setting(session, FAIRNESS_RESET_DATE_KEY, reference_date.isoformat(), actor_id=None)
 
 
 def _dt(session, name, score):
@@ -157,6 +166,7 @@ def test_active_days_subtracts_full_coverage_exemption(admin_session):
     s = create_soldier(admin_session, personal_number="8500001")
     s.enrolled_at = date.today() - timedelta(days=10)
     admin_session.flush()
+    _set_reference_date(admin_session, date.today() - timedelta(days=10))
     _dt(admin_session, "שמירה-ad1", "1.00")
     et = ExemptionType(name="פטור-מלא-ad1")
     admin_session.add(et)
@@ -186,6 +196,7 @@ def test_active_days_floor_is_one(admin_session):
     s = create_soldier(admin_session, personal_number="8500002")
     s.enrolled_at = date.today()
     admin_session.flush()
+    _set_reference_date(admin_session, date.today())
     assert active_days(admin_session, soldier=s) == 1
 
 
@@ -193,6 +204,7 @@ def test_partial_coverage_does_not_reduce_active_days(admin_session):
     s = create_soldier(admin_session, personal_number="8500003")
     s.enrolled_at = date.today() - timedelta(days=10)
     admin_session.flush()
+    _set_reference_date(admin_session, date.today() - timedelta(days=10))
     d1 = _dt(admin_session, "שמירה-ad3a", "1.00")
     _dt(admin_session, "ניקיון-ad3b", "1.00")
     et = ExemptionType(name="פטור-חלקי-ad3")
@@ -225,6 +237,7 @@ def test_normalised_and_transparency(admin_session):
     s = create_soldier(admin_session, personal_number="8500004")
     s.enrolled_at = date.today() - timedelta(days=10)
     admin_session.flush()
+    _set_reference_date(admin_session, date.today() - timedelta(days=10))
     dt = _dt(admin_session, "שמירה-tr", "2.00")
     loc = _loc(admin_session, "מוצב-tr")
     create_assignment(

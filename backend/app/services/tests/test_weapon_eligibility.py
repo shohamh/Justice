@@ -9,14 +9,18 @@ from sqlalchemy.orm import Session
 from app.algorithm.types import DutyBlock
 from app.db.models import (
     DutyType,
-    RangeAssignment,
     RangeAttendanceStatus,
     RangeExcusalRequest,
     RangeExcusalStatus,
     RangeType,
     SoldierRangeQualification,
 )
-from app.services.ranges import add_range_assignment, cancel_range_event, create_range_event, mark_attendance
+from app.services.ranges import (
+    add_range_assignment,
+    cancel_range_event,
+    create_range_event,
+    mark_attendance,
+)
 from app.services.settings_loader import set_setting
 from app.services.weapon_eligibility import (
     _latest_qualification_by_soldier,

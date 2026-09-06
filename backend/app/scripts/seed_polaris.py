@@ -25,7 +25,9 @@ Both parts are idempotent: re-running skips whatever's already there.
 """
 
 # Must happen before any app import that touches the DB engine.
-import os as _os, sys as _sys
+import os as _os
+import sys as _sys
+
 for _i, _a in enumerate(_sys.argv):
     if _a.startswith("--db-url="):
         _os.environ["DATABASE_URL"] = _a.split("=", 1)[1]
@@ -52,6 +54,7 @@ from app.scripts.seed import _duty_hours, _mandatory_end, _single_day_shift_span
 from app.services.dm_scope import assign_dm_scope
 from app.services.rank_advancement import resolve_track
 from app.services.settings_loader import FAIRNESS_RESET_DATE_KEY, set_setting
+
 
 def _safe_print(s: str) -> None:
     import sys

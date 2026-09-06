@@ -5,7 +5,13 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.db.models import ExemptionRequest, ExemptionType, HierarchyNode, SoldierEnrollmentRequest, SystemSetting
+from app.db.models import (
+    ExemptionRequest,
+    ExemptionType,
+    HierarchyNode,
+    SoldierEnrollmentRequest,
+    SystemSetting,
+)
 from tests.helpers import create_node, create_soldier
 
 
@@ -70,8 +76,8 @@ def test_register_places_soldier_in_holding_node(admin_session):
 
 
 def test_register_rejects_discharge_before_enlistment(admin_session):
-    from app.services.registration import register, RegistrationError
     from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
 
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
@@ -180,8 +186,8 @@ def test_register_rejects_incompatible_rank_track(admin_session):
     # test_register_allows_keva_only_rank_once_mandatory_service_has_ended);
     # _base()'s mandatory_end_date is in the future, so is_career is still
     # False here, making a קבע-only rank like רסל incompatible.
-    from app.services.registration import register, RegistrationError
     from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
 
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
@@ -213,7 +219,7 @@ def test_register_decrements_invite_code(admin_session):
 def test_register_exhausted_code_raises(admin_session):
     _make_holding(admin_session)
     node = create_node(admin_session, level="division", name=f"div_{_uid()}")
-    from app.services.invite_codes import create_invite_code, InviteCodeError
+    from app.services.invite_codes import InviteCodeError, create_invite_code
     from app.services.registration import register
     invite = create_invite_code(admin_session, uses_left=0, actor_id=None)
     admin_session.commit()
@@ -228,7 +234,7 @@ def test_register_duplicate_personal_number_raises(admin_session):
     pn = f"dup_{_uid()}"
     create_soldier(admin_session, personal_number=pn)
     from app.services.invite_codes import create_invite_code
-    from app.services.registration import register, RegistrationError
+    from app.services.registration import RegistrationError, register
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
     with pytest.raises(RegistrationError, match="personal_number"):
@@ -416,8 +422,8 @@ def test_register_persists_academic_officer_track_for_shared_rank(admin_session)
 
 
 def test_register_rejects_discharge_date_in_past(admin_session):
-    from app.services.registration import register, RegistrationError
     from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
 
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import uuid
 import logging
+import uuid
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
-from app.services.sql_arrays import uuid_any
 
-from app.algorithm.duration import combine_date_time
+from app.algorithm.duration import calendar_days_touched, combine_date_time, score_days
+from app.auth.authz import scope_root_ids
 from app.db.models import (
     DutyAssignment,
     DutyDayOverride,
@@ -30,10 +30,9 @@ from app.db.models import (
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
-from app.algorithm.duration import calendar_days_touched, score_days
-from app.services.eligibility import inferred_service_type
-from app.auth.authz import scope_root_ids
 from app.services.authority import can_view_soldier_scope
+from app.services.eligibility import inferred_service_type
+from app.services.sql_arrays import uuid_any
 
 _UNSET: object = object()
 _SCORE_QUANT = Decimal("0.000001")
@@ -651,7 +650,7 @@ def _q6(value: Decimal | int | str | None) -> Decimal:
 
 
 def _score_projection_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _iter_calendar_quarters(start: date, end: date) -> list[date]:
@@ -1677,7 +1676,8 @@ def _try_projected_burden_share_breakdown(
     burden_share = A_i / W_i if W_i > Decimal("0") else Decimal("0")
 
     if quarter_details:
-        from app.services.effort_score import compute_quarter_contributions, quarter_start as _qstart
+        from app.services.effort_score import compute_quarter_contributions
+        from app.services.effort_score import quarter_start as _qstart
 
         contrib_map = compute_quarter_contributions(
             session,
@@ -1862,8 +1862,7 @@ def transparency_rows(
 def _legacy_transparency_rows(
     session: Session, *, viewer: Soldier | None = None
 ) -> dict[str, Any]:
-    from app.services.effort_score import compute_effort_data, quarter_start
-    from app.services.settings_loader import SettingNotFound, get_setting
+    from app.services.effort_score import compute_effort_data
 
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     duty_scores, shift_counts = _duty_stats_by_soldier(session)
@@ -2232,7 +2231,6 @@ def fairness_components(session: Session, *, viewer: Soldier | None = None) -> d
     """Burden-share spread (פיזור) split by connected components of soldiers who share
     duty-type eligibility, plus the soldiers exempt from every active duty type.
     Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope)."""
-    from app.services.algorithm_bridge import load_soldier_inputs
 
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
