@@ -31,19 +31,28 @@ import { journeyActors, journeyActorStorageState, roleStorageState, type Role } 
  *   calls DELETE .../assignments/<id> (removing that assignee) and then opens
  *   ShiftAssignModal against the freshly-refetched shift, with the freed
  *   primary slot and real override-reason UI (OverrideReasonModal) for
- *   selecting a replacement. Actually COMPLETING that override (positive
- *   "succeeds with a reason" / negative "empty reason rejected" pair the plan
- *   originally wanted) is NOT implemented here — investigating it surfaced a
- *   real, separate, confirmed product bug in useModalBackClose's nested-modal
- *   handling (ShiftAssignModal + the weapon-warning ConfirmDialog it must
- *   show first, since PN 1000037's precondition requires a duty type with
- *   required_range_type set, which makes weapon_warning=true universal for
- *   everyone at this file's far-future dates too): confirming that dialog
- *   fires TWO history.back() calls, not one, closing ShiftAssignModal itself
- *   before OverrideReasonModal ever renders — verified via direct
- *   window.history instrumentation, not guessed. Tracked as background task
- *   task_bd77e412; proven directly by the second test below rather than
- *   routed around.
+ *   selecting a replacement. COMPLETING that override (positive "succeeds
+ *   with a reason" / negative "empty reason rejected" pair) is now proven by
+ *   the two tests below closing task_bd77e412's remainder. Getting there
+ *   required first fixing a real, separate product bug in
+ *   useModalBackClose's nested-modal handling: with three levels of nested
+ *   modal (ShiftDetailPanel -> ShiftAssignModal -> the weapon-warning
+ *   ConfirmDialog it must show first, since PN 1000037's precondition
+ *   requires a duty type with required_range_type set, which makes
+ *   weapon_warning=true universal for everyone at this file's far-future
+ *   dates too), confirming that dialog used to fire TWO history.back() calls,
+ *   not one — closing ShiftAssignModal itself (a level the pop should never
+ *   have reached) before OverrideReasonModal ever rendered. Root cause:
+ *   handlePopState's bail-out only checked "is the current entry mine",
+ *   which is only a correct proxy for "the browser genuinely navigated past
+ *   me" when nesting is exactly two levels deep — with a third level, a
+ *   deeper descendant's own pop can land on some OTHER ancestor's entry,
+ *   which the outer modals then misread as "not mine, so I've been popped
+ *   past" and close. Fixed in useModalBackClose.ts by tracking each modal's
+ *   actual parent entry id (captured at push time) and only closing when the
+ *   popped-to state matches that captured parent, not merely whenever it
+ *   isn't the modal's own id. See useModalBackClose.test.tsx's "three-level
+ *   nesting" describe block for the isolated regression test.
  *
  * - Duty manual override via the standard bulk ShiftEditAssignmentsModal
  *   (opened via [data-testid^="manual-assignment-open-"], the same modal
@@ -173,9 +182,9 @@ import { journeyActors, journeyActorStorageState, roleStorageState, type Role } 
  *   so it cannot be reverted in between). Both actors also carry
  *   weapon_warning=true in this window (same gate-2 staleness applies to
  *   everyone at these dates) — a soft, non-blocking flag that only surfaces a
- *   ConfirmDialog before the constraint-override modal — see task_bd77e412
- *   above for why that ConfirmDialog itself is where the Replace-flow's
- *   override step is currently blocked.
+ *   ConfirmDialog before the constraint-override modal; see the entry above
+ *   for the nested-modal history bug that ConfirmDialog used to trigger
+ *   (task_bd77e412), now fixed.
  *
  *   The previously-considered algorithm-job route (flip
  *   weapon_qualification.enforce_eligibility off around a job to bypass the
@@ -624,12 +633,14 @@ test("duty-side manual override: PN 1000037 becomes a genuine weapon-ineligible 
 });
 
 // The OTHER half of task_af3d0c50 — actually completing the override (fill a
-// reason, confirm, assign) — is NOT implemented as a positive/negative pair
-// here. Investigating why surfaced a SEPARATE, real, confirmed product bug in
-// useModalBackClose's nested-modal history handling: see the seam-inventory's
-// "Weapon-ineligibility precondition" note and the test below, which proves
-// the bug exists rather than routing around it silently.
-test("duty-side manual override: completing the Replace-flow override is blocked by a real nested-modal history bug (documented product gap, task_bd77e412)", async ({ browser }) => {
+// reason, confirm, assign) — used to be blocked by a real, separate product
+// bug in useModalBackClose's nested-modal history handling (see the
+// seam-inventory's "Duty manual override via ShiftAssignModal's 'Replace'
+// flow" note for the root cause and fix). Now that it's fixed, this proves
+// the plan's originally-intended positive/negative pair for real: an empty
+// reason is rejected client-side (confirm stays disabled), and a filled-in
+// reason succeeds end to end.
+test("duty-side manual override via the Replace flow: empty override reason is rejected, a real reason succeeds end to end (Task 2 completion, closes task_bd77e412)", async ({ browser }) => {
   test.setTimeout(300_000);
   await setupWeaponIneligiblePrimaryAndRun(
     browser,
@@ -665,38 +676,61 @@ test("duty-side manual override: completing the Replace-flow override is blocked
         // qualification years out), so selecting constrainedSoldier here —
         // who ALSO carries personal_constraint_warning — always opens the
         // weapon-warning ConfirmDialog first, per ShiftAssignModal.tsx's
-        // handleAssign(). This stacking (ConfirmDialog, a child of
-        // ShiftAssignModal, both using useModalBackClose) is unavoidable for
-        // proving the Replace-flow scenario at all, since PN 1000037 can only
-        // ever become weapon_ineligible=true on a duty type carrying
-        // required_range_type — which necessarily makes weapon_warning=true
-        // universal at these dates too.
+        // handleAssign(). This three-level stacking (ShiftDetailPanel ->
+        // ShiftAssignModal -> ConfirmDialog, all using useModalBackClose) is
+        // unavoidable for proving the Replace-flow scenario at all, since PN
+        // 1000037 can only ever become weapon_ineligible=true on a duty type
+        // carrying required_range_type — which necessarily makes
+        // weapon_warning=true universal at these dates too. It's exactly the
+        // shape the nested-modal history bug used to break, and exactly the
+        // shape this test now proves fixed.
         await dutyManager.page.getByRole("button", { name: /^שבץ/ }).click();
         const weaponConfirm = dutyManager.page.getByTestId("confirm-dialog-confirm");
         await expect(weaponConfirm).toBeVisible({ timeout: 30_000 });
-
-        // Confirmed via direct window.history instrumentation (not just this
-        // assertion): ShiftAssignModal's own useModalBackClose(onClose) mount
-        // and the ConfirmDialog's (EventDetailModal's useModalBackClose(onClose,
-        // open)) mount push THREE __modal history entries total before this
-        // click (not the two the hook's own "nested modals" test suite
-        // — useModalBackClose.test.tsx's "closing a nested modal does not
-        // close the parent" — proves safe for a real parent+child pair).
-        // Clicking this confirm button fires TWO separate history.back()
-        // calls in sequence (3->2, then 2->1), not one — unwinding past
-        // ShiftAssignModal's own entry, not just ConfirmDialog's. The
-        // OverrideReasonModal step (opened by continueAssign() right after)
-        // never gets a chance to render: ShiftAssignModal itself closes.
-        const shiftAssignTitle = dutyManager.page.getByText("שיבוץ ידני", { exact: true });
         await weaponConfirm.click();
+
+        // ShiftAssignModal must survive this confirm (the bug used to close
+        // it here) and continueAssign() must proceed straight to
+        // OverrideReasonModal, since the selected candidate carries
+        // personal_constraint_warning.
+        const shiftAssignTitle = dutyManager.page.getByText("שיבוץ ידני", { exact: true });
+        await expect(shiftAssignTitle).toBeVisible({ timeout: 30_000 });
+        const reasonInput = dutyManager.page.getByPlaceholder("נימוק העקיפה...");
+        await expect(reasonInput).toBeVisible({ timeout: 30_000 });
+
+        // Negative: OverrideReasonModal's confirm button
+        // (disabled={!reason.trim()}) rejects an empty/whitespace-only reason
+        // client-side — no assign-batch call at all.
+        const confirmOverride = dutyManager.page.getByRole("button", { name: "אישור", exact: true });
+        await expect(confirmOverride).toBeDisabled();
+        await reasonInput.fill("   ");
+        await expect(confirmOverride).toBeDisabled();
+
+        // Positive: a real reason enables confirm and completes the
+        // assignment for real.
+        await reasonInput.fill("חריגה מאושרת לשיבוץ ידני E2E — Replace flow");
+        await expect(confirmOverride).toBeEnabled();
+        const assign = dutyManager.page.waitForResponse(
+          (r) => r.url().includes(`/api/shifts/${shiftId}/assign-batch`) && r.request().method() === "POST",
+        );
+        await confirmOverride.click();
+        const assignResult = await assign;
+        expect(assignResult.status()).toBe(201);
+        expect((assignResult.request().postDataJSON() as { override_reason?: string }).override_reason).toBeTruthy();
+
+        // onSaved (ShiftDetailPanel.tsx) closes ShiftAssignModal and the panel
+        // both — confirm the real, visible post-refresh state rather than
+        // just trusting the response.
         await expect(shiftAssignTitle).toBeHidden({ timeout: 30_000 });
-        // Non-vacuous: the reason input never appears either — this isn't
-        // "closed, then reopened with the modal intact", the whole
-        // ShiftAssignModal is gone (not just the ConfirmDialog).
-        await expect(dutyManager.page.getByPlaceholder("נימוק העקיפה...")).toHaveCount(0);
-        // ShiftDetailPanel closed too (not just ShiftAssignModal): back on
-        // the bare calendar, no shift-scoped UI left at all.
-        await expect(dutyManager.page).toHaveURL(/\/unit-calendar$/);
+        await dutyManager.page.reload();
+        await openShiftDetailPanel(dutyManager.page, replaceNegativeLocation, replaceNegativeStart);
+        // constrainedSoldier is now the real, saved primary assignee — proof
+        // the override actually completed, not just that the response was
+        // 2xx. (They may also show their own "החלף" here, since gate 2 makes
+        // them weapon_ineligible too at these far-future dates — that's an
+        // expected, separately-documented side effect of the fixture, not
+        // asserted against here.)
+        await expect(dutyManager.page.getByText(CONSTRAINED_SOLDIER_NAME)).toBeVisible({ timeout: 30_000 });
       } finally {
         await dutyManager.context.close();
       }
