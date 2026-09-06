@@ -9,6 +9,7 @@ import { useModalBackClose } from "../hooks/useModalBackClose";
 import ConstraintWarningIcon from "./ConstraintWarningIcon";
 import OverrideReasonModal from "./OverrideReasonModal";
 import ConfirmDialog from "./ConfirmDialog";
+import Tooltip from "./Tooltip";
 
 interface Props {
   shift: DutyShift;
@@ -342,7 +343,7 @@ function PrimaryTable({ unblocked, blocked, selected, onToggle }: PrimaryTablePr
               <td className="p-2">
                 {c.full_name}
                 {c.weapon_warning && (
-                  <span title={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</span>
+                  <Tooltip as="span" title={WEAPON_WARNING_LABEL} content={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</Tooltip>
                 )}
                 {c.personal_constraint_warning && (
                   <ConstraintWarningIcon warning={c.personal_constraint_warning} />
@@ -413,7 +414,7 @@ function ReserveTable({ unblocked, blocked, selected, onToggle, showDist }: Rese
               <td className="p-2">
                 {c.full_name}
                 {c.weapon_warning && (
-                  <span title={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</span>
+                  <Tooltip as="span" title={WEAPON_WARNING_LABEL} content={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</Tooltip>
                 )}
                 {c.personal_constraint_warning && (
                   <ConstraintWarningIcon warning={c.personal_constraint_warning} />
