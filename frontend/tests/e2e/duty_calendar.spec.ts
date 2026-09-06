@@ -5,7 +5,10 @@ import { roleStorageState } from "./fixtures/auth";
 test.use({ storageState: roleStorageState("admin") });
 
 test("my diary page shows stats dashboard", async ({ page }) => {
-  await page.getByTestId("nav-my-duties").click();
+  // No persistent nav entry links here anymore (removed in 72501b95) — the
+  // page is reached via the search palette or a notification deep link, so
+  // navigate directly.
+  await page.goto("/my-duties");
   await expect(page).toHaveURL(/\/my-duties$/);
 
   await expect(page.getByTestId("my-diary-page")).toBeVisible();
