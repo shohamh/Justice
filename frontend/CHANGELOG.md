@@ -1,5 +1,100 @@
 # Changelog
 
+## 2026-09-02
+
+### Features
+- Completed bilingual import/export round trips for soldier profile fields, including unit join dates, food preferences and constraints, profile pictures, safe Telegram linkage, rank advancement dates, rank track, and manual-versus-automatic next-rank provenance.
+- Preserved exemption medical classification, revocation metadata, duty configuration fields, and responsible range-manager linkage through export and approved import flows.
+
+### Fixes
+- Persisted unit join dates and newly supported profile/linkage fields in both legacy and staged import paths, with fail-closed handling for active soldiers requiring approval.
+- Stabilized date-sensitive algorithm and range UI regression fixtures and updated approval tests for the required decision body.
+
+## 2026-09-01
+
+### Features
+- Added a configurable active-days reference date for rollout history, with first-registration fallback and unit-aware active-day calculations.
+- Added unit join dates to registration, soldier profiles, import/export, and the staged commander/duty-manager approval workflow for retrospective edits.
+- Added active-days help content explaining reference dates, exemptions, and personal constraints.
+
+### Fixes
+- Counted exemptions only within the effective active-days interval through today, discharge, or leave.
+- Clarified production deployment to rebuild the backend image so newly released database migrations are applied.
+- Restored the configured personal-constraint override behavior for manual shift candidates and stabilized related eligibility tests.
+- Stabilized the command call-up prefill test so it waits for the asynchronously loaded assignment.
+- Preserved exemption approval decision notes, added scoped commander approval coverage, and surfaced translated approval-action failures.
+- Improved admin error diagnostics with explicit traceback/details sections and distinct frontend error coloring.
+
+### Chores
+- Split the primary backend test suite from the complete service-test suite, with a dedicated script for running both trees.
+
+## 2026-09-01
+
+### Features
+- Unified the soldier homepage and commander dashboard into one role-aware homepage, with highlighted management-scope widgets and a single calendar for commanders and duty managers.
+- Added distinct highlighting and the `הצג רק אירועים שלי` filter for a manager's own duties, while keeping unit-wide duty-board behavior unchanged.
+
+### Fixes
+- Treated profile `last_mitvahim_date` as live-range qualification and `last_alal_date` as alal qualification throughout eligibility, coverage, auto-assignment, and expiry notifications.
+- Added duty-manager and deputy duty-manager authorization for command dashboard data, with server-derived subtree scope and no arbitrary-node bypass.
+
+### Chores
+- Removed the legacy standalone commander dashboard route, page, navigation entry, search entry, and obsolete summary API.
+
+## 2026-08-31 (6)
+
+### Fixes
+- Fixed the transparency fairness pie-chart tooltip being clipped beneath the fixed sidebar in the RTL layout.
+
+## 2026-08-31 (5)
+
+### Fixes
+- Fixed range qualification so profile dates count correctly: `last_mitvahim_date` is treated as a live-range qualification (and covers lower laser requirements), while `last_alal_date` is treated as an alal qualification.
+
+## 2026-08-31 (4)
+
+### Features
+- Added the authenticated soldier and client IP to structured backend and frontend error records, showing the soldier as a linked name in the admin error card when available.
+
+### Fixes
+- Shared enrollment exemption visibility logic with the pending-exemption count and improved linked-name sizing in the hierarchy tree.
+
+## 2026-08-31 (3)
+
+### Features
+- Reorganized the commander dashboard around full-horizon upcoming duties, hierarchy-wide calendars, and a shared exemption-request form for manager-entered exemptions with attachments and automatic approval routing.
+
+### Fixes
+- Removed redundant commander-dashboard panels, improved duty-potential contrast in dark mode, and fixed bug-report modal availability from notifications and layout routes.
+
+### Chores
+- Added regression coverage for dashboard composition, multi-node calendars, exemption submissions, and bug-report provider placement.
+
+## 2026-08-31 (2)
+
+### Chores
+- Isolated the backend test suite's log directory so pytest runs no longer write synthetic test errors into the real backend-errors.log/frontend-errors.log files that production log monitoring watches.
+
+## 2026-08-31
+
+### Features
+- Invite codes now use a copy icon instead of a text button for copying the code.
+
+### Fixes
+- Hardened the frontend against malformed or unexpected API responses across the entire app (adapters, hooks, and page/component render paths for approvals, notifications, algorithm runs, scoring, the commander dashboard, soldiers, rank advancement, ranges, the calendar, and every request/approval queue), so a malformed backend payload degrades gracefully or shows a visible error instead of crashing the page.
+- Guarded hierarchy level-type and invite-code responses against malformed data so admin pages no longer crash on an unexpected shape.
+
+## 2026-08-30 (4)
+
+### Features
+- Added commander and regular exemption grants with medical classification, supporting evidence uploads, secure file listing/downloads, and audit context for direct grants.
+
+### Fixes
+- Persisted exemption medical classification so medical evidence remains protected by the server-side privacy gate.
+- Preserved attachment-upload errors after a grant so users can see and retry failed uploads.
+- Tightened range eligibility to require the appropriate recent range qualification and improved the associated Hebrew explanations.
+- Prevented profile edits from silently triggering published-assignment rechecks.
+
 ## 2026-08-30 (3)
 
 ### Features
