@@ -21,20 +21,29 @@ import { journeyActors, journeyActorStorageState, roleStorageState, type Role } 
  *   (tab=existing)'s green "אושר" badge (my_requests.approved, MyRequestsPage
  *   statusBadge()) — not just the two 2xx responses.
  *
- * - Duty manual override via ShiftAssignModal's "Replace" flow — REAL,
- *   PRE-EXISTING PRODUCT GAP, confirmed unreachable by two independent,
- *   increasingly careful investigations (see "Weapon-ineligibility
- *   precondition" below for the full trail) — not exercised by this file at
- *   all. ShiftDetailPanel (reachable only from /unit-calendar's FullCalendar
+ * - Duty manual override via ShiftAssignModal's "Replace" flow — its
+ *   PRECONDITION (a real weapon_ineligible=true original assignee) is now
+ *   REAL and proven reachable below, closing that half of task_af3d0c50 (see
+ *   "Weapon-ineligibility precondition" below for how it's actually reached).
+ *   ShiftDetailPanel (reachable only from /unit-calendar's FullCalendar
  *   events) shows a "החלף" (weapon_ineligible.replace) button next to any
- *   primary assignee with weapon_ineligible=true, which opens ShiftAssignModal
- *   with real override-reason UI (OverrideReasonModal). But there is no live
- *   UI path that ever produces a weapon_ineligible=true assignee in the first
- *   place, so this modal's override logic — while implemented correctly per
- *   OverrideReasonModal.tsx — has no reachable trigger. Do not resurrect a
- *   "Replace" test here without re-reading the precondition finding below
- *   first; two attempts already died on two different, independently fatal
- *   causes.
+ *   primary assignee with weapon_ineligible=true; clicking it immediately
+ *   calls DELETE .../assignments/<id> (removing that assignee) and then opens
+ *   ShiftAssignModal against the freshly-refetched shift, with the freed
+ *   primary slot and real override-reason UI (OverrideReasonModal) for
+ *   selecting a replacement. Actually COMPLETING that override (positive
+ *   "succeeds with a reason" / negative "empty reason rejected" pair the plan
+ *   originally wanted) is NOT implemented here — investigating it surfaced a
+ *   real, separate, confirmed product bug in useModalBackClose's nested-modal
+ *   handling (ShiftAssignModal + the weapon-warning ConfirmDialog it must
+ *   show first, since PN 1000037's precondition requires a duty type with
+ *   required_range_type set, which makes weapon_warning=true universal for
+ *   everyone at this file's far-future dates too): confirming that dialog
+ *   fires TWO history.back() calls, not one, closing ShiftAssignModal itself
+ *   before OverrideReasonModal ever renders — verified via direct
+ *   window.history instrumentation, not guessed. Tracked as background task
+ *   task_bd77e412; proven directly by the second test below rather than
+ *   routed around.
  *
  * - Duty manual override via the standard bulk ShiftEditAssignmentsModal
  *   (opened via [data-testid^="manual-assignment-open-"], the same modal
@@ -107,74 +116,80 @@ import { journeyActors, journeyActorStorageState, roleStorageState, type Role } 
  *   every eligible candidate (constrainedSoldier included) rather than relying
  *   on guessing exact rank order.
  *
- * - Weapon-ineligibility precondition — TWO INDEPENDENT INVESTIGATIONS, TWO
- *   INDEPENDENT DEAD ENDS. Both confirmed by actually running things and
- *   reading real output/source, not by inspection alone:
+ * - Weapon-ineligibility precondition — now genuinely reachable, closed by
+ *   two separate things: Task 1 (commit 93782971) broadened mitvahim-range
+ *   seeding to 115 of 120 soldiers, deliberately leaving PN 1000037 (team
+ *   ריי, officer, 5th member) with last_mitvahim_date=NULL as the intended
+ *   "weapon-ineligible original assignee"; this file's own setup helper
+ *   (`setupWeaponIneligiblePrimaryAndRun` below) supplies the rest.
  *
- *   (1) Every SEEDED duty type carrying a required_range_type is either
- *   officer-only (הגנ"ש/קצין תורן/מפקד תורן/קצין מלווה אבט"ש —
- *   enlisted_allowed:false, which would exclude constrainedSoldier, a
- *   non-officer, from ever appearing as a Replace candidate) or
- *   requires_mitvahim (שמירות/אבט"ש). requires_mitvahim blocks 118 of the
- *   current 120 seeded soldiers (only two soldiers — unrelated to
- *   constrainedSoldier's team — have last_mitvahim_date set), and — contrary
- *   to an earlier assumption here that eligibility_blockers() never sees it —
- *   is fed into the exact same exempted_duty_type_ids the CP-SAT solver
- *   hard-excludes on (services/algorithm_bridge.py's load_soldier_inputs
- *   calls eligibility.py's compute_eligibility_exclusions, which folds every
- *   DutyTypeRequirements gate into the same set consumed by
- *   availability.py's "duty_type_exemption" blocker, and routes/shifts.py's
- *   candidates endpoint uses the very same function for its blocked_reason).
- *   So neither the manual nor the algorithm path can ever put anyone at all
- *   on a seeded weapon duty type. Setting last_mitvahim_date on a soldier to
- *   dodge this gate wouldn't help either — weapon_eligibility.py's
- *   _profile_valid_until treats that same field as live-range (and therefore
- *   laser-tier) proof, so it would make them weapon-*eligible* too. This is
- *   exercised directly below as the rescoped test (a fresh שמירות shift,
- *   scoped to constrainedSoldier's own team so none of the two mitvahim-
- *   holding soldiers are even candidates, asserting every candidate is
- *   blocked with the exact mitvahim ineligibility text).
+ *   Two independent structural gates matter here, confirmed by reading
+ *   eligibility.py/weapon_eligibility.py directly, not by inspection alone:
  *
- *   (2) A second, independent attempt tried sidestepping (1) entirely: create
- *   a brand-new test-only duty type with required_range_type="laser" and
- *   every other eligibility flag left open (no mitvahim/officer gate at
- *   all), then flip the global "אכיפת כשירות נשק לתורנויות"
- *   (weapon_qualification.enforce_eligibility) admin setting off around an
- *   algorithm run so the solver wouldn't hard-exclude anyone for lacking the
- *   qualification, publish, then flip it back on to trigger recheck_
- *   assignments() and flag the published assignee weapon_ineligible=true.
- *   This died on a SEPARATE, deeper bug, confirmed via direct backend
- *   reproduction (a standalone script calling solve() directly found
- *   OPTIMAL/an actual assignment with enforce_weapon_qualification=False —
- *   proving the solver-side plumbing is correct — while the real
- *   POST /api/algorithm/jobs endpoint, hit exactly as the UI's
- *   AlgorithmInlinePanel hits it, reproducibly returned INFEASIBLE): the
- *   request schema routes/algorithm.py's SolverSettingsIn declares
+ *   (1) A hard, always-on "structural" gate (services/eligibility.py's
+ *   `_ineligibility_reason`, reached via `compute_eligibility_exclusions` from
+ *   algorithm_bridge.py's `load_soldier_inputs`, which both routes/shifts.py's
+ *   candidates endpoint and the CP-SAT solver's hard-exclusion set consume).
+ *   It checks a duty type's `requirements` JSON flags — `requires_mitvahim`
+ *   (blocks a null/stale `last_mitvahim_date`, using the
+ *   `eligibility.mitvahim_months` setting, evaluated against the *duty's own
+ *   start_date* — not real-world today) and `officers_allowed`/
+ *   `enlisted_allowed` (both unconditional) — completely independently of any
+ *   admin toggle. Every SEEDED duty type carrying a required_range_type sets
+ *   one of these role flags to False: שמירות/אבט"ש are officers_allowed:False
+ *   (would exclude PN 1000037, an officer) while הגנ"ש/קצין תורן/מפקד תורן are
+ *   enlisted_allowed:False (would exclude constrainedSoldier, a non-officer).
+ *   No seeded duty type leaves both open, so neither actor can ever reach a
+ *   seeded weapon duty type as-is.
+ *
+ *   (2) A separate, cache-producing gate (weapon_eligibility.py's
+ *   `compute_eligibility`, gated by the real "אכיפת כשירות נשק לתורנויות" /
+ *   weapon_qualification.enforce_eligibility admin setting, default True) that
+ *   `services/assignments.py`'s `create_assignment` calls at assignment-creation
+ *   time (keyed off `duty_type.required_range_type`, a DB column independent of
+ *   the `requirements` JSON) to set `weapon_ineligible`/`weapon_ineligible_reason`
+ *   on the new DutyAssignment row — with NO hard block either way; an
+ *   ineligible soldier can always be assigned, just flagged.
+ *
+ *   Since gate (1) is duty-type-scoped and gate (2) is a completely separate
+ *   check, the real, live-UI mechanism is: temporarily widen gate (1) for
+ *   שמירות only, via the real DutyTypeRequirementsEditor at /planning/config
+ *   (dutyManager-reachable, `require_duty_manager_or_admin`) — uncheck
+ *   "נדרש מטווחים עדכני" (requires_mitvahim) and check "קצינים מותרים"
+ *   (officers_allowed) — leaving `required_range_type` (still "laser") and
+ *   the admin enforce-eligibility setting (still True) both untouched. With
+ *   gate (1) open, PN 1000037 becomes a normal selectable candidate in the
+ *   standard bulk ShiftEditAssignmentsModal; assigning them there hits gate
+ *   (2) for real (they still have no last_mitvahim_date at all), so
+ *   `create_assignment` sets weapon_ineligible=true on that assignment
+ *   immediately — no settings-toggle dance, no algorithm job, no recheck call
+ *   needed. `setupWeaponIneligiblePrimary` below does exactly this, then
+ *   reverts the two requirements flags in a `finally` once the caller's own
+ *   Replace-flow interaction is done (requires_mitvahim has to stay off for
+ *   the whole interaction, not just the setup half, because constrainedSoldier's
+ *   own last_mitvahim_date — real and current, ~2026-08 — is itself far too
+ *   stale relative to this file's deliberately-far-future shift dates to pass
+ *   gate (1) at those dates; this is a duty-type-wide setting, not per-shift,
+ *   so it cannot be reverted in between). Both actors also carry
+ *   weapon_warning=true in this window (same gate-2 staleness applies to
+ *   everyone at these dates) — a soft, non-blocking flag that only surfaces a
+ *   ConfirmDialog before the constraint-override modal — see task_bd77e412
+ *   above for why that ConfirmDialog itself is where the Replace-flow's
+ *   override step is currently blocked.
+ *
+ *   The previously-considered algorithm-job route (flip
+ *   weapon_qualification.enforce_eligibility off around a job to bypass the
+ *   solver's hard exclusion, then back on to trigger recheck_assignments) is
+ *   NOT used here and remains genuinely broken for job creation specifically:
+ *   routes/algorithm.py's SolverSettingsIn declares
  *   `enforce_weapon_qualification: bool = True` as a hard Pydantic default,
- *   and create_job() stores `body.settings.model_dump(mode="json")` — the
- *   FULLY-RESOLVED request, defaults included — verbatim as job.settings_json.
- *   Since that key is therefore always PRESENT (True) in job.settings_json,
- *   resolve_solver_settings()'s admin-setting fallback
- *   (`settings_json.get("enforce_weapon_qualification", <admin setting>)`)
- *   never triggers for any job created this way — the admin toggle is silently
- *   inert for every reachable job-creation path. The one UI surface that DOES
- *   send this field explicitly, AlgorithmRunForm.tsx, is dead code: App.tsx
- *   unconditionally redirects /algorithm to /planning/shifts. So there is no
- *   live path, whatsoever, to create an algorithm job with
- *   enforce_weapon_qualification=False — this mechanism cannot work
- *   regardless of how carefully the admin-toggle UI is scripted. (This is a
- *   real, independently-worth-fixing product bug — flagged separately, not
- *   fixed here, as background task task_f58fff09 ("Fix
- *   enforce_weapon_qualification admin toggle never reaching solver").) The
- *   custom-laser-duty-type helpers this second attempt wrote
- *   were removed from this file along with it; do not recreate them without
- *   first fixing the SolverSettingsIn default (or the fallback would still
- *   never engage).
- *
- *   Given both of the only two candidate mechanisms are independently dead,
- *   Steps 4/5 of the plan (a positive "override succeeds" + negative "reason
- *   required" pair via ShiftAssignModal's Replace flow) are not implemented in
- *   this file — see the rescoped test below instead.
+ *   and create_job() persists the fully-resolved request (defaults included)
+ *   as job.settings_json, so resolve_solver_settings()'s admin-setting
+ *   fallback never triggers for any reachable job-creation path — flagged
+ *   separately as background task task_f58fff09 ("Fix
+ *   enforce_weapon_qualification admin toggle never reaching solver"), not
+ *   needed for this file since the manual bulk-assignment path above never
+ *   goes through SolverSettingsIn at all.
  */
 
 type RoleContext = { context: BrowserContext; page: Page };
@@ -240,9 +255,19 @@ function previousDay(date: string): string {
 const constraintStart = isoDate(constraintBaseOffset);
 const constraintEnd = isoDate(constraintBaseOffset + 13);
 
-const mitvahimGateStart = isoDate(constraintBaseOffset + 1);
-const mitvahimGateEnd = nextDay(mitvahimGateStart);
-const mitvahimGateLocation = `E2E mitvahim gate ${Date.now()}`;
+// PN 1000037 — Task 1's (commit 93782971) deliberately mitvahim-unqualified
+// soldier, team ריי (same team as constrainedSoldier), officer, kept
+// last_mitvahim_date=NULL on purpose so it can serve as the weapon-ineligible
+// original assignee the Replace-flow tests below need.
+const WEAPON_INELIGIBLE_PN = "1000037";
+
+const replaceSetupStart = isoDate(constraintBaseOffset + 3);
+const replaceSetupEnd = nextDay(replaceSetupStart);
+const replaceSetupLocation = `E2E replace setup ${Date.now()}`;
+
+const replaceNegativeStart = isoDate(constraintBaseOffset + 13);
+const replaceNegativeEnd = nextDay(replaceNegativeStart);
+const replaceNegativeLocation = `E2E replace negative ${Date.now()}`;
 
 const bulkGapStart = isoDate(constraintBaseOffset + 5);
 const bulkGapEnd = nextDay(bulkGapStart);
@@ -317,6 +342,143 @@ async function createShift(
   const checkbox = page.getByTestId(`shift-row-checkbox-${shiftId}`);
   await expect(checkbox).toBeVisible({ timeout: 30_000 });
   return shiftId;
+}
+
+// Toggle "requires_mitvahim" / "officers_allowed" on a duty type via the real
+// DutyTypeRequirementsEditor at /planning/config (dutyManager-reachable).
+// Used to temporarily widen שמירות so PN 1000037 (mitvahim-unqualified,
+// officer) can be selected as a candidate — see the seam-inventory's
+// "Weapon-ineligibility precondition" note for why this, not a settings
+// toggle, is the real mechanism.
+async function setDutyTypeEligibility(
+  page: Page,
+  dutyTypeName: string,
+  changes: { requiresMitvahim?: boolean; officersAllowed?: boolean },
+): Promise<void> {
+  await page.goto("/planning/config");
+  await expect(page.getByTestId("duty-config-page")).toBeVisible({ timeout: 30_000 });
+  const row = page.getByTestId("duty-type-list").locator("tr", { hasText: dutyTypeName });
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.locator("button.underline").click();
+
+  async function setCheckbox(labelText: string, desired: boolean): Promise<void> {
+    const checkbox = page.locator("label", { hasText: labelText }).locator('input[type="checkbox"]');
+    await expect(checkbox).toBeVisible({ timeout: 30_000 });
+    if ((await checkbox.isChecked()) !== desired) await checkbox.click();
+  }
+  if (changes.requiresMitvahim !== undefined) await setCheckbox("נדרש מטווחים עדכני", changes.requiresMitvahim);
+  if (changes.officersAllowed !== undefined) await setCheckbox("קצינים מותרים", changes.officersAllowed);
+
+  const save = page.waitForResponse(
+    (r) => r.url().includes("/api/duty-config/duty-types/") && r.request().method() === "PATCH",
+  );
+  await page.getByRole("button", { name: "שמור דרישות", exact: true }).click();
+  expect((await save).status()).toBe(200);
+}
+
+// Navigate /unit-calendar forward, month by month (FullCalendar has no direct
+// date-jump control — same pattern as multi_user_duty_problems.spec.ts's
+// activateReserve), to the shift's month, then click its event (identified by
+// its unique location name) to open ShiftDetailPanel. Jumps directly by the
+// computed month delta (deterministic) rather than polling for visibility
+// after every click — the far-future offsets used throughout this file mean
+// a naive poll-and-click loop can outrun the event before the calendar's
+// per-month fetch finishes rendering it — then nudges by a further +/-2
+// months if the exact jump lands one off (view/timezone edge), before giving
+// up.
+const HEBREW_MONTHS = [
+  "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+  "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
+];
+
+// Parses FullCalendar's month/year title (e.g. "אפריל 2031") into a 0-based
+// month index and year, or null if the heading text doesn't match (still
+// mid-transition).
+async function readCalendarMonth(page: Page): Promise<{ year: number; month: number } | null> {
+  const text = await page.locator("h2.fc-toolbar-title").textContent().catch(() => null);
+  if (!text) return null;
+  const match = HEBREW_MONTHS.map((name, idx) => ({ name, idx })).find(({ name }) => text.includes(name));
+  const yearMatch = text.match(/\d{4}/);
+  if (!match || !yearMatch) return null;
+  return { year: Number(yearMatch[0]), month: match.idx };
+}
+
+async function openShiftDetailPanel(page: Page, locationName: string, targetDateIso: string): Promise<void> {
+  await page.goto("/unit-calendar");
+  await expect(page.locator(".fc-next-button")).toBeVisible({ timeout: 30_000 });
+  const target = new Date(`${targetDateIso}T00:00:00Z`);
+  const targetYear = target.getUTCFullYear();
+  const targetMonth = target.getUTCMonth();
+
+  // Click "next" one month at a time, re-reading the toolbar's own title each
+  // time (rather than clicking a pre-computed number of times) — a fixed
+  // click count can under/overshoot if a click lands mid-transition and gets
+  // dropped, or the button is briefly disabled while the month's shifts are
+  // being fetched.
+  for (let step = 0; step < 90; step += 1) {
+    const current = await readCalendarMonth(page);
+    if (current && (current.year > targetYear || (current.year === targetYear && current.month >= targetMonth))) {
+      break;
+    }
+    await page.locator(".fc-next-button").click();
+    await page.waitForTimeout(250);
+  }
+
+  const shiftEvent = page.locator(".fc-event").filter({ hasText: locationName }).first();
+  await expect(shiftEvent).toBeVisible({ timeout: 30_000 });
+  await shiftEvent.click();
+}
+
+// Full setup: makes PN 1000037 a genuine, persisted weapon_ineligible primary
+// assignee on a fresh שמירות shift. See the seam-inventory's
+// "Weapon-ineligibility precondition" note for exactly why each step is
+// needed. Widens שמירות's eligibility only for as long as `during` runs (the
+// caller's own Replace-flow interaction), then always reverts it —
+// requires_mitvahim has to stay off for the whole interaction, not just this
+// setup half, since constrainedSoldier's own real (~2026-08) last_mitvahim_date
+// is itself far too stale relative to this file's deliberately-far-future
+// shift dates to pass that gate at those dates.
+async function setupWeaponIneligiblePrimaryAndRun(
+  browser: Browser,
+  opts: { locationName: string; start: string; end: string },
+  during: (shiftId: string) => Promise<void>,
+): Promise<void> {
+  const dutyManager = await openRoleContext(browser, "dutyManager");
+  try {
+    await setDutyTypeEligibility(dutyManager.page, "שמירות", { requiresMitvahim: false, officersAllowed: true });
+
+    const shiftId = await createShift(dutyManager.page, {
+      dutyTypeName: "שמירות",
+      locationName: opts.locationName,
+      start: opts.start,
+      end: opts.end,
+      requiredCount: 1,
+      scopeNodeName: TEAM_NODE_NAME,
+    });
+
+    await dutyManager.page.getByTestId(`manual-assignment-open-${shiftId}`).click();
+    const modal = dutyManager.page.getByTestId(`manual-assignment-modal-${shiftId}`);
+    await expect(modal).toBeVisible();
+    const candidateRow = modal
+      .locator('[data-testid^="manual-primary-candidate-"]')
+      .filter({ hasText: WEAPON_INELIGIBLE_PN });
+    await expect(candidateRow).toBeVisible({ timeout: 30_000 });
+    await candidateRow.locator("input:not(:checked)").first().check();
+
+    const assign = dutyManager.page.waitForResponse(
+      (r) => r.url().includes(`/api/shifts/${shiftId}/assign-batch`) && r.request().method() === "POST",
+    );
+    await dutyManager.page.getByTestId("manual-assignment-save").click();
+    expect((await assign).status()).toBe(201);
+    await expect(modal).toBeHidden({ timeout: 30_000 });
+
+    await during(shiftId);
+  } finally {
+    // Always revert, even if `during` throws, so a failing assertion doesn't
+    // leave שמירות permanently widened for the rest of the suite/run.
+    await setDutyTypeEligibility(dutyManager.page, "שמירות", { requiresMitvahim: true, officersAllowed: false });
+    await dutyManager.context.close();
+  }
 }
 
 async function createRangeLocation(page: Page, name: string): Promise<void> {
@@ -415,75 +577,131 @@ test("setup: constrainedSoldier's personal constraint is submitted and fully app
   }
 });
 
-test("duty-side manual override precondition (a weapon-ineligible original assignee) is not reachable through any live UI path (documented product gap)", async ({ browser }) => {
-  test.setTimeout(120_000);
-  const dutyManager = await openRoleContext(browser, "dutyManager");
-  try {
-    // "שמירות" is the seeded non-officer weapon-tier duty type — see the
-    // seam-inventory's "Weapon-ineligibility precondition" note for why this,
-    // not a fresh custom duty type, is the only avenue left after both
-    // investigated mechanisms turned out to be dead ends. Scoped to
-    // constrainedSoldier's own team so none of the two soldiers who DO hold
-    // last_mitvahim_date (an unrelated pair elsewhere in the org) are
-    // candidates here — every candidate returned must be mitvahim-blocked.
-    const shiftId = await createShift(dutyManager.page, {
-      dutyTypeName: "שמירות",
-      locationName: mitvahimGateLocation,
-      start: mitvahimGateStart,
-      end: mitvahimGateEnd,
-      requiredCount: 1,
-      scopeNodeName: TEAM_NODE_NAME,
-    });
+test("duty-side manual override: PN 1000037 becomes a genuine weapon-ineligible primary assignee, reachable via ShiftDetailPanel's Replace button (Task 2 — closes the reachability half of task_af3d0c50)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  await setupWeaponIneligiblePrimaryAndRun(
+    browser,
+    { locationName: replaceSetupLocation, start: replaceSetupStart, end: replaceSetupEnd },
+    async (shiftId) => {
+      const dutyManager = await openRoleContext(browser, "dutyManager");
+      try {
+        await openShiftDetailPanel(dutyManager.page, replaceSetupLocation, replaceSetupStart);
+        // PN 1000037 is now a real, published primary assignee with
+        // weapon_ineligible=true (set by create_assignment at setup time,
+        // since they have no last_mitvahim_date at all) — ShiftDetailPanel's
+        // "החלף" button next to them is the observable proof of this, not an
+        // assumption. This is the precondition the OLD "documented product
+        // gap" test in this file used to prove was unreachable; it is now
+        // reachable, verified live, end to end.
+        const replaceButton = dutyManager.page.getByRole("button", { name: "החלף", exact: true });
+        await expect(replaceButton).toBeVisible({ timeout: 30_000 });
 
-    const candidatesPromise = dutyManager.page.waitForResponse(
-      (r) => r.url().includes(`/api/shifts/${shiftId}/candidates`) && r.request().method() === "GET",
-    );
-    await dutyManager.page.getByTestId(`manual-assignment-open-${shiftId}`).click();
-    const candidates = (await (await candidatesPromise).json()) as Array<{
-      soldier_id: string;
-      personal_number: string;
-      blocked: boolean;
-      blocked_reason: string | null;
-      blocked_detail: string | null;
-    }>;
+        // Clicking "החלף" immediately DELETEs the ineligible assignment, then
+        // GETs the shift again and opens ShiftAssignModal against it (real
+        // ShiftDetailPanel.tsx behavior, not assumed) — wait for both real
+        // network calls, not just the click, and confirm the modal — with a
+        // real, unblocked candidate carrying the ConstraintWarningIcon
+        // (constrainedSoldier) — actually opens.
+        const refetchShift = dutyManager.page.waitForResponse(
+          (r) => new URL(r.url()).pathname.endsWith(`/shifts/${shiftId}`) && r.request().method() === "GET",
+        );
+        const candidatesFetch = dutyManager.page.waitForResponse(
+          (r) => new URL(r.url()).pathname.endsWith(`/shifts/${shiftId}/candidates`) && r.request().method() === "GET",
+        );
+        await replaceButton.click();
+        await refetchShift;
+        await candidatesFetch;
 
-    const constrained = candidates.find((c) => c.personal_number === CONSTRAINED_SOLDIER_PN);
-    expect(constrained, "constrainedSoldier must be a candidate for שמירות (in scope, not officer-only)").toBeTruthy();
-    // constrainedSoldierId is derived in the setup test above (from that
-    // test's own constraint-submit response), not here — this test's own
-    // purpose is to document a product gap and may be deleted/rewritten once
-    // that gap closes, so it must not be load-bearing for the other tests'
-    // shared state. Cross-check it against this independent read instead.
-    expect(constrained!.soldier_id).toBe(constrainedSoldierId);
+        const row = dutyManager.page.locator("table tr").filter({ hasText: CONSTRAINED_SOLDIER_PN });
+        await expect(row).toBeVisible({ timeout: 30_000 });
+        await expect(row).toHaveCount(1);
+        await expect(row.locator('button[title*="אילוץ אישי מאושר"]')).toBeVisible({ timeout: 30_000 });
+      } finally {
+        await dutyManager.context.close();
+      }
+    },
+  );
+});
 
-    // The real assertion: EVERY candidate in team ריי — not just
-    // constrainedSoldier — is blocked by the unrelated requires_mitvahim gate
-    // (services/eligibility.py's duty_type_ineligibility_reason()), because no
-    // one on this team has last_mitvahim_date set. This proves the
-    // *precondition* for reaching ShiftAssignModal's Replace/override flow (a
-    // weapon-ineligible original assignee actually landing on this duty type)
-    // is itself unreachable — not merely that the override UI is missing, as
-    // the sibling test below documents for the bulk modal.
-    expect(candidates.length).toBeGreaterThan(0);
-    for (const c of candidates) {
-      expect(c.blocked, `soldier ${c.personal_number} should be blocked`).toBe(true);
-      expect(c.blocked_reason).toBe("ineligible");
-      expect(c.blocked_detail).toBe("לא בוצע מטווח מבצעי בטווח הזמן הנדרש");
-    }
+// The OTHER half of task_af3d0c50 — actually completing the override (fill a
+// reason, confirm, assign) — is NOT implemented as a positive/negative pair
+// here. Investigating why surfaced a SEPARATE, real, confirmed product bug in
+// useModalBackClose's nested-modal history handling: see the seam-inventory's
+// "Weapon-ineligibility precondition" note and the test below, which proves
+// the bug exists rather than routing around it silently.
+test("duty-side manual override: completing the Replace-flow override is blocked by a real nested-modal history bug (documented product gap, task_bd77e412)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  await setupWeaponIneligiblePrimaryAndRun(
+    browser,
+    { locationName: replaceNegativeLocation, start: replaceNegativeStart, end: replaceNegativeEnd },
+    async (shiftId) => {
+      const dutyManager = await openRoleContext(browser, "dutyManager");
+      try {
+        await openShiftDetailPanel(dutyManager.page, replaceNegativeLocation, replaceNegativeStart);
+        const replaceButton = dutyManager.page.getByRole("button", { name: "החלף", exact: true });
+        await expect(replaceButton).toBeVisible({ timeout: 30_000 });
 
-    const modal = dutyManager.page.getByTestId(`manual-assignment-modal-${shiftId}`);
-    await expect(modal).toBeVisible();
-    // Blocked candidates render with no data-testid at all (only unblocked
-    // rows get `manual-primary-candidate-${soldier_id}` — confirmed by reading
-    // ShiftEditAssignmentsModal.tsx), so zero such rows existing is itself the
-    // observable proof that no one is selectable here.
-    await expect(modal.locator('[data-testid^="manual-primary-candidate-"]')).toHaveCount(0);
-    await expect(
-      modal.getByText("לא כשיר לסוג תורנות זה — לא בוצע מטווח מבצעי בטווח הזמן הנדרש").first(),
-    ).toBeVisible({ timeout: 30_000 });
-  } finally {
-    await dutyManager.context.close();
-  }
+        const refetchShift = dutyManager.page.waitForResponse(
+          (r) => new URL(r.url()).pathname.endsWith(`/shifts/${shiftId}`) && r.request().method() === "GET",
+        );
+        const candidatesFetch = dutyManager.page.waitForResponse(
+          (r) => new URL(r.url()).pathname.endsWith(`/shifts/${shiftId}/candidates`) && r.request().method() === "GET",
+        );
+        await replaceButton.click();
+        await refetchShift;
+        await candidatesFetch;
+
+        const row = dutyManager.page.locator("table tr").filter({ hasText: CONSTRAINED_SOLDIER_PN });
+        await expect(row).toBeVisible({ timeout: 30_000 });
+        await expect(row).toHaveCount(1);
+        await expect(row.locator('button[title*="אילוץ אישי מאושר"]')).toBeVisible({ timeout: 30_000 });
+        const checkbox = row.locator('input[type="checkbox"]');
+        await expect(checkbox).toHaveCount(1);
+        await checkbox.check();
+        await expect(checkbox).toBeChecked();
+
+        // Both actors carry weapon_warning=true at this file's deliberately
+        // far-future dates (nobody can have a currently-valid weapon
+        // qualification years out), so selecting constrainedSoldier here —
+        // who ALSO carries personal_constraint_warning — always opens the
+        // weapon-warning ConfirmDialog first, per ShiftAssignModal.tsx's
+        // handleAssign(). This stacking (ConfirmDialog, a child of
+        // ShiftAssignModal, both using useModalBackClose) is unavoidable for
+        // proving the Replace-flow scenario at all, since PN 1000037 can only
+        // ever become weapon_ineligible=true on a duty type carrying
+        // required_range_type — which necessarily makes weapon_warning=true
+        // universal at these dates too.
+        await dutyManager.page.getByRole("button", { name: /^שבץ/ }).click();
+        const weaponConfirm = dutyManager.page.getByTestId("confirm-dialog-confirm");
+        await expect(weaponConfirm).toBeVisible({ timeout: 30_000 });
+
+        // Confirmed via direct window.history instrumentation (not just this
+        // assertion): ShiftAssignModal's own useModalBackClose(onClose) mount
+        // and the ConfirmDialog's (EventDetailModal's useModalBackClose(onClose,
+        // open)) mount push THREE __modal history entries total before this
+        // click (not the two the hook's own "nested modals" test suite
+        // — useModalBackClose.test.tsx's "closing a nested modal does not
+        // close the parent" — proves safe for a real parent+child pair).
+        // Clicking this confirm button fires TWO separate history.back()
+        // calls in sequence (3->2, then 2->1), not one — unwinding past
+        // ShiftAssignModal's own entry, not just ConfirmDialog's. The
+        // OverrideReasonModal step (opened by continueAssign() right after)
+        // never gets a chance to render: ShiftAssignModal itself closes.
+        const shiftAssignTitle = dutyManager.page.getByText("שיבוץ ידני", { exact: true });
+        await weaponConfirm.click();
+        await expect(shiftAssignTitle).toBeHidden({ timeout: 30_000 });
+        // Non-vacuous: the reason input never appears either — this isn't
+        // "closed, then reopened with the modal intact", the whole
+        // ShiftAssignModal is gone (not just the ConfirmDialog).
+        await expect(dutyManager.page.getByPlaceholder("נימוק העקיפה...")).toHaveCount(0);
+        // ShiftDetailPanel closed too (not just ShiftAssignModal): back on
+        // the bare calendar, no shift-scoped UI left at all.
+        await expect(dutyManager.page).toHaveURL(/\/unit-calendar$/);
+      } finally {
+        await dutyManager.context.close();
+      }
+    },
+  );
 });
 
 test("the standard bulk ShiftEditAssignmentsModal can override a personal constraint end to end (Task 1's fix)", async ({ browser }) => {
