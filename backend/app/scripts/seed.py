@@ -1812,6 +1812,49 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                     notes='אל"ל יום לפני הגנ"ש',
                 ))
 
+        # ── Company-wide mitvahim coverage ─────────────────────────
+        # The block above only ever touches range_soldiers (all_teams[0], i.e.
+        # צוות מארס) — every other seeded soldier is left with
+        # last_mitvahim_date=None, which permanently blocks them behind the
+        # requires_mitvahim eligibility gate for weapon-carrying duty types
+        # (שמירות/ליווים) regardless of --with-assignments. Run a separate
+        # past event + mark_attendance(present) pass over the whole seeded
+        # population so that gate is actually exercised end to end outside
+        # the one demo team, instead of only ever being satisfiable for 2
+        # hardcoded soldiers.
+        #
+        # PN 1000037 (צוות ריי, the 5th/officer member of that team — see
+        # _team_profiles index 4 above) is deliberately left OUT of this pass
+        # and stays mitvahim-unqualified: it's the intended "weapon-ineligible
+        # original assignee" for E2E journeys that need one deterministic,
+        # never-qualified soldier to exercise the Replace/reassignment flow
+        # against. It's unclaimed by any other hardcoded PN in this script or
+        # in frontend/tests/e2e/fixtures/auth.ts as of this writing.
+        mitvahim_excluded_pn = "1000037"
+        mitvahim_event = RangeEvent(
+            hierarchy_node_id=psips.id,
+            range_type=RangeType.laser,
+            date=today - timedelta(days=21),
+            range_location_id=range_locations["מטווח דרום"].id,
+            required_count=SEED_RANGE_REQUIRED_COUNT,
+            reserve_count=SEED_RANGE_RESERVE_COUNT,
+            status=RangeEventStatus.planned,
+            created_by=s_admin.id,
+            notes="מטווח לייזר - כיסוי מטווחים לכלל המסגרת",
+        )
+        session.add(mitvahim_event)
+        session.flush()
+        for s in all_soldiers:
+            if s.personal_number == mitvahim_excluded_pn:
+                continue
+            mitvahim_assignment = RangeAssignment(range_event_id=mitvahim_event.id, soldier_id=s.id)
+            session.add(mitvahim_assignment)
+            session.flush()
+            mark_attendance(
+                session, assignment=mitvahim_assignment,
+                status=RangeAttendanceStatus.present, marked_by=s_admin.id,
+            )
+
         session.commit()
         import sys
 
