@@ -79,6 +79,12 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const entryIdRef = useRef<number | null>(null);
+  // The entry that was current immediately below ours at push time — i.e.
+  // our actual parent in the modal stack, however many levels deep that is.
+  // Captured once per push, not recomputed on the StrictMode reuse path
+  // below (the entry itself doesn't change there, so neither does its
+  // parent).
+  const parentEntryIdRef = useRef<number | null>(null);
   const consumedRef = useRef(false);
   const pendingBackRef = useRef<PendingBack | null>(null);
 
@@ -104,6 +110,7 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
       // entry.
       if (myPendingBack !== null) myPendingBack.cancelled = true;
       pendingBackRef.current = null;
+      parentEntryIdRef.current = currentState?.__modalId ?? null;
       const entryId = ++nextModalEntryId;
       entryIdRef.current = entryId;
       window.history.pushState({ __modal: true, __modalId: entryId }, "");
@@ -115,6 +122,16 @@ export function useModalBackClose(onClose: () => void, enabled = true): () => vo
       // current entry still being our own proves it — so don't close.
       const state = window.history.state as ModalHistoryState | null;
       if (state?.__modalId === entryIdRef.current) return;
+      // With 3+ levels of nesting, a DEEPER descendant's own back() can pop
+      // past its own parent without reaching us at all (e.g. a
+      // grandchild's cleanup popping onto its parent's entry, while we're
+      // the grandparent two levels further out). That popstate's resulting
+      // state is neither ours nor our own parent's — it's some other
+      // ancestor's entry, still above us in the stack — so it must not be
+      // mistaken for a real back-press that reached our level. Only a pop
+      // that lands exactly on OUR OWN parent entry means the browser
+      // actually navigated past us.
+      if ((state?.__modalId ?? null) !== parentEntryIdRef.current) return;
       ownEntryOnTop = false;
       onCloseRef.current();
     }
