@@ -72,7 +72,8 @@ skill adds a new `## YYYY-MM-DD` section summarising everything that shipped
 since the previous changelog entry, grouped into **Features**, **Fixes**, and
 **Chores**, reconstructed from `git log --oneline <last-date-sha>..dev`. The
 changelog commit lands on `master` as part of the same merge, with message
-`docs: update changelog YYYY-MM-DD`.
+`docs: update changelog YYYY-MM-DD`, and is immediately cherry-picked onto
+`dev` too so the two branches' changelog never diverges.
 
 ## Common one-liners
 

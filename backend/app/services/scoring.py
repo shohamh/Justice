@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import uuid
 import logging
+import uuid
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session
-from app.services.sql_arrays import uuid_any
 
-from app.algorithm.duration import combine_date_time
+from app.algorithm.duration import calendar_days_touched, combine_date_time, score_days
+from app.auth.authz import scope_root_ids
 from app.db.models import (
     DutyAssignment,
     DutyDayOverride,
@@ -30,10 +30,9 @@ from app.db.models import (
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
-from app.algorithm.duration import calendar_days_touched, score_days
-from app.services.eligibility import inferred_service_type
-from app.auth.authz import scope_root_ids
 from app.services.authority import can_view_soldier_scope
+from app.services.eligibility import inferred_service_type
+from app.services.sql_arrays import uuid_any
 
 _UNSET: object = object()
 _SCORE_QUANT = Decimal("0.000001")
@@ -327,7 +326,7 @@ def _full_coverage_exempt_dates(
 
 def active_days(session: Session, *, soldier: Soldier) -> int:
     today = date.today()
-    reference_date = _active_days_reference_date(session) or soldier.enrolled_at
+    reference_date = _burden_share_reset_date(session)
     effective_start, calculation_end = _active_day_interval(soldier, reference_date, today)
     raw = max(1, (calculation_end - effective_start).days)
     exempt = _full_coverage_exempt_dates(
@@ -339,21 +338,6 @@ def active_days(session: Session, *, soldier: Soldier) -> int:
 def effective_active_start(reference_date: date, unit_join_date: date | None) -> date:
     """Return the later of the shared rollout date and the soldier's unit entry."""
     return max(reference_date, unit_join_date) if unit_join_date is not None else reference_date
-
-
-def _active_days_reference_date(session: Session) -> date | None:
-    from app.services.settings_loader import (
-        ACTIVE_DAYS_REFERENCE_DATE_KEY,
-        SettingNotFound,
-        get_setting,
-    )
-
-    try:
-        return date.fromisoformat(str(get_setting(session, ACTIVE_DAYS_REFERENCE_DATE_KEY)))
-    except SettingNotFound:
-        # Databases created before the setting was introduced retain the former
-        # enrolled-at behavior until their first registration initializes it.
-        return None
 
 
 def _active_day_interval(soldier: Soldier, reference_date: date, today: date) -> tuple[date, date]:
@@ -394,11 +378,11 @@ def _bulk_active_days(session: Session, soldiers: list[Soldier]) -> dict[uuid.UU
     today = date.today()
     if not soldiers:
         return {}
-    reference_date = _active_days_reference_date(session)
+    reference_date = _burden_share_reset_date(session)
 
     def raw_days(soldier: Soldier) -> tuple[date, int]:
         effective_start, calculation_end = _active_day_interval(
-            soldier, reference_date or soldier.enrolled_at, today
+            soldier, reference_date, today
         )
         return effective_start, max(1, (calculation_end - effective_start).days)
 
@@ -666,7 +650,7 @@ def _q6(value: Decimal | int | str | None) -> Decimal:
 
 
 def _score_projection_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _iter_calendar_quarters(start: date, end: date) -> list[date]:
@@ -685,7 +669,11 @@ def _iter_calendar_quarters(start: date, end: date) -> list[date]:
 
 
 def _burden_share_reset_date(session: Session) -> date:
-    """Frame of reference for the quarterly-load history window.
+    """Frame of reference for the quarterly-load history window -- shared by
+    burden-share/fairness (the numerator: which duties count at all) AND
+    active_days/score-per-day (the denominator: effective_active_start clamps
+    each soldier's own start to no earlier than this date). One reset date
+    keeps both in sync -- see effective_active_start.
 
     The `fairness.reset_date` setting overrides everything. Without it, ALL
     relevant quarters count: history starts at the calendar quarter containing
@@ -1688,7 +1676,8 @@ def _try_projected_burden_share_breakdown(
     burden_share = A_i / W_i if W_i > Decimal("0") else Decimal("0")
 
     if quarter_details:
-        from app.services.effort_score import compute_quarter_contributions, quarter_start as _qstart
+        from app.services.effort_score import compute_quarter_contributions
+        from app.services.effort_score import quarter_start as _qstart
 
         contrib_map = compute_quarter_contributions(
             session,
@@ -1873,8 +1862,7 @@ def transparency_rows(
 def _legacy_transparency_rows(
     session: Session, *, viewer: Soldier | None = None
 ) -> dict[str, Any]:
-    from app.services.effort_score import compute_effort_data, quarter_start
-    from app.services.settings_loader import SettingNotFound, get_setting
+    from app.services.effort_score import compute_effort_data
 
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     duty_scores, shift_counts = _duty_stats_by_soldier(session)
@@ -2152,18 +2140,28 @@ def _build_fairness_components(
     elig = soldier_eligible_types or eligible_types
 
     def soldier_obj(sid: uuid.UUID, component_type_ids: set[uuid.UUID] | None = None) -> dict[str, Any]:
-        eligible_count = len(elig.get(sid, set()) & component_type_ids) if component_type_ids is not None else 0
+        soldier_types = elig.get(sid, set()) & component_type_ids if component_type_ids is not None else set()
         return {"soldier_id": sid, "full_name": name_by_id.get(sid, ""),
                 "burden_share": burden_share_by_id.get(sid, 0.0),
-                "eligible_type_count": eligible_count}
+                "eligible_type_count": len(soldier_types),
+                "eligible_duty_type_ids": sorted(str(tid) for tid in soldier_types)}
 
     components = []
     for g in groups.values():
         shares = [burden_share_by_id.get(sid, 0.0) for sid in g["soldiers"]]
         comp_type_ids: set[uuid.UUID] = g["type_ids"]
+        # Paired (id, name) list, sorted by name — `duty_type_ids`/`duty_type_names`
+        # below are each sorted independently, so their indices don't correspond
+        # to the same duty type; this list is what the frontend should use to
+        # match a duty-type badge to its id (e.g. for hover/click highlighting).
+        duty_types = sorted(
+            ({"id": str(tid), "name": type_names.get(tid, str(tid))} for tid in comp_type_ids),
+            key=lambda d: d["name"],
+        )
         components.append({
             "duty_type_ids": sorted(str(tid) for tid in comp_type_ids),
             "duty_type_names": sorted(type_names[tid] for tid in comp_type_ids if tid in type_names),
+            "duty_types": duty_types,
             "soldier_count": len(g["soldiers"]),
             "burden_share": _burden_share_stats(shares),
             "soldiers": sorted((soldier_obj(s, comp_type_ids) for s in g["soldiers"]),
@@ -2233,7 +2231,6 @@ def fairness_components(session: Session, *, viewer: Soldier | None = None) -> d
     """Burden-share spread (פיזור) split by connected components of soldiers who share
     duty-type eligibility, plus the soldiers exempt from every active duty type.
     Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope)."""
-    from app.services.algorithm_bridge import load_soldier_inputs
 
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}

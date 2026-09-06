@@ -23,18 +23,6 @@ interface SettingDef {
 
 const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
-    label: "שקיפות וניקוד",
-    settings: [
-      {
-        key: "scoring.active_days_reference_date",
-        label: "תאריך ייחוס לימים פעילים",
-        description: "מועד תחילת תיעוד התורנויות עבור חישוב שקיפות. שינוי התאריך עשוי לשנות בדיעבד את השקיפות והניקוד.",
-        type: "date" as const,
-        defaultValue: "",
-      },
-    ],
-  },
-  {
     label: "חיילים",
     settings: [
       {
@@ -216,7 +204,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       {
         key: "fairness.reset_date",
         label: "תאריך איפוס נתוני הוגנות",
-        description: "רק תורנויות מתאריך זה ואילך נלקחות בחשבון לחישוב עומס ההוגנות. מומלץ לבחור תחילת רבעון (1 בינואר, אפריל, יולי, אוקטובר). שינוי תאריך זה ישפיע על כל הרצות אלגוריתם עתידיות.",
+        description: "רק תורנויות מתאריך זה ואילך נלקחות בחשבון לחישוב עומס ההוגנות — כולל עמודת \"חלק בנטל\" בדף השקיפות וכל הרצות אלגוריתם עתידיות. משפיע גם על עמודות \"ימים פעילים\" ו\"ניקוד ליום\": לכל חייל נלקח המאוחר מבין תאריך זה לתאריך הצטרפותו ליחידה, כך שהחייל לא \"נענש\" על ימים שמלפני תחילת המעקב. מומלץ לבחור תחילת רבעון (1 בינואר, אפריל, יולי, אוקטובר).",
         type: "date" as const,
         defaultValue: "",
       },
@@ -244,7 +232,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "אלגוריתם — פירוק וקבוצות",
     settings: [
       { key: "algorithm.batching_enabled", label: "פירוק וקבוצות", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולקבוצות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
-      { key: "algorithm.batch_size", label: "גודל קבוצה (תורנויות)", description: "מספר התורנויות המרבי בקבוצה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
+      { key: "algorithm.interleaved_batch_size", label: "גודל קבוצה (תורנויות)", description: "מספר התורנויות המרבי בקבוצה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
       { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לקבוצה (שניות)", description: "תקציב זמן הפותר לכל קבוצה.", type: "number", defaultValue: 120 },
     ],
   },

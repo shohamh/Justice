@@ -127,17 +127,35 @@ git commit -m "docs: update changelog YYYY-MM-DD"
 This is the one sanctioned direct-to-`master` commit in this workflow (see
 CLAUDE.md) — it's part of the release step itself, not a bypass of it.
 
+Immediately cherry-pick this same commit onto `dev`, so `dev`'s changelog
+never drifts from `master`'s (this merge is usually non-fast-forward —
+`dev` keeps moving while a release is in flight — so the changelog commit
+needs its own cherry-pick, not just a merge):
+
+```bash
+git checkout dev
+git cherry-pick <changelog-commit-sha>
+git checkout master   # or wherever you were before, for Step 5
+```
+
+If the cherry-pick conflicts (only plausible if `dev` picked up an unrelated
+CHANGELOG.md edit in the meantime), resolve by keeping both sides' entries —
+never drop content to force a clean apply.
+
 ### Step 5: Confirm Before Pushing
 
-Pushing to `origin/master` (and `origin/dev` if it moved) is a shared,
-visible action — confirm with the human before pushing, unless they already
-explicitly asked for merge-and-push in the same request that triggered this
-skill. If confirmed (or already requested):
+Pushing to `origin/master` and `origin/dev` is a shared, visible action —
+confirm with the human before pushing, unless they already explicitly asked
+for merge-and-push in the same request that triggered this skill. If
+confirmed (or already requested):
 
 ```bash
 git push origin master
-git push origin dev   # only if dev's tip changed (e.g. a fast-forward merge target)
+git push origin dev
 ```
+
+`dev` always needs a push here: either its tip moved (fast-forward target)
+or it just gained the cherry-picked changelog commit above.
 
 ### Step 6: Report
 
@@ -158,6 +176,8 @@ results, and whether/what was pushed.
 - Disturb another worktree's checked-out branch or uncommitted work to free up `master`/`dev`
 - Backdate or fabricate the changelog date — use the actual day of the release
 - Bundle unrelated manual edits into the changelog commit
+- Leave the changelog commit only on `master` — always cherry-pick it onto
+  `dev` too (Step 4) so the two branches' CHANGELOG.md never diverge
 
 ## Integration
 

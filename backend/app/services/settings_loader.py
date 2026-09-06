@@ -5,11 +5,12 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import SystemSetting
+from app.db.models import DutyAssignment, SystemSetting
 
 
 class SettingNotFound(KeyError):
@@ -31,7 +32,11 @@ class SettingsValidationError(ValueError):
 # (internal/read-only). Canonical location — routes/config_export.py import
 # this rather than redefining it.
 _HIDDEN_KEYS = {"system.holding_node_id"}
-ACTIVE_DAYS_REFERENCE_DATE_KEY = "scoring.active_days_reference_date"
+# Single shared reset date: gates both fairness/burden-share history (which
+# duties count at all) and the active-days/score-per-day denominator (each
+# soldier's effective start is clamped to no earlier than this date) -- see
+# app.services.scoring._burden_share_reset_date and effective_active_start.
+FAIRNESS_RESET_DATE_KEY = "fairness.reset_date"
 RESET_DATE_OVERRIDES_KEY = "fairness.reset_date_overrides"
 
 _DENSITY_DEFAULTS = {
@@ -99,15 +104,15 @@ def validate_settings_update(current: dict[str, Any], updates: dict[str, Any]) -
     if merged.get("telegram.enabled") is False:
         merged["registration.telegram_required"] = False
 
-    if ACTIVE_DAYS_REFERENCE_DATE_KEY in updates:
-        reference_date = updates[ACTIVE_DAYS_REFERENCE_DATE_KEY]
-        if not isinstance(reference_date, str):
+    if FAIRNESS_RESET_DATE_KEY in updates:
+        reset_date = updates[FAIRNESS_RESET_DATE_KEY]
+        if not isinstance(reset_date, str):
             raise SettingsValidationError("active_days_reference_date_invalid")
         try:
-            parsed_reference_date = date.fromisoformat(reference_date)
+            parsed_reset_date = date.fromisoformat(reset_date)
         except ValueError as exc:
             raise SettingsValidationError("active_days_reference_date_invalid") from exc
-        if parsed_reference_date > date.today():
+        if parsed_reset_date > date.today():
             raise SettingsValidationError("active_days_reference_date_in_future")
 
     if RESET_DATE_OVERRIDES_KEY in updates:
@@ -142,12 +147,28 @@ def validate_settings_update(current: dict[str, Any], updates: dict[str, Any]) -
     return merged
 
 
-def initialize_active_days_reference_date(session: Session, registration_date: date) -> None:
-    """Set the shared reference date exactly once, without overwriting an admin value."""
+def initialize_fairness_reset_date_if_system_is_new(session: Session, registration_date: date) -> None:
+    """Bootstrap the shared reset date to a new soldier's registration date --
+    but ONLY the first time this ever runs on a system with no duty history
+    yet, and only if no reset date is set already (on_conflict_do_nothing).
+
+    Once real duty history exists, `fairness.reset_date`'s own dynamic
+    fallback (the quarter containing the earliest published duty -- see
+    scoring._burden_share_reset_date) is already a sensible default. Letting a
+    later registration silently pin a much later reset date at that point
+    would silently discard already-tracked history from every burden-share/
+    fairness computation -- that must never happen automatically, only an
+    explicit admin edit should ever move the reset date on an already-live
+    system."""
+    has_duty_history = session.execute(
+        select(DutyAssignment.id).where(DutyAssignment.status == "published").limit(1)
+    ).first() is not None
+    if has_duty_history:
+        return
     session.execute(
         insert(SystemSetting)
         .values(
-            key=ACTIVE_DAYS_REFERENCE_DATE_KEY,
+            key=FAIRNESS_RESET_DATE_KEY,
             value=registration_date.isoformat(),
             updated_by=None,
         )

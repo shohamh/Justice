@@ -11,17 +11,18 @@ from app.algorithm.duration import combine_date_time
 from app.db.models import (
     DutyAssignment,
     DutyDismissal,
+    DutyLocation,
     DutyReserveLink,
     DutyShift,
     DutyType,
-    DutyLocation,
     ExemptionDutyTypeMap,
     ForcedCallup,
     HierarchyNode,
-    SoldierExemption,
     Soldier,
+    SoldierExemption,
     SystemSetting,
 )
+from app.services.algorithm_bridge import reserve_count_for_shift
 from app.services.range_eligibility_projection import (
     count_ineligible_soldiers_for_duties,
     project_duty_eligibility,
@@ -444,6 +445,7 @@ def get_calendar_shifts(
                 if primary_count >= shift.required_count
                 else ("partial" if primary_count > 0 else "empty"),
                 "reserve_count": reserve_count,
+                "reserve_required_count": reserve_count_for_shift(session, shift=shift),
                 "assignees": assignees,
             }
         )
@@ -557,7 +559,14 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
     }
 
     if not assignments:
-        return {**base, "assigned_count": 0, "fill_status": "empty", "reserve_count": 0, "assignees": []}
+        return {
+            **base,
+            "assigned_count": 0,
+            "fill_status": "empty",
+            "reserve_count": 0,
+            "reserve_required_count": reserve_count_for_shift(session, shift=shift),
+            "assignees": [],
+        }
 
     primary_ids = [a.id for a in assignments if not a.is_reserve]
 
@@ -641,6 +650,7 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
         "assigned_count": primary_count,
         "fill_status": fill,
         "reserve_count": reserve_count,
+        "reserve_required_count": reserve_count_for_shift(session, shift=shift),
         "assignees": assignees,
     }
     _attach_duty_problems(session, [result])

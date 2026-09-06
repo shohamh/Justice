@@ -13,6 +13,7 @@ import { getDraftsPreview, resetDrafts, resetPublished } from "../api/algorithm"
 import { lastDutyDay } from "../utils/formatDate";
 import ConfirmDialog from "../components/ConfirmDialog";
 import InputDialog from "../components/InputDialog";
+import Tooltip from "../components/Tooltip";
 
 export function DutyManagementContent() {
   const { t } = useTranslation();
@@ -144,7 +145,14 @@ export function DutyManagementContent() {
           <li key={a.id} data-testid={`assignment-row-${a.id}`} className="flex items-center gap-2">
             <span dir="ltr">{a.start_date} → {lastDutyDay(a.end_date)}</span>
             {a.weapon_ineligible && (
-              <span title={a.weapon_ineligible_reason ?? undefined} className="mr-1 text-red-500 dark:text-red-400">⚠️</span>
+              <Tooltip
+                as="span"
+                title={a.weapon_ineligible_reason ?? undefined}
+                content={a.weapon_ineligible_reason ?? undefined}
+                className="mr-1 text-red-500 dark:text-red-400"
+              >
+                ⚠️
+              </Tooltip>
             )}
             <button className="text-xs text-indigo-600 dark:text-indigo-300" onClick={() => setOverrideAssignmentId(a.id)} data-testid={`override-${a.id}`}>{t("duty_management.override")}</button>
             <button className="text-xs text-red-600" onClick={() => setCancelAssignmentId(a.id)} data-testid={`cancel-${a.id}`}>{t("duty_management.cancel")}</button>

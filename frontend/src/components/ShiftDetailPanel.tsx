@@ -1,5 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import { SwapRequest, listSwapsForAssignment, checkCoverEligibility } from "../api/swaps";
@@ -21,6 +20,7 @@ import { formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExpl
 import { formatDutyRequirements } from "../utils/dutyRequirements";
 import { EventDetailModal, RosterSection } from "./planning";
 import HolidayBadge from "./HolidayBadge";
+import Tooltip from "./Tooltip";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -51,78 +51,21 @@ function RangeEligibilityBadge({
   label: string;
   explanation: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [popoverStyle, setPopoverStyle] = useState<CSSProperties>({});
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const POPOVER_WIDTH = 224; // px, matches w-56
-  const MARGIN = 8;
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    function reposition() {
-      const btn = btnRef.current;
-      if (!btn) return;
-      const rect = btn.getBoundingClientRect();
-      const left = Math.min(
-        Math.max(rect.left, MARGIN),
-        window.innerWidth - POPOVER_WIDTH - MARGIN
-      );
-      setPopoverStyle({ position: "fixed", top: rect.bottom + 4, left });
-    }
-    reposition();
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
-    return () => {
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDocClick(e: MouseEvent) {
-      if (
-        btnRef.current && !btnRef.current.contains(e.target as Node) &&
-        popoverRef.current && !popoverRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
   const colorCls =
     kind === "warning"
       ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
       : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
 
   return (
-    <span className="relative inline-block">
-      <button
-        ref={btnRef}
-        type="button"
-        aria-label={label}
-        title={explanation}
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className={`inline-flex items-center rounded px-1.5 py-0.5 ${colorCls}`}
-      >
-        {kind === "warning" ? "⚠️" : "ℹ️"}
-      </button>
-      {open && (
-        <div
-          ref={popoverRef}
-          role="tooltip"
-          onClick={(e) => e.stopPropagation()}
-          style={popoverStyle}
-          className="z-[70] w-56 max-w-[calc(100vw-1rem)] whitespace-pre-line rounded border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-        >
-          <p className="mb-1 font-semibold">{label}</p>
-          {explanation}
-        </div>
-      )}
-    </span>
+    <Tooltip
+      ariaLabel={label}
+      title={explanation}
+      label={label}
+      content={explanation}
+      className={`inline-flex items-center rounded px-1.5 py-0.5 ${colorCls}`}
+    >
+      {kind === "warning" ? "⚠️" : "ℹ️"}
+    </Tooltip>
   );
 }
 

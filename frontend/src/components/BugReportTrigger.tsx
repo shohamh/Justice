@@ -131,6 +131,14 @@ export default function BugReportTrigger() {
             width: window.innerWidth,
             height: window.innerHeight,
             style: appScrollContent ? undefined : { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
+            // Downloading + base64-embedding every @font-face on the page (KaTeX's
+            // math fonts included) can by itself take longer than the capture
+            // timeout on pages with heavy formula rendering (e.g. the burden-share
+            // breakdown modal), silently killing the whole screenshot. The fonts
+            // are already loaded in the live page, so skipping re-embedding still
+            // renders real text — just via the browser's already-loaded fonts
+            // instead of a self-contained embed — and capture reliably finishes.
+            skipFonts: true,
           }),
           CAPTURE_TIMEOUT_MS,
         );

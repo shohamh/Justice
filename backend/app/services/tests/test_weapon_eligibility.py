@@ -3,19 +3,24 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import DutyBlock
 from app.db.models import (
     DutyType,
-    RangeAssignment,
     RangeAttendanceStatus,
     RangeExcusalRequest,
     RangeExcusalStatus,
     RangeType,
     SoldierRangeQualification,
 )
-from app.services.ranges import add_range_assignment, cancel_range_event, create_range_event, mark_attendance
+from app.services.ranges import (
+    add_range_assignment,
+    cancel_range_event,
+    create_range_event,
+    mark_attendance,
+)
 from app.services.settings_loader import set_setting
 from app.services.weapon_eligibility import (
     _latest_qualification_by_soldier,
@@ -466,3 +471,69 @@ def test_latest_qualification_by_soldier_returns_none_for_soldier_with_no_rows(a
     result = _latest_qualification_by_soldier(app_session, soldier_ids=[soldier.id])
 
     assert result[soldier.id] is None
+
+
+def _count_selects(session, fn):
+    """Run fn() and return (result, number of SELECT statements it issued)."""
+    count = 0
+
+    def _counter(_conn, _cursor, statement, _parameters, _context, _executemany):
+        nonlocal count
+        if statement.lstrip().upper().startswith("SELECT"):
+            count += 1
+
+    event.listen(session.bind, "before_cursor_execute", _counter)
+    try:
+        result = fn()
+    finally:
+        event.remove(session.bind, "before_cursor_execute", _counter)
+    return result, count
+
+
+def test_bulk_ineligible_duty_blocks_query_count_does_not_scale_with_soldiers_or_duties(
+    app_session: Session,
+) -> None:
+    """Regression guard for a real N+1: this used to call the single-soldier
+    qualification/window helpers once per soldier, and re-fetch a soldier's
+    profile dates once per (soldier, duty block) pair -- an algorithm run over
+    N soldiers x M duty blocks issued on the order of N + N*M queries just for
+    this one eligibility check. It must now be a small, fixed number of bulk
+    queries regardless of how many soldiers or duty blocks are involved."""
+    node = create_node(app_session, level="branch", name="we-node-query-count")
+    _make_weapon_eligible(app_session, node.id)
+    _enable_mitvachim(app_session)
+    soldiers = [
+        create_soldier(app_session, personal_number=f"we-qc-{i:03d}", hierarchy_node_id=node.id)
+        for i in range(6)
+    ]
+    app_session.add(SoldierRangeQualification(
+        soldier_id=soldiers[0].id, range_type=RangeType.laser,
+        valid_until=date.today() + timedelta(days=30),
+    ))
+    app_session.commit()
+
+    blocks = [
+        DutyBlock(
+            id=__import__("uuid").uuid4(), duty_type_id=__import__("uuid").uuid4(),
+            duty_location_id=__import__("uuid").uuid4(),
+            start_date=date.today() + timedelta(days=i + 1), end_date=date.today() + timedelta(days=i + 1),
+            score_per_day=Decimal("1.00"), required_range_type=RangeType.laser,
+        )
+        for i in range(6)
+    ]
+
+    soldier_ids = [s.id for s in soldiers]
+    small_result, small_count = _count_selects(
+        app_session,
+        lambda: bulk_ineligible_duty_blocks(app_session, soldier_ids=soldier_ids[:2], duties=blocks[:2]),
+    )
+    large_result, large_count = _count_selects(
+        app_session,
+        lambda: bulk_ineligible_duty_blocks(app_session, soldier_ids=soldier_ids, duties=blocks),
+    )
+
+    assert large_count == small_count
+    assert large_count <= 10
+    # Sanity: still returns real per-soldier results, not an accidentally-empty fast path.
+    assert any(block.id in ineligible for ineligible in large_result.values() for block in blocks)
+    assert small_result or large_result

@@ -15,15 +15,24 @@ from app.db.models import (
     Soldier,
     SoldierEnrollmentRequest,
 )
-from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
-from app.services.invite_codes import InviteCodeError, consume_invite_code
+from app.services.eligibility import (
+    derive_bahad1_graduate,
+    derive_is_career,
+    validate_rank_track_compatibility,
+)
+from app.services.invite_codes import consume_invite_code
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
 from app.services.settings_loader import (
     SettingNotFound,
     get_setting,
-    initialize_active_days_reference_date,
+    initialize_fairness_reset_date_if_system_is_new,
 )
-from app.services.soldiers import PasswordPolicyError, SoldierError, _check_soldier_dates, validate_password
+from app.services.soldiers import (
+    PasswordPolicyError,
+    SoldierError,
+    _check_soldier_dates,
+    validate_password,
+)
 
 
 class RegistrationError(Exception):
@@ -106,7 +115,7 @@ def register(
         raise RegistrationError("discharge_date_in_past")
 
     try:
-        reference_date = date.fromisoformat(get_setting(session, "scoring.active_days_reference_date"))
+        reference_date = date.fromisoformat(get_setting(session, "fairness.reset_date"))
     except SettingNotFound:
         reference_date = None
     if reference_date is not None and date.today() > reference_date and unit_join_date is None:
@@ -226,7 +235,7 @@ def register(
         ))
 
     session.flush()
-    initialize_active_days_reference_date(session, soldier.enrolled_at or date.today())
+    initialize_fairness_reset_date_if_system_is_new(session, soldier.enrolled_at or date.today())
 
     from app.services.notifications import notify_enrollment_received
     notify_enrollment_received(

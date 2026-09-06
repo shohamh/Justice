@@ -92,6 +92,7 @@ export interface CalendarShift {
   assigned_count: number;
   fill_status: string;
   reserve_count: number;
+  reserve_required_count?: number;
   assignees: CalendarShiftAssignee[];
   swap_request_count?: number;
   crossed_holidays: { date: string; name: string }[];

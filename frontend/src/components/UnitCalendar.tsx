@@ -25,6 +25,7 @@ import EventDetailModal from "./planning/EventDetailModal";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
 import { shiftToCalendarEvent, shiftSpansMultipleDays, shiftEdgeLabels } from "../utils/shiftCalendarEvent";
 import CheckboxListDropdown from "./CheckboxListDropdown";
+import Tooltip from "./Tooltip";
 
 const RANGE_TYPE_COLORS: Record<string, string> = {
   laser: "#7c3aed",
@@ -487,48 +488,60 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
                 )}
                 <div className="flex items-center gap-1 w-full">
                   <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
-                  {ineligibleAssignees.length > 0 && (
-                    <span
-                      data-testid={`shift-warning-badge-${shift.id}`}
-                      aria-label={t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length })}
-                      title={
-                        ineligibleAssignees.length === 1 && ineligibleAssignees[0].range_eligibility
-                          ? formatRangeEligibilityExplanation(ineligibleAssignees[0].range_eligibility, t)
-                          : t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length })
-                      }
-                      className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 text-red-700 dark:bg-red-950 dark:text-red-300 flex-shrink-0"
-                    >
-                      ⚠<span className="text-[10px] leading-4">{ineligibleAssignees.length}</span>
-                    </span>
-                  )}
-                  {plannedCoverageAssignee?.range_eligibility?.covered_by_range_date && (
-                    <span
-                      data-testid={`shift-info-badge-${shift.id}`}
-                      aria-label={t("range_qualification.calendarBadge.info")}
-                      title={
-                        plannedCoverageAssignees.length === 1
-                          ? t("unit_calendar.eventInfoBadge", {
-                              rangeType:
-                                RANGE_TYPE_LABELS[plannedCoverageAssignee.range_eligibility.covering_range_type ?? ""]
-                                ?? plannedCoverageAssignee.range_eligibility.covering_range_type,
-                              date: formatDate(plannedCoverageAssignee.range_eligibility.covered_by_range_date),
-                            })
-                          : t("unit_calendar.eventInfoBadgeCount", { count: plannedCoverageAssignees.length })
-                      }
-                      className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-shrink-0"
-                    >
-                      ℹ<span className="text-[10px] leading-4">{plannedCoverageAssignees.length}</span>
-                    </span>
-                  )}
+                  {ineligibleAssignees.length > 0 && (() => {
+                    const warningLabel = t("unit_calendar.eventWarningBadge", { count: ineligibleAssignees.length });
+                    const warningExplanation =
+                      ineligibleAssignees.length === 1 && ineligibleAssignees[0].range_eligibility
+                        ? formatRangeEligibilityExplanation(ineligibleAssignees[0].range_eligibility, t)
+                        : warningLabel;
+                    return (
+                      <Tooltip
+                        as="span"
+                        testId={`shift-warning-badge-${shift.id}`}
+                        ariaLabel={warningLabel}
+                        title={warningExplanation}
+                        content={warningExplanation}
+                        className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 text-red-700 dark:bg-red-950 dark:text-red-300 flex-shrink-0"
+                      >
+                        ⚠<span className="text-[10px] leading-4">{ineligibleAssignees.length}</span>
+                      </Tooltip>
+                    );
+                  })()}
+                  {plannedCoverageAssignee?.range_eligibility?.covered_by_range_date && (() => {
+                    const infoLabel = t("range_qualification.calendarBadge.info");
+                    const infoExplanation =
+                      plannedCoverageAssignees.length === 1
+                        ? t("unit_calendar.eventInfoBadge", {
+                            rangeType:
+                              RANGE_TYPE_LABELS[plannedCoverageAssignee.range_eligibility.covering_range_type ?? ""]
+                              ?? plannedCoverageAssignee.range_eligibility.covering_range_type,
+                            date: formatDate(plannedCoverageAssignee.range_eligibility.covered_by_range_date),
+                          })
+                        : t("unit_calendar.eventInfoBadgeCount", { count: plannedCoverageAssignees.length });
+                    return (
+                      <Tooltip
+                        as="span"
+                        testId={`shift-info-badge-${shift.id}`}
+                        ariaLabel={infoLabel}
+                        title={infoExplanation}
+                        content={infoExplanation}
+                        className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex-shrink-0"
+                      >
+                        ℹ<span className="text-[10px] leading-4">{plannedCoverageAssignees.length}</span>
+                      </Tooltip>
+                    );
+                  })()}
                   {shift.crossed_holidays.length > 0 && (
-                    <span
-                      data-testid={`shift-holiday-badge-${shift.id}`}
-                      aria-label={t("holidays.badge_label", { count: shift.crossed_holidays.length })}
+                    <Tooltip
+                      as="span"
+                      testId={`shift-holiday-badge-${shift.id}`}
+                      ariaLabel={t("holidays.badge_label", { count: shift.crossed_holidays.length })}
                       title={shift.crossed_holidays.map((h) => h.name).join(", ")}
+                      content={shift.crossed_holidays.map((h) => h.name).join(", ")}
                       className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 text-amber-700 dark:bg-amber-950 dark:text-amber-300 flex-shrink-0"
                     >
                       📅<span className="text-[10px] leading-4">{shift.crossed_holidays.length}</span>
-                    </span>
+                    </Tooltip>
                   )}
                   {swapCount > 0 && (
                     <span className="inline-flex items-center gap-0.5 bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
@@ -538,9 +551,9 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
                   )}
                 </div>
                 <div className="truncate">
-                  {shift.assigned_count} {t("unit_calendar.soldiers_count")}
-                  {shift.reserve_count > 0 && (
-                    <span className="mr-1">| {shift.reserve_count} {t("reserve_label")}</span>
+                  {shift.assigned_count}/{shift.required_count} {t("unit_calendar.soldiers_count")}
+                  {(shift.reserve_required_count ?? 0) > 0 && (
+                    <span className="mr-1">| {shift.reserve_count}/{shift.reserve_required_count} {t("reserve_label")}</span>
                   )}
                 </div>
               </div>

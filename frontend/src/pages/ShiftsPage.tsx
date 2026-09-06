@@ -289,6 +289,31 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
   );
 }
 
+function ShiftSelectAllCheckbox({ rows, selectedIds, onToggle }: {
+  rows: DutyShift[];
+  selectedIds: string[];
+  onToggle: (select: boolean) => void;
+}) {
+  const checkboxRef = useRef<HTMLInputElement>(null);
+  const selectedCount = rows.filter(row => selectedIds.includes(row.id)).length;
+  const allSelected = rows.length > 0 && selectedCount === rows.length;
+
+  useEffect(() => {
+    if (checkboxRef.current) checkboxRef.current.indeterminate = selectedCount > 0 && !allSelected;
+  }, [allSelected, selectedCount]);
+
+  return <input
+    ref={checkboxRef}
+    type="checkbox"
+    data-testid="select-all-shifts"
+    aria-label="בחר הכל"
+    checked={allSelected}
+    disabled={rows.length === 0}
+    onChange={() => onToggle(!allSelected)}
+    onClick={e => e.stopPropagation()}
+  />;
+}
+
 type BulkOp = "clear" | "cancel" | "delete" | null;
 
 function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPanel, dtName, locName }: { selectedShifts: DutyShift[]; onDone: () => void; onAutoAssign?: () => void; showAlgorithmPanel?: boolean; dtName: (id: string) => string; locName: (id: string) => string }) {
@@ -619,7 +644,11 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const shiftCols: ColDef<DutyShift>[] = useMemo(() => [
     {
       id: "select",
-      header: "",
+      header: <ShiftSelectAllCheckbox
+        rows={displayedShifts}
+        selectedIds={selectedShiftIds}
+        onToggle={select => setSelectedShiftIds(select ? displayedShifts.map(s => s.id) : [])}
+      />,
       sortValue: (s) => selectedShiftIds.includes(s.id) ? 0 : 1,
       cell: (s) => (
         <input
@@ -824,7 +853,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
         </span>
       ),
     },
-  ], [selectedShiftIds, t, dtName, locName, eligibleUnitsLabel, nodeFilterIds, nodeTree, setNodeFilterIds, setEditShift, setEditAssignmentsShift, setSelectedShiftIds, handleCancel, handleActivate, handleDelete, templates, setViewTemplate]);
+  ], [displayedShifts, selectedShiftIds, t, dtName, locName, eligibleUnitsLabel, nodeFilterIds, nodeTree, setNodeFilterIds, setEditShift, setEditAssignmentsShift, setSelectedShiftIds, handleCancel, handleActivate, handleDelete, templates, setViewTemplate]);
 
   return (
     <>

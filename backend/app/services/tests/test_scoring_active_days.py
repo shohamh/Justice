@@ -5,12 +5,12 @@ from sqlalchemy import select
 from app.db.models import DutyType, ExemptionType, SoldierExemption
 from app.services.duty_config import map_exemption_to_duty_type
 from app.services.scoring import _bulk_active_days, active_days, effective_active_start
-from app.services.settings_loader import ACTIVE_DAYS_REFERENCE_DATE_KEY, set_setting
+from app.services.settings_loader import FAIRNESS_RESET_DATE_KEY, set_setting
 from tests.helpers import create_soldier
 
 
 def _set_reference_date(session, reference_date: date) -> None:
-    set_setting(session, ACTIVE_DAYS_REFERENCE_DATE_KEY, reference_date.isoformat(), actor_id=None)
+    set_setting(session, FAIRNESS_RESET_DATE_KEY, reference_date.isoformat(), actor_id=None)
 
 
 def _full_coverage_exemption(session, *, soldier_id, start_date: date, end_date: date) -> None:
@@ -86,12 +86,17 @@ def test_active_days_clips_full_coverage_exemptions_to_effective_window(admin_se
     assert active_days(admin_session, soldier=soldier) == 1
 
 
-def test_bulk_active_days_matches_single_soldier_legacy_fallback_without_setting(admin_session):
+def test_bulk_active_days_matches_single_soldier_dynamic_fallback_without_setting(admin_session):
+    """With no fairness.reset_date set and no published duty history, both the
+    bulk and single-soldier paths fall back to the same dynamic reset date
+    (see scoring._burden_share_reset_date) -- `unit_join_date` is what still
+    differentiates soldiers in that case, since a bare reset date is shared by
+    everyone."""
     today = date.today()
     earlier = create_soldier(admin_session, personal_number="active-days-bulk-earlier")
     later = create_soldier(admin_session, personal_number="active-days-bulk-later")
-    earlier.enrolled_at = today - timedelta(days=10)
-    later.enrolled_at = today - timedelta(days=3)
+    earlier.unit_join_date = today - timedelta(days=10)
+    later.unit_join_date = today - timedelta(days=3)
     admin_session.flush()
 
     assert _bulk_active_days(admin_session, [earlier, later]) == {
