@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-06 (3)
+
+### Fixes
+- Stopped a modal 3+ levels deep (e.g. shift detail → assignment → confirm) from closing itself when only an inner modal was dismissed with back/escape.
+
 ## 2026-09-06 (2)
 
 ### Chores
