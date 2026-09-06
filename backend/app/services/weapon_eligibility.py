@@ -181,12 +181,27 @@ def _max_qualification_valid_until(
     )[soldier_id, required_range_type]
 
 
+def _profile_validity_days_cache(session: Session) -> dict[str, int]:
+    """Prefetch `_validity_days` for every range type `_profile_valid_until_from_dates`
+    can ask for (live, alal — see its `profile_range_type` selection). Each lookup is a
+    `get_setting` call, and `Session.get()`'s identity map only caches rows that exist;
+    a setting left at its fallback default (no row in `system_settings`) is a cache MISS
+    every time, so calling `_validity_days` fresh per (soldier, duty block) pair inside
+    `bulk_ineligible_duty_blocks`'s loop reintroduced an O(N×M) query pattern for exactly
+    that (common) case. Resolving both possible values once up front avoids it."""
+    return {
+        RangeType.live: _validity_days(session, RangeType.live),
+        RangeType.alal: _validity_days(session, RangeType.alal),
+    }
+
+
 def _profile_valid_until_from_dates(
     session: Session, *,
     last_mitvahim_date: date | None,
     last_alal_date: date | None,
     required_range_type: str,
     as_of: date,
+    validity_days_cache: dict[str, int] | None = None,
 ) -> date | None:
     """Pure core of `_profile_valid_until`, operating on already-fetched profile
     dates so bulk callers can prefetch every soldier's dates in one query
@@ -194,7 +209,9 @@ def _profile_valid_until_from_dates(
 
     ``last_mitvahim_date`` is the profile's live-range date and covers live (and
     lower-tier laser) requirements. ``last_alal_date`` covers alal requirements.
-    A future profile date must not qualify an earlier duty.
+    A future profile date must not qualify an earlier duty. ``validity_days_cache``
+    lets bulk callers pass a prefetched {range_type: days} map (see
+    `_profile_validity_days_cache`) instead of re-querying settings per call.
     """
     if required_range_type == RangeType.alal:
         profile_date = last_alal_date
@@ -206,7 +223,11 @@ def _profile_valid_until_from_dates(
         return None
     if profile_range_type not in _qualification_types_at_or_above(required_range_type):
         return None
-    return profile_date + timedelta(days=_validity_days(session, profile_range_type))
+    validity_days = (
+        validity_days_cache[profile_range_type] if validity_days_cache is not None
+        else _validity_days(session, profile_range_type)
+    )
+    return profile_date + timedelta(days=validity_days)
 
 
 def _profile_dates_by_soldier(
@@ -368,6 +389,7 @@ def bulk_ineligible_duty_blocks(
         disqualify_pending=disqualify_pending,
     )
     profile_dates = _profile_dates_by_soldier(session, soldier_ids=soldier_ids)
+    validity_days_cache = _profile_validity_days_cache(session)
 
     result: dict[uuid.UUID, set[uuid.UUID]] = {}
     for soldier_id in soldier_ids:
@@ -383,6 +405,7 @@ def bulk_ineligible_duty_blocks(
                 last_alal_date=last_alal_date,
                 required_range_type=required,
                 as_of=block.start_date,
+                validity_days_cache=validity_days_cache,
             )
             if profile_valid_until is not None:
                 current_valid_until = max(current_valid_until or profile_valid_until, profile_valid_until)
