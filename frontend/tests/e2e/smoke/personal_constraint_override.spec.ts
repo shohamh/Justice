@@ -36,26 +36,35 @@ import { journeyActors, journeyActorStorageState, roleStorageState, type Role } 
  *   first; two attempts already died on two different, independently fatal
  *   causes.
  *
- * - Duty manual override — the real, pre-existing product gap this suite
- *   documents (not a defect in the test), tracked together with the
- *   Replace-flow trigger gap above as background task task_af3d0c50
- *   ("ShiftEditAssignmentsModal has no override UI; ShiftAssignModal's
- *   Replace-flow trigger is unreachable"): the standard bulk
- *   ShiftEditAssignmentsModal (opened via [data-testid^=
- *   "manual-assignment-open-"], the same modal exercised in
- *   multi_user_duty_problems.spec.ts) has NO override-reason UI at all. A
- *   constrained candidate looks like an ordinary, fully-selectable row there
- *   (blocked_reason is only set when the allow_manual_override setting is
- *   off, which is not this fixture's default). Selecting them and clicking
- *   "שמור" ([data-testid="manual-assignment-save"]) calls the same
- *   assign-batch endpoint with no override_reason, which the backend
- *   (services/assignments.py's create_assignment) rejects with
+ * - Duty manual override via the standard bulk ShiftEditAssignmentsModal
+ *   (opened via [data-testid^="manual-assignment-open-"], the same modal
+ *   exercised in multi_user_duty_problems.spec.ts) — FIXED and now proven
+ *   end to end by the positive test below, closing half of background task
+ *   task_af3d0c50 ("ShiftEditAssignmentsModal has no override UI;
+ *   ShiftAssignModal's Replace-flow trigger is unreachable"). Previously this
+ *   modal had NO override-reason UI at all: a constrained candidate looked
+ *   like an ordinary, fully-selectable row (blocked_reason is only set when
+ *   the allow_manual_override setting is off, which is not this fixture's
+ *   default), and selecting them and clicking "שמור"
+ *   ([data-testid="manual-assignment-save"]) called the same assign-batch
+ *   endpoint with no override_reason, which the backend
+ *   (services/assignments.py's create_assignment) rejected with
  *   AssignmentError("override_reason_required") — surfaced by the route as
- *   **409 Conflict, not 400** (routes/shifts.py's assign_batch catches
- *   AssignmentError and re-raises as 409). The frontend has no i18n mapping
- *   for the "override_reason_required" code (translateApiError falls back to
- *   ShiftEditAssignmentsModal's own fallback string), so the visible error is
- *   the generic "שגיאה בשיבוץ", not anything constraint-specific.
+ *   409 Conflict, not 400 (routes/shifts.py's assign_batch catches
+ *   AssignmentError and re-raises as 409), with no i18n mapping for that
+ *   code, so the visible error was the generic "שגיאה בשיבוץ". The fix adds a
+ *   ConstraintWarningIcon on any candidate row carrying
+ *   personal_constraint_warning and routes a save that includes one through
+ *   the same OverrideReasonModal pattern the range flow below already used
+ *   (see ShiftEditAssignmentsModal.tsx's handleSave/doSave). The test below
+ *   drives this through a real browser: selecting constrainedSoldier,
+ *   confirming the warning icon is visible, saving, filling a reason in
+ *   OverrideReasonModal, confirming, and checking both the 2xx response
+ *   (with override_reason in the request body) and the real post-refresh UI
+ *   state (constrainedSoldier showing up as an actual assignee row) — not
+ *   just the response. The OTHER half of task_af3d0c50 — ShiftAssignModal's
+ *   Replace-flow trigger being unreachable — is unrelated to this fix and
+ *   remains a real, separate, still-open gap; see the entry above.
  *
  * - CP-SAT auto-assign — always hard-excludes: backend/app/algorithm/
  *   availability.py's eligibility_blockers() adds "personal_constraint"
@@ -477,13 +486,13 @@ test("duty-side manual override precondition (a weapon-ineligible original assig
   }
 });
 
-test("the standard bulk ShiftEditAssignmentsModal cannot override a personal constraint (documented product gap)", async ({ browser }) => {
+test("the standard bulk ShiftEditAssignmentsModal can override a personal constraint end to end (Task 1's fix)", async ({ browser }) => {
   test.setTimeout(120_000);
   const dutyManager = await openRoleContext(browser, "dutyManager");
   try {
-    // 'עבודות רס"ר' carries no weapon requirement, so this exercises the bulk
-    // modal's *only* gate (the missing override-reason UI) without the
-    // unrelated weapon-warning confirm this journey's other shifts trigger.
+    // 'עבודות רס"ר' carries no weapon requirement, so this exercises the
+    // override-reason path in isolation, without the unrelated
+    // weapon-warning confirm this journey's other shifts trigger.
     const shiftId = await createShift(dutyManager.page, {
       dutyTypeName: 'עבודות רס"ר',
       locationName: bulkGapLocation,
@@ -494,43 +503,50 @@ test("the standard bulk ShiftEditAssignmentsModal cannot override a personal con
     await dutyManager.page.getByTestId(`manual-assignment-open-${shiftId}`).click();
     const modal = dutyManager.page.getByTestId(`manual-assignment-modal-${shiftId}`);
     await expect(modal).toBeVisible();
-    const candidate = modal
+
+    const candidateRow = modal
       .locator('[data-testid^="manual-primary-candidate-"]')
-      .filter({ hasText: CONSTRAINED_SOLDIER_PN })
-      .locator("input:not(:checked)")
-      .first();
-    await expect(candidate).toBeVisible({ timeout: 30_000 });
-    await candidate.check();
+      .filter({ hasText: CONSTRAINED_SOLDIER_PN });
+    await expect(candidateRow).toBeVisible({ timeout: 30_000 });
+    // Task 1's fix: the bulk modal now renders a ConstraintWarningIcon next to
+    // a candidate carrying personal_constraint_warning, instead of an
+    // ordinary, unmarked selectable row (title carries the approved-window
+    // summary — see ConstraintWarningIcon.tsx).
+    await expect(candidateRow.locator('button[title*="אילוץ אישי מאושר"]')).toBeVisible({ timeout: 30_000 });
+    await candidateRow.locator("input:not(:checked)").first().check();
+
+    await dutyManager.page.getByTestId("manual-assignment-save").click();
+
+    // Task 1's fix: saving a selection that includes a constrained candidate
+    // now opens OverrideReasonModal client-side (handleSave/doSave in
+    // ShiftEditAssignmentsModal.tsx) instead of firing assign-batch straight
+    // away and getting back a 409.
+    const reasonInput = dutyManager.page.getByPlaceholder("נימוק העקיפה...");
+    await expect(reasonInput).toBeVisible({ timeout: 30_000 });
+    await reasonInput.fill("חריגה מאושרת לשיבוץ ידני E2E");
 
     const save = dutyManager.page.waitForResponse(
       (r) => r.url().includes(`/api/shifts/${shiftId}/assign-batch`) && r.request().method() === "POST",
     );
-    await dutyManager.page.getByTestId("manual-assignment-save").click();
+    await dutyManager.page.getByRole("button", { name: "אישור", exact: true }).click();
     const saveResult = await save;
-    // The backend rejects with AssignmentError("override_reason_required"),
-    // which the route re-raises as 409 (not 400 — see the seam-inventory note
-    // above); there is no i18n mapping for that code, so the UI falls back to
-    // the modal's own generic error text.
-    expect(saveResult.status()).toBe(409);
-    // Scoped to the dialog (role="dialog", from EventDetailModal.tsx), not the
-    // narrower `modal` (manual-assignment-modal-<id>) div: reading
-    // ShiftEditAssignmentsModal.tsx shows the error <p> is rendered as a
-    // SIBLING right after that div closes, not nested inside it — so
-    // `modal.getByText(...)` never finds it (confirmed empirically: the error
-    // genuinely renders, but only visible to a page-wide/dialog-wide locator).
-    const dialog = dutyManager.page.getByRole("dialog");
-    await expect(dialog.getByText("שגיאה בשיבוץ", { exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(modal).toBeVisible();
+    expect(saveResult.status()).toBe(201);
+    expect((saveResult.request().postDataJSON() as { override_reason?: string }).override_reason).toBeTruthy();
 
-    // ShiftEditAssignmentsModal is wrapped in EventDetailModal, whose close
-    // button's accessible name is "סגור" (an aria-label overriding the "✕"
-    // text) — unlike ShiftAssignModal's own plain "✕" button used elsewhere
-    // in this file, which has no aria-label.
-    await dutyManager.page.getByRole("button", { name: "סגור", exact: true }).click();
+    // onSaved (ShiftsPage.tsx) closes this modal and refreshes the shifts
+    // list — confirm the modal actually goes away rather than just trusting
+    // the response.
+    await expect(modal).toBeHidden({ timeout: 30_000 });
+
+    // Refresh and re-open: assert the real, visible post-refresh UI state —
+    // constrainedSoldier now shows up as an actual saved assignee row in the
+    // summary table (assignment-primary-<id>), not merely a pending one.
     await dutyManager.page.reload();
     await dutyManager.page.getByTestId(`manual-assignment-open-${shiftId}`).click();
     await expect(modal).toBeVisible();
-    await expect(modal.getByText("אין שיבוצים עדיין", { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(
+      modal.locator('[data-testid^="assignment-primary-"]').filter({ hasText: CONSTRAINED_SOLDIER_NAME }),
+    ).toBeVisible({ timeout: 30_000 });
   } finally {
     await dutyManager.context.close();
   }
