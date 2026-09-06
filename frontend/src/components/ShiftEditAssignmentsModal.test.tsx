@@ -125,3 +125,124 @@ describe("ShiftEditAssignmentsModal", () => {
     expect(screen.getByTestId("assignment-primary-pending-soldier-candidate")).toBeVisible();
   });
 });
+
+describe("ShiftEditAssignmentsModal personal constraint override", () => {
+  beforeEach(() => {
+    vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
+      {
+        soldier_id: "soldier-candidate",
+        full_name: "Candidate Soldier",
+        personal_number: "12345678",
+        burden_share: 0.25,
+        blocked: false,
+        blocked_reason: null,
+        blocked_detail: null,
+        weapon_warning: false,
+        hierarchy_path_ids: [],
+        personal_constraint_warning: {
+          reason: "בקשה אישית",
+          start_date: "2026-09-01",
+          end_date: "2026-09-05",
+          decided_by: "רב\"ט כהן",
+          decided_at: "2026-08-20T10:00:00Z",
+        },
+      },
+    ]);
+    vi.mocked(calendarApi.getCalendarShift).mockResolvedValue({
+      assignees: [],
+    } as Awaited<ReturnType<typeof calendarApi.getCalendarShift>>);
+    vi.mocked(shiftsApi.assignBatch).mockResolvedValue({
+      primary_assignment_ids: ["created-primary-1"],
+      reserve_assignment_ids: [],
+      reserve_links_created: 0,
+    });
+  });
+
+  it("shows a constraint-warning indicator for a candidate with an approved personal constraint", async () => {
+    render(
+      <ShiftEditAssignmentsModal
+        shift={{ ...shift, assigned_count: 0, reserve_assigned_count: 0 }}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const row = await screen.findByTestId("manual-primary-candidate-soldier-candidate");
+    expect(row.querySelector("button[title*='אילוץ אישי מאושר']")).toBeVisible();
+  });
+
+  it("opens the override-reason modal when saving with a constrained candidate selected, and completes the assignment once a reason is confirmed", async () => {
+    render(
+      <ShiftEditAssignmentsModal
+        shift={{ ...shift, assigned_count: 0, reserve_assigned_count: 0 }}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await screen.findByTestId("manual-primary-candidate-soldier-candidate"));
+    fireEvent.click(screen.getByTestId("manual-assignment-save"));
+
+    expect(await screen.findByText(/נדרש נימוק/)).toBeInTheDocument();
+    expect(shiftsApi.assignBatch).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("נימוק העקיפה..."), { target: { value: "צורך מבצעי" } });
+    fireEvent.click(screen.getByRole("button", { name: /אישור/ }));
+
+    await waitFor(() => expect(shiftsApi.assignBatch).toHaveBeenCalledWith("shift-1", {
+      primaries: ["soldier-candidate"],
+      reserves: [],
+      override_reason: "צורך מבצעי",
+    }));
+  });
+
+  it("excludes a constrained candidate from auto-select", async () => {
+    vi.mocked(assignmentsApi.getShiftCandidates).mockResolvedValue([
+      {
+        soldier_id: "soldier-candidate",
+        full_name: "Candidate Soldier",
+        personal_number: "12345678",
+        burden_share: 0.25,
+        blocked: false,
+        blocked_reason: null,
+        blocked_detail: null,
+        weapon_warning: false,
+        hierarchy_path_ids: [],
+        personal_constraint_warning: {
+          reason: "בקשה אישית", start_date: "2026-09-01", end_date: "2026-09-05",
+          decided_by: "רב\"ט כהן", decided_at: "2026-08-20T10:00:00Z",
+        },
+      },
+      {
+        soldier_id: "soldier-clean",
+        full_name: "Clean Soldier",
+        personal_number: "87654321",
+        burden_share: 0.5,
+        blocked: false,
+        blocked_reason: null,
+        blocked_detail: null,
+        weapon_warning: false,
+        hierarchy_path_ids: [],
+        personal_constraint_warning: null,
+      },
+    ]);
+
+    render(
+      <ShiftEditAssignmentsModal
+        shift={{ ...shift, assigned_count: 0, reserve_assigned_count: 0, required_count: 2 }}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    await screen.findByTestId("manual-primary-candidate-soldier-candidate");
+    const autoSelectButtons = screen.getAllByText("בחר אוטומטית");
+    fireEvent.click(autoSelectButtons[0]);
+
+    expect(screen.getByTestId("assignment-primary-pending-soldier-clean")).toBeVisible();
+    expect(screen.queryByTestId("assignment-primary-pending-soldier-candidate")).not.toBeInTheDocument();
+  });
+});
