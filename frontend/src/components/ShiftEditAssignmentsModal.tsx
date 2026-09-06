@@ -8,6 +8,8 @@ import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import { EventDetailModal } from "./planning";
 import TableSearchInput from "./TableSearchInput";
+import ConstraintWarningIcon from "./ConstraintWarningIcon";
+import OverrideReasonModal from "./OverrideReasonModal";
 
 function matchesQuery(name: string, personalNumber: string | undefined, query: string): boolean {
   if (!query.trim()) return true;
@@ -51,6 +53,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   const [hasRemovals, setHasRemovals] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingOverride, setPendingOverride] = useState<{ primaries: string[]; reserves: string[] } | null>(null);
   const [primaryPanelOpen, setPrimaryPanelOpen] = useState(true);
   const [reservePanelOpen, setReservePanelOpen] = useState(true);
   const [summarySearch, setSummarySearch] = useState("");
@@ -222,13 +225,19 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   }
 
   function autoSelectPrimary() {
-    const top = unblockedCandidates.slice(0, primarySlotsLeft).map(c => c.soldier_id);
+    const top = unblockedCandidates
+      .filter(c => !c.personal_constraint_warning)
+      .slice(0, primarySlotsLeft)
+      .map(c => c.soldier_id);
     setPrimarySelected(new Set(top));
     setReserveSelected(prev => { const next = new Set(prev); top.forEach(id => next.delete(id)); return next; });
   }
 
   function autoSelectReserves() {
-    const top = reserveCandidates.unblocked.slice(0, reserveSlotsLeft).map(c => c.soldier_id);
+    const top = reserveCandidates.unblocked
+      .filter(c => !c.personal_constraint_warning)
+      .slice(0, reserveSlotsLeft)
+      .map(c => c.soldier_id);
     setReserveSelected(new Set(top));
   }
 
@@ -257,7 +266,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
     setRemoving(null);
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (totalSelected === 0) { onSaved(); return; }
     if (primaryFilled > shift.required_count) {
       setError("אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף");
@@ -267,10 +276,24 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
       setError("אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף");
       return;
     }
+    const selectedIds = new Set([...primarySelected, ...reserveSelected]);
+    const hasConstraintWarning = candidates.some(c => selectedIds.has(c.soldier_id) && c.personal_constraint_warning);
+    if (hasConstraintWarning) {
+      setPendingOverride({ primaries: [...primarySelected], reserves: [...reserveSelected] });
+      return;
+    }
+    void doSave();
+  }
+
+  async function doSave(overrideReason?: string) {
     setSaving(true);
     setError(null);
     try {
-      await assignBatch(shift.id, { primaries: [...primarySelected], reserves: [...reserveSelected] });
+      await assignBatch(shift.id, {
+        primaries: [...primarySelected],
+        reserves: [...reserveSelected],
+        ...(overrideReason ? { override_reason: overrideReason } : {}),
+      });
       onSaved();
     } catch (e: unknown) {
       setError(translateApiError(e, t, "שגיאה בשיבוץ"));
@@ -538,6 +561,13 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
 
         {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
 
+        <OverrideReasonModal
+          open={pendingOverride !== null}
+          count={pendingOverride ? pendingOverride.primaries.length + pendingOverride.reserves.length : 0}
+          onCancel={() => setPendingOverride(null)}
+          onConfirm={(reason) => { setPendingOverride(null); void doSave(reason); }}
+        />
+
         <div className="flex justify-end gap-2 mt-4 pt-3 border-t dark:border-gray-600 flex-wrap">
           <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">
             {t("shifts.dismiss")}
@@ -591,7 +621,12 @@ function CandidateTable({ unblocked, blocked, selected, onToggle, full }: Candid
                 className={`border-t dark:border-gray-600 ${isDisabled ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"}`}
                 onClick={() => !isDisabled && onToggle(c.soldier_id)}>
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
-                <td className="p-2">{c.full_name}</td>
+                <td className="p-2">
+                  {c.full_name}
+                  {c.personal_constraint_warning && (
+                    <ConstraintWarningIcon warning={c.personal_constraint_warning} />
+                  )}
+                </td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
                 <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
                 <td className="p-2"></td>
@@ -660,7 +695,12 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
                 className={`border-t dark:border-gray-600 ${isDisabled ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"}`}
                 onClick={() => !isDisabled && onToggle(c.soldier_id)}>
                 <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
-                <td className="p-2">{c.full_name}</td>
+                <td className="p-2">
+                  {c.full_name}
+                  {c.personal_constraint_warning && (
+                    <ConstraintWarningIcon warning={c.personal_constraint_warning} />
+                  )}
+                </td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
                 <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
                 {showDist && <td className="p-2 text-gray-600 dark:text-gray-300 max-w-[160px]">{c.coveringNames.join(", ") || "–"}</td>}
