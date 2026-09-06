@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-06
+
+### Fixes
+- Used the system-wide earliest configured reset date as the query floor for fairness calculations, instead of a value that could mask admin-configured settings.
+- Allowed overriding a personal constraint directly from the standard bulk assignment modal, matching the override already available in the shift-edit modal.
+
+### Chores
+- Fixed browser end-to-end test failures on the desktop viewport caused by stale test-id references and a missing mobile actions-menu test-id in the hierarchy tree.
+
 ## 2026-09-02
 
 ### Features
