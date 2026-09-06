@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures/test";
 
 import { roleStorageState } from "./fixtures/auth";
 import { createUniqueName } from "./fixtures/data";
+import { navItem } from "./fixtures/nav";
 
 test.use({ storageState: roleStorageState("admin") });
 
@@ -10,7 +11,7 @@ test("admin onboards a soldier, grants an exemption, then revokes it", async ({ 
   const etName = `פטור-${suffix}`;
 
   // Create an exemption type to grant.
-  await page.getByTestId("nav-planning").click();
+  await navItem(page, "nav-planning").click();
   await page.getByTestId("nav-duty-config").click();
   await expect(page).toHaveURL(/\/planning\/config/);
   await page.getByTestId("et-name").fill(etName);
@@ -18,7 +19,7 @@ test("admin onboards a soldier, grants an exemption, then revokes it", async ({ 
   await expect(page.getByTestId(`et-row-${etName}`)).toBeVisible();
 
   // Onboard a soldier.
-  await page.getByTestId("nav-commander").click();
+  await navItem(page, "nav-commander").click();
   await page.getByTestId("nav-team").click();
   await expect(page).toHaveURL(/\/team$/);
   const pn = `92${Date.now() % 100000}`;

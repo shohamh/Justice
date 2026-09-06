@@ -1,52 +1,55 @@
 import { test, expect } from "./fixtures/test";
 
 import { roleStorageState } from "./fixtures/auth";
+import { navItem, clickTreeAddSoldier, clickTreeAddChild, clickTreeCommanderBtn } from "./fixtures/nav";
 
 test.use({ storageState: roleStorageState("admin") });
 
 test.describe("Hierarchy tree", () => {
   test("admin sees tree, adds child node, assigns commander, renames node", async ({ page }) => {
-    await page.getByTestId("nav-commander").click();
+    await navItem(page, "nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 
     await expect(page.getByTestId("node-tree")).toBeVisible();
 
-    const firstAddChild = page.getByTestId(/^tree-add-child-/).first();
-    await firstAddChild.click();
+    await clickTreeAddChild(page);
     await expect(page.getByTestId("add-child-dialog")).toBeVisible();
     await page.getByTestId("child-name").fill(`\u05ea\u05ea-\u05d9\u05d7\u05d9\u05d3\u05ea \u05d1\u05d3\u05d9\u05e7\u05d4 ${Date.now() % 10000}`);
     await page.getByTestId("child-submit").click();
     await expect(page.getByTestId("add-child-dialog")).not.toBeVisible();
 
-    const firstRename = page.getByTestId(/^tree-rename-/).first();
+    const firstRename = page.getByTestId(/^tree-edit-name-/).first();
     await firstRename.click();
-    await expect(page.getByTestId("rename-dialog")).toBeVisible();
-    await page.getByTestId("rename-input").fill(`\u05e9\u05dd \u05d7\u05d3\u05e9 ${Date.now() % 10000}`);
-    await page.getByTestId("rename-submit").click();
-    await expect(page.getByTestId("rename-dialog")).not.toBeVisible();
+    await expect(page.getByTestId("edit-node-dialog")).toBeVisible();
+    await page.getByTestId("edit-node-name-input").fill(`\u05e9\u05dd \u05d7\u05d3\u05e9 ${Date.now() % 10000}`);
+    await page.getByTestId("edit-node-submit").click();
+    await expect(page.getByTestId("edit-node-dialog")).not.toBeVisible();
 
-    const firstCommanderBtn = page.getByTestId(/^tree-commander-btn-/).first();
-    await firstCommanderBtn.click();
+    await clickTreeCommanderBtn(page);
     await expect(page.getByTestId("assign-commander-dialog")).toBeVisible();
-    await page.getByTestId("commander-select").selectOption({ index: 1 });
+    // Search for a soldier outside the fixture-reserved personal-number
+    // ranges (see fixtures/auth.ts) — an unfiltered pick could promote one
+    // of those accounts to commander (see services/dm_scope.py) and corrupt
+    // other tests/projects sharing this database.
+    await page.getByTestId("commander-search").fill("נילוס");
+    await page.getByTestId(/^commander-option-/).first().click();
     await page.getByTestId("commander-submit").click();
     await expect(page.getByTestId("assign-commander-dialog")).not.toBeVisible();
   });
 
   test("admin can add soldier to node via quick-add button", async ({ page }) => {
-    await page.getByTestId("nav-commander").click();
+    await navItem(page, "nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
     await expect(page.getByTestId("node-tree")).toBeVisible();
 
-    const firstAddSoldier = page.getByTestId(/^tree-add-soldier-/).first();
-    await firstAddSoldier.click();
+    await clickTreeAddSoldier(page);
     await expect(page.getByTestId(/^quick-add-/)).toBeVisible();
   });
 
   test("soldiers appear under tree node with edit button", async ({ page }) => {
-    await page.getByTestId("nav-commander").click();
+    await navItem(page, "nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 
@@ -75,7 +78,7 @@ test.describe("Hierarchy tree", () => {
   });
 
   test("soldier appears only under their assigned hierarchy node", async ({ page }) => {
-    await page.getByTestId("nav-commander").click();
+    await navItem(page, "nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 
@@ -111,8 +114,8 @@ test.describe("Hierarchy tree", () => {
     expect(dupes).toEqual([]);
   });
 
-  test("adding existing soldier via quick-add moves them to the new node", async ({ page }) => {
-    await page.getByTestId("nav-commander").click();
+  test("adding existing soldier via quick-add creates a pending transfer request", async ({ page }) => {
+    await navItem(page, "nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 
@@ -151,17 +154,12 @@ test.describe("Hierarchy tree", () => {
       }
     }
 
-    // Note whether the soldier is currently visible in the tree
-    const soldierInTree = page.getByTestId(`tree-soldier-${targetPn}`);
-    const wasVisible = await soldierInTree.isVisible().catch(() => false);
-
     // Pick a different node to move the soldier to
     const addSoldierBtns = page.getByTestId(/^tree-add-soldier-/);
     const btnCount = await addSoldierBtns.count();
     expect(btnCount).toBeGreaterThan(1);
     // Use the second add-soldier button (different node from where soldier might be)
-    const targetBtn = addSoldierBtns.nth(btnCount > 2 ? 2 : 1);
-    await targetBtn.click();
+    await clickTreeAddSoldier(page, btnCount > 2 ? 2 : 1);
 
     // Type the soldier's personal number in the autocomplete and select
     const searchInput = page.getByTestId("soldier-search-input");
@@ -175,10 +173,14 @@ test.describe("Hierarchy tree", () => {
     await expect(result).toBeVisible();
     await result.click();
 
-    // Wait for the quick-add to process
-    await expect(page.getByTestId("soldier-search-input")).not.toBeVisible({ timeout: 5000 });
+    // Moving an existing soldier goes through the hierarchy-transfer request
+    // flow (pending the destination's approval), not an instant move — see
+    // HierarchyTree.tsx's handleQuickAdd.
+    await expect(page.getByTestId("transfer-reason")).toBeVisible();
+    await page.getByTestId("confirm-dialog-confirm").click();
 
-    // The soldier should now appear in the tree (the target node is expanded by handleQuickAdd)
-    await expect(soldierInTree).toBeVisible({ timeout: 5000 });
+    // A pending transfer request was created; the app confirms it succeeded.
+    await expect(page.getByTestId("message-dialog-close")).toBeVisible();
+    await page.getByTestId("message-dialog-close").click();
   });
 });

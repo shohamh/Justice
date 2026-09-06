@@ -233,12 +233,12 @@ function DroppableNodeRow({
               {(close) => (
                 <>
                   {node.can_edit && canHaveChildren && (
-                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAddChild(); close(); }}>
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAddChild(); close(); }} data-testid={`tree-add-child-${node.id}`}>
                       <Network size={16} aria-hidden="true" />+{t("team.add_node")}
                     </button>
                   )}
                   {node.can_edit && (
-                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAddSoldier(); close(); }}>
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAddSoldier(); close(); }} data-testid={`tree-add-soldier-${node.id}`}>
                       <UserPlus size={16} aria-hidden="true" />+{t("team.add_soldier")}
                     </button>
                   )}
@@ -254,7 +254,7 @@ function DroppableNodeRow({
                     </div>
                   )}
                   {node.can_edit && (
-                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-green-600 dark:text-green-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAssignCommander(); close(); }}>
+                    <button type="button" className="flex items-center gap-2 px-3 py-2 text-sm text-green-600 dark:text-green-300 hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { onAssignCommander(); close(); }} data-testid={`tree-commander-btn-${node.id}`}>
                       <span aria-hidden="true">👑</span>{t("team.assign_commander")}
                     </button>
                   )}

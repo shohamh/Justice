@@ -2,6 +2,7 @@ import { expect, test } from "./test";
 
 import { roleStorageState, roles } from "./auth";
 import { createScenarioData, createUniqueName } from "./data";
+import { navItem } from "./nav";
 
 for (const role of roles) {
   test(`loginAs authenticates the seeded ${role} account`, async ({ loginAsRole, page }) => {
@@ -9,8 +10,8 @@ for (const role of roles) {
 
     await expect(page).toHaveURL(/\/$/);
 
-    const commanderNavigation = page.getByTestId("nav-commander");
-    const planningNavigation = page.getByTestId("nav-planning");
+    const commanderNavigation = navItem(page, "nav-commander");
+    const planningNavigation = navItem(page, "nav-planning");
 
     if (role === "soldier") {
       await expect(commanderNavigation).toHaveCount(0);

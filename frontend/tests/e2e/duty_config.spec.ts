@@ -2,11 +2,12 @@ import { test, expect } from "./fixtures/test";
 
 import { roleStorageState } from "./fixtures/auth";
 import { createUniqueName } from "./fixtures/data";
+import { navItem } from "./fixtures/nav";
 
 test.use({ storageState: roleStorageState("admin") });
 
 test("admin configures a duty type, location, and exemption type with mapping", async ({ page }) => {
-  await page.getByTestId("nav-planning").click();
+  await navItem(page, "nav-planning").click();
   await page.getByTestId("nav-duty-config").click();
   await expect(page).toHaveURL(/\/planning\/config/);
 
