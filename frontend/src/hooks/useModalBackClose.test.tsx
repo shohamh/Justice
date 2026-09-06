@@ -415,3 +415,87 @@ describe("useModalBackClose — nested modals", () => {
     expect(screen.getByTestId("parent-open")).toBeInTheDocument();
   });
 });
+
+describe("useModalBackClose — three-level nesting", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  function delay(ms: number): Promise<void> {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, ms);
+    return promise;
+  }
+
+  // Mirrors the real production stack: ShiftDetailPanel (grandparent, always
+  // mounted while open) -> ShiftAssignModal (parent, freshly mounted on
+  // "Replace") -> ConfirmDialog's EventDetailModal (child, always mounted
+  // inside the parent but gated on its own `open` prop, like
+  // useModalBackClose(onClose, open)). Each level opens in its own render,
+  // matching how they actually open one at a time in the app (see the
+  // two-level Harness above for why simultaneous first-mount would instead
+  // exercise StrictMode's double-invoke interleaving, a different scenario).
+  function Grandchild({ open, onClose }: { open: boolean; onClose: () => void }) {
+    useModalBackClose(onClose, open);
+    return null;
+  }
+
+  function Parent({ onClose }: { onClose: () => void }) {
+    const [childOpen, setChildOpen] = useState(false);
+    useModalBackClose(onClose);
+    return (
+      <>
+        <div data-testid="parent-open" />
+        <Grandchild open={childOpen} onClose={() => setChildOpen(false)} />
+        {!childOpen && <button onClick={() => setChildOpen(true)}>open-grandchild</button>}
+        {childOpen && <button onClick={() => setChildOpen(false)}>close-grandchild</button>}
+      </>
+    );
+  }
+
+  function Harness() {
+    const [parentOpen, setParentOpen] = useState(false);
+    const [grandparentClosed, setGrandparentClosed] = useState(false);
+    useModalBackClose(() => setGrandparentClosed(true));
+    return (
+      <>
+        {grandparentClosed ? (
+          <div data-testid="grandparent-closed" />
+        ) : (
+          <div data-testid="grandparent-open" />
+        )}
+        {!parentOpen && <button onClick={() => setParentOpen(true)}>open-parent</button>}
+        {parentOpen && <Parent onClose={() => setParentOpen(false)} />}
+      </>
+    );
+  }
+
+  test("closing the innermost (grandchild) modal via its own control does not also close the grandparent", async () => {
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
+
+    fireEvent.click(screen.getByText("open-parent"));
+    await screen.findByText("open-grandchild");
+    fireEvent.click(screen.getByText("open-grandchild"));
+    await screen.findByText("close-grandchild");
+
+    // Close the grandchild the way ConfirmDialog's own confirm handler does:
+    // flip its `open` prop back to false (unmount-equivalent for a
+    // prop-gated modal). Its cleanup defers a history.back() that pops its
+    // entry down onto the PARENT's entry and fires a global popstate.
+    fireEvent.click(screen.getByText("close-grandchild"));
+    await waitFor(() => expect(screen.queryByText("close-grandchild")).not.toBeInTheDocument());
+    await delay(50);
+
+    // The parent must still be open (this part already worked before the
+    // fix — it's the two-level case). The bug: that same popstate also
+    // reaches the GRANDPARENT's listener, which must NOT mistake "the
+    // current entry isn't mine" for "a real back-press reached me" and
+    // close itself.
+    expect(screen.getByText("open-grandchild")).toBeInTheDocument();
+    expect(screen.getByTestId("grandparent-open")).toBeInTheDocument();
+  });
+});
