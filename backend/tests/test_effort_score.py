@@ -1163,3 +1163,138 @@ def test_preview_adjustment_route_does_not_force_global_reset_date():
 
     src = inspect.getsource(score_adjustments.preview_adjustment)
     assert "reset_date=" not in src
+
+
+# ---------------------------------------------------------------------------
+# Generalizing the query-floor fix to 3+ branches with staggered overrides.
+#
+# The two-branch fix (query_floor = min(global_default, own_reset)) only
+# protects against a gap between the global default and THIS soldier's own
+# override. A THIRD branch with an override earlier than both -- but still
+# inside the same quarter as the two-branch floor -- creates a gap that fix
+# doesn't see: duty data in that gap is silently excluded from the query,
+# understating the quarter's unit-total (W_i) for every OTHER soldier's
+# breakdown, even though a full-org compute_effort_data() batch call would
+# have included it (since its own floor is the min over whichever soldiers
+# happen to be in that batch, including the third branch).
+# ---------------------------------------------------------------------------
+
+def test_burden_share_breakdown_includes_third_branchs_earlier_override_gap(admin_session):
+    """Global default (Aug 10, deliberately NOT quarter-aligned) is BETWEEN
+    Sparta's earlier override (Jul 15) and Polaris's later one (Aug 20), all
+    inside the same quarter (Q3 2026). Sparta has a duty inside that gap
+    (Jul 20-30). The two-branch fix's query floor (min(Aug10, Aug20) = Aug10)
+    would miss it entirely; the general fix's floor must reach back to the
+    earliest override configured ANYWHERE in the system (Jul 15), not just
+    the global default and this one soldier's own date."""
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    sparta = HierarchyNode(level="division", name="sparta", path_ids=[])
+    polaris = HierarchyNode(level="division", name="polaris-gap", path_ids=[])
+    admin_session.add_all([sparta, polaris])
+    admin_session.flush()
+    sparta.path_ids = [sparta.id]
+    polaris.path_ids = [polaris.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-08-10"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides",
+        value={str(sparta.id): "2026-07-15", str(polaris.id): "2026-08-20"},
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "third-branch-gap")
+
+    sparta_soldier = create_soldier(admin_session, personal_number="9940001")
+    sparta_soldier.hierarchy_node_id = sparta.id
+    sparta_soldier.enrolled_at = date_cls(2025, 1, 1)
+    polaris_soldier = create_soldier(admin_session, personal_number="9940002")
+    polaris_soldier.hierarchy_node_id = polaris.id
+    polaris_soldier.enrolled_at = date_cls(2025, 1, 1)
+    admin_session.flush()
+
+    # Sparta's duty sits in the gap: after Sparta's own Jul15 override, but
+    # before the global default (Aug10) the two-branch fix would floor at.
+    create_assignment(
+        admin_session, soldier_id=sparta_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 7, 20), end_date=date_cls(2026, 7, 30), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=polaris_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 8, 25), end_date=date_cls(2026, 9, 4), actor_id=None,
+    )
+    admin_session.flush()
+
+    bd = compute_burden_share_breakdown(
+        admin_session,
+        soldier=polaris_soldier,
+        planning_start=date_cls(2026, 10, 1),
+        planning_end=date_cls(2026, 10, 1),
+    )
+    # Polaris's own quarter clip is unchanged (own_floor=Aug20, q_days=42,
+    # active_in_q=42, frac=1.0) -- only the unit-total denominator changes.
+    # Two-branch (buggy) floor = Aug10 -> misses Sparta's Jul20-30 duty ->
+    # Q3 unit_score = 10 (Polaris only) -> burden_share = 10/10 = 1.0.
+    # General fix's floor = Jul15 -> includes Sparta's 10 -> Q3 unit_score =
+    # 20 (Sparta + Polaris) -> burden_share = 10/20 = 0.5, matching what a
+    # full-org compute_effort_data() batch would produce for this soldier.
+    assert bd.burden_share == Decimal("10") / Decimal("20")
+
+
+def test_compute_effort_data_floor_independent_of_batch_composition(admin_session):
+    """The SAME soldier's effort_score must not depend on which OTHER
+    soldiers happen to be included in the batch. A narrow batch (just
+    Polaris) must reach back to a third branch's (Sparta's) earlier override
+    just as a full batch (Sparta + Polaris) would, since Sparta's gap duty
+    falls in the same quarter the narrow batch's floor would otherwise stop
+    at."""
+    from datetime import date as date_cls
+    from app.db.models import HierarchyNode, SystemSetting
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    sparta = HierarchyNode(level="division", name="sparta-batch", path_ids=[])
+    polaris = HierarchyNode(level="division", name="polaris-batch", path_ids=[])
+    admin_session.add_all([sparta, polaris])
+    admin_session.flush()
+    sparta.path_ids = [sparta.id]
+    polaris.path_ids = [polaris.id]
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-08-10"))
+    admin_session.add(SystemSetting(
+        key="fairness.reset_date_overrides",
+        value={str(sparta.id): "2026-07-15", str(polaris.id): "2026-08-20"},
+    ))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "batch-independence")
+
+    sparta_soldier = create_soldier(admin_session, personal_number="9940003")
+    sparta_soldier.hierarchy_node_id = sparta.id
+    sparta_soldier.enrolled_at = date_cls(2025, 1, 1)
+    polaris_soldier = create_soldier(admin_session, personal_number="9940004")
+    polaris_soldier.hierarchy_node_id = polaris.id
+    polaris_soldier.enrolled_at = date_cls(2025, 1, 1)
+    admin_session.flush()
+
+    create_assignment(
+        admin_session, soldier_id=sparta_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 7, 20), end_date=date_cls(2026, 7, 30), actor_id=None,
+    )
+    create_assignment(
+        admin_session, soldier_id=polaris_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_cls(2026, 8, 25), end_date=date_cls(2026, 9, 4), actor_id=None,
+    )
+    admin_session.flush()
+
+    narrow = compute_effort_data(
+        admin_session, soldiers=[polaris_soldier],
+        planning_start=date_cls(2026, 10, 1), planning_end=date_cls(2026, 10, 1),
+    )
+    full = compute_effort_data(
+        admin_session, soldiers=[sparta_soldier, polaris_soldier],
+        planning_start=date_cls(2026, 10, 1), planning_end=date_cls(2026, 10, 1),
+    )
+    assert narrow[polaris_soldier.id].effort_score == full[polaris_soldier.id].effort_score
+    assert narrow[polaris_soldier.id].effort_score == Decimal("10") / Decimal("20")
