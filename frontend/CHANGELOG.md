@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-06 (4)
+
+### Fixes
+- Made soldier names in the transparency page's eligibility-group panel clickable to open their profile, and added hover/click highlighting linking a group's pie-chart slice, duty-type badges, and ranked soldier list.
+- Fixed the algorithm batch-size setting having no effect (the settings page was writing a different key than the solver actually read).
+- Unified the "reference date" setting so changing it now consistently affects the transparency page's cumulative score, active-days, and fairness columns together, instead of only some of them.
+- Made the unit calendar show duty quantities as "assigned/required" (matching the ranges page) instead of a bare assigned count.
+- Fixed the reserve-duty label showing as a single letter instead of the full word in some places.
+- Added a select-all checkbox to the duty shifts table, matching the one already on the ranges table.
+- Fixed bug-report screenshots failing to capture on pages with heavy math rendering (e.g. the burden-share breakdown modal), by skipping unnecessary font re-embedding.
+- Added visual "+" markers between summed rows in the burden-share breakdown modal so the running total reads clearly.
+- Made tooltips behave consistently across the app — hover and click/tap both work now — by consolidating several duplicate one-off popover implementations onto a single shared component.
+
+### Performance
+- Fixed a severe N+1 query pattern in weapon-qualification eligibility checks that could make large algorithm runs dramatically slower than necessary (over 1,800x more database queries than needed in a moderately large run).
+
 ## 2026-09-06 (3)
 
 ### Fixes
