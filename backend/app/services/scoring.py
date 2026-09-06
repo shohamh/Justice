@@ -737,6 +737,33 @@ def _resolve_reset_date_from_path(
     return default
 
 
+def _earliest_configured_reset_date(session: Session) -> date:
+    """The earliest reset date reachable by ANY soldier under the current
+    configuration: the global default, or any hierarchy override, whichever
+    is earliest. Used as the duty-day query/quarter-list floor by both
+    compute_effort_data and compute_burden_share_breakdown so a soldier's
+    unit-total denominator (W_i) for a given quarter doesn't depend on which
+    other soldiers happen to be in the same batch/call.
+
+    Without this, a two-branch floor (global default + this soldier's own
+    date) can still miss a THIRD branch's earlier override that falls inside
+    the same quarter — silently excluding that branch's duty from the
+    quarter's unit total for every other soldier's breakdown, even though a
+    batch compute_effort_data() call that happened to include that branch
+    would have picked it up. Malformed override values are skipped rather
+    than raising, since this sits on the live solve path."""
+    overrides = _reset_date_overrides(session)
+    earliest = _burden_share_reset_date(session)
+    for raw in overrides.values():
+        try:
+            parsed = date.fromisoformat(raw)
+        except (TypeError, ValueError):
+            continue
+        if parsed < earliest:
+            earliest = parsed
+    return earliest
+
+
 def resolve_reset_dates_for_soldiers(
     session: Session, soldiers: Sequence[Any]
 ) -> dict[uuid.UUID, date]:

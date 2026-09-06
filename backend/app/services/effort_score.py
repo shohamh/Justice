@@ -337,13 +337,17 @@ def compute_effort_data(
     from sqlalchemy import select
     from app.db.models import DutyType, ScoreAdjustment
 
-    from app.services.scoring import _burden_share_reset_date, resolve_reset_dates_for_soldiers
+    from app.services.scoring import _earliest_configured_reset_date, resolve_reset_dates_for_soldiers
 
     if reset_date is not None:
         soldier_reset_dates = {s.id: reset_date for s in soldiers}
     else:
         soldier_reset_dates = resolve_reset_dates_for_soldiers(session, soldiers)
-    reset_date = min(soldier_reset_dates.values()) if soldier_reset_dates else _burden_share_reset_date(session)
+        # The system-wide earliest configured date, not just min() over this
+        # batch's own soldiers -- a batch that happens to exclude a branch
+        # with an earlier override must still query far enough back to match
+        # what a batch that DID include it would compute for a shared quarter.
+        reset_date = _earliest_configured_reset_date(session)
 
     history_end = planning_start - timedelta(days=1)
 
@@ -475,24 +479,24 @@ def compute_burden_share_breakdown(
     if projected is not None:
         return projected
 
-    from app.services.scoring import resolve_reset_dates_for_soldiers
+    from app.services.scoring import _earliest_configured_reset_date, resolve_reset_dates_for_soldiers
 
     if reset_date is None:
         own_reset = resolve_reset_dates_for_soldiers(session, [soldier])[soldier.id]
+        # The unit-total denominator (q_unit_scores below) must reflect the
+        # WHOLE org's activity since the earliest applicable date -- matching
+        # what a batched compute_effort_data() call aggregates for the same
+        # quarter -- not just the global default and this one soldier's own
+        # date. A THIRD branch's still-earlier override, even one this
+        # soldier has never heard of, can fall inside the same quarter and
+        # must still be picked up, or this function and compute_effort_data
+        # would disagree on this soldier's own burden_share.
+        query_floor = _earliest_configured_reset_date(session)
     else:
         own_reset = reset_date
         # explicit reset_date forces this soldier's own floor too — same
         # back-compat rule as compute_effort_data.
-
-    # The unit-total denominator (q_unit_scores below) must reflect the WHOLE
-    # org's activity since the earliest applicable date -- matching what a
-    # batched compute_effort_data() call aggregates for the same quarter --
-    # NOT just this one soldier's own (possibly later) resolved reset date.
-    # Using own_reset alone here would silently exclude other soldiers'
-    # duty data that a multi-soldier compute_effort_data() call includes,
-    # producing a different burden_share for the same soldier depending on
-    # which function computed it (this is exactly the bug this fix closes).
-    query_floor = min(global_default, own_reset)
+        query_floor = reset_date
     reset_date = query_floor
 
     from sqlalchemy import select
