@@ -205,8 +205,16 @@ export default function BurdenShareBreakdownModal({ soldierName, breakdown, onCl
                       return (
                         <div
                           key={q.quarter_label}
-                          className={`flex items-center justify-between gap-2 px-2 py-1.5 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
+                          className={`relative flex items-center justify-between gap-2 px-2 py-1.5 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
                         >
+                          {i > 0 && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute -top-2.5 right-1/2 translate-x-1/2 w-5 h-5 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 flex items-center justify-center text-[10px] leading-none text-gray-400 dark:text-gray-500"
+                            >
+                              +
+                            </span>
+                          )}
                           <span className="font-medium text-gray-600 dark:text-gray-400 shrink-0 w-14">{q.quarter_label}</span>
                           {hasScore ? (
                             <span className="tabular-nums text-gray-600 dark:text-gray-400">
@@ -246,8 +254,16 @@ export default function BurdenShareBreakdownModal({ soldierName, breakdown, onCl
                       return (
                         <div
                           key={q.quarter_label}
-                          className={`flex items-center justify-between gap-2 px-2 py-1.5 text-gray-600 dark:text-gray-400 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
+                          className={`relative flex items-center justify-between gap-2 px-2 py-1.5 text-gray-600 dark:text-gray-400 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
                         >
+                          {i > 0 && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute -top-2.5 right-1/2 translate-x-1/2 w-5 h-5 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 flex items-center justify-center text-[10px] leading-none text-gray-400 dark:text-gray-500"
+                            >
+                              +
+                            </span>
+                          )}
                           <span className="font-medium text-gray-600 dark:text-gray-400 w-14">{q.quarter_label}</span>
                           <span className="tabular-nums">
                             <InlineMath math={`${ap}\\% \\times ${us.toFixed(3)} = `} />

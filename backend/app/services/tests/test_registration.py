@@ -140,7 +140,7 @@ def test_register_requires_unit_join_date_after_reference_date(admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     admin_session.add(SystemSetting(
-        key="scoring.active_days_reference_date",
+        key="fairness.reset_date",
         value=(date.today() - timedelta(days=1)).isoformat(),
         updated_by=None,
     ))
@@ -161,7 +161,7 @@ def test_register_preserves_nullable_unit_join_date_at_reference_boundary(admin_
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     admin_session.add(SystemSetting(
-        key="scoring.active_days_reference_date", value=date.today().isoformat(), updated_by=None,
+        key="fairness.reset_date", value=date.today().isoformat(), updated_by=None,
     ))
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()

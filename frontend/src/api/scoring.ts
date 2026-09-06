@@ -89,9 +89,20 @@ export async function getTransparency(): Promise<TransparencyOut> {
 export interface FairnessBurdenShare {
   mean: number; stddev: number; cv: number; min: number; max: number; count: number;
 }
-export interface FairnessSoldier { soldier_id: string; full_name: string; burden_share: number; eligible_type_count: number; }
+export interface FairnessSoldier {
+  soldier_id: string;
+  full_name: string;
+  burden_share: number;
+  eligible_type_count: number;
+  eligible_duty_type_ids: string[];
+}
+export interface FairnessDutyType { id: string; name: string; }
 export interface FairnessComponent {
   duty_type_names: string[];
+  /** Paired (id, name) list, name-sorted — unlike `duty_type_ids`/`duty_type_names`
+   * (each sorted independently, so their indices don't line up), this is what
+   * to use to match a duty-type badge to a soldier's `eligible_duty_type_ids`. */
+  duty_types: FairnessDutyType[];
   soldier_count: number;
   burden_share: FairnessBurdenShare | null;
   soldiers: FairnessSoldier[];

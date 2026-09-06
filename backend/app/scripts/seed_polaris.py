@@ -14,7 +14,7 @@ What this does:
      duty type, assigned across eligible פוקוס soldiers in a fair-but-varied
      way (least-loaded-first with some randomness, not a perfect round
      robin). Also gives every פוקוס soldier a *varied* unit_join_date and
-     sets the shared scoring.active_days_reference_date setting so active-day
+     sets the shared fairness.reset_date setting so active-day
      fairness calculations line up with the backfilled history.
 
 Both parts are idempotent: re-running skips whatever's already there.
@@ -51,7 +51,7 @@ from app.db.models import (
 from app.scripts.seed import _duty_hours, _mandatory_end, _single_day_shift_span
 from app.services.dm_scope import assign_dm_scope
 from app.services.rank_advancement import resolve_track
-from app.services.settings_loader import initialize_active_days_reference_date
+from app.services.settings_loader import FAIRNESS_RESET_DATE_KEY, set_setting
 
 def _safe_print(s: str) -> None:
     import sys
@@ -338,7 +338,11 @@ def _backfill_focus_history(session, focus_branch: HierarchyNode, s_admin: Soldi
         return
 
     _vary_focus_unit_join_dates(session, focus_soldiers, rng)
-    initialize_active_days_reference_date(session, HISTORY_START)
+    # This function itself is about to create the backfilled duty history, so
+    # the guarded registration-time bootstrap (which skips once real duty
+    # history exists) doesn't apply here -- set it directly instead.
+    if session.get(SystemSetting, FAIRNESS_RESET_DATE_KEY) is None:
+        set_setting(session, FAIRNESS_RESET_DATE_KEY, HISTORY_START.isoformat(), actor_id=None)
 
     officers = [s for s in focus_soldiers if s.is_officer]
     enlisted = [s for s in focus_soldiers if not s.is_officer]

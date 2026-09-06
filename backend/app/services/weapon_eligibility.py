@@ -181,18 +181,21 @@ def _max_qualification_valid_until(
     )[soldier_id, required_range_type]
 
 
-def _profile_valid_until(
-    session: Session, *, soldier_id: uuid.UUID, required_range_type: str, as_of: date,
+def _profile_valid_until_from_dates(
+    session: Session, *,
+    last_mitvahim_date: date | None,
+    last_alal_date: date | None,
+    required_range_type: str,
+    as_of: date,
 ) -> date | None:
-    """Return the legacy profile qualification's projected validity.
+    """Pure core of `_profile_valid_until`, operating on already-fetched profile
+    dates so bulk callers can prefetch every soldier's dates in one query
+    instead of one query per soldier (see `_profile_dates_by_soldier`).
 
     ``last_mitvahim_date`` is the profile's live-range date and covers live (and
     lower-tier laser) requirements. ``last_alal_date`` covers alal requirements.
     A future profile date must not qualify an earlier duty.
     """
-    last_mitvahim_date, last_alal_date = session.execute(
-        select(Soldier.last_mitvahim_date, Soldier.last_alal_date).where(Soldier.id == soldier_id)
-    ).one_or_none() or (None, None)
     if required_range_type == RangeType.alal:
         profile_date = last_alal_date
         profile_range_type = RangeType.alal
@@ -204,6 +207,41 @@ def _profile_valid_until(
     if profile_range_type not in _qualification_types_at_or_above(required_range_type):
         return None
     return profile_date + timedelta(days=_validity_days(session, profile_range_type))
+
+
+def _profile_dates_by_soldier(
+    session: Session, *, soldier_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, tuple[date | None, date | None]]:
+    """Batch equivalent of the profile lookup inside `_profile_valid_until` —
+    one query for every soldier's last_mitvahim_date/last_alal_date instead of
+    one query per (soldier, duty block) pair."""
+    unique_soldier_ids = set(soldier_ids)
+    if not unique_soldier_ids:
+        return {}
+    return {
+        soldier_id: (last_mitvahim_date, last_alal_date)
+        for soldier_id, last_mitvahim_date, last_alal_date in session.execute(
+            select(Soldier.id, Soldier.last_mitvahim_date, Soldier.last_alal_date)
+            .where(Soldier.id.in_(unique_soldier_ids))
+        )
+    }
+
+
+def _profile_valid_until(
+    session: Session, *, soldier_id: uuid.UUID, required_range_type: str, as_of: date,
+) -> date | None:
+    """Return the legacy profile qualification's projected validity. See
+    `_profile_valid_until_from_dates` for the underlying rule."""
+    last_mitvahim_date, last_alal_date = session.execute(
+        select(Soldier.last_mitvahim_date, Soldier.last_alal_date).where(Soldier.id == soldier_id)
+    ).one_or_none() or (None, None)
+    return _profile_valid_until_from_dates(
+        session,
+        last_mitvahim_date=last_mitvahim_date,
+        last_alal_date=last_alal_date,
+        required_range_type=required_range_type,
+        as_of=as_of,
+    )
 
 
 def _future_windows(
@@ -312,28 +350,39 @@ def bulk_ineligible_duty_blocks(
         return {}
 
     disqualify_pending = _pending_excusal_disqualifies(session)
+
+    # Prefetch everything the per-(soldier, block) checks below need, in a
+    # fixed number of queries regardless of how many soldiers/blocks there
+    # are. The equivalent per-soldier lookups (still used by the single-
+    # soldier `compute_eligibility` path) would otherwise turn a run over N
+    # soldiers × M duty blocks into O(N) or even O(N×M) individual queries —
+    # a real bottleneck once soldier/duty counts grow.
+    required_types = list({d.required_range_type for d in relevant})
+    valid_untils = _max_qualification_valid_untils(
+        session, soldier_ids=soldier_ids, required_range_types=required_types,
+    )
+    windows_by_soldier_and_type = _future_windows_by_soldier_and_required_type(
+        session,
+        soldier_ids=soldier_ids,
+        required_range_types=required_types,
+        disqualify_pending=disqualify_pending,
+    )
+    profile_dates = _profile_dates_by_soldier(session, soldier_ids=soldier_ids)
+
     result: dict[uuid.UUID, set[uuid.UUID]] = {}
     for soldier_id in soldier_ids:
-        # Cache per (soldier, required_range_type) — most batches only touch 1-2 tiers.
-        cache: dict[str, tuple[date | None, list[tuple[date, date, str]]]] = {}
+        last_mitvahim_date, last_alal_date = profile_dates.get(soldier_id, (None, None))
         ineligible: set[uuid.UUID] = set()
         for block in relevant:
             required = block.required_range_type
-            if required not in cache:
-                cache[required] = (
-                    _max_qualification_valid_until(
-                        session, soldier_id=soldier_id, required_range_type=required
-                    ),
-                    _future_windows(
-                        session,
-                        soldier_id=soldier_id,
-                        required_range_type=required,
-                        disqualify_pending=disqualify_pending,
-                    ),
-                )
-            current_valid_until, future_windows = cache[required]
-            profile_valid_until = _profile_valid_until(
-                session, soldier_id=soldier_id, required_range_type=required, as_of=block.start_date,
+            current_valid_until = valid_untils.get((soldier_id, required))
+            future_windows = windows_by_soldier_and_type.get((soldier_id, required), [])
+            profile_valid_until = _profile_valid_until_from_dates(
+                session,
+                last_mitvahim_date=last_mitvahim_date,
+                last_alal_date=last_alal_date,
+                required_range_type=required,
+                as_of=block.start_date,
             )
             if profile_valid_until is not None:
                 current_valid_until = max(current_valid_until or profile_valid_until, profile_valid_until)

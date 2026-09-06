@@ -3,15 +3,31 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import inspect
 
-from app.db.models import AuditLog, HierarchyNode, Soldier, SystemSetting
+from app.db.models import (
+    AuditLog,
+    DutyAssignment,
+    DutyLocation,
+    DutyShift,
+    DutyType,
+    HierarchyNode,
+    Soldier,
+    SystemSetting,
+)
 from app.services.invite_codes import create_invite_code
 from tests.helpers import auth_headers, create_node, create_soldier
 
-REFERENCE_DATE_KEY = "scoring.active_days_reference_date"
+# NOTE: this key is shared with fairness/burden-share history windowing --
+# see app.services.settings_loader.FAIRNESS_RESET_DATE_KEY and
+# app.services.scoring._burden_share_reset_date. The tests below still cover
+# the registration-time "unit_join_date_required" gate and the active-days
+# denominator, both of which this key governs.
+
+REFERENCE_DATE_KEY = "fairness.reset_date"
 
 
 def _setup_holding(session) -> HierarchyNode:
@@ -123,3 +139,39 @@ def test_registration_preserves_existing_active_days_reference_date(client, admi
 
     assert response.status_code == 200, response.text
     assert admin_session.get(SystemSetting, REFERENCE_DATE_KEY).value == existing_date
+
+
+def test_registration_does_not_auto_set_reset_date_once_duty_history_exists(client, admin_session):
+    """Regression guard: once real duty history exists, a later registration
+    must NOT silently pin the shared reset date (see
+    initialize_fairness_reset_date_if_system_is_new) -- that key also gates
+    burden-share/fairness history windowing, so auto-setting it here would
+    silently discard already-tracked history from every fairness computation.
+    Only an explicit admin edit may move the reset date once history exists."""
+    holding = _setup_holding(admin_session)
+    requested_node = create_node(admin_session, level="unit", name="unit", parent=holding)
+    other_soldier = create_soldier(admin_session, personal_number="active-days-history-soldier")
+    dt = DutyType(name="dt_active_days_history_test", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_active_days_history_test")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() - timedelta(days=30), end_date=date.today() - timedelta(days=29),
+        required_count=1,
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        soldier_id=other_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        duty_shift_id=shift.id,
+        start_date=date.today() - timedelta(days=30), end_date=date.today() - timedelta(days=29),
+        status="published",
+    ))
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    response = _register(client, _registration_payload(invite.code, requested_node.id))
+
+    assert response.status_code == 200, response.text
+    assert admin_session.get(SystemSetting, REFERENCE_DATE_KEY) is None
