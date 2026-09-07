@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-07
+
+### Fixes
+- Fixed the approvals nav badge overcounting: it summed raw scope-wide pending-constraint counts (instead of only rows the viewer can actually approve, like its sibling list) and included hakpaza's pending count even though hakpaza has no tab on the Approvals page.
+
+### Chores
+- Repaired the local e2e test suite, which had drifted out of sync with several UI areas it covers (duty-type/exemption-type creation moved into modals with new required fields, exemption management moved into the soldier profile modal, the requests page split into tabs, and the old dedicated duty-assignment page was retired in favor of shift creation).
+
 ## 2026-09-06 (4)
 
 ### Fixes
