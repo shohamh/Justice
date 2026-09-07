@@ -1,20 +1,23 @@
 import { test, expect } from "./fixtures/test";
 
 import { roleStorageState } from "./fixtures/auth";
+import { navItem } from "./fixtures/nav";
 
 test.use({ storageState: roleStorageState("admin") });
 
-test("soldier submits personal constraint, sees Hebrew error for past date @smoke", async ({ page }) => {
-  await page.getByTestId("nav-my-requests").click();
+test("soldier submits personal constraint, past dates are blocked client-side @smoke", async ({ page }) => {
+  await navItem(page, "nav-my-requests").click();
   await expect(page).toHaveURL(/\/my-requests$/);
 
+  await page.getByTestId("constraint-form-toggle").click();
+  await expect(page.getByTestId("constraint-form-card")).toBeVisible();
   await page.getByTestId("req-start").fill("2020-01-01");
   await page.getByTestId("req-end").fill("2020-01-03");
   await page.getByTestId("req-reason").fill("בדיקה");
-  await page.getByTestId("req-submit").click();
-
-  await expect(page.getByTestId("req-error")).toBeVisible();
-  await expect(page.getByTestId("req-error")).not.toContainText("error");
+  // A past start date now disables submit client-side (see MyRequestsPage's
+  // onSubmit/isDateInPast check) rather than round-tripping to the server for
+  // a rejection -- confirm the button stays disabled instead of clicking it.
+  await expect(page.getByTestId("req-submit")).toBeDisabled();
 
   const futureStart = new Date();
   futureStart.setDate(futureStart.getDate() + 10);
@@ -27,5 +30,8 @@ test("soldier submits personal constraint, sees Hebrew error for past date @smok
   await page.getByTestId("req-reason").fill("חופשה אישית");
   await page.getByTestId("req-submit").click();
 
+  // The create form lives under the "new" tab; existing constraints
+  // (constraints-list) are under a separate "existing" tab.
+  await page.goto("/my-requests?tab=existing");
   await expect(page.getByTestId("constraints-list")).toBeVisible();
 });

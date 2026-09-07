@@ -75,7 +75,8 @@ export default function UnifiedNav() {
   const canViewTransparency = user?.can_view_transparency !== false;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
-  const [pendingCount, setPendingCount] = useState(0);
+  const [approvalsPendingCount, setApprovalsPendingCount] = useState(0);
+  const [hakpazaPendingCount, setHakpazaPendingCount] = useState(0);
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
   const { seenIds, seedSeenIds } = useSeenJobs();
   const ineligibleCountQuery = useQuery({
@@ -112,7 +113,11 @@ export default function UnifiedNav() {
         listPendingSwaps().then((rows) => rows.filter((swap) => isSwapActionableForUser(swap, user?.id, user?.role === "admin")).length).catch(() => 0),
         listPendingTransferRequests().then((rows) => rows.length).catch(() => 0),
       ]);
-      setPendingCount(c + e + f + enroll + hk + swaps + transfers);
+      // Hakpaza lives on its own page (/commander/hakpaza), not one of the
+      // ApprovalsPage tabs, so it must stay out of the "אישור בקשות" badge —
+      // otherwise that badge would count items the page itself never shows.
+      setApprovalsPendingCount(c + e + f + enroll + swaps + transfers);
+      setHakpazaPendingCount(hk);
     })();
   }, [canApprove, location.pathname, user?.id, user?.role]);
 
@@ -175,11 +180,16 @@ export default function UnifiedNav() {
       : []),
   ];
 
+  const commanderBadge = aggregateBadgeCounts([
+    { badge: approvalsPendingCount, badgeColor: "blue" },
+    { badge: hakpazaEnabled ? hakpazaPendingCount : 0, badgeColor: "blue" },
+  ]);
+
   const commanderTab: NavTab = {
     label: t("nav.commander"),
     icon: <Users size={20} />,
     onClick: () => setCommanderSheetOpen(true),
-    badge: pendingCount,
+    badge: commanderBadge.badge,
     badgeColor: "blue",
     testId: "nav-commander",
   };
@@ -201,10 +211,10 @@ export default function UnifiedNav() {
 
   const commanderItems = [
     { label: t("nav.team_hierarchy"), to: "/team", testId: "nav-team" },
-    { label: t("nav.approvals"), to: "/approvals", badge: pendingCount, badgeColor: "blue" as BadgeColor, testId: "nav-approvals" },
+    { label: t("nav.approvals"), to: "/approvals", badge: approvalsPendingCount, badgeColor: "blue" as BadgeColor, testId: "nav-approvals" },
     { label: t("nav.announcements"), to: "/announcements", testId: "nav-announcements" },
     ...(hakpazaEnabled
-      ? [{ label: "הקפצה פיקודית", to: "/commander/hakpaza", testId: "nav-hakpaza" }]
+      ? [{ label: "הקפצה פיקודית", to: "/commander/hakpaza", badge: hakpazaPendingCount, badgeColor: "blue" as BadgeColor, testId: "nav-hakpaza" }]
       : []),
   ];
 

@@ -325,7 +325,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
             <>
               <div>
                 <span className="text-sm block mb-0.5">{t("shifts.duty_type")}</span>
-                <Combobox items={dutyTypes} value={dtId} onChange={(v) => { setDtId(v); setFieldErrors((prev) => ({ ...prev, dtId: "" })); }} />
+                <Combobox items={dutyTypes} value={dtId} onChange={(v) => { setDtId(v); setFieldErrors((prev) => ({ ...prev, dtId: "" })); }} testId="shift-duty-type" />
                 {fieldErrors.dtId && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.dtId}</p>}
               </div>
               <div className="block text-sm">
@@ -335,7 +335,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
                     + {t("shifts.add_location")}
                   </button>
                 </div>
-                <Combobox items={locations} value={locId} onChange={(v) => { setLocId(v); setFieldErrors((prev) => ({ ...prev, locId: "" })); }} />
+                <Combobox items={locations} value={locId} onChange={(v) => { setLocId(v); setFieldErrors((prev) => ({ ...prev, locId: "" })); }} testId="shift-location" />
                 {fieldErrors.locId && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.locId}</p>}
               </div>
               <div className="flex gap-2">

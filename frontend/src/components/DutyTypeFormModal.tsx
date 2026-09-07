@@ -163,11 +163,11 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
             <div className="flex flex-wrap gap-2">
               <div className="flex-1 min-w-36">
                 <label htmlFor="duty-type-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.name")} *</label>
-                <input id="duty-type-name" required autoFocus value={name} onChange={e => setName(e.target.value)} className={inputCls} />
+                <input id="duty-type-name" data-testid="dt-name" required autoFocus value={name} onChange={e => setName(e.target.value)} className={inputCls} />
               </div>
               <div className="w-24">
                 <label htmlFor="duty-type-score" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.score_per_day")}</label>
-                <input id="duty-type-score" value={score} onChange={e => setScore(e.target.value)} className={inputCls} />
+                <input id="duty-type-score" data-testid="dt-score" value={score} onChange={e => setScore(e.target.value)} className={inputCls} />
               </div>
               <div className="w-20">
                 <label htmlFor="duty-type-reserve-ratio" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_ratio")}</label>
@@ -223,6 +223,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
             )}
             <select
               id="is-external-select"
+              data-testid="dt-is-external"
               required
               value={isExternal}
               onChange={e => setIsExternal(e.target.value as "" | "true" | "false")}
@@ -415,7 +416,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
                 ))}
               </div>
               <label className="flex items-center gap-2 text-xs mt-2 font-medium">
-                <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
+                <input type="checkbox" data-testid="dt-review-confirm" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
                 עברתי על הרשימה ומאשר את הבחירה
               </label>
             </div>
@@ -434,7 +435,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">
               {t("duty_config.cancel", "ביטול")}
             </button>
-            <button type="submit" disabled={saving || (!initial && !reviewConfirmed)}
+            <button type="submit" data-testid="dt-submit" disabled={saving || (!initial && !reviewConfirmed)}
               className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
               {initial ? t("duty_config.save", "שמור") : t("duty_config.add")}
             </button>

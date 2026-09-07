@@ -67,7 +67,7 @@ export default function ExemptionTypeFormModal({ onSaved, onClose }: Props) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="et-modal-name" className="block text-sm font-medium mb-1">שם *</label>
-            <input id="et-modal-name" required autoFocus value={name} onChange={e => setName(e.target.value)}
+            <input id="et-modal-name" data-testid="et-name" required autoFocus value={name} onChange={e => setName(e.target.value)}
               className="block w-full border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100" />
           </div>
 
@@ -98,7 +98,7 @@ export default function ExemptionTypeFormModal({ onSaved, onClose }: Props) {
               ))}
             </div>
             <label className="flex items-center gap-2 text-xs mt-2 font-medium">
-              <input type="checkbox" checked={dutyTypesReviewed} onChange={e => setDutyTypesReviewed(e.target.checked)} />
+              <input type="checkbox" data-testid="et-duty-types-reviewed" checked={dutyTypesReviewed} onChange={e => setDutyTypesReviewed(e.target.checked)} />
               עברתי על רשימת סוגי התורנות ומאשר את הבחירה
             </label>
           </div>
@@ -118,7 +118,7 @@ export default function ExemptionTypeFormModal({ onSaved, onClose }: Props) {
               ))}
             </div>
             <label className="flex items-center gap-2 text-xs mt-2 font-medium">
-              <input type="checkbox" checked={locationsReviewed} onChange={e => setLocationsReviewed(e.target.checked)} />
+              <input type="checkbox" data-testid="et-locations-reviewed" checked={locationsReviewed} onChange={e => setLocationsReviewed(e.target.checked)} />
               עברתי על רשימת המיקומים ומאשר את הבחירה
             </label>
           </div>
@@ -127,7 +127,7 @@ export default function ExemptionTypeFormModal({ onSaved, onClose }: Props) {
 
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">ביטול</button>
-            <button type="submit" disabled={!canSubmit} className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
+            <button type="submit" data-testid="et-submit" disabled={!canSubmit} className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
               הוסף
             </button>
           </div>

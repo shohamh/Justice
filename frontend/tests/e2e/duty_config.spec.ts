@@ -17,8 +17,11 @@ test("admin configures a duty type, location, and exemption type with mapping", 
   const etName = `פטור-${suffix}`;
 
   // Duty type.
+  await page.getByTestId("dt-add-btn").click();
   await page.getByTestId("dt-name").fill(dtName);
   await page.getByTestId("dt-score").fill("1.50");
+  await page.getByTestId("dt-is-external").selectOption("false");
+  await page.getByTestId("dt-review-confirm").check();
   await page.getByTestId("dt-submit").click();
   await expect(page.getByTestId(`dt-row-${dtName}`)).toBeVisible();
 
@@ -28,7 +31,10 @@ test("admin configures a duty type, location, and exemption type with mapping", 
   await expect(page.getByTestId(`loc-row-${locName}`)).toBeVisible();
 
   // Exemption type.
+  await page.getByTestId("et-open-modal").click();
   await page.getByTestId("et-name").fill(etName);
+  await page.getByTestId("et-duty-types-reviewed").check();
+  await page.getByTestId("et-locations-reviewed").check();
   await page.getByTestId("et-submit").click();
   await expect(page.getByTestId(`et-row-${etName}`)).toBeVisible();
 
