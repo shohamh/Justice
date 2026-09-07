@@ -10,6 +10,8 @@ test.describe("login", () => {
     await page.getByTestId("personal-number-input").fill("1000001");
     await page.getByTestId("password-input").fill("wrong-password");
     await page.getByTestId("login-submit").click();
-    await expect(page.getByTestId("login-error")).toHaveText("מספר אישי או סיסמה שגויים");
+    // The error also appends an "attempts remaining" hint (see LoginPage.tsx),
+    // so assert containment rather than an exact match.
+    await expect(page.getByTestId("login-error")).toContainText("מספר אישי או סיסמה שגויים");
   });
 });

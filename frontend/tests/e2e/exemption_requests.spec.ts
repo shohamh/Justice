@@ -12,13 +12,18 @@ test("admin creates exemption type, soldier requests exemption, admin approves",
   await navItem(page, "nav-planning").click();
   await page.getByTestId("nav-duty-config").click();
   await expect(page).toHaveURL(/\/planning\/config/);
+  await page.getByTestId("et-open-modal").click();
   await page.getByTestId("et-name").fill(etName);
+  await page.getByTestId("et-duty-types-reviewed").check();
+  await page.getByTestId("et-locations-reviewed").check();
   await page.getByTestId("et-submit").click();
   await expect(page.getByTestId(`et-row-${etName}`)).toBeVisible();
 
   await navItem(page, "nav-my-requests").click();
   await expect(page).toHaveURL(/\/my-requests$/);
 
+  await page.getByTestId("er-form-toggle").click();
+  await expect(page.getByTestId("er-form-card")).toBeVisible();
   await page.getByTestId("er-type").click();
   await page.getByTestId("er-type").fill(etName);
   await page.getByRole("option", { name: etName }).click();
@@ -32,6 +37,9 @@ test("admin creates exemption type, soldier requests exemption, admin approves",
   await page.getByTestId("er-reason").fill("בקשת פטור בדיקה");
   await page.getByTestId("er-submit").click();
 
+  // The create form lives under the "new" tab; existing requests (er-list)
+  // are under a separate "existing" tab, switched via ?tab=existing.
+  await page.goto("/my-requests?tab=existing");
   await expect(page.getByTestId("er-list")).toBeVisible();
 
   await navItem(page, "nav-commander").click();
