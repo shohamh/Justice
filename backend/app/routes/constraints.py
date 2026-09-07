@@ -472,6 +472,37 @@ def pending_list(
     return _attach_names(session, svc.list_pending_approvals(session, node_ids=roots), user)
 
 
+def _actionable_pending_count(session: Session, user: Soldier, rows: list[PersonalConstraint]) -> int:
+    """Count only rows this viewer could actually approve — mirrors _attach_names'
+    can_approve computation so the nav badge matches the approvals page total
+    instead of every pending row visible in the viewer's scope."""
+    if not rows:
+        return 0
+    soldier_ids = {c.soldier_id for c in rows}
+    soldiers_by_id = {
+        s.id: s
+        for s in session.execute(select(Soldier).where(Soldier.id.in_(soldier_ids))).scalars().all()
+    }
+    node_ids = {s.hierarchy_node_id for s in soldiers_by_id.values() if s.hierarchy_node_id}
+    nodes_by_id = (
+        {
+            n.id: n
+            for n in session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(node_ids)))
+            .scalars()
+            .all()
+        }
+        if node_ids
+        else {}
+    )
+    count = 0
+    for c in rows:
+        s = soldiers_by_id.get(c.soldier_id)
+        target_node = nodes_by_id.get(s.hierarchy_node_id) if s and s.hierarchy_node_id else None
+        if _can_approve_constraint(session, user, c.soldier_id, target_node, c.status):
+            count += 1
+    return count
+
+
 @router.get("/constraints/pending/count", response_model=PendingCountOut)
 def pending_count(
     session: Session = Depends(get_session),
@@ -481,21 +512,20 @@ def pending_count(
     if user.role != "admin" and not roots:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     if user.role == "admin":
-        cnt = len(
-            list(
-                session.execute(
-                    select(PersonalConstraint).where(
-                        PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager"))
-                    )
+        rows = list(
+            session.execute(
+                select(PersonalConstraint).where(
+                    PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager"))
                 )
-                .scalars()
-                .all()
             )
+            .scalars()
+            .all()
         )
-        return PendingCountOut(count=cnt)
+        return PendingCountOut(count=_actionable_pending_count(session, user, rows))
     if not roots:
         return PendingCountOut(count=0)
-    return PendingCountOut(count=svc.pending_approval_count(session, node_ids=roots))
+    rows = svc.list_pending_approvals(session, node_ids=roots)
+    return PendingCountOut(count=_actionable_pending_count(session, user, rows))
 
 
 @router.post("/constraints/{constraint_id}/approve", response_model=ConstraintOut)
