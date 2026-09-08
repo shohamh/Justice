@@ -179,6 +179,18 @@ def test_duty_manager_without_commander_relationship_cannot_approve_commander_co
     )
     assert response.status_code == 403, response.text
 
+    root.commander_id = duty_manager.id
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/constraints/{constraint.id}/approve",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "pending_duty_manager"
+
+
 def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: Session):
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)

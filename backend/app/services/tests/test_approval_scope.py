@@ -92,4 +92,9 @@ def test_exemption_approval_flags_require_command_relationship_for_commander_ste
     admin_session.commit()
 
     assert exemption_approval_flags(admin_session, duty_manager, root) == (False, True)
+
+    root.commander_id = duty_manager.id
+    admin_session.commit()
+
+    assert exemption_approval_flags(admin_session, duty_manager, root) == (True, True)
     assert exemption_approval_flags(admin_session, commander, commander_node) == (True, False)

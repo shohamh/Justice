@@ -768,6 +768,52 @@ def test_duty_manager_without_commander_relationship_cannot_approve_commander_st
 
     assert response.status_code == 403, response.text
 
+    root.commander_id = duty_manager.id
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{request.id}/approve-commander",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "pending_duty_manager"
+
+
+def test_duty_manager_can_approve_duty_manager_step(
+    client: TestClient, admin_session: Session
+):
+    root = create_node(admin_session, level="department", name="ex-rbac-dm-stage-root")
+    target = create_soldier(
+        admin_session, personal_number="ex-rbac-dm-stage-target", hierarchy_node_id=root.id
+    )
+    duty_manager = create_soldier(
+        admin_session, personal_number="ex-rbac-dm-stage-actor", role="duty_manager"
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=root.id)
+    )
+    exemption_type = _et(admin_session, "ex-rbac-dm-stage-type")
+    request = ExemptionRequest(
+        soldier_id=target.id,
+        exemption_type_id=exemption_type.id,
+        start_date=date(2026, 1, 1),
+        reason="duty-manager stage authorization regression",
+        status="pending_duty_manager",
+    )
+    admin_session.add(request)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{request.id}/approve-duty-manager",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "approved"
+
 
 def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):
     from app.db.models import ExemptionType
