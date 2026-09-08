@@ -473,6 +473,35 @@ describe("BugReportsContent", () => {
     });
   });
 
+  it("renders reported-at and updated-at as separate columns, sorted by updated-at descending by default", async () => {
+    const reportA = {
+      ...SAMPLE_REPORT,
+      id: "r-a",
+      description: "report a",
+      created_at: "2026-09-01T10:00:00Z",
+      updated_at: "2026-09-01T10:00:00Z",
+    };
+    const reportB = {
+      ...SAMPLE_REPORT,
+      id: "r-b",
+      description: "report b",
+      created_at: "2026-09-02T10:00:00Z",
+      updated_at: "2026-09-05T10:00:00Z",
+    };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [reportA, reportB],
+      total: 2,
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByText("report a")).toBeInTheDocument());
+
+    expect(screen.getByText("תאריך דיווח")).toBeInTheDocument();
+    expect(screen.getByText("עדכון אחרון")).toBeInTheDocument();
+
+    const rows = screen.getAllByTestId(/^bug-report-row-/);
+    expect(rows[0]).toHaveAttribute("data-testid", "bug-report-row-r-b"); // most recently updated first
+  });
+
   it("sorts rows by date when the date column header is clicked", async () => {
     const olderReport = {
       ...SAMPLE_REPORT,
@@ -499,10 +528,10 @@ describe("BugReportsContent", () => {
     // Initial (unsorted/server) order: older, then newer.
     expect(getDescriptionOrder()[0]).toContain("older report");
 
-    fireEvent.click(screen.getByText("תאריך"));
+    fireEvent.click(screen.getByText("תאריך דיווח"));
     await waitFor(() => expect(getDescriptionOrder()[0]).toContain("older report"));
 
-    fireEvent.click(screen.getByText("תאריך"));
+    fireEvent.click(screen.getByText("תאריך דיווח"));
     await waitFor(() => expect(getDescriptionOrder()[0]).toContain("newer report"));
   });
 

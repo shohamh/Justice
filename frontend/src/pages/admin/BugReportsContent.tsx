@@ -223,9 +223,15 @@ export function BugReportsContent() {
     },
     {
       id: "created_at",
-      header: "תאריך",
+      header: t("bug_reports.reported_at"),
       cell: (report) => new Date(report.created_at).toLocaleString("he-IL"),
       sortValue: (report) => report.created_at,
+    },
+    {
+      id: "updated_at",
+      header: t("bug_reports.updated_at"),
+      cell: (report) => new Date(report.updated_at).toLocaleString("he-IL"),
+      sortValue: (report) => report.updated_at,
     },
     {
       id: "reporter",
@@ -403,6 +409,7 @@ export function BugReportsContent() {
         <DataTable<BugReportSummary>
           columns={bugReportColumns}
           data={items}
+          defaultSort={[{ id: "updated_at", desc: true }]}
           rowTestId={(report) => `bug-report-row-${report.id}`}
           rowClassName={(report) => `border-b dark:border-gray-700 ${STATUS_ROW_BG[report.status]}`}
           expandable={{

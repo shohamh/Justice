@@ -188,6 +188,8 @@
     "export_scope_all_active": "כל התקלות הפעילות",
     "export_scope_filtered": "לפי הסינון הנוכחי",
     "export_error": "שגיאה בייצוא הדיווחים",
+    "reported_at": "תאריך דיווח",
+    "updated_at": "עדכון אחרון",
     "comment_count": "תגובות",
     "last_comment_at": "תגובה אחרונה",
     "no_comments": "אין תגובות עדיין",
