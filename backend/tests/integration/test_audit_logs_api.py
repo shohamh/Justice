@@ -62,7 +62,7 @@ def test_commander_in_subtree_sees_exemption_history(client: TestClient, admin_s
     grant = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(cmd),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "רפואי"},
     )
     assert grant.status_code == 201, grant.text
     exemption_id = grant.json()["id"]
