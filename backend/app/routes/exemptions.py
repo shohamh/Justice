@@ -5,7 +5,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -63,6 +63,14 @@ class GrantRequest(BaseModel):
     end_date: date | None = None
     reason: str = Field(min_length=1, max_length=1000)
     is_medical: bool = False
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason must not be empty")
+        return value
 
 
 class ExemptionFileOut(BaseModel):
