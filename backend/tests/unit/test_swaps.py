@@ -909,3 +909,23 @@ def test_create_request_rejects_empty_target_list(admin_session):
         assert False, "expected SwapError"
     except svc.SwapError as exc:
         assert str(exc) == "no_targets_specified"
+
+
+def test_israel_now_naive_is_israel_local_time_not_utc():
+    """Regression: expire_started_swaps/create_request used to default `now`
+    to datetime.utcnow() and compare it against Israel wall-clock
+    start_date/start_time values, a 2-3 hour skew (Israel is UTC+2/UTC+3).
+    The default must use Israel local time instead — this pins the helper
+    both functions now default to."""
+    from zoneinfo import ZoneInfo
+
+    israel_naive = svc._israel_now_naive()
+    utc_naive = datetime.utcnow()
+    expected = datetime.now(ZoneInfo("Asia/Jerusalem")).replace(tzinfo=None)
+
+    # Within a couple of seconds of the real Israel-local wall clock.
+    assert abs((israel_naive - expected).total_seconds()) < 5
+    # And meaningfully offset from a naive UTC clock (Israel is UTC+2 winter /
+    # UTC+3 summer) — never equal to it, which is what the bug produced.
+    offset_hours = (israel_naive - utc_naive).total_seconds() / 3600
+    assert 1.5 < offset_hours < 3.5
