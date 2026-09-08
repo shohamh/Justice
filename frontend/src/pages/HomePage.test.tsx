@@ -179,6 +179,19 @@ describe("HomePage - required scoring data load errors", () => {
     expect(screen.queryByText("home.score_load_error")).not.toBeInTheDocument();
   });
 
+  it("does not fetch scoring data and shows no generic error for a user without transparency permission", async () => {
+    Object.assign(mockUser, { can_view_transparency: false });
+
+    renderHome();
+
+    await screen.findByText("home.welcome");
+    expect(screen.queryByText("home.score_load_error")).not.toBeInTheDocument();
+    expect(scoringApi.getTransparency).not.toHaveBeenCalled();
+    expect(scoringApi.getBreakdown).not.toHaveBeenCalled();
+    expect(scoringApi.getBurdenShare).not.toHaveBeenCalled();
+    expect(scoringApi.getBurdenShareBreakdown).not.toHaveBeenCalled();
+  });
+
   it("shows one highlighted command calendar with a visible scope label for management users", async () => {
     Object.assign(mockUser, {
       role: "commander",
