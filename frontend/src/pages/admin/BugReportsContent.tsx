@@ -68,6 +68,13 @@ export function BugReportsContent() {
   const [importError, setImportError] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  const translateImportDetail = (detail: string | null) =>
+    translateApiError(
+      { response: { data: { detail } } },
+      t,
+      "שגיאה בייבוא הקובץ",
+    );
+
   // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
   // accumulated without re-registering the effect on every fetch.
   const screenshotUrlByIdRef = useRef(screenshotUrlById);
@@ -341,7 +348,7 @@ export function BugReportsContent() {
                 (
                 {importSummary.results
                   .filter((r) => r.status !== "imported")
-                  .map((r) => `${r.filename}: ${r.status === "already_exists" ? "כבר קיים" : r.detail ?? "שגיאה"}`)
+                  .map((r) => `${r.filename}: ${r.status === "already_exists" ? "כבר קיים" : translateImportDetail(r.detail)}`)
                   .join(", ")}
                 )
               </>
@@ -403,7 +410,9 @@ export function BugReportsContent() {
         <p className="text-sm text-gray-500 p-4" data-testid="bug-reports-loading">טוען...</p>
       )}
       {query.isError && (
-        <p className="text-sm text-red-500 p-4" data-testid="bug-reports-error">שגיאה בטעינת הדיווחים</p>
+        <p className="text-sm text-red-500 p-4" data-testid="bug-reports-error" role="alert">
+          {translateApiError(query.error, t, "שגיאה בטעינת הדיווחים")}
+        </p>
       )}
       {!query.isLoading && !query.isError && (
         <DataTable<BugReportSummary>

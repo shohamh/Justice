@@ -152,13 +152,15 @@ describe("BugReportsContent", () => {
   });
 
   it("shows an inline error and does not crash when the status update fails", async () => {
-    vi.mocked(bugReportsApi.updateBugReportStatus).mockRejectedValue(new Error("network error"));
+    vi.mocked(bugReportsApi.updateBugReportStatus).mockRejectedValue({
+      response: { status: 404, data: { detail: "bug_report_not_found" } },
+    });
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
 
-    await waitFor(() => expect(screen.getByTestId("bug-report-status-error-r1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-error-r1")).toHaveTextContent("דיווח התקלה לא נמצא"));
   });
 
   it("shows a loading state while the report list is fetching", async () => {
@@ -168,9 +170,43 @@ describe("BugReportsContent", () => {
   });
 
   it("shows an error state when the report list fails to load", async () => {
-    vi.mocked(bugReportsApi.listBugReports).mockRejectedValue(new Error("network error"));
+    vi.mocked(bugReportsApi.listBugReports).mockRejectedValue({
+      response: { status: 403, data: { detail: "forbidden" } },
+    });
     renderWithProviders(<BugReportsContent />);
-    await waitFor(() => expect(screen.getByTestId("bug-reports-error")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("bug-reports-error")).toHaveTextContent("אין הרשאה לבצע פעולה זו"));
+    expect(screen.queryByText("שגיאה בטעינת הדיווחים")).not.toBeInTheDocument();
+  });
+
+  it("shows the translated backend detail when screenshot loading fails", async () => {
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [{ ...SAMPLE_REPORT, has_screenshot: true }],
+      total: 1,
+    });
+    vi.mocked(bugReportsApi.fetchBugReportScreenshot).mockRejectedValue({
+      response: { status: 404, data: { detail: "bug_report_screenshot_not_found" } },
+    });
+    renderWithProviders(<BugReportsContent />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "הרחב" }));
+
+    expect(await screen.findByTestId("bug-report-screenshot-error-r1")).toHaveTextContent(
+      "צילום המסך של דיווח התקלה לא נמצא",
+    );
+  });
+
+  it("shows the translated backend detail when JSON loading fails", async () => {
+    vi.mocked(bugReportsApi.getBugReportJson).mockRejectedValue({
+      response: { status: 404, data: { detail: "bug_report_json_not_found" } },
+    });
+    renderWithProviders(<BugReportsContent />);
+    fireEvent.click(await screen.findByRole("button", { name: "הרחב" }));
+
+    fireEvent.click(screen.getByTestId("bug-report-view-json-r1"));
+
+    expect(await screen.findByTestId("bug-report-json-error-r1")).toHaveTextContent(
+      "קובץ ה-JSON של דיווח התקלה לא נמצא",
+    );
   });
 
   it("shows the route and user snapshot fields when a row is expanded", async () => {
@@ -253,6 +289,20 @@ describe("BugReportsContent", () => {
     await waitFor(() => expect(bugReportsApi.importBugReports).toHaveBeenCalledWith([fileA, fileB]));
     await waitFor(() => expect(screen.getByTestId("bug-report-import-summary")).toHaveTextContent("יובאו 1 מתוך 2"));
     expect(bugReportsApi.listBugReports).toHaveBeenCalledTimes(2);
+  });
+
+  it("translates per-file import error detail instead of showing a generic error", async () => {
+    vi.mocked(bugReportsApi.importBugReports).mockResolvedValue({
+      results: [{ filename: "broken.json", status: "error", detail: "invalid_json" }],
+    });
+    renderWithProviders(<BugReportsContent />);
+    const file = new File(["not-json"], "broken.json", { type: "application/json" });
+
+    fireEvent.change(await screen.findByTestId("bug-report-import-input"), { target: { files: [file] } });
+
+    expect(await screen.findByTestId("bug-report-import-summary")).toHaveTextContent(
+      "broken.json: הקובץ אינו JSON תקין",
+    );
   });
 
   it("downloads all active bug reports by default using a temporary object URL", async () => {
@@ -536,13 +586,17 @@ describe("BugReportsContent", () => {
   });
 
   it("shows an inline error when the import request itself fails", async () => {
-    vi.mocked(bugReportsApi.importBugReports).mockRejectedValue(new Error("network error"));
+    vi.mocked(bugReportsApi.importBugReports).mockRejectedValue({
+      response: { status: 400, data: { detail: "too_many_files" } },
+    });
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-import-input")).toBeInTheDocument());
 
     const file = new File(["{}"], "a.json", { type: "application/json" });
     fireEvent.change(screen.getByTestId("bug-report-import-input"), { target: { files: [file] } });
 
-    await waitFor(() => expect(screen.getByTestId("bug-report-import-error")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("bug-report-import-error")).toHaveTextContent(
+      "ניתן לייבא עד 50 קבצים בכל פעם",
+    ));
   });
 });
