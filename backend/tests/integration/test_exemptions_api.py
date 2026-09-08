@@ -70,7 +70,7 @@ def test_soldier_exemption_files_are_scoped_and_validated(client: TestClient, ad
     grant = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     assert grant.status_code == 201, grant.text
     exemption_id = grant.json()["id"]
@@ -132,6 +132,7 @@ def test_medical_exemption_files_require_medical_document_visibility(
             "exemption_type_id": str(et.id),
             "start_date": "2026-01-01",
             "is_medical": True,
+            "reason": "בדיקה",
         },
     )
     assert grant.status_code == 201, grant.text
@@ -196,7 +197,7 @@ def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: S
     r = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(cmd),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     assert r.status_code == 403
 
@@ -210,7 +211,7 @@ def test_soldier_reads_own_but_cannot_grant(client: TestClient, admin_session: S
     r2 = client.post(
         f"/api/soldiers/{s.id}/exemptions",
         headers=auth_headers(s),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     assert r2.status_code == 403
 
@@ -225,6 +226,7 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
         json={
             "exemption_type_id": str(et.id),
             "start_date": (date.today() - timedelta(days=2)).isoformat(),
+            "reason": "בדיקה",
         },
     ).json()
     r = client.request(
@@ -246,7 +248,7 @@ def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Sess
     ex = client.post(
         f"/api/soldiers/{a.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     ).json()
     r = client.request(
         "DELETE",
@@ -417,7 +419,7 @@ def test_detail_endpoint_404_for_mismatched_soldier(client: TestClient, admin_se
     r = client.post(
         f"/api/soldiers/{s1.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     exemption_id = r.json()["id"]
     r2 = client.get(f"/api/soldiers/{s2.id}/exemptions/{exemption_id}", headers=auth_headers(admin))
@@ -437,7 +439,7 @@ def test_detail_endpoint_403_when_not_authorized(client: TestClient, admin_sessi
     r = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     exemption_id = r.json()["id"]
 
@@ -456,6 +458,7 @@ def test_revoke_requires_reason_body(client: TestClient, admin_session: Session)
         json={
             "exemption_type_id": str(et.id),
             "start_date": (date.today() - timedelta(days=1)).isoformat(),
+            "reason": "בדיקה",
         },
     ).json()
 
