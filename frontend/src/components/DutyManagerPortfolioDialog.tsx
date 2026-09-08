@@ -5,6 +5,7 @@ import { assignDmScope, DmScopeEntry, listDmScope, removeDmScope } from "../api/
 import Combobox from "./Combobox";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { translateApiError } from "../utils/translateApiError";
 import MessageDialog from "./MessageDialog";
 
 interface Props {
@@ -45,8 +46,8 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
       setAddNodeId("");
       await refresh();
       onChanged();
-    } catch {
-      setMessage(t("errors.generic", "שגיאה"));
+    } catch (err: unknown) {
+      setMessage(translateApiError(err, t));
     } finally {
       setLoading(false);
     }
@@ -57,8 +58,8 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
       await removeDmScope(entryId);
       await refresh();
       onChanged();
-    } catch {
-      setMessage(t("errors.generic", "שגיאה"));
+    } catch (err: unknown) {
+      setMessage(translateApiError(err, t));
     }
   }
 

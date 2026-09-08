@@ -191,7 +191,21 @@ export async function getBugReportJson(id: string): Promise<unknown> {
 }
 
 export async function fetchBugReportScreenshot(id: string): Promise<Blob> {
-  return (await api.get(`/admin/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
+  try {
+    return (await api.get(`/admin/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "response" in err) {
+      const response = (err as { response?: { data?: unknown } }).response;
+      if (response?.data instanceof Blob) {
+        try {
+          response.data = JSON.parse(await response.data.text());
+        } catch {
+          // Preserve the original Blob when the error response is not JSON.
+        }
+      }
+    }
+    throw err;
+  }
 }
 
 export async function fetchMyBugReportScreenshot(id: string): Promise<Blob> {

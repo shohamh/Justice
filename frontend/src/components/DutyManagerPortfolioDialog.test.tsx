@@ -3,7 +3,12 @@ import DutyManagerPortfolioDialog from "./DutyManagerPortfolioDialog";
 import type { NodeDTO } from "../api/hierarchy";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => ({
+      "errors.forbidden": "אין הרשאה לבצע פעולה זו",
+      "errors.generic": "שגיאה",
+    }[key] ?? key),
+  }),
 }));
 
 const mockList = vi.fn();
@@ -86,4 +91,31 @@ test("does not offer a node already in the soldier's portfolio in the add combob
   // selectable option in the combobox dropdown.
   const options = screen.getAllByText("מרכז א");
   expect(options.length).toBe(1);
+});
+
+test("shows the translated backend detail when assigning fails", async () => {
+  mockList.mockResolvedValue([]);
+  mockAssign.mockRejectedValue({ response: { status: 403, data: { detail: "forbidden" } } });
+  render(
+    <DutyManagerPortfolioDialog soldierId="s1" soldierName="דני כהן" nodes={nodes} onClose={vi.fn()} onChanged={vi.fn()} />
+  );
+  await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+  fireEvent.focus(screen.getByTestId("portfolio-add-node"));
+  const option = await screen.findByRole("option", { name: "מרכז א" });
+  fireEvent.pointerUp(option.querySelector("button")!);
+  await waitFor(() => expect(screen.getByTestId("portfolio-add-submit")).toBeEnabled());
+  fireEvent.click(screen.getByTestId("portfolio-add-submit"));
+
+  expect(await screen.findByText("אין הרשאה לבצע פעולה זו")).toBeInTheDocument();
+});
+
+test("shows the translated backend detail when removing fails", async () => {
+  mockRemove.mockRejectedValue({ response: { status: 403, data: { detail: "forbidden" } } });
+  render(
+    <DutyManagerPortfolioDialog soldierId="s1" soldierName="דני כהן" nodes={nodes} onClose={vi.fn()} onChanged={vi.fn()} />
+  );
+  fireEvent.click(await screen.findByTestId("remove-portfolio-scope-1"));
+
+  expect(await screen.findByText("אין הרשאה לבצע פעולה זו")).toBeInTheDocument();
 });

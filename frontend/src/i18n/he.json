@@ -596,7 +596,7 @@
     "password_too_short": "הסיסמה חייבת להכיל לפחות 8 תווים, אות, ספרה וסימן",
     "date_range_invalid": "טווח תאריכים לא תקין",
     "exemption_not_found": "הפטור לא נמצא",
-    "already_exists": "כבר קיים במערכת",
+    "already_exists": "כבר קיים",
     "principal_lacks_role": "החייל שנבחר אינו מפקד/אחראי תורנויות כרגע",
     "cannot_deputize_a_deputy": "לא ניתן למנות ממלא מקום עבור מי שהוא עצמו כרגע ממלא מקום",
     "cannot_deputize_self": "לא ניתן למנות את עצמך כממלא מקום",

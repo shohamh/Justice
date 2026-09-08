@@ -5,6 +5,7 @@ import { NodeDTO } from "../api/hierarchy";
 import { assignDmScope, removeDmScope } from "../api/dmScope";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { translateApiError } from "../utils/translateApiError";
 import MessageDialog from "./MessageDialog";
 
 interface Props {
@@ -53,8 +54,8 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
     try {
       await assignDmScope(s.id, node.id);
       onChanged();
-    } catch {
-      setMessage(t("errors.generic", "שגיאה"));
+    } catch (err: unknown) {
+      setMessage(translateApiError(err, t));
     }
   }
 
@@ -62,8 +63,8 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
     try {
       await removeDmScope(scopeId);
       onChanged();
-    } catch {
-      setMessage(t("errors.generic", "שגיאה"));
+    } catch (err: unknown) {
+      setMessage(translateApiError(err, t));
     }
   }
 

@@ -348,7 +348,7 @@ export function BugReportsContent() {
                 (
                 {importSummary.results
                   .filter((r) => r.status !== "imported")
-                  .map((r) => `${r.filename}: ${r.status === "already_exists" ? "כבר קיים" : translateImportDetail(r.detail)}`)
+                  .map((r) => `${r.filename}: ${translateImportDetail(r.detail)}`)
                   .join(", ")}
                 )
               </>

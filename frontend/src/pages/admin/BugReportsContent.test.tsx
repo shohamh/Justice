@@ -178,23 +178,6 @@ describe("BugReportsContent", () => {
     expect(screen.queryByText("שגיאה בטעינת הדיווחים")).not.toBeInTheDocument();
   });
 
-  it("shows the translated backend detail when screenshot loading fails", async () => {
-    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
-      items: [{ ...SAMPLE_REPORT, has_screenshot: true }],
-      total: 1,
-    });
-    vi.mocked(bugReportsApi.fetchBugReportScreenshot).mockRejectedValue({
-      response: { status: 404, data: { detail: "bug_report_screenshot_not_found" } },
-    });
-    renderWithProviders(<BugReportsContent />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "הרחב" }));
-
-    expect(await screen.findByTestId("bug-report-screenshot-error-r1")).toHaveTextContent(
-      "צילום המסך של דיווח התקלה לא נמצא",
-    );
-  });
-
   it("shows the translated backend detail when JSON loading fails", async () => {
     vi.mocked(bugReportsApi.getBugReportJson).mockRejectedValue({
       response: { status: 404, data: { detail: "bug_report_json_not_found" } },
@@ -288,6 +271,7 @@ describe("BugReportsContent", () => {
 
     await waitFor(() => expect(bugReportsApi.importBugReports).toHaveBeenCalledWith([fileA, fileB]));
     await waitFor(() => expect(screen.getByTestId("bug-report-import-summary")).toHaveTextContent("יובאו 1 מתוך 2"));
+    expect(screen.getByTestId("bug-report-import-summary")).toHaveTextContent("b.json: כבר קיים");
     expect(bugReportsApi.listBugReports).toHaveBeenCalledTimes(2);
   });
 

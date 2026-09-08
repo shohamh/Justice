@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import i18n from "../i18n";
+import { translateApiError } from "../utils/translateApiError";
 
 const mockGet = vi.fn();
 
@@ -59,6 +61,26 @@ describe("bugReports api", () => {
       blob,
       filename: "bug-reports-2026-08-14-1015.zip",
     });
+  });
+
+  it("normalizes a JSON Blob error from the screenshot endpoint before rethrowing it", async () => {
+    const error = {
+      response: {
+        status: 404,
+        data: new Blob(
+          [JSON.stringify({ detail: "bug_report_screenshot_not_found" })],
+          { type: "application/json" },
+        ),
+      },
+    };
+    mockGet.mockRejectedValue(error);
+
+    const { fetchBugReportScreenshot } = await import("./bugReports");
+
+    await expect(fetchBugReportScreenshot("report-1")).rejects.toBe(error);
+    expect(translateApiError(error, i18n.t.bind(i18n), "fallback")).toBe(
+      "צילום המסך של דיווח התקלה לא נמצא",
+    );
   });
 });
 
