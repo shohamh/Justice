@@ -596,6 +596,7 @@
     "start_date_required": "יש למלא תאריך התחלה כאשר מוזן תאריך סיום",
     "password_policy": "הסיסמה חייבת להכיל לפחות 8 תווים, אות, ספרה וסימן",
     "insufficient_rank_for_exemption_approval": "נדרש דרג רסן ומעלה לאישור פטורים",
+    "duty_already_started": "לא ניתן לפרסם בקשת החלפה על תורנות שכבר התחילה או הסתיימה",
     "name_taken": "השם כבר קיים במערכת",
     "exemption_type_in_use": "סוג הפטור בשימוש ולא ניתן למחוק אותו",
     "duty_type_not_found": "סוג התורנות לא נמצא",

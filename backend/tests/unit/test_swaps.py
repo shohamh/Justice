@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from app.db.models import DutyAssignment, DutyDayOverride, DutyLocation, DutyType, Notification, NotificationType, PersonalConstraint, Soldier, SwapCandidate, SwapRequest, SystemSetting
@@ -6,6 +6,13 @@ from sqlalchemy import select
 from app.services import swaps as svc
 from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_soldier
+
+# Duty dates for fixtures used with create_request must stay in the future — since
+# create_request now rejects a duty that's already started/past (see
+# test_create_request_rejects_duty_already_started), fixed calendar dates like
+# 2026-06-10 will eventually be in the past relative to whenever the suite runs.
+_FUTURE_START = date.today() + timedelta(days=30)
+_FUTURE_END = date.today() + timedelta(days=31)
 
 
 def _seed(session):
@@ -19,7 +26,7 @@ def _seed(session):
     session.flush()
     assignment = DutyAssignment(
         soldier_id=a.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+        start_date=_FUTURE_START, end_date=_FUTURE_END, status="published",
     )
     session.add(assignment)
     session.flush()
@@ -132,7 +139,7 @@ def _seed_with_commander(session):
 
     assignment = DutyAssignment(
         soldier_id=a.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+        start_date=_FUTURE_START, end_date=_FUTURE_END, status="published",
     )
     session.add(assignment)
     session.flush()
@@ -319,8 +326,9 @@ def test_expire_started_swaps_cancels_request_whose_duty_already_started(admin_s
     svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
     admin_session.flush()
 
-    # assignment.start_date is 2026-06-10 (see _seed) — "today" past that means the duty started.
-    count = svc.expire_started_swaps(admin_session, today=date(2026, 6, 10))
+    # assignment.start_date is _FUTURE_START at the default start_time "00:00" (see
+    # _seed_with_commander) — a "now" at or after that instant means the duty started.
+    count = svc.expire_started_swaps(admin_session, now=datetime.combine(_FUTURE_START, time(0, 0)))
     admin_session.flush()
 
     assert count == 1
@@ -342,8 +350,8 @@ def test_expire_started_swaps_leaves_future_duty_requests_open(admin_session):
     )
     admin_session.flush()
 
-    # "today" before assignment.start_date (2026-06-10) — duty hasn't started yet.
-    count = svc.expire_started_swaps(admin_session, today=date(2026, 6, 1))
+    # "now" before assignment.start_date (_FUTURE_START) — duty hasn't started yet.
+    count = svc.expire_started_swaps(admin_session, now=datetime.combine(_FUTURE_START - timedelta(days=9), time(0, 0)))
     admin_session.flush()
 
     assert count == 0
@@ -360,8 +368,86 @@ def test_expire_started_swaps_ignores_already_cancelled_requests(admin_session):
     svc.cancel_request(admin_session, request_id=req.id, actor_id=a.id)
     admin_session.flush()
 
-    count = svc.expire_started_swaps(admin_session, today=date(2026, 6, 10))
+    count = svc.expire_started_swaps(admin_session, now=datetime.combine(_FUTURE_START, time(0, 0)))
     assert count == 0
+
+
+def test_expire_started_swaps_keeps_swap_open_before_duty_start_time(admin_session):
+    dt = DutyType(name="dt_evening_swap", score_per_day=1)
+    loc = DutyLocation(name="loc_evening_swap")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number="swapexp001")
+    other = create_soldier(admin_session, personal_number="swapexp001b")
+    assignment = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=_FUTURE_START, end_date=_FUTURE_START, start_time="20:00", end_time="23:59",
+        status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=soldier.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    count = svc.expire_started_swaps(admin_session, now=datetime.combine(_FUTURE_START, time(17, 0)))
+
+    admin_session.refresh(req)
+    assert count == 0
+    assert req.status == "open"
+
+
+def test_expire_started_swaps_cancels_once_duty_start_time_passes(admin_session):
+    dt = DutyType(name="dt_evening_swap2", score_per_day=1)
+    loc = DutyLocation(name="loc_evening_swap2")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number="swapexp002")
+    assignment = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=_FUTURE_START, end_date=_FUTURE_START, start_time="20:00", end_time="23:59",
+        status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=soldier.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    count = svc.expire_started_swaps(admin_session, now=datetime.combine(_FUTURE_START, time(20, 1)))
+
+    admin_session.refresh(req)
+    assert count == 1
+    assert req.status == "cancelled"
+
+
+def test_create_request_rejects_duty_already_started(admin_session):
+    dt = DutyType(name="dt_started_swap", score_per_day=1)
+    loc = DutyLocation(name="loc_started_swap")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number="swapexp003")
+    assignment = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=_FUTURE_START, end_date=_FUTURE_START, start_time="00:00", end_time="23:59",
+        status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+
+    try:
+        svc.create_request(
+            admin_session, requesting_soldier_id=soldier.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, reason=None, open_to_marketplace=True,
+            now=datetime.combine(_FUTURE_START, time(12, 0)),
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "duty_already_started"
 
 
 def _reserve_assignment(session, soldier_id, dt_id, loc_id, start, end, status="published"):
@@ -539,7 +625,7 @@ def _seed_cross_branch(session):
 
     assignment = DutyAssignment(
         soldier_id=requester.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+        start_date=_FUTURE_START, end_date=_FUTURE_END, status="published",
     )
     session.add(assignment)
     session.flush()
@@ -700,7 +786,7 @@ def test_take_free_blocked_by_manager_approval_gate_when_owner_has_commander(adm
     admin_session.flush()
     assignment = DutyAssignment(
         soldier_id=a.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+        start_date=_FUTURE_START, end_date=_FUTURE_END, status="published",
     )
     admin_session.add(assignment)
     admin_session.flush()
@@ -726,7 +812,7 @@ def _seed_multi_target(session, n=3):
     session.flush()
     assignment = DutyAssignment(
         soldier_id=requester.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+        start_date=_FUTURE_START, end_date=_FUTURE_END, status="published",
     )
     session.add(assignment)
     session.flush()

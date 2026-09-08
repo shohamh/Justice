@@ -439,4 +439,56 @@ def test_submit_request_allows_open_ended(admin_session):
     soldier = create_soldier(admin_session, personal_number="7910003")
 
     req = submit_request(admin_session, soldier.id, et.id, start_date=date.today(), end_date=None, reason="סיבה")
+    assert req.status == "pending_commander"
     assert req.end_date is None
+
+
+def test_expire_stale_exemption_requests_closes_and_notifies(admin_session):
+    from app.services.exemption_requests import expire_stale_exemption_requests
+    from app.db.models import ExemptionType, Notification, NotificationType
+    from tests.helpers import create_soldier
+
+    et = ExemptionType(name="expire_test_type", description=None)
+    admin_session.add(et)
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number="exreqexp001")
+
+    req = submit_request(
+        admin_session, soldier.id, et.id,
+        start_date=date(2026, 1, 1), end_date=date(2026, 1, 5), reason="x",
+    )
+    admin_session.commit()
+
+    count = expire_stale_exemption_requests(admin_session, today=date(2026, 1, 10))
+
+    admin_session.refresh(req)
+    assert count == 1
+    assert req.status == "expired"
+    assert req.decision_note == "התאריך שהוגדר לבקשה עבר"
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.exemption_rejected,
+    ).one_or_none()
+    assert notif is not None
+
+
+def test_expire_stale_exemption_requests_leaves_future_requests_open(admin_session):
+    from app.services.exemption_requests import expire_stale_exemption_requests
+    from app.db.models import ExemptionType
+    from tests.helpers import create_soldier
+
+    et = ExemptionType(name="expire_test_type_future", description=None)
+    admin_session.add(et)
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number="exreqexp002")
+
+    req = submit_request(
+        admin_session, soldier.id, et.id,
+        start_date=date(2026, 1, 1), end_date=date(2026, 1, 5), reason="x",
+    )
+    admin_session.commit()
+
+    count = expire_stale_exemption_requests(admin_session, today=date(2026, 1, 1))
+
+    admin_session.refresh(req)
+    assert count == 0
+    assert req.status == "pending_commander"
