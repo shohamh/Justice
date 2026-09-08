@@ -48,7 +48,7 @@ export async function grantExemption(
     is_medical?: boolean;
     start_date: string;
     end_date?: string | null;
-    reason?: string | null;
+    reason: string;
   },
 ): Promise<Exemption> {
   return (await api.post<Exemption>(`/soldiers/${soldierId}/exemptions`, input)).data;

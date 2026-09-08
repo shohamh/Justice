@@ -26,6 +26,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
   const [exemptionTypeId, setExemptionTypeId] = useState("");
   const [exemptStart, setExemptStart] = useState("");
   const [exemptEnd, setExemptEnd] = useState("");
+  const [exemptReason, setExemptReason] = useState("");
 
   const [moveTarget, setMoveTarget] = useState<SoldierWithStatus | null>(null);
   const [targetNodeId, setTargetNodeId] = useState("");
@@ -51,17 +52,24 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
   }
 
   async function handleGrantExemption() {
-    if (!exemptTarget || !exemptionTypeId || !exemptStart || !isDateRangeValid(exemptStart, exemptEnd)) return;
+    if (!exemptTarget || !exemptionTypeId || !exemptStart || !isDateRangeValid(exemptStart, exemptEnd) || !exemptReason.trim()) return;
     await grantExemption(exemptTarget.id, {
       exemption_type_id: exemptionTypeId,
       start_date: exemptStart,
       end_date: exemptEnd || null,
+      reason: exemptReason.trim(),
     });
     setExemptTarget(null);
     setExemptionTypeId("");
     setExemptStart("");
     setExemptEnd("");
+    setExemptReason("");
     onRefresh();
+  }
+
+  function closeExemptionModal() {
+    setExemptTarget(null);
+    setExemptReason("");
   }
 
   async function handleMove() {
@@ -98,7 +106,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
       </table>
 
       {exemptTarget && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setExemptTarget(null)}>
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={closeExemptionModal}>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-lg mb-4">{t("command_dashboard.grant_exemption")} - {exemptTarget.full_name}</h3>
             <div className="space-y-3">
@@ -113,9 +121,16 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
               <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(v) => setExemptStart(v)} max={exemptEnd || undefined} />
               <label className="block text-sm">{t("command_dashboard.exemption_end")}</label>
               <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptEnd} onChange={(v) => setExemptEnd(v)} min={exemptStart || undefined} />
+              <label className="block text-sm">{t("command_dashboard.exemption_reason")}</label>
+              <textarea
+                value={exemptReason}
+                onChange={(event) => setExemptReason(event.target.value)}
+                className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                data-testid="exempt-reason"
+              />
               <div className="flex gap-2 justify-end pt-2">
-                <button onClick={() => setExemptTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
-                <button onClick={handleGrantExemption} disabled={!isDateRangeValid(exemptStart, exemptEnd)} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm disabled:opacity-50">{t("command_dashboard.exempt")}</button>
+                <button onClick={closeExemptionModal} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
+                <button onClick={handleGrantExemption} disabled={!isDateRangeValid(exemptStart, exemptEnd) || !exemptReason.trim()} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm disabled:opacity-50">{t("command_dashboard.exempt")}</button>
               </div>
             </div>
           </div>

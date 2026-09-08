@@ -1234,6 +1234,7 @@
     "exemption_type": "סוג פטור",
     "exemption_start": "תאריך התחלה",
     "exemption_end": "תאריך סיום",
+    "exemption_reason": "סיבה",
     "move_soldier": "העברת חייל",
     "target_node": "יחידת יעד",
     "move_confirm": "שלח בקשת העברה",

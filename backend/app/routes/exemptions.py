@@ -61,7 +61,7 @@ class GrantRequest(BaseModel):
     exemption_type_id: uuid.UUID
     start_date: date
     end_date: date | None = None
-    reason: str | None = Field(default=None, max_length=1000)
+    reason: str = Field(min_length=1, max_length=1000)
     is_medical: bool = False
 
 
