@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import PersonalConstraint, PersonalConstraintOverride
+from app.db.models import DutyManagerScope, PersonalConstraint, PersonalConstraintOverride
 from app.services.holidays import holidays_in_range
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -143,6 +143,42 @@ def test_commander_cannot_approve_duty_manager_step(client: TestClient, admin_se
     r2 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(cmd), json={})
     assert r2.status_code == 403, r2.text
 
+
+def test_duty_manager_without_commander_relationship_cannot_approve_commander_constraint(
+    client: TestClient, admin_session: Session
+):
+    root = create_node(admin_session, level="department", name="constraint-rbac-dm-root")
+    target = create_soldier(
+        admin_session, personal_number="constraint-rbac-target", hierarchy_node_id=root.id
+    )
+    duty_manager = create_soldier(
+        admin_session, personal_number="constraint-rbac-dm", role="duty_manager"
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=root.id)
+    )
+    constraint = PersonalConstraint(
+        soldier_id=target.id,
+        start_date=date.today() + timedelta(days=5),
+        end_date=date.today() + timedelta(days=10),
+        reason="commander authorization regression",
+        status="pending_commander",
+    )
+    admin_session.add(constraint)
+    admin_session.commit()
+
+    pending = client.get("/api/constraints/pending", headers=auth_headers(duty_manager))
+    assert pending.status_code == 200, pending.text
+    row = next(item for item in pending.json() if item["id"] == str(constraint.id))
+    assert row["can_approve"] is False
+
+    response = client.post(
+        f"/api/constraints/{constraint.id}/approve",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+    assert response.status_code == 403, response.text
+
 def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: Session):
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)
@@ -180,7 +216,9 @@ def test_soldier_cannot_approve(client: TestClient, admin_session: Session):
     assert r.status_code == 403
 
 
-def test_pending_count(client: TestClient, admin_session: Session):
+def test_duty_manager_pending_count_excludes_commander_stage(
+    client: TestClient, admin_session: Session
+):
     d = create_node(admin_session, level="department", name="d")
     dm = create_soldier(
         admin_session, personal_number="7500009", role="duty_manager", hierarchy_node_id=d.id
@@ -197,7 +235,7 @@ def test_pending_count(client: TestClient, admin_session: Session):
     ).json()
     r = client.get("/api/constraints/pending/count", headers=auth_headers(dm))
     assert r.status_code == 200
-    assert r.json()["count"] >= 1
+    assert r.json() == {"count": 0}
 
 
 def test_reject_requires_note(client: TestClient, admin_session: Session):

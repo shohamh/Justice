@@ -6,6 +6,7 @@ from app.db.models import DutyManagerScope
 from app.services.approval_scope import (
     commander_chain_for_soldier,
     duty_manager_chain_for_soldier,
+    exemption_approval_flags,
     nearest_commander_for_soldier,
     nearest_duty_manager_for_soldier,
 )
@@ -71,3 +72,24 @@ def test_commander_chain_still_importable_from_new_module(admin_session):
 
     assert commander_chain_for_soldier(admin_session, soldier.id) == [commander.id]
     assert nearest_commander_for_soldier(admin_session, soldier.id) == commander.id
+
+
+def test_exemption_approval_flags_require_command_relationship_for_commander_step(
+    admin_session,
+):
+    root = create_node(admin_session, level="department", name=f"root_{_uid()}")
+    commander_node = create_node(admin_session, level="group", name=f"cmd_{_uid()}")
+    duty_manager = create_soldier(
+        admin_session, personal_number=f"dm_{_uid()}", role="duty_manager"
+    )
+    commander = create_soldier(
+        admin_session, personal_number=f"cmd_{_uid()}", role="commander"
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=root.id)
+    )
+    commander_node.commander_id = commander.id
+    admin_session.commit()
+
+    assert exemption_approval_flags(admin_session, duty_manager, root) == (False, True)
+    assert exemption_approval_flags(admin_session, commander, commander_node) == (True, False)

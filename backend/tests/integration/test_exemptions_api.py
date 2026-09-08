@@ -5,7 +5,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AuditLog, ExemptionRequest, ExemptionType, SoldierEnrollmentRequest, SoldierExemption
+from app.db.models import (
+    AuditLog,
+    DutyManagerScope,
+    ExemptionRequest,
+    ExemptionType,
+    SoldierEnrollmentRequest,
+    SoldierExemption,
+)
 from app.services.file_validation import MAX_EXEMPTION_FILE_BYTES
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -727,6 +734,39 @@ def test_mador_commander_can_approve_team_commanders_request(client, admin_sessi
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "pending_duty_manager"
+
+
+def test_duty_manager_without_commander_relationship_cannot_approve_commander_step(
+    client: TestClient, admin_session: Session
+):
+    root = create_node(admin_session, level="department", name="ex-rbac-dm-root")
+    target = create_soldier(
+        admin_session, personal_number="ex-rbac-target", hierarchy_node_id=root.id
+    )
+    duty_manager = create_soldier(
+        admin_session, personal_number="ex-rbac-dm", role="duty_manager"
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=root.id)
+    )
+    exemption_type = _et(admin_session, "ex-rbac-type")
+    request = ExemptionRequest(
+        soldier_id=target.id,
+        exemption_type_id=exemption_type.id,
+        start_date=date(2026, 1, 1),
+        reason="commander authorization regression",
+        status="pending_commander",
+    )
+    admin_session.add(request)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{request.id}/approve-commander",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 403, response.text
 
 
 def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):

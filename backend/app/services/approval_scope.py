@@ -222,18 +222,15 @@ def exemption_approval_flags(
     on the wider notification-cascade scope, which includes visibility-only
     recipients.
 
-    Commander-step mirrors `authorize(session, user, Action.CONSTRAINT_APPROVE, ...)`
-    exactly via `can()` — note CONSTRAINT_APPROVE is in both _DM_ACTIONS and
-    _COMMANDER_ACTIONS, so an in-scope duty manager (not just a commander) can
-    also successfully call approve-commander; using a bare `is_commander(...)`
-    check here would produce a false negative (hide a button that would actually
-    succeed) for that case.
+    Commander-step mirrors the route's
+    `senior_commander_approval_authorized(...)`-only check. Duty-manager scope
+    grants approval only for `can_dm_step`, never for the commander stage.
 
     Moved here (from app/routes/exemption_requests.py) so both the pending-list
     route and the notification cascade (which needs to know, per notified
     recipient, whether they can actually act) can share one definition.
     """
-    from app.auth.authz import Action, can, is_commander, is_duty_manager, scope_root_ids
+    from app.auth.authz import is_duty_manager, scope_root_ids
     from app.services.authority import (
         REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY, dm_scope_covers_target, senior_commander_approval_authorized,
     )
@@ -241,14 +238,10 @@ def exemption_approval_flags(
     if viewer.role == "admin":
         return True, True
     roots = scope_root_ids(session, viewer)
-    viewer_is_commander = is_commander(session, viewer.id)
     viewer_is_duty_manager = is_duty_manager(session, viewer.id)
     can_commander_step = senior_commander_approval_authorized(
         session, user=viewer, target_node=target_node,
-    ) or (viewer_is_duty_manager and can(
-        viewer, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=roots,
-        is_commander=viewer_is_commander, is_duty_manager=viewer_is_duty_manager,
-    ))
+    )
     can_dm_step = viewer_is_duty_manager and dm_scope_covers_target(
         session, scope_root_ids=roots, target_node=target_node,
         required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
