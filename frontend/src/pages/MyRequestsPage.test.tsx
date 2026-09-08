@@ -13,6 +13,7 @@ import * as swapsApi from "../api/swaps";
 import * as soldiersApi from "../api/soldiers";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import { useAuth, AuthContextValue } from "../auth/AuthContext";
+import he from "../i18n/he.json";
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -706,6 +707,22 @@ describe("MyRequestsPage - request card metadata", () => {
     expect(within(decided).getByRole("button", { name: "אבי ג״ל" })).toBeTruthy();
   });
 
+  it("renders an expired exemption request with the expired status key, not the pending color", async () => {
+    vi.mocked(exemptionsApi.listMyExemptionRequests).mockResolvedValue([
+      { ...exemptionRequest, status: "expired" },
+    ] as unknown as exemptionsApi.ExemptionRequest[]);
+    renderPage();
+    await openExistingTab();
+    const row = (await screen.findByText("y")).closest("li")!;
+    // t() passes keys through in this file's mock, so the *translated-key*
+    // path is what we assert here for rendering; the assertion below confirms
+    // the key itself resolves to real (non-raw-key) Hebrew text in he.json.
+    const statusEl = within(row).getByText("exemption_requests.expired");
+    expect(statusEl.className).not.toContain("amber");
+    expect(statusEl.className).toContain("gray");
+    expect(he.exemption_requests.expired).toBe("פג תוקף");
+  });
+
   it("labels the decider as rejecter on a rejected exemption request", async () => {
     vi.mocked(exemptionsApi.listMyExemptionRequests).mockResolvedValue([
       {
@@ -825,6 +842,16 @@ describe("MyRequestsPage - existing-tab filters", () => {
     fireEvent.change(screen.getByTestId("filter-status"), { target: { value: "rejected" } });
     expect(screen.queryByTestId("constraint-row-c1")).toBeNull();
     expect(screen.getByText("my_requests.none")).toBeInTheDocument();
+  });
+
+  it("excludes an expired exemption request from the ממתין (pending) filter bucket", async () => {
+    vi.mocked(exemptionsApi.listMyExemptionRequests).mockResolvedValue([
+      { ...exemptionRequest, status: "expired" },
+    ] as unknown as exemptionsApi.ExemptionRequest[]);
+    renderPage(["/requests?tab=existing&type=exemption_requests&status=pending"]);
+    await screen.findByTestId("group-exemption-requests");
+    expect(screen.queryByText("y")).toBeNull();
+    expect(screen.getByText("exemption_requests.none")).toBeInTheDocument();
   });
 
   it("deep-links with preselected filters from URL params", async () => {
