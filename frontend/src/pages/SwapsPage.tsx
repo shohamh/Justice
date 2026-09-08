@@ -35,7 +35,7 @@ function PendingApprovalCard({
 }) {
   const liveCandidates = swap.candidates.filter((c) => c.status === "pending" || c.status === "accepted");
   const columns: SwapApprovalColumn[] = [
-    gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, swap.requesting_soldier_name ?? t("swaps.requester"), t), requireManagerApproval),
+    gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, t("swaps.you"), t), requireManagerApproval),
     ...liveCandidates.map((c) => gateManagerFields(candidateColumn(c, requireDutyManagerApproval, c.soldier_name ?? c.soldier_id.slice(0, 8), t), requireManagerApproval)),
   ];
   return (

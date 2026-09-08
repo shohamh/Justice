@@ -51,7 +51,7 @@ vi.mock("../api/swaps", async () => {
 vi.mock("../api/assignments", () => ({ listEffectiveDuties: vi.fn().mockResolvedValue([]) }));
 vi.mock("../api/dutyConfig", () => ({ listDutyTypes: vi.fn().mockResolvedValue([]) }));
 vi.mock("../api/hierarchy", () => ({ fetchTree: vi.fn().mockResolvedValue([]) }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k === "swaps.you" ? "את/ה" : k }) }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: "me", role: "soldier", is_commander: false, is_duty_manager: false } }) }));
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode | ((openHelp: (tab?: string) => void) => React.ReactNode) }) => (
@@ -73,6 +73,12 @@ function renderPage(initialEntries = ["/swaps"]) {
 }
 
 describe("SwapsPage mine tab candidate list", () => {
+  test("labels the requester's own column 'את/ה' in the my-requests view", async () => {
+    renderPage();
+    expect(await screen.findByRole("button", { name: "את/ה" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Me" })).not.toBeInTheDocument();
+  });
+
   test("shows one card per request with both candidates listed, not one card per candidate", async () => {
     renderPage();
     // Each live candidate's name renders twice by design — once as their

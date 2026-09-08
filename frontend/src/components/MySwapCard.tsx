@@ -175,7 +175,7 @@ export function MySwapCard({ swap }: { swap: SwapRequest }) {
   const liveCandidates = swap.candidates.filter((c) => c.status === "pending" || c.status === "accepted");
   const columns: SwapApprovalColumn[] = liveCandidates.length > 0
     ? [
-        gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, t("swaps.mine"), t), requireManagerApproval),
+        gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, t("swaps.you"), t), requireManagerApproval),
         ...liveCandidates.map((c) => gateManagerFields(candidateColumn(c, requireDutyManagerApproval, c.soldier_name ?? c.soldier_id.slice(0, 8), t), requireManagerApproval)),
       ]
     : [];
