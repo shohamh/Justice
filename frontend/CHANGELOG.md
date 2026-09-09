@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-09
+
+### Features
+- Added a separate "last updated" column to the bug-reports admin table (renamed "date" to "report date"), sorted by last update by default.
+- Soldiers on duty and their commanders are now notified when a duty type's instructions or contact-person details change.
+
+### Fixes
+- Stopped the dashboard from showing a generic "error loading score data" message to soldiers without permission to view scoring — the app now simply skips those requests instead of erroring.
+- Swap requests now expire based on the duty's real start time instead of just the calendar date (previously a duty starting at 20:00 could be cancelled from swapping as early as midnight), using Israel local time rather than UTC for the comparison; publishing a swap request for a duty that's already started or in the past is now blocked; and stale exemption requests past their end date now auto-expire the same way.
+- The swap-request confirmation view now shows "את/ה" for your own request instead of your name, while still showing the covering soldier's name with a link.
+- Replaced several generic "שגיאה" error messages (in the bug-reports admin panel and elsewhere) with the actual reason for the failure.
+- Granting an exemption without a reason no longer silently fails — the reason field is now required, and the grant button stays disabled until one is entered.
+- Fixed duty managers being able to approve the "commander" stage of exemption and personal-constraint approvals for soldiers they don't actually command — closed on the web UI, the notification quick-actions, and the Telegram bot's approve button.
+- An exemption request that auto-expires now shows correctly on the soldier's requests page instead of a raw untranslated status key.
+
 ## 2026-09-07
 
 ### Fixes
