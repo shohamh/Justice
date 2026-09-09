@@ -298,6 +298,26 @@ let constrainedSoldierId = "";
 
 test.describe.configure({ mode: "serial" });
 
+// Desktop-only: every test in this file shares one mutable backend fixture
+// (constrainedSoldier's personal constraint, submitted once by the "setup"
+// test and reused/mutated by every later test in the file). The module-level
+// constraintStart/constraintEnd dates above are computed once and shared by
+// however many Playwright projects run this file — running under both
+// "desktop" and "mobile-390" means the exact same submission happens twice
+// against the same soldier and (at best, coincidentally-separated;
+// module-level state is typically evaluated once per process, so at worst
+// identically-dated) quota period, and the second project's "setup" run then
+// fails with `cap_exceeded` (a real, reproduced 400 from
+// `submit_constraint`'s personal_cap_days check) since the first project's
+// run already consumed the same soldier's quarterly cap. Restricting to one
+// project (matching hierarchy_transfers.spec.ts/rank_advancement.spec.ts's
+// same desktop-only precedent for a shared serial journey) removes the
+// self-collision entirely rather than trying to out-guess it with a wider
+// random offset.
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only: shared mutable fixture, see comment above test.describe.configure");
+});
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -828,7 +848,19 @@ test("CP-SAT auto-assign always hard-excludes the constrained soldier", async ({
     await dutyManager.page.getByTestId("algorithm-run-submit").click();
     const jobResponse = await jobCreate;
     const jobId = (await jobResponse.json()).id as string;
-    await expect(dutyManager.page.getByTestId("algorithm-proposal-review")).toBeVisible({ timeout: 120_000 });
+    // AlgorithmJobTabs defaults its open tab to "issues" (not "proposals")
+    // whenever the job has any unfilled shift or infeasible batch (see
+    // AlgorithmJobTabs.tsx's hasIssuesInit) — and this scenario's whole point
+    // is a hard exclusion, so with the constrained soldier forced out of the
+    // pool, this small team can only fill 1 of the shift's 3 required slots,
+    // guaranteeing exactly that "has issues" state. Wait for the job review
+    // container itself first (rendered unconditionally once the job resolves,
+    // regardless of which tab is open), then explicitly select the "הצעות"
+    // (proposals) tab before asserting on algorithm-proposal-review, rather
+    // than assuming it's already the active tab.
+    await expect(dutyManager.page.getByTestId(`algorithm-job-review-${jobId}`)).toBeVisible({ timeout: 120_000 });
+    await dutyManager.page.getByRole("button", { name: "הצעות", exact: true }).click();
+    await expect(dutyManager.page.getByTestId("algorithm-proposal-review")).toBeVisible({ timeout: 10_000 });
 
     // Anti-vacuousness safeguard: confirm the constrained soldier was actually
     // loaded into this job's solver input, with approved_constraint_dates

@@ -90,10 +90,16 @@ import { journeyActorStorageState, roleStorageState, type Role, type JourneyActo
  *   (`ineligible-node-{id}`) into a per-soldier table where every row always
  *   renders an `ineligible-warning-{soldier_id}` badge (its color, not its
  *   presence, depends on whether the soldier has an urgent upcoming weapon
- *   duty) — this spec filters the unit table to "מארס" (the seeded past
- *   event's team) and asserts at least one such badge renders once expanded,
- *   rather than pinning an exact soldier id the seed's ordering isn't a
- *   contract for.
+ *   duty) — this spec filters the unit table to "ריי" (`צוות ריי`, home team
+ *   of seed.py's `mitvahim_excluded_pn` = "1000037", the one soldier
+ *   deliberately left out of the company-wide mitvahim-qualification pass so
+ *   it's permanently ineligible via `requires_mitvahim`; confirmed directly
+ *   against a live seed via `GET /ranges/ineligible-soldiers`, which returns
+ *   exactly that one soldier under "צוות ריי" — team "מארס"'s own seeded
+ *   past-event no-show does not make anyone appear in this endpoint at all,
+ *   it only exercises qualification-expiry/score-penalty side effects) and
+ *   asserts at least one such badge renders once expanded, rather than
+ *   pinning an exact soldier id the seed's ordering isn't a contract for.
  */
 
 // assignedGimelim (seeded personal number 1000010, journeyActors in
@@ -274,11 +280,11 @@ async function approveExcusal(page: Page, args: { eventId: string; requestId: st
   expect(decideResult.status()).toBe(200);
 }
 
-async function assertIneligibleWarningForTeamMars(page: Page): Promise<void> {
+async function assertIneligibleWarningForTeamRei(page: Page): Promise<void> {
   await page.goto("/ranges?tab=ineligible");
   await expect(page.getByTestId("ineligible-soldiers-view")).toBeVisible({ timeout: 30_000 });
   const table = page.getByTestId("ineligible-soldiers-table");
-  await table.getByPlaceholder("סינון יחידות...").fill("מארס");
+  await table.getByPlaceholder("סינון יחידות...").fill("ריי");
   const expandButton = table.getByRole("button", { name: "הרחב" });
   await expect(expandButton).toBeVisible({ timeout: 30_000 });
   await expandButton.click();
@@ -333,7 +339,7 @@ test("range scheduling, assignment, attendance, excusal, and qualification journ
     await expect(dutyManager.page.getByTestId("excusal-review-queue")).toHaveCount(0);
 
     // Step 6: qualification/eligibility view.
-    await assertIneligibleWarningForTeamMars(dutyManager.page);
+    await assertIneligibleWarningForTeamRei(dutyManager.page);
   } finally {
     await Promise.all([
       dutyManager.context.close(),
