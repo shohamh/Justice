@@ -3,7 +3,12 @@ import AssignDutyManagersDialog from "./AssignDutyManagersDialog";
 import type { NodeDTO } from "../api/hierarchy";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => ({
+      "errors.forbidden": "אין הרשאה לבצע פעולה זו",
+      "errors.generic": "שגיאה",
+    }[key] ?? key),
+  }),
 }));
 
 const mockAssign = vi.fn();
@@ -97,4 +102,27 @@ test("does not offer an already-assigned soldier in the search dropdown", async 
   fireEvent.focus(input);
   await waitFor(() => expect(screen.getByTestId("duty-manager-option-s2")).toBeInTheDocument());
   expect(screen.queryByTestId("duty-manager-option-s1")).not.toBeInTheDocument();
+});
+
+test("shows the translated backend detail when assigning fails", async () => {
+  mockAssign.mockRejectedValue({ response: { status: 403, data: { detail: "forbidden" } } });
+  render(<AssignDutyManagersDialog node={node()} onClose={vi.fn()} onChanged={vi.fn()} />);
+  await waitFor(() => expect(mockListSoldiers).toHaveBeenCalled());
+
+  fireEvent.focus(screen.getByTestId("duty-manager-search"));
+  fireEvent.mouseDown(await screen.findByTestId("duty-manager-option-s1"));
+
+  expect(await screen.findByText("אין הרשאה לבצע פעולה זו")).toBeInTheDocument();
+});
+
+test("shows the translated backend detail when removing fails", async () => {
+  mockRemove.mockRejectedValue({ response: { status: 403, data: { detail: "forbidden" } } });
+  const n = node({
+    duty_managers: [{ scope_id: "scope-1", soldier_id: "s1", name: "דני כהן" }],
+  });
+  render(<AssignDutyManagersDialog node={n} onClose={vi.fn()} onChanged={vi.fn()} />);
+
+  fireEvent.click(screen.getByTestId("remove-dm-scope-1"));
+
+  expect(await screen.findByText("אין הרשאה לבצע פעולה זו")).toBeInTheDocument();
 });

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
@@ -51,7 +51,7 @@ vi.mock("../api/swaps", async () => {
 vi.mock("../api/assignments", () => ({ listEffectiveDuties: vi.fn().mockResolvedValue([]) }));
 vi.mock("../api/dutyConfig", () => ({ listDutyTypes: vi.fn().mockResolvedValue([]) }));
 vi.mock("../api/hierarchy", () => ({ fetchTree: vi.fn().mockResolvedValue([]) }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k === "swaps.you" ? "את/ה" : k }) }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: "me", role: "soldier", is_commander: false, is_duty_manager: false } }) }));
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode | ((openHelp: (tab?: string) => void) => React.ReactNode) }) => (
@@ -73,6 +73,12 @@ function renderPage(initialEntries = ["/swaps"]) {
 }
 
 describe("SwapsPage mine tab candidate list", () => {
+  test("labels the requester's own column 'את/ה' in the my-requests view", async () => {
+    renderPage();
+    expect(await screen.findByRole("button", { name: "את/ה" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Me" })).not.toBeInTheDocument();
+  });
+
   test("shows one card per request with both candidates listed, not one card per candidate", async () => {
     renderPage();
     // Each live candidate's name renders twice by design — once as their
@@ -136,6 +142,31 @@ describe("SwapsPage incoming tab approval columns", () => {
     const requesterLabel = screen.getByText("Other");
     // "Me" column must come before the requester column in DOM order (right-first in RTL).
     expect(meLabel.compareDocumentPosition(requesterLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("SwapsPage pending-approval tab", () => {
+  test("keeps the real requester name for an incoming request with another accepted candidate", async () => {
+    const { listIncomingSwaps } = await import("../api/swaps");
+    vi.mocked(listIncomingSwaps).mockResolvedValueOnce([
+      {
+        ...incomingSwap,
+        candidates: [
+          ...incomingSwap.candidates,
+          { id: "c4", soldier_id: "accepted", soldier_name: "Accepted", source: "invited", status: "accepted", soldier_side_approved: true, offered_assignment_ids: [], manager_approvals: [] },
+        ],
+      },
+    ]);
+
+    renderPage(["/swaps?tab=pending"]);
+
+    const incomingCard = (await screen.findByText("Patrol")).closest("li");
+    const ownCard = screen.getByText("Guard").closest("li");
+    expect(incomingCard).not.toBeNull();
+    expect(ownCard).not.toBeNull();
+    expect(within(incomingCard!).getByRole("button", { name: "Other" })).toBeInTheDocument();
+    expect(within(incomingCard!).queryByRole("button", { name: "את/ה" })).not.toBeInTheDocument();
+    expect(within(ownCard!).getByRole("button", { name: "את/ה" })).toBeInTheDocument();
   });
 });
 

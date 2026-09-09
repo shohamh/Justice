@@ -68,6 +68,13 @@ export function BugReportsContent() {
   const [importError, setImportError] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  const translateImportDetail = (detail: string | null) =>
+    translateApiError(
+      { response: { data: { detail } } },
+      t,
+      "שגיאה בייבוא הקובץ",
+    );
+
   // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
   // accumulated without re-registering the effect on every fetch.
   const screenshotUrlByIdRef = useRef(screenshotUrlById);
@@ -223,9 +230,15 @@ export function BugReportsContent() {
     },
     {
       id: "created_at",
-      header: "תאריך",
+      header: t("bug_reports.reported_at"),
       cell: (report) => new Date(report.created_at).toLocaleString("he-IL"),
       sortValue: (report) => report.created_at,
+    },
+    {
+      id: "updated_at",
+      header: t("bug_reports.updated_at"),
+      cell: (report) => new Date(report.updated_at).toLocaleString("he-IL"),
+      sortValue: (report) => report.updated_at,
     },
     {
       id: "reporter",
@@ -335,7 +348,7 @@ export function BugReportsContent() {
                 (
                 {importSummary.results
                   .filter((r) => r.status !== "imported")
-                  .map((r) => `${r.filename}: ${r.status === "already_exists" ? "כבר קיים" : r.detail ?? "שגיאה"}`)
+                  .map((r) => `${r.filename}: ${translateImportDetail(r.detail)}`)
                   .join(", ")}
                 )
               </>
@@ -397,12 +410,15 @@ export function BugReportsContent() {
         <p className="text-sm text-gray-500 p-4" data-testid="bug-reports-loading">טוען...</p>
       )}
       {query.isError && (
-        <p className="text-sm text-red-500 p-4" data-testid="bug-reports-error">שגיאה בטעינת הדיווחים</p>
+        <p className="text-sm text-red-500 p-4" data-testid="bug-reports-error" role="alert">
+          {translateApiError(query.error, t, "שגיאה בטעינת הדיווחים")}
+        </p>
       )}
       {!query.isLoading && !query.isError && (
         <DataTable<BugReportSummary>
           columns={bugReportColumns}
           data={items}
+          defaultSort={[{ id: "updated_at", desc: true }]}
           rowTestId={(report) => `bug-report-row-${report.id}`}
           rowClassName={(report) => `border-b dark:border-gray-700 ${STATUS_ROW_BG[report.status]}`}
           expandable={{

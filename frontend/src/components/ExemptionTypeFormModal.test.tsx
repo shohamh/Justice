@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import "../i18n";
 import ExemptionTypeFormModal from "./ExemptionTypeFormModal";
 import * as dutyConfigApi from "../api/dutyConfig";
 
@@ -52,5 +53,20 @@ describe("ExemptionTypeFormModal", () => {
       expect(dutyConfigApi.setExemptionDutyLocations).toHaveBeenCalledWith("et1", ["loc1"]);
       expect(onSaved).toHaveBeenCalled();
     });
+  });
+
+  it("translates the backend detail when creation fails", async () => {
+    vi.mocked(dutyConfigApi.createExemptionType).mockRejectedValue({
+      response: { status: 400, data: { detail: "name_taken" } },
+    });
+    render(<ExemptionTypeFormModal onSaved={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText(/שם/), { target: { value: "רפואי" } });
+    fireEvent.click(screen.getByLabelText(/עברתי על רשימת סוגי התורנות/));
+    fireEvent.click(screen.getByLabelText(/עברתי על רשימת המיקומים/));
+
+    fireEvent.click(screen.getByRole("button", { name: /הוסף|שמור/ }));
+
+    expect(await screen.findByText("השם כבר קיים במערכת")).toBeInTheDocument();
+    expect(screen.queryByText("name_taken")).not.toBeInTheDocument();
   });
 });

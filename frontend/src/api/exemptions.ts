@@ -48,7 +48,7 @@ export async function grantExemption(
     is_medical?: boolean;
     start_date: string;
     end_date?: string | null;
-    reason?: string | null;
+    reason: string;
   },
 ): Promise<Exemption> {
   return (await api.post<Exemption>(`/soldiers/${soldierId}/exemptions`, input)).data;
@@ -66,7 +66,7 @@ export interface ExemptionRequest {
   start_date: string | null;
   end_date: string | null;
   reason: string | null;
-  status: "pending_commander" | "pending_duty_manager" | "approved" | "rejected";
+  status: "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "expired";
   commander_approved_by: SoldierRef | null;
   commander_approved_at: string | null;
   commander_approval_note?: string | null;

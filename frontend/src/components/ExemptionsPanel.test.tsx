@@ -330,6 +330,19 @@ describe("ExemptionsPanel", () => {
     expect(modalConfirm).not.toBeDisabled();
   });
 
+  test("commander exemption submit is disabled until a reason is entered", async () => {
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+
+    await selectGrantType("פטור פיקודי");
+    fireEvent.change(screen.getByTestId("grant-start"), { target: { value: "2026-08-30" } });
+
+    const submitButton = screen.getByTestId("commander-exemption-submit");
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("commander-exemption-reason"), { target: { value: "סיבה כלשהי" } });
+    expect(submitButton).not.toBeDisabled();
+  });
+
   test("plain commander grant calls grantCommanderExemption when escalate is off", async () => {
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
 

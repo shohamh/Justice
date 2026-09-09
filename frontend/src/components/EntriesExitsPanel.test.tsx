@@ -95,3 +95,33 @@ describe("EntriesExitsPanel - release flow", () => {
     expect(onRefresh).toHaveBeenCalled();
   });
 });
+
+describe("EntriesExitsPanel - exemption flow", () => {
+  it("disables the exempt-confirm button until a reason is entered", async () => {
+    const soldier = {
+      id: "s1",
+      personal_number: "123",
+      full_name: "test",
+      role: "soldier",
+      hierarchy_node_id: null,
+      status: "active",
+      cumulative_score: "0",
+      normalised_score: "0",
+      enrolled_at: "2026-01-01",
+      left_at: null,
+    } satisfies SoldierWithStatus;
+
+    render(
+      <SoldierModalProvider>
+        <EntriesExitsPanel soldiers={[soldier]} onRefresh={() => {}} />
+      </SoldierModalProvider>,
+    );
+
+    fireEvent.click(screen.getByText("command_dashboard.exempt"));
+    const confirmButton = screen.getAllByText("command_dashboard.exempt")[1];
+    expect(confirmButton).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("exempt-reason"), { target: { value: "מחלה" } });
+    expect(confirmButton).not.toBeDisabled();
+  });
+});

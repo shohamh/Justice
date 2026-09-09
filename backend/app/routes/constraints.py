@@ -210,10 +210,9 @@ def _can_approve_constraint(
         return False
     if constraint_status in ("pending", "pending_commander"):
         from app.services.authority import senior_commander_approval_authorized
-        if senior_commander_approval_authorized(session, user=user, target_node=target_node):
-            return True
-        if not is_duty_manager(session, user.id):
-            return False
+        return senior_commander_approval_authorized(
+            session, user=user, target_node=target_node,
+        )
     roots = scope_root_ids(session, user)
     return can(
         user,
@@ -543,8 +542,7 @@ def approve(
     target_node = _node_of(session, s)
     if c.status in ("pending", "pending_commander"):
         if not senior_commander_approval_authorized(session, user=user, target_node=target_node):
-            if not (is_duty_manager(session, user.id) and can(user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=scope_root_ids(session, user), is_commander=is_commander(session, user.id), is_duty_manager=True)):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     else:
         authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
     try:

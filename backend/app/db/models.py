@@ -1527,6 +1527,7 @@ class NotificationType(str, _enum.Enum):
     mitvahim_expired = "mitvahim_expired"
     alal_expiring_soon = "alal_expiring_soon"
     alal_expired = "alal_expired"
+    duty_instructions_updated = "duty_instructions_updated"
 
 
 class Notification(Base):

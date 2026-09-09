@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Callable
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -20,9 +21,25 @@ from app.services.settings_loader import SettingNotFound, get_setting, get_setti
 from app.services.reserves import check_reserve_cap
 from app.services.eligibility import check_soldier_for_assignment
 
+_ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
+
 
 class SwapError(Exception):
     """Raised on an invalid swap operation."""
+
+
+def _parse_hhmm(value: str) -> time:
+    hour, minute = value.split(":")
+    return time(int(hour), int(minute))
+
+
+def _israel_now_naive() -> datetime:
+    """Current Israel wall-clock time as a naive datetime, comparable to the
+    naive `datetime.combine(start_date, start_time)` values built from
+    DutyAssignment rows (start_date/start_time are Israel wall-clock values
+    entered by Israeli users). Mirrors the ZoneInfo("Asia/Jerusalem") pattern
+    used in app/services/bug_report_export.py."""
+    return datetime.now(_ISRAEL_TZ).replace(tzinfo=None)
 
 
 def _enforce_hierarchy_level_restriction(
@@ -97,12 +114,16 @@ def create_request(
     target_soldier_ids: list[uuid.UUID] | None = None,
     open_to_marketplace: bool = False,
     actor_id: uuid.UUID | None = None,
+    now: datetime | None = None,
 ) -> SwapRequest:
     """Create the one open SwapRequest for this (requester, duty), with a
     SwapCandidate row per invited target plus optional marketplace
     visibility. Raises SwapError("already_pending") if an open request for
     this (requester, duty) already exists — always returns a single
-    SwapRequest, no more fan-out into multiple parent rows."""
+    SwapRequest, no more fan-out into multiple parent rows. Raises
+    SwapError("duty_already_started") if the duty's start datetime
+    (start_date + start_time) is already at or before `now` — there's no one
+    left to swap with once a duty is underway or over."""
     targets = target_soldier_ids if target_soldier_ids is not None else (
         [target_soldier_id] if target_soldier_id is not None else []
     )
@@ -118,6 +139,10 @@ def create_request(
         raise SwapError("not_your_duty")
     if assignment.status not in ("published", "algorithm_draft"):
         raise SwapError("not_published")
+    now = now or _israel_now_naive()
+    duty_start = datetime.combine(assignment.start_date, _parse_hhmm(assignment.start_time))
+    if duty_start <= now:
+        raise SwapError("duty_already_started")
 
     existing = session.execute(
         select(SwapRequest).where(
@@ -1248,15 +1273,24 @@ def list_pending_approval(session: Session) -> list[SwapRequest]:
     )
 
 
-def expire_started_swaps(session: Session, *, today: date | None = None) -> int:
-    """Cancel every open SwapRequest whose duty has already started (duty_date <= today)
-    — once a duty is underway there's no one left to swap it with. Returns the count
-    cancelled. Called periodically by the background worker (see app/swap_expiry_worker.py);
-    there is no user actor for this system action, so notifications/audit use actor_id=None."""
-    today = today or date.today()
-    requests = session.execute(
-        select(SwapRequest).where(SwapRequest.status == "open", SwapRequest.duty_date <= today)
-    ).scalars().all()
+def expire_started_swaps(session: Session, *, now: datetime | None = None) -> int:
+    """Cancel every open SwapRequest whose duty has actually started (start_date +
+    start_time <= now) — once a duty is underway there's no one left to swap it
+    with. Compares the full start datetime, not just the calendar date, so a duty
+    starting at 20:00 today stays swappable earlier that same day. Returns the
+    count cancelled. Called periodically by the background worker (see
+    app/swap_expiry_worker.py); there is no user actor for this system action, so
+    notifications/audit use actor_id=None."""
+    now = now or _israel_now_naive()
+    candidates = session.execute(
+        select(SwapRequest, DutyAssignment)
+        .join(DutyAssignment, DutyAssignment.id == SwapRequest.duty_assignment_id)
+        .where(SwapRequest.status == "open", DutyAssignment.start_date <= now.date())
+    ).all()
+    requests = [
+        req for req, assignment in candidates
+        if datetime.combine(assignment.start_date, _parse_hhmm(assignment.start_time)) <= now
+    ]
     for req in requests:
         before = {"status": req.status}
         req.status = "cancelled"
@@ -1266,11 +1300,11 @@ def expire_started_swaps(session: Session, *, today: date | None = None) -> int:
                 SwapCandidate.status.in_(["pending", "accepted"]),
             )
         ).scalars().all()
-        now = datetime.utcnow()
+        cancelled_at = datetime.utcnow()
         recipients = {req.requesting_soldier_id, *(c.soldier_id for c in live_candidates)}
         for candidate in live_candidates:
             candidate.status = "cancelled"
-            candidate.decided_at = now
+            candidate.decided_at = cancelled_at
         for soldier_id in recipients:
             create_notification(
                 session, soldier_id=soldier_id, type=NotificationType.swap_rejected,

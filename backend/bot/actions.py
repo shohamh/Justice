@@ -13,6 +13,7 @@ from app.db.models import (
     HierarchyNode,
     NotificationPreference,
     NotificationType,
+    PersonalConstraint,
     Soldier,
     SwapRequest,
     TelegramActionToken,
@@ -21,6 +22,7 @@ from app.services import constraints as constraint_svc
 from app.services import exemption_requests as exemption_svc
 from app.services import swaps as swap_svc
 from app.services.action_tokens import DEFAULT_SILENCE_EXPIRY, create_token
+from app.services.authority import senior_commander_approval_authorized
 
 _DEPTH_TYPES = frozenset([
     NotificationType.constraint_pending,
@@ -58,6 +60,28 @@ def execute_action(token_row: TelegramActionToken, session: Session) -> str:
 
     if action == "constraint:approve":
         try:
+            c = session.get(PersonalConstraint, resource_id)
+            if c is None:
+                return "שגיאה: constraint_not_found"
+            target_soldier = session.get(Soldier, c.soldier_id)
+            target_node = (
+                session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+            )
+            if c.status in ("pending", "pending_commander"):
+                actor = session.get(Soldier, soldier_id)
+                if actor is None or not senior_commander_approval_authorized(
+                    session, user=actor, target_node=target_node
+                ):
+                    return "שגיאה: forbidden"
+            else:
+                actor = session.get(Soldier, soldier_id)
+                if actor is None or not can(
+                    actor, Action.CONSTRAINT_APPROVE, target_node=target_node,
+                    roots=scope_root_ids(session, actor),
+                    is_commander=is_commander(session, actor.id),
+                    is_duty_manager=is_duty_manager(session, actor.id),
+                ):
+                    return "שגיאה: forbidden"
             constraint_svc.approve_constraint(session, constraint_id=resource_id, actor_id=soldier_id)
             return "✅ בקשת האילוץ אושרה."
         except constraint_svc.ConstraintError as e:
@@ -68,7 +92,16 @@ def execute_action(token_row: TelegramActionToken, session: Session) -> str:
             req = session.get(ExemptionRequest, resource_id)
             if req is None:
                 return "שגיאה: exemption_request_not_found"
+            target_soldier = session.get(Soldier, req.soldier_id)
+            target_node = (
+                session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+            )
             if req.status == "pending_commander":
+                actor = session.get(Soldier, soldier_id)
+                if actor is None or not senior_commander_approval_authorized(
+                    session, user=actor, target_node=target_node
+                ):
+                    return "שגיאה: forbidden"
                 exemption_svc.approve_commander_step(session, resource_id, approved_by=soldier_id)
             elif req.status == "pending_duty_manager":
                 exemption_svc.approve_duty_manager_step(session, resource_id, decided_by=soldier_id)

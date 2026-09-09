@@ -112,6 +112,11 @@ def update_duty_type(
         "score_per_day": str(duty_type.score_per_day),
         "description": duty_type.description,
     }
+    contact_or_instructions_changed = (
+        (contact_name is not None and contact_name != duty_type.contact_name)
+        or (contact_phone is not None and contact_phone != duty_type.contact_phone)
+        or (instructions is not None and instructions != duty_type.instructions)
+    )
     if score_per_day is not None:
         if score_per_day < 0:
             raise DutyConfigError("score_per_day_must_be_positive")
@@ -166,7 +171,72 @@ def update_duty_type(
             "requires_weapon": duty_type.requires_weapon,
         },
     )
+    if contact_or_instructions_changed:
+        _notify_duty_instructions_changed(session, duty_type=duty_type, actor_id=actor_id)
     return duty_type
+
+
+def _notify_duty_instructions_changed(
+    session: Session, *, duty_type: DutyType, actor_id: uuid.UUID | None
+) -> None:
+    """Tell every soldier with a current/future published assignment to this
+    duty type, plus their direct commander, that its instructions or contact
+    person changed."""
+    from app.db.models import DutyAssignment, Soldier
+    from app.services.notifications import create_notification, NotificationType
+
+    today = date.today()
+    soldier_ids = set(session.execute(
+        select(DutyAssignment.soldier_id).where(
+            DutyAssignment.duty_type_id == duty_type.id,
+            DutyAssignment.status == "published",
+            DutyAssignment.end_date >= today,
+        )
+    ).scalars().all())
+    if not soldier_ids:
+        return
+    notified: set[uuid.UUID] = set()
+    for soldier_id in soldier_ids:
+        create_notification(
+            session, soldier_id=soldier_id, type=NotificationType.duty_instructions_updated,
+            title=f"עודכנו ההנחיות/פרטי הקשר עבור תורנות {duty_type.name}",
+            reference_type="duty_type", reference_id=duty_type.id, actor_id=actor_id,
+        )
+        notified.add(soldier_id)
+        soldier = session.get(Soldier, soldier_id)
+        commander = _direct_commander(session, soldier) if soldier else None
+        if commander is not None and commander.id not in notified:
+            create_notification(
+                session, soldier_id=commander.id, type=NotificationType.duty_instructions_updated,
+                title=(
+                    f"עודכנו ההנחיות/פרטי הקשר עבור תורנות {duty_type.name} "
+                    "(חיילים תחת פיקודך משובצים אליה)"
+                ),
+                reference_type="duty_type", reference_id=duty_type.id, actor_id=actor_id,
+            )
+            notified.add(commander.id)
+
+
+def _direct_commander(session: Session, s: "Soldier") -> "Soldier | None":
+    """Return the soldier's direct commander from the hierarchy, skipping self.
+    Mirrors app/routes/soldiers.py's private _direct_commander — duplicated
+    here rather than imported since that one is route-module-private and this
+    is a services-layer call site."""
+    from app.db.models import HierarchyNode, Soldier
+
+    if s.hierarchy_node_id is None:
+        return None
+    node = session.get(HierarchyNode, s.hierarchy_node_id)
+    if node is None:
+        return None
+    if node.commander_id and node.commander_id != s.id:
+        return session.get(Soldier, node.commander_id)
+    if node.parent_id is None:
+        return None
+    parent = session.get(HierarchyNode, node.parent_id)
+    if parent is None or parent.commander_id is None or parent.commander_id == s.id:
+        return None
+    return session.get(Soldier, parent.commander_id)
 
 
 def set_duty_type_active(

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from decimal import Decimal
 
-from app.db.models import DutyType, RangeType
+from app.db.models import DutyAssignment, DutyLocation, DutyType, Notification, NotificationType, RangeType
 from app.services.duty_config import create_duty_type, update_duty_type
-from tests.helpers import create_node
+from tests.helpers import create_node, create_soldier
 
 
 def test_create_duty_type_with_eligible_node_ids(admin_session):
@@ -97,3 +98,64 @@ def test_update_duty_type_leaves_required_range_type_untouched_when_omitted(app_
     app_session.commit()
     app_session.refresh(dt)
     assert dt.required_range_type == "laser"
+
+
+def test_update_duty_type_notifies_on_duty_soldiers_and_their_commanders_on_instructions_change(
+    admin_session,
+) -> None:
+    root = create_node(admin_session, level="division", name="div_notif1")
+    commander = create_soldier(admin_session, personal_number="dutynotif001", hierarchy_node_id=root.id)
+    root.commander_id = commander.id
+    admin_session.flush()
+    on_duty_soldier = create_soldier(
+        admin_session, personal_number="dutynotif002", hierarchy_node_id=root.id
+    )
+    duty_type = create_duty_type(admin_session, name="שמירה-notif", score_per_day=Decimal("1.00"))
+    location = DutyLocation(name="מיקום notif")
+    admin_session.add(location)
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        soldier_id=on_duty_soldier.id, duty_type_id=duty_type.id, duty_location_id=location.id,
+        start_date=date.today(), end_date=date.today() + timedelta(days=1), status="published",
+    ))
+    admin_session.commit()
+
+    update_duty_type(
+        admin_session, duty_type=duty_type, name=None, score_per_day=None, description=None,
+        instructions="הנחיות חדשות",
+    )
+    admin_session.commit()
+
+    notifs = admin_session.query(Notification).filter_by(soldier_id=on_duty_soldier.id).all()
+    assert any(n.type == NotificationType.duty_instructions_updated for n in notifs)
+    commander_notifs = admin_session.query(Notification).filter_by(soldier_id=commander.id).all()
+    assert any(n.type == NotificationType.duty_instructions_updated for n in commander_notifs)
+
+
+def test_update_duty_type_does_not_notify_on_unrelated_field_change(admin_session) -> None:
+    root = create_node(admin_session, level="division", name="div_notif2")
+    commander = create_soldier(admin_session, personal_number="dutynotif003", hierarchy_node_id=root.id)
+    root.commander_id = commander.id
+    admin_session.flush()
+    on_duty_soldier = create_soldier(
+        admin_session, personal_number="dutynotif004", hierarchy_node_id=root.id
+    )
+    duty_type = create_duty_type(admin_session, name="שמירה-notif2", score_per_day=Decimal("1.00"))
+    location = DutyLocation(name="מיקום notif2")
+    admin_session.add(location)
+    admin_session.flush()
+    admin_session.add(DutyAssignment(
+        soldier_id=on_duty_soldier.id, duty_type_id=duty_type.id, duty_location_id=location.id,
+        start_date=date.today(), end_date=date.today() + timedelta(days=1), status="published",
+    ))
+    admin_session.commit()
+
+    update_duty_type(
+        admin_session, duty_type=duty_type, name=None, score_per_day=Decimal("2.00"), description=None,
+    )
+    admin_session.commit()
+
+    notifs = admin_session.query(Notification).filter_by(soldier_id=on_duty_soldier.id).all()
+    assert not any(n.type == NotificationType.duty_instructions_updated for n in notifs)
+    commander_notifs = admin_session.query(Notification).filter_by(soldier_id=commander.id).all()
+    assert not any(n.type == NotificationType.duty_instructions_updated for n in commander_notifs)

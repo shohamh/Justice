@@ -28,14 +28,17 @@ import DateInput from "../components/DateInput";
 import HierarchyTreeDropdown from "../components/HierarchyTreeDropdown";
 import CheckboxListDropdown from "../components/CheckboxListDropdown";
 function PendingApprovalCard({
-  swap, requireManagerApproval, requireDutyManagerApproval, onShiftClick, t,
+  swap, currentUserId, requireManagerApproval, requireDutyManagerApproval, onShiftClick, t,
 }: {
-  swap: SwapRequest; requireManagerApproval: boolean; requireDutyManagerApproval: boolean;
+  swap: SwapRequest; currentUserId?: string; requireManagerApproval: boolean; requireDutyManagerApproval: boolean;
   onShiftClick?: () => void; t: (k: string) => string;
 }) {
   const liveCandidates = swap.candidates.filter((c) => c.status === "pending" || c.status === "accepted");
+  const requesterLabel = swap.requesting_soldier_id === currentUserId
+    ? t("swaps.you")
+    : swap.requesting_soldier_name ?? t("swaps.requester");
   const columns: SwapApprovalColumn[] = [
-    gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, swap.requesting_soldier_name ?? t("swaps.requester"), t), requireManagerApproval),
+    gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, requesterLabel, t), requireManagerApproval),
     ...liveCandidates.map((c) => gateManagerFields(candidateColumn(c, requireDutyManagerApproval, c.soldier_name ?? c.soldier_id.slice(0, 8), t), requireManagerApproval)),
   ];
   return (
@@ -462,6 +465,7 @@ export default function SwapsPage() {
                 <PendingApprovalCard
                   key={swap.id}
                   swap={swap}
+                  currentUserId={user?.id}
                   requireManagerApproval={requireManagerApproval}
                   requireDutyManagerApproval={requireDutyManagerApproval}
                   onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined}

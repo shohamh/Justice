@@ -466,7 +466,19 @@ def _dispatch_action(session: Session, *, token, actor_id: uuid.UUID) -> dict:
     resource_id = token.resource_id
 
     if action == "constraint:approve":
+        from app.db.models import PersonalConstraint
         from app.services import constraints as constraint_svc
+        from app.services.authority import senior_commander_approval_authorized
+        c = session.get(PersonalConstraint, resource_id)
+        if c is None:
+            raise HTTPException(status_code=404, detail="constraint_not_found")
+        target_soldier = session.get(Soldier, c.soldier_id)
+        target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+        if c.status in ("pending", "pending_commander"):
+            if not senior_commander_approval_authorized(session, user=session.get(Soldier, actor_id), target_node=target_node):
+                raise HTTPException(status_code=403, detail="forbidden")
+        else:
+            authorize(session, session.get(Soldier, actor_id), Action.CONSTRAINT_APPROVE, target_node=target_node)
         constraint_svc.approve_constraint(session, constraint_id=resource_id, actor_id=actor_id)
         return {"action": action, "status": "ok"}
     elif action == "constraint:reject":
@@ -476,10 +488,15 @@ def _dispatch_action(session: Session, *, token, actor_id: uuid.UUID) -> dict:
     elif action == "exemption:approve":
         from app.db.models import ExemptionRequest
         from app.services import exemption_requests as exemption_svc
+        from app.services.authority import senior_commander_approval_authorized
         req = session.get(ExemptionRequest, resource_id)
         if req is None:
             raise HTTPException(status_code=404, detail="exemption_request_not_found")
+        target_soldier = session.get(Soldier, req.soldier_id)
+        target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
         if req.status == "pending_commander":
+            if not senior_commander_approval_authorized(session, user=session.get(Soldier, actor_id), target_node=target_node):
+                raise HTTPException(status_code=403, detail="forbidden")
             exemption_svc.approve_commander_step(session, resource_id, approved_by=actor_id)
         elif req.status == "pending_duty_manager":
             exemption_svc.approve_duty_manager_step(session, resource_id, decided_by=actor_id, decision_note="")

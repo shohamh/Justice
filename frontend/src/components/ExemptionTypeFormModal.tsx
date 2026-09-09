@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { translateApiError } from "../utils/translateApiError";
 import {
   createExemptionType, ExemptionType, DutyType, DutyLocation,
   listDutyTypes, listLocations, setExemptionDutyTypes, setExemptionDutyLocations,
@@ -12,6 +14,7 @@ interface Props {
 
 export default function ExemptionTypeFormModal({ onSaved, onClose }: Props) {
   useModalBackClose(onClose);
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [isGlobal, setIsGlobal] = useState(false);
   const [isMedical, setIsMedical] = useState(false);
@@ -49,8 +52,7 @@ export default function ExemptionTypeFormModal({ onSaved, onClose }: Props) {
       }
       onSaved(et);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(translateApiError(err, t, "שגיאה ביצירת סוג הפטור"));
     } finally {
       setSaving(false);
     }

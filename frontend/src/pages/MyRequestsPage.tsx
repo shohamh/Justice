@@ -63,6 +63,7 @@ type TypeFilterId = (typeof REQUEST_TYPE_GROUPS)[number]["id"];
  * counts as ממתין. */
 function statusBucket(status: string): StatusBucket {
   if (status === "approved" || status === "rejected" || status === "cancelled") return status;
+  if (status === "expired") return "cancelled";
   return "pending";
 }
 
@@ -686,7 +687,8 @@ export default function MyRequestsPage() {
                       {er.reason && <span className="text-gray-700 dark:text-gray-300">{er.reason}</span>}
                       <span className={`text-xs ${
                         er.status === "approved" ? "text-green-600 dark:text-green-400" :
-                        er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
+                        er.status === "rejected" ? "text-red-600 dark:text-red-400" :
+                        er.status === "expired" ? "text-gray-500 dark:text-gray-400" : "text-amber-600 dark:text-amber-400"
                       }`}>{t(`exemption_requests.${er.status}`)}</span>
                     </div>
                     <RequestMetaRow

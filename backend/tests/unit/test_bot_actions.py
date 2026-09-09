@@ -24,39 +24,137 @@ def _make_token(action: str, resource_id: uuid.UUID | None = None, extra_json: d
     )
 
 
+def _constraint_approve_session(token, *, status: str = "pending_commander"):
+    """Build a session.get side_effect resolving PersonalConstraint/Soldier/HierarchyNode
+    lookups the way bot.actions.execute_action's constraint:approve branch expects."""
+    from app.db.models import HierarchyNode, PersonalConstraint, Soldier
+
+    session = MagicMock()
+    c = MagicMock(spec=PersonalConstraint)
+    c.status = status
+    c.soldier_id = uuid.uuid4()
+    target_soldier = MagicMock(spec=Soldier)
+    target_soldier.hierarchy_node_id = uuid.uuid4()
+    node = MagicMock(spec=HierarchyNode)
+    actor = MagicMock(spec=Soldier)
+    actor.id = token.soldier_id
+
+    def _get(model, obj_id):
+        if model is PersonalConstraint:
+            return c
+        if model is Soldier and obj_id == token.soldier_id:
+            return actor
+        if model is Soldier:
+            return target_soldier
+        if model is HierarchyNode:
+            return node
+        return None
+
+    session.get.side_effect = _get
+    return session, actor, node
+
+
+def _exemption_approve_session(token, *, status: str = "pending_commander"):
+    """Build a session.get side_effect resolving ExemptionRequest/Soldier/HierarchyNode
+    lookups the way bot.actions.execute_action's exemption:approve branch expects."""
+    from app.db.models import HierarchyNode, Soldier
+
+    session = MagicMock()
+    req = MagicMock()
+    req.status = status
+    req.soldier_id = uuid.uuid4()
+    target_soldier = MagicMock(spec=Soldier)
+    target_soldier.hierarchy_node_id = uuid.uuid4()
+    node = MagicMock(spec=HierarchyNode)
+    actor = MagicMock(spec=Soldier)
+    actor.id = token.soldier_id
+
+    def _get(model, obj_id):
+        from app.db.models import ExemptionRequest
+        if model is ExemptionRequest:
+            return req
+        if model is Soldier and obj_id == token.soldier_id:
+            return actor
+        if model is Soldier:
+            return target_soldier
+        if model is HierarchyNode:
+            return node
+        return None
+
+    session.get.side_effect = _get
+    return session, actor, node
+
+
 def test_execute_action_constraint_approve_calls_service():
     from bot.actions import execute_action
 
-    session = MagicMock()
     token = _make_token("constraint:approve")
+    session, actor, node = _constraint_approve_session(token)
 
-    with patch("bot.actions.constraint_svc.approve_constraint") as mock_approve:
+    with patch("bot.actions.senior_commander_approval_authorized", return_value=True) as mock_auth, \
+         patch("bot.actions.constraint_svc.approve_constraint") as mock_approve:
         mock_approve.return_value = MagicMock()
         result = execute_action(token, session)
 
+    mock_auth.assert_called_once_with(session, user=actor, target_node=node)
     mock_approve.assert_called_once_with(
         session, constraint_id=token.resource_id, actor_id=token.soldier_id
     )
     assert "אושרה" in result
 
 
+def test_execute_action_constraint_approve_commander_step_rejects_unauthorized_duty_manager():
+    """A duty manager whose scope covers the node but who is not the
+    commanding officer must not be able to approve the commander stage of a
+    constraint via the Telegram quick-action path (regression: this call site
+    used to have zero authorization check before calling approve_constraint)."""
+    from bot.actions import execute_action
+
+    token = _make_token("constraint:approve")
+    session, actor, node = _constraint_approve_session(token)
+
+    with patch("bot.actions.senior_commander_approval_authorized", return_value=False) as mock_auth, \
+         patch("bot.actions.constraint_svc.approve_constraint") as mock_approve:
+        result = execute_action(token, session)
+
+    mock_auth.assert_called_once_with(session, user=actor, target_node=node)
+    mock_approve.assert_not_called()
+    assert "forbidden" in result or "שגיאה" in result
+
+
 def test_execute_action_exemption_approve_commander_step_calls_service():
     from bot.actions import execute_action
 
-    session = MagicMock()
     token = _make_token("exemption:approve")
-    req = MagicMock()
-    req.status = "pending_commander"
-    session.get.return_value = req
+    session, actor, node = _exemption_approve_session(token)
 
-    with patch("bot.actions.exemption_svc.approve_commander_step") as mock_approve:
+    with patch("bot.actions.senior_commander_approval_authorized", return_value=True) as mock_auth, \
+         patch("bot.actions.exemption_svc.approve_commander_step") as mock_approve:
         mock_approve.return_value = MagicMock()
         result = execute_action(token, session)
 
+    mock_auth.assert_called_once_with(session, user=actor, target_node=node)
     mock_approve.assert_called_once_with(
         session, token.resource_id, approved_by=token.soldier_id
     )
     assert "אושרה" in result
+
+
+def test_execute_action_exemption_approve_commander_step_rejects_unauthorized_duty_manager():
+    """Same regression as the constraint case above, for the exemption
+    commander-step approval via the Telegram quick-action path."""
+    from bot.actions import execute_action
+
+    token = _make_token("exemption:approve")
+    session, actor, node = _exemption_approve_session(token)
+
+    with patch("bot.actions.senior_commander_approval_authorized", return_value=False) as mock_auth, \
+         patch("bot.actions.exemption_svc.approve_commander_step") as mock_approve:
+        result = execute_action(token, session)
+
+    mock_auth.assert_called_once_with(session, user=actor, target_node=node)
+    mock_approve.assert_not_called()
+    assert "forbidden" in result or "שגיאה" in result
 
 
 def test_execute_action_exemption_approve_duty_manager_step_calls_service():

@@ -207,37 +207,41 @@ export default function HomePage() {
   });
   const ranges = rangesQuery.data ?? [];
 
+  const canViewScoring = user?.can_view_transparency !== false;
+
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
     queryFn: getTransparency,
     select: (out) => out.rows,
+    enabled: canViewScoring,
   });
   const transparencyRows = useMemo(() => transparencyQuery.data ?? [], [transparencyQuery.data]);
 
   const breakdownQuery = useQuery({
     queryKey: user ? queryKeys.breakdown(user.id) : ["breakdown", "anonymous"],
     queryFn: () => getBreakdown(user!.id),
-    enabled: !!user,
+    enabled: !!user && canViewScoring,
   });
   const breakdown = breakdownQuery.data ?? null;
 
   const burdenShareQuery = useQuery({
     queryKey: user ? queryKeys.burdenShare(user.id) : ["burdenShare", "anonymous"],
     queryFn: () => getBurdenShare(user!.id),
-    enabled: !!user,
+    enabled: !!user && canViewScoring,
   });
 
   const burdenShareBreakdownQuery = useQuery({
     queryKey: user ? queryKeys.burdenShareBreakdown(user.id) : ["burdenShareBreakdown", "anonymous"],
     queryFn: () => getBurdenShareBreakdown(user!.id),
-    enabled: !!user,
+    enabled: !!user && canViewScoring,
   });
 
   const hasScoreLoadError =
-    transparencyQuery.isError ||
-    breakdownQuery.isError ||
-    burdenShareQuery.isError ||
-    burdenShareBreakdownQuery.isError;
+    canViewScoring &&
+    (transparencyQuery.isError ||
+      breakdownQuery.isError ||
+      burdenShareQuery.isError ||
+      burdenShareBreakdownQuery.isError);
 
   const enrollQuery = useQuery({
     queryKey: queryKeys.pendingEnrollments(),

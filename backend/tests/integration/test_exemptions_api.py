@@ -5,7 +5,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AuditLog, ExemptionRequest, ExemptionType, SoldierEnrollmentRequest, SoldierExemption
+from app.db.models import (
+    AuditLog,
+    DutyManagerScope,
+    ExemptionRequest,
+    ExemptionType,
+    SoldierEnrollmentRequest,
+    SoldierExemption,
+)
 from app.services.file_validation import MAX_EXEMPTION_FILE_BYTES
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -63,7 +70,7 @@ def test_soldier_exemption_files_are_scoped_and_validated(client: TestClient, ad
     grant = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     assert grant.status_code == 201, grant.text
     exemption_id = grant.json()["id"]
@@ -125,6 +132,7 @@ def test_medical_exemption_files_require_medical_document_visibility(
             "exemption_type_id": str(et.id),
             "start_date": "2026-01-01",
             "is_medical": True,
+            "reason": "בדיקה",
         },
     )
     assert grant.status_code == 201, grant.text
@@ -189,7 +197,7 @@ def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: S
     r = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(cmd),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     assert r.status_code == 403
 
@@ -203,7 +211,7 @@ def test_soldier_reads_own_but_cannot_grant(client: TestClient, admin_session: S
     r2 = client.post(
         f"/api/soldiers/{s.id}/exemptions",
         headers=auth_headers(s),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     assert r2.status_code == 403
 
@@ -218,6 +226,7 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
         json={
             "exemption_type_id": str(et.id),
             "start_date": (date.today() - timedelta(days=2)).isoformat(),
+            "reason": "בדיקה",
         },
     ).json()
     r = client.request(
@@ -239,7 +248,7 @@ def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Sess
     ex = client.post(
         f"/api/soldiers/{a.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     ).json()
     r = client.request(
         "DELETE",
@@ -410,7 +419,7 @@ def test_detail_endpoint_404_for_mismatched_soldier(client: TestClient, admin_se
     r = client.post(
         f"/api/soldiers/{s1.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     exemption_id = r.json()["id"]
     r2 = client.get(f"/api/soldiers/{s2.id}/exemptions/{exemption_id}", headers=auth_headers(admin))
@@ -430,7 +439,7 @@ def test_detail_endpoint_403_when_not_authorized(client: TestClient, admin_sessi
     r = client.post(
         f"/api/soldiers/{target.id}/exemptions",
         headers=auth_headers(admin),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     )
     exemption_id = r.json()["id"]
 
@@ -449,6 +458,7 @@ def test_revoke_requires_reason_body(client: TestClient, admin_session: Session)
         json={
             "exemption_type_id": str(et.id),
             "start_date": (date.today() - timedelta(days=1)).isoformat(),
+            "reason": "בדיקה",
         },
     ).json()
 
@@ -727,6 +737,85 @@ def test_mador_commander_can_approve_team_commanders_request(client, admin_sessi
 
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "pending_duty_manager"
+
+
+def test_duty_manager_without_commander_relationship_cannot_approve_commander_step(
+    client: TestClient, admin_session: Session
+):
+    root = create_node(admin_session, level="department", name="ex-rbac-dm-root")
+    target = create_soldier(
+        admin_session, personal_number="ex-rbac-target", hierarchy_node_id=root.id
+    )
+    duty_manager = create_soldier(
+        admin_session, personal_number="ex-rbac-dm", role="duty_manager"
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=root.id)
+    )
+    exemption_type = _et(admin_session, "ex-rbac-type")
+    request = ExemptionRequest(
+        soldier_id=target.id,
+        exemption_type_id=exemption_type.id,
+        start_date=date(2026, 1, 1),
+        reason="commander authorization regression",
+        status="pending_commander",
+    )
+    admin_session.add(request)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{request.id}/approve-commander",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 403, response.text
+
+    root.commander_id = duty_manager.id
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{request.id}/approve-commander",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "pending_duty_manager"
+
+
+def test_duty_manager_can_approve_duty_manager_step(
+    client: TestClient, admin_session: Session
+):
+    root = create_node(admin_session, level="department", name="ex-rbac-dm-stage-root")
+    target = create_soldier(
+        admin_session, personal_number="ex-rbac-dm-stage-target", hierarchy_node_id=root.id
+    )
+    duty_manager = create_soldier(
+        admin_session, personal_number="ex-rbac-dm-stage-actor", role="duty_manager"
+    )
+    admin_session.add(
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=root.id)
+    )
+    exemption_type = _et(admin_session, "ex-rbac-dm-stage-type")
+    request = ExemptionRequest(
+        soldier_id=target.id,
+        exemption_type_id=exemption_type.id,
+        start_date=date(2026, 1, 1),
+        reason="duty-manager stage authorization regression",
+        status="pending_duty_manager",
+    )
+    admin_session.add(request)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/exemption-requests/{request.id}/approve-duty-manager",
+        json={"decision_note": None},
+        headers=auth_headers(duty_manager),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "approved"
 
 
 def test_plain_commander_cannot_use_direct_commander_exemption_route(client: TestClient, admin_session: Session):

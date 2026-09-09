@@ -296,6 +296,31 @@ def approve_duty_manager_step(
     return req
 
 
+def expire_stale_exemption_requests(session: Session, *, today: date | None = None) -> int:
+    """Close every still-open ExemptionRequest whose requested end_date has
+    passed, with a note explaining why — mirrors expire_started_swaps for
+    swap requests (see app/services/swaps.py). Called by the same periodic
+    worker; no user actor, so notifications/audit use actor_id=None."""
+    today = today or date.today()
+    requests = session.execute(
+        select(ExemptionRequest).where(
+            ExemptionRequest.status.in_(["pending_commander", "pending_duty_manager"]),
+            ExemptionRequest.end_date.is_not(None),
+            ExemptionRequest.end_date < today,
+        )
+    ).scalars().all()
+    for req in requests:
+        req.status = "expired"
+        req.decision_note = "התאריך שהוגדר לבקשה עבר"
+        create_notification(
+            session, soldier_id=req.soldier_id, type=NotificationType.exemption_rejected,
+            title="בקשת הפטור נסגרה — התאריך עבר", reference_type="exemption_request",
+            reference_id=req.id, actor_id=None,
+        )
+    session.flush()
+    return len(requests)
+
+
 def reject_request(
     session: Session,
     request_id: uuid.UUID,

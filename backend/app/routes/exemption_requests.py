@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import (
-    Action, authorize, can, can_see_private, can_view_medical_document, forbid_self_target, is_commander,
+    Action, authorize, can_see_private, can_view_medical_document, forbid_self_target, is_commander,
     is_duty_manager, scope_root_ids,
 )
 from app.rate_limit import limiter
@@ -519,8 +519,7 @@ def approve_exemption_request_commander_step(
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
     forbid_self_target(user, req.soldier_id)
     if not senior_commander_approval_authorized(session, user=user, target_node=target_node):
-        if not (is_duty_manager(session, user.id) and can(user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=scope_root_ids(session, user), is_commander=is_commander(session, user.id), is_duty_manager=True)):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
         result = approve_commander_step(session, request_id, approved_by=user.id, decision_note=body.decision_note)
     except ExemptionRequestError as exc:

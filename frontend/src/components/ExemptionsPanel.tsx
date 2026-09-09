@@ -624,7 +624,7 @@ export default function ExemptionsPanel({
               <button
                 type="button"
                 onClick={openCommanderConfirm}
-                disabled={!commanderTypeId || !start || !isDateRangeValid(start, end)}
+                disabled={!commanderTypeId || !start || !isDateRangeValid(start, end) || !commanderReason.trim()}
                 className="bg-blue-600 text-white rounded px-3 py-1 disabled:opacity-50"
                 data-testid="commander-exemption-submit"
               >
