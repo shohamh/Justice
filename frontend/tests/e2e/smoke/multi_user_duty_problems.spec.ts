@@ -379,6 +379,21 @@ async function activateReserve(page: Page): Promise<void> {
 
 test.describe.configure({ mode: "serial" });
 
+// Desktop-only: the second test in this file is a real, state-mutating
+// multi-actor lifecycle (creates a shift/assignment, then dismisses it via
+// gimelim) sharing one module-level journeyBaseOffset date computed once for
+// the whole file. Running it under both "desktop" and "mobile-390" replays
+// the exact same mutating journey twice against the same backend data —
+// whichever project runs second can hit already-mutated state (e.g. an
+// assignment the first pass already gimelim-dismissed), producing a real but
+// spurious backend rejection on the preview/commit step. Matches the same
+// desktop-only precedent already applied to hierarchy_transfers.spec.ts,
+// rank_advancement.spec.ts, and personal_constraint_override.spec.ts for the
+// identical class of shared-serial-fixture collision.
+test.beforeEach(async ({}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only: shared mutable fixture, see comment above test.describe.configure");
+});
+
 test("duty manager reaches the existing assignment UI boundary without mutation APIs @smoke", async ({ browser }) => {
   const dutyManager = await openRoleContext(browser, "dutyManager");
   try {
