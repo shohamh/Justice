@@ -113,8 +113,13 @@ type RoleContext = { context: BrowserContext; page: Page };
 
 const SOURCE_NODE_NAME = "צוות ריי";
 const DEST_NODE_NAME = "צוות ספארק";
-// Ancestor chain shared by both teams: root -> פסיפס -> פוקוס -> שבירה.
-const ANCESTOR_CHAIN = ["כלל המסגרת", "פסיפס", "פוקוס", "שבירה"];
+// Ancestor chain shared by both teams: root (פסיפס) -> פוקוס -> שבירה.
+// "כלל המסגרת" is NOT a real tree node -- it's a static label
+// (`t("common.whole_org")`, `tree-whole-org-label` testid) rendered as a
+// sibling before `[data-testid="node-tree"]`, not inside it, so it can
+// never be found or expanded via `ensureNodeExpanded`'s
+// `node-tree`-scoped locator.
+const ANCESTOR_CHAIN = ["פסיפס", "פוקוס", "שבירה"];
 
 async function openActorContext(browser: Browser, actor: JourneyActor): Promise<RoleContext> {
   const projectUse = test.info().project.use as {

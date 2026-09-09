@@ -28,7 +28,11 @@ test("soldier submits personal constraint, past dates are blocked client-side @s
   await page.getByTestId("req-start").fill(fmtDate(futureStart));
   await page.getByTestId("req-end").fill(fmtDate(futureEnd));
   await page.getByTestId("req-reason").fill("חופשה אישית");
+  const constraintCreate = page.waitForResponse(
+    (r) => r.url().includes("/api/me/constraints") && r.request().method() === "POST",
+  );
   await page.getByTestId("req-submit").click();
+  await constraintCreate;
 
   // The create form lives under the "new" tab; existing constraints
   // (constraints-list) are under a separate "existing" tab.

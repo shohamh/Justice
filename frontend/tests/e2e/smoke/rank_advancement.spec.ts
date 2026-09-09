@@ -126,10 +126,14 @@ import { roleStorageState, type Role } from "../fixtures/auth";
  */
 
 const SPARK_TEAM_NODE_NAME = "צוות ספארק";
-// root -> פסיפס -> פוקוס -> שבירה -> צוות ספארק (verified directly against
+// root (פסיפס) -> פוקוס -> שבירה -> צוות ספארק (verified directly against
 // the seeded DB, same chain hierarchy_transfers.spec.ts uses for its own
-// sibling teams "ריי"/"ספארק" under the same מדור).
-const ANCESTOR_CHAIN = ["כלל המסגרת", "פסיפס", "פוקוס", "שבירה"];
+// sibling teams "ריי"/"ספארק" under the same מדור). "כלל המסגרת" is NOT a
+// real tree node -- it's a static label (`t("common.whole_org")`,
+// `tree-whole-org-label` testid) rendered as a sibling before
+// `[data-testid="node-tree"]`, not inside it, so it can never be found via
+// `ensureNodeExpanded`'s `node-tree`-scoped locator.
+const ANCESTOR_CHAIN = ["פסיפס", "פוקוס", "שבירה"];
 
 const MANUAL_EDIT_SOLDIER = { personalNumber: "1000039", fullName: "ספארק 1", initialRank: "סמל" };
 const PROMOTION_SOLDIER = { personalNumber: "1000041", fullName: "ספארק 3", initialRank: "טוראי", nextRank: "רבט" };

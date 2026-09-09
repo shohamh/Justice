@@ -35,7 +35,11 @@ test("admin creates exemption type, soldier requests exemption, admin approves",
   await page.getByTestId("er-start").fill(fmt(futureStart));
   await page.getByTestId("er-end").fill(fmt(futureEnd));
   await page.getByTestId("er-reason").fill("בקשת פטור בדיקה");
+  const erCreate = page.waitForResponse(
+    (r) => r.url().includes("/api/me/exemption-requests") && r.request().method() === "POST",
+  );
   await page.getByTestId("er-submit").click();
+  await erCreate;
 
   // The create form lives under the "new" tab; existing requests (er-list)
   // are under a separate "existing" tab, switched via ?tab=existing.
