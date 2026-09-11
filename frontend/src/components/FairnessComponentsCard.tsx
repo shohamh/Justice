@@ -158,6 +158,13 @@ function FairnessComponentCard({
                       // ancestor is overflow: visible), so it just runs off the edge
                       // of the screen. Let it wrap within a reasonable width instead.
                       contentStyle={{ whiteSpace: "normal", maxWidth: 280 }}
+                      // Pin the tooltip just under the chart instead of letting it
+                      // follow the cursor with Recharts' built-in edge-avoidance
+                      // (which assumes LTR and doesn't know about the fixed sidebar
+                      // this RTL layout keeps clear of via the md:pr-16 above) — a
+                      // fixed, predictable spot next to this small 96x96 chart is
+                      // guaranteed to stay inside that same buffer.
+                      position={{ x: 0, y: 96 }}
                       formatter={(value, _name, props) => {
                         const count = (props.payload as { count?: number })?.count;
                         const names = typeIdsForCount(c.soldiers, count ?? null);
