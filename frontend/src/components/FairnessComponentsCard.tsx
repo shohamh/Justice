@@ -151,6 +151,13 @@ function FairnessComponentCard({
                     </Pie>
                     <RechartsTooltip
                       wrapperStyle={{ zIndex: 1000 }}
+                      // Recharts' default tooltip content is `white-space: nowrap`,
+                      // sized to fit — fine for short labels, but the duty-type list
+                      // here can run to dozens of names, rendering as one unbroken
+                      // line thousands of pixels wide with nothing to clip it (every
+                      // ancestor is overflow: visible), so it just runs off the edge
+                      // of the screen. Let it wrap within a reasonable width instead.
+                      contentStyle={{ whiteSpace: "normal", maxWidth: 280 }}
                       formatter={(value, _name, props) => {
                         const count = (props.payload as { count?: number })?.count;
                         const names = typeIdsForCount(c.soldiers, count ?? null);
