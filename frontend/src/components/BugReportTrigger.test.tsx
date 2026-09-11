@@ -62,7 +62,7 @@ describe("BugReportTrigger", () => {
     await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
     const [captureNode, options] = vi.mocked(snapdom.toCanvas).mock.calls[0];
     expect(captureNode).not.toBe(document.body);
-    expect(options).toEqual(expect.objectContaining({ dpr: 1 }));
+    expect(options).toEqual(expect.objectContaining({ dpr: 1, clip: "viewport", reconcile: true }));
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
 
     releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
@@ -72,18 +72,18 @@ describe("BugReportTrigger", () => {
     );
   });
 
-  test("clips to the capture root's own box regardless of its off-screen translate", async () => {
-    // Simulates the real off-screen position (translateX(-100000px), see
-    // createCaptureClone) that the capture host is placed at — the clip math
-    // must resolve to the root's own (0, 0, innerWidth, innerHeight) box, not
-    // the real browser viewport, or the offscreen-pruning clip would land on
-    // empty space and produce a blank/cropped-wrong screenshot.
-    const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
-      left: -100000, top: 0, right: -99000, bottom: 800, width: 1000, height: 800,
-      x: -100000, y: 0, toJSON: () => {},
-    });
-    Object.defineProperty(window, "scrollX", { value: 15, configurable: true });
-    Object.defineProperty(window, "scrollY", { value: 25, configurable: true });
+  test("passes clip: 'viewport' + reconcile: true, and keeps the capture host at its real on-screen position", async () => {
+    // Live-verified against the actual calendar page: `clip: 'viewport'` alone
+    // silently drops real content on table/inline-cell-heavy layouts (FullCalendar's
+    // day-grid), which `reconcile: true` fixes by measuring against the live DOM
+    // instead of relying on heuristics. `clip: 'viewport'` also only resolves
+    // correctly when the capture host sits at its real screen position — pushing
+    // it off-screen (as an earlier version did) made every offscreen-pruning
+    // check see empty space and produced a near-blank capture.
+    let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
+    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(
+      new Promise((resolve) => { releaseCapture = resolve; }),
+    );
 
     renderTrigger();
 
@@ -91,18 +91,12 @@ describe("BugReportTrigger", () => {
 
     await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
     const [, options] = vi.mocked(snapdom.toCanvas).mock.calls[0];
-    expect(options).toEqual(expect.objectContaining({
-      clip: {
-        x: -100000 + 15,
-        y: 0 + 25,
-        width: window.innerWidth,
-        height: window.innerHeight,
-      },
-    }));
+    expect(options).toEqual({ dpr: 1, clip: "viewport", reconcile: true });
 
-    rectSpy.mockRestore();
-    Object.defineProperty(window, "scrollX", { value: 0, configurable: true });
-    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+    const host = document.body.querySelector<HTMLElement>("[data-bug-report-capture-host]");
+    expect(host?.style.transform).toBe("");
+
+    releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
   });
 
   test("passes the captured screenshot down to the modal", async () => {
@@ -175,7 +169,7 @@ describe("BugReportTrigger", () => {
 
     // Advance past the capture timeout, plus the small rAF/setTimeout yield
     // that now happens before capture starts.
-    await act(async () => { await vi.advanceTimersByTimeAsync(6100); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(15100); });
 
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull();
     expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();

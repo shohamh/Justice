@@ -9,19 +9,22 @@ import { getMyBugReportsUnseenCount } from "../api/bugReports";
 import { queryKeys } from "../queryKeys";
 
 // snapdom rasterizes through the browser's own SVG foreignObject pipeline rather
-// than repainting the DOM in JS, so it's usually near-instant — but external
-// image fetches (or a pathological DOM) can still stall, so a cap remains.
-// Without it, a hang here would leave the trigger disabled forever with no way
-// to open the modal — capping it means capture failure (including a hang) is
-// always non-fatal, matching the rest of this feature's error handling.
-const CAPTURE_TIMEOUT_MS = 6000;
+// than repainting the DOM in JS, so it's substantially faster than the old
+// library even on heavy pages — but a full month calendar (FullCalendar, many
+// duty cards) still measured ~9s in practice with the offscreen-pruning +
+// layout-reconciliation options below, so the cap needs real headroom above
+// that rather than the old library's ~6s budget. Without a cap, a hang here
+// would leave the trigger disabled forever with no way to open the modal —
+// capping it means capture failure (including a hang) is always non-fatal,
+// matching the rest of this feature's error handling.
+const CAPTURE_TIMEOUT_MS = 15000;
 
 function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boolean) {
-  // Stage our own connected, off-screen copy so computed styles remain
-  // available while every scroll adjustment is confined to the representation
-  // handed to the capture call, and so the capture box itself can be clipped
-  // to the viewport via plain CSS (overflow: hidden) instead of a library-
-  // specific crop option.
+  // Stage our own connected copy so computed styles remain available while
+  // every scroll adjustment is confined to the representation handed to the
+  // capture call, and so the capture box itself can be clipped to the
+  // viewport via plain CSS (overflow: hidden) instead of a library-specific
+  // crop option.
   const captureRoot = document.body.cloneNode(true) as HTMLBodyElement;
   Object.assign(captureRoot.style, {
     margin: "0",
@@ -33,6 +36,12 @@ function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boole
   host.dataset.bugReportCaptureHost = "";
   host.setAttribute("aria-hidden", "true");
   host.setAttribute("inert", "");
+  // Kept at its real on-screen position (invisible only via the extremely
+  // negative z-index + pointer-events below), NOT pushed off-screen with a
+  // large translate as an earlier version did: the `clip: 'viewport'` option
+  // used below resolves against the real browser viewport, and shifting the
+  // whole subtree away from it made every offscreen-pruning check see empty
+  // space, producing a near-blank capture.
   Object.assign(host.style, {
     position: "fixed",
     inset: "0",
@@ -40,7 +49,6 @@ function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boole
     height: `${window.innerHeight}px`,
     overflow: "hidden",
     pointerEvents: "none",
-    transform: "translateX(-100000px)",
     zIndex: "-2147483648",
   });
 
@@ -140,25 +148,19 @@ export default function BugReportTrigger() {
       // previously required skipping font embedding on the old library.
       const capture = createCaptureClone(scrollX, scrollY, appScrollContent !== null);
       try {
-        // snapdom only prunes offscreen subtrees BEFORE serializing/inlining them
-        // when an explicit `clip` is passed — without it, capture still walks and
-        // embeds the entire cloned body (e.g. a long duty table well past the
-        // fold), even though the CSS overflow:hidden above only crops the final
-        // raster. `rect` is the capture root's own (already off-screen-translated)
-        // box; adding scrollX/Y cancels the library's internal subtraction of the
-        // live page's scroll, so the resolved clip lands exactly on the root's own
-        // (0, 0, innerWidth, innerHeight) regardless of where it visually sits.
-        const rect = capture.captureRoot.getBoundingClientRect();
+        // clip: 'viewport' enables snapdom's offscreen-subtree pruning (skipped
+        // entirely when no clip is given), which is most of the speedup on a
+        // content-heavy page — but on its own it silently drops real, currently-
+        // visible content on table/inline-cell-heavy layouts (verified live: the
+        // calendar's FullCalendar day-grid uses table-cell layout; snapdom warns
+        // "[snapdom] Text in inline/table-cell elements kept its natural width and
+        // may re-wrap under font-fallback rasterization" for exactly this case).
+        // reconcile: true fixes it by mounting the clone in-document once and
+        // measuring against the live DOM instead of relying on heuristics —
+        // confirmed via a live side-by-side capture that this combination
+        // reproduces the page exactly, where clip alone did not.
         const canvas = await withTimeout(
-          snapdom.toCanvas(capture.captureRoot, {
-            dpr: 1,
-            clip: {
-              x: rect.left + window.scrollX,
-              y: rect.top + window.scrollY,
-              width: window.innerWidth,
-              height: window.innerHeight,
-            },
-          }),
+          snapdom.toCanvas(capture.captureRoot, { dpr: 1, clip: "viewport", reconcile: true }),
           CAPTURE_TIMEOUT_MS,
         );
         screenshot = canvas.toDataURL("image/png");
