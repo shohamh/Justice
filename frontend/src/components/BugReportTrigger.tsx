@@ -2,31 +2,31 @@ import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Bug } from "lucide-react";
-import { snapdom } from "@zumer/snapdom";
+import { toPng } from "html-to-image";
 import { reportFrontendError } from "../errorReporting";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getMyBugReportsUnseenCount } from "../api/bugReports";
 import { queryKeys } from "../queryKeys";
 
-// snapdom's `clip` option enables offscreen-subtree pruning, which is the
-// main lever for making capture faster on a heavy page — but multiple live-
-// verified attempts at it (a manual clip rect, `clip: 'viewport'` alone, and
-// `clip: 'viewport'` + `reconcile: true`) each silently dropped real,
-// currently-visible content in a *different* place on the actual duty
-// calendar (FullCalendar's dense day-grid). No combination found was fully
-// correct. Deliberately NOT using `clip` at all is the one option that's
-// mechanically guaranteed correct: it's checked as `if (e.clip && ...)`
-// inside snapdom's own per-node walk, so omitting it means that pruning path
-// never runs and nothing gets dropped — confirmed via a direct live capture
-// that pixel-matched every part of the live calendar. The cost is real:
-// ~30-40s measured on this page. Since capture now runs in the background
-// after the modal is already open and usable (see handleClick), that cost no
-// longer blocks the user — the cap below just bounds how long a hang can
-// leave the modal's screenshot preview stuck in its "capturing..." state
-// before falling back to "couldn't capture" (capture failure, including a
-// hang, is always non-fatal, matching the rest of this feature's error
-// handling).
-const CAPTURE_TIMEOUT_MS = 45000;
+// Rasterizer history, for the next person tempted to "just make this
+// faster": snapdom (SVG-foreignObject-based, no JS repaint) was tried here
+// and reliably 4-10x faster — but on this app's actual duty calendar
+// (FullCalendar's day-grid, multi-day events using RTL negative-offset
+// absolute positioning: `left: -425px; right: 0` instead of `left/width`)
+// it silently DROPPED specific real events from the capture. Confirmed live,
+// pixel-by-pixel, across five different configurations: a manual clip rect,
+// `clip: 'viewport'` alone, `clip: 'viewport'` + `reconcile: true`, no clip
+// at all, and a manual left/right-style normalization on the offending
+// elements — every one either dropped content or (no-clip) still dropped
+// this specific multi-day-event pattern. html-to-image's JS-repaint approach
+// does not share this failure mode (it isn't relying on the browser's own
+// foreignObject layout engine to resolve that CSS pattern) and is what this
+// feature shipped with originally — slower, but correct, which matters more
+// for a bug-report screenshot than speed does. Capture running in the
+// background after the modal is already open (see handleClick) is what
+// actually fixes the original "long wait, sometimes fails" complaint; the
+// library choice here is now about correctness, not speed.
+const CAPTURE_TIMEOUT_MS = 20000;
 
 function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boolean) {
   // Stage our own connected copy so computed styles remain available while
@@ -155,14 +155,25 @@ export default function BugReportTrigger() {
       await nextPaint();
       const capture = createCaptureClone(scrollX, scrollY, appScrollContent !== null);
       try {
-        // See the CAPTURE_TIMEOUT_MS comment above: no `clip` option here,
-        // deliberately — it's the only setting verified correct on every part
-        // of the actual duty calendar.
-        const canvas = await withTimeout(
-          snapdom.toCanvas(capture.captureRoot, { dpr: 1 }),
+        screenshot = await withTimeout(
+          toPng(capture.captureRoot, {
+            // pixelRatio: 1 avoids multiplying the capture by devicePixelRatio,
+            // often the single biggest driver of an oversized PNG on retina/
+            // high-DPI displays. width/height clamp the capture to the capture
+            // root's own already-viewport-clamped box (belt and suspenders with
+            // the CSS overflow: hidden in createCaptureClone).
+            pixelRatio: 1,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            // Downloading + base64-embedding every @font-face on the page can by
+            // itself take longer than the capture timeout on pages with heavy
+            // custom-font usage. Fonts are already loaded in the live page, so
+            // skipping re-embedding still renders real text — just via the
+            // browser's already-loaded fonts instead of a self-contained embed.
+            skipFonts: true,
+          }),
           CAPTURE_TIMEOUT_MS,
         );
-        screenshot = canvas.toDataURL("image/png");
       } finally {
         capture.remove();
       }

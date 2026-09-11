@@ -4,16 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import BugReportTrigger from "./BugReportTrigger";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
-import { snapdom } from "@zumer/snapdom";
+import { toPng } from "html-to-image";
 import { reportFrontendError } from "../errorReporting";
 
-function fakeCanvas(dataUrl: string): HTMLCanvasElement {
-  return { toDataURL: vi.fn(() => dataUrl) } as unknown as HTMLCanvasElement;
-}
-
-vi.mock("@zumer/snapdom", () => ({
-  snapdom: { toCanvas: vi.fn().mockResolvedValue(fakeCanvas("data:image/png;base64,AAA")) },
-}));
+vi.mock("html-to-image", () => ({ toPng: vi.fn().mockResolvedValue("data:image/png;base64,AAA") }));
 vi.mock("../errorReporting", () => ({ reportFrontendError: vi.fn() }));
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
@@ -41,8 +35,8 @@ describe("BugReportTrigger", () => {
   });
 
   test("opens the modal immediately with a screenshot-pending placeholder, usable before capture resolves", async () => {
-    let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
-    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(
+    let releaseCapture: (url: string) => void = () => {};
+    vi.mocked(toPng).mockReturnValueOnce(
       new Promise((resolve) => { releaseCapture = resolve; }),
     );
 
@@ -57,11 +51,11 @@ describe("BugReportTrigger", () => {
     expect(screen.getByTestId("bug-report-description")).not.toBeDisabled();
     expect(screen.getByTestId("bug-report-submit")).toBeInTheDocument();
 
-    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
-    const [, options] = vi.mocked(snapdom.toCanvas).mock.calls[0];
-    expect(options).toEqual({ dpr: 1 });
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
+    const [, options] = vi.mocked(toPng).mock.calls[0];
+    expect(options).toEqual(expect.objectContaining({ pixelRatio: 1, skipFonts: true }));
 
-    releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
+    releaseCapture("data:image/png;base64,AAA");
 
     await waitFor(() => expect(screen.queryByTestId("bug-report-screenshot-loading")).not.toBeInTheDocument());
     expect(screen.getByAltText("")).toHaveAttribute("src", "data:image/png;base64,AAA");
@@ -71,8 +65,8 @@ describe("BugReportTrigger", () => {
     // The modal doesn't remount when the screenshot arrives (same React key,
     // keyed by the open's token) — this locks that in, since it's the whole
     // point of opening the modal before capture finishes.
-    let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
-    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(
+    let releaseCapture: (url: string) => void = () => {};
+    vi.mocked(toPng).mockReturnValueOnce(
       new Promise((resolve) => { releaseCapture = resolve; }),
     );
 
@@ -82,36 +76,10 @@ describe("BugReportTrigger", () => {
     await screen.findByTestId("bug-report-screenshot-loading");
     fireEvent.change(screen.getByTestId("bug-report-description"), { target: { value: "typed while pending" } });
 
-    releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
+    releaseCapture("data:image/png;base64,AAA");
 
     await waitFor(() => expect(screen.getByAltText("")).toHaveAttribute("src", "data:image/png;base64,AAA"));
     expect(screen.getByTestId("bug-report-description")).toHaveValue("typed while pending");
-  });
-
-  test("never passes a clip option, and keeps the capture host off-screen", async () => {
-    // Multiple live-verified attempts at snapdom's offscreen-subtree pruning
-    // (a manual clip rect, `clip: 'viewport'` alone, `clip: 'viewport'` +
-    // `reconcile: true`) each silently dropped real, currently-visible content
-    // in a different place on the actual duty calendar (FullCalendar's dense
-    // day-grid). Omitting `clip` entirely is the one option confirmed correct
-    // on every part of the live page — it's checked as `if (e.clip && ...)`
-    // inside snapdom's own walk, so without it nothing gets pruned. The host
-    // stays off-screen (translateX) since there's no clip-viewport resolution
-    // to keep it on-screen for.
-    let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
-    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(
-      new Promise((resolve) => { releaseCapture = resolve; }),
-    );
-
-    renderTrigger();
-
-    fireEvent.click(screen.getByTestId("bug-report-trigger"));
-
-    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
-    const host = document.body.querySelector<HTMLElement>("[data-bug-report-capture-host]");
-    expect(host?.style.transform).toBe("translateX(-100000px)");
-
-    releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
   });
 
   test("excludes the bug-report modal itself from the capture clone", async () => {
@@ -119,8 +87,8 @@ describe("BugReportTrigger", () => {
     // without this the modal (its overlay, form, "capturing..." placeholder)
     // would show up inside its own screenshot.
     let capturedNode: HTMLElement | null = null;
-    let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
-    vi.mocked(snapdom.toCanvas).mockImplementationOnce((node) => {
+    let releaseCapture: (url: string) => void = () => {};
+    vi.mocked(toPng).mockImplementationOnce((node) => {
       capturedNode = node as HTMLElement;
       return new Promise((resolve) => { releaseCapture = resolve; });
     });
@@ -129,30 +97,26 @@ describe("BugReportTrigger", () => {
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
     await screen.findByTestId("bug-report-modal-overlay");
-    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
 
     expect(capturedNode?.querySelector("[data-bug-report-capture-exclude]")).toBeNull();
     // Sanity: only the clone excludes it — the live modal is still open.
     expect(document.body.querySelector("[data-bug-report-capture-exclude]")).not.toBeNull();
 
-    releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
+    releaseCapture("data:image/png;base64,AAA");
   });
 
-  test("exports the rasterized capture as a real PNG data URL, not SVG", async () => {
-    const canvas = fakeCanvas("data:image/png;base64,AAA");
-    vi.mocked(snapdom.toCanvas).mockResolvedValueOnce(canvas);
-
+  test("passes the captured screenshot down to the modal", async () => {
     renderTrigger();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-    await waitFor(() => expect(canvas.toDataURL).toHaveBeenCalledWith("image/png"));
-    expect(screen.getByAltText("")).toHaveAttribute("src", expect.stringMatching(/^data:image\/png;base64,/));
+    await waitFor(() => expect(screen.getByAltText("")).toHaveAttribute("src", "data:image/png;base64,AAA"));
   });
 
   test("shows the fallback message once capture fails (non-fatal), not immediately on open", async () => {
     let rejectCapture: (err: Error) => void = () => {};
-    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(
+    vi.mocked(toPng).mockReturnValueOnce(
       new Promise((_resolve, reject) => { rejectCapture = reject; }),
     );
 
@@ -164,7 +128,7 @@ describe("BugReportTrigger", () => {
     expect(screen.getByTestId("bug-report-screenshot-loading")).toBeInTheDocument();
     expect(screen.queryByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).not.toBeInTheDocument();
 
-    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
     rejectCapture(new Error("capture failed"));
 
     await waitFor(() =>
@@ -177,10 +141,10 @@ describe("BugReportTrigger", () => {
 
   test("falls back to the fallback message if capture hangs past the timeout", async () => {
     vi.useFakeTimers();
-    // A promise that never settles on its own — simulates toCanvas() hanging
-    // instead of rejecting, which a plain try/catch around toCanvas() would
+    // A promise that never settles on its own — simulates toPng() hanging
+    // instead of rejecting, which a plain try/catch around toPng() would
     // never recover from.
-    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(new Promise(() => {}));
+    vi.mocked(toPng).mockReturnValueOnce(new Promise(() => {}));
 
     renderTrigger();
 
@@ -188,7 +152,7 @@ describe("BugReportTrigger", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByTestId("bug-report-screenshot-loading")).toBeInTheDocument();
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(45100); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20100); });
 
     expect(screen.queryByTestId("bug-report-screenshot-loading")).not.toBeInTheDocument();
     expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
@@ -215,7 +179,7 @@ describe("BugReportTrigger", () => {
 
     // Our own mousedown handler (bound directly on the button) must run
     // before the event bubbles up to trigger document-level listeners.
-    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
     expect(outsideClickHandler).toHaveBeenCalled();
 
     document.removeEventListener("mousedown", outsideClickHandler);
@@ -239,8 +203,8 @@ describe("BugReportTrigger", () => {
 
     try {
       let capturedNode: HTMLElement | null = null;
-      let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
-      vi.mocked(snapdom.toCanvas).mockImplementationOnce((node) => {
+      let releaseCapture: (url: string) => void = () => {};
+      vi.mocked(toPng).mockImplementationOnce((node) => {
         capturedNode = node as HTMLElement;
         return new Promise((resolve) => { releaseCapture = resolve; });
       });
@@ -248,7 +212,7 @@ describe("BugReportTrigger", () => {
 
       fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-      await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
+      await waitFor(() => expect(toPng).toHaveBeenCalled());
       expect(capturedNode).not.toBe(document.body);
       expect(capturedNode?.querySelector<HTMLElement>("[data-bug-report-scroll-content]")?.style.transform)
         .toBe("translate(-40px, -300px)");
@@ -260,7 +224,7 @@ describe("BugReportTrigger", () => {
       expect(appScrollContainer.scrollLeft).toBe(40);
       expect(capturedNode?.isConnected).toBe(true);
 
-      releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
+      releaseCapture("data:image/png;base64,AAA");
       await waitFor(() => expect(capturedNode?.isConnected).toBe(false));
     } finally {
       header.remove();
@@ -276,8 +240,8 @@ describe("BugReportTrigger", () => {
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
-    const [captureNode] = vi.mocked(snapdom.toCanvas).mock.calls[0];
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
+    const [captureNode] = vi.mocked(toPng).mock.calls[0];
     expect(captureNode).not.toBe(document.body);
     expect((captureNode as HTMLElement).style.transform).toBe("translate(-40px, -300px)");
 
