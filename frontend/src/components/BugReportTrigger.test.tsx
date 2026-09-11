@@ -72,6 +72,39 @@ describe("BugReportTrigger", () => {
     );
   });
 
+  test("clips to the capture root's own box regardless of its off-screen translate", async () => {
+    // Simulates the real off-screen position (translateX(-100000px), see
+    // createCaptureClone) that the capture host is placed at — the clip math
+    // must resolve to the root's own (0, 0, innerWidth, innerHeight) box, not
+    // the real browser viewport, or the offscreen-pruning clip would land on
+    // empty space and produce a blank/cropped-wrong screenshot.
+    const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+      left: -100000, top: 0, right: -99000, bottom: 800, width: 1000, height: 800,
+      x: -100000, y: 0, toJSON: () => {},
+    });
+    Object.defineProperty(window, "scrollX", { value: 15, configurable: true });
+    Object.defineProperty(window, "scrollY", { value: 25, configurable: true });
+
+    renderTrigger();
+
+    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+
+    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
+    const [, options] = vi.mocked(snapdom.toCanvas).mock.calls[0];
+    expect(options).toEqual(expect.objectContaining({
+      clip: {
+        x: -100000 + 15,
+        y: 0 + 25,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+    }));
+
+    rectSpy.mockRestore();
+    Object.defineProperty(window, "scrollX", { value: 0, configurable: true });
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+  });
+
   test("passes the captured screenshot down to the modal", async () => {
     renderTrigger();
 

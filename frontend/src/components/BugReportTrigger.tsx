@@ -140,8 +140,25 @@ export default function BugReportTrigger() {
       // previously required skipping font embedding on the old library.
       const capture = createCaptureClone(scrollX, scrollY, appScrollContent !== null);
       try {
+        // snapdom only prunes offscreen subtrees BEFORE serializing/inlining them
+        // when an explicit `clip` is passed — without it, capture still walks and
+        // embeds the entire cloned body (e.g. a long duty table well past the
+        // fold), even though the CSS overflow:hidden above only crops the final
+        // raster. `rect` is the capture root's own (already off-screen-translated)
+        // box; adding scrollX/Y cancels the library's internal subtraction of the
+        // live page's scroll, so the resolved clip lands exactly on the root's own
+        // (0, 0, innerWidth, innerHeight) regardless of where it visually sits.
+        const rect = capture.captureRoot.getBoundingClientRect();
         const canvas = await withTimeout(
-          snapdom.toCanvas(capture.captureRoot, { dpr: 1 }),
+          snapdom.toCanvas(capture.captureRoot, {
+            dpr: 1,
+            clip: {
+              x: rect.left + window.scrollX,
+              y: rect.top + window.scrollY,
+              width: window.innerWidth,
+              height: window.innerHeight,
+            },
+          }),
           CAPTURE_TIMEOUT_MS,
         );
         screenshot = canvas.toDataURL("image/png");
