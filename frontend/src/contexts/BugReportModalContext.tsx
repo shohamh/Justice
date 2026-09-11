@@ -8,10 +8,19 @@ export interface OpenBugReportModalOptions {
   tab?: BugReportModalTab;
   reportId?: string;
   screenshot?: string | null;
+  // When true, the modal renders a "capturing..." placeholder instead of the
+  // fallback "couldn't capture" message until setBugReportScreenshot is
+  // called for this same open's token — lets the modal open (and be used)
+  // immediately while a slow capture still runs in the background.
+  screenshotPending?: boolean;
 }
 
 interface BugReportModalContextValue {
-  openBugReportModal: (opts?: OpenBugReportModalOptions) => void;
+  // Returns the token identifying this open, so a caller doing an async
+  // capture afterward can later push the result via setBugReportScreenshot
+  // without racing a close/reopen in between.
+  openBugReportModal: (opts?: OpenBugReportModalOptions) => number;
+  setBugReportScreenshot: (token: number, screenshot: string | null) => void;
 }
 
 const BugReportModalContext = createContext<BugReportModalContextValue | null>(null);
@@ -27,6 +36,7 @@ interface ModalState {
   tab: BugReportModalTab;
   reportId: string | null;
   screenshot: string | null;
+  screenshotPending: boolean;
 }
 
 export function BugReportModalProvider({ children }: { children: ReactNode }) {
@@ -37,12 +47,21 @@ export function BugReportModalProvider({ children }: { children: ReactNode }) {
 
   const openBugReportModal = useCallback((opts: OpenBugReportModalOptions = {}) => {
     nextToken.current += 1;
+    const token = nextToken.current;
     setModal({
-      token: nextToken.current,
+      token,
       tab: opts.tab ?? "new",
       reportId: opts.reportId ?? null,
       screenshot: opts.screenshot ?? null,
+      screenshotPending: opts.screenshotPending ?? false,
     });
+    return token;
+  }, []);
+
+  // Guarded by token so a capture that resolves after the modal was closed
+  // (or replaced by a newer open) can't overwrite a different open's state.
+  const setBugReportScreenshot = useCallback((token: number, screenshot: string | null) => {
+    setModal((prev) => (prev && prev.token === token ? { ...prev, screenshot, screenshotPending: false } : prev));
   }, []);
 
   // External push/email links carry ?bugReport=<id> (see backend
@@ -70,12 +89,13 @@ export function BugReportModalProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <BugReportModalContext.Provider value={{ openBugReportModal }}>
+    <BugReportModalContext.Provider value={{ openBugReportModal, setBugReportScreenshot }}>
       {children}
       {modal && (
         <BugReportModal
           key={modal.token}
           screenshot={modal.screenshot}
+          screenshotPending={modal.screenshotPending}
           initialTab={modal.tab}
           initialReportId={modal.reportId}
           onClose={handleClose}

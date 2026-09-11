@@ -1,23 +1,32 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Bug, Loader2 } from "lucide-react";
+import { Bug } from "lucide-react";
 import { snapdom } from "@zumer/snapdom";
 import { reportFrontendError } from "../errorReporting";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getMyBugReportsUnseenCount } from "../api/bugReports";
 import { queryKeys } from "../queryKeys";
 
-// snapdom rasterizes through the browser's own SVG foreignObject pipeline rather
-// than repainting the DOM in JS, so it's substantially faster than the old
-// library even on heavy pages — but a full month calendar (FullCalendar, many
-// duty cards) still measured ~9s in practice with the offscreen-pruning +
-// layout-reconciliation options below, so the cap needs real headroom above
-// that rather than the old library's ~6s budget. Without a cap, a hang here
-// would leave the trigger disabled forever with no way to open the modal —
-// capping it means capture failure (including a hang) is always non-fatal,
-// matching the rest of this feature's error handling.
-const CAPTURE_TIMEOUT_MS = 15000;
+// snapdom's `clip` option enables offscreen-subtree pruning, which is the
+// main lever for making capture faster on a heavy page — but multiple live-
+// verified attempts at it (a manual clip rect, `clip: 'viewport'` alone, and
+// `clip: 'viewport'` + `reconcile: true`) each silently dropped real,
+// currently-visible content in a *different* place on the actual duty
+// calendar (FullCalendar's dense day-grid). No combination found was fully
+// correct. Deliberately NOT using `clip` at all is the one option that's
+// mechanically guaranteed correct: it's checked as `if (e.clip && ...)`
+// inside snapdom's own per-node walk, so omitting it means that pruning path
+// never runs and nothing gets dropped — confirmed via a direct live capture
+// that pixel-matched every part of the live calendar. The cost is real:
+// ~30-40s measured on this page. Since capture now runs in the background
+// after the modal is already open and usable (see handleClick), that cost no
+// longer blocks the user — the cap below just bounds how long a hang can
+// leave the modal's screenshot preview stuck in its "capturing..." state
+// before falling back to "couldn't capture" (capture failure, including a
+// hang, is always non-fatal, matching the rest of this feature's error
+// handling).
+const CAPTURE_TIMEOUT_MS = 45000;
 
 function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boolean) {
   // Stage our own connected copy so computed styles remain available while
@@ -36,12 +45,6 @@ function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boole
   host.dataset.bugReportCaptureHost = "";
   host.setAttribute("aria-hidden", "true");
   host.setAttribute("inert", "");
-  // Kept at its real on-screen position (invisible only via the extremely
-  // negative z-index + pointer-events below), NOT pushed off-screen with a
-  // large translate as an earlier version did: the `clip: 'viewport'` option
-  // used below resolves against the real browser viewport, and shifting the
-  // whole subtree away from it made every offscreen-pruning check see empty
-  // space, producing a near-blank capture.
   Object.assign(host.style, {
     position: "fixed",
     inset: "0",
@@ -49,6 +52,7 @@ function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boole
     height: `${window.innerHeight}px`,
     overflow: "hidden",
     pointerEvents: "none",
+    transform: "translateX(-100000px)",
     zIndex: "-2147483648",
   });
 
@@ -71,6 +75,12 @@ function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boole
     node.removeAttribute("data-testid");
   });
 
+  // The bug-report modal itself may already be open and mounted in
+  // document.body (capture now runs in the background after the modal
+  // opens, not before) — drop it from the clone so the screenshot shows the
+  // page being reported on, not a picture of the report form itself.
+  captureRoot.querySelector("[data-bug-report-capture-exclude]")?.remove();
+
   host.append(captureRoot);
   document.body.append(host);
   return { captureRoot, remove: () => host.remove() };
@@ -86,13 +96,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-// Cloning document.body and rasterizing it are both synchronous-heavy work that
-// blocks the main thread, so setCapturing(true) alone isn't enough — React only
-// queues the spinner render, it doesn't paint it until the browser gets a turn.
-// Without yielding here first, the button would freeze on the pre-capture frame
-// for the whole capture instead of showing the spinner. rAF runs just before the
-// next repaint; the following setTimeout runs just after it, once that repaint
-// has actually made it to the screen.
+// Cloning document.body and rasterizing it are both synchronous-heavy work
+// that blocks the main thread. The modal opens (and becomes usable) before
+// this runs, so without yielding here first, its first frame would freeze
+// instead of actually painting. rAF runs just before the next repaint; the
+// following setTimeout runs just after it, once that repaint has actually
+// made it to the screen.
 function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => setTimeout(resolve, 0));
@@ -100,8 +109,7 @@ function nextPaint(): Promise<void> {
 }
 
 export default function BugReportTrigger() {
-  const { openBugReportModal } = useBugReportModal();
-  const [capturing, setCapturing] = useState(false);
+  const { openBugReportModal, setBugReportScreenshot } = useBugReportModal();
   // Other panels (e.g. the notifications dropdown) close themselves via a
   // document-level "mousedown outside" listener. That listener always runs
   // before this button's "click" event (mousedown precedes click in the
@@ -128,39 +136,30 @@ export default function BugReportTrigger() {
     const appScrollContent = appScrollContainer?.querySelector<HTMLElement>("[data-bug-report-scroll-content]") ?? null;
     const scrollX = appScrollContainer?.scrollLeft ?? window.scrollX;
     const scrollY = appScrollContainer?.scrollTop ?? window.scrollY;
-    setCapturing(true);
-    let screenshot: string | null = null;
+
+    // Open the modal immediately — description/severity entry and even
+    // submission (without a screenshot yet) all work right away — instead of
+    // making the user wait out the capture (which can take tens of seconds
+    // on a heavy page) before they can do anything. The capture below fills
+    // the screenshot in once it's ready, via the returned token so a stale
+    // result can't clobber a different modal open.
+    const token = openBugReportModal({ tab: "new", screenshotPending: true });
+    // Reset now rather than waiting for the (now backgrounded) capture to
+    // finish — the modal's overlay covers this button immediately once
+    // mounted, so nothing meaningful is gained by holding the guard longer.
+    triggeredRef.current = false;
+
     const captureStartedAt = performance.now();
+    let screenshot: string | null = null;
     try {
       await nextPaint();
-      // dpr: 1 avoids multiplying the capture by devicePixelRatio, which is often
-      // the single biggest driver of an oversized PNG on retina/high-DPI displays.
-      // The capture root itself is already clamped to the viewport size (see
-      // createCaptureClone), so no separate crop option is needed here — shell
-      // pages shift their scroll content, non-shell pages shift the whole root.
-      // Capture happens BEFORE the modal opens/mounts, so the modal's own
-      // dimming overlay and empty form are never present in document.body while
-      // the capture reads it — otherwise the screenshot would show the modal
-      // itself instead of the page the user is reporting a bug about.
-      // embedFonts defaults to false, so page fonts render via the browser's
-      // already-loaded @font-face rules instead of being re-fetched and inlined —
-      // avoiding the exact hang (KaTeX math fonts on formula-heavy pages) that
-      // previously required skipping font embedding on the old library.
       const capture = createCaptureClone(scrollX, scrollY, appScrollContent !== null);
       try {
-        // clip: 'viewport' enables snapdom's offscreen-subtree pruning (skipped
-        // entirely when no clip is given), which is most of the speedup on a
-        // content-heavy page — but on its own it silently drops real, currently-
-        // visible content on table/inline-cell-heavy layouts (verified live: the
-        // calendar's FullCalendar day-grid uses table-cell layout; snapdom warns
-        // "[snapdom] Text in inline/table-cell elements kept its natural width and
-        // may re-wrap under font-fallback rasterization" for exactly this case).
-        // reconcile: true fixes it by mounting the clone in-document once and
-        // measuring against the live DOM instead of relying on heuristics —
-        // confirmed via a live side-by-side capture that this combination
-        // reproduces the page exactly, where clip alone did not.
+        // See the CAPTURE_TIMEOUT_MS comment above: no `clip` option here,
+        // deliberately — it's the only setting verified correct on every part
+        // of the actual duty calendar.
         const canvas = await withTimeout(
-          snapdom.toCanvas(capture.captureRoot, { dpr: 1, clip: "viewport", reconcile: true }),
+          snapdom.toCanvas(capture.captureRoot, { dpr: 1 }),
           CAPTURE_TIMEOUT_MS,
         );
         screenshot = canvas.toDataURL("image/png");
@@ -182,16 +181,12 @@ export default function BugReportTrigger() {
         user_agent: navigator.userAgent,
       });
     } finally {
-      setCapturing(false);
-      openBugReportModal({ tab: "new", screenshot });
-      // Safety net for mousedown without a following click (e.g. the mouse
-      // is released outside the button) — don't leave the trigger stuck.
-      triggeredRef.current = false;
+      setBugReportScreenshot(token, screenshot);
     }
   }
 
   function trigger() {
-    if (triggeredRef.current || capturing) return;
+    if (triggeredRef.current) return;
     triggeredRef.current = true;
     void handleClick();
   }
@@ -206,14 +201,11 @@ export default function BugReportTrigger() {
         }
         trigger();
       }}
-      aria-label={capturing ? "מצלם צילום מסך..." : "מצאתי באג"}
-      className="fixed bottom-20 left-2 md:bottom-6 md:left-6 flex flex-col items-center gap-0.5 text-gray-500 hover:text-indigo-600 z-[100] disabled:opacity-60 md:flex-row md:gap-2 md:rounded-full md:bg-indigo-600 md:px-4 md:py-3 md:text-white md:shadow-lg md:hover:bg-indigo-700 md:hover:text-white md:transition-colors"
+      aria-label="מצאתי באג"
+      className="fixed bottom-20 left-2 md:bottom-6 md:left-6 flex flex-col items-center gap-0.5 text-gray-500 hover:text-indigo-600 z-[100] md:flex-row md:gap-2 md:rounded-full md:bg-indigo-600 md:px-4 md:py-3 md:text-white md:shadow-lg md:hover:bg-indigo-700 md:hover:text-white md:transition-colors"
       data-testid="bug-report-trigger"
-      disabled={capturing}
     >
-      {capturing
-        ? <Loader2 size={22} className="animate-spin md:size-5" data-testid="bug-report-trigger-spinner" aria-hidden="true" />
-        : <Bug size={22} className="md:size-5" />}
+      <Bug size={22} className="md:size-5" />
       <span className="text-[10px] leading-none md:text-sm md:font-medium md:leading-none">פידבק</span>
       {unseenCount > 0 && (
         <span
