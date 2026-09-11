@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Bug, Loader2 } from "lucide-react";
 import { toPng } from "html-to-image";
+import { reportFrontendError } from "../errorReporting";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getMyBugReportsUnseenCount } from "../api/bugReports";
 import { queryKeys } from "../queryKeys";
@@ -108,6 +109,7 @@ export default function BugReportTrigger() {
     const scrollY = appScrollContainer?.scrollTop ?? window.scrollY;
     setCapturing(true);
     let screenshot: string | null = null;
+    const captureStartedAt = performance.now();
     try {
       await nextPaint();
       // pixelRatio: 1 avoids multiplying the capture by devicePixelRatio, which is
@@ -145,9 +147,20 @@ export default function BugReportTrigger() {
       } finally {
         capture.remove();
       }
-    } catch {
-      // non-fatal (rejection or timeout): submission proceeds without a screenshot
+    } catch (err) {
+      // non-fatal (rejection or timeout): submission proceeds without a screenshot.
+      // Still worth reporting — this catch swallows the error before it can ever
+      // reach the global unhandledrejection listener, so without this call a
+      // failed/timed-out capture leaves no trace anywhere (console or admin Errors).
       screenshot = null;
+      reportFrontendError({
+        kind: "bug-report-capture-failed",
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        url: window.location.href,
+        duration_ms: Math.round(performance.now() - captureStartedAt),
+        user_agent: navigator.userAgent,
+      });
     } finally {
       setCapturing(false);
       openBugReportModal({ tab: "new", screenshot });

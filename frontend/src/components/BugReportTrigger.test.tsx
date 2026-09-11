@@ -5,8 +5,10 @@ import { MemoryRouter } from "react-router-dom";
 import BugReportTrigger from "./BugReportTrigger";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import { toPng } from "html-to-image";
+import { reportFrontendError } from "../errorReporting";
 
 vi.mock("html-to-image", () => ({ toPng: vi.fn().mockResolvedValue("data:image/png;base64,AAA") }));
+vi.mock("../errorReporting", () => ({ reportFrontendError: vi.fn() }));
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
 vi.mock("../api/bugReports", async (importOriginal) => ({
@@ -83,6 +85,9 @@ describe("BugReportTrigger", () => {
       expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull(),
     );
     expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
+    expect(reportFrontendError).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "bug-report-capture-failed", message: "capture failed" }),
+    );
   });
 
   test("shows a spinner on the trigger while capturing, and disables it", async () => {
@@ -124,6 +129,13 @@ describe("BugReportTrigger", () => {
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull();
     expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
     expect(screen.getByTestId("bug-report-trigger")).not.toBeDisabled();
+    expect(reportFrontendError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "bug-report-capture-failed",
+        message: "screenshot capture timed out",
+        duration_ms: expect.any(Number),
+      }),
+    );
 
     vi.useRealTimers();
   });
