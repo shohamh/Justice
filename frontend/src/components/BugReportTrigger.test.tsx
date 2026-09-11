@@ -4,10 +4,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import BugReportTrigger from "./BugReportTrigger";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
-import { toPng } from "html-to-image";
+import { snapdom } from "@zumer/snapdom";
 import { reportFrontendError } from "../errorReporting";
 
-vi.mock("html-to-image", () => ({ toPng: vi.fn().mockResolvedValue("data:image/png;base64,AAA") }));
+function fakeCanvas(dataUrl: string): HTMLCanvasElement {
+  return { toDataURL: vi.fn(() => dataUrl) } as unknown as HTMLCanvasElement;
+}
+
+vi.mock("@zumer/snapdom", () => ({
+  snapdom: { toCanvas: vi.fn().mockResolvedValue(fakeCanvas("data:image/png;base64,AAA")) },
+}));
 vi.mock("../errorReporting", () => ({ reportFrontendError: vi.fn() }));
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
@@ -35,8 +41,8 @@ describe("BugReportTrigger", () => {
   });
 
   test("captures a screenshot of the page BEFORE opening the modal, then opens it", async () => {
-    let releaseCapture: (url: string) => void = () => {};
-    vi.mocked(toPng).mockReturnValueOnce(
+    let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
+    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(
       new Promise((resolve) => { releaseCapture = resolve; }),
     );
 
@@ -51,15 +57,15 @@ describe("BugReportTrigger", () => {
     expect(screen.getByTestId("bug-report-trigger-spinner")).toBeInTheDocument();
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
 
-    // toPng must be called against a capture-only representation while the
+    // toCanvas must be called against a capture-only representation while the
     // modal (and its dimming overlay) is still absent.
-    await waitFor(() => expect(toPng).toHaveBeenCalled());
-    const [captureNode, options] = vi.mocked(toPng).mock.calls[0];
+    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
+    const [captureNode, options] = vi.mocked(snapdom.toCanvas).mock.calls[0];
     expect(captureNode).not.toBe(document.body);
-    expect(options).toEqual(expect.objectContaining({ pixelRatio: 1 }));
+    expect(options).toEqual(expect.objectContaining({ dpr: 1 }));
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
 
-    releaseCapture("data:image/png;base64,AAA");
+    releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
 
     await waitFor(() =>
       expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull(),
@@ -74,8 +80,20 @@ describe("BugReportTrigger", () => {
     await waitFor(() => expect(screen.getByAltText("")).toHaveAttribute("src", "data:image/png;base64,AAA"));
   });
 
+  test("exports the rasterized capture as a real PNG data URL, not SVG", async () => {
+    const canvas = fakeCanvas("data:image/png;base64,AAA");
+    vi.mocked(snapdom.toCanvas).mockResolvedValueOnce(canvas);
+
+    renderTrigger();
+
+    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+
+    await waitFor(() => expect(canvas.toDataURL).toHaveBeenCalledWith("image/png"));
+    expect(screen.getByAltText("")).toHaveAttribute("src", expect.stringMatching(/^data:image\/png;base64,/));
+  });
+
   test("still opens the modal with a null screenshot when capture fails (non-fatal)", async () => {
-    vi.mocked(toPng).mockRejectedValueOnce(new Error("capture failed"));
+    vi.mocked(snapdom.toCanvas).mockRejectedValueOnce(new Error("capture failed"));
 
     renderTrigger();
 
@@ -91,8 +109,8 @@ describe("BugReportTrigger", () => {
   });
 
   test("shows a spinner on the trigger while capturing, and disables it", async () => {
-    let releaseCapture: (url: string) => void = () => {};
-    vi.mocked(toPng).mockReturnValueOnce(
+    let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
+    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(
       new Promise((resolve) => { releaseCapture = resolve; }),
     );
 
@@ -104,7 +122,7 @@ describe("BugReportTrigger", () => {
     expect(trigger).toBeDisabled();
     expect(screen.getByTestId("bug-report-trigger-spinner")).toBeInTheDocument();
 
-    releaseCapture("data:image/png;base64,AAA");
+    releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
 
     await waitFor(() => expect(trigger).not.toBeDisabled());
     expect(screen.queryByTestId("bug-report-trigger-spinner")).not.toBeInTheDocument();
@@ -112,10 +130,10 @@ describe("BugReportTrigger", () => {
 
   test("gives up and opens the modal without a screenshot if capture hangs past the timeout", async () => {
     vi.useFakeTimers();
-    // A promise that never settles on its own — simulates toPng() hanging
-    // (e.g. inlining large fonts/images on a content-heavy page) instead of
-    // rejecting, which a plain try/catch around toPng() would never recover from.
-    vi.mocked(toPng).mockReturnValueOnce(new Promise(() => {}));
+    // A promise that never settles on its own — simulates toCanvas() hanging
+    // (e.g. inlining large images on a content-heavy page) instead of
+    // rejecting, which a plain try/catch around toCanvas() would never recover from.
+    vi.mocked(snapdom.toCanvas).mockReturnValueOnce(new Promise(() => {}));
 
     renderTrigger();
 
@@ -152,7 +170,7 @@ describe("BugReportTrigger", () => {
 
     // Our own mousedown handler (bound directly on the button) must run
     // before the event bubbles up to trigger document-level listeners.
-    await waitFor(() => expect(toPng).toHaveBeenCalled());
+    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
     expect(outsideClickHandler).toHaveBeenCalled();
 
     document.removeEventListener("mousedown", outsideClickHandler);
@@ -176,8 +194,8 @@ describe("BugReportTrigger", () => {
 
     try {
       let capturedNode: HTMLElement | null = null;
-      let releaseCapture: (url: string) => void = () => {};
-      vi.mocked(toPng).mockImplementationOnce((node) => {
+      let releaseCapture: (canvas: HTMLCanvasElement) => void = () => {};
+      vi.mocked(snapdom.toCanvas).mockImplementationOnce((node) => {
         capturedNode = node as HTMLElement;
         return new Promise((resolve) => { releaseCapture = resolve; });
       });
@@ -185,17 +203,19 @@ describe("BugReportTrigger", () => {
 
       fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-      await waitFor(() => expect(toPng).toHaveBeenCalled());
+      await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
       expect(capturedNode).not.toBe(document.body);
       expect(capturedNode?.querySelector<HTMLElement>("[data-bug-report-scroll-content]")?.style.transform)
         .toBe("translate(-40px, -300px)");
       expect(capturedNode?.querySelector<HTMLElement>("header")?.style.transform).toBe("scale(1)");
+      // The app-shell branch shifts the scroll content, not the capture root itself.
+      expect(capturedNode?.style.transform).toBe("");
       expect(appScrollContent.style.transform).toBe("scale(1)");
       expect(appScrollContainer.scrollTop).toBe(300);
       expect(appScrollContainer.scrollLeft).toBe(40);
       expect(capturedNode?.isConnected).toBe(true);
 
-      releaseCapture("data:image/png;base64,AAA");
+      releaseCapture(fakeCanvas("data:image/png;base64,AAA"));
       await waitFor(() => expect(capturedNode?.isConnected).toBe(false));
     } finally {
       header.remove();
@@ -211,12 +231,10 @@ describe("BugReportTrigger", () => {
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-    await waitFor(() => expect(toPng).toHaveBeenCalled());
-    const [captureNode, options] = vi.mocked(toPng).mock.calls[0];
+    await waitFor(() => expect(snapdom.toCanvas).toHaveBeenCalled());
+    const [captureNode] = vi.mocked(snapdom.toCanvas).mock.calls[0];
     expect(captureNode).not.toBe(document.body);
-    expect(options).toEqual(expect.objectContaining({
-      style: expect.objectContaining({ transform: "translate(-40px, -300px)" }),
-    }));
+    expect((captureNode as HTMLElement).style.transform).toBe("translate(-40px, -300px)");
 
     Object.defineProperty(window, "scrollX", { value: 0, configurable: true });
     Object.defineProperty(window, "scrollY", { value: 0, configurable: true });

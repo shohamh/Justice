@@ -2,24 +2,33 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Bug, Loader2 } from "lucide-react";
-import { toPng } from "html-to-image";
+import { snapdom } from "@zumer/snapdom";
 import { reportFrontendError } from "../errorReporting";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getMyBugReportsUnseenCount } from "../api/bugReports";
 import { queryKeys } from "../queryKeys";
 
-// html-to-image inlines every font/image on the page as a base64 data URL before
-// rasterizing, which can take a long time (or never settle at all) on content-heavy
-// pages. Without a cap, a hang here would leave the trigger disabled forever with no
-// way to open the modal — capping it means capture failure (including a hang) is
+// snapdom rasterizes through the browser's own SVG foreignObject pipeline rather
+// than repainting the DOM in JS, so it's usually near-instant — but external
+// image fetches (or a pathological DOM) can still stall, so a cap remains.
+// Without it, a hang here would leave the trigger disabled forever with no way
+// to open the modal — capping it means capture failure (including a hang) is
 // always non-fatal, matching the rest of this feature's error handling.
 const CAPTURE_TIMEOUT_MS = 6000;
 
 function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boolean) {
-  // This installed html-to-image release has no onClone hook. Stage our own
-  // connected, off-screen copy so computed styles remain available while every
-  // scroll adjustment is confined to the representation handed to toPng.
+  // Stage our own connected, off-screen copy so computed styles remain
+  // available while every scroll adjustment is confined to the representation
+  // handed to the capture call, and so the capture box itself can be clipped
+  // to the viewport via plain CSS (overflow: hidden) instead of a library-
+  // specific crop option.
   const captureRoot = document.body.cloneNode(true) as HTMLBodyElement;
+  Object.assign(captureRoot.style, {
+    margin: "0",
+    width: `${window.innerWidth}px`,
+    height: `${window.innerHeight}px`,
+    overflow: "hidden",
+  });
   const host = document.createElement("div");
   host.dataset.bugReportCaptureHost = "";
   host.setAttribute("aria-hidden", "true");
@@ -42,6 +51,10 @@ function createCaptureClone(scrollX: number, scrollY: number, hasAppShell: boole
     if (captureScrollContent) {
       captureScrollContent.style.transform = `translate(${-scrollX}px, ${-scrollY}px)`;
     }
+  } else {
+    // No app shell to target — the whole document scrolls, so compensate by
+    // shifting the capture root itself (already clipped to viewport size above).
+    captureRoot.style.transform = `translate(${-scrollX}px, ${-scrollY}px)`;
   }
 
   // Test hooks are not visual content and duplicate selectors while the
@@ -112,38 +125,26 @@ export default function BugReportTrigger() {
     const captureStartedAt = performance.now();
     try {
       await nextPaint();
-      // pixelRatio: 1 avoids multiplying the capture by devicePixelRatio, which is
-      // often the single biggest driver of an oversized PNG on retina/high-DPI
-      // displays. width/height clamp the capture to the viewport instead of the
-      // full document — but clamping alone would always crop starting at the top
-      // of the document (a previously-seen bug: scrolled pages showed only the
-      // header). This html-to-image version has no onClone hook, so shell pages
-      // use a connected off-screen copy whose marked content is shifted before
-      // the library makes its own rendering clone. The live shell and fixed
-      // header are untouched; non-shell pages retain the window-scroll fallback.
+      // dpr: 1 avoids multiplying the capture by devicePixelRatio, which is often
+      // the single biggest driver of an oversized PNG on retina/high-DPI displays.
+      // The capture root itself is already clamped to the viewport size (see
+      // createCaptureClone), so no separate crop option is needed here — shell
+      // pages shift their scroll content, non-shell pages shift the whole root.
       // Capture happens BEFORE the modal opens/mounts, so the modal's own
       // dimming overlay and empty form are never present in document.body while
-      // toPng reads it — otherwise the screenshot would show the modal itself
-      // instead of the page the user is reporting a bug about.
+      // the capture reads it — otherwise the screenshot would show the modal
+      // itself instead of the page the user is reporting a bug about.
+      // embedFonts defaults to false, so page fonts render via the browser's
+      // already-loaded @font-face rules instead of being re-fetched and inlined —
+      // avoiding the exact hang (KaTeX math fonts on formula-heavy pages) that
+      // previously required skipping font embedding on the old library.
       const capture = createCaptureClone(scrollX, scrollY, appScrollContent !== null);
       try {
-        screenshot = await withTimeout(
-          toPng(capture.captureRoot, {
-            pixelRatio: 1,
-            width: window.innerWidth,
-            height: window.innerHeight,
-            style: appScrollContent ? undefined : { transform: `translate(${-scrollX}px, ${-scrollY}px)` },
-            // Downloading + base64-embedding every @font-face on the page (KaTeX's
-            // math fonts included) can by itself take longer than the capture
-            // timeout on pages with heavy formula rendering (e.g. the burden-share
-            // breakdown modal), silently killing the whole screenshot. The fonts
-            // are already loaded in the live page, so skipping re-embedding still
-            // renders real text — just via the browser's already-loaded fonts
-            // instead of a self-contained embed — and capture reliably finishes.
-            skipFonts: true,
-          }),
+        const canvas = await withTimeout(
+          snapdom.toCanvas(capture.captureRoot, { dpr: 1 }),
           CAPTURE_TIMEOUT_MS,
         );
+        screenshot = canvas.toDataURL("image/png");
       } finally {
         capture.remove();
       }
