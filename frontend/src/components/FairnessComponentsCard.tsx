@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { getFairnessComponents, type FairnessComponent, type FairnessComponents, type FairnessSoldier } from "../api/scoring";
 import SoldierLink from "./SoldierLink";
+import FairnessHelpModal from "./FairnessHelpModal";
 
 function eligibilityDistribution(soldiers: FairnessSoldier[]): { count: number; soldiers: number }[] {
   const freq: Record<number, number> = {};
@@ -49,6 +50,7 @@ function FairnessComponentCard({
 }) {
   const [hoveredCount, setHoveredCount] = useState<number | null>(null);
   const [lockedCount, setLockedCount] = useState<number | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const activeCount = lockedCount ?? hoveredCount;
 
   const sortedSoldiers = [...c.soldiers].sort((a, b) => a.burden_share - b.burden_share);
@@ -70,6 +72,7 @@ function FairnessComponentCard({
   }
 
   return (
+    <>
     <div
       className={`w-full text-right border rounded-lg transition-colors ${
         isActive
@@ -92,8 +95,16 @@ function FairnessComponentCard({
           </span>
           <div className="flex items-center gap-2">
             {c.burden_share ? (
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${cvBadge(c.burden_share.cv)}`}>
+              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded ${cvBadge(c.burden_share.cv)}`}>
                 פיזור CV {(c.burden_share.cv * 100).toFixed(0)}%
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setHelpOpen(true); }}
+                  className="text-current opacity-70 hover:opacity-100 border border-current rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none"
+                  aria-label="מה זה CV?"
+                >
+                  ?
+                </button>
               </span>
             ) : (
               <span className="text-xs text-gray-400">פחות מ-2 חיילים</span>
@@ -271,6 +282,8 @@ function FairnessComponentCard({
         </div>
       )}
     </div>
+    {helpOpen && <FairnessHelpModal variant="soldiers" onClose={() => setHelpOpen(false)} />}
+    </>
   );
 }
 
