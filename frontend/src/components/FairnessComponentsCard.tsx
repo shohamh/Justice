@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } 
 import { getFairnessComponents, type FairnessComponent, type FairnessComponents, type FairnessSoldier } from "../api/scoring";
 import SoldierLink from "./SoldierLink";
 import FairnessHelpModal from "./FairnessHelpModal";
+import FairnessSpreadBreakdownModal, { type FairnessSpreadBreakdownSoldier } from "./FairnessSpreadBreakdownModal";
 
 function eligibilityDistribution(soldiers: FairnessSoldier[]): { count: number; soldiers: number }[] {
   const freq: Record<number, number> = {};
@@ -22,6 +23,21 @@ function cvBadge(cv: number): string {
   if (cv < 0.25) return "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300";
   if (cv <= 0.5) return "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300";
   return "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300";
+}
+
+interface BucketBurdenShareStats { mean: number; stddev: number; cv: number; min: number; max: number }
+
+/** Burden-share spread (same CV/stddev/range shape as the group-level badge)
+ * computed for just the soldiers sharing one eligible-type count, so
+ * selecting a count row can show how equally *that* sub-group carries load —
+ * null below 2 soldiers, same convention as the group-level stats. */
+function bucketBurdenShareStats(soldiers: FairnessSoldier[], count: number): BucketBurdenShareStats | null {
+  const shares = soldiers.filter((s) => s.eligible_type_count === count).map((s) => s.burden_share);
+  if (shares.length < 2) return null;
+  const mean = shares.reduce((a, b) => a + b, 0) / shares.length;
+  const variance = shares.reduce((a, b) => a + (b - mean) ** 2, 0) / shares.length;
+  const stddev = Math.sqrt(variance);
+  return { mean, stddev, cv: mean !== 0 ? stddev / mean : 0, min: Math.min(...shares), max: Math.max(...shares) };
 }
 
 /** Soldiers sharing an eligible-type COUNT can still differ in which specific
@@ -51,7 +67,16 @@ function FairnessComponentCard({
   const [hoveredCount, setHoveredCount] = useState<number | null>(null);
   const [lockedCount, setLockedCount] = useState<number | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [breakdown, setBreakdown] = useState<{ title: string; soldiers: FairnessSpreadBreakdownSoldier[] } | null>(null);
   const activeCount = lockedCount ?? hoveredCount;
+
+  function openBreakdown(title: string, forSoldiers: FairnessSoldier[], e: { stopPropagation: () => void }) {
+    e.stopPropagation();
+    setBreakdown({
+      title,
+      soldiers: forSoldiers.map((s) => ({ id: s.soldier_id, name: s.full_name, burdenShare: s.burden_share })),
+    });
+  }
 
   const sortedSoldiers = [...c.soldiers].sort((a, b) => a.burden_share - b.burden_share);
   const mean = c.burden_share?.mean ?? null;
@@ -60,15 +85,18 @@ function FairnessComponentCard({
   const burdenShareRange = burdenShareMax - burdenShareMin || 1;
   const dist = eligibilityDistribution(c.soldiers);
   const typeCountColor = new Map(dist.map((d, idx) => [d.count, PIE_COLORS[idx % PIE_COLORS.length]]));
+  const activeDist = dist.find((d) => d.count === activeCount) ?? null;
 
   const highlightedTypeIds = typeIdsForCount(c.soldiers, activeCount);
-  const highlightedTypeNames = c.duty_types
-    .filter((dt) => highlightedTypeIds.has(dt.id))
-    .map((dt) => dt.name);
 
   function toggleLock(count: number, e: { stopPropagation: () => void }) {
     e.stopPropagation();
     setLockedCount((prev) => (prev === count ? null : count));
+    // On touch devices a tap fires a synthetic mouseenter (setting hoveredCount)
+    // but no mouseleave ever follows (there's no pointer to leave with), so
+    // hoveredCount would otherwise keep the row looking selected via the
+    // `lockedCount ?? hoveredCount` fallback even after unlocking it here.
+    setHoveredCount(null);
   }
 
   return (
@@ -113,6 +141,15 @@ function FairnessComponentCard({
               <span className="text-xs text-gray-400">
                 טווח: {(burdenShareMin * 100).toFixed(1)}%–{(burdenShareMax * 100).toFixed(1)}%
               </span>
+            )}
+            {c.burden_share && (
+              <button
+                type="button"
+                onClick={(e) => openBreakdown(`${c.soldier_count} חיילים`, c.soldiers, e)}
+                className="text-xs text-indigo-500 dark:text-indigo-300 hover:underline"
+              >
+                הצג פירוט חישוב
+              </button>
             )}
           </div>
         </div>
@@ -176,6 +213,14 @@ function FairnessComponentCard({
                       // fixed, predictable spot next to this small 96x96 chart is
                       // guaranteed to stay inside that same buffer.
                       position={{ x: 0, y: 96 }}
+                      // Overrides Recharts' own hover-tracked active state: on
+                      // touch, a tap fires mouseenter with no matching mouseleave,
+                      // so Recharts' internal tracking can get stuck "active"
+                      // exactly like our own hoveredCount did (see toggleLock) —
+                      // forcing active false once activeDist clears (deselecting
+                      // already resets both lockedCount and hoveredCount to null)
+                      // reliably closes it even with no real pointer to leave with.
+                      active={activeDist != null}
                       formatter={(value, _name, props) => {
                         const count = (props.payload as { count?: number })?.count;
                         const names = typeIdsForCount(c.soldiers, count ?? null);
@@ -206,11 +251,31 @@ function FairnessComponentCard({
                       />
                       <span>{d.soldiers} חיילים — {d.count} סוגים</span>
                     </div>
-                    {activeCount === d.count && highlightedTypeNames.length > 0 && (
-                      <div className="mr-3 break-words text-indigo-600 dark:text-indigo-300">
-                        ← {highlightedTypeNames.join(", ")}
-                      </div>
-                    )}
+                    {activeCount === d.count && (() => {
+                      const stats = bucketBurdenShareStats(c.soldiers, d.count);
+                      return (
+                        <div className="mr-3 flex items-center gap-2 text-indigo-600 dark:text-indigo-300">
+                          <span>
+                            {stats
+                              ? `טווח: ${(stats.min * 100).toFixed(1)}%–${(stats.max * 100).toFixed(1)}% · סטיית תקן: ±${(stats.stddev * 100).toFixed(1)}% · פיזור CV ${(stats.cv * 100).toFixed(0)}%`
+                              : "פחות מ-2 חיילים בקבוצה זו"}
+                          </span>
+                          {stats && (
+                            <button
+                              type="button"
+                              onClick={(e) => openBreakdown(
+                                `${d.soldiers} חיילים — ${d.count} סוגים`,
+                                c.soldiers.filter((s) => s.eligible_type_count === d.count),
+                                e,
+                              )}
+                              className="shrink-0 text-indigo-500 dark:text-indigo-300 hover:underline"
+                            >
+                              הצג פירוט חישוב
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -219,14 +284,28 @@ function FairnessComponentCard({
         })()}
       </div>
 
-      {/* Ranked candidate list — visible when group is selected */}
-      {isActive && sortedSoldiers.length > 0 && (
+      {/* Ranked candidate list — visible when the whole group is selected, or
+          when a subgroup (eligible-type count) row is hovered/locked. With a
+          subgroup active, the list is FILTERED down to just its soldiers
+          (not merely tinted within the full list) — a group can run to
+          hundreds of soldiers, making a handful of highlighted rows within
+          them practically unfindable by scrolling (confirmed live). Filtered
+          rank is local to the subgroup, so the "top 3 candidate" framing
+          (a whole-group, next-duty-assignment concept) is dropped for it. */}
+      {(isActive || activeCount != null) && sortedSoldiers.length > 0 && (() => {
+        const filtered = activeCount != null;
+        const displayedSoldiers = filtered
+          ? sortedSoldiers.filter((s) => s.eligible_type_count === activeCount)
+          : sortedSoldiers;
+        return (
         <div className="border-t border-indigo-200 dark:border-indigo-700 px-3 pb-3 pt-2 overflow-x-auto">
           <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">
-            סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):
+            {filtered
+              ? `חיילי הקבוצה שנבחרה (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
+              : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
           </p>
           <div className="space-y-1 min-w-[260px]">
-            {sortedSoldiers.map((s, rank) => {
+            {displayedSoldiers.map((s, rank) => {
               const burdenSharePct = (s.burden_share * 100).toFixed(2);
               const dev = mean != null ? s.burden_share - mean : null;
               const devStr = dev != null
@@ -238,14 +317,11 @@ function FairnessComponentCard({
                   ? "text-green-600 dark:text-green-400"
                   : "text-gray-400";
               const barWidth = Math.round(((s.burden_share - burdenShareMin) / burdenShareRange) * 100);
-              const isCandidate = rank < 3;
-              const isHighlighted = activeCount != null && s.eligible_type_count === activeCount;
+              const isCandidate = !filtered && rank < 3;
               return (
                 <div
                   key={s.soldier_id}
-                  className={`flex items-center gap-2 pr-1 border-r-2 rounded transition-colors ${
-                    isHighlighted ? "bg-indigo-50 dark:bg-indigo-950" : ""
-                  }`}
+                  className="flex items-center gap-2 pr-1 border-r-2 rounded transition-colors"
                   style={{ borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent" }}
                 >
                   <span className={`text-xs w-5 text-center font-bold shrink-0 ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
@@ -274,15 +350,23 @@ function FairnessComponentCard({
               );
             })}
           </div>
-          {mean != null && (
+          {!filtered && mean != null && (
             <p className="text-xs text-gray-400 mt-2">
               ממוצע קבוצה: {(mean * 100).toFixed(2)}% · סטיית תקן: {c.burden_share ? (c.burden_share.stddev * 100).toFixed(2) : "—"}%
             </p>
           )}
         </div>
-      )}
+        );
+      })()}
     </div>
     {helpOpen && <FairnessHelpModal variant="soldiers" onClose={() => setHelpOpen(false)} />}
+    {breakdown && (
+      <FairnessSpreadBreakdownModal
+        title={breakdown.title}
+        soldiers={breakdown.soldiers}
+        onClose={() => setBreakdown(null)}
+      />
+    )}
     </>
   );
 }
