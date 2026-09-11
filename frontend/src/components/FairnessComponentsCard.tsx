@@ -123,7 +123,7 @@ function FairnessComponentCard({
           if (dist.length === 0) return null;
           return (
             <div className="mt-2 flex items-center gap-3 md:pr-16">
-              <div data-testid="fairness-component-pie-chart" style={{ width: 96, height: 96 }}>
+              <div data-testid="fairness-component-pie-chart" className="shrink-0" style={{ width: 96, height: 96 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -164,7 +164,7 @@ function FairnessComponentCard({
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+              <div className="min-w-0 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
                 {dist.map((d, idx) => (
                   <div key={d.count}>
                     <div
@@ -182,7 +182,7 @@ function FairnessComponentCard({
                       <span>{d.soldiers} חיילים — {d.count} סוגים</span>
                     </div>
                     {activeCount === d.count && highlightedTypeNames.length > 0 && (
-                      <div className="mr-3 text-indigo-600 dark:text-indigo-300">
+                      <div className="mr-3 break-words text-indigo-600 dark:text-indigo-300">
                         ← {highlightedTypeNames.join(", ")}
                       </div>
                     )}

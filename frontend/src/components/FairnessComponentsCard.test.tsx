@@ -36,6 +36,11 @@ describe("FairnessComponentsCard", () => {
     await waitFor(() => expect(screen.getByTestId("fairness-component-pie-chart")).toBeInTheDocument());
     expect(screen.getByTestId("fairness-component-pie-chart").parentElement).toHaveClass("md:pr-16");
     expect(screen.getByTestId("fairness-component-pie-chart").parentElement).not.toHaveClass("flex-row-reverse");
+    // Without shrink-0, the fixed 96x96 chart gets squeezed toward zero size
+    // by its flex sibling once that sibling's content grows long (e.g. the
+    // "← <long duty-type list>" line that appears on hover) — reproduced live
+    // as the donut collapsing to near-invisible slivers on hover.
+    expect(screen.getByTestId("fairness-component-pie-chart")).toHaveClass("shrink-0");
   });
 
   it("hovering a legend row names the specific duty types and highlights the matching badge and people", async () => {
