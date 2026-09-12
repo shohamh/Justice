@@ -19,7 +19,6 @@ import { formatDate } from "../utils/formatDate";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
 import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../components/FairnessComponentsCard";
-import FairnessSpreadBreakdownModal, { type FairnessSpreadBreakdownSoldier } from "../components/FairnessSpreadBreakdownModal";
 import BurdenShareBreakdownModal from "../components/BurdenShareBreakdownModal";
 import { InlineMath, BlockMath } from "react-katex";
 import { computeBurdenShareStats, getBurdenShareColor, type BurdenShareStats } from "../utils/burdenShareStats";
@@ -142,83 +141,6 @@ interface SubRow {
   count_temporary_exemption: number | null;
   sibling_gap: number | null;
   global_gap: number | null;
-}
-
-// ─── fairness card ────────────────────────────────────────────────────────────
-
-function FairnessCard({
-  stats, helpVariant, units, breakdownTitle,
-}: {
-  stats: BurdenShareStats | null;
-  helpVariant?: "soldiers" | "subunits";
-  units: FairnessSpreadBreakdownSoldier[];
-  breakdownTitle: string;
-}) {
-  const { t } = useTranslation();
-  const [modalOpen, setModalOpen] = useState(false);
-  const unitLabel = helpVariant === "subunits" ? "מסגרת" : "חייל";
-  const unitLabelPlural = helpVariant === "subunits" ? "המסגרות" : "החיילים";
-
-  const helpButton = helpVariant && (
-    <button
-      type="button"
-      onClick={() => setModalOpen(true)}
-      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs border border-gray-300 dark:border-gray-500 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer"
-      aria-label="מה זה CV? הצג פירוט חישוב"
-    >
-      ?
-    </button>
-  );
-  const breakdownModal = modalOpen && helpVariant && (
-    <FairnessSpreadBreakdownModal
-      title={breakdownTitle}
-      soldiers={units}
-      unitLabel={unitLabel}
-      unitLabelPlural={unitLabelPlural}
-      linkToUnit={helpVariant === "soldiers"}
-      onClose={() => setModalOpen(false)}
-    />
-  );
-
-  if (!stats) {
-    return (
-      <>
-        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-            {t("transparency.burden_share_spread")}
-            {helpButton}
-          </p>
-          <p className="text-lg font-semibold text-gray-400">—</p>
-        </div>
-        {breakdownModal}
-      </>
-    );
-  }
-  const cvPct = stats.cv * 100;
-  const cardClass = cvPct < 25
-    ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700"
-    : cvPct < 50
-      ? "bg-yellow-50 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-700"
-      : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700";
-  const dotClass = cvPct < 25 ? "bg-green-500" : cvPct < 50 ? "bg-yellow-500" : "bg-red-500";
-  return (
-    <>
-      <div className={`rounded-lg p-3 border text-center ${cardClass}`}>
-        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-          <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
-          {t("transparency.burden_share_spread")}
-          {helpButton}
-        </p>
-        <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
-          <p>{t("transparency.burden_share_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
-          <p>{t("transparency.burden_share_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
-          <p>{t("transparency.burden_share_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
-        </div>
-      </div>
-      {breakdownModal}
-    </>
-  );
 }
 
 // ─── main page ────────────────────────────────────────────────────────────────
@@ -472,10 +394,6 @@ export default function TransparencyPage() {
 
   const burdenShareStats: BurdenShareStats | null = tab === 0
     ? computeBurdenShareStats(visibleRows.map((r) => r.burden_share).filter((v) => !isNaN(v)))
-    : null;
-
-  const subBurdenShareStats: BurdenShareStats | null = tab === 1
-    ? computeBurdenShareStats(subRows.map((r) => r.avg_burden_share).filter((v) => !isNaN(v) && v > 0))
     : null;
 
   function handleSelectNode(id: string) {
@@ -940,7 +858,7 @@ export default function TransparencyPage() {
         <TabBar tabs={["חיילים", "תתי יחידות"]} active={tab} onChange={setTab} />
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" dir="rtl">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" dir="rtl">
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_cumulative")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgCumulative.toFixed(3)}</p>
@@ -958,26 +876,6 @@ export default function TransparencyPage() {
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_normalised")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgNormalised.toFixed(3)}</p>
           </div>
-          {tab === 0 && (
-            <FairnessCard
-              stats={burdenShareStats}
-              helpVariant="soldiers"
-              breakdownTitle="כלל החיילים"
-              units={visibleRows
-                .filter((r) => !isNaN(r.burden_share))
-                .map((r) => ({ id: r.soldier_id, name: r.full_name, burdenShare: r.burden_share }))}
-            />
-          )}
-          {tab === 1 && (
-            <FairnessCard
-              stats={subBurdenShareStats}
-              helpVariant="subunits"
-              breakdownTitle="כלל המסגרות"
-              units={subRows
-                .filter((r) => !isNaN(r.avg_burden_share) && r.avg_burden_share > 0)
-                .map((r) => ({ id: r.node_id, name: r.node_name, burdenShare: r.avg_burden_share }))}
-            />
-          )}
         </div>
 
         {tab === 0 && (
