@@ -80,7 +80,10 @@ describe("FairnessComponentsCard", () => {
     fireEvent.mouseEnter(twoTypesRow);
     expect(guardBadge).toHaveClass("bg-indigo-600");
     expect(patrolBadge).toHaveClass("bg-indigo-600");
-    expect(screen.getByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0% · פיזור CV 14%")).toBeInTheDocument();
+    // The CV portion renders as its own colored badge (like the group-level
+    // one), separate from the plain range/stddev text.
+    expect(screen.getByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0%")).toBeInTheDocument();
+    expect(screen.getByText("פיזור CV 14%")).toBeInTheDocument();
     // The candidate list filters down to just this sub-group's soldiers
     // (a full group can run to hundreds — tinting rows within an unfiltered
     // list of that size made them practically unfindable, confirmed live).
@@ -98,10 +101,10 @@ describe("FairnessComponentsCard", () => {
     fireEvent.mouseLeave(twoTypesRow);
     await act(() => new Promise((resolve) => setTimeout(resolve, 260)));
     expect(guardBadge).not.toHaveClass("bg-indigo-600");
-    const fadingPanel = screen.getByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0% · פיזור CV 14%").closest("div")?.parentElement;
+    const fadingPanel = screen.getByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0%").closest("div")?.parentElement;
     expect(fadingPanel).toHaveClass("opacity-0");
     await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
-    expect(screen.queryByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0% · פיזור CV 14%")).not.toBeInTheDocument();
+    expect(screen.queryByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0%")).not.toBeInTheDocument();
 
     // Clicking locks the highlight so it survives the mouse leaving.
     fireEvent.click(twoTypesRow);
@@ -258,9 +261,9 @@ describe("FairnessComponentsCard", () => {
     const rowContainer = twoTypesRow.closest("div") as HTMLElement;
     fireEvent.mouseEnter(rowContainer);
 
-    // There's also a group-level "הצג פירוט חישוב" button in the card header —
+    // There's also a group-level CV badge with the same "?" in the card header —
     // scope to this row's own wrapper (row + revealed stats line share a parent).
-    fireEvent.click(within(rowContainer.parentElement as HTMLElement).getByRole("button", { name: "הצג פירוט חישוב" }));
+    fireEvent.click(within(rowContainer.parentElement as HTMLElement).getByRole("button", { name: "מה זה CV? הצג פירוט חישוב" }));
 
     const heading = screen.getByText("📊 פירוט חישוב פיזור — 2 חיילים — 2 סוגים");
     // Modal root: header's grandparent (header row -> dialog card).

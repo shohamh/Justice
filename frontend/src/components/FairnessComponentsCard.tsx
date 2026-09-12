@@ -200,15 +200,6 @@ function FairnessComponentCard({
                 טווח: {(burdenShareMin * 100).toFixed(1)}%–{(burdenShareMax * 100).toFixed(1)}%
               </span>
             )}
-            {c.burden_share && (
-              <button
-                type="button"
-                onClick={(e) => openBreakdown(`${c.soldier_count} חיילים`, c.soldiers, e)}
-                className="text-xs text-indigo-500 dark:text-indigo-300 hover:underline"
-              >
-                הצג פירוט חישוב
-              </button>
-            )}
           </div>
         </div>
         <div className="mt-2 flex flex-wrap gap-1">
@@ -299,25 +290,32 @@ function FairnessComponentCard({
                           onMouseEnter={() => { cancelHoverClose(); setHoveredCount(d.count); }}
                           onMouseLeave={() => scheduleHoverClose(d.count)}
                         >
-                          <div>
-                            {stats
-                              ? `טווח: ${(stats.min * 100).toFixed(1)}%–${(stats.max * 100).toFixed(1)}% · סטיית תקן: ±${(stats.stddev * 100).toFixed(1)}% · פיזור CV ${(stats.cv * 100).toFixed(0)}%`
-                              : "פחות מ-2 חיילים בקבוצה זו"}
+                          <div className="flex items-center flex-wrap gap-1">
+                            {stats ? (
+                              <>
+                                <span>
+                                  טווח: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}% · סטיית תקן: ±{(stats.stddev * 100).toFixed(1)}%
+                                </span>
+                                <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded ${cvBadge(stats.cv)}`}>
+                                  פיזור CV {(stats.cv * 100).toFixed(0)}%
+                                  <button
+                                    type="button"
+                                    onClick={(e) => openBreakdown(
+                                      `${d.soldiers} חיילים — ${d.count} סוגים`,
+                                      c.soldiers.filter((s) => s.eligible_type_count === d.count),
+                                      e,
+                                    )}
+                                    className="text-current opacity-70 hover:opacity-100 border border-current rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none"
+                                    aria-label="מה זה CV? הצג פירוט חישוב"
+                                  >
+                                    ?
+                                  </button>
+                                </span>
+                              </>
+                            ) : (
+                              <span>פחות מ-2 חיילים בקבוצה זו</span>
+                            )}
                           </div>
-                          {stats && (
-                            <button
-                              type="button"
-                              onClick={(e) => openBreakdown(
-                                `${d.soldiers} חיילים — ${d.count} סוגים`,
-                                c.soldiers.filter((s) => s.eligible_type_count === d.count),
-                                e,
-                              )}
-                              className="mt-0.5 inline-flex items-center gap-1 text-indigo-500 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-600 rounded px-1.5 py-0.5 hover:bg-indigo-50 dark:hover:bg-indigo-900"
-                            >
-                              <span aria-hidden="true" className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-current text-[10px] leading-none shrink-0">?</span>
-                              הצג פירוט חישוב
-                            </button>
-                          )}
                         </div>
                       );
                     })()}
