@@ -406,7 +406,9 @@ function FairnessTab() {
               </div>
             </div>
             <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-indigo-800 dark:text-indigo-200">
-              <BlockMath math="\text{חלק בנטל} = \dfrac{A}{W} = \dfrac{\sum_{q:\,U_q>0} s_q \times f_q}{\sum_{q:\,U_q>0} U_q \times f_q}" />
+              <div className="overflow-x-auto">
+                <BlockMath math="\text{חלק בנטל} = \dfrac{A}{W} = \dfrac{\sum_{q:\,U_q>0} s_q \times f_q}{\sum_{q:\,U_q>0} U_q \times f_q}" />
+              </div>
               <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-1" dir="rtl">
                 לכל רבעון <InlineMath math="q" /> : <InlineMath math="s_q" /> = ניקוד החייל, <InlineMath math="U_q" /> = ניקוד כלל היחידה, <InlineMath math="f_q" /> = אחוז הנוכחות ברבעון
               </p>
