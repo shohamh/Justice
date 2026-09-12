@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { translateApiError } from "../utils/translateApiError";
 import { submitBugReport, getMyBugReportsUnseenCount } from "../api/bugReports";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
@@ -21,6 +21,10 @@ const SEVERITIES: { value: Severity; label: string }[] = [
 
 interface BugReportModalProps {
   screenshot: string | null;
+  // See OpenBugReportModalOptions.screenshotPending: true while a background
+  // capture is still running for this open, so the "couldn't capture"
+  // fallback isn't shown prematurely.
+  screenshotPending?: boolean;
   initialTab?: BugReportModalTab;
   initialReportId?: string | null;
   onClose: () => void;
@@ -28,6 +32,7 @@ interface BugReportModalProps {
 
 export default function BugReportModal({
   screenshot,
+  screenshotPending = false,
   initialTab = "new",
   initialReportId = null,
   onClose,
@@ -76,6 +81,11 @@ export default function BugReportModal({
       className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-[110] overflow-y-auto p-4"
       onClick={onClose}
       data-testid="bug-report-modal-overlay"
+      // Stable marker (independent of data-testid, which BugReportTrigger's
+      // capture clone strips) so a background capture started while this
+      // modal is already open can exclude the modal's own DOM from the
+      // screenshot instead of capturing a picture of itself.
+      data-bug-report-capture-exclude=""
     >
       <div
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md sm:max-w-xl md:max-w-3xl lg:max-w-4xl flex flex-col max-h-[calc(100dvh-2rem)]"
@@ -139,7 +149,15 @@ export default function BugReportModal({
             <>
               <div className="min-h-0 overflow-y-auto" data-testid="bug-report-modal-content">
                 <div className="mb-3">
-                  {screenshot ? (
+                  {screenshotPending ? (
+                    <div
+                      className="flex items-center gap-2 text-xs text-gray-500 border rounded p-3 dark:border-gray-600"
+                      data-testid="bug-report-screenshot-loading"
+                    >
+                      <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                      <span>מצלם את המסך...</span>
+                    </div>
+                  ) : screenshot ? (
                     <img src={screenshot} alt="" className="w-full rounded border dark:border-gray-600" />
                   ) : (
                     <p className="text-xs text-gray-500">לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו</p>

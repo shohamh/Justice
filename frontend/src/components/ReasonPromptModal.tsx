@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { translateApiError } from "../utils/translateApiError";
 import { useModalBackClose } from "../hooks/useModalBackClose";
@@ -31,7 +32,7 @@ export default function ReasonPromptModal({ title, description, variant = "defau
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
       <div
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
@@ -72,6 +73,7 @@ export default function ReasonPromptModal({ title, description, variant = "defau
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

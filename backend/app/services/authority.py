@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -374,37 +375,88 @@ def _best_commanded_rank(session: Session, soldier_id: uuid.UUID) -> int | None:
     return min(ranks) if ranks else None
 
 
+@dataclass(frozen=True)
+class SoldierScopeVisibility:
+    """`viewer`'s side of the can_view_soldier_scope check, computed once.
+
+    Everything here depends only on `viewer` (and committed settings/
+    hierarchy state) — never on the soldier being checked — so a caller that
+    checks many soldiers against the same viewer (a transparency-page row
+    builder, fairness_components) should compute this once and reuse it via
+    can_view_soldier_scope_fast, instead of recomputing it — including
+    several DB round-trips — on every single soldier."""
+    is_admin: bool
+    commander_ancestor_ids: frozenset[uuid.UUID]
+    dm_ancestor_ids: frozenset[uuid.UUID]
+    sees_every_soldier: bool
+    threshold_rank: int | None
+    best_rank: int | None
+
+
+def build_soldier_scope_visibility(session: Session, viewer: Soldier) -> SoldierScopeVisibility:
+    """The expensive, viewer-only half of can_view_soldier_scope. See
+    SoldierScopeVisibility for why this is worth computing just once."""
+    if viewer.role == "admin":
+        return SoldierScopeVisibility(True, frozenset(), frozenset(), False, None, None)
+
+    commander_expand = get_setting_int(session, "transparency.commander_levels_above", 0)
+    commander_ancestor_ids = frozenset(
+        _ancestor_n_up(session, node, commander_expand).id
+        for node in _commanded_nodes(session, viewer.id)
+    )
+
+    dm_expand = get_setting_int(session, "transparency.duty_manager_levels_above", 0)
+    dm_ancestor_ids = frozenset(
+        _ancestor_n_up(session, node, dm_expand).id
+        for node in _dm_scope_nodes(session, viewer.id)
+    )
+
+    threshold = _min_visible_level(session)
+    sees_every_soldier = threshold == "every_soldier"
+    threshold_rank = None if sees_every_soldier else get_level_rank(session, threshold)
+    best_rank = _best_commanded_rank(session, viewer.id)
+    return SoldierScopeVisibility(
+        False, commander_ancestor_ids, dm_ancestor_ids, sees_every_soldier, threshold_rank, best_rank,
+    )
+
+
+def can_view_soldier_scope_fast(
+    visibility: SoldierScopeVisibility, target_node: HierarchyNode | None,
+) -> bool:
+    """Same rule as can_view_soldier_scope, against a precomputed
+    SoldierScopeVisibility instead of a (session, viewer) pair — the cheap
+    per-soldier half, safe to call in a tight loop."""
+    if visibility.is_admin:
+        return True
+
+    if target_node is not None:
+        path_ids = set(target_node.path_ids)
+        if visibility.commander_ancestor_ids & path_ids:
+            return True
+        if visibility.dm_ancestor_ids & path_ids:
+            return True
+
+    if visibility.sees_every_soldier:
+        return True
+    if visibility.threshold_rank is None:
+        return False
+    return visibility.best_rank is not None and visibility.best_rank <= visibility.threshold_rank
+
+
 def can_view_soldier_scope(
     session: Session, viewer: Soldier, target_node: HierarchyNode | None,
 ) -> bool:
     """True iff `viewer` may see transparency/duty-history data belonging to a
     soldier assigned to `target_node`. Single source of truth for the
     transparency page, its fairness-components/burden-share-breakdown cards, and the
-    other-soldier branch of GET /soldiers/{id}/duty-history."""
-    if viewer.role == "admin":
-        return True
+    other-soldier branch of GET /soldiers/{id}/duty-history.
 
-    commander_expand = get_setting_int(session, "transparency.commander_levels_above", 0)
-    for node in _commanded_nodes(session, viewer.id):
-        ancestor = _ancestor_n_up(session, node, commander_expand)
-        if target_node is not None and ancestor.id in target_node.path_ids:
-            return True
-
-    dm_expand = get_setting_int(session, "transparency.duty_manager_levels_above", 0)
-    for node in _dm_scope_nodes(session, viewer.id):
-        ancestor = _ancestor_n_up(session, node, dm_expand)
-        if target_node is not None and ancestor.id in target_node.path_ids:
-            return True
-
-    threshold = _min_visible_level(session)
-    if threshold == "every_soldier":
-        return True
-
-    threshold_rank = get_level_rank(session, threshold)
-    if threshold_rank is None:
-        return False
-    best_rank = _best_commanded_rank(session, viewer.id)
-    return best_rank is not None and best_rank <= threshold_rank
+    Checking many soldiers against the same viewer? Call
+    build_soldier_scope_visibility once and use can_view_soldier_scope_fast
+    per soldier instead — this convenience wrapper recomputes the viewer's
+    half of the check (several DB round-trips) on every call, which is fine
+    for the single-soldier call sites but wasteful in a loop."""
+    return can_view_soldier_scope_fast(build_soldier_scope_visibility(session, viewer), target_node)
 
 
 def has_any_visibility(session: Session, viewer: Soldier) -> bool:

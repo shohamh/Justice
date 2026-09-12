@@ -30,7 +30,11 @@ from app.db.models import (
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
-from app.services.authority import can_view_soldier_scope
+from app.services.authority import (
+    build_soldier_scope_visibility,
+    can_view_soldier_scope,
+    can_view_soldier_scope_fast,
+)
 from app.services.eligibility import inferred_service_type
 from app.services.sql_arrays import uuid_any
 
@@ -1757,6 +1761,8 @@ def _try_projected_transparency_rows(
     can_see_exemption_aggregates = viewer is not None and (
         viewer.role == "admin" or bool(roots)
     )
+    # Computed once and reused per soldier below — see SoldierScopeVisibility.
+    viewer_visibility = build_soldier_scope_visibility(session, viewer) if viewer is not None else None
     effort_map = _try_projected_effort_data(session, list(soldiers))
     if effort_map is None:
         return None
@@ -1778,7 +1784,10 @@ def _try_projected_transparency_rows(
         # Normalisation is computed over the FULL active population (dev
         # behavior) regardless of which rows this viewer may see.
         population_spd.append(cum / Decimal(ad))
-        if viewer is not None and s.id != viewer.id and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+        if (
+            viewer is not None and s.id != viewer.id and viewer.role != "admin"
+            and not can_view_soldier_scope_fast(viewer_visibility, node)  # type: ignore[arg-type]
+        ):
             continue
         soldier_exemptions = exemptions_by_soldier.get(s.id, [])
         in_scope = node is not None and any(root in node.path_ids for root in roots)
@@ -1875,6 +1884,8 @@ def _legacy_transparency_rows(
     can_see_exemption_aggregates = viewer is not None and (
         viewer.role == "admin" or bool(roots)
     )
+    # Computed once and reused per soldier below — see SoldierScopeVisibility.
+    viewer_visibility = build_soldier_scope_visibility(session, viewer) if viewer is not None else None
 
     # Compute effort scores for all active soldiers
     today = date.today()
@@ -1907,7 +1918,10 @@ def _legacy_transparency_rows(
         # Normalisation is computed over the FULL active population (dev
         # behavior) regardless of which rows this viewer may see.
         population_spd.append(cum / Decimal(ad))
-        if viewer is not None and s.id != viewer.id and viewer.role != "admin" and not can_view_soldier_scope(session, viewer, node):
+        if (
+            viewer is not None and s.id != viewer.id and viewer.role != "admin"
+            and not can_view_soldier_scope_fast(viewer_visibility, node)  # type: ignore[arg-type]
+        ):
             continue
         soldier_exemptions = exemptions_by_soldier.get(s.id, [])
         in_scope = node is not None and any(root in node.path_ids for root in roots)

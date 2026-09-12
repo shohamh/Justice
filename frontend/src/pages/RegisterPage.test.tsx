@@ -165,9 +165,14 @@ describe("RegisterPage - unit join date", () => {
   });
 
   it("keeps the date optional on the configured reference date", async () => {
+    // Must match todayIso() exactly — the component's own comparison is
+    // against LOCAL date, not UTC. Using `new Date().toISOString()` (always
+    // UTC) here instead would only intermittently equal todayIso() near
+    // midnight in timezones ahead of UTC, since local and UTC calendar dates
+    // can differ by a day in that window.
     vi.mocked(registrationSettingsApi.getRegistrationPublicSettings).mockResolvedValue({
       email_domain_hint: null,
-      active_days_reference_date: new Date().toISOString().slice(0, 10),
+      active_days_reference_date: todayIso(),
     } as never);
     renderPage();
     fireEvent.change(screen.getByLabelText(/register.invite_code_label/), { target: { value: "CODE1" } });

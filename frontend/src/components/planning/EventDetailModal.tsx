@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useModalBackClose } from "../../hooks/useModalBackClose";
 
 export interface EventMetadataItem {
@@ -56,7 +57,7 @@ export function EventDetailModal({ open, title, subtitle, metadata = [], actions
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30 p-4" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-gray-800" dir="rtl" onClick={event => event.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-3">
@@ -70,7 +71,8 @@ export function EventDetailModal({ open, title, subtitle, metadata = [], actions
         {actions && <div className="mb-4 flex flex-wrap gap-2">{actions}</div>}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

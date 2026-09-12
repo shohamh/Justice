@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth.authz import (
     Action,
     authorize,
-    can_see_private,
+    can_see_exemption_details,
     can_view_medical_document,
     is_duty_manager,
 )
@@ -41,7 +41,9 @@ class ExemptionOut(BaseModel):
     reason: str | None
     granted_by: uuid.UUID | None
     revoke_reason: str | None
+    revoked_by: uuid.UUID | None
     revoked_by_name: str | None
+    revoked_at: datetime | None
     can_cancel: bool = False
 
 
@@ -55,6 +57,7 @@ class ExemptionDetailOut(BaseModel):
     granted_by_name: str | None
     revoke_reason: str | None
     revoked_by_name: str | None
+    revoked_at: datetime | None
 
 
 class GrantRequest(BaseModel):
@@ -94,7 +97,9 @@ def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True,
         reason=ex.reason if include_sensitive else None,
         granted_by=ex.granted_by,
         revoke_reason=ex.revoke_reason if include_sensitive else None,
+        revoked_by=ex.revoked_by if include_sensitive else None,
         revoked_by_name=revoked_by_name,
+        revoked_at=ex.revoked_at if include_sensitive else None,
         can_cancel=can_cancel,
     )
 
@@ -150,8 +155,9 @@ def list_(
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
-    include_sensitive = can_see_private(session, user, s)
     from app.services.authority import request_cancellation_authorized
+
+    include_sensitive = can_see_exemption_details(session, user, s)
     can_cancel = request_cancellation_authorized(session, user=user, target_node=_node_of(session, s))
     return [
         _out(session, ex, include_sensitive=include_sensitive, can_cancel=can_cancel)
@@ -173,7 +179,7 @@ def get_detail(
     if s.id != user.id:
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
     ex_type = session.get(ExemptionType, ex.exemption_type_id) if ex.exemption_type_id else None
-    include_sensitive = can_see_private(session, user, s)
+    include_sensitive = can_see_exemption_details(session, user, s)
     granted_by_name = None
     if ex.granted_by is not None:
         granter = session.get(Soldier, ex.granted_by)
@@ -192,6 +198,7 @@ def get_detail(
         granted_by_name=granted_by_name,
         revoke_reason=ex.revoke_reason if include_sensitive else None,
         revoked_by_name=revoked_by_name,
+        revoked_at=ex.revoked_at if include_sensitive else None,
     )
 
 

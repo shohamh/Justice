@@ -5,8 +5,10 @@ import { MemoryRouter } from "react-router-dom";
 import BugReportTrigger from "./BugReportTrigger";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import { toPng } from "html-to-image";
+import { reportFrontendError } from "../errorReporting";
 
 vi.mock("html-to-image", () => ({ toPng: vi.fn().mockResolvedValue("data:image/png;base64,AAA") }));
+vi.mock("../errorReporting", () => ({ reportFrontendError: vi.fn() }));
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
 vi.mock("../api/bugReports", async (importOriginal) => ({
@@ -32,7 +34,7 @@ describe("BugReportTrigger", () => {
     vi.clearAllMocks();
   });
 
-  test("captures a screenshot of the page BEFORE opening the modal, then opens it", async () => {
+  test("opens the modal immediately with a screenshot-pending placeholder, usable before capture resolves", async () => {
     let releaseCapture: (url: string) => void = () => {};
     vi.mocked(toPng).mockReturnValueOnce(
       new Promise((resolve) => { releaseCapture = resolve; }),
@@ -40,28 +42,68 @@ describe("BugReportTrigger", () => {
 
     renderTrigger();
 
-    expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
-
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
-    // The spinner must be showing (i.e. painted) before the heavy capture work
-    // (which briefly blocks the main thread) begins.
-    expect(screen.getByTestId("bug-report-trigger-spinner")).toBeInTheDocument();
-    expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
+    // Modal opens right away — usable immediately instead of making the user
+    // wait out a capture that can take tens of seconds on a heavy page.
+    expect(await screen.findByTestId("bug-report-modal-overlay")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-screenshot-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-description")).not.toBeDisabled();
+    expect(screen.getByTestId("bug-report-submit")).toBeInTheDocument();
 
-    // toPng must be called against a capture-only representation while the
-    // modal (and its dimming overlay) is still absent.
     await waitFor(() => expect(toPng).toHaveBeenCalled());
-    const [captureNode, options] = vi.mocked(toPng).mock.calls[0];
-    expect(captureNode).not.toBe(document.body);
-    expect(options).toEqual(expect.objectContaining({ pixelRatio: 1 }));
-    expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
+    const [, options] = vi.mocked(toPng).mock.calls[0];
+    expect(options).toEqual(expect.objectContaining({ pixelRatio: 1, skipFonts: true }));
 
     releaseCapture("data:image/png;base64,AAA");
 
-    await waitFor(() =>
-      expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull(),
+    await waitFor(() => expect(screen.queryByTestId("bug-report-screenshot-loading")).not.toBeInTheDocument());
+    expect(screen.getByAltText("")).toHaveAttribute("src", "data:image/png;base64,AAA");
+  });
+
+  test("preserves text typed while capture is still pending, once it resolves", async () => {
+    // The modal doesn't remount when the screenshot arrives (same React key,
+    // keyed by the open's token) — this locks that in, since it's the whole
+    // point of opening the modal before capture finishes.
+    let releaseCapture: (url: string) => void = () => {};
+    vi.mocked(toPng).mockReturnValueOnce(
+      new Promise((resolve) => { releaseCapture = resolve; }),
     );
+
+    renderTrigger();
+    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+
+    await screen.findByTestId("bug-report-screenshot-loading");
+    fireEvent.change(screen.getByTestId("bug-report-description"), { target: { value: "typed while pending" } });
+
+    releaseCapture("data:image/png;base64,AAA");
+
+    await waitFor(() => expect(screen.getByAltText("")).toHaveAttribute("src", "data:image/png;base64,AAA"));
+    expect(screen.getByTestId("bug-report-description")).toHaveValue("typed while pending");
+  });
+
+  test("excludes the bug-report modal itself from the capture clone", async () => {
+    // Capture now runs in the background while the modal is already open, so
+    // without this the modal (its overlay, form, "capturing..." placeholder)
+    // would show up inside its own screenshot.
+    let capturedNode: HTMLElement | null = null;
+    let releaseCapture: (url: string) => void = () => {};
+    vi.mocked(toPng).mockImplementationOnce((node) => {
+      capturedNode = node as HTMLElement;
+      return new Promise((resolve) => { releaseCapture = resolve; });
+    });
+
+    renderTrigger();
+    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+
+    await screen.findByTestId("bug-report-modal-overlay");
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
+
+    expect(capturedNode?.querySelector("[data-bug-report-capture-exclude]")).toBeNull();
+    // Sanity: only the clone excludes it — the live modal is still open.
+    expect(document.body.querySelector("[data-bug-report-capture-exclude]")).not.toBeNull();
+
+    releaseCapture("data:image/png;base64,AAA");
   });
 
   test("passes the captured screenshot down to the modal", async () => {
@@ -72,58 +114,55 @@ describe("BugReportTrigger", () => {
     await waitFor(() => expect(screen.getByAltText("")).toHaveAttribute("src", "data:image/png;base64,AAA"));
   });
 
-  test("still opens the modal with a null screenshot when capture fails (non-fatal)", async () => {
-    vi.mocked(toPng).mockRejectedValueOnce(new Error("capture failed"));
+  test("shows the fallback message once capture fails (non-fatal), not immediately on open", async () => {
+    let rejectCapture: (err: Error) => void = () => {};
+    vi.mocked(toPng).mockReturnValueOnce(
+      new Promise((_resolve, reject) => { rejectCapture = reject; }),
+    );
 
     renderTrigger();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
+    await screen.findByTestId("bug-report-modal-overlay");
+    expect(screen.getByTestId("bug-report-screenshot-loading")).toBeInTheDocument();
+    expect(screen.queryByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
+    rejectCapture(new Error("capture failed"));
+
     await waitFor(() =>
-      expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull(),
+      expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument(),
     );
-    expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
+    expect(reportFrontendError).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "bug-report-capture-failed", message: "capture failed" }),
+    );
   });
 
-  test("shows a spinner on the trigger while capturing, and disables it", async () => {
-    let releaseCapture: (url: string) => void = () => {};
-    vi.mocked(toPng).mockReturnValueOnce(
-      new Promise((resolve) => { releaseCapture = resolve; }),
-    );
-
-    renderTrigger();
-
-    const trigger = screen.getByTestId("bug-report-trigger");
-    fireEvent.click(trigger);
-
-    expect(trigger).toBeDisabled();
-    expect(screen.getByTestId("bug-report-trigger-spinner")).toBeInTheDocument();
-
-    releaseCapture("data:image/png;base64,AAA");
-
-    await waitFor(() => expect(trigger).not.toBeDisabled());
-    expect(screen.queryByTestId("bug-report-trigger-spinner")).not.toBeInTheDocument();
-  });
-
-  test("gives up and opens the modal without a screenshot if capture hangs past the timeout", async () => {
+  test("falls back to the fallback message if capture hangs past the timeout", async () => {
     vi.useFakeTimers();
     // A promise that never settles on its own — simulates toPng() hanging
-    // (e.g. inlining large fonts/images on a content-heavy page) instead of
-    // rejecting, which a plain try/catch around toPng() would never recover from.
+    // instead of rejecting, which a plain try/catch around toPng() would
+    // never recover from.
     vi.mocked(toPng).mockReturnValueOnce(new Promise(() => {}));
 
     renderTrigger();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
-    expect(screen.getByTestId("bug-report-trigger")).toBeDisabled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByTestId("bug-report-screenshot-loading")).toBeInTheDocument();
 
-    // Advance past the capture timeout, plus the small rAF/setTimeout yield
-    // that now happens before capture starts.
-    await act(async () => { await vi.advanceTimersByTimeAsync(6100); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20100); });
 
-    expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull();
+    expect(screen.queryByTestId("bug-report-screenshot-loading")).not.toBeInTheDocument();
     expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
-    expect(screen.getByTestId("bug-report-trigger")).not.toBeDisabled();
+    expect(reportFrontendError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "bug-report-capture-failed",
+        message: "screenshot capture timed out",
+        duration_ms: expect.any(Number),
+      }),
+    );
 
     vi.useRealTimers();
   });
@@ -178,6 +217,8 @@ describe("BugReportTrigger", () => {
       expect(capturedNode?.querySelector<HTMLElement>("[data-bug-report-scroll-content]")?.style.transform)
         .toBe("translate(-40px, -300px)");
       expect(capturedNode?.querySelector<HTMLElement>("header")?.style.transform).toBe("scale(1)");
+      // The app-shell branch shifts the scroll content, not the capture root itself.
+      expect(capturedNode?.style.transform).toBe("");
       expect(appScrollContent.style.transform).toBe("scale(1)");
       expect(appScrollContainer.scrollTop).toBe(300);
       expect(appScrollContainer.scrollLeft).toBe(40);
@@ -200,11 +241,9 @@ describe("BugReportTrigger", () => {
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
     await waitFor(() => expect(toPng).toHaveBeenCalled());
-    const [captureNode, options] = vi.mocked(toPng).mock.calls[0];
+    const [captureNode] = vi.mocked(toPng).mock.calls[0];
     expect(captureNode).not.toBe(document.body);
-    expect(options).toEqual(expect.objectContaining({
-      style: expect.objectContaining({ transform: "translate(-40px, -300px)" }),
-    }));
+    expect((captureNode as HTMLElement).style.transform).toBe("translate(-40px, -300px)");
 
     Object.defineProperty(window, "scrollX", { value: 0, configurable: true });
     Object.defineProperty(window, "scrollY", { value: 0, configurable: true });

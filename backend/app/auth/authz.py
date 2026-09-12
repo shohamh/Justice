@@ -265,6 +265,21 @@ def can_see_private(session: Session, viewer: Soldier, target: Soldier) -> bool:
     return can_see_private_node(session, viewer, node)
 
 
+def can_see_exemption_details(session: Session, viewer: Soldier, target: Soldier) -> bool:
+    """Return True iff viewer may see an exemption's own type/reason (rather
+    than a redacted "מידע פרטי" placeholder).
+
+    A narrower, exemptions-only bypass on top of can_see_private: any admin
+    may see exemption type/reason, since they can already cancel any
+    exemption regardless of scope (request_cancellation_authorized) — but
+    this does NOT extend to the medical DOCUMENT itself, which stays gated
+    by can_view_medical_document, nor to other private fields (e.g. contact
+    info) that still go through plain can_see_private."""
+    if viewer.role == "admin":
+        return True
+    return can_see_private(session, viewer, target)
+
+
 def can_view_medical_document(session: Session, viewer: Soldier, target: Soldier) -> bool:
     """Stricter than can_see_private: viewing the medical DOCUMENT itself (not just
     the exemption's other fields) requires the viewer be a commander at or above a

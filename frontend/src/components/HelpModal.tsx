@@ -406,10 +406,21 @@ function FairnessTab() {
               </div>
             </div>
             <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-indigo-800 dark:text-indigo-200">
-              <BlockMath math="\text{חלק בנטל} = \dfrac{A}{W} = \dfrac{\sum_{q:\,U_q>0} s_q \times f_q}{\sum_{q:\,U_q>0} U_q \times f_q}" />
-              <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-1" dir="rtl">
-                לכל רבעון <InlineMath math="q" /> : <InlineMath math="s_q" /> = ניקוד החייל, <InlineMath math="U_q" /> = ניקוד כלל היחידה, <InlineMath math="f_q" /> = אחוז הנוכחות ברבעון
-              </p>
+              {/* Chained into one line, the final fraction (two full
+                  summations) is wide enough to overflow a phone screen —
+                  broken into an aligned two-line equation instead (same
+                  \begin{aligned} pattern used elsewhere in this file), with
+                  overflow-x-auto kept as a fallback for any narrower screen
+                  where even that still doesn't fit. */}
+              <div className="overflow-x-auto">
+                <BlockMath math="\begin{aligned}\text{חלק בנטל} &= \dfrac{A}{W} \\ &= \dfrac{\sum_{q:\,U_q>0} s_q \times f_q}{\sum_{q:\,U_q>0} U_q \times f_q}\end{aligned}" />
+              </div>
+              <div className="text-xs text-center text-gray-500 dark:text-gray-400 mt-1 space-y-0.5" dir="rtl">
+                <p>לכל רבעון <InlineMath math="q" />:</p>
+                <p><InlineMath math="s_q" /> = ניקוד החייל ברבעון</p>
+                <p><InlineMath math="U_q" /> = ניקוד כלל היחידה ברבעון</p>
+                <p><InlineMath math="f_q" /> = אחוז הנוכחות ברבעון</p>
+              </div>
             </div>
           </div>
         </div>

@@ -356,6 +356,7 @@ describe("MyRequestsPage - existing-tab groups", () => {
         granted_by: null,
         revoke_reason: null,
         revoked_by_name: null,
+        revoked_at: null,
       },
     ]);
     vi.mocked(dutyConfigApi.listExemptionTypes).mockResolvedValue([

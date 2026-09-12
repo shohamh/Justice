@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db.models import DutyManagerScope, PersonalConstraint, PersonalConstraintOverride
-from app.services.holidays import holidays_in_range
+from app.services.holidays import HolidayHit, holidays_in_range
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -20,6 +20,22 @@ def _next_holiday_free_range(span_days: int) -> tuple[date, date]:
         if not holidays_in_range(start, end, end_inclusive=True):
             return start, end
         start += timedelta(days=1)
+
+
+def _next_holiday_on_or_after(start: date) -> HolidayHit:
+    """First real IL holiday on or after `start`, scanning forward year by
+    year — so a "crosses a holiday" test targets whatever the next actual
+    holiday is relative to today, instead of a hardcoded date (e.g. a
+    specific year's Rosh Hashanah) that eventually rolls into the past and
+    starts failing start_date validation for reasons unrelated to what the
+    test is actually checking."""
+    year = start.year
+    while True:
+        hits = holidays_in_range(date(year, 1, 1), date(year, 12, 31), end_inclusive=True)
+        for hit in hits:
+            if hit.date >= start:
+                return hit
+        year += 1
 
 
 def test_soldier_submit_and_list(client: TestClient, admin_session: Session):
@@ -380,22 +396,24 @@ def test_pending_list_marks_admins_own_request_as_not_approvable(
 
 def test_submit_response_includes_crossed_holidays(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="7500020")
+    holiday = _next_holiday_on_or_after(date.today())
+    # Pad the range 2 days on each side of the holiday to also exercise a
+    # multi-day window, but never start before today (the holiday itself
+    # could be only a day or two out).
+    start = max(date.today(), holiday.date - timedelta(days=2))
+    end = holiday.date + timedelta(days=2)
     r = client.post(
         "/api/me/constraints",
         headers=auth_headers(s),
-        json={
-            # Rosh Hashanah is 2026-09-12 to 2026-09-13 in the IL holiday calendar.
-            "start_date": "2026-09-10",
-            "end_date": "2026-09-14",
-            "reason": "חופשה",
-        },
+        json={"start_date": start.isoformat(), "end_date": end.isoformat(), "reason": "חופשה"},
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert len(body["crossed_holidays"]) == 2
-    assert body["crossed_holidays"][0]["date"] == "2026-09-12"
-    assert body["crossed_holidays"][1]["date"] == "2026-09-13"
-    assert body["crossed_holidays"][0]["name"] == body["crossed_holidays"][1]["name"] == "ראש השנה"
+    assert len(body["crossed_holidays"]) >= 1
+    assert any(
+        h["date"] == holiday.date.isoformat() and h["name"] == holiday.name
+        for h in body["crossed_holidays"]
+    )
 
 
 def test_submit_response_has_empty_crossed_holidays_when_no_holiday_in_range(client: TestClient, admin_session: Session):

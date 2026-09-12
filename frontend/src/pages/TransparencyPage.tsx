@@ -143,134 +143,6 @@ interface SubRow {
   global_gap: number | null;
 }
 
-// ─── fairness card ────────────────────────────────────────────────────────────
-
-function FairnessHelpModal({ variant, onClose }: { variant: "soldiers" | "subunits"; onClose: () => void }) {
-  const isSoldiers = variant === "soldiers";
-  return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto space-y-5"
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-          {isSoldiers ? "פיזור עומס (CV) — כיצד מחושב?" : "פיזור עומס בין מסגרות — כיצד מחושב?"}
-        </h3>
-
-        <p className="text-sm text-gray-700 dark:text-gray-300">
-          {isSoldiers
-            ? "מדד המציג כמה שוויונית חלוקת התורנויות בין החיילים. ערך נמוך פירושו שכולם נושאים עומס דומה."
-            : "מדד המציג כמה שוויוני הנטל בין המסגרות השונות, לפי ממוצע עומס לחייל בכל מסגרת."}
-        </p>
-
-        {/* Stddev */}
-        <div>
-          <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-1">שלב 1 — סטיית תקן (σ)</p>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-            לכל {isSoldiers ? "חייל" : "מסגרת"} מחשבים כמה הוא שונה מהממוצע, מעלים בריבוע (כדי שהפרשים בכיוונים הפוכים לא יתבטלו), מחשבים ממוצע של הריבועים, ולוקחים שורש ריבועי.
-          </p>
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg px-4 py-3 overflow-x-auto text-center">
-            <BlockMath math={String.raw`\sigma = \sqrt{\frac{\displaystyle\sum_{i=1}^{n}(x_i - \mu)^2}{n}}`} />
-          </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 space-y-0.5 pr-1">
-            <p><InlineMath math="x_i" /> — {isSoldiers ? "עומס חייל i" : "ממוצע עומס מסגרת i"}</p>
-            <p><InlineMath math="\mu" /> — ממוצע {isSoldiers ? "עומסי כל החיילים" : "ממוצעי כל המסגרות"}</p>
-            <p><InlineMath math="n" /> — מספר {isSoldiers ? "החיילים" : "המסגרות"}</p>
-          </div>
-        </div>
-
-        {/* CV */}
-        <div>
-          <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-1">שלב 2 — מקדם הפיזור (CV)</p>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-            מנרמל את סטיית התקן לפי הממוצע, כך שאפשר להשוות פיזור גם כשהממוצע משתנה לאורך הזמן.
-          </p>
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg px-4 py-3 overflow-x-auto text-center">
-            <BlockMath math={String.raw`CV = \frac{\sigma}{\mu}`} />
-          </div>
-        </div>
-
-        {/* Thresholds */}
-        <div>
-          <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300 mb-2">פרשנות</p>
-          <div className="space-y-2 text-sm">
-            {[
-              { dot: "bg-green-500", range: "פחות מ-25%", desc: isSoldiers ? "פיזור בריא — העומס מחולק בצורה שוויונית" : "פיזור בריא — המסגרות נושאות עומס דומה" },
-              { dot: "bg-yellow-500", range: "25%–50%", desc: "אי-שוויון בינוני — כדאי לבדוק" },
-              { dot: "bg-red-500", range: "מעל 50%", desc: isSoldiers ? "פיזור גבוה — חיילים מסוימים נושאים עומס שונה מאוד מהממוצע" : "פיזור גבוה — מסגרת אחת לפחות נושאת עומס שונה מאוד משאר המסגרות" },
-            ].map(({ dot, range, desc }) => (
-              <div key={range} className="flex items-start gap-2">
-                <span className={`mt-1 inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                <span className="text-gray-700 dark:text-gray-300"><strong>{range}</strong> — {desc}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="text-left pt-1">
-          <button type="button" className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm" onClick={onClose}>סגור</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FairnessCard({ stats, helpVariant }: { stats: BurdenShareStats | null; helpVariant?: "soldiers" | "subunits" }) {
-  const { t } = useTranslation();
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const helpButton = helpVariant && (
-    <button
-      type="button"
-      onClick={() => setModalOpen(true)}
-      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs border border-gray-300 dark:border-gray-500 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer"
-    >
-      ?
-    </button>
-  );
-
-  if (!stats) {
-    return (
-      <>
-        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-            {t("transparency.burden_share_spread")}
-            {helpButton}
-          </p>
-          <p className="text-lg font-semibold text-gray-400">—</p>
-        </div>
-        {modalOpen && helpVariant && <FairnessHelpModal variant={helpVariant} onClose={() => setModalOpen(false)} />}
-      </>
-    );
-  }
-  const cvPct = stats.cv * 100;
-  const cardClass = cvPct < 25
-    ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700"
-    : cvPct < 50
-      ? "bg-yellow-50 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-700"
-      : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700";
-  const dotClass = cvPct < 25 ? "bg-green-500" : cvPct < 50 ? "bg-yellow-500" : "bg-red-500";
-  return (
-    <>
-      <div className={`rounded-lg p-3 border text-center ${cardClass}`}>
-        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-          <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
-          {t("transparency.burden_share_spread")}
-          {helpButton}
-        </p>
-        <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
-          <p>{t("transparency.burden_share_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
-          <p>{t("transparency.burden_share_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
-          <p>{t("transparency.burden_share_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
-        </div>
-      </div>
-      {modalOpen && helpVariant && <FairnessHelpModal variant={helpVariant} onClose={() => setModalOpen(false)} />}
-    </>
-  );
-}
-
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function TransparencyPage() {
@@ -522,10 +394,6 @@ export default function TransparencyPage() {
 
   const burdenShareStats: BurdenShareStats | null = tab === 0
     ? computeBurdenShareStats(visibleRows.map((r) => r.burden_share).filter((v) => !isNaN(v)))
-    : null;
-
-  const subBurdenShareStats: BurdenShareStats | null = tab === 1
-    ? computeBurdenShareStats(subRows.map((r) => r.avg_burden_share).filter((v) => !isNaN(v) && v > 0))
     : null;
 
   function handleSelectNode(id: string) {
@@ -990,7 +858,7 @@ export default function TransparencyPage() {
         <TabBar tabs={["חיילים", "תתי יחידות"]} active={tab} onChange={setTab} />
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" dir="rtl">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" dir="rtl">
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_cumulative")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgCumulative.toFixed(3)}</p>
@@ -1008,8 +876,6 @@ export default function TransparencyPage() {
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_normalised")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgNormalised.toFixed(3)}</p>
           </div>
-          {tab === 0 && <FairnessCard stats={burdenShareStats} helpVariant="soldiers" />}
-          {tab === 1 && <FairnessCard stats={subBurdenShareStats} helpVariant="subunits" />}
         </div>
 
         {tab === 0 && (

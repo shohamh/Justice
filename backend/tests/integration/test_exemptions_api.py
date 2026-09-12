@@ -62,6 +62,43 @@ def test_direct_grant_audit_context_includes_reason(client: TestClient, admin_se
     assert context == {"reason": "מסמך רפואי"}
 
 
+def test_admin_without_scope_sees_exemption_details_and_can_cancel(
+    client: TestClient, admin_session: Session
+):
+    # can_see_exemption_details gives any admin a narrow bypass on top of
+    # can_see_private, specifically for an exemption's own type/reason (not
+    # the medical document itself — see
+    # test_medical_exemption_files_require_medical_document_visibility for
+    # that separate, still-scoped check) — since an admin outside this
+    # soldier's chain of command can already cancel any exemption via
+    # request_cancellation_authorized's blanket admin bypass, hiding the
+    # type/reason from them while still letting them cancel it served no
+    # purpose.
+    admin = create_soldier(admin_session, personal_number="5200013-a", role="admin")
+    target = create_soldier(admin_session, personal_number="5200014-a")
+    et = _et(admin_session, "פטור-cancel-scope")
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
+    )
+    assert r.status_code == 201, r.text
+    exemption_id = r.json()["id"]
+
+    listed = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(admin)).json()
+    assert listed[0]["exemption_type_id"] == str(et.id)
+    assert listed[0]["can_cancel"] is True
+
+    r2 = client.request(
+        "DELETE",
+        f"/api/soldiers/{target.id}/exemptions/{exemption_id}",
+        headers=auth_headers(admin),
+        json={"reason": "לא רלוונטי"},
+    )
+    assert r2.status_code == 204, r2.text
+
+
 def test_soldier_exemption_files_are_scoped_and_validated(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5200003-a", role="admin")
     target = create_soldier(admin_session, personal_number="5200004-a")
@@ -238,6 +275,12 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
     assert r.status_code == 204
     rows = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(admin)).json()
     assert rows[0]["end_date"] == date.today().isoformat()
+    # Who/why/when it was cancelled must be visible to whoever can see this
+    # exemption's other details — not just that it now has an end date.
+    assert rows[0]["revoke_reason"] == "לא נחוץ יותר"
+    assert rows[0]["revoked_by"] == str(admin.id)
+    assert rows[0]["revoked_by_name"] == admin.full_name
+    assert rows[0]["revoked_at"] is not None
 
 
 def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Session):
@@ -386,12 +429,13 @@ def test_detail_endpoint_shows_reason_when_authorized(client: TestClient, admin_
     assert body["granted_by_name"] == cmd.full_name
 
 
-def test_detail_endpoint_hides_reason_when_not_private(client: TestClient, admin_session: Session):
-    """A plain admin (not also a commander/duty-manager) passes EXEMPTION_READ
-    unconditionally (authz.can(): `if user.role == "admin": return True`), but
-    can_see_private_node() deliberately does NOT grant admins a bypass — it
-    requires is_commander or is_duty_manager. So a plain admin is exactly the
-    "can read, cannot see private fields" case: reason must come back None."""
+def test_detail_endpoint_shows_reason_to_any_admin(client: TestClient, admin_session: Session):
+    """can_see_exemption_details gives any admin a narrow bypass — unlike
+    can_see_private_node's plain is_commander/is_duty_manager rule used for
+    other private fields — specifically so an admin who can already cancel
+    any exemption (request_cancellation_authorized's own blanket admin
+    bypass) isn't shown a redacted reason for something they can act on
+    anyway."""
     node = create_node(admin_session, level="department", name="d-detail2")
     admin_grantor = create_soldier(admin_session, personal_number="5200022", role="admin")
     target = create_soldier(admin_session, personal_number="5200023", hierarchy_node_id=node.id)
@@ -407,8 +451,8 @@ def test_detail_endpoint_hides_reason_when_not_private(client: TestClient, admin
     r2 = client.get(f"/api/soldiers/{target.id}/exemptions/{exemption_id}", headers=auth_headers(viewer_admin))
     assert r2.status_code == 200, r2.text
     body = r2.json()
-    assert body["reason"] is None
-    assert body["exemption_type_name"] == "פטור-דטייל2"  # non-private fields still shown
+    assert body["reason"] == "סודי"
+    assert body["exemption_type_name"] == "פטור-דטייל2"
 
 
 def test_detail_endpoint_404_for_mismatched_soldier(client: TestClient, admin_session: Session):
@@ -479,13 +523,13 @@ def test_revoke_requires_reason_body(client: TestClient, admin_session: Session)
     assert resp2.status_code == 204
 
 
-def test_exemption_out_hides_revoke_reason_from_out_of_scope_viewer(
+def test_exemption_out_shows_revoke_reason_to_any_admin(
     client: TestClient, admin_session: Session
 ):
-    # An admin who is *not* a commander/duty-manager over the target's node
-    # passes the EXEMPTION_READ authorization check (admins always can), but
-    # must not see private fields like revoke_reason/revoked_by_name per
-    # can_see_private's explicit no-blanket-bypass-for-admins rule.
+    # An admin who is not a commander/duty-manager over the target's node
+    # still sees revoke_reason/revoked_by_name — can_see_exemption_details'
+    # admin bypass covers every exemption field this route redacts, not just
+    # reason/exemption_type_id.
     d = create_node(admin_session, level="department", name="d-revoke")
     b = create_node(admin_session, level="branch", name="b-revoke", parent=d)
     target = create_soldier(admin_session, personal_number="5200017", hierarchy_node_id=b.id)
@@ -507,11 +551,11 @@ def test_exemption_out_hides_revoke_reason_from_out_of_scope_viewer(
     resp = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(other_admin))
     assert resp.status_code == 200
     body = resp.json()
-    assert body[0]["revoke_reason"] is None
-    assert body[0]["revoked_by_name"] is None
+    assert body[0]["revoke_reason"] == "פרטי"
+    assert body[0]["revoked_by_name"] is None  # revoked_by itself was never set on this fixture row
 
 
-def test_detail_endpoint_hides_revoke_reason_from_out_of_scope_viewer(
+def test_detail_endpoint_shows_revoke_reason_to_any_admin(
     client: TestClient, admin_session: Session
 ):
     d = create_node(admin_session, level="department", name="d-detail-revoke")
@@ -540,8 +584,8 @@ def test_detail_endpoint_hides_revoke_reason_from_out_of_scope_viewer(
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["revoke_reason"] is None
-    assert body["revoked_by_name"] is None
+    assert body["revoke_reason"] == "פרטי דטייל"
+    assert body["revoked_by_name"] is None  # revoked_by itself was never set on this fixture row
 
 
 def test_exemption_request_includes_nearest_commander_and_duty_manager(client: TestClient, admin_session: Session):
@@ -928,10 +972,20 @@ def test_log_exemption_by_commander_and_duty_manager_fully_auto_approves(
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["status"] == "approved"
+    # ExemptionRequest has no decided_at column — it's derived from the
+    # exemption_approved/rejected notification's created_at (see
+    # exemption_decision_latest) and must be surfaced on both the immediate
+    # response and the soldier-history list, not just decided_by.
+    assert body["decided_by"]["soldier_id"] == str(cmd.id)
+    assert body["decided_at"] is not None
     exemption = admin_session.execute(
         select(SoldierExemption).where(SoldierExemption.soldier_id == target.id)
     ).scalar_one()
     assert exemption.exemption_type_id == et.id
+
+    history = client.get(f"/api/soldiers/{target.id}/exemption-requests", headers=auth_headers(cmd))
+    assert history.status_code == 200, history.text
+    assert history.json()[0]["decided_at"] is not None
 
 
 def test_log_exemption_by_low_level_commander_stays_pending_commander(
