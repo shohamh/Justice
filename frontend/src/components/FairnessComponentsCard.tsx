@@ -383,12 +383,12 @@ function FairnessComponentCard({
               ? `חיילים בקבוצות שנבחרו (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
               : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
           </p>
-          <div className="flex items-center gap-1 sm:gap-2 pr-1 text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
-            <span className="w-4 sm:w-5 shrink-0" />
-            <span className="w-16 sm:w-28 shrink-0 text-right">חייל</span>
-            <span className="flex-1 text-center">מהממוצע</span>
-            <span className="w-10 sm:w-12 text-left shrink-0">בנטל</span>
-            {mean != null && <span className="w-10 sm:w-12 text-left shrink-0">סטייה</span>}
+          <div className="grid grid-cols-[16px_64px_minmax(0,1fr)_40px_40px] sm:grid-cols-[20px_112px_minmax(0,1fr)_48px_48px] items-start gap-1 sm:gap-2 pr-1 border-r-2 border-transparent text-[10px] leading-tight text-gray-400 dark:text-gray-500">
+            <span />
+            <span className="text-center">חייל</span>
+            <span className="text-center">מרחק מהממוצע</span>
+            <span className="text-center">חלק בנטל</span>
+            {mean != null && <span className="text-center">סטייה מהממוצע</span>}
           </div>
           <div className="space-y-1 min-w-[230px]">
             {displayedSoldiers.map((s, rank) => {
@@ -417,16 +417,16 @@ function FairnessComponentCard({
               return (
                 <div
                   key={s.soldier_id}
-                  className="flex items-center gap-1 sm:gap-2 pr-1 border-r-2 rounded transition-colors"
+                  className="grid grid-cols-[16px_64px_minmax(0,1fr)_40px_40px] sm:grid-cols-[20px_112px_minmax(0,1fr)_48px_48px] items-center gap-1 sm:gap-2 pr-1 border-r-2 rounded transition-colors"
                   style={{ borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent" }}
                 >
-                  <span className={`text-xs w-4 sm:w-5 text-center font-bold shrink-0 ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
+                  <span className={`text-xs text-center font-bold ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
                     {rank + 1}
                   </span>
                   <SoldierLink
                     id={s.soldier_id}
                     name={s.full_name}
-                    className="text-xs w-16 sm:w-28 truncate shrink-0 block text-right"
+                    className="text-xs truncate block text-right"
                   />
                   {/* Fills from the center line (the group mean) toward
                       whichever side this soldier sits on, growing only as
@@ -438,7 +438,7 @@ function FairnessComponentCard({
                       that itself only reaches 30% of the way to red/green,
                       not the fully-saturated color every bar would
                       otherwise end in regardless of how far it reaches. */}
-                  <div className="relative flex-1 bg-gray-200 dark:bg-gray-700 rounded h-1.5" title="מרחק מהממוצע">
+                  <div className="relative bg-gray-200 dark:bg-gray-700 rounded h-1.5" title="מרחק מהממוצע">
                     <div className="absolute inset-y-0 right-1/2 w-px bg-gray-400 dark:bg-gray-500" />
                     {z != null && (
                       <div
@@ -452,11 +452,11 @@ function FairnessComponentCard({
                       />
                     )}
                   </div>
-                  <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-10 sm:w-12 text-left shrink-0">
+                  <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 text-left">
                     {burdenSharePct}%
                   </span>
                   {devStr && (
-                    <span className={`text-xs tabular-nums w-10 sm:w-12 text-left shrink-0 ${devCls}`}>
+                    <span className={`text-xs tabular-nums text-left ${devCls}`}>
                       {devStr}
                     </span>
                   )}
