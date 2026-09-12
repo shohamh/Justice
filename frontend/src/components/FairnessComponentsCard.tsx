@@ -383,7 +383,14 @@ function FairnessComponentCard({
               ? `חיילים בקבוצות שנבחרו (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
               : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
           </p>
-          <div className="space-y-1 min-w-[260px]">
+          <div className="flex items-center gap-1 sm:gap-2 pr-1 text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
+            <span className="w-4 sm:w-5 shrink-0" />
+            <span className="w-16 sm:w-28 shrink-0 text-right">חייל</span>
+            <span className="flex-1 text-center">מהממוצע</span>
+            <span className="w-10 sm:w-12 text-left shrink-0">בנטל</span>
+            {mean != null && <span className="w-10 sm:w-12 text-left shrink-0">סטייה</span>}
+          </div>
+          <div className="space-y-1 min-w-[230px]">
             {displayedSoldiers.map((s, rank) => {
               const burdenSharePct = (s.burden_share * 100).toFixed(2);
               const dev = mean != null ? s.burden_share - mean : null;
@@ -410,16 +417,16 @@ function FairnessComponentCard({
               return (
                 <div
                   key={s.soldier_id}
-                  className="flex items-center gap-2 pr-1 border-r-2 rounded transition-colors"
+                  className="flex items-center gap-1 sm:gap-2 pr-1 border-r-2 rounded transition-colors"
                   style={{ borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent" }}
                 >
-                  <span className={`text-xs w-5 text-center font-bold shrink-0 ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
+                  <span className={`text-xs w-4 sm:w-5 text-center font-bold shrink-0 ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
                     {rank + 1}
                   </span>
                   <SoldierLink
                     id={s.soldier_id}
                     name={s.full_name}
-                    className="text-xs w-28 truncate shrink-0 block text-right"
+                    className="text-xs w-16 sm:w-28 truncate shrink-0 block text-right"
                   />
                   {/* Fills from the center line (the group mean) toward
                       whichever side this soldier sits on, growing only as
@@ -445,11 +452,11 @@ function FairnessComponentCard({
                       />
                     )}
                   </div>
-                  <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-12 text-left shrink-0">
+                  <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-10 sm:w-12 text-left shrink-0">
                     {burdenSharePct}%
                   </span>
                   {devStr && (
-                    <span className={`text-xs tabular-nums w-12 text-left shrink-0 ${devCls}`}>
+                    <span className={`text-xs tabular-nums w-10 sm:w-12 text-left shrink-0 ${devCls}`}>
                       {devStr}
                     </span>
                   )}
