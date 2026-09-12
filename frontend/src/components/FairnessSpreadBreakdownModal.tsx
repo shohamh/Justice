@@ -217,7 +217,8 @@ export default function FairnessSpreadBreakdownModal({
                     <BlockMath math={String.raw`\sigma = \sqrt{\frac{\displaystyle\sum_{i=1}^{n}(x_i - \mu)^2}{n}}`} />
                   </div>
                   <div className="text-gray-500 dark:text-gray-400 space-y-0.5 pr-1 mb-2">
-                    <p><InlineMath math="x_i" /> — חלק בנטל של {unitLabel} i · <InlineMath math="n" /> — מספר {unitLabelPlural}</p>
+                    <p><InlineMath math="x_i" /> — חלק בנטל של {unitLabel} i</p>
+                    <p><InlineMath math="n" /> — מספר {unitLabelPlural}</p>
                   </div>
                   <p className="text-gray-500 dark:text-gray-400 mb-1">עבור הקבוצה הנוכחית:</p>
                   <div className="bg-white dark:bg-gray-800 border border-amber-100 dark:border-amber-900 rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap">
