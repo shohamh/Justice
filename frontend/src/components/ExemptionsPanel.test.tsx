@@ -31,8 +31,8 @@ vi.mock("../api/dutyConfig", () => ({
 
 vi.mock("../api/exemptions", () => ({
   listExemptions: vi.fn(() => Promise.resolve([
-    { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null },
-    { id: "ex2", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-10", reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null },
+    { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, can_cancel: true },
+    { id: "ex2", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-10", reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, can_cancel: true },
   ])),
   logExemptionForSoldier: vi.fn(() => Promise.resolve({
     id: "req-new",
@@ -279,6 +279,20 @@ describe("ExemptionsPanel", () => {
 
     const requestRow = await screen.findByTestId("exemption-request-row-req-1");
     expect(within(requestRow).getByText("(5 ימים)")).toBeTruthy();
+  });
+
+  test("hides the cancel button when the backend says this exemption can't be cancelled, even for a manager", async () => {
+    // can_cancel is the backend's authoritative, per-exemption check (which
+    // also requires being able to see the exemption's own private details —
+    // see _can_cancel_exemption on the backend); the broad canManage role
+    // flag must not override it, or a manager without real authority over
+    // this specific exemption could cancel something they can't even see.
+    vi.mocked(exemptionsApi.listExemptions).mockResolvedValueOnce([
+      { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, can_cancel: false },
+    ]);
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+    await screen.findByTestId("exemption-row-ex1");
+    expect(screen.queryByTestId("revoke-ex1")).not.toBeInTheDocument();
   });
 
   test("revoking an exemption requires a reason and calls revokeExemption with it", async () => {

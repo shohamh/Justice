@@ -322,7 +322,14 @@ export default function ExemptionsPanel({
                       </p>
                       <DaysBadge start={exemption.start_date} end={exemption.end_date} />
                     </div>
-                    {(exemption.can_cancel || canManage) && (
+                    {/* Authoritative per-soldier flag from the backend, not
+                        the broad canManage role check — a viewer who can't
+                        see this exemption's own details (e.g. an admin with
+                        no commander/duty-manager scope here, shown "מידע
+                        פרטי") must not be able to cancel it either, and
+                        can_cancel already encodes that (see
+                        _can_cancel_exemption on the backend). */}
+                    {exemption.can_cancel && (
                       <button
                         className="text-red-500 text-xs shrink-0"
                         onClick={(event) => {
