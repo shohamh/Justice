@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { useEffect, useState, type MouseEvent } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { getFairnessComponents, type FairnessComponent, type FairnessComponents, type FairnessSoldier } from "../api/scoring";
 import SoldierLink from "./SoldierLink";
 import FairnessHelpModal from "./FairnessHelpModal";
@@ -42,13 +42,14 @@ function bucketBurdenShareStats(soldiers: FairnessSoldier[], count: number): Buc
 
 /** Soldiers sharing an eligible-type COUNT can still differ in which specific
  * duty types they're eligible for. This unions the real duty-type ids across
- * every soldier in the bucket, so hovering/clicking "5 חיילים — 2 סוגים" can
- * name and highlight the actual duty types involved (not just the count). */
-function typeIdsForCount(soldiers: FairnessSoldier[], count: number | null): Set<string> {
-  if (count == null) return new Set();
+ * every soldier in every selected bucket, so hovering/clicking (or ctrl+
+ * clicking several) "5 חיילים — 2 סוגים" rows can name and highlight the
+ * actual duty types involved (not just the counts). */
+function typeIdsForCounts(soldiers: FairnessSoldier[], counts: Set<number>): Set<string> {
+  if (counts.size === 0) return new Set();
   const ids = new Set<string>();
   for (const s of soldiers) {
-    if (s.eligible_type_count === count) {
+    if (counts.has(s.eligible_type_count)) {
       for (const tid of s.eligible_duty_type_ids) ids.add(tid);
     }
   }
@@ -65,10 +66,18 @@ function FairnessComponentCard({
   onToggle: () => void;
 }) {
   const [hoveredCount, setHoveredCount] = useState<number | null>(null);
-  const [lockedCount, setLockedCount] = useState<number | null>(null);
+  // A plain click replaces the whole selection with just that one count; a
+  // ctrl/cmd+click toggles that count in or out of the current selection
+  // without touching the others, so several sub-groups can be combined as a
+  // filter for the soldier list below.
+  const [lockedCounts, setLockedCounts] = useState<Set<number>>(new Set());
   const [helpOpen, setHelpOpen] = useState(false);
   const [breakdown, setBreakdown] = useState<{ title: string; soldiers: FairnessSpreadBreakdownSoldier[] } | null>(null);
-  const activeCount = lockedCount ?? hoveredCount;
+  // A hover-only preview never fights an existing multi-selection — it's
+  // only shown when nothing is locked yet.
+  const activeCounts = lockedCounts.size > 0
+    ? lockedCounts
+    : (hoveredCount != null ? new Set([hoveredCount]) : new Set<number>());
 
   function openBreakdown(title: string, forSoldiers: FairnessSoldier[], e: { stopPropagation: () => void }) {
     e.stopPropagation();
@@ -85,17 +94,29 @@ function FairnessComponentCard({
   const burdenShareRange = burdenShareMax - burdenShareMin || 1;
   const dist = eligibilityDistribution(c.soldiers);
   const typeCountColor = new Map(dist.map((d, idx) => [d.count, PIE_COLORS[idx % PIE_COLORS.length]]));
-  const activeDist = dist.find((d) => d.count === activeCount) ?? null;
 
-  const highlightedTypeIds = typeIdsForCount(c.soldiers, activeCount);
+  const highlightedTypeIds = typeIdsForCounts(c.soldiers, activeCounts);
 
-  function toggleLock(count: number, e: { stopPropagation: () => void }) {
+  function toggleLock(count: number, e: MouseEvent) {
     e.stopPropagation();
-    setLockedCount((prev) => (prev === count ? null : count));
+    const multiSelect = e.ctrlKey || e.metaKey;
+    setLockedCounts((prev) => {
+      const next = new Set(prev);
+      if (multiSelect) {
+        if (next.has(count)) next.delete(count);
+        else next.add(count);
+      } else if (next.size === 1 && next.has(count)) {
+        next.clear();
+      } else {
+        next.clear();
+        next.add(count);
+      }
+      return next;
+    });
     // On touch devices a tap fires a synthetic mouseenter (setting hoveredCount)
     // but no mouseleave ever follows (there's no pointer to leave with), so
     // hoveredCount would otherwise keep the row looking selected via the
-    // `lockedCount ?? hoveredCount` fallback even after unlocking it here.
+    // hover-preview fallback even after unlocking it here.
     setHoveredCount(null);
   }
 
@@ -158,7 +179,7 @@ function FairnessComponentCard({
             <span
               key={dt.id}
               className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                activeCount != null && highlightedTypeIds.has(dt.id)
+                activeCounts.size > 0 && highlightedTypeIds.has(dt.id)
                   ? "bg-indigo-600 text-white dark:bg-indigo-500"
                   : "bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300"
               }`}
@@ -187,9 +208,9 @@ function FairnessComponentCard({
                         <Cell
                           key={idx}
                           fill={PIE_COLORS[idx % PIE_COLORS.length]}
-                          stroke={activeCount === d.count ? "currentColor" : undefined}
-                          strokeWidth={activeCount === d.count ? 2 : undefined}
-                          className={activeCount === d.count ? "text-gray-700 dark:text-gray-200" : undefined}
+                          stroke={activeCounts.has(d.count) ? "currentColor" : undefined}
+                          strokeWidth={activeCounts.has(d.count) ? 2 : undefined}
+                          className={activeCounts.has(d.count) ? "text-gray-700 dark:text-gray-200" : undefined}
                           onMouseEnter={() => setHoveredCount(d.count)}
                           onMouseLeave={() => setHoveredCount(null)}
                           onClick={(e) => toggleLock(d.count, e)}
@@ -197,40 +218,12 @@ function FairnessComponentCard({
                         />
                       ))}
                     </Pie>
-                    <RechartsTooltip
-                      wrapperStyle={{ zIndex: 1000 }}
-                      // Recharts' default tooltip content is `white-space: nowrap`,
-                      // sized to fit — fine for short labels, but the duty-type list
-                      // here can run to dozens of names, rendering as one unbroken
-                      // line thousands of pixels wide with nothing to clip it (every
-                      // ancestor is overflow: visible), so it just runs off the edge
-                      // of the screen. Let it wrap within a reasonable width instead.
-                      contentStyle={{ whiteSpace: "normal", maxWidth: 280 }}
-                      // Pin the tooltip just under the chart instead of letting it
-                      // follow the cursor with Recharts' built-in edge-avoidance
-                      // (which assumes LTR and doesn't know about the fixed sidebar
-                      // this RTL layout keeps clear of via the md:pr-16 above) — a
-                      // fixed, predictable spot next to this small 96x96 chart is
-                      // guaranteed to stay inside that same buffer.
-                      position={{ x: 0, y: 96 }}
-                      // Overrides Recharts' own hover-tracked active state: on
-                      // touch, a tap fires mouseenter with no matching mouseleave,
-                      // so Recharts' internal tracking can get stuck "active"
-                      // exactly like our own hoveredCount did (see toggleLock) —
-                      // forcing active false once activeDist clears (deselecting
-                      // already resets both lockedCount and hoveredCount to null)
-                      // reliably closes it even with no real pointer to leave with.
-                      active={activeDist != null}
-                      formatter={(value, _name, props) => {
-                        const count = (props.payload as { count?: number })?.count;
-                        const names = typeIdsForCount(c.soldiers, count ?? null);
-                        const typeNames = c.duty_types.filter((dt) => names.has(dt.id)).map((dt) => dt.name);
-                        return [
-                          `${value} חיילים${typeNames.length > 0 ? ` — ${typeNames.join(", ")}` : ""}`,
-                          `${count ?? "?"} סוגי תורנות`,
-                        ];
-                      }}
-                    />
+                    {/* No Recharts <Tooltip>: the same info (duty types, spread,
+                        breakdown) is already surfaced by the legend row's own
+                        highlight/stats-line/breakdown-link below, and the
+                        tooltip was a recurring source of bugs (touch getting it
+                        stuck open, its content running off-screen, RTL sidebar
+                        clipping) for something the highlight alone now covers. */}
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -239,7 +232,7 @@ function FairnessComponentCard({
                   <div key={d.count}>
                     <div
                       className={`flex items-center gap-1 rounded px-1 -mx-1 cursor-pointer ${
-                        activeCount === d.count ? "bg-indigo-100 dark:bg-indigo-900" : ""
+                        activeCounts.has(d.count) ? "bg-indigo-100 dark:bg-indigo-900" : ""
                       }`}
                       onMouseEnter={() => setHoveredCount(d.count)}
                       onMouseLeave={() => setHoveredCount(null)}
@@ -251,15 +244,15 @@ function FairnessComponentCard({
                       />
                       <span>{d.soldiers} חיילים — {d.count} סוגים</span>
                     </div>
-                    {activeCount === d.count && (() => {
+                    {activeCounts.has(d.count) && (() => {
                       const stats = bucketBurdenShareStats(c.soldiers, d.count);
                       return (
-                        <div className="mr-3 flex items-center gap-2 text-indigo-600 dark:text-indigo-300">
-                          <span>
+                        <div className="mr-3 text-indigo-600 dark:text-indigo-300">
+                          <div>
                             {stats
                               ? `טווח: ${(stats.min * 100).toFixed(1)}%–${(stats.max * 100).toFixed(1)}% · סטיית תקן: ±${(stats.stddev * 100).toFixed(1)}% · פיזור CV ${(stats.cv * 100).toFixed(0)}%`
                               : "פחות מ-2 חיילים בקבוצה זו"}
-                          </span>
+                          </div>
                           {stats && (
                             <button
                               type="button"
@@ -268,8 +261,9 @@ function FairnessComponentCard({
                                 c.soldiers.filter((s) => s.eligible_type_count === d.count),
                                 e,
                               )}
-                              className="shrink-0 text-indigo-500 dark:text-indigo-300 hover:underline"
+                              className="mt-0.5 inline-flex items-center gap-1 text-indigo-500 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-600 rounded px-1.5 py-0.5 hover:bg-indigo-50 dark:hover:bg-indigo-900"
                             >
+                              <span aria-hidden="true" className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-current text-[10px] leading-none shrink-0">?</span>
                               הצג פירוט חישוב
                             </button>
                           )}
@@ -285,23 +279,24 @@ function FairnessComponentCard({
       </div>
 
       {/* Ranked candidate list — visible when the whole group is selected, or
-          when a subgroup (eligible-type count) row is hovered/locked. With a
-          subgroup active, the list is FILTERED down to just its soldiers
-          (not merely tinted within the full list) — a group can run to
-          hundreds of soldiers, making a handful of highlighted rows within
-          them practically unfindable by scrolling (confirmed live). Filtered
-          rank is local to the subgroup, so the "top 3 candidate" framing
+          when one or more subgroup (eligible-type count) rows are hovered/
+          locked (ctrl/cmd+click locks several at once). With any subgroup
+          active, the list is FILTERED down to just their soldiers (not
+          merely tinted within the full list) — a group can run to hundreds
+          of soldiers, making a handful of highlighted rows within them
+          practically unfindable by scrolling (confirmed live). Filtered
+          rank is local to the selection, so the "top 3 candidate" framing
           (a whole-group, next-duty-assignment concept) is dropped for it. */}
-      {(isActive || activeCount != null) && sortedSoldiers.length > 0 && (() => {
-        const filtered = activeCount != null;
+      {(isActive || activeCounts.size > 0) && sortedSoldiers.length > 0 && (() => {
+        const filtered = activeCounts.size > 0;
         const displayedSoldiers = filtered
-          ? sortedSoldiers.filter((s) => s.eligible_type_count === activeCount)
+          ? sortedSoldiers.filter((s) => activeCounts.has(s.eligible_type_count))
           : sortedSoldiers;
         return (
         <div className="border-t border-indigo-200 dark:border-indigo-700 px-3 pb-3 pt-2 overflow-x-auto">
           <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">
             {filtered
-              ? `חיילי הקבוצה שנבחרה (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
+              ? `חיילים בקבוצות שנבחרו (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
               : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
           </p>
           <div className="space-y-1 min-w-[260px]">

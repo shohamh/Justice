@@ -84,7 +84,7 @@ describe("FairnessComponentsCard", () => {
     // The candidate list filters down to just this sub-group's soldiers
     // (a full group can run to hundreds — tinting rows within an unfiltered
     // list of that size made them practically unfindable, confirmed live).
-    expect(screen.getByText("חיילי הקבוצה שנבחרה (2), ממוינים לפי חלק בנטל:")).toBeInTheDocument();
+    expect(screen.getByText("חיילים בקבוצות שנבחרו (2), ממוינים לפי חלק בנטל:")).toBeInTheDocument();
     expect(screen.getByText("חייל שתיים")).toBeInTheDocument();
     expect(screen.getByText("חייל שלוש")).toBeInTheDocument();
     expect(screen.queryByText("חייל אחד")).not.toBeInTheDocument();
@@ -156,6 +156,45 @@ describe("FairnessComponentsCard", () => {
     expect(guardBadge).not.toHaveClass("bg-indigo-600");
   });
 
+  it("ctrl+click combines several sub-groups as a filter, without replacing the existing selection", async () => {
+    vi.mocked(scoringApi.getFairnessComponents).mockResolvedValue({
+      components: [{
+        soldier_count: 3,
+        duty_type_names: ["שמירה"],
+        duty_types: [{ id: "dt-guard", name: "שמירה" }],
+        soldiers: [
+          { soldier_id: "s1", full_name: "חייל אחד", burden_share: 0.2, eligible_type_count: 1, eligible_duty_type_ids: ["dt-guard"] },
+          { soldier_id: "s2", full_name: "חייל שתיים", burden_share: 0.4, eligible_type_count: 2, eligible_duty_type_ids: ["dt-guard"] },
+          { soldier_id: "s3", full_name: "חייל שלוש", burden_share: 0.6, eligible_type_count: 3, eligible_duty_type_ids: ["dt-guard"] },
+        ],
+        burden_share: { mean: 0.4, cv: 0.3, stddev: 0.16 },
+      }],
+      exempt_from_all: { count: 0, soldiers: [] },
+    });
+
+    render(<FairnessComponentsCard />);
+
+    const row1 = (await screen.findByText("1 חיילים — 1 סוגים")).closest("div") as HTMLElement;
+    const row2 = screen.getByText("1 חיילים — 2 סוגים").closest("div") as HTMLElement;
+
+    // Plain click: single-select, just this one sub-group.
+    fireEvent.click(row1);
+    expect(screen.getByText("חייל אחד")).toBeInTheDocument();
+    expect(screen.queryByText("חייל שתיים")).not.toBeInTheDocument();
+    expect(screen.queryByText("חייל שלוש")).not.toBeInTheDocument();
+
+    // Ctrl+click a second row: adds to the selection instead of replacing it.
+    fireEvent.click(row2, { ctrlKey: true });
+    expect(screen.getByText("חייל אחד")).toBeInTheDocument();
+    expect(screen.getByText("חייל שתיים")).toBeInTheDocument();
+    expect(screen.queryByText("חייל שלוש")).not.toBeInTheDocument();
+
+    // Ctrl+click the first row again: removes just that one from the selection.
+    fireEvent.click(row1, { ctrlKey: true });
+    expect(screen.queryByText("חייל אחד")).not.toBeInTheDocument();
+    expect(screen.getByText("חייל שתיים")).toBeInTheDocument();
+  });
+
   it("reveals the ranked candidate list on a sub-group hover, without needing the whole group selected first", async () => {
     vi.mocked(scoringApi.getFairnessComponents).mockResolvedValue({
       components: [{
@@ -181,7 +220,7 @@ describe("FairnessComponentsCard", () => {
 
     // Filtered to just this sub-group's one soldier — "חייל אחד" (count 1,
     // not part of this sub-group) is excluded.
-    expect(screen.getByText("חיילי הקבוצה שנבחרה (1), ממוינים לפי חלק בנטל:")).toBeInTheDocument();
+    expect(screen.getByText("חיילים בקבוצות שנבחרו (1), ממוינים לפי חלק בנטל:")).toBeInTheDocument();
     expect(screen.getByText("חייל שתיים")).toBeInTheDocument();
     expect(screen.queryByText("חייל אחד")).not.toBeInTheDocument();
   });
