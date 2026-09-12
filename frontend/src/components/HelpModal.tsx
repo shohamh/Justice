@@ -417,8 +417,8 @@ function FairnessTab() {
               </div>
               <div className="text-xs text-center text-gray-500 dark:text-gray-400 mt-1 space-y-0.5" dir="rtl">
                 <p>לכל רבעון <InlineMath math="q" />:</p>
-                <p><InlineMath math="s_q" /> = ניקוד החייל</p>
-                <p><InlineMath math="U_q" /> = ניקוד כלל היחידה</p>
+                <p><InlineMath math="s_q" /> = ניקוד החייל ברבעון</p>
+                <p><InlineMath math="U_q" /> = ניקוד כלל היחידה ברבעון</p>
                 <p><InlineMath math="f_q" /> = אחוז הנוכחות ברבעון</p>
               </div>
             </div>
