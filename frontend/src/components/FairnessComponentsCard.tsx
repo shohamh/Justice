@@ -43,6 +43,12 @@ function deviationEndColor(z: number, capZ: number): string {
 }
 const DEVIATION_NEUTRAL_RGB = `rgb(${DEVIATION_NEUTRAL.join(", ")})`;
 
+/** Shared column layout for the candidate list's header row and every data
+ * row below it, applied via inline style (not a Tailwind arbitrary-value
+ * class) so both are guaranteed the exact same computed grid regardless of
+ * how the build processes utility classes. */
+const CANDIDATE_ROW_GRID = "16px 64px minmax(0,1fr) 40px 40px";
+
 interface BucketBurdenShareStats { mean: number; stddev: number; cv: number; min: number; max: number }
 
 /** Burden-share spread (same CV/stddev/range shape as the group-level badge)
@@ -383,8 +389,11 @@ function FairnessComponentCard({
               ? `חיילים בקבוצות שנבחרו (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
               : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
           </p>
-          <div className="grid grid-cols-[16px_64px_minmax(0,1fr)_40px_40px] sm:grid-cols-[20px_112px_minmax(0,1fr)_48px_48px] items-start gap-1 sm:gap-2 pr-1 border-r-2 border-transparent text-[10px] leading-tight text-gray-400 dark:text-gray-500">
-            <span />
+          <div
+            className="items-start gap-1 pr-1 border-r-2 border-transparent text-[10px] leading-tight text-gray-400 dark:text-gray-500"
+            style={{ display: "grid", gridTemplateColumns: CANDIDATE_ROW_GRID }}
+          >
+            <span>&nbsp;</span>
             <span className="text-center">חייל</span>
             <span className="text-center">מרחק מהממוצע</span>
             <span className="text-center">חלק בנטל</span>
@@ -417,8 +426,12 @@ function FairnessComponentCard({
               return (
                 <div
                   key={s.soldier_id}
-                  className="grid grid-cols-[16px_64px_minmax(0,1fr)_40px_40px] sm:grid-cols-[20px_112px_minmax(0,1fr)_48px_48px] items-center gap-1 sm:gap-2 pr-1 border-r-2 rounded transition-colors"
-                  style={{ borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent" }}
+                  className="items-center gap-1 pr-1 border-r-2 rounded transition-colors"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: CANDIDATE_ROW_GRID,
+                    borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent",
+                  }}
                 >
                   <span className={`text-xs text-center font-bold ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
                     {rank + 1}
