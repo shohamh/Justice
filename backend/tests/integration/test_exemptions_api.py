@@ -278,6 +278,7 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
     # Who/why/when it was cancelled must be visible to whoever can see this
     # exemption's other details — not just that it now has an end date.
     assert rows[0]["revoke_reason"] == "לא נחוץ יותר"
+    assert rows[0]["revoked_by"] == str(admin.id)
     assert rows[0]["revoked_by_name"] == admin.full_name
     assert rows[0]["revoked_at"] is not None
 

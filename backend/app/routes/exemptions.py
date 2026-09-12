@@ -41,6 +41,7 @@ class ExemptionOut(BaseModel):
     reason: str | None
     granted_by: uuid.UUID | None
     revoke_reason: str | None
+    revoked_by: uuid.UUID | None
     revoked_by_name: str | None
     revoked_at: datetime | None
     can_cancel: bool = False
@@ -96,6 +97,7 @@ def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True,
         reason=ex.reason if include_sensitive else None,
         granted_by=ex.granted_by,
         revoke_reason=ex.revoke_reason if include_sensitive else None,
+        revoked_by=ex.revoked_by if include_sensitive else None,
         revoked_by_name=revoked_by_name,
         revoked_at=ex.revoked_at if include_sensitive else None,
         can_cancel=can_cancel,

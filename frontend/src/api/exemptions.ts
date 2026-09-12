@@ -11,6 +11,7 @@ export interface Exemption {
   reason: string | null;
   granted_by: string | null;
   revoke_reason: string | null;
+  revoked_by: string | null;
   revoked_by_name: string | null;
   revoked_at: string | null;
   can_cancel?: boolean;
