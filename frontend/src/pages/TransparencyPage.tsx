@@ -430,7 +430,7 @@ export default function TransparencyPage() {
     },
     {
       id: "name", header: t("transparency.name"),
-      cell: (r) => <SoldierLink id={r.soldier_id} name={r.full_name} />,
+      cell: (r) => <SoldierLink id={r.soldier_id} name={r.full_name} className="text-right" />,
       sortValue: (r) => r.full_name, filterValue: (r) => r.full_name,
     },
     {
