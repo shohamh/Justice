@@ -47,7 +47,7 @@ const DEVIATION_NEUTRAL_RGB = `rgb(${DEVIATION_NEUTRAL.join(", ")})`;
  * row below it, applied via inline style (not a Tailwind arbitrary-value
  * class) so both are guaranteed the exact same computed grid regardless of
  * how the build processes utility classes. */
-const CANDIDATE_ROW_GRID = "16px 64px minmax(0,1fr) 40px 40px";
+const CANDIDATE_ROW_GRID = "16px clamp(64px, 14vw, 200px) minmax(0,1fr) 40px 40px";
 
 interface BucketBurdenShareStats { mean: number; stddev: number; cv: number; min: number; max: number }
 
