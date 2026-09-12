@@ -394,7 +394,7 @@ function FairnessComponentCard({
             style={{ display: "grid", gridTemplateColumns: CANDIDATE_ROW_GRID }}
           >
             <span>&nbsp;</span>
-            <span className="text-center">חייל</span>
+            <span className="text-right">חייל</span>
             <span className="text-center">מרחק מהממוצע</span>
             <span className="text-center">חלק בנטל</span>
             {mean != null && <span className="text-center">סטייה מהממוצע</span>}
