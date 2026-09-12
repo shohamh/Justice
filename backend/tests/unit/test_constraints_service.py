@@ -90,13 +90,34 @@ def test_submit_auto_approve(admin_session, monkeypatch):
     assert c.decided_by is None
 
 
+def _same_period_anchor(span_days: int) -> date:
+    """A start date such that a `span_days`-day window from it stays inside
+    one constraints reset-period (quarter) — submit_constraint checks each
+    submission's cap against the quarter containing *that submission's own*
+    start_date (via remaining_days(..., today=start_date)), not a shared
+    "today". Two submissions placed a fixed number of days apart can
+    therefore silently land in different quarters near a quarter boundary,
+    where the cap resets and a test expecting them to combine against one
+    cap intermittently stops raising — reproduced live when this test
+    happened to run within ~3 weeks of a quarter end. Anchoring to whichever
+    quarter (current or next) has enough runway left keeps the test's
+    outcome the same regardless of which day it actually runs on."""
+    today = date.today()
+    candidate = today + timedelta(days=1)
+    _, period_end = constraints.period_bounds("quarter", candidate)
+    if (period_end - candidate).days >= span_days:
+        return candidate
+    return period_end
+
+
 def test_submit_cap_enforced(admin_session):
     s = create_soldier(admin_session, personal_number=_pn(3))
+    start = _same_period_anchor(21)  # covers day 0 through day 20 below, inclusive
     submit_constraint(
         admin_session,
         soldier_id=s.id,
-        start_date=date.today() + timedelta(days=1),
-        end_date=date.today() + timedelta(days=15),
+        start_date=start,
+        end_date=start + timedelta(days=14),
         reason="ארוך",
         actor_id=None,
     )
@@ -105,8 +126,8 @@ def test_submit_cap_enforced(admin_session):
         submit_constraint(
             admin_session,
             soldier_id=s.id,
-            start_date=date.today() + timedelta(days=20),
-            end_date=date.today() + timedelta(days=21),
+            start_date=start + timedelta(days=19),
+            end_date=start + timedelta(days=20),
             reason="עוד",
             actor_id=None,
         )
