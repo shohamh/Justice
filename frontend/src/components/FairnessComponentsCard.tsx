@@ -227,7 +227,7 @@ function FairnessComponentCard({
               </div>
               <div className="min-w-0 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
                 {dist.map((d, idx) => (
-                  <div key={d.count}>
+                  <div key={d.count} className="relative">
                     <div
                       className={`flex items-center gap-1 rounded px-1 -mx-1 cursor-pointer ${
                         activeCounts.has(d.count) ? "bg-indigo-100 dark:bg-indigo-900" : ""
@@ -245,7 +245,13 @@ function FairnessComponentCard({
                     {activeCounts.has(d.count) && (() => {
                       const stats = bucketBurdenShareStats(c.soldiers, d.count);
                       return (
-                        <div className="mr-3 text-indigo-600 dark:text-indigo-300">
+                        // On desktop this floats to the left of the row (into
+                        // the card's own empty space) instead of pushing the
+                        // rows below it down the page on every hover — that
+                        // reflow was reported as distracting when scanning
+                        // several sub-groups in a row. Mobile has no such
+                        // spare width, so it stays in normal flow there.
+                        <div className="mr-3 md:mr-0 text-indigo-600 dark:text-indigo-300 md:absolute md:top-0 md:right-[calc(100%+0.75rem)] md:z-10 md:w-64 md:rounded-lg md:border md:border-indigo-200 md:bg-white md:p-2 md:shadow-lg md:dark:border-indigo-700 md:dark:bg-gray-800">
                           <div>
                             {stats
                               ? `טווח: ${(stats.min * 100).toFixed(1)}%–${(stats.max * 100).toFixed(1)}% · סטיית תקן: ±${(stats.stddev * 100).toFixed(1)}% · פיזור CV ${(stats.cv * 100).toFixed(0)}%`
