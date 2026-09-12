@@ -283,7 +283,11 @@ def test_self_can_see_own_constraint_reason(client: TestClient, admin_session: S
 # ── Exemption sensitive fields ───────────────────────────────────────────────
 
 
-def test_admin_cannot_see_exemption_type_or_reason(client: TestClient, admin_session: Session):
+def test_admin_can_see_exemption_type_and_reason(client: TestClient, admin_session: Session):
+    # can_see_exemption_details gives any admin a narrow bypass here (unlike
+    # can_see_private's plain commander/duty-manager rule, used for other
+    # private fields) — an admin who can already cancel any exemption
+    # regardless of scope shouldn't be shown a redacted reason for it.
     admin = create_soldier(admin_session, personal_number="pf-adm005", role="admin")
     d = create_node(admin_session, level="department", name="pf-d9")
     dm = create_soldier(admin_session, personal_number="pf-dm007", role="duty_manager", hierarchy_node_id=d.id)
@@ -299,8 +303,8 @@ def test_admin_cannot_see_exemption_type_or_reason(client: TestClient, admin_ses
     assert r.status_code == 200
     exs = r.json()
     assert len(exs) == 1
-    assert exs[0]["reason"] is None
-    assert exs[0]["exemption_type_id"] is None
+    assert exs[0]["reason"] == "סיבה"
+    assert exs[0]["exemption_type_id"] == str(et.id)
 
 
 def test_dm_can_see_exemption_type_and_reason(client: TestClient, admin_session: Session):
