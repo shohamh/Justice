@@ -399,7 +399,7 @@ function FairnessComponentCard({
             <span className="text-center">חלק בנטל</span>
             {mean != null && <span className="text-center">סטייה מהממוצע</span>}
           </div>
-          <div className="space-y-1 min-w-[230px]">
+          <div className="space-y-1">
             {displayedSoldiers.map((s, rank) => {
               const burdenSharePct = (s.burden_share * 100).toFixed(2);
               const dev = mean != null ? s.burden_share - mean : null;
