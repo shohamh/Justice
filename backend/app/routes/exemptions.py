@@ -110,6 +110,23 @@ def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
 
 
+def _can_cancel_exemption(session: Session, user: Soldier, target: Soldier) -> bool:
+    """Whether `user` may cancel one of `target`'s exemptions.
+
+    request_cancellation_authorized alone gives plain admins a blanket
+    bypass (by design, for cancelling requests generally) — but
+    can_see_private deliberately does not: seeing a soldier's private
+    exemption details requires being their commander/duty manager in
+    scope, admin or not. Requiring both here closes the gap where an
+    admin with no scope over this soldier could cancel an exemption whose
+    type/reason they can't even see (shown to them as "מידע פרטי")."""
+    from app.services.authority import request_cancellation_authorized
+
+    return can_see_private(session, user, target) and request_cancellation_authorized(
+        session, user=user, target_node=_node_of(session, target),
+    )
+
+
 def _load_exemption(session: Session, soldier_id: uuid.UUID, exemption_id: uuid.UUID) -> tuple[Soldier, SoldierExemption]:
     soldier = _load_soldier(session, soldier_id)
     exemption = session.get(SoldierExemption, exemption_id)
@@ -151,8 +168,7 @@ def list_(
     if s.id != user.id:
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
     include_sensitive = can_see_private(session, user, s)
-    from app.services.authority import request_cancellation_authorized
-    can_cancel = request_cancellation_authorized(session, user=user, target_node=_node_of(session, s))
+    can_cancel = _can_cancel_exemption(session, user, s)
     return [
         _out(session, ex, include_sensitive=include_sensitive, can_cancel=can_cancel)
         for ex in svc.list_exemptions(session, soldier_id=soldier_id)
@@ -279,9 +295,7 @@ def revoke(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     s = _load_soldier(session, soldier_id)
-    from app.services.authority import request_cancellation_authorized
-
-    if not request_cancellation_authorized(session, user=user, target_node=_node_of(session, s)):
+    if not _can_cancel_exemption(session, user, s):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     ex = session.get(SoldierExemption, exemption_id)
     if ex is None or ex.soldier_id != soldier_id:

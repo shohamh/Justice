@@ -62,6 +62,40 @@ def test_direct_grant_audit_context_includes_reason(client: TestClient, admin_se
     assert context == {"reason": "מסמך רפואי"}
 
 
+def test_admin_without_scope_cannot_cancel_an_exemption_they_cannot_see(
+    client: TestClient, admin_session: Session
+):
+    # Regression: request_cancellation_authorized alone gives every plain
+    # admin a blanket bypass, regardless of commander/duty-manager scope —
+    # but can_see_private (which decides whether this admin even gets to see
+    # the exemption's own type/reason, vs. a redacted "מידע פרטי") does not.
+    # An admin outside this soldier's chain of command could previously
+    # cancel an exemption whose details they were never allowed to see.
+    admin = create_soldier(admin_session, personal_number="5200013-a", role="admin")
+    target = create_soldier(admin_session, personal_number="5200014-a")
+    et = _et(admin_session, "פטור-cancel-scope")
+
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
+    )
+    assert r.status_code == 201, r.text
+    exemption_id = r.json()["id"]
+
+    listed = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(admin)).json()
+    assert listed[0]["exemption_type_id"] is None
+    assert listed[0]["can_cancel"] is False
+
+    r2 = client.request(
+        "DELETE",
+        f"/api/soldiers/{target.id}/exemptions/{exemption_id}",
+        headers=auth_headers(admin),
+        json={"reason": "לא רלוונטי"},
+    )
+    assert r2.status_code == 403, r2.text
+
+
 def test_soldier_exemption_files_are_scoped_and_validated(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5200003-a", role="admin")
     target = create_soldier(admin_session, personal_number="5200004-a")
@@ -218,7 +252,11 @@ def test_soldier_reads_own_but_cannot_grant(client: TestClient, admin_session: S
 
 def test_revoke_active_soft(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5200006", role="admin")
-    target = create_soldier(admin_session, personal_number="5200007")
+    # Cancelling now also requires being able to see the exemption's own
+    # details (can_see_private) — deliberately not a blanket admin bypass —
+    # so this admin needs actual commander scope over the target's node.
+    node = create_node(admin_session, level="group", name="g-revoke-soft", commander_id=admin.id)
+    target = create_soldier(admin_session, personal_number="5200007", hierarchy_node_id=node.id)
     et = _et(admin_session, "פטור-ר4")
     ex = client.post(
         f"/api/soldiers/{target.id}/exemptions",
@@ -242,8 +280,9 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
 
 def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5200008", role="admin")
-    a = create_soldier(admin_session, personal_number="5200009")
-    b = create_soldier(admin_session, personal_number="5200010")
+    node = create_node(admin_session, level="group", name="g-revoke-cross", commander_id=admin.id)
+    a = create_soldier(admin_session, personal_number="5200009", hierarchy_node_id=node.id)
+    b = create_soldier(admin_session, personal_number="5200010", hierarchy_node_id=node.id)
     et = _et(admin_session, "פטור-ר5")
     ex = client.post(
         f"/api/soldiers/{a.id}/exemptions",
@@ -450,7 +489,8 @@ def test_detail_endpoint_403_when_not_authorized(client: TestClient, admin_sessi
 
 def test_revoke_requires_reason_body(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5200015", role="admin")
-    target = create_soldier(admin_session, personal_number="5200016")
+    node = create_node(admin_session, level="group", name="g-revoke-reason", commander_id=admin.id)
+    target = create_soldier(admin_session, personal_number="5200016", hierarchy_node_id=node.id)
     et = _et(admin_session, "פטור-ר8")
     ex = client.post(
         f"/api/soldiers/{target.id}/exemptions",
