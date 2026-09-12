@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-12
+
+### Features
+- Unified the general "what is CV?" explanation and the per-group calculation breakdown into a single modal, opened by clicking the CV badge anywhere it appears (group-level or sub-group-level).
+- The fairness candidate list's deviation bar now shows each soldier's position relative to the group's own mean and actual spread (not a fixed statistical cap), with a gray-to-red/green gradient whose reach matches how far that soldier actually deviates.
+- Fairness sub-groups can now be multi-selected (ctrl/cmd+click) to compare several at once, and hovering a different sub-group now previews it even while another is locked.
+- Added a per-subgroup burden-share breakdown with a filtered candidate list, and a loading indicator while fairness data is still fetching.
+- Cancelled exemptions are now shown distinctly from expired ones, with who cancelled it, when, and why.
+- The "requests" cards for exemptions are now clickable, revealing who approved or rejected each step and when.
+- Every place that credits a soldier for approving, rejecting, or cancelling something now links to that soldier's profile instead of showing a plain name.
+- The bug-report modal now opens immediately and captures its screenshot in the background instead of blocking on it.
+
+### Fixes
+- Fixed the fixed table header being cut off and non-scrollable on mobile Safari (which doesn't support `position: sticky` on table rows) by rebuilding it as a CSS grid.
+- Fixed wide burden-share/CV formulas overflowing their box on mobile instead of wrapping.
+- Admins can now see exemption details and cancel any exemption regardless of their scope over the soldier (medical files themselves remain separately gated).
+- The duty-manager approval step now shows its decision timestamp instead of omitting it.
+- Removed a redundant hover/click popup on the approval-stage icons where the expanded request card already shows the same information.
+- Removed the now-redundant org-wide burden-share spread summary card and the standalone "show calculation breakdown" link (superseded by the CV badges).
+- Fixed several fairness-chart hover/tooltip glitches (pie-chart tooltip following the cursor off-screen, collapsing on hover, sub-group stats panel closing prematurely).
+- Fixed bug-report screenshot capture silently dropping calendar events or failing to prune off-screen content.
+
+### Chores
+- Fixed date-sensitive backend and frontend tests to compute dates relative to "today" instead of hardcoded calendar dates, so they won't break as time passes.
+- Repaired several flaky end-to-end test specs.
+- Reduced redundant permission-check work when loading transparency/fairness data.
+
 ## 2026-09-09
 
 ### Features
