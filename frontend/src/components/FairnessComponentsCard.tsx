@@ -25,6 +25,24 @@ function cvBadge(cv: number): string {
   return "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300";
 }
 
+const DEVIATION_NEUTRAL: [number, number, number] = [156, 163, 175]; // gray-400 — at the mean
+const DEVIATION_HIGH: [number, number, number] = [239, 68, 68]; // red-500 — fully above the mean (|z| >= capZ)
+const DEVIATION_LOW: [number, number, number] = [34, 197, 94]; // green-500 — fully below the mean (|z| >= capZ)
+
+/** The color this soldier's position would have on one continuous
+ * gray→red (or gray→green) spectrum spanning the whole track — i.e. the
+ * same color a bar reaching exactly this far would end in in a full-length
+ * version of that spectrum, not always the fully-saturated endpoint
+ * regardless of distance. A soldier only 30% of the way to the cap gets a
+ * gradient that itself only reaches 30% of the way to red/green. */
+function deviationEndColor(z: number, capZ: number): string {
+  const t = Math.min(Math.abs(z), capZ) / capZ;
+  const target = z >= 0 ? DEVIATION_HIGH : DEVIATION_LOW;
+  const [r, g, b] = DEVIATION_NEUTRAL.map((c, i) => Math.round(c + (target[i] - c) * t));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+const DEVIATION_NEUTRAL_RGB = `rgb(${DEVIATION_NEUTRAL.join(", ")})`;
+
 interface BucketBurdenShareStats { mean: number; stddev: number; cv: number; min: number; max: number }
 
 /** Burden-share spread (same CV/stddev/range shape as the group-level badge)
@@ -111,11 +129,14 @@ function FairnessComponentCard({
   // filter for the soldier list below.
   const [lockedCounts, setLockedCounts] = useState<Set<number>>(new Set());
   const [breakdown, setBreakdown] = useState<{ title: string; soldiers: FairnessSpreadBreakdownSoldier[] } | null>(null);
-  // A hover-only preview never fights an existing multi-selection — it's
-  // only shown when nothing is locked yet.
-  const activeCounts = lockedCounts.size > 0
-    ? lockedCounts
-    : (hoveredCount != null ? new Set([hoveredCount]) : new Set<number>());
+  // Hovering always previews on top of whatever's locked — previously a
+  // hover was ignored entirely once anything was locked, so after clicking
+  // one sub-group there was no way to even glance at another without first
+  // unlocking (reported live: "after clicking one subgroup I can't hover on
+  // others"). Moving away just drops back to the locked set, since
+  // hoveredCount resets to null.
+  const activeCounts = new Set(lockedCounts);
+  if (hoveredCount != null) activeCounts.add(hoveredCount);
 
   function openBreakdown(title: string, forSoldiers: FairnessSoldier[], e: { stopPropagation: () => void }) {
     e.stopPropagation();
@@ -127,9 +148,22 @@ function FairnessComponentCard({
 
   const sortedSoldiers = [...c.soldiers].sort((a, b) => a.burden_share - b.burden_share);
   const mean = c.burden_share?.mean ?? null;
+  const stddev = c.burden_share?.stddev ?? null;
   const burdenShareMin = sortedSoldiers[0]?.burden_share ?? 0;
   const burdenShareMax = sortedSoldiers[sortedSoldiers.length - 1]?.burden_share ?? 1;
-  const burdenShareRange = burdenShareMax - burdenShareMin || 1;
+  // Burden share is often heavily right-skewed (many soldiers near 0%, a
+  // handful carrying most of the load) — CV over 100% is common — so a
+  // fixed statistical cap like ±2.5σ (roughly right for a normal
+  // distribution) badly underestimates the real spread: with mean≈0.3% and
+  // stddev≈0.5%, ±2.5σ only covers ±1.4 points while actual shares ranged
+  // 0%–4.2% (some soldiers 7σ out), pegging most of the high-burden group
+  // to the same maxed-out bar with no way to tell them apart. Capping at
+  // the group's own largest actual deviation instead means the true
+  // extremes reach the full bar/color and everyone else is scaled against
+  // what's actually observed here, not a one-size-fits-all constant.
+  const maxAbsZ = stddev && mean != null
+    ? Math.max(1, ...c.soldiers.map((s) => Math.abs((s.burden_share - mean) / stddev)))
+    : 1;
   const dist = eligibilityDistribution(c.soldiers);
   const typeCountColor = new Map(dist.map((d, idx) => [d.count, PIE_COLORS[idx % PIE_COLORS.length]]));
 
@@ -182,17 +216,17 @@ function FairnessComponentCard({
           </span>
           <div className="flex items-center gap-2">
             {c.burden_share ? (
-              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded ${cvBadge(c.burden_share.cv)}`}>
+              <button
+                type="button"
+                onClick={(e) => openBreakdown(`${c.soldier_count} חיילים`, c.soldiers, e)}
+                className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded hover:brightness-110 dark:hover:brightness-125 transition-[filter] ${cvBadge(c.burden_share.cv)}`}
+                aria-label="מה זה CV? הצג פירוט חישוב"
+              >
                 פיזור CV {(c.burden_share.cv * 100).toFixed(0)}%
-                <button
-                  type="button"
-                  onClick={(e) => openBreakdown(`${c.soldier_count} חיילים`, c.soldiers, e)}
-                  className="text-current opacity-70 hover:opacity-100 border border-current rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none"
-                  aria-label="מה זה CV? הצג פירוט חישוב"
-                >
+                <span aria-hidden="true" className="text-current opacity-70 border border-current rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none">
                   ?
-                </button>
-              </span>
+                </span>
+              </button>
             ) : (
               <span className="text-xs text-gray-400">פחות מ-2 חיילים</span>
             )}
@@ -297,21 +331,21 @@ function FairnessComponentCard({
                                 <span>
                                   טווח: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}% · סטיית תקן: ±{(stats.stddev * 100).toFixed(1)}%
                                 </span>
-                                <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded ${cvBadge(stats.cv)}`}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => openBreakdown(
+                                    `${d.soldiers} חיילים — ${d.count} סוגים`,
+                                    c.soldiers.filter((s) => s.eligible_type_count === d.count),
+                                    e,
+                                  )}
+                                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded hover:brightness-110 dark:hover:brightness-125 transition-[filter] ${cvBadge(stats.cv)}`}
+                                  aria-label="מה זה CV? הצג פירוט חישוב"
+                                >
                                   פיזור CV {(stats.cv * 100).toFixed(0)}%
-                                  <button
-                                    type="button"
-                                    onClick={(e) => openBreakdown(
-                                      `${d.soldiers} חיילים — ${d.count} סוגים`,
-                                      c.soldiers.filter((s) => s.eligible_type_count === d.count),
-                                      e,
-                                    )}
-                                    className="text-current opacity-70 hover:opacity-100 border border-current rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none"
-                                    aria-label="מה זה CV? הצג פירוט חישוב"
-                                  >
+                                  <span aria-hidden="true" className="text-current opacity-70 border border-current rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none">
                                     ?
-                                  </button>
-                                </span>
+                                  </span>
+                                </button>
                               </>
                             ) : (
                               <span>פחות מ-2 חיילים בקבוצה זו</span>
@@ -361,7 +395,17 @@ function FairnessComponentCard({
                 : dev != null && dev < -0.005
                   ? "text-green-600 dark:text-green-400"
                   : "text-gray-400";
-              const barWidth = Math.round(((s.burden_share - burdenShareMin) / burdenShareRange) * 100);
+              // Position on a bell curve centered on the group mean, not a
+              // min–max stretch of just this list — z is how many standard
+              // deviations this soldier sits from average, so someone at the
+              // mean sits at the center line regardless of the group's own
+              // spread, and the bar only grows long when they're genuinely
+              // far from typical (previously a top-of-range value like 4%
+              // rendered as a nearly-full bar purely because it happened to
+              // be the largest in a low-spread group, not because 4% is
+              // actually extreme).
+              const z = dev != null && stddev ? dev / stddev : null;
+              const magnitudePct = z != null ? Math.min(Math.abs(z), maxAbsZ) / maxAbsZ * 50 : 0;
               const isCandidate = !filtered && rank < 3;
               return (
                 <div
@@ -377,11 +421,29 @@ function FairnessComponentCard({
                     name={s.full_name}
                     className="text-xs w-28 truncate shrink-0 block text-right"
                   />
-                  <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded h-1.5 overflow-hidden">
-                    <div
-                      className={`h-full rounded ${isCandidate ? "bg-indigo-500" : "bg-gray-400 dark:bg-gray-500"}`}
-                      style={{ width: `${Math.max(barWidth, 2)}%` }}
-                    />
+                  {/* Fills from the center line (the group mean) toward
+                      whichever side this soldier sits on, growing only as
+                      far as their actual distance from average (in standard
+                      deviations) — and the fill itself fades from neutral
+                      gray at the center to this soldier's own position on a
+                      full gray→red/green spectrum (deviationEndColor), so
+                      someone only 30% of the way to the cap gets a gradient
+                      that itself only reaches 30% of the way to red/green,
+                      not the fully-saturated color every bar would
+                      otherwise end in regardless of how far it reaches. */}
+                  <div className="relative flex-1 bg-gray-200 dark:bg-gray-700 rounded h-1.5" title="מרחק מהממוצע">
+                    <div className="absolute inset-y-0 right-1/2 w-px bg-gray-400 dark:bg-gray-500" />
+                    {z != null && (
+                      <div
+                        data-testid={`deviation-bar-${s.soldier_id}`}
+                        className="absolute inset-y-0 rounded"
+                        style={
+                          z >= 0
+                            ? { left: "50%", width: `${magnitudePct}%`, background: `linear-gradient(to right, ${DEVIATION_NEUTRAL_RGB}, ${deviationEndColor(z, maxAbsZ)})` }
+                            : { right: "50%", width: `${magnitudePct}%`, background: `linear-gradient(to left, ${DEVIATION_NEUTRAL_RGB}, ${deviationEndColor(z, maxAbsZ)})` }
+                        }
+                      />
+                    )}
                   </div>
                   <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-12 text-left shrink-0">
                     {burdenSharePct}%

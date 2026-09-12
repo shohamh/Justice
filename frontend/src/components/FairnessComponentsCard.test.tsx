@@ -57,6 +57,126 @@ describe("FairnessComponentsCard", () => {
     expect(screen.getByTestId("fairness-component-pie-chart")).toHaveClass("shrink-0");
   });
 
+  it("positions each candidate's bar relative to the group mean, not a min/max stretch of the list", async () => {
+    vi.mocked(scoringApi.getFairnessComponents).mockResolvedValue({
+      components: [{
+        soldier_count: 3,
+        duty_type_names: ["שמירה"],
+        duty_types: [{ id: "dt1", name: "שמירה" }],
+        soldiers: [
+          { soldier_id: "s-low", full_name: "חייל נמוך", burden_share: 0.4, eligible_type_count: 1, eligible_duty_type_ids: ["dt1"] },
+          { soldier_id: "s-mid", full_name: "חייל אמצע", burden_share: 0.5, eligible_type_count: 1, eligible_duty_type_ids: ["dt1"] },
+          { soldier_id: "s-high", full_name: "חייל גבוה", burden_share: 0.6, eligible_type_count: 1, eligible_duty_type_ids: ["dt1"] },
+        ],
+        burden_share: { mean: 0.5, cv: 0.2, stddev: 0.1 },
+      }],
+      exempt_from_all: { count: 0, soldiers: [] },
+    });
+
+    render(<FairnessComponentsCard activeGroupKeys={new Set(["comp_0"])} onGroupToggle={vi.fn()} />);
+
+    // Below the mean: bar grows leftward from the center line (anchored at
+    // its right edge), gradient ending on the green side.
+    const lowBar = await screen.findByTestId("deviation-bar-s-low");
+    expect(lowBar).toHaveStyle({ right: "50%" });
+    const lowEndColor = lowBar.style.background.match(/rgb\([^)]+\)/g)![1];
+    const [rLowEnd, gLowEnd] = lowEndColor.match(/\d+/g)!.map(Number);
+    expect(gLowEnd).toBeGreaterThan(rLowEnd);
+
+    // At the mean: no meaningful bar (z ~ 0), unlike the old min/max
+    // stretch where a mid-pack value could still render a large bar.
+    const midBar = screen.getByTestId("deviation-bar-s-mid");
+    expect(parseFloat(midBar.style.width)).toBeCloseTo(0, 5);
+
+    // Above the mean: bar grows rightward from the center line (anchored at
+    // its left edge), gradient ending on the red side.
+    const highBar = screen.getByTestId("deviation-bar-s-high");
+    expect(highBar).toHaveStyle({ left: "50%" });
+    const highEndColor = highBar.style.background.match(/rgb\([^)]+\)/g)![1];
+    const [rHighEnd, gHighEnd] = highEndColor.match(/\d+/g)!.map(Number);
+    expect(rHighEnd).toBeGreaterThan(gHighEnd);
+
+    // s-high and s-low are both exactly 1 stddev from the mean, and neither
+    // any other soldier in this group goes further — so the cap here is the
+    // group's own max |z| (1), not a fixed constant, and both should reach
+    // the full half-width of the track (fully saturated color included).
+    expect(parseFloat(highBar.style.width)).toBeCloseTo(50, 5);
+    expect(parseFloat(lowBar.style.width)).toBeCloseTo(50, 5);
+  });
+
+  it("caps the deviation scale at this group's own largest actual deviation, not a fixed number of standard deviations", async () => {
+    // Burden share is often heavily right-skewed — a fixed ±2.5σ cap (about
+    // right for a normal distribution) badly underestimates real spread
+    // here: mean 1%, stddev 1%, but one soldier at 8% is 7σ out. A fixed
+    // cap would peg both the 4%-soldier (3σ) and the 8%-soldier (7σ) to the
+    // same maxed-out bar; capping at the group's actual max (7σ) instead
+    // keeps them visually distinct.
+    vi.mocked(scoringApi.getFairnessComponents).mockResolvedValue({
+      components: [{
+        soldier_count: 3,
+        duty_type_names: ["שמירה"],
+        duty_types: [{ id: "dt1", name: "שמירה" }],
+        soldiers: [
+          { soldier_id: "s-typical", full_name: "חייל טיפוסי", burden_share: 0.01, eligible_type_count: 1, eligible_duty_type_ids: ["dt1"] },
+          { soldier_id: "s-elevated", full_name: "חייל מוגבר", burden_share: 0.04, eligible_type_count: 1, eligible_duty_type_ids: ["dt1"] },
+          { soldier_id: "s-extreme", full_name: "חייל קיצוני", burden_share: 0.08, eligible_type_count: 1, eligible_duty_type_ids: ["dt1"] },
+        ],
+        burden_share: { mean: 0.01, cv: 1, stddev: 0.01 },
+      }],
+      exempt_from_all: { count: 0, soldiers: [] },
+    });
+
+    render(<FairnessComponentsCard activeGroupKeys={new Set(["comp_0"])} onGroupToggle={vi.fn()} />);
+
+    const elevatedBar = await screen.findByTestId("deviation-bar-s-elevated");
+    const extremeBar = screen.getByTestId("deviation-bar-s-extreme");
+    const elevatedWidth = parseFloat(elevatedBar.style.width);
+    const extremeWidth = parseFloat(extremeBar.style.width);
+
+    // Only the true extreme (7σ, the group's own max) reaches the full
+    // half-width — the 3σ soldier is visibly shorter, not maxed out too.
+    expect(extremeWidth).toBeCloseTo(50, 5);
+    expect(elevatedWidth).toBeLessThan(extremeWidth);
+    expect(elevatedWidth).toBeGreaterThan(0);
+  });
+
+  it("still previews a different sub-group on hover after one is already locked", async () => {
+    vi.mocked(scoringApi.getFairnessComponents).mockResolvedValue({
+      components: [{
+        soldier_count: 2,
+        duty_type_names: ["שמירה", "סיור"],
+        duty_types: [{ id: "dt-guard", name: "שמירה" }, { id: "dt-patrol", name: "סיור" }],
+        soldiers: [
+          { soldier_id: "s1", full_name: "חייל אחד", burden_share: 0.4, eligible_type_count: 1, eligible_duty_type_ids: ["dt-guard"] },
+          { soldier_id: "s2", full_name: "חייל שתיים", burden_share: 0.6, eligible_type_count: 2, eligible_duty_type_ids: ["dt-guard", "dt-patrol"] },
+        ],
+        burden_share: { mean: 0.5, cv: 0.2, stddev: 0.1 },
+      }],
+      exempt_from_all: { count: 0, soldiers: [] },
+    });
+
+    render(<FairnessComponentsCard />);
+
+    const row1 = (await screen.findByText("1 חיילים — 1 סוגים")).closest("div") as HTMLElement;
+    const row2 = screen.getByText("1 חיילים — 2 סוגים").closest("div") as HTMLElement;
+
+    fireEvent.click(row1);
+    expect(screen.getByText("חייל אחד")).toBeInTheDocument();
+    expect(screen.queryByText("חייל שתיים")).not.toBeInTheDocument();
+
+    // Hovering the OTHER (unlocked) sub-group must still do something —
+    // previously any hover was ignored entirely once something was locked.
+    fireEvent.mouseEnter(row2);
+    expect(screen.getByText("חייל אחד")).toBeInTheDocument();
+    expect(screen.getByText("חייל שתיים")).toBeInTheDocument();
+
+    // Moving away drops back to just the locked sub-group.
+    fireEvent.mouseLeave(row2);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 260)));
+    expect(screen.getByText("חייל אחד")).toBeInTheDocument();
+    expect(screen.queryByText("חייל שתיים")).not.toBeInTheDocument();
+  });
+
   it("hovering a legend row shows that sub-group's burden-share spread and highlights the matching badge and people", async () => {
     vi.mocked(scoringApi.getFairnessComponents).mockResolvedValue({
       components: [{
