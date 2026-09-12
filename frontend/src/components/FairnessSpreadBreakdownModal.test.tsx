@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import FairnessSpreadBreakdownModal from "./FairnessSpreadBreakdownModal";
 
@@ -52,5 +52,21 @@ describe("FairnessSpreadBreakdownModal", () => {
     );
 
     expect(screen.getByText("פחות מ-2 חיילים בקבוצה זו — אין מספיק נתונים לחישוב פיזור.")).toBeInTheDocument();
+  });
+
+  it("shows a column explanation on click (not hover-only, since title tooltips don't work on touch)", () => {
+    render(
+      <FairnessSpreadBreakdownModal title="2 חיילים" soldiers={soldiers([0.4, 0.6])} onClose={vi.fn()} />
+    );
+
+    const header = screen.getByRole("button", { name: "סטייה בריבוע" });
+    expect(screen.queryByText(/הבסיס לחישוב סטיית התקן/)).not.toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(screen.getByText(/הבסיס לחישוב סטיית התקן/)).toBeInTheDocument();
+
+    // Toggles off on a second click.
+    fireEvent.click(header);
+    expect(screen.queryByText(/הבסיס לחישוב סטיית התקן/)).not.toBeInTheDocument();
   });
 });
