@@ -163,9 +163,16 @@ export default function FairnessSpreadBreakdownModal({
                   visible on a narrow (mobile) screen without needing to
                   scroll the table horizontally. */}
               <div className="overflow-auto px-4 py-3 max-h-72">
+                {/* The header used to be `sticky top-0` so it stayed visible
+                    while this table scrolled internally, but mobile Safari
+                    doesn't reliably support position:sticky on native
+                    table-row/table-cell display types — the header ended up
+                    overlapping scrolled-past row content instead of staying
+                    pinned above it (confirmed live). Plain border-collapse,
+                    header scrolls with the rest of the table. */}
                 <table className="w-full text-sm border-collapse sm:min-w-[420px]">
                   <thead>
-                    <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+                    <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
                       <ColumnHeader id="soldier" label={unitLabel} openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} className="w-16 sm:w-auto" />
                       <ColumnHeader id="share" label="חלק בנטל" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} className="px-3" />
                       <ColumnHeader id="deviation" label="סטייה מהממוצע" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} className="px-3" />
