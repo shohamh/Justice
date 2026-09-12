@@ -43,8 +43,14 @@ function StageIcon({ value, label, title, testId, details }: { value: StageValue
 
 /** Renders ✓/✗/… icons for the commander and duty-manager approval steps of
  * a two-stage request, so a partial approval is visible at a glance instead
- * of only a generic "pending" status badge. */
-export default function ApprovalStageIcons({ request }: { request: ApprovalStageStatus }) {
+ * of only a generic "pending" status badge.
+ *
+ * `interactive` (default true) controls the hover title / click-to-reveal
+ * detail popup on the commander icon — turn it off when the same who/when/
+ * note information is already shown elsewhere right next to these icons
+ * (e.g. an expandable card), where the popup would just duplicate it and,
+ * being position:fixed, can visually overlap that other text. */
+export default function ApprovalStageIcons({ request, interactive = true }: { request: ApprovalStageStatus; interactive?: boolean }) {
   const { t } = useTranslation();
   if (request.status === "cancelled") return null;
   return (
@@ -52,11 +58,11 @@ export default function ApprovalStageIcons({ request }: { request: ApprovalStage
       <StageIcon
         value={commanderStage(request)}
         label={t("deputies.role_commander")}
-        title={request.commander_approved_by && request.commander_approved_at
+        title={!interactive ? undefined : request.commander_approved_by && request.commander_approved_at
           ? `אושר על ידי ${request.commander_approved_by.name} בתאריך ${new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(request.commander_approved_at))}${request.commander_approval_note ? ` · סיבה: ${request.commander_approval_note}` : ""}`
           : request.commander_approved_by ? `אושר על ידי ${request.commander_approved_by.name}${request.commander_approval_note ? ` · סיבה: ${request.commander_approval_note}` : ""}` : undefined}
         testId={request.commander_approved_by ? "commander-approval-checkmark" : request.status === "rejected" ? "commander-approval-rejection" : undefined}
-        details={request.commander_approved_by
+        details={!interactive ? undefined : request.commander_approved_by
           ? `אושר על ידי ${request.commander_approved_by.name}${request.commander_approved_at ? ` בתאריך ${new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(request.commander_approved_at))}` : ""}${request.commander_approval_note ? ` · סיבה: ${request.commander_approval_note}` : ""}`
           : request.status === "rejected" && request.decision_by
           ? `נדחה על ידי ${request.decision_by.name}${request.decision_at ? ` בתאריך ${new Intl.DateTimeFormat("he-IL", { dateStyle: "short", timeStyle: "short" }).format(new Date(request.decision_at))}` : ""}${request.decision_note ? ` · סיבה: ${request.decision_note}` : ""}`

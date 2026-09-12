@@ -9,6 +9,10 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock("./SoldierLink", () => ({
+  default: ({ name }: { name: string }) => <span>{name}</span>,
+}));
+
 let mockUser = {
   id: "u-manager",
   role: "duty_manager",

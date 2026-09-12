@@ -30,6 +30,7 @@ import ApprovalStageIcons from "./ApprovalStageIcons";
 import Combobox from "./Combobox";
 import { DaysBadge } from "./DaysBadge";
 import ReasonPromptModal from "./ReasonPromptModal";
+import SoldierLink from "./SoldierLink";
 
 export default function ExemptionsPanel({
   soldierId,
@@ -417,7 +418,13 @@ export default function ExemptionsPanel({
                       )}
                       {wasCancelled && (
                         <div className="text-xs text-red-600 dark:text-red-400 border-t border-red-100 dark:border-red-900 pt-1 mt-1 space-y-0.5">
-                          <p>בוטל ע&quot;י {exemption.revoked_by_name}{exemption.revoked_at && ` · ${formatDateTimeIsrael(exemption.revoked_at)}`}</p>
+                          <p>
+                            בוטל ע&quot;י{" "}
+                            {exemption.revoked_by
+                              ? <SoldierLink id={exemption.revoked_by} name={exemption.revoked_by_name ?? ""} className="text-red-700 dark:text-red-300" />
+                              : exemption.revoked_by_name}
+                            {exemption.revoked_at && ` · ${formatDateTimeIsrael(exemption.revoked_at)}`}
+                          </p>
                           {exemption.revoke_reason && <p>סיבת ביטול: {exemption.revoke_reason}</p>}
                         </div>
                       )}
@@ -459,6 +466,7 @@ export default function ExemptionsPanel({
                   >
                     <span>{t(`exemptions.request_status_${request.status}`)}</span>
                     <ApprovalStageIcons
+                      interactive={false}
                       request={{
                         ...request,
                         decision_by: request.decided_by,
@@ -482,20 +490,23 @@ export default function ExemptionsPanel({
                     <div className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-1.5 mb-2 space-y-1">
                       {request.commander_approved_by ? (
                         <p>
-                          אושר (מפקד) ע&quot;י {request.commander_approved_by.name}
+                          אושר (מפקד) ע&quot;י{" "}
+                          <SoldierLink id={request.commander_approved_by.soldier_id} name={request.commander_approved_by.name} />
                           {request.commander_approved_at && ` · ${formatDateTimeIsrael(request.commander_approved_at)}`}
                           {request.commander_approval_note && ` · ${request.commander_approval_note}`}
                         </p>
                       ) : rejectedByCommander && request.decided_by ? (
                         <p>
-                          נדחה (מפקד) ע&quot;י {request.decided_by.name}
+                          נדחה (מפקד) ע&quot;י{" "}
+                          <SoldierLink id={request.decided_by.soldier_id} name={request.decided_by.name} />
                           {request.decided_at && ` · ${formatDateTimeIsrael(request.decided_at)}`}
                           {request.decision_note && ` · ${request.decision_note}`}
                         </p>
                       ) : null}
                       {!rejectedByCommander && request.decided_by && (
                         <p>
-                          {request.status === "rejected" ? "נדחה" : "אושר"} (אחראי תורנויות) ע&quot;י {request.decided_by.name}
+                          {request.status === "rejected" ? "נדחה" : "אושר"} (אחראי תורנויות) ע&quot;י{" "}
+                          <SoldierLink id={request.decided_by.soldier_id} name={request.decided_by.name} />
                           {request.decided_at && ` · ${formatDateTimeIsrael(request.decided_at)}`}
                           {request.decision_note && ` · ${request.decision_note}`}
                         </p>
