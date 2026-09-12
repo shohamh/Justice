@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
@@ -42,6 +42,7 @@ class ExemptionOut(BaseModel):
     granted_by: uuid.UUID | None
     revoke_reason: str | None
     revoked_by_name: str | None
+    revoked_at: datetime | None
     can_cancel: bool = False
 
 
@@ -55,6 +56,7 @@ class ExemptionDetailOut(BaseModel):
     granted_by_name: str | None
     revoke_reason: str | None
     revoked_by_name: str | None
+    revoked_at: datetime | None
 
 
 class GrantRequest(BaseModel):
@@ -95,6 +97,7 @@ def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True,
         granted_by=ex.granted_by,
         revoke_reason=ex.revoke_reason if include_sensitive else None,
         revoked_by_name=revoked_by_name,
+        revoked_at=ex.revoked_at if include_sensitive else None,
         can_cancel=can_cancel,
     )
 
@@ -193,6 +196,7 @@ def get_detail(
         granted_by_name=granted_by_name,
         revoke_reason=ex.revoke_reason if include_sensitive else None,
         revoked_by_name=revoked_by_name,
+        revoked_at=ex.revoked_at if include_sensitive else None,
     )
 
 

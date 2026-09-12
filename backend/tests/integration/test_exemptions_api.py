@@ -275,6 +275,11 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
     assert r.status_code == 204
     rows = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(admin)).json()
     assert rows[0]["end_date"] == date.today().isoformat()
+    # Who/why/when it was cancelled must be visible to whoever can see this
+    # exemption's other details — not just that it now has an end date.
+    assert rows[0]["revoke_reason"] == "לא נחוץ יותר"
+    assert rows[0]["revoked_by_name"] == admin.full_name
+    assert rows[0]["revoked_at"] is not None
 
 
 def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Session):
@@ -966,10 +971,20 @@ def test_log_exemption_by_commander_and_duty_manager_fully_auto_approves(
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["status"] == "approved"
+    # ExemptionRequest has no decided_at column — it's derived from the
+    # exemption_approved/rejected notification's created_at (see
+    # exemption_decision_latest) and must be surfaced on both the immediate
+    # response and the soldier-history list, not just decided_by.
+    assert body["decided_by"]["soldier_id"] == str(cmd.id)
+    assert body["decided_at"] is not None
     exemption = admin_session.execute(
         select(SoldierExemption).where(SoldierExemption.soldier_id == target.id)
     ).scalar_one()
     assert exemption.exemption_type_id == et.id
+
+    history = client.get(f"/api/soldiers/{target.id}/exemption-requests", headers=auth_headers(cmd))
+    assert history.status_code == 200, history.text
+    assert history.json()[0]["decided_at"] is not None
 
 
 def test_log_exemption_by_low_level_commander_stays_pending_commander(
