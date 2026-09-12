@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { Loader2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { getFairnessComponents, type FairnessComponent, type FairnessComponents, type FairnessSoldier } from "../api/scoring";
 import SoldierLink from "./SoldierLink";
@@ -436,7 +437,20 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
     getFairnessComponents().then(setData).catch(() => setFailed(true));
   }, []);
 
-  if (failed || !data) return null;
+  if (failed) return null;
+
+  if (!data) {
+    return (
+      <div
+        dir="rtl"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+        data-testid="fairness-components-loading"
+      >
+        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+        <span>טוען פיזור חלק בנטל...</span>
+      </div>
+    );
+  }
 
   const anyActive = (activeGroupKeys?.size ?? 0) > 0;
 

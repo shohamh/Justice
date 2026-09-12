@@ -16,6 +16,20 @@ vi.mock("./SoldierLink", () => ({
 }));
 
 describe("FairnessComponentsCard", () => {
+  it("shows a loading indicator while the data is still in flight", async () => {
+    let resolveFetch: (value: scoringApi.FairnessComponents) => void = () => {};
+    vi.mocked(scoringApi.getFairnessComponents).mockReturnValue(
+      new Promise((resolve) => { resolveFetch = resolve; })
+    );
+
+    render(<FairnessComponentsCard />);
+
+    expect(screen.getByTestId("fairness-components-loading")).toBeInTheDocument();
+
+    resolveFetch({ components: [], exempt_from_all: { count: 0, soldiers: [] } });
+    await waitFor(() => expect(screen.queryByTestId("fairness-components-loading")).not.toBeInTheDocument());
+  });
+
   it("keeps the pie chart away from the RTL sidebar edge so its tooltip is not clipped", async () => {
     vi.mocked(scoringApi.getFairnessComponents).mockResolvedValue({
       components: [{
