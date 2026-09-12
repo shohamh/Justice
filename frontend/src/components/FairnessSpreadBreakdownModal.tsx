@@ -39,6 +39,12 @@ interface ColumnTooltip {
   rect: DOMRect;
 }
 
+// Fake-table grid: a plain (non-sticky) header row above a separately
+// scrollable body, both sharing this exact column template so they stay
+// aligned. Real <table>/<thead>/sticky doesn't work here — see the note by
+// GRID_COLS' usage below.
+const GRID_COLS = "grid grid-cols-[4rem_1fr_1fr_1fr] sm:grid-cols-[9rem_1fr_1fr_1fr] gap-x-3";
+
 function ColumnHeader({
   id, label, openColId, onToggle, className,
 }: {
@@ -49,7 +55,7 @@ function ColumnHeader({
   className?: string;
 }) {
   return (
-    <th className={`text-right py-1 pb-2 font-medium ${className ?? ""}`}>
+    <div role="columnheader" className={`text-right py-1 pb-2 font-medium ${className ?? ""}`}>
       <button
         type="button"
         className={`underline decoration-dotted cursor-help ${openColId === id ? "text-gray-900 dark:text-white" : ""}`}
@@ -60,7 +66,7 @@ function ColumnHeader({
       >
         {label}
       </button>
-    </th>
+    </div>
   );
 }
 
@@ -155,50 +161,44 @@ export default function FairnessSpreadBreakdownModal({
             </p>
           ) : (
             <>
-              {/* Per-soldier table — fixed height, scrolls on its own so a
-                  group of hundreds doesn't force the whole modal to scroll
-                  past it before reaching the derivation below. The soldier
-                  name column is narrow and wraps (instead of a wider,
+              {/* Per-soldier grid, styled like a table but built from divs
+                  rather than <table>/<thead> — mobile Safari doesn't reliably
+                  support position:sticky on table-row/table-cell display
+                  types (confirmed live: the header ended up overlapping
+                  scrolled-past rows instead of staying pinned above them).
+                  The header row here sits outside the scrollable body
+                  entirely, so it can't overlap anything; both share the
+                  exact same GRID_COLS template so their columns line up.
+                  The name column is narrow and wraps (instead of a wider,
                   truncated column) so the squared-deviation column stays
                   visible on a narrow (mobile) screen without needing to
-                  scroll the table horizontally. */}
-              <div className="overflow-auto px-4 py-3 max-h-72">
-                {/* The header used to be `sticky top-0` so it stayed visible
-                    while this table scrolled internally, but mobile Safari
-                    doesn't reliably support position:sticky on native
-                    table-row/table-cell display types — the header ended up
-                    overlapping scrolled-past row content instead of staying
-                    pinned above it (confirmed live). Plain border-collapse,
-                    header scrolls with the rest of the table. */}
-                <table className="w-full text-sm border-collapse sm:min-w-[420px]">
-                  <thead>
-                    <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                      <ColumnHeader id="soldier" label={unitLabel} openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} className="w-16 sm:w-auto" />
-                      <ColumnHeader id="share" label="חלק בנטל" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} className="px-3" />
-                      <ColumnHeader id="deviation" label="סטייה מהממוצע" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} className="px-3" />
-                      <ColumnHeader id="squared" label="סטייה בריבוע" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((s) => {
-                      const dev = s.burdenShare - mean;
-                      const devPct = dev >= 0 ? `+${pct(dev)}` : pct(dev);
-                      const devCls = dev > 0.005 ? "text-red-500 dark:text-red-400" : dev < -0.005 ? "text-green-600 dark:text-green-400" : "text-gray-400";
-                      return (
-                        <tr key={s.id} className="border-b dark:border-gray-700">
-                          <td className="py-1.5 w-16 sm:w-auto sm:max-w-[9rem]">
-                            {linkToUnit
-                              ? <SoldierLink id={s.id} name={s.name} className="break-words text-gray-700 dark:text-gray-300" />
-                              : <span className="break-words text-gray-700 dark:text-gray-300">{s.name}</span>}
-                          </td>
-                          <td className="py-1.5 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{pct(s.burdenShare)}%</td>
-                          <td className={`py-1.5 text-right px-3 tabular-nums ${devCls}`}>{devPct}%</td>
-                          <td className="py-1.5 text-right text-gray-500 dark:text-gray-400 tabular-nums">{(dev * dev * 10000).toFixed(3)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  scroll horizontally. */}
+              <div className="px-4 pt-3" role="table">
+                <div role="row" className={`${GRID_COLS} text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700 pb-1`}>
+                  <ColumnHeader id="soldier" label={unitLabel} openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} />
+                  <ColumnHeader id="share" label="חלק בנטל" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} />
+                  <ColumnHeader id="deviation" label="סטייה מהממוצע" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} />
+                  <ColumnHeader id="squared" label="סטייה בריבוע" openColId={colTooltip?.id ?? null} onToggle={toggleColInfo} />
+                </div>
+              </div>
+              <div className="overflow-auto px-4 pb-3 max-h-64 text-sm" role="table">
+                {sorted.map((s) => {
+                  const dev = s.burdenShare - mean;
+                  const devPct = dev >= 0 ? `+${pct(dev)}` : pct(dev);
+                  const devCls = dev > 0.005 ? "text-red-500 dark:text-red-400" : dev < -0.005 ? "text-green-600 dark:text-green-400" : "text-gray-400";
+                  return (
+                    <div key={s.id} role="row" className={GRID_COLS}>
+                      <div role="cell" className="py-1.5 border-b dark:border-gray-700">
+                        {linkToUnit
+                          ? <SoldierLink id={s.id} name={s.name} className="break-words text-gray-700 dark:text-gray-300" />
+                          : <span className="break-words text-gray-700 dark:text-gray-300">{s.name}</span>}
+                      </div>
+                      <div role="cell" className="py-1.5 text-right text-gray-700 dark:text-gray-300 tabular-nums border-b dark:border-gray-700">{pct(s.burdenShare)}%</div>
+                      <div role="cell" className={`py-1.5 text-right tabular-nums border-b dark:border-gray-700 ${devCls}`}>{devPct}%</div>
+                      <div role="cell" className="py-1.5 text-right text-gray-500 dark:text-gray-400 tabular-nums border-b dark:border-gray-700">{(dev * dev * 10000).toFixed(3)}</div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Derivation */}
