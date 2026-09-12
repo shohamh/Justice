@@ -2,7 +2,6 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { getFairnessComponents, type FairnessComponent, type FairnessComponents, type FairnessSoldier } from "../api/scoring";
 import SoldierLink from "./SoldierLink";
-import FairnessHelpModal from "./FairnessHelpModal";
 import FairnessSpreadBreakdownModal, { type FairnessSpreadBreakdownSoldier } from "./FairnessSpreadBreakdownModal";
 
 function eligibilityDistribution(soldiers: FairnessSoldier[]): { count: number; soldiers: number }[] {
@@ -71,7 +70,6 @@ function FairnessComponentCard({
   // without touching the others, so several sub-groups can be combined as a
   // filter for the soldier list below.
   const [lockedCounts, setLockedCounts] = useState<Set<number>>(new Set());
-  const [helpOpen, setHelpOpen] = useState(false);
   const [breakdown, setBreakdown] = useState<{ title: string; soldiers: FairnessSpreadBreakdownSoldier[] } | null>(null);
   // A hover-only preview never fights an existing multi-selection — it's
   // only shown when nothing is locked yet.
@@ -148,9 +146,9 @@ function FairnessComponentCard({
                 פיזור CV {(c.burden_share.cv * 100).toFixed(0)}%
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setHelpOpen(true); }}
+                  onClick={(e) => openBreakdown(`${c.soldier_count} חיילים`, c.soldiers, e)}
                   className="text-current opacity-70 hover:opacity-100 border border-current rounded-full w-3.5 h-3.5 inline-flex items-center justify-center leading-none"
-                  aria-label="מה זה CV?"
+                  aria-label="מה זה CV? הצג פירוט חישוב"
                 >
                   ?
                 </button>
@@ -354,7 +352,6 @@ function FairnessComponentCard({
         );
       })()}
     </div>
-    {helpOpen && <FairnessHelpModal variant="soldiers" onClose={() => setHelpOpen(false)} />}
     {breakdown && (
       <FairnessSpreadBreakdownModal
         title={breakdown.title}
