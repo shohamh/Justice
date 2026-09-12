@@ -31,8 +31,8 @@ vi.mock("../api/dutyConfig", () => ({
 
 vi.mock("../api/exemptions", () => ({
   listExemptions: vi.fn(() => Promise.resolve([
-    { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, can_cancel: true },
-    { id: "ex2", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-10", reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, can_cancel: true },
+    { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, revoked_at: null, can_cancel: true },
+    { id: "ex2", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-10", reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, revoked_at: null, can_cancel: true },
   ])),
   logExemptionForSoldier: vi.fn(() => Promise.resolve({
     id: "req-new",
@@ -281,14 +281,31 @@ describe("ExemptionsPanel", () => {
     expect(within(requestRow).getByText("(5 ימים)")).toBeTruthy();
   });
 
-  test("hides the cancel button when the backend says this exemption can't be cancelled, even for a manager", async () => {
-    // can_cancel is the backend's authoritative, per-exemption check (which
-    // also requires being able to see the exemption's own private details —
-    // see _can_cancel_exemption on the backend); the broad canManage role
-    // flag must not override it, or a manager without real authority over
-    // this specific exemption could cancel something they can't even see.
+  test("distinguishes a cancelled exemption from one that simply expired, showing who/when/why", async () => {
     vi.mocked(exemptionsApi.listExemptions).mockResolvedValueOnce([
-      { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, can_cancel: false },
+      { id: "ex-expired", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-10", reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, revoked_at: null, can_cancel: false },
+      { id: "ex-cancelled", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-05", reason: null, granted_by: null, revoke_reason: "כבר לא רלוונטי", revoked_by_name: "רב-סרן כהן", revoked_at: "2020-01-03T10:00:00Z", can_cancel: false },
+    ]);
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+
+    const expiredRow = await screen.findByTestId("exemption-row-ex-expired");
+    expect(within(expiredRow).getByText("פג")).toBeInTheDocument();
+    expect(within(expiredRow).queryByText("בוטל")).not.toBeInTheDocument();
+
+    const cancelledRow = screen.getByTestId("exemption-row-ex-cancelled");
+    expect(within(cancelledRow).getByText("בוטל")).toBeInTheDocument();
+
+    fireEvent.click(cancelledRow);
+    expect(within(cancelledRow).getByText(/רב-סרן כהן/)).toBeInTheDocument();
+    expect(within(cancelledRow).getByText(/כבר לא רלוונטי/)).toBeInTheDocument();
+  });
+
+  test("hides the cancel button when the backend says this exemption can't be cancelled, even for a manager", async () => {
+    // can_cancel is the backend's authoritative, per-exemption check — the
+    // broad canManage role flag must not override it, or a manager without
+    // real authority over this specific exemption could cancel it anyway.
+    vi.mocked(exemptionsApi.listExemptions).mockResolvedValueOnce([
+      { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null, revoked_at: null, can_cancel: false },
     ]);
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
     await screen.findByTestId("exemption-row-ex1");
@@ -312,6 +329,50 @@ describe("ExemptionsPanel", () => {
     await waitFor(() => {
       expect(exemptionsApi.revokeExemption).toHaveBeenCalledWith("abc", "ex1", "לא רלוונטי");
     });
+  });
+
+  test("clicking a request card reveals who approved each step and when", async () => {
+    vi.mocked(exemptionsApi.listExemptionRequestsForSoldier).mockResolvedValueOnce([
+      {
+        id: "req-approved",
+        soldier_id: "abc",
+        soldier_name: "X",
+        node_name: null,
+        exemption_type_id: "et-1",
+        start_date: "2026-01-01",
+        end_date: "2026-01-05",
+        reason: "סיבה",
+        status: "approved",
+        commander_approved_by: { soldier_id: "cmd-1", name: "סרן לוי" },
+        commander_approved_at: "2026-01-01T08:00:00Z",
+        commander_approval_note: "מאושר בברכה",
+        waiting_on: null,
+        decided_by: { soldier_id: "dm-1", name: "רס״ן כהן" },
+        decided_at: "2026-01-01T09:00:00Z",
+        requested_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T09:00:00Z",
+        decision_note: null,
+        created_at: "2026-01-01T00:00:00Z",
+        files: [],
+        nearest_commander: null,
+        nearest_duty_manager: null,
+        can_approve_commander_step: false,
+        can_approve_duty_manager_step: false,
+      },
+    ]);
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+    const row = await screen.findByTestId("exemption-request-row-req-approved");
+
+    expect(within(row).queryByText(/סרן לוי/)).not.toBeInTheDocument();
+
+    fireEvent.click(row);
+    expect(within(row).getByText(/סרן לוי/)).toBeInTheDocument();
+    expect(within(row).getByText(/מאושר בברכה/)).toBeInTheDocument();
+    expect(within(row).getByText(/רס״ן כהן/)).toBeInTheDocument();
+
+    // Toggles closed again on a second click.
+    fireEvent.click(row);
+    expect(within(row).queryByText(/סרן לוי/)).not.toBeInTheDocument();
   });
 
   test("renders the exemption-request date range in start-then-end order, not reversed", async () => {

@@ -24,7 +24,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import DateInput from "../components/DateInput";
 import ExemptionRequestForm, { ExemptionRequestFormInput } from "./ExemptionRequestForm";
-import { formatDate, isDateRangeValid } from "../utils/formatDate";
+import { formatDate, formatDateTimeIsrael, isDateRangeValid } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import ApprovalStageIcons from "./ApprovalStageIcons";
 import Combobox from "./Combobox";
@@ -48,6 +48,7 @@ export default function ExemptionsPanel({
   const [types, setTypes] = useState<ExemptionType[]>([]);
   const [dutyTypeMap, setDutyTypeMap] = useState<Record<string, string[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedRequests, setExpandedRequests] = useState<Set<string>>(new Set());
   const [commanderTypeId, setCommanderTypeId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -165,6 +166,15 @@ export default function ExemptionsPanel({
 
   function toggleExpand(id: string) {
     setExpanded((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleExpandRequest(id: string) {
+    setExpandedRequests((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -369,6 +379,7 @@ export default function ExemptionsPanel({
                 ? (dutyTypeMap[exemption.exemption_type_id] ?? [])
                 : [];
               const isExpanded = expanded.has(exemption.id);
+              const wasCancelled = !!exemption.revoked_by_name;
               return (
                 <li
                   key={exemption.id}
@@ -376,9 +387,18 @@ export default function ExemptionsPanel({
                   onClick={() => toggleExpand(exemption.id)}
                   data-testid={`exemption-row-${exemption.id}`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">
                       {exemption.exemption_type_id ? typeName(exemption.exemption_type_id) : "מידע פרטי"}
+                    </span>
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                        wasCancelled
+                          ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300"
+                          : "bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300"
+                      }`}
+                    >
+                      {wasCancelled ? "בוטל" : "פג"}
                     </span>
                     <span className="text-gray-500 dark:text-gray-400 text-xs" dir="ltr">
                       {formatDate(exemption.start_date)} →{" "}
@@ -394,6 +414,12 @@ export default function ExemptionsPanel({
                           <span className="font-medium">{t("exemptions.exempts_from")}:</span>{" "}
                           {names.join("، ")}
                         </p>
+                      )}
+                      {wasCancelled && (
+                        <div className="text-xs text-red-600 dark:text-red-400 border-t border-red-100 dark:border-red-900 pt-1 mt-1 space-y-0.5">
+                          <p>בוטל ע&quot;י {exemption.revoked_by_name}{exemption.revoked_at && ` · ${formatDateTimeIsrael(exemption.revoked_at)}`}</p>
+                          {exemption.revoke_reason && <p>סיבת ביטול: {exemption.revoke_reason}</p>}
+                        </div>
                       )}
                     </div>
                   )}
@@ -417,10 +443,14 @@ export default function ExemptionsPanel({
             <>
             {requestActionError && <p role="alert" className="text-sm text-red-600" data-testid="exemption-request-action-error">{requestActionError}</p>}
             <ul className="space-y-2" data-testid="exemption-requests-list">
-              {requests.map((request) => (
+              {requests.map((request) => {
+                const isExpanded = expandedRequests.has(request.id);
+                const rejectedByCommander = request.status === "rejected" && !request.commander_approved_by;
+                return (
                 <li
                   key={request.id}
-                  className="border dark:border-gray-600 rounded p-3"
+                  className="border dark:border-gray-600 rounded p-3 cursor-pointer"
+                  onClick={() => toggleExpandRequest(request.id)}
                   data-testid={`exemption-request-row-${request.id}`}
                 >
                   <p
@@ -448,9 +478,36 @@ export default function ExemptionsPanel({
                     {request.start_date && <DaysBadge start={request.start_date} end={request.end_date} />}
                   </p>
                   {request.reason && <p className="text-xs text-gray-500 mb-2">{request.reason}</p>}
+                  {isExpanded && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-1.5 mb-2 space-y-1">
+                      {request.commander_approved_by ? (
+                        <p>
+                          אושר (מפקד) ע&quot;י {request.commander_approved_by.name}
+                          {request.commander_approved_at && ` · ${formatDateTimeIsrael(request.commander_approved_at)}`}
+                          {request.commander_approval_note && ` · ${request.commander_approval_note}`}
+                        </p>
+                      ) : rejectedByCommander && request.decided_by ? (
+                        <p>
+                          נדחה (מפקד) ע&quot;י {request.decided_by.name}
+                          {request.decided_at && ` · ${formatDateTimeIsrael(request.decided_at)}`}
+                          {request.decision_note && ` · ${request.decision_note}`}
+                        </p>
+                      ) : null}
+                      {!rejectedByCommander && request.decided_by && (
+                        <p>
+                          {request.status === "rejected" ? "נדחה" : "אושר"} (אחראי תורנויות) ע&quot;י {request.decided_by.name}
+                          {request.decided_at && ` · ${formatDateTimeIsrael(request.decided_at)}`}
+                          {request.decision_note && ` · ${request.decision_note}`}
+                        </p>
+                      )}
+                      {!request.commander_approved_by && !request.decided_by && (
+                        <p>עדיין לא התקבלה החלטה.</p>
+                      )}
+                    </div>
+                  )}
                   {canManage &&
                     (request.status === "pending_commander" || request.status === "pending_duty_manager") && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         {request.status === "pending_commander" && request.can_approve_commander_step && (
                           <button
                             className="bg-green-600 text-white px-3 py-1 rounded text-sm"
@@ -494,7 +551,8 @@ export default function ExemptionsPanel({
                       </div>
                     )}
                 </li>
-              ))}
+                );
+              })}
             </ul>
             </>
           )}
