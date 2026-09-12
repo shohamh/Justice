@@ -203,7 +203,7 @@ export default function FairnessSpreadBreakdownModal({
                   <p className="text-gray-600 dark:text-gray-400 mb-2">
                     הערך הממוצע של חלק הנטל בין כל {unitLabelPlural} בקבוצה. זו נקודת הייחוס שממנה נמדד הפיזור בשלבים הבאים.
                   </p>
-                  <div className="bg-white dark:bg-gray-800 border border-emerald-100 dark:border-emerald-900 rounded-lg px-3 py-2 overflow-x-auto">
+                  <div className="bg-white dark:bg-gray-800 border border-emerald-100 dark:border-emerald-900 rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap">
                     <InlineMath math={String.raw`\mu = \dfrac{${ellipsizedSum(meanTerms)}}{${n}} = ${pct(mean)}\%`} />
                   </div>
                 </div>
@@ -220,7 +220,7 @@ export default function FairnessSpreadBreakdownModal({
                     <p><InlineMath math="x_i" /> — חלק בנטל של {unitLabel} i · <InlineMath math="n" /> — מספר {unitLabelPlural}</p>
                   </div>
                   <p className="text-gray-500 dark:text-gray-400 mb-1">עבור הקבוצה הנוכחית:</p>
-                  <div className="bg-white dark:bg-gray-800 border border-amber-100 dark:border-amber-900 rounded-lg px-3 py-2 overflow-x-auto">
+                  <div className="bg-white dark:bg-gray-800 border border-amber-100 dark:border-amber-900 rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap">
                     <InlineMath math={String.raw`\sigma = \sqrt{\dfrac{${ellipsizedSum(varianceTerms)}}{${n}}} = ${pct(stddev)}\%`} />
                   </div>
                   <p className="text-gray-500 dark:text-gray-400 mt-1">
@@ -235,13 +235,9 @@ export default function FairnessSpreadBreakdownModal({
                     אבל זניחה כשהממוצע הוא 80%. CV פותר את זה: הוא מחלק את σ ב-μ, כך שמקבלים ״אחוז מהממוצע״ במקום ״נקודות אחוז״ —
                     ערך שאפשר להשוות בין קבוצות עם ממוצעים שונים (ואפילו בין תקופות זמן שונות, אם הממוצע הכללי משתנה).
                   </p>
-                  <div className="bg-gray-100 dark:bg-gray-950 rounded-lg px-3 py-2 mb-2 overflow-x-auto text-center">
-                    <BlockMath math={String.raw`CV = \frac{\sigma}{\mu}`} />
-                  </div>
-                  <p className="text-gray-500 dark:text-gray-400 mb-1">עבור הקבוצה הנוכחית:</p>
-                  <div className="bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
+                  <div className="bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap">
                     <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums">
-                      <InlineMath math={String.raw`CV = \dfrac{\sigma}{\mu} = \dfrac{${pct(stddev)}\%}{${pct(mean)}\%} = ${(cv * 100).toFixed(0)}\%`} />
+                      <InlineMath math={String.raw`\text{CV} = \dfrac{\sigma}{\mu} = \dfrac{${pct(stddev)}\%}{${pct(mean)}\%} = ${(cv * 100).toFixed(0)}\%`} />
                     </p>
                   </div>
                 </div>
