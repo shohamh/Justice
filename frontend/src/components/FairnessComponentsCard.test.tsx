@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import FairnessComponentsCard from "./FairnessComponentsCard";
 import * as scoringApi from "../api/scoring";
@@ -89,8 +89,19 @@ describe("FairnessComponentsCard", () => {
     expect(screen.getByText("חייל שלוש")).toBeInTheDocument();
     expect(screen.queryByText("חייל אחד")).not.toBeInTheDocument();
 
+    // The close is delayed (not instant) so the mouse has time to cross into
+    // the floating stats panel beside the row without it disappearing first,
+    // and once it does close, it fades out rather than vanishing outright.
+    // Real (short) waits here, not fake timers — vi.useFakeTimers() mocks the
+    // same setTimeout React's own scheduler relies on in jsdom, which stalled
+    // every test after this one when tried.
     fireEvent.mouseLeave(twoTypesRow);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 260)));
     expect(guardBadge).not.toHaveClass("bg-indigo-600");
+    const fadingPanel = screen.getByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0% · פיזור CV 14%").closest("div")?.parentElement;
+    expect(fadingPanel).toHaveClass("opacity-0");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(screen.queryByText("טווח: 60.0%–80.0% · סטיית תקן: ±10.0% · פיזור CV 14%")).not.toBeInTheDocument();
 
     // Clicking locks the highlight so it survives the mouse leaving.
     fireEvent.click(twoTypesRow);

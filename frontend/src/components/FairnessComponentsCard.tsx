@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { getFairnessComponents, type FairnessComponent, type FairnessComponents, type FairnessSoldier } from "../api/scoring";
 import SoldierLink from "./SoldierLink";
@@ -65,6 +65,45 @@ function FairnessComponentCard({
   onToggle: () => void;
 }) {
   const [hoveredCount, setHoveredCount] = useState<number | null>(null);
+  // The stats panel floats beside (not below) the row on desktop, so the
+  // mouse has to cross a small gap to reach it — clearing hoveredCount the
+  // instant the row itself is left would unmount the panel mid-crossing,
+  // before the mouse ever gets there. Closing on a short delay (cancelled if
+  // the mouse re-enters either the row or the panel itself) gives it time to
+  // arrive first. Once the delay actually elapses, the panel stays mounted a
+  // little longer still (closingCount) so a CSS opacity transition can play
+  // instead of the panel just vanishing.
+  const hoveredCountRef = useRef(hoveredCount);
+  hoveredCountRef.current = hoveredCount;
+  const [closingCount, setClosingCount] = useState<number | null>(null);
+  const hoverCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeOutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (hoverCloseTimeoutRef.current) clearTimeout(hoverCloseTimeoutRef.current);
+    if (fadeOutTimeoutRef.current) clearTimeout(fadeOutTimeoutRef.current);
+  }, []);
+  function cancelHoverClose() {
+    if (hoverCloseTimeoutRef.current) {
+      clearTimeout(hoverCloseTimeoutRef.current);
+      hoverCloseTimeoutRef.current = null;
+    }
+    if (fadeOutTimeoutRef.current) {
+      clearTimeout(fadeOutTimeoutRef.current);
+      fadeOutTimeoutRef.current = null;
+    }
+    setClosingCount(null);
+  }
+  function scheduleHoverClose(count: number) {
+    cancelHoverClose();
+    hoverCloseTimeoutRef.current = setTimeout(() => {
+      if (hoveredCountRef.current !== count) return;
+      setHoveredCount(null);
+      setClosingCount(count);
+      fadeOutTimeoutRef.current = setTimeout(() => {
+        setClosingCount((prev) => (prev === count ? null : prev));
+      }, 150);
+    }, 250);
+  }
   // A plain click replaces the whole selection with just that one count; a
   // ctrl/cmd+click toggles that count in or out of the current selection
   // without touching the others, so several sub-groups can be combined as a
@@ -232,8 +271,8 @@ function FairnessComponentCard({
                       className={`flex items-center gap-1 rounded px-1 -mx-1 cursor-pointer ${
                         activeCounts.has(d.count) ? "bg-indigo-100 dark:bg-indigo-900" : ""
                       }`}
-                      onMouseEnter={() => setHoveredCount(d.count)}
-                      onMouseLeave={() => setHoveredCount(null)}
+                      onMouseEnter={() => { cancelHoverClose(); setHoveredCount(d.count); }}
+                      onMouseLeave={() => scheduleHoverClose(d.count)}
                       onClick={(e) => toggleLock(d.count, e)}
                     >
                       <span
@@ -242,8 +281,9 @@ function FairnessComponentCard({
                       />
                       <span>{d.soldiers} חיילים — {d.count} סוגים</span>
                     </div>
-                    {activeCounts.has(d.count) && (() => {
+                    {(activeCounts.has(d.count) || closingCount === d.count) && (() => {
                       const stats = bucketBurdenShareStats(c.soldiers, d.count);
+                      const visible = activeCounts.has(d.count);
                       return (
                         // On desktop this floats to the left of the row (into
                         // the card's own empty space) instead of pushing the
@@ -251,7 +291,14 @@ function FairnessComponentCard({
                         // reflow was reported as distracting when scanning
                         // several sub-groups in a row. Mobile has no such
                         // spare width, so it stays in normal flow there.
-                        <div className="mr-3 md:mr-0 text-indigo-600 dark:text-indigo-300 md:absolute md:top-0 md:right-[calc(100%+0.75rem)] md:z-10 md:w-64 md:rounded-lg md:border md:border-indigo-200 md:bg-white md:p-2 md:shadow-lg md:dark:border-indigo-700 md:dark:bg-gray-800">
+                        // The opacity transition covers the closingCount
+                        // window above, so a hover-driven close fades out
+                        // instead of the panel just vanishing.
+                        <div
+                          className={`mr-3 md:mr-0 text-indigo-600 dark:text-indigo-300 md:absolute md:top-0 md:right-[calc(100%+0.75rem)] md:z-10 md:w-64 md:rounded-lg md:border md:border-indigo-200 md:bg-white md:p-2 md:shadow-lg md:dark:border-indigo-700 md:dark:bg-gray-800 transition-opacity duration-150 ${visible ? "opacity-100" : "opacity-0"}`}
+                          onMouseEnter={() => { cancelHoverClose(); setHoveredCount(d.count); }}
+                          onMouseLeave={() => scheduleHoverClose(d.count)}
+                        >
                           <div>
                             {stats
                               ? `טווח: ${(stats.min * 100).toFixed(1)}%–${(stats.max * 100).toFixed(1)}% · סטיית תקן: ±${(stats.stddev * 100).toFixed(1)}% · פיזור CV ${(stats.cv * 100).toFixed(0)}%`
