@@ -128,16 +128,16 @@ export default function DutyHistoryWidget({
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">איפה אני ביחס לקבוצה שלי</p>
               <div className="relative h-6 bg-gray-100 dark:bg-gray-700 rounded">
                 {peers.map((v, i) => {
-                  const left = ((v - min) / range) * 100;
+                  const fraction = (v - min) / range;
                   const isMine = v === myScore;
                   return (
                     <div
                       key={i}
                       data-testid={isMine ? "burden-dot-me" : "burden-dot-peer"}
-                      className={`absolute top-1/2 -translate-y-1/2 rounded-full ${
+                      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
                         isMine ? "w-3 h-3 bg-indigo-600 ring-2 ring-white dark:ring-gray-800 z-10" : "w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500"
                       }`}
-                      style={{ left: `calc(${left}% - 2px)` }}
+                      style={{ left: `calc(6px + ${fraction} * (100% - 12px))` }}
                     />
                   );
                 })}
