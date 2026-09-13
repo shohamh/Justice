@@ -93,6 +93,56 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("click", handleClick, true);
   }, [navigate]);
 
+  const sentinelActiveRef = useRef(false);
+
+  function anyDirtyPageGuard() {
+    return guardsRef.current.some(g => g.kind === "page" && g.isDirty);
+  }
+  function activeDirtyPageGuard() {
+    const guards = guardsRef.current;
+    for (let i = guards.length - 1; i >= 0; i--) {
+      if (guards[i].kind === "page" && guards[i].isDirty) return guards[i];
+    }
+    return null;
+  }
+
+  // Ensures one extra history entry sits on top whenever a page guard is dirty,
+  // so the next back-press pops that sentinel (caught below) instead of
+  // leaving the page. Deliberately does not pop the sentinel back off when a
+  // guard becomes clean again -- popping here would itself fire a popstate and
+  // risk interfering with in-flight app navigation. An inert leftover sentinel
+  // is harmless: the next real back-press pops it, handlePopState below sees
+  // nothing is dirty, and lets that pop stand.
+  useEffect(() => {
+    if (anyDirtyPageGuard() && !sentinelActiveRef.current) {
+      window.history.pushState({ __unsavedGuardSentinel: true }, "");
+      sentinelActiveRef.current = true;
+    }
+  });
+
+  useEffect(() => {
+    function handlePopState() {
+      if (!sentinelActiveRef.current) return;
+      sentinelActiveRef.current = false;
+      const guard = activeDirtyPageGuard();
+      if (!guard) return; // nothing dirty -- let the back-press stand
+      // Cancel the navigation: push the sentinel back on top and ask first.
+      window.history.pushState({ __unsavedGuardSentinel: true }, "");
+      sentinelActiveRef.current = true;
+      setDialog({
+        guardId: guard.id,
+        saving: false,
+        error: null,
+        onLeave: () => {
+          sentinelActiveRef.current = false;
+          window.history.go(-2);
+        },
+      });
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   const requestClose = useCallback((id: number) => {
     const guard = findGuard(id);
     if (!guard) return;

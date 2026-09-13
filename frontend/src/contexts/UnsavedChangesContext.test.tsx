@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { useState } from "react";
 import { MemoryRouter, Routes, Route, Link } from "react-router-dom";
 import { UnsavedChangesProvider } from "./UnsavedChangesContext";
@@ -132,5 +132,40 @@ describe("UnsavedChangesContext beforeunload", () => {
     const preventDefault = vi.spyOn(event, "preventDefault");
     window.dispatchEvent(event);
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe("UnsavedChangesContext back/forward interception", () => {
+  it("cancels a real back-press while a page guard is dirty and shows the dialog", async () => {
+    function DirtyPage() {
+      useUnsavedChangesGuard({ kind: "page", isDirty: true, onSave: vi.fn(), onDiscard: vi.fn() });
+      return <div data-testid="dirty-page">here</div>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/start", "/here"]} initialIndex={1}>
+        <UnsavedChangesProvider>
+          <DirtyPage />
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    // Let the "push a sentinel while dirty" effect run.
+    await waitFor(() => expect(window.history.length).toBeGreaterThan(0));
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    expect(screen.getByTestId("dirty-page")).toBeInTheDocument();
+  });
+
+  it("a modal-kind guard does not trigger the page back interception", () => {
+    function DirtyModalGuard() {
+      useUnsavedChangesGuard({ kind: "modal", isDirty: true, onSave: vi.fn(), onDiscard: vi.fn() });
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={["/start", "/here"]} initialIndex={1}>
+        <UnsavedChangesProvider><DirtyModalGuard /></UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    act(() => { window.history.back(); });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
