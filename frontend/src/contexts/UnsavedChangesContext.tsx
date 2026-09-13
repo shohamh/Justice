@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { createContext, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import UnsavedChangesDialog from "../components/UnsavedChangesDialog";
 
 export type UnsavedChangesGuardKind = "page" | "modal";
@@ -50,6 +50,16 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const removeGuard = useCallback((id: number) => {
     guardsRef.current = guardsRef.current.filter(g => g.id !== id);
     setDialog(current => (current?.guardId === id ? null : current));
+  }, []);
+
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (!guardsRef.current.some(g => g.isDirty)) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   const requestClose = useCallback((id: number) => {

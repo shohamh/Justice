@@ -71,3 +71,25 @@ describe("UnsavedChangesContext dialog", () => {
     expect(screen.getByTestId("unsaved-cancel")).not.toBeDisabled();
   });
 });
+
+describe("UnsavedChangesContext beforeunload", () => {
+  it("prevents unload while a guard is dirty", () => {
+    render(<UnsavedChangesProvider><DirtyForm onSave={vi.fn()} onDiscard={vi.fn()} /></UnsavedChangesProvider>);
+    const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    const preventDefault = vi.spyOn(event, "preventDefault");
+    window.dispatchEvent(event);
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it("does not prevent unload once nothing is dirty", () => {
+    function CleanForm() {
+      useUnsavedChangesGuard({ kind: "modal", isDirty: false, onSave: vi.fn(), onDiscard: vi.fn() });
+      return null;
+    }
+    render(<UnsavedChangesProvider><CleanForm /></UnsavedChangesProvider>);
+    const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    const preventDefault = vi.spyOn(event, "preventDefault");
+    window.dispatchEvent(event);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
