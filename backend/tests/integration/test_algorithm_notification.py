@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from datetime import date
@@ -252,6 +253,63 @@ def test_no_soldiers_or_duties_notifies_creator(admin_session):
     ).one_or_none()
     assert notif is not None
     assert notif.type == NotificationType.algorithm_job_failed
+
+
+def test_cancelled_with_no_assignments_never_leaves_job_stuck_running(admin_session, monkeypatch):
+    """Regression test for a confirmed production zombie job (id ea460404):
+    when solve() returns status=CANCELLED with zero assignments, the job must
+    end up in a terminal state -- never left as status="running" forever with
+    a stale "96% שומר הצעות" progress_message the UI can never resolve out of.
+
+    This reproduces the exact gap: cancel_event was set through some path
+    that never itself wrote a terminal status to job's DB row (simulated here
+    by monkeypatching solve() to return CANCELLED without touching job at
+    all, rather than going through the watchdog or cancel_job route)."""
+    node = create_node(admin_session, level="branch", name="n_alg_notif_zombie")
+    dm = create_soldier(admin_session, personal_number="alg_notif_zombie", role="duty_manager", hierarchy_node_id=node.id)
+    create_soldier(admin_session, personal_number="alg_notif_zombie_s1", hierarchy_node_id=node.id)
+    dt = DutyType(name="t_alg_notif_zombie", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="l_alg_notif_zombie")
+    admin_session.add(dt); admin_session.add(loc); admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 4, 1), end_date=date(2027, 4, 2), required_count=1,
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+
+    job = AlgorithmJob(
+        planning_start=shift.start_date, planning_end=shift.end_date,
+        shift_ids=[str(shift.id)], settings_json={}, mode="shadow", created_by=dm.id,
+    )
+    admin_session.add(job)
+    admin_session.commit()
+    admin_session.refresh(job)
+
+    from app.algorithm.types import SolverResult
+
+    def _fake_cancelled_solve(*args, **kwargs):
+        # run_algorithm_job spawns a real background watchdog thread right
+        # before calling solve(), which sleeps on cancel_event.wait() for up
+        # to max_job_seconds. The real solver always signals that event on
+        # every exit path; a fake that returns CANCELLED without doing the
+        # same leaks a live thread sleeping for minutes into later tests in
+        # the same process -- set it here so the watchdog exits immediately.
+        cancel_event = kwargs.get("cancel_event")
+        if cancel_event is not None:
+            cancel_event.set()
+        return SolverResult(assignments=[], status="CANCELLED", seed=0)
+
+    monkeypatch.setattr("app.algorithm.solver.solve", _fake_cancelled_solve)
+
+    run_algorithm_job(job.id, dm.id)
+
+    admin_session.expire_all()
+    admin_session.refresh(job)
+    assert job.status != "running"
+    assert job.status == "failed"
+    assert job.finished_at is not None
+    assert json.loads(job.error_message)["reason"] == "cancelled_no_assignments"
 
 
 def test_per_run_weapon_enforcement_wins_over_disabled_global_setting(admin_session):

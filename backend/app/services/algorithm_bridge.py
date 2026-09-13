@@ -1631,16 +1631,30 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     )
                     raise
                 _phase(f"solver: done (status={result.status}, assignments={len(result.assignments)})")
-                job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
-                session.commit()
 
                 # Solver was interrupted by cancellation (timeout watchdog or explicit
-                # user cancel both set cancel_event the same way — the DB row already
-                # has whichever terminal status/error_message that path committed).
-                # With nothing assigned before the cutoff there's nothing to salvage.
+                # user cancel both set cancel_event the same way, each committing its
+                # own terminal status/error_message on job's DB row from a different
+                # session/thread). With nothing assigned before the cutoff there's
+                # nothing to salvage.
                 salvaging_timeout = False
                 if result.status == "CANCELLED" and not result.assignments:
                     session.rollback()
+                    # This thread's in-memory `job` predates whichever writer set
+                    # cancel_event -- refresh before trusting the DB row already
+                    # reflects that writer's terminal status. Previously this branch
+                    # returned unconditionally on that assumption; if cancel_event
+                    # got set through a path that never itself reached the DB (or
+                    # simply hadn't yet), the job was silently abandoned in "running"
+                    # forever with a stale progress_message from below, showing a
+                    # perpetual "96% שומר הצעות" the UI could never resolve out of
+                    # (confirmed in production: job ea460404 stuck exactly this way).
+                    session.refresh(job)
+                    if job.status not in ("failed", "done", "published"):
+                        job.status = "failed"
+                        job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "cancelled_no_assignments"})
+                        job.finished_at = datetime.now(tz=UTC)
+                        session.commit()
                     return
                 if result.status == "CANCELLED":
                     session.refresh(job)
@@ -1654,6 +1668,12 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     # discarding it. Falls through to the normal persistence path
                     # below, which will mark the job "done" with a PARTIAL note.
                     salvaging_timeout = True
+
+                # Only reachable once we know we're either fully done or salvaging a
+                # partial result -- a cancelled-with-nothing-to-save run already
+                # returned above, so it never shows a "saving…" label it can't back up.
+                job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
+                session.commit()
 
                 if result.status == "INFEASIBLE":
                     from app.algorithm.diagnose import diagnose_infeasibility
