@@ -4,7 +4,7 @@ import RangeDetailContent from "./RangeDetailContent";
 import { RangeEvent } from "../../api/ranges";
 
 vi.mock("../planning", () => ({
-  RosterSection: ({ assignments, assignmentActionRenderer }: { assignments: Array<{ id: string; status?: React.ReactNode }>; assignmentActionRenderer: (assignment: { id: string }) => React.ReactNode }) => <div>{assignments.map(assignment => <div key={assignment.id}>{assignment.status}{assignmentActionRenderer(assignment)}</div>)}</div>,
+  RosterSection: ({ title, assignments, assignmentActionRenderer }: { title?: React.ReactNode; assignments: Array<{ id: string; status?: React.ReactNode }>; assignmentActionRenderer: (assignment: { id: string }) => React.ReactNode }) => <div>{title}{assignments.map(assignment => <div key={assignment.id}>{assignment.status}{assignmentActionRenderer(assignment)}</div>)}</div>,
 }));
 
 vi.mock("../../api/ranges", async () => {
@@ -110,6 +110,52 @@ describe("RangeDetailContent attendance saving", () => {
     });
 
     expect(screen.getByText("לא נכח — חופשה מאושרת")).toBeInTheDocument();
+  });
+});
+
+describe("RangeDetailContent mark all attended", () => {
+  const twoAssignments = event({
+    date: "2000-01-01", status: "completed", required_count: 2,
+    assignments: [
+      { id: "a1", soldier_id: "me", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "manual", assignment_reason_text: null },
+      { id: "a2", soldier_id: "other", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "manual", assignment_reason_text: null },
+    ],
+  });
+
+  it("marks every eligible row present without touching a row already marked manually", () => {
+    renderDetail({ canManage: false, canEditAttendance: true, event: twoAssignments });
+
+    fireEvent.click(screen.getByTestId("no-show-a1"));
+    fireEvent.change(screen.getByTestId("note-a1"), { target: { value: "חופשה" } });
+    fireEvent.click(screen.getByTestId("mark-all-attended-primary"));
+
+    expect(screen.getByTestId("no-show-a1")).toHaveClass("bg-red-600");
+    expect(screen.getByTestId("present-a2")).toHaveClass("bg-green-600");
+    expect(screen.getByTestId("attendance-save-button")).not.toBeDisabled();
+  });
+
+  it("unmarks only the auto-marked rows when clicked again", () => {
+    renderDetail({ canManage: false, canEditAttendance: true, event: twoAssignments });
+
+    fireEvent.click(screen.getByTestId("no-show-a1"));
+    fireEvent.change(screen.getByTestId("note-a1"), { target: { value: "חופשה" } });
+    fireEvent.click(screen.getByTestId("mark-all-attended-primary"));
+    fireEvent.click(screen.getByTestId("mark-all-attended-primary"));
+
+    expect(screen.getByTestId("no-show-a1")).toHaveClass("bg-red-600");
+    expect(screen.getByTestId("present-a2")).not.toHaveClass("bg-green-600");
+  });
+
+  it("treats a row manually changed after auto-marking as manual, so it survives the unmark", () => {
+    renderDetail({ canManage: false, canEditAttendance: true, event: twoAssignments });
+
+    fireEvent.click(screen.getByTestId("mark-all-attended-primary"));
+    fireEvent.click(screen.getByTestId("no-show-a2"));
+    fireEvent.change(screen.getByTestId("note-a2"), { target: { value: "חופשה" } });
+    fireEvent.click(screen.getByTestId("mark-all-attended-primary"));
+
+    expect(screen.getByTestId("present-a1")).not.toHaveClass("bg-green-600");
+    expect(screen.getByTestId("no-show-a2")).toHaveClass("bg-red-600");
   });
 });
 
