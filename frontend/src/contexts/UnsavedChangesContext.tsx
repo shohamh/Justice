@@ -71,7 +71,12 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     const guard = findGuard(dialog.guardId);
     if (!guard) { setDialog(null); return; }
     setDialog(d => (d ? { ...d, saving: true, error: null } : d));
-    const ok = await guard.onSave();
+    let ok: boolean;
+    try {
+      ok = await guard.onSave();
+    } catch {
+      ok = false;
+    }
     if (ok) {
       guard.onDiscard();
       setDialog(null);

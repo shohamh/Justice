@@ -58,4 +58,16 @@ describe("UnsavedChangesContext dialog", () => {
     expect(onDiscard).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
+
+  it("save and leave shows a retry error and re-enables cancel when onSave rejects", async () => {
+    const onDiscard = vi.fn();
+    const onSave = vi.fn().mockRejectedValue(new Error("network error"));
+    render(<UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider>);
+    fireEvent.click(screen.getByTestId("close"));
+    fireEvent.click(screen.getByTestId("unsaved-save"));
+    await waitFor(() => expect(screen.getByTestId("unsaved-error")).toBeInTheDocument());
+    expect(onDiscard).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("unsaved-cancel")).not.toBeDisabled();
+  });
 });
