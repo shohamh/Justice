@@ -174,6 +174,14 @@ export interface AssignmentContext {
   end_date: string;
 }
 
+export interface AheadBreakdown {
+  personal_constraint: number;
+  exemption: number;
+  weapon_ineligible: number;
+  overlap: number;
+  randomness: number;
+}
+
 export interface SoldierExplanation {
   assigned: boolean;
   norm_score_before: number | null;
@@ -183,18 +191,17 @@ export interface SoldierExplanation {
   global_before: { min_gap: number; norm_variance: number };
   global_after: { min_gap: number; norm_variance: number };
   assignment_context?: AssignmentContext;
-  // Enriched fields for redesigned explanation modal
+  // Enriched fields for redesigned explanation modal — aggregate counts only,
+  // never another soldier's name/id/score (see backend routes/algorithm.py's
+  // _explanation_response for why).
   score_at_assignment?: number | null;
   eligible_count?: number;
-  soldier_rank?: number;
-  constraint_count?: number;
-  my_constraints?: string[];
-  ranked_candidates?: Array<{
-    soldier_id: string;
-    full_name: string;
-    score: number | null;
-    reason_excluded: string | null;
-  }>;
+  soldier_rank?: number | null;
+  rank_from_bottom?: number | null;
+  ahead_count?: number | null;
+  // null on records persisted before this aggregation existed — shown as
+  // "not available" rather than guessed.
+  ahead_breakdown?: AheadBreakdown | null;
 }
 
 export interface CandidateInfo {

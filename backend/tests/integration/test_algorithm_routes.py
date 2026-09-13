@@ -954,3 +954,70 @@ def test_dual_role_commander_sees_unredacted_explanation(client, admin_session):
     assert r.status_code == 200
     assert "candidates" in r.json()
     assert "blocked_count" not in r.json()  # only the soldier-redacted view adds this key
+
+
+def test_assignee_explanation_view_never_leaks_other_soldiers(client, admin_session):
+    """The soldier who received a duty can see an aggregate, name-free
+    breakdown of why the people ranked ahead of them (by burden) weren't
+    picked instead — but never another soldier's name, id, or score, since
+    that would leak the existence of their personal constraint/exemption."""
+    from decimal import Decimal
+    from datetime import date
+    from app.db.models import AssignmentExplanation, DutyAssignment, DutyLocation, DutyType
+    from tests.helpers import create_soldier, auth_headers
+
+    assignee = create_soldier(admin_session, personal_number="algo-leak-assignee")
+    other_soldier = create_soldier(admin_session, personal_number="algo-leak-other")
+    dt = DutyType(name="algo-leak-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="algo-leak-loc")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=assignee.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    admin_session.add(
+        AssignmentExplanation(
+            duty_assignment_id=assignment.id,
+            payload={
+                "candidates": [
+                    {
+                        "soldier_id": str(other_soldier.id),
+                        "soldier_name": "בלעדי לזיהוי",
+                        "blocked": True,
+                        "blocking_constraints": ["personal_constraint"],
+                        "pre_norm_score": 0.1,
+                    },
+                ],
+                "pool_size": 3, "blocked_count": 1, "assigned_rank": 4,
+                "ahead_count": 3, "rank_from_bottom": 4,
+                "ahead_breakdown": {
+                    "personal_constraint": 1, "exemption": 0, "weapon_ineligible": 0,
+                    "overlap": 0, "randomness": 2,
+                },
+            },
+            algorithm_version="test",
+            solver_seed="0",
+        )
+    )
+    admin_session.commit()
+
+    r = client.get(f"/api/algorithm/explanations/{assignment.id}", headers=auth_headers(assignee))
+    assert r.status_code == 200
+    body = r.json()
+
+    raw = r.text
+    assert str(other_soldier.id) not in raw
+    assert "בלעדי לזיהוי" not in raw
+    assert "candidates" not in body
+    assert "ranked_candidates" not in body
+
+    assert body["rank_from_bottom"] == 4
+    assert body["ahead_count"] == 3
+    assert body["ahead_breakdown"] == {
+        "personal_constraint": 1, "exemption": 0, "weapon_ineligible": 0,
+        "overlap": 0, "randomness": 2,
+    }

@@ -804,6 +804,56 @@ def _build_node_parents(
     return {node_id: parent_id for node_id, parent_id in hierarchy_parent.items() if parent_id is not None}
 
 
+# Above this fraction of "ahead of the assigned soldier" candidates being
+# unexplained (fully eligible, yet not the one picked -- see
+# _explanation_ahead_breakdown's "randomness" bucket), a job is flagged to
+# the admin error inbox as worth a manual look, since it suggests the
+# solver's ordering is drifting away from a clean lowest-burden-first
+# story for a meaningful share of assignments.
+_HIGH_RANDOMNESS_RATIO_THRESHOLD = 0.3
+
+
+def _explanation_ahead_breakdown(exp: AlgoExplanation) -> dict[str, Any]:
+    """Aggregate, name-free breakdown of everyone who ranks ahead of the
+    assigned soldier by burden score (blocked or not), computed from the FULL
+    candidate list before it gets truncated for storage below.
+
+    Each candidate contributes to exactly one bucket (their first recorded
+    blocking reason, in the order explain.py checks them: exemption,
+    weapon_ineligible, personal_constraint, overlap), or to "randomness" if
+    they were fully eligible and simply weren't the one chosen this time.
+    Intentionally counts only, never names or soldier_ids, so this is safe to
+    surface directly to the assigned soldier -- see the soldier-facing
+    /explanation endpoint in routes/algorithm.py.
+    """
+    assigned_id = exp.assigned_soldier_id
+    assigned_c = next((c for c in exp.candidates if c.soldier_id == assigned_id), None)
+    assigned_score = assigned_c.pre_effort_score if assigned_c else None
+
+    breakdown = {"personal_constraint": 0, "exemption": 0, "weapon_ineligible": 0, "overlap": 0, "randomness": 0}
+    ahead_count = 0
+    if assigned_score is not None:
+        for c in exp.candidates:
+            if c.soldier_id == assigned_id:
+                continue
+            score = c.pre_effort_score if c.pre_effort_score is not None else float("inf")
+            if score >= assigned_score:
+                continue
+            ahead_count += 1
+            if c.blocking_constraints:
+                reason = c.blocking_constraints[0]
+                if reason in breakdown:
+                    breakdown[reason] += 1
+            else:
+                breakdown["randomness"] += 1
+
+    return {
+        "ahead_count": ahead_count,
+        "rank_from_bottom": ahead_count + 1,
+        "ahead_breakdown": breakdown,
+    }
+
+
 def _explanation_payload(
     exp: AlgoExplanation,
     *,
@@ -812,10 +862,10 @@ def _explanation_payload(
 ) -> dict[str, Any]:
     """Serialise one AssignmentExplanation to a JSON-safe dict.
 
-    Pre-computes pool_size/blocked_count/assigned_rank from the full candidate
-    list, then truncates to top-10 unblocked + 5 blocked before storing.
-    Keeps JSONB payloads small (~1-2KB instead of ~40KB) while preserving the
-    aggregate stats the UI needs.
+    Pre-computes pool_size/blocked_count/assigned_rank/ahead_breakdown from
+    the full candidate list, then truncates to top-10 unblocked + 5 blocked
+    before storing. Keeps JSONB payloads small (~1-2KB instead of ~40KB)
+    while preserving the aggregate stats the UI needs.
     """
     assigned_id = exp.assigned_soldier_id
 
@@ -824,6 +874,7 @@ def _explanation_payload(
 
     pool_size = len(unblocked)
     blocked_count = len(blocked_list)
+    ahead = _explanation_ahead_breakdown(exp)
 
     unblocked_sorted = sorted(
         unblocked,
@@ -863,6 +914,7 @@ def _explanation_payload(
         "blocked_count": blocked_count,
         "assigned_rank": assigned_rank,
         "candidates": candidates,
+        **ahead,
     }
 
 
@@ -947,6 +999,8 @@ def persist_results(
     _pr_phase("pass1 flush done")
 
     # Pass 2: insert AssignmentExplanation rows (FK to duty_assignments now safe)
+    total_ahead_count = 0
+    total_randomness_count = 0
     for da, duty_id in created:
         block: DutyBlock = duty_map[duty_id]
         if not block.is_reserve:
@@ -976,6 +1030,8 @@ def persist_results(
                 payload = _explanation_payload(exp, dm_view=True, soldier_names=soldier_names)
                 payload["global_before"] = explanation_data.global_metrics_before
                 payload["global_after"] = explanation_data.global_metrics_after
+                total_ahead_count += payload["ahead_count"]
+                total_randomness_count += payload["ahead_breakdown"]["randomness"]
                 session.add(AssignmentExplanation(
                     duty_assignment_id=da.id,
                     payload=payload,
@@ -984,6 +1040,19 @@ def persist_results(
                 ))
 
     _pr_phase("pass2 explanations added")
+    if total_ahead_count > 0:
+        randomness_ratio = total_randomness_count / total_ahead_count
+        if randomness_ratio > _HIGH_RANDOMNESS_RATIO_THRESHOLD:
+            _logging.getLogger("backend.errors").error(
+                "Algorithm job has a high rate of unexplained assignment ordering "
+                "(soldiers passed over for a lower-burden peer with no hard-constraint reason)",
+                extra={
+                    "job_id": str(job.id),
+                    "randomness_ratio": round(randomness_ratio, 3),
+                    "randomness_count": total_randomness_count,
+                    "ahead_count": total_ahead_count,
+                },
+            )
     if primary_assignments and reserve_assignments and soldier_node is not None:
         links = link_reserves(
             primary_assignments=primary_assignments,

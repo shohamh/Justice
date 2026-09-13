@@ -397,21 +397,16 @@ def _explanation_response(
     if is_dm:
         return {**payload, "assignment_context": assignment_context}
 
-    # Soldier-redacted view
+    # Soldier-redacted view: aggregate, name-free counts only. No other
+    # soldier's name, id, or score is ever included here -- see
+    # _explanation_ahead_breakdown (algorithm_bridge.py) for how these are
+    # computed from the full (pre-truncation) candidate list at persist time.
     candidates = payload.get("candidates", [])
-    # Use pre-computed aggregates when available (new records); fall back to counting
-    # the truncated candidate list for old records that predate the truncation change.
     blocked_count = payload.get("blocked_count") if payload.get("blocked_count") is not None else sum(1 for c in candidates if c.get("blocked"))
     my_candidate = next(
         (c for c in candidates if c["soldier_id"] == str(user.id)),
         None,
     )
-
-    _CONSTRAINT_LABELS_HE: dict[str, str] = {
-        "exemption": "פטור",
-        "personal_constraint": "אילוץ אישי",
-        "overlap": "חפיפה",
-    }
 
     def _score(c: dict) -> float | None:
         # Support both new key (pre_norm_score) and old key (pre_effort_score) for stored records
@@ -420,36 +415,13 @@ def _explanation_response(
             v = c.get("pre_effort_score")
         return v
 
-    # Build enriched soldier view for the redesigned explanation modal
-    eligible = [c for c in candidates if not c.get("blocked")]
-    eligible_sorted = sorted(eligible, key=lambda c: (_score(c) or 0))
-    eligible_count = payload.get("pool_size") if payload.get("pool_size") is not None else len(eligible)
-    my_id = str(user.id)
-    soldier_rank = payload.get("assigned_rank") if payload.get("assigned_rank") is not None else next(
-        (i + 1 for i, c in enumerate(eligible_sorted) if c["soldier_id"] == my_id),
-        1,
-    )
-    ranked_candidates = [
-        {
-            "soldier_id": c["soldier_id"],
-            "full_name": c.get("soldier_name") or c["soldier_id"][:8],
-            "score": _score(c),
-            "reason_excluded": None,
-        }
-        for c in eligible_sorted
-        if c["soldier_id"] != my_id
-    ][:5]
-    for c in candidates:
-        if c.get("blocked") and len(ranked_candidates) < 5:
-            constraints = c.get("blocking_constraints", [])
-            reason = ", ".join(_CONSTRAINT_LABELS_HE.get(k, k) for k in constraints) or "חסום"
-            ranked_candidates.append({
-                "soldier_id": c["soldier_id"],
-                "full_name": c.get("soldier_name") or c["soldier_id"][:8],
-                "score": _score(c),
-                "reason_excluded": reason,
-            })
+    eligible_count = payload.get("pool_size") if payload.get("pool_size") is not None else sum(1 for c in candidates if not c.get("blocked"))
+    soldier_rank = payload.get("assigned_rank")
 
+    # Records persisted before this aggregation existed have no ahead_breakdown
+    # stored -- there's no way to reconstruct it from the (already truncated)
+    # candidate list, so it's surfaced as unavailable rather than guessed.
+    ahead_breakdown = payload.get("ahead_breakdown")
     my_score = _score(my_candidate) if my_candidate else None
     return {
         "assigned": True,
@@ -463,9 +435,9 @@ def _explanation_response(
         "score_at_assignment": my_score,
         "eligible_count": eligible_count,
         "soldier_rank": soldier_rank,
-        "constraint_count": len(my_candidate.get("blocking_constraints", [])) if my_candidate else 0,
-        "my_constraints": my_candidate.get("blocking_constraints", []) if my_candidate else [],
-        "ranked_candidates": ranked_candidates,
+        "rank_from_bottom": payload.get("rank_from_bottom"),
+        "ahead_count": payload.get("ahead_count"),
+        "ahead_breakdown": ahead_breakdown,
         "assignment_context": assignment_context,
     }
 

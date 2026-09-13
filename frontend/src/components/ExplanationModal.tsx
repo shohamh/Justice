@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
+  AheadBreakdown,
   CandidateInfo,
   DmExplanation,
   SoldierExplanation,
@@ -11,21 +12,17 @@ import {
 import { DataTable, type ColDef } from "./DataTable";
 import { lastDutyDay } from "../utils/formatDate";
 
-interface RankedCandidate {
-  soldier_id: string;
-  full_name: string;
-  score: number | null;
-  reason_excluded: string | null;
-}
-
 interface EnrichedSoldierExplanation extends SoldierExplanation {
   score_at_assignment: number | null;
   eligible_count: number;
-  soldier_rank: number;
-  constraint_count: number;
-  my_constraints: string[];
-  ranked_candidates: RankedCandidate[];
+  rank_from_bottom: number | null;
+  ahead_count: number | null;
+  ahead_breakdown: AheadBreakdown | null;
 }
+
+const AHEAD_BREAKDOWN_ORDER: (keyof AheadBreakdown)[] = [
+  "personal_constraint", "exemption", "weapon_ineligible", "overlap", "randomness",
+];
 
 interface Props {
   jobId?: string;
@@ -175,11 +172,6 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
 
           return (
             <>
-              {/* Summary banner */}
-              <div className="bg-indigo-50 dark:bg-indigo-950 rounded p-3 font-medium text-indigo-700 dark:text-indigo-300">
-                {t("algorithm.explanation_lowest_score", { count: enriched.eligible_count })}
-              </div>
-
               {/* Standing table */}
               <div>
                 <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">{t("algorithm.explanation_standing")}</p>
@@ -193,43 +185,36 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                           : "—"}
                       </td>
                     </tr>
-                    <tr className="border-b dark:border-gray-700">
-                      <td className="py-1 text-gray-500">{t("algorithm.explanation_rank")}</td>
-                      <td className="py-1 font-medium">{enriched.soldier_rank} / {enriched.eligible_count}</td>
-                    </tr>
-                    {enriched.my_constraints.length > 0 && (
-                      <tr>
-                        <td className="py-1 text-gray-500">{t("algorithm.explanation_constraints")}</td>
-                        <td className="py-1 font-medium">
-                          {enriched.my_constraints.map((k) => t(`algorithm.constraint_${k}`, k)).join(", ")}
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Why others weren't chosen */}
-              {enriched.ranked_candidates.length > 0 && (
-                <div>
-                  <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">{t("algorithm.explanation_why_others")}</p>
+              {/* Rank + aggregate breakdown of who ranks ahead — counts only,
+                  no other soldier's name/id/score is ever shown here. */}
+              <div>
+                <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  {enriched.rank_from_bottom != null && enriched.rank_from_bottom > 1
+                    ? t("algorithm.explanation_rank_from_bottom", { rank: enriched.rank_from_bottom })
+                    : t("algorithm.explanation_rank_from_bottom_top")}
+                </p>
+                {enriched.ahead_breakdown == null ? (
+                  enriched.ahead_count != null && enriched.ahead_count > 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{t("algorithm.explanation_ahead_unavailable")}</p>
+                  )
+                ) : enriched.ahead_count != null && enriched.ahead_count > 0 ? (
                   <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
-                    {enriched.ranked_candidates.map((c) => (
-                      <li key={c.soldier_id} className="flex gap-2">
+                    <li className="font-medium text-gray-700 dark:text-gray-300">
+                      {t("algorithm.explanation_ahead_intro", { count: enriched.ahead_count })}
+                    </li>
+                    {AHEAD_BREAKDOWN_ORDER.filter((key) => (enriched.ahead_breakdown as AheadBreakdown)[key] > 0).map((key) => (
+                      <li key={key} className="flex gap-2">
                         <span className="text-gray-400">•</span>
-                        <span>
-                          <span className="font-medium">{c.full_name}</span>
-                          {c.reason_excluded
-                            ? ` — ${c.reason_excluded}`
-                            : c.score != null
-                              ? ` — ${t("algorithm.explanation_load_higher", { score: (c.score * 100).toFixed(1) })}`
-                              : ""}
-                        </span>
+                        <span>{t(`algorithm.explanation_ahead_${key}`, { count: (enriched.ahead_breakdown as AheadBreakdown)[key] })}</span>
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
+                ) : null}
+              </div>
 
               {enriched.tiebreaker_note && (
                 <p className="text-gray-500 dark:text-gray-400 text-xs">
