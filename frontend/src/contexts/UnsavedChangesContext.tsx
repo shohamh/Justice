@@ -1,4 +1,5 @@
-import { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import UnsavedChangesDialog from "../components/UnsavedChangesDialog";
 
 export type UnsavedChangesGuardKind = "page" | "modal";
 
@@ -13,6 +14,12 @@ interface RegisteredGuard extends UnsavedChangesGuardHandlers {
   id: number;
 }
 
+interface DialogState {
+  guardId: number;
+  saving: boolean;
+  error: string | null;
+}
+
 export interface UnsavedChangesContextValue {
   setGuard: (id: number, handlers: UnsavedChangesGuardHandlers) => void;
   removeGuard: (id: number) => void;
@@ -24,7 +31,7 @@ export const UnsavedChangesContext = createContext<UnsavedChangesContextValue | 
 
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const guardsRef = useRef<RegisteredGuard[]>([]);
-  const [pendingDialogGuardId, setPendingDialogGuardId] = useState<number | null>(null);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
 
   const findGuard = useCallback((id: number) => guardsRef.current.find(g => g.id === id) ?? null, []);
 
@@ -42,7 +49,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
 
   const removeGuard = useCallback((id: number) => {
     guardsRef.current = guardsRef.current.filter(g => g.id !== id);
-    setPendingDialogGuardId(current => (current === id ? null : current));
+    setDialog(current => (current?.guardId === id ? null : current));
   }, []);
 
   const requestClose = useCallback((id: number) => {
@@ -52,27 +59,47 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
       guard.onDiscard();
       return;
     }
-    setPendingDialogGuardId(id);
+    setDialog({ guardId: id, saving: false, error: null });
   }, [findGuard]);
 
   const getGuards = useCallback(() => guardsRef.current, []);
 
   const contextValue = useMemo(() => ({ setGuard, removeGuard, requestClose, getGuards }), [setGuard, removeGuard, requestClose, getGuards]);
-  const internalsValue = useMemo(() => ({ pendingDialogGuardId }), [pendingDialogGuardId]);
+
+  const handleSaveAndLeave = useCallback(async () => {
+    if (!dialog) return;
+    const guard = findGuard(dialog.guardId);
+    if (!guard) { setDialog(null); return; }
+    setDialog(d => (d ? { ...d, saving: true, error: null } : d));
+    const ok = await guard.onSave();
+    if (ok) {
+      guard.onDiscard();
+      setDialog(null);
+    } else {
+      setDialog(d => (d ? { ...d, saving: false, error: "השמירה נכשלה. נסה שוב." } : d));
+    }
+  }, [dialog, findGuard]);
+
+  const handleDiscardAndLeave = useCallback(() => {
+    if (!dialog) return;
+    const guard = findGuard(dialog.guardId);
+    guard?.onDiscard();
+    setDialog(null);
+  }, [dialog, findGuard]);
+
+  const handleCancel = useCallback(() => setDialog(null), []);
 
   return (
     <UnsavedChangesContext.Provider value={contextValue}>
-      <InternalsContext.Provider value={internalsValue}>
-        {children}
-        {/* Task 2 replaces this marker with the real dialog, driven by pendingDialogGuardId. */}
-      </InternalsContext.Provider>
+      {children}
+      <UnsavedChangesDialog
+        open={dialog !== null}
+        saving={dialog?.saving ?? false}
+        error={dialog?.error ?? null}
+        onSaveAndLeave={() => { void handleSaveAndLeave(); }}
+        onDiscardAndLeave={handleDiscardAndLeave}
+        onCancel={handleCancel}
+      />
     </UnsavedChangesContext.Provider>
   );
-}
-
-// Exposes internal state for tests only (Task 2 removes this in favor of the
-// real dialog component consuming the same state directly inside the provider).
-const InternalsContext = createContext<{ pendingDialogGuardId: number | null }>({ pendingDialogGuardId: null });
-export function useUnsavedChangesInternalsForTests() {
-  return useContext(InternalsContext);
 }
