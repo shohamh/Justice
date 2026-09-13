@@ -235,6 +235,13 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       { key: "algorithm.batching_enabled", label: "פירוק וקבוצות", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולקבוצות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
       { key: "algorithm.interleaved_batch_size", label: "גודל קבוצה (תורנויות)", description: "מספר התורנויות המרבי בקבוצה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
       { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לקבוצה (שניות)", description: "תקציב זמן הפותר לכל קבוצה.", type: "number", defaultValue: 120 },
+      {
+        key: "algorithm.max_job_seconds",
+        label: "רצפת זמן כולל להרצה (שניות)",
+        description: "אחרי כמה זמן הרצה שנתקעת (לא מגיבה) תבוטל אוטומטית. המערכת מאריכה זמן זה אוטומטית להרצות גדולות/עם הרפיית אילוצים לפי מספר הקבוצות והרפיות האפשריות — ערך זה הוא רק הרצפה המינימלית. ברירת מחדל: 600 (10 דקות).",
+        type: "number",
+        defaultValue: 600,
+      },
     ],
   },
   {

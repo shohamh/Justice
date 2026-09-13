@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import threading
 import time
 import uuid
@@ -160,6 +161,7 @@ def solve(
     cancel_event: threading.Event | None = None,
     progress_cb: ProgressCb | None = None,
     swap_progress_cb: Callable[[], None] | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
     node_parents: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics.
@@ -173,6 +175,12 @@ def solve(
     ``progress_cb(done, total)`` is invoked once with (0, total) before solving
     and after each batch completes. Both values are duty counts, so larger batches
     cause proportionally more progress-bar movement.
+
+    ``relax_attempt_cb(attempt, max_attempts, last_label)`` is invoked before
+    every solve attempt within a batch's infeasibility-relaxation chain
+    (attempt=1 is the unrelaxed base try), so the UI can distinguish "still
+    working on this batch" from a frozen bar during a batch that needs several
+    relaxation rungs, each costing up to another full batch_time_limit_seconds.
 
     ``swap_progress_cb()`` is called (no arguments) just before the post-solve
     swap pass begins, so the UI can show a distinct "balancing loads…" label.
@@ -195,6 +203,7 @@ def solve(
                 reserve_dist,
                 cancel_event=cancel_event,
                 progress_cb=progress_cb,
+                relax_attempt_cb=relax_attempt_cb,
             )
     elif settings.decomposition == "effort_rounds" and settings.batching_enabled:
         with _profile_phase("batching"):
@@ -217,13 +226,17 @@ def solve(
                 reserve_dist,
                 cancel_event=cancel_event,
                 progress_cb=progress_cb,
+                relax_attempt_cb=relax_attempt_cb,
             )
     else:
         # Unknown/``"none"`` decomposition value or batching disabled → whole solve in one model.
         total_duties = len(duties)
         if progress_cb:
             progress_cb(0, total_duties)
-        result = _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist, cancel_event=cancel_event)
+        result = _infeasibility_relaxation_chain(
+            soldiers, duties, existing, settings, reserve_dist,
+            cancel_event=cancel_event, relax_attempt_cb=relax_attempt_cb,
+        )
         if progress_cb:
             progress_cb(total_duties, total_duties)
 
@@ -453,6 +466,7 @@ def _interleaved_solve(
     reserve_dist: dict[tuple[int, int], int] | None,
     cancel_event: threading.Event | None,
     progress_cb: ProgressCb | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
 ) -> SolverResult:
     """Duty-interleaved decomposition.
 
@@ -521,7 +535,7 @@ def _interleaved_solve(
         t0 = time.monotonic()
         res = _infeasibility_relaxation_chain(
             sub_soldiers, sub_duties, carry_existing, batch_settings, sub_rd,
-            cancel_event=cancel_event,
+            cancel_event=cancel_event, relax_attempt_cb=relax_attempt_cb,
         )
         if res.status == "INFEASIBLE":
             # Hard-coverage model proved infeasible: some duties in this batch
@@ -644,6 +658,7 @@ def _decomposed_solve(
     reserve_dist: dict[tuple[int, int], int] | None,
     cancel_event: threading.Event | None,
     progress_cb: ProgressCb | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
 ) -> SolverResult:
     # Work on copies so the cross-batch effort feedback doesn't mutate the
     # caller's soldiers (the bridge still needs original effort for explanations).
@@ -704,7 +719,7 @@ def _decomposed_solve(
         t0 = time.monotonic()
         res = _infeasibility_relaxation_chain(
             sub_soldiers, sub_duties, carry_existing, batch_settings, sub_rd,
-            cancel_event=cancel_event,
+            cancel_event=cancel_event, relax_attempt_cb=relax_attempt_cb,
         )
         wall_time = time.monotonic() - t0
 
@@ -1344,6 +1359,7 @@ def _infeasibility_relaxation_chain(
     settings: SolverSettings,
     reserve_dist: dict[tuple[int, int], int] | None = None,
     cancel_event: threading.Event | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
 ) -> SolverResult:
     # Copy so we can relax T/R without touching the caller's settings.
     current = dataclasses.replace(settings)
@@ -1353,7 +1369,19 @@ def _infeasibility_relaxation_chain(
     # hops of 2 up to relax_r_ceiling, absorbing reserve overload before real-duty
     # fairness is touched. Then T (real only) loosens up to relax_t_ceiling.
     # The invariant T <= R holds throughout.
+    #
+    # Each rung re-solves the whole batch from scratch (up to another full
+    # time_limit_seconds), so a batch needing several rungs can sit with no
+    # externally-visible progress for minutes. relax_attempt_cb -- called
+    # before every attempt, including the first unrelaxed one -- lets the
+    # caller surface *which* attempt is in flight instead of a frozen bar.
+    max_attempts = 1 + math.ceil(max(0, settings.relax_r_ceiling - settings.R) / 2) \
+        + math.ceil(max(0, settings.relax_t_ceiling - settings.T) / 2)
+    attempt = 0
     while True:
+        attempt += 1
+        if relax_attempt_cb:
+            relax_attempt_cb(attempt, max_attempts, relaxed[-1] if relaxed else "בסיס")
         solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist, cancel_event=cancel_event)
         status_name = solver.StatusName(status)
 

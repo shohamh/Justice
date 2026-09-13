@@ -20,6 +20,7 @@ from app.services.algorithm_bridge import (
     _build_node_parents,
     _explanation_ahead_breakdown,
     build_hierarchy_maps,
+    estimate_max_job_seconds,
     load_duty_blocks_from_shifts,
     persist_results,
     resolve_solver_settings,
@@ -484,6 +485,45 @@ def test_load_soldier_inputs_scopes_to_cohort(admin_session):
     assert scoped_values.cumulative_score == unscoped_kept.cumulative_score
     assert scoped_values.active_days == unscoped_kept.active_days
     assert scoped_values.exempted_duty_type_ids == unscoped_kept.exempted_duty_type_ids
+
+
+# ── Watchdog worst-case job-time estimate ───────────────────────────────────
+
+def test_estimate_max_job_seconds_accounts_for_relaxation_retries():
+    """Regression test for the production incident this fixes: the old formula
+    (batches * batch_time_limit_seconds) didn't multiply by how many times a
+    batch can retry via the R/T relaxation ladder, so a 1001-duty run with
+    interleaved_batch_size=300 (4 batches) estimated only 4*120+60=540s --
+    under the 600s floor -- and got killed by the watchdog before finishing,
+    even though the actual solve legitimately needed 919s."""
+    settings = SolverSettings(
+        R=15, T=8, relax_r_ceiling=20, relax_t_ceiling=10,
+        interleaved_batch_size=300, batch_time_limit_seconds=120,
+    )
+    result = estimate_max_job_seconds(duty_count=1001, settings=settings, configured_floor_seconds=600.0)
+    # 4 batches * (1 base attempt + 3 R-relaxation rungs [15->17->19->20] +
+    # 1 T-relaxation rung [8->10]) * 120s + 60 = 4 * 5 * 120 + 60 = 2460
+    assert result == 2460.0
+    # The old, buggy formula would have returned max(600, 4*120+60) == 600 --
+    # confirm the fix actually changes the outcome, not just the code shape.
+    assert result > 600.0
+
+
+def test_estimate_max_job_seconds_no_relaxation_headroom_matches_simple_formula():
+    """When R/T are already at their ceilings, there's no relaxation ladder to
+    retry -- exactly one attempt per batch, matching the pre-fix formula."""
+    settings = SolverSettings(
+        R=20, T=10, relax_r_ceiling=20, relax_t_ceiling=10,
+        interleaved_batch_size=300, batch_time_limit_seconds=120,
+    )
+    result = estimate_max_job_seconds(duty_count=1001, settings=settings, configured_floor_seconds=600.0)
+    assert result == max(600.0, 4 * 1 * 120 + 60)
+
+
+def test_estimate_max_job_seconds_never_drops_below_configured_floor():
+    settings = SolverSettings(interleaved_batch_size=10_000, batch_time_limit_seconds=30)
+    result = estimate_max_job_seconds(duty_count=5, settings=settings, configured_floor_seconds=900.0)
+    assert result == 900.0
 
 
 # ── Soldier-facing "why" explanation: aggregate, name-free breakdown ───────

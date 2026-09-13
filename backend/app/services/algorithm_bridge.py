@@ -77,6 +77,37 @@ def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_sec
     cancel_event.set()
 
 
+def estimate_max_job_seconds(
+    *, duty_count: int, settings: SolverSettings, configured_floor_seconds: float,
+) -> float:
+    """Worst-case wall-clock budget for the watchdog thread (_watch_job_timeout).
+
+    The solver decomposes a run into roughly duty_count/interleaved_batch_size
+    sequential batches, each allowed up to batch_time_limit_seconds PER ATTEMPT.
+    A batch that comes back infeasible retries via the graduated R/T relaxation
+    ladder (solver._relax_step: R loosens in hops of 2 up to relax_r_ceiling,
+    then T up to relax_t_ceiling), each rung spending up to another full
+    batch_time_limit_seconds. A formula that omits that per-batch retry
+    multiplier undershoots for any run needing relaxation -- confirmed from
+    production logs on this deployment, where 4 of 5 recent runs were killed
+    at the flat 600s floor while the one run that completed took 919s.
+
+    Never returns less than configured_floor_seconds (the "algorithm.max_job_seconds"
+    system setting) -- this is a floor, not a cap: an honestly large or
+    relaxation-heavy job should never be killed before it can finish.
+    """
+    estimated_batches = max(1, math.ceil(duty_count / max(1, settings.interleaved_batch_size)))
+    max_relaxation_attempts = (
+        1
+        + math.ceil(max(0, settings.relax_r_ceiling - settings.R) / 2)
+        + math.ceil(max(0, settings.relax_t_ceiling - settings.T) / 2)
+    )
+    estimated_worst_case_seconds = (
+        estimated_batches * max_relaxation_attempts * settings.batch_time_limit_seconds + 60
+    )
+    return max(configured_floor_seconds, estimated_worst_case_seconds)
+
+
 def _count_space_stats(
     soldiers: list[SoldierInput],
     assignments: list,
@@ -1409,15 +1440,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     configured_max_job_seconds = float(get_setting(session, "algorithm.max_job_seconds"))
                 except Exception:
                     configured_max_job_seconds = 600.0
-                # A flat budget doesn't scale with workload: the solver decomposes into
-                # roughly len(duties)/interleaved_batch_size sequential batches, each
-                # allowed up to batch_time_limit_seconds. Extend the watchdog (never
-                # shrink below the configured floor) to cover that worst case, plus
-                # headroom for setup/persisting, so an honestly large job isn't killed
-                # before it can finish.
-                estimated_batches = max(1, math.ceil(len(duties) / max(1, settings.interleaved_batch_size)))
-                estimated_worst_case_seconds = estimated_batches * settings.batch_time_limit_seconds + 60
-                max_job_seconds = max(configured_max_job_seconds, estimated_worst_case_seconds)
+                max_job_seconds = estimate_max_job_seconds(
+                    duty_count=len(duties), settings=settings, configured_floor_seconds=configured_max_job_seconds,
+                )
                 threading.Thread(
                     target=_watch_job_timeout, args=(job_id, cancel_event, max_job_seconds), daemon=True,
                 ).start()
@@ -1540,12 +1565,38 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 # calls this back once with (0, total) then after each duty batch.
                 # Both arguments are DUTY counts, so the bar advances proportionally
                 # to work done.  5–93 % leaves room for the swap pass and persisting.
+                _last_batch_progress = {"done": 0, "total": 1}
+
                 def _report_progress(done: int, total: int) -> None:
                     total = max(total, 1)
+                    _last_batch_progress["done"] = done
+                    _last_batch_progress["total"] = total
                     pct = 5 + int(88 * done / total)
                     label = (
                         f"פותר — {done} מתוך {total} תורנויות" if done > 0
                         else f"מתחיל לפתור — {total} תורנויות"
+                    )
+                    job.progress_message = json.dumps({"pct": pct, "label": label})
+                    session.commit()
+
+                # A batch that comes back infeasible retries via the R/T relaxation
+                # ladder -- each rung re-solving from scratch, up to another full
+                # batch_time_limit_seconds -- during which _report_progress above
+                # doesn't fire again (duties_done only advances once the WHOLE batch,
+                # including all its retries, finishes). Without this, the bar and its
+                # label sit frozen for however long that takes, indistinguishable from
+                # a hang. Only commit once attempt > 1 (i.e. relaxation is genuinely
+                # happening) -- the common first-attempt-succeeds case is already
+                # covered by _report_progress and needs no extra write.
+                def _report_relax_attempt(attempt: int, max_attempts: int, last_label: str) -> None:
+                    if attempt <= 1:
+                        return
+                    done = _last_batch_progress["done"]
+                    total = _last_batch_progress["total"]
+                    pct = 5 + int(88 * done / total)
+                    label = (
+                        f"מרפה אילוצים (ניסיון {attempt}/{max_attempts}: {last_label}) — "
+                        f"{done} מתוך {total} תורנויות הושלמו"
                     )
                     job.progress_message = json.dumps({"pct": pct, "label": label})
                     session.commit()
@@ -1569,6 +1620,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         reserve_dist=reserve_dist, cancel_event=cancel_event,
                         progress_cb=_report_progress,
                         swap_progress_cb=_report_swap_start,
+                        relax_attempt_cb=_report_relax_attempt,
                         node_parents=node_parents,
                     )
                 except BaseException as _solve_exc:

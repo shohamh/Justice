@@ -840,6 +840,37 @@ def test_relax_r_ceiling_is_configurable() -> None:
     assert result_capped.relaxed == []
 
 
+def test_relax_attempt_cb_reports_each_attempt_in_the_ladder() -> None:
+    """relax_attempt_cb fires once per solve attempt within a batch's
+    relaxation chain -- including the unrelaxed base attempt -- so a caller
+    can show which rung is in flight instead of a frozen progress bar during
+    a batch that needs several rungs, each costing another full
+    batch_time_limit_seconds."""
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    # 5 real duties: needs T>=5 to be feasible. T=3 forces exactly one relax step (T: 3->5).
+    duties5 = [_single_day_duty(base + timedelta(days=i), duty_type, is_reserve=False) for i in range(5)]
+
+    calls: list[tuple[int, int, str]] = []
+    result = solve(
+        soldiers, duties5, [],
+        # R=5 is already sufficient on its own (and has no relax headroom, since
+        # relax_r_ceiling==R), so _relax_step falls straight through to T on the
+        # very first relax call -- R relaxes first per its documented order, but
+        # only when there's R headroom to use.
+        SolverSettings(T=3, R=5, Wt=14, Wr=14, relax_r_ceiling=5, relax_t_ceiling=10, batching_enabled=False),
+        relax_attempt_cb=lambda attempt, max_attempts, label: calls.append((attempt, max_attempts, label)),
+    )
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert "T→5" in result.relaxed
+    # Attempt 1 = the unrelaxed base try (label "בסיס"), attempt 2 = after the
+    # T->5 relax step succeeded and found a solution, so the chain stops there.
+    assert calls == [(1, calls[0][1], "בסיס"), (2, calls[0][1], "T→5")]
+
+
 def test_batched_reserve_carryforward_counts_toward_R_not_T() -> None:
     """A reserve duty assigned in batch N must not consume T headroom in batch N+1.
 
