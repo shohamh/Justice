@@ -29,10 +29,21 @@ export function useUnsavedChangesGuard(handlers: UnsavedChangesGuardHandlers): {
 
   return {
     requestClose: () => {
-      if (!ctx || !handlersRef.current.isDirty) {
+      if (!ctx) {
         handlersRef.current.onDiscard();
         return;
       }
+
+      // Ensure the guard is up-to-date with current handlers before calling requestClose.
+      // This is needed because effects might not have run yet due to React batching.
+      // The provider's requestClose will then check the guard's isDirty to decide what to do.
+      ctx.setGuard(id, {
+        kind: handlersRef.current.kind,
+        isDirty: handlersRef.current.isDirty,
+        onSave: () => handlersRef.current.onSave(),
+        onDiscard: () => handlersRef.current.onDiscard(),
+      });
+
       ctx.requestClose(id);
     },
   };

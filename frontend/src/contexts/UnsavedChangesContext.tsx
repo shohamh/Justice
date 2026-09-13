@@ -46,10 +46,14 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const requestClose = useCallback((id: number) => {
-    // The hook has already verified isDirty is true when it called this function.
-    // Simply set the pending ID - the dialog UI (added in Task 2) will handle this.
+    const guard = findGuard(id);
+    if (!guard) return;
+    if (!guard.isDirty) {
+      guard.onDiscard();
+      return;
+    }
     setPendingDialogGuardId(id);
-  }, []);
+  }, [findGuard]);
 
   const getGuards = useCallback(() => guardsRef.current, []);
 
