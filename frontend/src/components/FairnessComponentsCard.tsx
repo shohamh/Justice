@@ -503,6 +503,10 @@ export interface FairnessComponentsCardProps {
   activeGroupKeys?: Set<GroupKey>;
   onGroupToggle?: (soldierIds: string[], key: GroupKey) => void;
   onClearGroups?: () => void;
+  /** Scope the fairness data (and its per-group means/stddev/CV) to this
+   * node's subtree, matching the "סנן לפי יחידה" unit filter elsewhere on
+   * the page — omit/null for the whole organization. */
+  nodeId?: string | null;
 }
 
 /**
@@ -511,13 +515,15 @@ export interface FairnessComponentsCardProps {
  * everything and by mixing groups that can't substitute for each other — into a
  * per-group spread plus the count of soldiers exempt from all duties.
  */
-export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle, onClearGroups }: FairnessComponentsCardProps) {
+export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle, onClearGroups, nodeId }: FairnessComponentsCardProps) {
   const [data, setData] = useState<FairnessComponents | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    getFairnessComponents().then(setData).catch(() => setFailed(true));
-  }, []);
+    setData(null);
+    setFailed(false);
+    getFairnessComponents(nodeId).then(setData).catch(() => setFailed(true));
+  }, [nodeId]);
 
   if (failed) return null;
 
