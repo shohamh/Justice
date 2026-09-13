@@ -168,4 +168,28 @@ describe("UnsavedChangesContext back/forward interception", () => {
     act(() => { window.history.back(); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("does not reopen the dialog when a popstate lands back on our own sentinel (e.g. a modal closed by non-back means)", async () => {
+    function DirtyPage() {
+      useUnsavedChangesGuard({ kind: "page", isDirty: true, onSave: vi.fn(), onDiscard: vi.fn() });
+      return <div data-testid="dirty-page">here</div>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/start", "/here"]} initialIndex={1}>
+        <UnsavedChangesProvider>
+          <DirtyPage />
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    // Let the sentinel-push effect run, same as the genuine-back-press test.
+    await waitFor(() => expect(window.history.length).toBeGreaterThan(0));
+    // Simulate a modal built on useModalBackClose: it pushes its own entry on
+    // top of our sentinel while open...
+    act(() => { window.history.pushState({ __modal: true }, ""); });
+    // ...then closes by a non-back means (X button, backdrop, Escape, submit),
+    // whose cleanup consumes its own entry via a plain history.back() -- this
+    // fires a real popstate that lands back on OUR sentinel, not past it.
+    act(() => { window.history.back(); });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });

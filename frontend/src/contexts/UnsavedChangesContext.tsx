@@ -31,6 +31,10 @@ export interface UnsavedChangesContextValue {
 
 export const UnsavedChangesContext = createContext<UnsavedChangesContextValue | null>(null);
 
+type SentinelHistoryState = { __unsavedGuardSentinel?: boolean; __sentinelId?: number };
+
+let nextSentinelId = 0;
+
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const guardsRef = useRef<RegisteredGuard[]>([]);
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -94,6 +98,13 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   }, [navigate]);
 
   const sentinelActiveRef = useRef(false);
+  // Identifies THIS provider's currently active sentinel push, not just its
+  // shape -- a plain boolean-shaped marker would also match a stale sentinel
+  // left behind by an earlier mount/unmount cycle sitting deeper in real
+  // window.history (e.g. across tests sharing one jsdom window, or in principle
+  // across remounts of this provider in the same tab), which must NOT be
+  // mistaken for "we're still on our own current sentinel".
+  const sentinelIdRef = useRef<number | null>(null);
 
   function anyDirtyPageGuard() {
     return guardsRef.current.some(g => g.kind === "page" && g.isDirty);
@@ -115,19 +126,36 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   // nothing is dirty, and lets that pop stand.
   useEffect(() => {
     if (anyDirtyPageGuard() && !sentinelActiveRef.current) {
-      window.history.pushState({ __unsavedGuardSentinel: true }, "");
+      const id = ++nextSentinelId;
+      sentinelIdRef.current = id;
+      window.history.pushState({ __unsavedGuardSentinel: true, __sentinelId: id }, "");
       sentinelActiveRef.current = true;
     }
   });
 
   useEffect(() => {
-    function handlePopState() {
+    function handlePopState(e: PopStateEvent) {
       if (!sentinelActiveRef.current) return;
+      // Some other mechanism (e.g. useModalBackClose's cleanup consuming its
+      // own entry via history.back() when a modal closes by X/backdrop/Escape/
+      // submit) can pop back onto OUR sentinel without the user having pressed
+      // the browser back button at all. Checking that the landed-on state is
+      // OUR own currently-active sentinel (by id, not just by shape) is how we
+      // tell "we're still exactly where we should be" apart from "the user
+      // genuinely navigated past the sentinel" -- only the latter should
+      // cancel-and-ask. Matching by id rather than the bare marker matters:
+      // a stale sentinel-shaped entry left deeper in history by an earlier
+      // mount/unmount cycle of this provider must not be mistaken for the
+      // current one.
+      const landedState = (e.state ?? window.history.state) as SentinelHistoryState | null;
+      if (landedState?.__unsavedGuardSentinel && landedState.__sentinelId === sentinelIdRef.current) return;
       sentinelActiveRef.current = false;
       const guard = activeDirtyPageGuard();
       if (!guard) return; // nothing dirty -- let the back-press stand
       // Cancel the navigation: push the sentinel back on top and ask first.
-      window.history.pushState({ __unsavedGuardSentinel: true }, "");
+      const id = ++nextSentinelId;
+      sentinelIdRef.current = id;
+      window.history.pushState({ __unsavedGuardSentinel: true, __sentinelId: id }, "");
       sentinelActiveRef.current = true;
       setDialog({
         guardId: guard.id,
