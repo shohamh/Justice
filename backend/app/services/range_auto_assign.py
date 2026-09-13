@@ -110,7 +110,11 @@ def _rank_from_coverage(
             and (event_date - coverage.source_event_date).days * 2 < validity_days
         )
         expiry_date = coverage.valid_until.strftime('%d.%m.%Y')
-        explanation = f"range_recently_completed:{expiry_date}" if recently_qualified else f"range_valid_expiring:{expiry_date}"
+        explanation = (
+            f"השלים לאחרונה, בתוקף עד {expiry_date}"
+            if recently_qualified
+            else f"בתוקף, פג ב-{expiry_date}"
+        )
         if recently_qualified:
             return (4, coverage.valid_until, str(soldier_id)), "qualified", explanation, False, "recent", coverage.valid_until
         return (3, coverage.valid_until, str(soldier_id)), "qualified", explanation, True, "valid_expiring", coverage.valid_until
@@ -124,9 +128,9 @@ def _rank_from_coverage(
         return (1, reserve_duty_start, str(soldier_id)), "reserve_duty_priority", explanation, True, "reserve_duty_priority", reserve_duty_start
 
     explanation = (
-        f"range_last_completed:{last_valid_until.isoformat()}"
+        f"הסמכה קודמת פגה ב-{last_valid_until.strftime('%d.%m.%Y')}"
         if last_valid_until is not None
-        else "range_never_completed"
+        else "מעולם לא הוסמך למטווח מסוג זה"
     )
     return (2, str(soldier_id)), "available_and_balanced", explanation, True, "last_completed" if last_valid_until is not None else "never_completed", last_valid_until
 
