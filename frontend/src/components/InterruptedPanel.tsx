@@ -8,6 +8,7 @@ interface Props {
 const MESSAGES: Record<string, string> = {
   server_restarted: "שרת האפליקציה הופעל מחדש באמצע העיבוד, לפני שההרצה הושלמה.",
   timed_out: "ההרצה ארכה זמן רב מהמותר ובוטלה לפני שנמצא פתרון מלא.",
+  cancelled_no_assignments: "ההרצה בוטלה לפני שנמצא פתרון חלקי לשמירה.",
 };
 
 export default function InterruptedPanel({ reason, onRetry, retrying, retryError }: Props) {
