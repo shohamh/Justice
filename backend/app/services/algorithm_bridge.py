@@ -1656,6 +1656,21 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     # (confirmed in production: job ea460404 stuck exactly this way).
                     session.refresh(job)
                     if job.status not in ("failed", "done", "published"):
+                        # Neither known writer (the cancel route, which sets
+                        # error_message="cancelled_by_user"; the watchdog, which
+                        # sets reason="timed_out") had already committed a terminal
+                        # status by the time we got here -- so cancel_event was set
+                        # through some other path. That's worth surfacing loudly:
+                        # it means a real trigger for this job's cancellation is
+                        # unknown, not just that the job needs a retry.
+                        logging.getLogger("backend.errors").error(
+                            "[job %s] cancel_event was set but neither the cancel "
+                            "route nor the timeout watchdog had recorded a terminal "
+                            "status for it -- cancellation trigger is unattributed. "
+                            "elapsed=%.1fs duty_count=%d",
+                            job_id, _time.monotonic() - _t0, len(duties),
+                            extra={"job_id": str(job_id), "duty_count": len(duties)},
+                        )
                         job.status = "failed"
                         job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "cancelled_no_assignments"})
                         job.finished_at = datetime.now(tz=UTC)
