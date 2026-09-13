@@ -4,6 +4,7 @@ import { FoodAssignmentSummary, RangeAssignment, RangeAttendanceStatus, RangeEve
 import { RosterSection } from "../planning";
 import { RangeAttendanceStatusPicker } from "./RangeAttendanceStatusPicker";
 import { ATTENDANCE_STATUS_LABELS } from "../../utils/rangeLabels";
+import { todayIso } from "../../utils/formatDate";
 import SoldierLink from "../SoldierLink";
 
 interface Props {
@@ -33,7 +34,7 @@ export default function RangeDetailContent(p: Props) {
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, { status: RangeAttendanceStatus; note: string }>>({});
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [attendanceSaveError, setAttendanceSaveError] = useState("");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const future = event.date > today;
   const selfAssignment = event.assignments.find(a => future && !a.is_draft && a.soldier_id === p.userId);
   const actionClass = "rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50";

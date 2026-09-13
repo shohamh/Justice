@@ -24,6 +24,7 @@ services:
         -c archive_timeout=60
         -c max_wal_senders=3
         -c wal_keep_size=512
+        -c timezone=Asia/Jerusalem
     volumes:
       - /opt/justice/pgdata:/var/lib/postgresql/data
       - /opt/justice/backups:/backups
@@ -43,6 +44,7 @@ services:
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      TZ: Asia/Jerusalem  # see backend/Dockerfile — keeps date.today()/now() on Israel's calendar day
     depends_on:
       db:
         condition: service_healthy
@@ -72,6 +74,7 @@ services:
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      TZ: Asia/Jerusalem
     volumes:
       - /opt/justice/logs:/app/logs
     command: python -m bot.main

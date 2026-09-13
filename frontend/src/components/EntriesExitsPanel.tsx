@@ -10,7 +10,7 @@ import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
-import { isDateRangeValid } from "../utils/formatDate";
+import { isDateRangeValid, todayIso } from "../utils/formatDate";
 
 interface Props {
   soldiers: SoldierWithStatus[];
@@ -41,7 +41,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
 
   function openReleaseModal(s: SoldierWithStatus) {
     setReleaseTarget(s);
-    setReleaseDate(new Date().toISOString().slice(0, 10));
+    setReleaseDate(todayIso());
   }
 
   async function handleConfirmRelease() {

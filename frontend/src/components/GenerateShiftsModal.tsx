@@ -4,6 +4,7 @@ import { PreviewRow, generateShifts, previewGeneration } from "../api/shiftTempl
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "../components/DateInput";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { dateToLocalIso } from "../utils/formatDate";
 
 interface Props {
   open: boolean;
@@ -13,7 +14,7 @@ interface Props {
 }
 
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return dateToLocalIso(d);
 }
 
 export default function GenerateShiftsModal({ open, templateId, onClose, onGenerated }: Props) {

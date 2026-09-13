@@ -6,6 +6,7 @@ import { ReserveCandidate, getReserveCandidates } from "../api/reserves";
 import Combobox from "./Combobox";
 import { translateApiError } from "../utils/translateApiError";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { dateToLocalIso } from "../utils/formatDate";
 
 interface Props {
   shift: CalendarShift;
@@ -26,7 +27,7 @@ export default function ReserveDismissalModal({ shift, reserve, onClose, onDone 
     const d = new Date(shift.start_date);
     const stop = new Date(shift.end_date); // exclusive end_date -- the first day NOT touched
     while (d < stop) {
-      dates.push(d.toISOString().slice(0, 10));
+      dates.push(dateToLocalIso(d));
       d.setDate(d.getDate() + 1);
     }
     return dates;

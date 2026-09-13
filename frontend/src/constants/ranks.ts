@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getPublicRankLadder, getRankLadder, RankLadder, RankTrack } from "../api/rankAdvancement";
 import { queryKeys } from "../queryKeys";
+import { todayIso as computeTodayIso } from "../utils/formatDate";
 
 export type { RankTrack } from "../api/rankAdvancement";
 
@@ -89,7 +90,7 @@ export function deriveIsCareer(
   rank: string,
   mandatoryEndDate: string,
   _dischargeDate: string,
-  todayIso: string = new Date().toISOString().slice(0, 10),
+  todayIso: string = computeTodayIso(),
 ): boolean {
   if (CHOVAH_ONLY_RANKS.includes(rank)) return false;
   if (!mandatoryEndDate) return false;

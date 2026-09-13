@@ -4,8 +4,9 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import DateTime, and_, cast, delete, func, or_, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.audit.writer import write_audit
@@ -342,13 +343,35 @@ def cancel_range_event(
     return event
 
 
-def mark_past_range_events_completed(session: Session, *, today: date | None = None) -> int:
-    today = today or date.today()
+_ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
+
+
+def _israel_now_naive() -> datetime:
+    """Current Israel wall-clock time as a naive datetime, comparable to
+    RangeEvent.date/end_time (Israel wall-clock values entered by Israeli
+    users). Mirrors the same pattern in app/services/swaps.py."""
+    return datetime.now(_ISRAEL_TZ).replace(tzinfo=None)
+
+
+def mark_past_range_events_completed(session: Session, *, now: datetime | None = None) -> int:
+    now = now or _israel_now_naive()
+    today = now.date()
+    # A planned event dated before today has unambiguously ended. One dated
+    # today has ended once its own end_time has passed today — falls back to
+    # waiting for the date rollover when no end_time was recorded.
+    event_end_at = cast(func.concat(RangeEvent.date, " ", RangeEvent.end_time), DateTime)
     event_ids = session.execute(
         update(RangeEvent)
         .where(
             RangeEvent.status == RangeEventStatus.planned,
-            RangeEvent.date < today,
+            or_(
+                RangeEvent.date < today,
+                and_(
+                    RangeEvent.date == today,
+                    RangeEvent.end_time.isnot(None),
+                    event_end_at <= now,
+                ),
+            ),
         )
         .values(status=RangeEventStatus.completed)
         .returning(RangeEvent.id)

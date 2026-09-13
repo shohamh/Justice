@@ -19,6 +19,7 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import { useAuth } from "../auth/AuthContext";
 import { canApprove } from "../auth/permissions";
 import { formatDate, formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
+import { dateToLocalIso } from "../utils/formatDate";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
 import EventDetailModal from "./planning/EventDetailModal";
@@ -191,8 +192,8 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
 
   function handleDatesSet(arg: DatesSetArg) {
     setActiveViewType(arg.view.type);
-    const from = arg.start.toISOString().slice(0, 10);
-    const to = arg.end.toISOString().slice(0, 10);
+    const from = dateToLocalIso(arg.start);
+    const to = dateToLocalIso(arg.end);
     const prev = dateRangeRef.current;
     if (prev && prev.from === from && prev.to === to) return;
     dateRangeRef.current = { from, to };

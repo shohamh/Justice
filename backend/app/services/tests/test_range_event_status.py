@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from threading import Barrier
 
 import pytest
@@ -26,15 +26,22 @@ from app import range_attendance_worker
 from tests.helpers import create_node, create_range_location, create_soldier
 
 
-def _event(session: Session, *, event_date: date, status: RangeEventStatus = RangeEventStatus.planned) -> RangeEvent:
-    node = create_node(session, level="branch", name=f"range-status-{event_date}-{status.value}")
+def _event(
+    session: Session,
+    *,
+    event_date: date,
+    status: RangeEventStatus = RangeEventStatus.planned,
+    end_time: str | None = None,
+) -> RangeEvent:
+    node = create_node(session, level="branch", name=f"range-status-{event_date}-{status.value}-{end_time}")
     event = create_range_event(
         session,
         hierarchy_node_id=node.id,
         range_type=RangeType.laser,
         event_date=event_date,
-        range_location_id=create_range_location(session, name=f"range-status-{event_date}-{status.value}").id,
+        range_location_id=create_range_location(session, name=f"range-status-{event_date}-{status.value}-{end_time}").id,
         required_count=1,
+        end_time=end_time,
     )
     event.status = status
     session.commit()
@@ -43,6 +50,7 @@ def _event(session: Session, *, event_date: date, status: RangeEventStatus = Ran
 
 def test_mark_past_range_events_completed_only_transitions_past_planned_events(app_session: Session) -> None:
     today = date(2026, 8, 15)
+    now = datetime.combine(today, time(12, 0))
     past_planned = _event(app_session, event_date=today - timedelta(days=1))
     today_planned = _event(app_session, event_date=today)
     future_planned = _event(app_session, event_date=today + timedelta(days=1))
@@ -50,7 +58,7 @@ def test_mark_past_range_events_completed_only_transitions_past_planned_events(a
         app_session, event_date=today - timedelta(days=1), status=RangeEventStatus.cancelled
     )
 
-    changed = mark_past_range_events_completed(app_session, today=today)
+    changed = mark_past_range_events_completed(app_session, now=now)
 
     assert changed == 1
     assert past_planned.status == RangeEventStatus.completed
@@ -59,10 +67,25 @@ def test_mark_past_range_events_completed_only_transitions_past_planned_events(a
     assert cancelled_past.status == RangeEventStatus.cancelled
 
 
+def test_mark_past_range_events_completed_same_day_after_end_time(app_session: Session) -> None:
+    today = date(2026, 8, 15)
+    ended = _event(app_session, event_date=today, end_time="08:25")
+    not_yet_ended = _event(app_session, event_date=today, end_time="14:00")
+    no_end_time = _event(app_session, event_date=today)
+
+    changed = mark_past_range_events_completed(app_session, now=datetime.combine(today, time(10, 44)))
+
+    assert changed == 1
+    assert ended.status == RangeEventStatus.completed
+    assert not_yet_ended.status == RangeEventStatus.planned
+    assert no_end_time.status == RangeEventStatus.planned
+
+
 def test_concurrent_elapsed_transitions_change_and_audit_each_event_once(
     app_engine, app_session: Session
 ) -> None:
     today = date(2026, 8, 15)
+    now = datetime.combine(today, time(12, 0))
     event = _event(app_session, event_date=today - timedelta(days=1))
     readers = Barrier(2)
 
@@ -78,7 +101,7 @@ def test_concurrent_elapsed_transitions_change_and_audit_each_event_once(
 
         def transition() -> int:
             with SessionLocal() as session:
-                changed = mark_past_range_events_completed(session, today=today)
+                changed = mark_past_range_events_completed(session, now=now)
                 session.commit()
                 return changed
 
@@ -119,7 +142,7 @@ def test_completed_event_preserves_update_and_assignment_guards(app_session: Ses
     event = _event(app_session, event_date=today - timedelta(days=1))
     soldier = create_soldier(app_session, personal_number="range-status-soldier")
 
-    assert mark_past_range_events_completed(app_session, today=today) == 1
+    assert mark_past_range_events_completed(app_session, now=datetime.combine(today, time(12, 0))) == 1
 
     with pytest.raises(RangeValidationError, match="event_not_planned"):
         update_range_event(app_session, event=event, notes="too late")

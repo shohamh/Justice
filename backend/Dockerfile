@@ -1,7 +1,16 @@
 FROM python:3.12-slim AS production
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    TZ=Asia/Jerusalem
+
+# date.today()/datetime.now() are used throughout the backend for "today"
+# cutoffs and status transitions (range events, duty rosters, dashboards).
+# python:3.12-slim has no tzdata, so without it the TZ env var above is
+# silently ignored and the container clock stays on UTC — 2-3 hours behind
+# Israel, which mis-times any comparison that happens near local midnight.
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

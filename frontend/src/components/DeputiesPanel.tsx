@@ -5,15 +5,12 @@ import { DeputyDTO, createDeputy, listDeputies, revokeDeputy } from "../api/depu
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import DateInput from "./DateInput";
 import { translateApiError } from "../utils/translateApiError";
+import { todayIso } from "../utils/formatDate";
 import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
   principalId: string;
   principalRoles: { isCommander: boolean; isDutyManager: boolean };
-}
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function statusOf(g: DeputyDTO, today: string): "active" | "future" | "expired" {

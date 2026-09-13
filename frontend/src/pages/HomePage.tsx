@@ -21,7 +21,7 @@ import ActiveDeputyBanner from "../components/ActiveDeputyBanner";
 import UpcomingSnapshot from "../components/UpcomingSnapshot";
 import AlertsPanel from "../components/AlertsPanel";
 import DutyPotentialPanel from "../components/DutyPotentialPanel";
-import { formatDateTimeIsrael } from "../utils/formatDate";
+import { dateToLocalIso, formatDateTimeIsrael, todayIso } from "../utils/formatDate";
 
 import { useAuth } from "../auth/AuthContext";
 import { isCommandScopeAvailable } from "../auth/dashboardRoles";
@@ -59,7 +59,7 @@ function joinHebrewList(items: string[]): string {
 function offsetDate(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return dateToLocalIso(d);
 }
 
 // end_date is exclusive (the first day NOT touched), so no +1 here.
@@ -388,7 +388,7 @@ export default function HomePage() {
     [transparencyRows, user],
   );
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIso();
 
   const pastDuties = useMemo(
     // end_date is exclusive, so a duty whose last day is today has end_date === today+1;
@@ -420,7 +420,7 @@ export default function HomePage() {
   const currentMonthEnd = useMemo(() => {
     const d = new Date();
     const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    return last.toISOString().split("T")[0];
+    return dateToLocalIso(last);
   }, []);
 
   const monthReserveDays = useMemo(() => {

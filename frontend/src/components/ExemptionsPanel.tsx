@@ -24,7 +24,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import DateInput from "../components/DateInput";
 import ExemptionRequestForm, { ExemptionRequestFormInput } from "./ExemptionRequestForm";
-import { formatDate, formatDateTimeIsrael, isDateRangeValid } from "../utils/formatDate";
+import { formatDate, formatDateTimeIsrael, isDateRangeValid, todayIso } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import ApprovalStageIcons from "./ApprovalStageIcons";
 import Combobox from "./Combobox";
@@ -278,7 +278,7 @@ export default function ExemptionsPanel({
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const activeItems = items.filter(
     (exemption) => !exemption.revoked_by_name && (exemption.end_date == null || exemption.end_date >= today),
   );

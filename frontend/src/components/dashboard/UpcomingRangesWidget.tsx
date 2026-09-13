@@ -1,6 +1,6 @@
 import { RangeEvent } from "../../api/ranges";
 import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
-import { formatDate } from "../../utils/formatDate";
+import { formatDate, todayIso } from "../../utils/formatDate";
 
 interface Props {
   ranges: RangeEvent[];
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function UpcomingRangesWidget({ ranges, onOpenRange, title }: Props) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   // Defensive guard: getRanges (api/ranges.ts) is currently an unguarded
   // pass-through, so a malformed non-array response would otherwise crash
   // .filter() here. Normalize to [] rather than throwing — this widget is

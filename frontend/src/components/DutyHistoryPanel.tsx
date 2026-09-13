@@ -12,7 +12,7 @@ import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import CheckboxListDropdown from "./CheckboxListDropdown";
 import { useAuth } from "../auth/AuthContext";
-import { formatDate, formatDateTimeIsrael, lastDutyDay } from "../utils/formatDate";
+import { formatDate, formatDateTimeIsrael, lastDutyDay, todayIso } from "../utils/formatDate";
 import InputDialog from "./InputDialog";
 import MessageDialog from "./MessageDialog";
 
@@ -553,7 +553,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
 
   useEffect(() => {
     if (!isActive || soldierId === user?.id) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     const upcomingAssignments = events.filter(
       (e) => e.event_type === "assignment" && e.date >= today
     );
@@ -679,7 +679,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     return <p className="text-sm text-red-500">{loadError}</p>;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const effectiveTypes = types ?? ALL_EVENT_TYPE_FILTER_IDS;
   const typeFiltered = events.filter((e) => eventMatchesTypes(e, effectiveTypes));
 

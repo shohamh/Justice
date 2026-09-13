@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { BlockMath } from "react-katex";
 import { EffectiveDuty } from "../../api/assignments";
 import { TransparencyRow, BurdenShare, BurdenShareBreakdown } from "../../api/scoring";
-import { formatDutyRange } from "../../utils/formatDate";
+import { formatDutyRange, todayIso } from "../../utils/formatDate";
 import BurdenShareBreakdownModal from "../BurdenShareBreakdownModal";
 import BurdenShareTrendChart from "./BurdenShareTrendChart";
 import HelpModal from "../HelpModal";
@@ -32,7 +32,7 @@ export default function DutyHistoryWidget({
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const [breakdownModalOpen, setBreakdownModalOpen] = useState(false);
   const [activeDaysHelpOpen, setActiveDaysHelpOpen] = useState(false);
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIso();
   const past = duties
     // end_date is exclusive, so "over" means end_date is today or earlier.
     .filter((d) => d.end_date <= today)

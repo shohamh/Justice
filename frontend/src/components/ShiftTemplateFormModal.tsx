@@ -17,6 +17,7 @@ import DutyTypeFormModal from "./DutyTypeFormModal";
 import LocationFormModal from "./LocationFormModal";
 import SubHierarchySelector from "./SubHierarchySelector";
 import DateInput from "./DateInput";
+import { todayIso } from "../utils/formatDate";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -39,7 +40,7 @@ function dowToIso(dow: number): number { return dow === 0 ? 7 : dow; }
 function isoToDow(iso: number): number { return iso === 7 ? 0 : iso; }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIso();
 }
 
 // SYNC: duplicates backend recurrence logic (not RPC'd — template may not exist yet on create).

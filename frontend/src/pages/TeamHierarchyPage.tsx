@@ -19,6 +19,7 @@ import { translateApiError } from "../utils/translateApiError";
 import PasswordInput from "../components/PasswordInput";
 import ConfirmDialog from "../components/ConfirmDialog";
 import MessageDialog from "../components/MessageDialog";
+import { todayIso } from "../utils/formatDate";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -109,7 +110,7 @@ export default function TeamHierarchyPage() {
     setRemoveTargetId(null);
     setRemoveError(null);
     try {
-      await softDeleteSoldier(soldierId, new Date().toISOString().slice(0, 10));
+      await softDeleteSoldier(soldierId, todayIso());
       await refresh();
     } catch (err) {
       setRemoveError(translateApiError(err, t, "אין לך הרשאה למחוק חייל זה"));

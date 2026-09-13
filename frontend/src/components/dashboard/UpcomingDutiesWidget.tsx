@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { EffectiveDuty } from "../../api/assignments";
-import { formatDutyRange } from "../../utils/formatDate";
+import { formatDutyRange, todayIso } from "../../utils/formatDate";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -23,7 +23,7 @@ function statusLabel(t: TFunction, d: EffectiveDuty): { text: string; calledUp: 
 
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty, title }: Props) {
   const { t } = useTranslation();
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIso();
   // Defensive guard: listEffectiveDuties (api/assignments.ts) is currently
   // an unguarded pass-through, so a malformed non-array response would
   // otherwise crash .filter() here. Normalize to [] rather than throwing —

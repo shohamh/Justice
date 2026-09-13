@@ -14,7 +14,7 @@ import Combobox from "./Combobox";
 import SoldierLink from "./SoldierLink";
 import { translateApiError } from "../utils/translateApiError";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
-import { lastDutyDay } from "../utils/formatDate";
+import { dateToLocalIso, lastDutyDay, todayIso } from "../utils/formatDate";
 
 interface Props {
   shift: CalendarShift;
@@ -50,7 +50,7 @@ export default function DismissalModal({
     const d = new Date(shift.start_date);
     const stop = new Date(shift.end_date); // exclusive end_date -- the first day NOT touched
     while (d < stop) {
-      dates.push(d.toISOString().slice(0, 10));
+      dates.push(dateToLocalIso(d));
       d.setDate(d.getDate() + 1);
     }
     return dates;
@@ -74,7 +74,7 @@ export default function DismissalModal({
 
   // ── Gimelim mode state ──────────────────────────────────────────────────
   const initialGimelimFromIdx = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayIso();
     const idx = allDates.indexOf(todayStr);
     if (idx === -1) return 0;
     return Math.min(idx, lastGimelimFromIdx);

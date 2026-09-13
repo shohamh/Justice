@@ -7,6 +7,7 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import SoldierLink from "./SoldierLink";
 import DutyDetailModal from "./dashboard/DutyDetailModal";
 import ConfirmDialog from "./ConfirmDialog";
+import { todayIso } from "../utils/formatDate";
 
 interface Props {
   data: UpcomingDay[] | null;
@@ -142,7 +143,7 @@ export default function UpcomingSnapshot({ data, scope = "command", scopeLabel: 
       </section>
     );
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
 
   return (
     <section className="space-y-2" aria-label={scopeLabel}>
