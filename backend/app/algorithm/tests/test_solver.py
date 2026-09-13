@@ -840,6 +840,69 @@ def test_relax_r_ceiling_is_configurable() -> None:
     assert result_capped.relaxed == []
 
 
+def test_infeasibility_relaxation_chain_treats_genuine_timeout_as_infeasible_not_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test for a confirmed production bug: three runs of the same
+    large job were labeled CANCELLED (aborting the whole run) even though
+    cancel_event was never set anywhere. The relaxation chain treated ANY
+    non-OPTIMAL/FEASIBLE/INFEASIBLE solver status as a cancellation, but
+    StopSearch() -- which produces UNKNOWN -- also fires from the stall guard
+    (STALL_SECONDS with no improving solution), which has nothing to do with
+    cancellation. Without cancel_event.is_set(), UNKNOWN must be handled like
+    INFEASIBLE (relax further or give up as INFEASIBLE), never CANCELLED."""
+    import app.algorithm.solver as solver_mod
+
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    duties = [_single_day_duty(date(2026, 6, 1), duty_type, is_reserve=False)]
+
+    def fake_solve_with_settings(*args: Any, **kwargs: Any) -> tuple[cp_model.CpSolver, dict, int]:
+        # Simulates the stall guard calling StopSearch() before a solution was
+        # found -- UNKNOWN, with cancel_event never touched.
+        return cp_model.CpSolver(), {}, cp_model.UNKNOWN
+
+    monkeypatch.setattr(solver_mod, "_solve_with_settings", fake_solve_with_settings)
+
+    result = solver_mod._infeasibility_relaxation_chain(
+        soldiers, duties, [],
+        SolverSettings(T=1, R=1, relax_r_ceiling=1, relax_t_ceiling=1),
+        cancel_event=None,
+    )
+    assert result.status == "INFEASIBLE"
+
+
+def test_infeasibility_relaxation_chain_still_reports_cancelled_when_cancel_event_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The flip side of the regression above: a genuine cancellation (UNKNOWN
+    status with cancel_event actually set) must still report CANCELLED, not
+    get swallowed into the new INFEASIBLE-fallback path."""
+    import app.algorithm.solver as solver_mod
+
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    duties = [_single_day_duty(date(2026, 6, 1), duty_type, is_reserve=False)]
+
+    def fake_solve_with_settings(*args: Any, **kwargs: Any) -> tuple[cp_model.CpSolver, dict, int]:
+        return cp_model.CpSolver(), {}, cp_model.UNKNOWN
+
+    monkeypatch.setattr(solver_mod, "_solve_with_settings", fake_solve_with_settings)
+
+    cancel_event = threading.Event()
+    cancel_event.set()
+    result = solver_mod._infeasibility_relaxation_chain(
+        soldiers, duties, [],
+        SolverSettings(T=1, R=1, relax_r_ceiling=5, relax_t_ceiling=5),
+        cancel_event=cancel_event,
+    )
+    assert result.status == "CANCELLED"
+
+
 def test_relax_attempt_cb_reports_each_attempt_in_the_ladder() -> None:
     """relax_attempt_cb fires once per solve attempt within a batch's
     relaxation chain -- including the unrelaxed base attempt -- so a caller

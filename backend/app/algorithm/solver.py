@@ -1385,11 +1385,19 @@ def _infeasibility_relaxation_chain(
         solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist, cancel_event=cancel_event)
         status_name = solver.StatusName(status)
 
-        # UNKNOWN means StopSearch() fired before a solution was found \u2014 treat as cancelled
-        if status_name not in ("OPTIMAL", "FEASIBLE", "INFEASIBLE"):
+        # UNKNOWN means StopSearch() fired (or CP-SAT's own time budget ran out)
+        # before a solution was found either way. That's only a real
+        # cancellation if cancel_event says so -- StopSearch also fires from
+        # the stall guard (STALL_SECONDS with no improving solution), which
+        # has nothing to do with cancellation. Confirmed in production: three
+        # runs of the same large job were mislabeled CANCELLED this way with
+        # cancel_event never touched, aborting the whole run instead of
+        # relaxing further or falling back to soft coverage like a genuine
+        # INFEASIBLE does.
+        if status_name not in ("OPTIMAL", "FEASIBLE", "INFEASIBLE") and cancel_event is not None and cancel_event.is_set():
             return SolverResult(assignments=[], status="CANCELLED", seed=(current.seed if current.seed is not None else DEFAULT_SOLVER_SEED), relaxed=relaxed)
 
-        if status_name == "INFEASIBLE":
+        if status_name != "OPTIMAL" and status_name != "FEASIBLE":
             label = _relax_step(current)
             if label is not None:
                 relaxed.append(label)
