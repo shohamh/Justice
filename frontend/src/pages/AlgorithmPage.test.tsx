@@ -139,6 +139,9 @@ describe("AlgorithmPage - returned job review", () => {
         candidate_rank: null,
         candidate_pool_size: null,
         batch_index: null,
+        ahead_count: null,
+        randomness_count: null,
+        is_high_randomness: false,
       }],
     };
     vi.mocked(algorithmApi.listJobs).mockResolvedValue({ items: [], total: 0 });

@@ -219,6 +219,25 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       sortValue: (p) => p.candidate_rank ?? null,
     },
     {
+      id: "flag",
+      header: "",
+      cell: (p) =>
+        p.is_high_randomness ? (
+          <span
+            data-testid={`high-randomness-${p.assignment_id}`}
+            title={t("algorithm.high_randomness_tooltip", {
+              randomness: p.randomness_count ?? 0,
+              ahead: p.ahead_count ?? 0,
+              defaultValue: "{{randomness}} מתוך {{ahead}} החיילים המדורגים לפני חייל זה לא הוסברו על ידי אילוץ — כדאי לבדוק, לחץ \"למה קיבלתי?\" לפרטים",
+            })}
+            className="text-amber-500 dark:text-amber-400 cursor-help"
+          >
+            ⚠️
+          </span>
+        ) : null,
+      sortValue: (p) => (p.is_high_randomness ? 1 : 0),
+    },
+    {
       id: "actions",
       header: t("algorithm.col_actions"),
       cell: (p) => {

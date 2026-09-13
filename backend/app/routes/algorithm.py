@@ -27,13 +27,22 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.rate_limit import limiter
-from app.services.algorithm_bridge import analyze_shift_availability, run_algorithm_job
+from app.services.algorithm_bridge import HIGH_RANDOMNESS_RATIO_THRESHOLD, analyze_shift_availability, run_algorithm_job
 from app.services.duty_eligibility_watch import recheck_assignments
 from app.services.score_projection import refresh_projection_for_assignment_change, refresh_projections_for_assignments_bulk
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
 
 router = APIRouter(prefix="/algorithm", tags=["algorithm"])
+
+
+def _is_high_randomness(ahead_count: int | None, randomness_count: int | None) -> bool:
+    """Same per-row analogue of the per-job admin-inbox threshold: flag an
+    assignment when most of the candidates ranked ahead of it by burden were
+    fully eligible yet not picked, for no hard-constraint reason."""
+    if not ahead_count:
+        return False
+    return (randomness_count or 0) / ahead_count > HIGH_RANDOMNESS_RATIO_THRESHOLD
 
 
 def _compute_candidate_rank(
@@ -106,6 +115,13 @@ class ProposalOut(BaseModel):
     candidate_rank: int | None = None
     candidate_pool_size: int | None = None
     batch_index: int | None = None
+    # How many candidates ranked ahead of this soldier by burden, and how many
+    # of those were fully eligible yet not picked ("randomness" -- see
+    # algorithm_bridge._explanation_ahead_breakdown). is_high_randomness uses
+    # the same ratio threshold as the per-job admin-inbox alert.
+    ahead_count: int | None = None
+    randomness_count: int | None = None
+    is_high_randomness: bool = False
 
 
 class JobOut(BaseModel):
@@ -280,6 +296,9 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                 candidate_rank=a.candidate_rank,
                 candidate_pool_size=a.candidate_pool_size,
                 batch_index=a.batch_index,
+                ahead_count=a.ahead_count,
+                randomness_count=a.randomness_count,
+                is_high_randomness=_is_high_randomness(a.ahead_count, a.randomness_count),
             )
             for a in fast_rows
         ]
@@ -334,6 +353,8 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
         norm_after = None
         candidate_rank = None
         candidate_pool_size = None
+        ahead_count = None
+        randomness_count = None
         if exp:
             payload = exp.payload
             candidates = payload.get("candidates", [])
@@ -345,6 +366,9 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
             candidate_rank, candidate_pool_size = _compute_candidate_rank(
                 candidates, str(a.soldier_id), payload=payload
             )
+            ahead_count = payload.get("ahead_count")
+            ahead_breakdown = payload.get("ahead_breakdown")
+            randomness_count = ahead_breakdown.get("randomness") if ahead_breakdown else None
         proposals.append(
             ProposalOut(
                 assignment_id=a.id,
@@ -361,6 +385,9 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                 candidate_rank=candidate_rank,
                 candidate_pool_size=candidate_pool_size,
                 batch_index=a.batch_index,
+                ahead_count=ahead_count,
+                randomness_count=randomness_count,
+                is_high_randomness=_is_high_randomness(ahead_count, randomness_count),
             )
         )
     return proposals

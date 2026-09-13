@@ -111,6 +111,9 @@ export interface ProposalRow {
   candidate_rank: number | null;
   candidate_pool_size: number | null;
   batch_index: number | null;
+  ahead_count: number | null;
+  randomness_count: number | null;
+  is_high_randomness: boolean;
 }
 
 export interface CountSpaceStats {

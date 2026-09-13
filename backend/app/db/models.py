@@ -405,6 +405,18 @@ class DutyAssignment(Base):
     candidate_pool_size: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
+    # How many candidates ranked ahead of this soldier by burden (blocked or
+    # not), and how many of those were fully eligible yet not the one picked
+    # ("randomness" -- see algorithm_bridge._explanation_ahead_breakdown).
+    # Denormalized here (same pattern as candidate_rank/candidate_pool_size
+    # above) so the run-results table can flag assignments without joining
+    # AssignmentExplanation per row.
+    ahead_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    randomness_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
     called_up_from: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     called_up_to: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     forced_call_up_multiplier: Mapped[Decimal | None] = mapped_column(

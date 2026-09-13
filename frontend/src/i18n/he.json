@@ -822,7 +822,8 @@
     "explanation_ahead_weapon_ineligible": "{{count}} לא כשירים (נשק/טווח) לתורנות זו בתאריך זה",
     "explanation_ahead_overlap": "{{count}} כבר משובצים לתורנות אחרת באותו מועד",
     "explanation_ahead_randomness": "{{count}} מסיבות אחרות של האלגוריתם — הם עדיין צפויים לקבל תורנויות בהמשך",
-    "explanation_ahead_unavailable": "הפירוט המלא אינו זמין עבור הרצה זו."
+    "explanation_ahead_unavailable": "הפירוט המלא אינו זמין עבור הרצה זו.",
+    "high_randomness_tooltip": "{{randomness}} מתוך {{ahead}} החיילים המדורגים לפני חייל זה לא הוסברו על ידי אילוץ — כדאי לבדוק, לחץ \"למה קיבלתי?\" לפרטים"
   },
   "soldier_profile": {
     "section_title": "פרטי שירות",

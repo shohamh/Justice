@@ -68,6 +68,51 @@ def test_proposals_fast_path_returns_proposals(admin_session):
     assert p.candidate_rank == 1
     assert p.candidate_pool_size == 5
     assert p.reserve_assignment_id is None
+    assert p.is_high_randomness is False
+
+
+def test_proposals_fast_path_flags_high_randomness(admin_session):
+    """An assignment where most of the candidates ranked ahead of it were
+    unexplained (eligible, not blocked, just not picked) is flagged in the
+    run-results proposal list -- same threshold as the per-job admin alert."""
+    from app.routes.algorithm import _proposals_for_job
+
+    dt, loc, dm, job = _setup_job(admin_session, "hr1")
+    soldier = create_soldier(admin_session, personal_number="perf_s_hr1")
+
+    assignment = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 2),
+        status="algorithm_draft", algorithm_job_id=job.id,
+        ahead_count=4, randomness_count=3,  # 75% unexplained > 30% threshold
+    )
+    admin_session.add(assignment)
+    admin_session.commit()
+
+    proposals = _proposals_for_job(admin_session, job)
+    p = proposals[0]
+    assert p.ahead_count == 4
+    assert p.randomness_count == 3
+    assert p.is_high_randomness is True
+
+
+def test_proposals_fast_path_does_not_flag_low_randomness(admin_session):
+    from app.routes.algorithm import _proposals_for_job
+
+    dt, loc, dm, job = _setup_job(admin_session, "lr1")
+    soldier = create_soldier(admin_session, personal_number="perf_s_lr1")
+
+    assignment = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 2),
+        status="algorithm_draft", algorithm_job_id=job.id,
+        ahead_count=4, randomness_count=1,  # 25% unexplained < 30% threshold
+    )
+    admin_session.add(assignment)
+    admin_session.commit()
+
+    proposals = _proposals_for_job(admin_session, job)
+    assert proposals[0].is_high_randomness is False
 
 
 def test_proposals_fast_path_no_audit_log_dependency(admin_session):
@@ -208,6 +253,10 @@ def test_persist_results_sets_job_id_and_scores(admin_session):
     # assigned soldier has pre_effort_score=0.5 → rank 2
     assert da.candidate_rank == 2
     assert da.candidate_pool_size == 2
+    # other_soldier ranks ahead (lower score) and is unblocked -- one
+    # unexplained ("randomness") candidate ahead of the assignee.
+    assert da.ahead_count == 1
+    assert da.randomness_count == 1
 
 
 def test_persist_results_reserve_skips_scores(admin_session):

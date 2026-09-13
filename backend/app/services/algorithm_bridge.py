@@ -810,7 +810,7 @@ def _build_node_parents(
 # the admin error inbox as worth a manual look, since it suggests the
 # solver's ordering is drifting away from a clean lowest-burden-first
 # story for a meaningful share of assignments.
-_HIGH_RANDOMNESS_RATIO_THRESHOLD = 0.3
+HIGH_RANDOMNESS_RATIO_THRESHOLD = 0.3
 
 
 def _explanation_ahead_breakdown(exp: AlgoExplanation) -> dict[str, Any]:
@@ -1030,6 +1030,8 @@ def persist_results(
                 payload = _explanation_payload(exp, dm_view=True, soldier_names=soldier_names)
                 payload["global_before"] = explanation_data.global_metrics_before
                 payload["global_after"] = explanation_data.global_metrics_after
+                da.ahead_count = payload["ahead_count"]
+                da.randomness_count = payload["ahead_breakdown"]["randomness"]
                 total_ahead_count += payload["ahead_count"]
                 total_randomness_count += payload["ahead_breakdown"]["randomness"]
                 session.add(AssignmentExplanation(
@@ -1042,7 +1044,7 @@ def persist_results(
     _pr_phase("pass2 explanations added")
     if total_ahead_count > 0:
         randomness_ratio = total_randomness_count / total_ahead_count
-        if randomness_ratio > _HIGH_RANDOMNESS_RATIO_THRESHOLD:
+        if randomness_ratio > HIGH_RANDOMNESS_RATIO_THRESHOLD:
             _logging.getLogger("backend.errors").error(
                 "Algorithm job has a high rate of unexplained assignment ordering "
                 "(soldiers passed over for a lower-burden peer with no hard-constraint reason)",
