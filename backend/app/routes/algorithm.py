@@ -1,5 +1,6 @@
 import asyncio
 import json as _json
+import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
@@ -32,6 +33,7 @@ from app.services.duty_eligibility_watch import recheck_assignments
 from app.services.score_projection import refresh_projection_for_assignment_change, refresh_projections_for_assignments_bulk
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
+_logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/algorithm", tags=["algorithm"])
 
@@ -789,6 +791,7 @@ def cancel_job(
     from app.services.algorithm_bridge import _cancel_events
     event = _cancel_events.get(str(job_id))
     if event:
+        _logger.warning("[job %s] cancel_event set by user request (actor=%s)", job_id, user.id)
         event.set()
 
 

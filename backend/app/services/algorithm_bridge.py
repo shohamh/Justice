@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import math
 import threading
 import uuid
@@ -50,6 +51,7 @@ from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
 
 _cancel_events: dict[str, threading.Event] = {}
+_logger = logging.getLogger(__name__)
 
 
 def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_seconds: float) -> None:
@@ -67,6 +69,9 @@ def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_sec
 
     if cancel_event.wait(timeout=max_seconds):
         return  # finished normally, or cancelled by the user, before the deadline
+    _logger.warning(
+        "[job %s] watchdog firing cancel_event: no activity within max_seconds=%.1f", job_id, max_seconds,
+    )
     with session_scope() as session:
         job = session.get(AlgorithmJob, job_id)
         if job is not None and job.status == "running":
