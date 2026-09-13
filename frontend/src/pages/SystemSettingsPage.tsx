@@ -11,6 +11,7 @@ import { queryKeys } from "../queryKeys";
 import { useLevelTypes } from "../hooks/useLevelTypes";
 import DateInput from "../components/DateInput";
 import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 
 interface SettingDef {
   key: string;
@@ -514,6 +515,20 @@ export function SystemSettingsContent() {
       : null;
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
+
+  useUnsavedChangesGuard({
+    kind: "page",
+    isDirty,
+    onSave: async () => {
+      try {
+        await saveMutation.mutateAsync(draft);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    onDiscard: () => setDraft(settings),
+  });
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
