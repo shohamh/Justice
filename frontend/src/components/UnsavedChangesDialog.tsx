@@ -36,18 +36,16 @@ export default function UnsavedChangesDialog({ open, saving, error, onSaveAndLea
           <button
             type="button"
             data-testid="unsaved-discard"
-            disabled={saving}
             onClick={onDiscardAndLeave}
-            className="border border-red-300 text-red-700 px-3 py-1.5 rounded text-sm disabled:opacity-50"
+            className="border border-red-300 text-red-700 px-3 py-1.5 rounded text-sm"
           >
             צא בלי לשמור
           </button>
           <button
             type="button"
             data-testid="unsaved-cancel"
-            disabled={saving}
             onClick={onCancel}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:underline disabled:opacity-50"
+            className="text-sm text-gray-500 dark:text-gray-400 hover:underline"
           >
             ביטול
           </button>

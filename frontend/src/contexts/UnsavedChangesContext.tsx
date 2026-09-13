@@ -26,7 +26,6 @@ export interface UnsavedChangesContextValue {
   setGuard: (id: number, handlers: UnsavedChangesGuardHandlers) => void;
   removeGuard: (id: number) => void;
   requestClose: (id: number) => void;
-  getGuards: () => ReadonlyArray<RegisteredGuard>;
 }
 
 export const UnsavedChangesContext = createContext<UnsavedChangesContextValue | null>(null);
@@ -38,11 +37,38 @@ let nextSentinelId = 0;
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const guardsRef = useRef<RegisteredGuard[]>([]);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  // Mirrors `dialog` synchronously in a ref so an async continuation (e.g. a
+  // save promise resolving after the user has already dismissed the dialog
+  // some other way) can check whether it's still the "live" dialog before
+  // acting -- see handleSaveAndLeave.
+  const dialogRef = useRef<DialogState | null>(null);
+  dialogRef.current = dialog;
   const navigate = useNavigate();
 
   const findGuard = useCallback((id: number) => guardsRef.current.find(g => g.id === id) ?? null, []);
 
+  // True whenever at least one "page"-kind guard is currently dirty. This is
+  // the aggregate signal the sentinel-push effect below reacts to; it must
+  // NOT fire just because some unrelated guard (or a modal-kind guard) changed.
+  function anyDirtyPageGuard() {
+    return guardsRef.current.some(g => g.kind === "page" && g.isDirty);
+  }
+
+  // Guard mutations (setGuard/removeGuard) only touch a plain ref, so they
+  // never by themselves trigger a re-render of this provider. Bumping this
+  // tick -- but only when the aggregate anyDirtyPageGuard() boolean actually
+  // flips -- is what makes the provider re-render exactly when page-dirtiness
+  // transitions, so the sentinel-push effect (keyed on this tick) reliably
+  // re-runs. Without this, a page's isDirty flipping true after mount would
+  // never arm the back/forward interception in production.
+  const [pageDirtyTick, setPageDirtyTick] = useState(0);
+  function bumpPageDirtyTickIfChanged(before: boolean) {
+    const after = anyDirtyPageGuard();
+    if (before !== after) setPageDirtyTick(t => t + 1);
+  }
+
   const setGuard = useCallback((id: number, handlers: UnsavedChangesGuardHandlers) => {
+    const before = anyDirtyPageGuard();
     const existing = findGuard(id);
     if (existing) {
       existing.isDirty = handlers.isDirty;
@@ -52,11 +78,16 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     } else {
       guardsRef.current = [...guardsRef.current, { id, ...handlers }];
     }
+    bumpPageDirtyTickIfChanged(before);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [findGuard]);
 
   const removeGuard = useCallback((id: number) => {
+    const before = anyDirtyPageGuard();
     guardsRef.current = guardsRef.current.filter(g => g.id !== id);
     setDialog(current => (current?.guardId === id ? null : current));
+    bumpPageDirtyTickIfChanged(before);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -86,7 +117,16 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
       const anchor = target?.closest("a[href]") as HTMLAnchorElement | null;
       if (!anchor) return;
       if (anchor.target && anchor.target !== "_self") return;
+      // A download link (typically a blob: URL, e.g. the settings-export
+      // feature) is not in-app navigation at all -- let the browser handle
+      // it. blob: URLs report their inner origin as `.origin`, so without
+      // this bail-out they'd pass the same-origin check below and get
+      // wrongly intercepted. Restricting to http(s) protocols is the second
+      // half of that same guard (blob:, data:, mailto:, etc. are never
+      // in-app route navigation either).
+      if (anchor.hasAttribute("download")) return;
       const url = new URL(anchor.href, window.location.href);
+      if (url.protocol !== "http:" && url.protocol !== "https:") return;
       if (url.origin !== window.location.origin) return;
       e.preventDefault();
       const destination = url.pathname + url.search + url.hash;
@@ -106,9 +146,6 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   // mistaken for "we're still on our own current sentinel".
   const sentinelIdRef = useRef<number | null>(null);
 
-  function anyDirtyPageGuard() {
-    return guardsRef.current.some(g => g.kind === "page" && g.isDirty);
-  }
   function activeDirtyPageGuard() {
     const guards = guardsRef.current;
     for (let i = guards.length - 1; i >= 0; i--) {
@@ -119,19 +156,33 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
 
   // Ensures one extra history entry sits on top whenever a page guard is dirty,
   // so the next back-press pops that sentinel (caught below) instead of
-  // leaving the page. Deliberately does not pop the sentinel back off when a
-  // guard becomes clean again -- popping here would itself fire a popstate and
-  // risk interfering with in-flight app navigation. An inert leftover sentinel
-  // is harmless: the next real back-press pops it, handlePopState below sees
-  // nothing is dirty, and lets that pop stand.
+  // leaving the page. Keyed on pageDirtyTick (bumped only when the aggregate
+  // anyDirtyPageGuard() boolean actually flips) so this reliably re-runs
+  // whenever a page's dirtiness transitions -- including well after mount,
+  // which a dependency-less effect firing only on the PROVIDER's own renders
+  // could miss entirely.
+  //
+  // When dirtiness transitions back to clean, we neutralize (rather than
+  // pop) the sentinel via replaceState: popping here would itself fire a
+  // popstate and risk interfering with in-flight app navigation, but leaving
+  // it in place causes a dead first back-press once the page is clean again
+  // (the sentinel silently absorbs it since pushState never changed the
+  // visible URL). replaceState swaps the current entry's state without
+  // firing popstate, so the leftover sentinel is gone and the next
+  // back-press acts on the real underlying history entry.
   useEffect(() => {
-    if (anyDirtyPageGuard() && !sentinelActiveRef.current) {
+    const dirty = anyDirtyPageGuard();
+    if (dirty && !sentinelActiveRef.current) {
       const id = ++nextSentinelId;
       sentinelIdRef.current = id;
       window.history.pushState({ __unsavedGuardSentinel: true, __sentinelId: id }, "");
       sentinelActiveRef.current = true;
+    } else if (!dirty && sentinelActiveRef.current) {
+      window.history.replaceState(null, "");
+      sentinelActiveRef.current = false;
+      sentinelIdRef.current = null;
     }
-  });
+  }, [pageDirtyTick]);
 
   useEffect(() => {
     function handlePopState(e: PopStateEvent) {
@@ -181,14 +232,13 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     setDialog({ guardId: id, saving: false, error: null });
   }, [findGuard]);
 
-  const getGuards = useCallback(() => guardsRef.current, []);
-
-  const contextValue = useMemo(() => ({ setGuard, removeGuard, requestClose, getGuards }), [setGuard, removeGuard, requestClose, getGuards]);
+  const contextValue = useMemo(() => ({ setGuard, removeGuard, requestClose }), [setGuard, removeGuard, requestClose]);
 
   const handleSaveAndLeave = useCallback(async () => {
     if (!dialog) return;
     const guard = findGuard(dialog.guardId);
     if (!guard) { setDialog(null); return; }
+    const dialogAtStart = dialog;
     setDialog(d => (d ? { ...d, saving: true, error: null } : d));
     let ok: boolean;
     try {
@@ -197,9 +247,28 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
       ok = false;
     }
     if (ok) {
-      guard.onDiscard();
-      dialog.onLeave?.();
-      setDialog(null);
+      // The Discard/Cancel buttons stay clickable while a save is in flight
+      // (so a hanging onSave can never lock the user out -- see
+      // UnsavedChangesDialog), so by the time this resolves the user may
+      // have already dismissed this exact dialog some other way. If so,
+      // this stale success must be a no-op: dialogRef mirrors the live
+      // dialog state, so if it no longer points at the dialog we started
+      // with, skip the side effects below rather than double-firing
+      // onDiscard/onLeave or reopening a dialog the user already closed.
+      if (dialogRef.current?.guardId === dialogAtStart.guardId) {
+        // onDiscard runs after BOTH a successful save-and-leave (here) AND a
+        // plain discard-and-leave (handleDiscardAndLeave below) -- for a
+        // page guard, this means onDiscard must be safe to call regardless
+        // of which path led here. The plan's prescribed page-guard pattern
+        // (`onDiscard: () => setDraft(serverSnapshot)`) resets to a
+        // pre-save snapshot even on the save-succeeded path; that's only
+        // correct because every current page-guard consumer navigates away
+        // immediately afterward (via dialog.onLeave below) rather than
+        // staying on the page to observe the stale reset.
+        guard.onDiscard();
+        dialogAtStart.onLeave?.();
+        setDialog(null);
+      }
     } else {
       setDialog(d => (d ? { ...d, saving: false, error: "השמירה נכשלה. נסה שוב." } : d));
     }

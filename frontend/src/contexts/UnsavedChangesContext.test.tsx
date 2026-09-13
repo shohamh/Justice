@@ -135,6 +135,69 @@ describe("UnsavedChangesContext beforeunload", () => {
   });
 });
 
+describe("UnsavedChangesContext dialog buttons stay usable while saving", () => {
+  it("keeps Discard and Cancel enabled (and clicking Discard still works) while a save hangs", async () => {
+    const onDiscard = vi.fn();
+    let resolveSave: (v: boolean) => void = () => {};
+    const onSave = vi.fn(() => new Promise<boolean>(resolve => { resolveSave = resolve; }));
+    render(<MemoryRouter><UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider></MemoryRouter>);
+    fireEvent.click(screen.getByTestId("close"));
+    fireEvent.click(screen.getByTestId("unsaved-save"));
+    await waitFor(() => expect(screen.getByTestId("unsaved-save")).toBeDisabled());
+    expect(screen.getByTestId("unsaved-discard")).not.toBeDisabled();
+    expect(screen.getByTestId("unsaved-cancel")).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("unsaved-discard"));
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // The hung save resolving afterward must not reopen the dialog or double-fire onDiscard.
+    await act(async () => { resolveSave(true); });
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("UnsavedChangesContext download links are not intercepted", () => {
+  function PageWithDownloadLink({ isDirty }: { isDirty: boolean }) {
+    useUnsavedChangesGuard({ kind: "page", isDirty, onSave: vi.fn().mockResolvedValue(true), onDiscard: vi.fn() });
+    return <a href="blob:http://localhost/some-uuid" download="file.json" data-testid="download-link">export</a>;
+  }
+
+  it("lets a dirty page's download link (e.g. blob: export) proceed without opening the dialog", () => {
+    render(
+      <MemoryRouter initialEntries={["/here"]}>
+        <UnsavedChangesProvider>
+          <PageWithDownloadLink isDirty={true} />
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    const link = screen.getByTestId("download-link");
+    // Our document-level capture-phase handler (the code under test) runs
+    // before this listener on the link itself, so if it had intercepted the
+    // click (the bug) the dialog assertion below would already fail. This
+    // listener only exists to stop jsdom's own unsupported blob: navigation
+    // attempt from erroring in this test environment -- it plays no part in
+    // proving whether OUR handler let the click through.
+    link.addEventListener("click", e => e.preventDefault());
+    fireEvent.click(link);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("still intercepts a normal same-origin, non-download link while dirty", () => {
+    render(
+      <MemoryRouter initialEntries={["/here"]}>
+        <UnsavedChangesProvider>
+          <Routes>
+            <Route path="/here" element={<PageWithLink isDirty={true} />} />
+            <Route path="/other" element={<div data-testid="other-page">other</div>} />
+          </Routes>
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("go"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
 describe("UnsavedChangesContext back/forward interception", () => {
   it("cancels a real back-press while a page guard is dirty and shows the dialog", async () => {
     function DirtyPage() {
@@ -153,6 +216,51 @@ describe("UnsavedChangesContext back/forward interception", () => {
     act(() => { window.history.back(); });
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
     expect(screen.getByTestId("dirty-page")).toBeInTheDocument();
+  });
+
+  it("arms interception when a page guard becomes dirty AFTER mount, not only at initial registration", async () => {
+    function PageThatBecomesDirty() {
+      const [dirty, setDirty] = useState(false);
+      useUnsavedChangesGuard({ kind: "page", isDirty: dirty, onSave: vi.fn(), onDiscard: vi.fn() });
+      return <button data-testid="make-dirty" onClick={() => setDirty(true)}>make dirty</button>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/start", "/here"]} initialIndex={1}>
+        <UnsavedChangesProvider>
+          <PageThatBecomesDirty />
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    // Registered clean at mount -- a back-press right now must NOT be intercepted.
+    fireEvent.click(screen.getByTestId("make-dirty"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+  });
+
+  it("neutralizes the dead sentinel once a dirty page guard becomes clean again, so the very next back-press acts immediately", async () => {
+    function PageThatBecomesClean() {
+      const [dirty, setDirty] = useState(true);
+      useUnsavedChangesGuard({ kind: "page", isDirty: dirty, onSave: vi.fn(), onDiscard: vi.fn() });
+      return <button data-testid="make-clean" onClick={() => setDirty(false)}>make clean</button>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/start", "/here"]} initialIndex={1}>
+        <UnsavedChangesProvider>
+          <PageThatBecomesClean />
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(window.history.length).toBeGreaterThan(0));
+    const lengthWithSentinel = window.history.length;
+    fireEvent.click(screen.getByTestId("make-clean"));
+    // The sentinel is neutralized via replaceState (no popstate, no length change)
+    // rather than left as a dead entry a back-press would silently absorb.
+    await waitFor(() => expect(window.history.length).toBe(lengthWithSentinel));
+    act(() => { window.history.back(); });
+    // Nothing dirty and no dialog -- the back-press should stand, i.e. not be
+    // silently swallowed by a leftover sentinel (which would require a second press).
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("a modal-kind guard does not trigger the page back interception", () => {
