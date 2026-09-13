@@ -886,7 +886,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             <select
               multiple
               data-testid="quick-filter-duty-type"
-              className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32"
+              className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32 max-w-64"
               onChange={(e) => selectByDutyTypeIds(Array.from(e.target.selectedOptions, o => o.value))}
             >
               {dutyTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
@@ -898,7 +898,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
               <select
                 multiple
                 data-testid="quick-filter-eligibility-group"
-                className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32"
+                className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-32 max-w-64"
                 onChange={(e) => {
                   const indices = Array.from(e.target.selectedOptions, o => Number(o.value));
                   const ids = indices.flatMap(i => eligibilityGroups[i]?.duty_type_ids ?? []);
