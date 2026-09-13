@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
+import { MemoryRouter, Routes, Route, Link } from "react-router-dom";
 import { UnsavedChangesProvider } from "./UnsavedChangesContext";
 import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 
@@ -12,13 +13,13 @@ function DirtyForm({ onSave, onDiscard }: { onSave: () => Promise<boolean>; onDi
 
 describe("UnsavedChangesContext dialog", () => {
   it("shows nothing when no guard requested a close", () => {
-    render(<UnsavedChangesProvider><div /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><div /></UnsavedChangesProvider></MemoryRouter>);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("discard and leave calls onDiscard and closes the dialog", () => {
     const onDiscard = vi.fn();
-    render(<UnsavedChangesProvider><DirtyForm onSave={vi.fn()} onDiscard={onDiscard} /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><DirtyForm onSave={vi.fn()} onDiscard={onDiscard} /></UnsavedChangesProvider></MemoryRouter>);
     fireEvent.click(screen.getByTestId("close"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("unsaved-discard"));
@@ -29,7 +30,7 @@ describe("UnsavedChangesContext dialog", () => {
   it("cancel closes the dialog without calling onDiscard or onSave", () => {
     const onDiscard = vi.fn();
     const onSave = vi.fn();
-    render(<UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider></MemoryRouter>);
     fireEvent.click(screen.getByTestId("close"));
     fireEvent.click(screen.getByTestId("unsaved-cancel"));
     expect(onDiscard).not.toHaveBeenCalled();
@@ -40,7 +41,7 @@ describe("UnsavedChangesContext dialog", () => {
   it("save and leave calls onSave, then onDiscard once it resolves true", async () => {
     const onDiscard = vi.fn();
     const onSave = vi.fn().mockResolvedValue(true);
-    render(<UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider></MemoryRouter>);
     fireEvent.click(screen.getByTestId("close"));
     fireEvent.click(screen.getByTestId("unsaved-save"));
     await waitFor(() => expect(onDiscard).toHaveBeenCalledTimes(1));
@@ -51,7 +52,7 @@ describe("UnsavedChangesContext dialog", () => {
   it("save and leave shows a retry error and stays open when onSave resolves false", async () => {
     const onDiscard = vi.fn();
     const onSave = vi.fn().mockResolvedValue(false);
-    render(<UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider></MemoryRouter>);
     fireEvent.click(screen.getByTestId("close"));
     fireEvent.click(screen.getByTestId("unsaved-save"));
     await waitFor(() => expect(screen.getByTestId("unsaved-error")).toBeInTheDocument());
@@ -62,7 +63,7 @@ describe("UnsavedChangesContext dialog", () => {
   it("save and leave shows a retry error and re-enables cancel when onSave rejects", async () => {
     const onDiscard = vi.fn();
     const onSave = vi.fn().mockRejectedValue(new Error("network error"));
-    render(<UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><DirtyForm onSave={onSave} onDiscard={onDiscard} /></UnsavedChangesProvider></MemoryRouter>);
     fireEvent.click(screen.getByTestId("close"));
     fireEvent.click(screen.getByTestId("unsaved-save"));
     await waitFor(() => expect(screen.getByTestId("unsaved-error")).toBeInTheDocument());
@@ -72,9 +73,49 @@ describe("UnsavedChangesContext dialog", () => {
   });
 });
 
+function PageWithLink({ isDirty }: { isDirty: boolean }) {
+  useUnsavedChangesGuard({ kind: "page", isDirty, onSave: vi.fn().mockResolvedValue(true), onDiscard: vi.fn() });
+  return <Link to="/other">go</Link>;
+}
+
+describe("UnsavedChangesContext in-app link interception", () => {
+  it("lets navigation proceed immediately when nothing is dirty", () => {
+    render(
+      <MemoryRouter initialEntries={["/here"]}>
+        <UnsavedChangesProvider>
+          <Routes>
+            <Route path="/here" element={<PageWithLink isDirty={false} />} />
+            <Route path="/other" element={<div data-testid="other-page">other</div>} />
+          </Routes>
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("go"));
+    expect(screen.getByTestId("other-page")).toBeInTheDocument();
+  });
+
+  it("intercepts the click and shows the dialog when dirty, navigating only after confirming discard", () => {
+    render(
+      <MemoryRouter initialEntries={["/here"]}>
+        <UnsavedChangesProvider>
+          <Routes>
+            <Route path="/here" element={<PageWithLink isDirty={true} />} />
+            <Route path="/other" element={<div data-testid="other-page">other</div>} />
+          </Routes>
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("go"));
+    expect(screen.queryByTestId("other-page")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("unsaved-discard"));
+    expect(screen.getByTestId("other-page")).toBeInTheDocument();
+  });
+});
+
 describe("UnsavedChangesContext beforeunload", () => {
   it("prevents unload while a guard is dirty", () => {
-    render(<UnsavedChangesProvider><DirtyForm onSave={vi.fn()} onDiscard={vi.fn()} /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><DirtyForm onSave={vi.fn()} onDiscard={vi.fn()} /></UnsavedChangesProvider></MemoryRouter>);
     const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
     const preventDefault = vi.spyOn(event, "preventDefault");
     window.dispatchEvent(event);
@@ -86,7 +127,7 @@ describe("UnsavedChangesContext beforeunload", () => {
       useUnsavedChangesGuard({ kind: "modal", isDirty: false, onSave: vi.fn(), onDiscard: vi.fn() });
       return null;
     }
-    render(<UnsavedChangesProvider><CleanForm /></UnsavedChangesProvider>);
+    render(<MemoryRouter><UnsavedChangesProvider><CleanForm /></UnsavedChangesProvider></MemoryRouter>);
     const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
     const preventDefault = vi.spyOn(event, "preventDefault");
     window.dispatchEvent(event);

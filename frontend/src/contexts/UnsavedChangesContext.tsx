@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import UnsavedChangesDialog from "../components/UnsavedChangesDialog";
 
 export type UnsavedChangesGuardKind = "page" | "modal";
@@ -18,6 +19,7 @@ interface DialogState {
   guardId: number;
   saving: boolean;
   error: string | null;
+  onLeave?: () => void; // extra action after a confirmed discard/save (e.g. navigate); optional for the requestClose path
 }
 
 export interface UnsavedChangesContextValue {
@@ -32,6 +34,7 @@ export const UnsavedChangesContext = createContext<UnsavedChangesContextValue | 
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const guardsRef = useRef<RegisteredGuard[]>([]);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const navigate = useNavigate();
 
   const findGuard = useCallback((id: number) => guardsRef.current.find(g => g.id === id) ?? null, []);
 
@@ -62,6 +65,34 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
+  useEffect(() => {
+    function activeDirtyGuard() {
+      const guards = guardsRef.current;
+      for (let i = guards.length - 1; i >= 0; i--) {
+        if (guards[i].isDirty) return guards[i];
+      }
+      return null;
+    }
+
+    function handleClick(e: MouseEvent) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const guard = activeDirtyGuard();
+      if (!guard) return;
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      if (anchor.target && anchor.target !== "_self") return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      e.preventDefault();
+      const destination = url.pathname + url.search + url.hash;
+      setDialog({ guardId: guard.id, saving: false, error: null, onLeave: () => navigate(destination) });
+    }
+
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, [navigate]);
+
   const requestClose = useCallback((id: number) => {
     const guard = findGuard(id);
     if (!guard) return;
@@ -89,6 +120,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     }
     if (ok) {
       guard.onDiscard();
+      dialog.onLeave?.();
       setDialog(null);
     } else {
       setDialog(d => (d ? { ...d, saving: false, error: "השמירה נכשלה. נסה שוב." } : d));
@@ -99,6 +131,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     if (!dialog) return;
     const guard = findGuard(dialog.guardId);
     guard?.onDiscard();
+    dialog?.onLeave?.();
     setDialog(null);
   }, [dialog, findGuard]);
 

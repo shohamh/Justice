@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { useState } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { UnsavedChangesProvider } from "../contexts/UnsavedChangesContext";
 import { useUnsavedChangesGuard } from "./useUnsavedChangesGuard";
 
@@ -19,9 +20,11 @@ describe("useUnsavedChangesGuard", () => {
   it("discards immediately when not dirty", () => {
     const onDiscard = vi.fn();
     render(
-      <UnsavedChangesProvider>
-        <DirtyPage onSave={vi.fn()} onDiscard={onDiscard} />
-      </UnsavedChangesProvider>,
+      <MemoryRouter>
+        <UnsavedChangesProvider>
+          <DirtyPage onSave={vi.fn()} onDiscard={onDiscard} />
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId("request-close"));
     expect(onDiscard).toHaveBeenCalledTimes(1);
@@ -31,9 +34,11 @@ describe("useUnsavedChangesGuard", () => {
   it("opens the confirmation dialog instead of discarding when dirty", () => {
     const onDiscard = vi.fn();
     render(
-      <UnsavedChangesProvider>
-        <DirtyPage onSave={vi.fn()} onDiscard={onDiscard} />
-      </UnsavedChangesProvider>,
+      <MemoryRouter>
+        <UnsavedChangesProvider>
+          <DirtyPage onSave={vi.fn()} onDiscard={onDiscard} />
+        </UnsavedChangesProvider>
+      </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId("make-dirty"));
     fireEvent.click(screen.getByTestId("request-close"));
