@@ -14,6 +14,50 @@ vi.mock("../api/algorithm", async () => {
 });
 
 describe("ExplanationModal soldier view", () => {
+  it("shows the soldier decision summary before the manager candidate table", async () => {
+    vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
+      duty_id: "d1",
+      assigned_soldier_id: "s1",
+      tiebreaker_note: null,
+      global_before: { min_gap: 2, norm_variance: 0 },
+      global_after: { min_gap: 3, norm_variance: 0 },
+      pool_size: 3,
+      assigned_rank: 2,
+      rank_from_bottom: 2,
+      ahead_count: 1,
+      ahead_breakdown: {
+        personal_constraint: 1, exemption: 0, weapon_ineligible: 0, overlap: 0, randomness: 0,
+      },
+      candidates: [
+        {
+          soldier_id: "s2",
+          soldier_name: "חייל א",
+          blocked: false,
+          blocking_constraints: [],
+          pre_norm_score: 0.1,
+          post_norm_score: 0.1,
+        },
+        {
+          soldier_id: "s1",
+          soldier_name: "חייל ב",
+          blocked: false,
+          blocking_constraints: [],
+          pre_norm_score: 0.2,
+          post_norm_score: 0.2,
+        },
+      ],
+    } as never);
+
+    render(<ExplanationModal assignmentId="manager-a1" onClose={vi.fn()} />);
+
+    const summary = await screen.findByTestId("explanation-decision-summary");
+    const table = screen.getAllByRole("table")[1];
+    expect(summary.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(summary).toHaveTextContent("20.0%");
+  });
+
   it("uses burden-share labels and SoldierLink for every candidate in the full view", async () => {
     vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
       duty_id: "d1",

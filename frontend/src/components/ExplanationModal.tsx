@@ -21,6 +21,15 @@ interface EnrichedSoldierExplanation extends SoldierExplanation {
   ahead_breakdown: AheadBreakdown | null;
 }
 
+interface DecisionSummaryData {
+  score_at_assignment: number | null;
+  eligible_count: number | null;
+  rank_from_bottom: number | null;
+  ahead_count: number | null;
+  ahead_breakdown: AheadBreakdown | null;
+  tiebreaker_note: string | null;
+}
+
 const AHEAD_BREAKDOWN_ORDER: (keyof AheadBreakdown)[] = [
   "personal_constraint", "exemption", "weapon_ineligible", "overlap", "randomness",
 ];
@@ -38,6 +47,85 @@ function isDmExplanation(e: SoldierExplanation | DmExplanation): e is DmExplanat
 
 function isEnriched(e: SoldierExplanation): e is EnrichedSoldierExplanation {
   return "eligible_count" in e;
+}
+
+function getManagerDecisionSummary(data: DmExplanation): DecisionSummaryData {
+  const assignedCandidate = data.candidates.find(
+    (candidate) => candidate.soldier_id === data.assigned_soldier_id && !candidate.blocked,
+  );
+  const rankFromBottom = data.rank_from_bottom ?? data.assigned_rank ?? null;
+
+  return {
+    score_at_assignment: data.score_at_assignment ?? assignedCandidate?.pre_norm_score ?? null,
+    eligible_count: data.eligible_count ?? data.pool_size ?? null,
+    rank_from_bottom: rankFromBottom,
+    ahead_count: data.ahead_count ?? (rankFromBottom == null ? null : rankFromBottom - 1),
+    ahead_breakdown: data.ahead_breakdown ?? null,
+    tiebreaker_note: data.tiebreaker_note,
+  };
+}
+
+function DecisionSummary({ data }: { data: DecisionSummaryData }) {
+  const { t } = useTranslation();
+
+  if (!data.eligible_count) {
+    return (
+      <p className="text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded p-3">
+        {t("algorithm.explanation_manual")}
+      </p>
+    );
+  }
+
+  return (
+    <div data-testid="explanation-decision-summary" className="space-y-4">
+      <div>
+        <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">{t("algorithm.explanation_standing")}</p>
+        <table className="w-full text-xs border-collapse">
+          <tbody>
+            <tr className="border-b dark:border-gray-700">
+              <td className="py-1 text-gray-500 w-40">{t("algorithm.explanation_load")}</td>
+              <td className="py-1 font-medium">
+                {data.score_at_assignment != null
+                  ? (data.score_at_assignment * 100).toFixed(1) + "%"
+                  : "—"}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">
+          {data.rank_from_bottom != null && data.rank_from_bottom > 1
+            ? t("algorithm.explanation_rank_from_bottom", { rank: data.rank_from_bottom })
+            : t("algorithm.explanation_rank_from_bottom_top")}
+        </p>
+        {data.ahead_breakdown == null ? (
+          data.ahead_count != null && data.ahead_count > 0 && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t("algorithm.explanation_ahead_unavailable")}</p>
+          )
+        ) : data.ahead_count != null && data.ahead_count > 0 ? (
+          <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+            <li className="font-medium text-gray-700 dark:text-gray-300">
+              {t("algorithm.explanation_ahead_intro", { count: data.ahead_count })}
+            </li>
+            {AHEAD_BREAKDOWN_ORDER.filter((key) => data.ahead_breakdown![key] > 0).map((key) => (
+              <li key={key} className="flex gap-2">
+                <span className="text-gray-400">•</span>
+                <span>{t(`algorithm.explanation_ahead_${key}`, { count: data.ahead_breakdown![key] })}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      {data.tiebreaker_note && (
+        <p className="text-gray-500 dark:text-gray-400 text-xs">
+          {t("algorithm.explanation_tiebreaker_lowest")}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function ExplanationModal({ jobId, assignmentId, title, onClose }: Props) {
@@ -106,6 +194,7 @@ export default function ExplanationModal({ jobId, assignmentId, title, onClose }
         {/* DM view */}
         {data && data.explanation_available !== false && isDmExplanation(data) && (
           <div className="space-y-4 text-sm">
+            <DecisionSummary data={getManagerDecisionSummary(data)} />
             <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700 p-3 rounded text-xs">
               <p>
                 {t("algorithm.min_gap_before")}: <strong>{data.global_before?.min_gap}</strong>
@@ -162,11 +251,6 @@ export default function ExplanationModal({ jobId, assignmentId, title, onClose }
                 />
               );
             })()}
-            {data.tiebreaker_note && (
-              <p className="text-gray-600 dark:text-gray-400 text-xs">
-                {t("algorithm.explanation_tiebreaker_lowest")}
-              </p>
-            )}
           </div>
         )}
 
@@ -182,59 +266,7 @@ export default function ExplanationModal({ jobId, assignmentId, title, onClose }
             );
           }
 
-          return (
-            <>
-              {/* Standing table */}
-              <div>
-                <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">{t("algorithm.explanation_standing")}</p>
-                <table className="w-full text-xs border-collapse">
-                  <tbody>
-                    <tr className="border-b dark:border-gray-700">
-                      <td className="py-1 text-gray-500 w-40">{t("algorithm.explanation_load")}</td>
-                      <td className="py-1 font-medium">
-                        {enriched.score_at_assignment != null
-                          ? (enriched.score_at_assignment * 100).toFixed(1) + "%"
-                          : "—"}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Rank + aggregate breakdown of who ranks ahead — counts only,
-                  no other soldier's name/id/score is ever shown here. */}
-              <div>
-                <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  {enriched.rank_from_bottom != null && enriched.rank_from_bottom > 1
-                    ? t("algorithm.explanation_rank_from_bottom", { rank: enriched.rank_from_bottom })
-                    : t("algorithm.explanation_rank_from_bottom_top")}
-                </p>
-                {enriched.ahead_breakdown == null ? (
-                  enriched.ahead_count != null && enriched.ahead_count > 0 && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{t("algorithm.explanation_ahead_unavailable")}</p>
-                  )
-                ) : enriched.ahead_count != null && enriched.ahead_count > 0 ? (
-                  <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
-                    <li className="font-medium text-gray-700 dark:text-gray-300">
-                      {t("algorithm.explanation_ahead_intro", { count: enriched.ahead_count })}
-                    </li>
-                    {AHEAD_BREAKDOWN_ORDER.filter((key) => (enriched.ahead_breakdown as AheadBreakdown)[key] > 0).map((key) => (
-                      <li key={key} className="flex gap-2">
-                        <span className="text-gray-400">•</span>
-                        <span>{t(`algorithm.explanation_ahead_${key}`, { count: (enriched.ahead_breakdown as AheadBreakdown)[key] })}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-
-              {enriched.tiebreaker_note && (
-                <p className="text-gray-500 dark:text-gray-400 text-xs">
-                  {t("algorithm.explanation_tiebreaker_lowest")}
-                </p>
-              )}
-            </>
-          );
+          return <DecisionSummary data={enriched} />;
         })()}
       </div>
     </div>
