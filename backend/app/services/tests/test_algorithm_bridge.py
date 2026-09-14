@@ -18,6 +18,7 @@ from app.algorithm.types import (
 from app.db.models import AlgorithmJob, DutyLocation, DutyType, HierarchyNode
 from app.services.algorithm_bridge import (
     _build_node_parents,
+    _count_space_stats,
     _explanation_ahead_breakdown,
     build_hierarchy_maps,
     estimate_max_job_seconds,
@@ -26,6 +27,19 @@ from app.services.algorithm_bridge import (
     resolve_solver_settings,
     serialize_solver_inputs,
 )
+
+
+def test_count_space_stats_exposes_fairness_gap() -> None:
+    s1 = SoldierInput(id=uuid.uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=1)
+    s2 = SoldierInput(id=uuid.uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=1)
+    s1.effort_offset = 100_000_000
+    s2.effort_offset = 400_000_000
+
+    stats = _count_space_stats([s1, s2], [], [], effort_resolution=1_000)
+
+    assert stats["min_gap"] == 300.0
+
+
 from app.services.duty_config import create_duty_type
 from app.services.settings_loader import set_setting
 from app.services.shift_quotas import set_shift_quotas

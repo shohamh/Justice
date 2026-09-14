@@ -150,7 +150,10 @@ def _count_space_stats(
         totals.append(float(offset + weight))
 
     if not totals:
-        return {"cv": None, "mean": None, "stddev": None, "min": None, "max": None, "n": 0}
+        return {
+            "cv": None, "mean": None, "stddev": None,
+            "min": None, "max": None, "min_gap": None, "n": 0,
+        }
     mean = sum(totals) / len(totals)
     variance = sum((t - mean) ** 2 for t in totals) / len(totals)
     stddev = math.sqrt(variance)
@@ -161,6 +164,9 @@ def _count_space_stats(
         "stddev": round(stddev, 2),
         "min": round(min(totals), 2),
         "max": round(max(totals), 2),
+        # The explanation UI calls this the minimum fairness gap: the spread
+        # between the least- and most-loaded soldiers in count space.
+        "min_gap": round(max(totals) - min(totals), 2),
         "n": len(totals),
     }
 

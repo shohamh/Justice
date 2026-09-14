@@ -36,6 +36,29 @@ def test_build_explanations_basic() -> None:
     assert result.solver_seed == 42
 
 
+def test_explanation_burden_share_never_goes_negative() -> None:
+    soldier_id = uuid4()
+    duty_id = uuid4()
+    duty = DutyBlock(
+        id=duty_id, duty_type_id=uuid4(), duty_location_id=uuid4(),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        score_per_day=Decimal("1.00"),
+    )
+    soldier = SoldierInput(
+        id=soldier_id, enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"), active_days=100,
+        effort_offset=-1_000, effort_per_milli=10,
+    )
+
+    result = build_explanations(
+        [soldier], [duty], [Assignment(duty_id=duty_id, soldier_id=soldier_id)], {}, {}, 1,
+    )
+    candidate = result.per_assignment[0].candidates[0]
+
+    assert candidate.pre_effort_score == 0.0
+    assert candidate.post_effort_score >= 0.0
+
+
 def test_explain_overlap_blocking() -> None:
     """Soldier assigned to duty-1 should be blocked (overlap) for duty-2 on overlapping dates."""
     s_a = uuid4()

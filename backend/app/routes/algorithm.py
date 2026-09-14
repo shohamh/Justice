@@ -47,6 +47,13 @@ def _is_high_randomness(ahead_count: int | None, randomness_count: int | None) -
     return (randomness_count or 0) / ahead_count > HIGH_RANDOMNESS_RATIO_THRESHOLD
 
 
+def _non_negative_burden_score(value: Any) -> float | None:
+    """Keep legacy and newly persisted explanation scores display-safe."""
+    if value is None:
+        return None
+    return max(0.0, float(value))
+
+
 def _compute_candidate_rank(
     candidates: list[dict],
     soldier_id: str,
@@ -292,8 +299,8 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                 end_date=a.end_date,
                 status=a.status,
                 reserve_assignment_id=reserve_map.get(a.id),
-                norm_score_before=a.norm_score_before,
-                norm_score_after=a.norm_score_after,
+                norm_score_before=_non_negative_burden_score(a.norm_score_before),
+                norm_score_after=_non_negative_burden_score(a.norm_score_after),
                 duty_shift_id=a.duty_shift_id,
                 candidate_rank=a.candidate_rank,
                 candidate_pool_size=a.candidate_pool_size,
@@ -362,8 +369,8 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
             candidates = payload.get("candidates", [])
             for c in candidates:
                 if c["soldier_id"] == str(a.soldier_id) and not c.get("blocked"):
-                    norm_before = c.get("pre_norm_score")
-                    norm_after = c.get("post_norm_score")
+                    norm_before = _non_negative_burden_score(c.get("pre_norm_score"))
+                    norm_after = _non_negative_burden_score(c.get("post_norm_score"))
                     break
             candidate_rank, candidate_pool_size = _compute_candidate_rank(
                 candidates, str(a.soldier_id), payload=payload

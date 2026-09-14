@@ -51,8 +51,14 @@ def build_explanations(
 
     # Soldier-only, duty-independent — hoisted out of the per-assignment loop
     # below instead of recomputing it up to len(assignments) times per soldier.
+    # A negative manual score adjustment is retained in the accounting data,
+    # but a burden share is a portion of workload and cannot be negative.
+    # Clamp only the explainability value exposed to the UI; the solver still
+    # receives the raw offset and therefore keeps the existing correction
+    # semantics.
     soldier_pre_effort: dict[uuid.UUID, float | None] = {
-        s.id: (s.effort_offset / EFFORT_SCALE if EFFORT_SCALE > 0 else None) for s in soldiers
+        s.id: max(0.0, s.effort_offset / EFFORT_SCALE) if EFFORT_SCALE > 0 else None
+        for s in soldiers
     }
 
     per_assignment: list[AssignmentExplanation] = []
@@ -97,7 +103,7 @@ def build_explanations(
                     float(duty.score_per_day) * ((duty.end_date - duty.start_date).days) * 1000
                 )
                 post_milli = s.effort_offset + s.effort_per_milli * block_milli
-                post_effort = post_milli / EFFORT_SCALE
+                post_effort = max(0.0, post_milli / EFFORT_SCALE)
 
             candidates.append(CandidateInfo(
                 soldier_id=s.id,
