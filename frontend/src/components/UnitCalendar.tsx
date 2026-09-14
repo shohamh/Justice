@@ -83,6 +83,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const canSeeEligibilityBadges = canApprove(user);
   const publicSettings = usePublicSettings();
   const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
+  const publicSettingsReady = publicSettings !== null;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
   const [ranges, setRanges] = useState<RangeEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -112,6 +113,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const nodeIdsKey = effectiveNodeIds.join(",");
 
   const fetchData = useCallback(async (from: string, to: string) => {
+    if (!publicSettingsReady) return;
     if (effectiveNodeIds.length === 0 && !soldierId && !highlightSoldierId) return;
     setLoading(true);
     setError(null);
@@ -162,7 +164,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId, highlightSoldierId, rangesEnabled, t]);
+  }, [nodeIdsKey, soldierId, highlightSoldierId, publicSettingsReady, rangesEnabled, t]);
 
   useEffect(() => {
     dateRangeRef.current = null;

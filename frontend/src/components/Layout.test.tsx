@@ -18,6 +18,9 @@ vi.mock("../auth/AuthContext", () => ({
 vi.mock("../api/publicSettings", () => ({
   getPublicSettings: () => Promise.resolve({}),
 }));
+vi.mock("../hooks/usePublicSettings", () => ({
+  usePublicSettings: () => ({}),
+}));
 vi.mock("./UnifiedNav", () => ({
   default: () => null,
 }));
