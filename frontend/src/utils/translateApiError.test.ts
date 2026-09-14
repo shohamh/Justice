@@ -22,23 +22,23 @@ function axiosError(status: number, headers?: Record<string, string>) {
 
 describe("translateApiError", () => {
   it("translates a known snake_case error code", () => {
-    expect(translateApiError(axiosErrorWithDetail("overlap"), t)).toBe("קיימת חפיפה עם תורנות אחרת");
+    expect(translateApiError(axiosErrorWithDetail("overlap"), t, "שגיאה בבדיקת החפיפה")).toBe("קיימת חפיפה עם תורנות אחרת");
   });
 
   it("translates the prefix of a compound code:payload detail", () => {
-    expect(translateApiError(axiosErrorWithDetail("soldier_not_found:9d2f"), t)).toBe("חייל לא נמצא");
+    expect(translateApiError(axiosErrorWithDetail("soldier_not_found:9d2f"), t, "שגיאה בטעינת החייל")).toBe("חייל לא נמצא");
   });
 
   it("falls back to the given fallback for an unmapped code", () => {
     expect(translateApiError(axiosErrorWithDetail("some_never_seen_code"), t, "ברירת מחדל")).toBe("ברירת מחדל");
   });
 
-  it("falls back to the generic error when no fallback is given and detail is missing", () => {
-    expect(translateApiError({}, t)).toBe("שגיאה");
+  it("uses the action-specific fallback when detail is missing", () => {
+    expect(translateApiError({}, t, "שגיאה בשמירת ההגדרה")).toBe("שגיאה בשמירת ההגדרה");
   });
 
-  it("falls back to the generic error for non-axios errors", () => {
-    expect(translateApiError(new Error("boom"), t)).toBe("שגיאה");
+  it("uses the action-specific fallback for non-axios errors", () => {
+    expect(translateApiError(new Error("boom"), t, "שגיאה במחיקת הרשומה")).toBe("שגיאה במחיקת הרשומה");
   });
 
   it("explains server failures when the API provides no detail", () => {
@@ -46,7 +46,7 @@ describe("translateApiError", () => {
       "errors.generic": "generic",
       "errors.server_error": "server error",
     }[key] ?? key);
-    expect(translateApiError(axiosError(500), tWithServerError)).toBe("server error");
+    expect(translateApiError(axiosError(500), tWithServerError, "שגיאה בטעינת הנתונים")).toBe("server error");
   });
 
   it("surfaces field names for a Pydantic-style list detail instead of the generic fallback", () => {
@@ -83,5 +83,10 @@ describe("translateApiError", () => {
   it("resolves hierarchy transfer errors via the real he.json errors namespace", () => {
     expect(translateApiError(axiosErrorWithDetail("to_node_not_found"), i18n.t.bind(i18n), "fallback")).toBe("יחידת היעד לא נמצאה");
     expect(translateApiError(axiosErrorWithDetail("daily_transfer_request_limit_exceeded"), i18n.t.bind(i18n), "fallback")).toBe("הגעת למכסה היומית של בקשות העברת חיילים");
+  });
+
+  it("resolves duty-type deletion conflicts via the real he.json errors namespace", () => {
+    expect(translateApiError(axiosErrorWithDetail("duty_type_in_use"), i18n.t.bind(i18n), "שגיאה במחיקה"))
+      .toBe("לא ניתן למחוק את סוג התורנות כי הוא עדיין בשימוש במערכת; ניתן להשבית אותו במקום");
   });
 });

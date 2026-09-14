@@ -103,6 +103,7 @@ export interface DutyTypeUsage {
   template_count: number;
   shift_count: number;
   exemption_map_count: number;
+  score_projection_count: number;
 }
 
 export async function getDutyTypeUsage(id: string): Promise<DutyTypeUsage> {

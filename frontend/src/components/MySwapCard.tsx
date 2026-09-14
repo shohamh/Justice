@@ -158,7 +158,7 @@ export function MySwapCard({ swap }: { swap: SwapRequest }) {
       });
       await refresh();
     } catch (err: unknown) {
-      setActionError(translateApiError(err, t, "שגיאה"));
+      setActionError(translateApiError(err, t, "שגיאה בעדכון בקשת ההחלפה"));
     }
   }
 

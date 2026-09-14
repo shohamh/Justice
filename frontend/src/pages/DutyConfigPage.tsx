@@ -157,7 +157,7 @@ export function DutyConfigContent() {
       setDeleteModal(null);
       await refresh();
     } catch (err: unknown) {
-      setDeleteModal(prev => prev ? { ...prev, loading: false, error: translateApiError(err, t, "שגיאה במחיקה") } : null);
+      setDeleteModal(prev => prev ? { ...prev, loading: false, error: translateApiError(err, t, "שגיאה במחיקת סוג התורנות") } : null);
     }
   }
 
@@ -169,7 +169,7 @@ export function DutyConfigContent() {
       setDeleteModal(null);
       await refresh();
     } catch (err: unknown) {
-      setDeleteModal(prev => prev ? { ...prev, loading: false, error: translateApiError(err, t, "שגיאה בהשבתה") } : null);
+      setDeleteModal(prev => prev ? { ...prev, loading: false, error: translateApiError(err, t, "שגיאה בהשבתת סוג התורנות") } : null);
     }
   }
   async function handleDeleteExemptionType(et: ExemptionType) {
@@ -182,7 +182,7 @@ export function DutyConfigContent() {
       if (resp?.status === 409) {
         setEtDisableModal({ et });
       } else {
-        setEtDeleteError(translateApiError(err, t, "שגיאה במחיקה"));
+      setEtDeleteError(translateApiError(err, t, "שגיאה במחיקת סוג הפטור"));
       }
     }
   }
@@ -214,7 +214,7 @@ export function DutyConfigContent() {
         setLocInUse(prev => ({ ...prev, [l.id]: true }));
         setLocDeleteError(`לא ניתן למחוק את "${l.name}" — המיקום בשימוש. ניתן להשבית אותו במקום.`);
       } else {
-        setLocDeleteError(translateApiError(err, t, "שגיאה במחיקה"));
+        setLocDeleteError(translateApiError(err, t, "שגיאה במחיקת מיקום התורנות"));
       }
     }
   }
@@ -262,14 +262,17 @@ export function DutyConfigContent() {
     )}
     {deleteModal && (() => {
       const u = deleteModal.usage;
-      const hasFuture = !!u && (u.future_count > 0 || u.template_count > 0 || u.shift_count > 0);
+      const hasBlockingUsage = !!u && (
+        u.future_count > 0 || u.template_count > 0 || u.shift_count > 0 || u.score_projection_count > 0
+      );
       const hasPast = !!u && u.past_count > 0;
-      const canDelete = !!u && !hasFuture && !hasPast;
-      const pastOnly = hasPast && !hasFuture;
+      const canDelete = !!u && !hasBlockingUsage && !hasPast;
+      const pastOnly = hasPast && !hasBlockingUsage;
       const futureParts: string[] = [];
       if (u && u.future_count > 0) futureParts.push(`${u.future_count} תורנויות עתידיות`);
       if (u && u.shift_count > 0) futureParts.push(`${u.shift_count} משמרות`);
       if (u && u.template_count > 0) futureParts.push(`${u.template_count} תבניות`);
+      if (u && u.score_projection_count > 0) futureParts.push(`${u.score_projection_count} רשומות היסטוריית ניקוד`);
       const exemptionNote = u && u.exemption_map_count > 0
         ? ` (${u.exemption_map_count} מיפויי פטורים יימחקו גם כן)`
         : "";
@@ -289,7 +292,7 @@ export function DutyConfigContent() {
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
                 {canDelete && `לא נמצאו תורנויות, משמרות או תבניות עם סוג זה.${exemptionNote} מחיקה תהיה לצמיתות.`}
                 {pastOnly && <>נמצאו <span className="font-medium">{u.past_count}</span> תורנויות עבר. מחיקה עלולה לפגוע בהיסטוריית הניקוד — מומלץ להשבית במקום.</>}
-                {hasFuture && <>נמצאו {futureParts.join(', ')} עם סוג זה. לא ניתן למחוק. ניתן להשבית את הסוג במקום.</>}
+                {hasBlockingUsage && <>נמצאו {futureParts.join(', ')} עם סוג זה. לא ניתן למחוק. ניתן להשבית את הסוג במקום.</>}
               </p>
             ) : null}
 
@@ -304,7 +307,7 @@ export function DutyConfigContent() {
                   {deleteModal.loading ? "מוחק..." : "מחק"}
                 </button>
               )}
-              {(pastOnly || hasFuture) && (
+              {(pastOnly || hasBlockingUsage) && (
                 <button type="button" onClick={handleDisableDutyType} disabled={deleteModal.loading} className="px-3 py-1 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50">
                   {deleteModal.loading ? "מעדכן..." : "השבת"}
                 </button>

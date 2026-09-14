@@ -24,7 +24,7 @@ export default function LocationFormModal({ onCreated, onClose }: Props) {
       onCreated(loc);
       return true;
     } catch (err: unknown) {
-      setError(translateApiError(err, t, "שגיאה"));
+      setError(translateApiError(err, t, "שגיאה ביצירת מיקום התורנות"));
       return false;
     } finally {
       setSaving(false);

@@ -155,7 +155,7 @@ export default function RangesPage() {
           const detail = reason.response?.data?.detail;
           const errorText = detail === "event_not_planned"
             ? t("ranges.errors.clear_event_not_planned", "לא ניתן לנקות מטווח שכבר התקיים או שאינו מתוכנן")
-            : translateApiError(reason, t, reason.message ?? "שגיאה לא ידועה");
+            : translateApiError(reason, t, reason.message ?? "שגיאה בביצוע פעולת המטווח");
           return [`${clearableSelectedEvents[index].location} (${clearableSelectedEvents[index].date}): ${errorText}`];
         })()
         : []);

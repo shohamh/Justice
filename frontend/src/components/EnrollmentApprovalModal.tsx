@@ -96,7 +96,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
       await approveEnrollment(req.id);
       onDone();
     } catch {
-      setError("שגיאה בשמירה");
+      setError("שגיאה בשמירת פרטי ההרשמה ואישורה");
     } finally {
       setSaving(false);
     }
@@ -110,7 +110,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
       await rejectEnrollment(req.id, rejectNote);
       onDone();
     } catch {
-      setError("שגיאה בדחייה");
+      setError("שגיאה בדחיית ההרשמה");
     } finally {
       setSaving(false);
     }

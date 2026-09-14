@@ -47,7 +47,7 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
       await refresh();
       onChanged();
     } catch (err: unknown) {
-      setMessage(translateApiError(err, t));
+      setMessage(translateApiError(err, t, "שגיאה בהוספת תחום אחריות"));
     } finally {
       setLoading(false);
     }
@@ -59,7 +59,7 @@ export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nod
       await refresh();
       onChanged();
     } catch (err: unknown) {
-      setMessage(translateApiError(err, t));
+      setMessage(translateApiError(err, t, "שגיאה בהסרת תחום האחריות"));
     }
   }
 

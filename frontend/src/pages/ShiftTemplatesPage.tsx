@@ -39,7 +39,7 @@ export function ShiftTemplatesContent() {
       await deleteTemplate(tmpl.id);
       await refresh();
     } catch (err: unknown) {
-      setMessage(translateApiError(err, t, t("common.error", "שגיאה")));
+      setMessage(translateApiError(err, t, "שגיאה במחיקת תבנית התורנות"));
     }
   }
 

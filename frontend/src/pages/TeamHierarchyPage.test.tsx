@@ -166,7 +166,7 @@ describe("TeamHierarchyPage - remove button gating", () => {
     fireEvent.click(await screen.findByTestId(`reset-${soldier.personal_number}`));
     fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
 
-    expect(await screen.findByText("errors.generic")).toBeInTheDocument();
+    expect(await screen.findByText("שגיאה באיפוס סיסמת החייל")).toBeInTheDocument();
     expect(screen.getByTestId("confirm-dialog-confirm")).not.toBeDisabled();
   });
 });

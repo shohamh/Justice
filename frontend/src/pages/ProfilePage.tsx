@@ -32,6 +32,7 @@ import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import MessageDialog from "../components/MessageDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { UNIT_JOIN_DATE_CONFIRMATION } from "../constants/activeDays";
+import { translateApiError } from "../utils/translateApiError";
 
 // Notification types that are never sent to a plain soldier — only to their
 // commander(s), duty managers, or admins (see notify_* call sites in
@@ -285,8 +286,21 @@ export default function ProfilePage() {
     try {
       await submitFieldUpdate(user.id, field, value);
       await queryClient.invalidateQueries({ queryKey: queryKeys.fieldUpdates(user.id) });
-    } catch {
-      // submission failed silently — backend returns error detail
+    } catch (err) {
+      const fieldLabels: Record<string, string> = {
+        gender: "המגדר",
+        rank: "הדרגה",
+        phone: "מספר הטלפון",
+        unit_join_date: "תאריך הכניסה ליחידה",
+        last_mitvahim_date: "תאריך המבחנים האחרון",
+        last_alal_date: "תאריך האל״ל האחרון",
+        mandatory_end_date: "תאריך סיום החובה",
+        discharge_date: "תאריך השחרור",
+        military_driving_license: "רישיון הנהיגה הצבאי",
+        food_type: "סוג המזון",
+        food_constraints: "מגבלות המזון",
+      };
+      setMessage(translateApiError(err, t, "שגיאה בשליחת בקשת עדכון עבור " + (fieldLabels[field] ?? "הפרטים")));
     }
   }
 
@@ -314,8 +328,12 @@ export default function ProfilePage() {
   }
 
   async function handleUnlinkTelegram() {
-    await unlinkTelegram();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.telegramStatus() });
+    try {
+      await unlinkTelegram();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.telegramStatus() });
+    } catch (err) {
+      setMessage(translateApiError(err, t, "שגיאה בניתוק חשבון הטלגרם"));
+    }
   }
 
   function scheduleSyncPrefs() {
@@ -326,6 +344,7 @@ export default function ProfilePage() {
         await updatePreferences(latestPrefsRef.current);
       } catch {
         await prefsQuery.refetch();
+        setMessage("שגיאה בשמירת העדפות ההתראות");
       }
     }, 300);
   }
@@ -365,8 +384,12 @@ export default function ProfilePage() {
   }
 
   async function handleRemoveScope(id: string) {
-    await removeCommanderScope(id);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.commanderScopes() });
+    try {
+      await removeCommanderScope(id);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.commanderScopes() });
+    } catch (err) {
+      setMessage(translateApiError(err, t, "שגיאה בהסרת תחום האחריות"));
+    }
   }
 
   return (

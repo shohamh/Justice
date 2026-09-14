@@ -73,7 +73,7 @@ export default function TeamHierarchyPage() {
         setTempPw(res.temp_password);
         setPn(""); setName(""); setNodeId("");
       } catch {
-        setMessage(t("errors.generic"));
+        setMessage("שגיאה בהוספת החייל למערכת");
       }
     }
     await refresh();
@@ -89,7 +89,7 @@ export default function TeamHierarchyPage() {
       setTempPw(r.temp_password);
       setResetTargetId(null);
     } catch {
-      setMessage(t("errors.generic"));
+      setMessage("שגיאה באיפוס סיסמת החייל");
     } finally {
       setResetting(false);
     }
@@ -144,7 +144,7 @@ export default function TeamHierarchyPage() {
       setPromotionPassword("");
       setPromotionAcknowledged(false);
     } catch (err) {
-      setPromotionError(translateApiError(err, t));
+      setPromotionError(translateApiError(err, t, "שגיאה בהפיכת החייל למנהל מערכת"));
     } finally {
       setPromoting(false);
     }

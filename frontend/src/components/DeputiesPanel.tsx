@@ -73,7 +73,7 @@ export default function DeputiesPanel({ principalId, principalRoles }: Props) {
       setSearchText("");
       await refresh();
     } catch (err) {
-      setError(translateApiError(err, t, t("errors.generic", "שגיאה")));
+      setError(translateApiError(err, t, "שגיאה בעדכון ממלא המקום"));
     }
   }
 

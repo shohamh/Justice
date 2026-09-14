@@ -73,7 +73,7 @@ export default function ExemptionRequestForm({ exemptionTypes, onSubmit, submitD
       setTypeId(""); setStart(""); setEnd(""); setReason("");
       setFiles([]); setSizeErrors([]); setMedical(false); setPermanent(false);
     } catch (err: unknown) {
-      setError(translateApiError(err, t));
+      setError(translateApiError(err, t, "שגיאה בשליחת בקשת הפטור"));
     } finally {
       setSubmitting(false);
     }

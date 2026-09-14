@@ -55,7 +55,7 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
       await assignDmScope(s.id, node.id);
       onChanged();
     } catch (err: unknown) {
-      setMessage(translateApiError(err, t));
+      setMessage(translateApiError(err, t, "שגיאה בהוספת אחראי תורנויות ליחידה"));
     }
   }
 
@@ -64,7 +64,7 @@ export default function AssignDutyManagersDialog({ node, onClose, onChanged }: P
       await removeDmScope(scopeId);
       onChanged();
     } catch (err: unknown) {
-      setMessage(translateApiError(err, t));
+      setMessage(translateApiError(err, t, "שגיאה בהסרת אחראי התורנויות מהיחידה"));
     }
   }
 

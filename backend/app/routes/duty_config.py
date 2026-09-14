@@ -22,6 +22,7 @@ from app.db.models import (
     ExemptionDutyTypeMap,
     ExemptionType,
     RangeType,
+    SoldierQuarterScoreProjection,
     ShiftTemplate,
     Soldier,
 )
@@ -240,6 +241,7 @@ class DutyTypeUsage(BaseModel):
     template_count: int
     shift_count: int
     exemption_map_count: int
+    score_projection_count: int
 
 
 @router.get("/duty-types/{duty_type_id}/usage", response_model=DutyTypeUsage)
@@ -279,7 +281,19 @@ def get_duty_type_usage(
             ExemptionDutyTypeMap.duty_type_id == duty_type_id
         )
     ).scalar_one()
-    return DutyTypeUsage(past_count=past_count, future_count=future_count, template_count=template_count, shift_count=shift_count, exemption_map_count=exemption_map_count)
+    score_projection_count = session.execute(
+        select(func.count(SoldierQuarterScoreProjection.id)).where(
+            SoldierQuarterScoreProjection.duty_type_id == duty_type_id
+        )
+    ).scalar_one()
+    return DutyTypeUsage(
+        past_count=past_count,
+        future_count=future_count,
+        template_count=template_count,
+        shift_count=shift_count,
+        exemption_map_count=exemption_map_count,
+        score_projection_count=score_projection_count,
+    )
 
 
 @router.delete("/duty-types/{duty_type_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -292,25 +306,29 @@ def delete_duty_type(
     if dt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     shift_count = session.execute(
-        select(DutyShift).where(DutyShift.duty_type_id == duty_type_id).limit(1)
+        select(DutyShift).where(
+            DutyShift.duty_type_id == duty_type_id,
+            DutyShift.status != "cancelled",
+        ).limit(1)
     ).scalar_one_or_none()
     assignment_count = session.execute(
-        select(DutyAssignment).where(DutyAssignment.duty_type_id == duty_type_id).limit(1)
+        select(DutyAssignment).where(
+            DutyAssignment.duty_type_id == duty_type_id,
+            DutyAssignment.status != "cancelled",
+        ).limit(1)
     ).scalar_one_or_none()
     template_count = session.execute(
         select(ShiftTemplate).where(ShiftTemplate.duty_type_id == duty_type_id).limit(1)
     ).scalar_one_or_none()
-    if shift_count or assignment_count or template_count:
-        parts = []
-        if shift_count:
-            parts.append("משמרות")
-        if assignment_count:
-            parts.append("שיבוצים")
-        if template_count:
-            parts.append("תבניות")
+    score_projection = session.execute(
+        select(SoldierQuarterScoreProjection.id)
+        .where(SoldierQuarterScoreProjection.duty_type_id == duty_type_id)
+        .limit(1)
+    ).scalar_one_or_none()
+    if shift_count or assignment_count or template_count or score_projection:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"לא ניתן למחוק: קיימים {', '.join(parts)} עם סוג תורנות זה",
+            detail="duty_type_in_use",
         )
     session.delete(dt)
     session.commit()

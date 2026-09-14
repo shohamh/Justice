@@ -54,7 +54,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
       .then((rows) => { if (!cancelled) setPreview(rows); })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(translateApiError(err, t, "שגיאה"));
+          setError(translateApiError(err, t, "שגיאה בחישוב התורנויות שייווצרו"));
         }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -75,7 +75,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
       setPreview(null);
       onGenerated();
     } catch (err: unknown) {
-      setError(translateApiError(err, t, "שגיאה"));
+      setError(translateApiError(err, t, "שגיאה ביצירת התורנויות"));
     } finally {
       setLoading(false);
     }
