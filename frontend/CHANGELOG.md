@@ -2,6 +2,16 @@
 
 ## 2026-09-14
 
+### Fixes
+- Replaced generic action-error messages across the system with specific Hebrew messages that identify the failed operation.
+- Fixed duty-type deletion when score-history records still reference the duty type; the UI now explains the conflict and offers deactivation.
+- Added the missing Hebrew labels for notification settings instead of displaying raw notification IDs.
+
+### Chores
+- Added regression coverage for duty-type usage conflicts, translated API errors, and notification-label parity.
+
+## 2026-09-14
+
 ### Features
 - Added scoped assignment explanations across algorithm results, duty history, upcoming-duty views, and shift details, including burden-share before/after metrics and privacy-preserving soldier links.
 - Added unsaved-changes protection for forms, settings, in-app navigation, browser back/forward, and tab close or refresh.
