@@ -266,7 +266,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       onRefresh();
       onClose();
     } catch (err: unknown) {
-      setProfileError(translateApiError(err, t));
+      setProfileError(translateApiError(err, t, "שגיאה בשמירת פרטי החייל"));
     } finally {
       setSavingProfile(false);
     }
@@ -290,7 +290,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       onRefresh();
       setRankEditing(false);
     } catch (err: unknown) {
-      setProfileError(translateApiError(err, t));
+      setProfileError(translateApiError(err, t, "שגיאה בשמירת פרטי הדרגה"));
     } finally {
       setSavingProfile(false);
     }
@@ -305,7 +305,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       setUnitJoinDateToConfirm(null);
       onRefresh();
     } catch (err) {
-      setProfileError(translateApiError(err, t));
+      setProfileError(translateApiError(err, t, "שגיאה בשליחת בקשת עדכון תאריך הכניסה ליחידה"));
     } finally {
       setSavingProfile(false);
     }
@@ -323,7 +323,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     try {
       await rejectConstraint(id, note);
     } catch {
-      setRejectError(t("errors.generic"));
+      setRejectError("שגיאה בדחיית בקשת עדכון האילוץ");
       setRejectingConstraint(false);
       return;
     }

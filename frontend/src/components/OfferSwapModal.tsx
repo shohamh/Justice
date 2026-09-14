@@ -177,10 +177,10 @@ export default function OfferSwapModal({
         if (capMatch) {
           setError(t("errors.reserve_cap_exceeded", { current: capMatch[1], max: capMatch[2], window: capMatch[3] }));
         } else {
-          setError(translateApiError(err, t, "שגיאה"));
+          setError(translateApiError(err, t, "שגיאה בשליחת הצעת ההחלפה"));
         }
       } else {
-        setError("שגיאה");
+        setError("שגיאה בשליחת הצעת ההחלפה");
       }
     }
   }

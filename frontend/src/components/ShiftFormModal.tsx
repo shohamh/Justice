@@ -154,7 +154,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       const resp = await submitJob({ shift_ids: [existing.id], mode: "shadow", settings });
       setRerunResult(t("shifts.rerun_algorithm_success", { id: resp.id }));
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, t, "שגיאה"));
+      setError(extractErrorMessage(err, t, "שגיאה בהרצת האלגוריתם מחדש"));
     } finally {
       setRerunning(false);
     }
@@ -179,7 +179,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       );
       return true;
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, t, "שגיאה"));
+      setError(extractErrorMessage(err, t, "שגיאה בחישוב חלוקת המשמרת ליחידות"));
       return false;
     } finally {
       setSplitting(false);
@@ -294,7 +294,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       }
       await onSaved();
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, t, "שגיאה"));
+      setError(extractErrorMessage(err, t, existing ? "שגיאה בעדכון המשמרת" : "שגיאה ביצירת המשמרת"));
     }
   }
 

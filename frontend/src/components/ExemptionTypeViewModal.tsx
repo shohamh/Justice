@@ -48,7 +48,7 @@ export default function ExemptionTypeViewModal({
       onSaved(updated, newMapping);
       setEditing(false);
     } catch (err: unknown) {
-      setError(translateApiError(err, t, "שגיאה"));
+      setError(translateApiError(err, t, "שגיאה בעדכון סוג הפטור"));
     } finally {
       setSaving(false);
     }

@@ -316,7 +316,7 @@ export default function MyRequestsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.remainingConstraintDays() });
     } catch (err: unknown) {
-      setError(translateApiError(err, t));
+      setError(translateApiError(err, t, "שגיאה בשליחת בקשת האילוץ"));
     } finally {
       setSubmitting(false);
     }

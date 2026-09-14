@@ -190,7 +190,7 @@ export default function SwapsPage() {
   async function handleSoldierApprove(id: string) {
     try { await soldierApproveSwap(id); await refreshSwapData(); }
     catch (err: unknown) {
-      setSwapActionError(translateApiError(err, t, "שגיאה"));
+      setSwapActionError(translateApiError(err, t, "שגיאה באישור ההחלפה"));
     }
   }
   async function handleSoldierReject(id: string) {
@@ -199,7 +199,7 @@ export default function SwapsPage() {
       setSwapRejectNote((prev) => { const next = { ...prev }; delete next[id]; return next; });
       await refreshSwapData();
     } catch (err: unknown) {
-      setSwapActionError(translateApiError(err, t, "שגיאה"));
+      setSwapActionError(translateApiError(err, t, "שגיאה בדחיית ההחלפה"));
     }
   }
 

@@ -114,7 +114,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
       setPreview(null);
       onDeleted();
     } catch {
-      setError("שגיאה במחיקה");
+      setError("שגיאה במחיקת המשמרות והשיבוצים");
     } finally {
       setBusy(null);
     }

@@ -139,7 +139,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
       }
       onSaved(dt);
     } catch (err: unknown) {
-      setError(translateApiError(err, t, "שגיאה"));
+      setError(translateApiError(err, t, initial ? "שגיאה בעדכון סוג התורנות" : "שגיאה ביצירת סוג התורנות"));
     } finally {
       setSaving(false);
     }

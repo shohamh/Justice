@@ -14,6 +14,7 @@ import { lastDutyDay } from "../utils/formatDate";
 import ConfirmDialog from "../components/ConfirmDialog";
 import InputDialog from "../components/InputDialog";
 import Tooltip from "../components/Tooltip";
+import { translateApiError } from "../utils/translateApiError";
 
 export function DutyManagementContent() {
   const { t } = useTranslation();
@@ -35,6 +36,7 @@ export function DutyManagementContent() {
   const [cancelDraftsMsg, setCancelDraftsMsg] = useState<string | null>(null);
   const [cancelPublishedLoading, setCancelPublishedLoading] = useState(false);
   const [cancelPublishedMsg, setCancelPublishedMsg] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const draftsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -69,19 +71,31 @@ export function DutyManagementContent() {
   }, []);
 
   async function doCancel(id: string, reason: string) {
-    await cancelAssignment(id, reason);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
+    try {
+      await cancelAssignment(id, reason);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
+    } catch (err) {
+      setActionError(translateApiError(err, t, "שגיאה בביטול התורנות"));
+    }
   }
 
   async function doOverride(id: string, day: string, repl: string) {
-    await setOverride(id, day, { effective_soldier_id: repl || null, reason: repl ? "replacement" : "cancelled" });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
+    try {
+      await setOverride(id, day, { effective_soldier_id: repl || null, reason: repl ? "replacement" : "cancelled" });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
+    } catch (err) {
+      setActionError(translateApiError(err, t, "שגיאה בעדכון החרגת התורנות"));
+    }
   }
 
   async function submitAdj(e: FormEvent) {
     e.preventDefault();
-    await createAdjustment({ soldier_id: soldierId, delta: adjDelta, reason: adjReason });
-    setAdjDelta(""); setAdjReason("");
+    try {
+      await createAdjustment({ soldier_id: soldierId, delta: adjDelta, reason: adjReason });
+      setAdjDelta(""); setAdjReason("");
+    } catch (err) {
+      setActionError(translateApiError(err, t, "שגיאה בשמירת התאמת הניקוד"));
+    }
   }
 
   async function handleCancelDrafts() {
@@ -98,7 +112,7 @@ export function DutyManagementContent() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.draftsPreview() });
       setDraftsExpanded(false);
     } catch {
-      setCancelDraftsMsg(t("errors.generic"));
+      setCancelDraftsMsg("שגיאה בביטול טיוטות התורנויות");
       draftsTimerRef.current = setTimeout(() => setCancelDraftsMsg(null), 5000);
     } finally {
       setCancelDraftsLoading(false);
@@ -118,7 +132,7 @@ export function DutyManagementContent() {
       publishedTimerRef.current = setTimeout(() => setCancelPublishedMsg(null), 5000);
       await queryClient.invalidateQueries({ queryKey: queryKeys.draftsPreview() });
     } catch {
-      setCancelPublishedMsg(t("errors.generic"));
+      setCancelPublishedMsg("שגיאה בביטול התורנויות שפורסמו");
       publishedTimerRef.current = setTimeout(() => setCancelPublishedMsg(null), 5000);
     } finally {
       setCancelPublishedLoading(false);
@@ -127,6 +141,7 @@ export function DutyManagementContent() {
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6" data-testid="duty-management-page">
+      {actionError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{actionError}</p>}
       <h2 className="text-xl font-semibold">{t("duty_management.title")}</h2>
 
       <div className="block text-sm">

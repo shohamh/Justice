@@ -45,9 +45,9 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
         setError(detail.slice("cover_not_eligible:".length));
       } else if (detail?.startsWith("cover_blocked:")) {
         const reason = detail.slice("cover_blocked:".length);
-        setError(t(`cover_blocked.${reason}`, { defaultValue: translateApiError(err, t, "שגיאה") }));
+        setError(t(`cover_blocked.${reason}`, { defaultValue: translateApiError(err, t, "שגיאה בבדיקת אפשרות הכיסוי" ) }));
       } else {
-        setError(translateApiError(err, t, "שגיאה"));
+        setError(translateApiError(err, t, "שגיאה בשליחת הצעת הכיסוי"));
       }
     }
   }

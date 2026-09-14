@@ -165,7 +165,7 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
         }
       }
     } catch (err: unknown) {
-      setError(translateApiError(err, t));
+      setError(translateApiError(err, t, "שגיאה בשליחת תגובת הדיווח"));
     } finally {
       setSending(false);
     }
@@ -202,7 +202,7 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {commentsQuery.isLoading && <p className="text-sm text-gray-500">{t("app.loading")}</p>}
         {commentsQuery.isError && (
-          <p className="text-sm text-red-500">{translateApiError(commentsQuery.error, t)}</p>
+          <p className="text-sm text-red-500">{translateApiError(commentsQuery.error, t, "שגיאה בטעינת תגובות הדיווח")}</p>
         )}
         {!commentsQuery.isLoading && comments.length === 0 && (
           <p className="text-sm text-gray-500">{t("bug_reports.no_comments")}</p>

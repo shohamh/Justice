@@ -27,7 +27,7 @@ export default function ReasonPromptModal({ title, description, variant = "defau
     try {
       await onConfirm(reason.trim());
     } catch (err: unknown) {
-      setError(translateApiError(err, t, "שגיאה"));
+      setError(translateApiError(err, t, "שגיאה בשמירת הסיבה"));
       setSubmitting(false);
     }
   }
