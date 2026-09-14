@@ -30,6 +30,8 @@ export default function DutyHistoryWidget({
   burdenShare, burdenShareBreakdown, soldierName,
 }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [hoveredBurdenDot, setHoveredBurdenDot] = useState<{ value: number; position: number; isMine: boolean } | null>(null);
+  const [selectedBurdenDot, setSelectedBurdenDot] = useState<{ value: number; position: number; isMine: boolean } | null>(null);
   const [breakdownModalOpen, setBreakdownModalOpen] = useState(false);
   const [activeDaysHelpOpen, setActiveDaysHelpOpen] = useState(false);
   const today = todayIso();
@@ -130,6 +132,8 @@ export default function DutyHistoryWidget({
                 {peers.map((v, i) => {
                   const fraction = (v - min) / range;
                   const isMine = v === myScore;
+                  const position = peers.length - i;
+                  const dot = { value: v, position, isMine };
                   return (
                     <div
                       key={i}
@@ -138,9 +142,22 @@ export default function DutyHistoryWidget({
                         isMine ? "w-3 h-3 bg-indigo-600 ring-2 ring-white dark:ring-gray-800 z-10" : "w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500"
                       }`}
                       style={{ left: `calc(6px + ${fraction} * (100% - 12px))` }}
+                      onMouseEnter={() => setHoveredBurdenDot(dot)}
+                      onMouseLeave={() => setHoveredBurdenDot(null)}
+                      onClick={() => setSelectedBurdenDot((current) => current?.position === position && current.value === v ? null : dot)}
                     />
                   );
                 })}
+                {(hoveredBurdenDot ?? selectedBurdenDot) && (
+                  <div
+                    role="status"
+                    className="absolute bottom-full mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow"
+                    style={{ left: `calc(6px + ${(((hoveredBurdenDot ?? selectedBurdenDot)!.value - min) / range)} * (100% - 12px))` }}
+                  >
+                    {(hoveredBurdenDot ?? selectedBurdenDot)!.isMine && <span>שלי · </span>}
+                    {((hoveredBurdenDot ?? selectedBurdenDot)!.value * 100).toFixed(1)}% · מקום {(hoveredBurdenDot ?? selectedBurdenDot)!.position} מתוך {peers.length}
+                  </div>
+                )}
               </div>
               {burdenShare.mean != null && (
                 <p className="text-xs text-gray-400 mt-1">

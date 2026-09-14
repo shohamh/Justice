@@ -15,6 +15,8 @@ import { useAuth } from "../auth/AuthContext";
 import { formatDate, formatDateTimeIsrael, lastDutyDay, todayIso } from "../utils/formatDate";
 import InputDialog from "./InputDialog";
 import MessageDialog from "./MessageDialog";
+import ExplanationModal from "./ExplanationModal";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 
 // Only "assignment"/"cancellation" events carry DutyAssignment's exclusive end_date;
 // every other event type (dismissal, call_up, exemption, constraint) is already inclusive.
@@ -122,6 +124,7 @@ interface Props {
   soldierId: string;
   soldierName?: string;
   canManage: boolean;
+  canViewExplanations?: boolean;
   isActive: boolean;
   initialTypes?: string[];
 }
@@ -143,6 +146,9 @@ function EventCard({
   onAcceptDraft,
   onRejectDraft,
   dutyType,
+  showExplanations,
+  canViewExplanations,
+  whyLabel,
   t,
 }: {
   e: TimelineEvent;
@@ -161,8 +167,12 @@ function EventCard({
   onAcceptDraft?: (id: string) => void;
   onRejectDraft?: (id: string) => void;
   dutyType?: DutyType | null;
+  showExplanations: boolean;
+  canViewExplanations: boolean;
+  whyLabel: string;
   t: (key: string) => string;
 }) {
+  const [explanationOpen, setExplanationOpen] = useState(false);
   const colorClass = TYPE_COLORS[e.event_type] ?? "border-gray-300 bg-gray-50 dark:bg-gray-800";
   const dotColor = DOT_COLORS[e.event_type] ?? "bg-gray-400";
   const badgeClass = e.status ? (STATUS_BADGE[e.status] ?? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300") : null;
@@ -226,6 +236,16 @@ function EventCard({
                 </span>
               )}
             </div>
+            {e.event_type === "assignment" && e.metadata.is_reserve !== "true" && (showExplanations || canViewExplanations) && (
+              <button
+                type="button"
+                data-testid={`why-assignment-${e.id}`}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1"
+                onClick={(ev) => { ev.stopPropagation(); setExplanationOpen(true); }}
+              >
+                {whyLabel}
+              </button>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             {e.status === "algorithm_draft" && (
@@ -426,6 +446,9 @@ function EventCard({
             )}
           </div>
         )}
+        {explanationOpen && (
+          <ExplanationModal assignmentId={e.id} title={whyLabel} onClose={() => setExplanationOpen(false)} />
+        )}
       </div>
     </div>
   );
@@ -447,6 +470,9 @@ function Timeline({
   onAcceptDraft,
   onRejectDraft,
   dutyTypeById,
+  showExplanations,
+  canViewExplanations,
+  whyLabel,
   t,
 }: {
   events: TimelineEvent[];
@@ -464,6 +490,9 @@ function Timeline({
   onAcceptDraft?: (id: string) => void;
   onRejectDraft?: (id: string) => void;
   dutyTypeById: Record<string, DutyType>;
+  showExplanations: boolean;
+  canViewExplanations: boolean;
+  whyLabel: string;
   t: (key: string) => string;
 }) {
   return (
@@ -489,6 +518,9 @@ function Timeline({
             onAcceptDraft={onAcceptDraft}
             onRejectDraft={onRejectDraft}
             dutyType={e.metadata.duty_type_id ? (dutyTypeById[e.metadata.duty_type_id] ?? null) : null}
+            showExplanations={showExplanations}
+            canViewExplanations={canViewExplanations}
+            whyLabel={whyLabel}
             t={t}
           />
         ))}
@@ -497,9 +529,11 @@ function Timeline({
   );
 }
 
-export default function DutyHistoryPanel({ soldierId, soldierName, canManage, isActive, initialTypes }: Props) {
+export default function DutyHistoryPanel({ soldierId, soldierName, canManage, canViewExplanations = false, isActive, initialTypes }: Props) {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const publicSettings = usePublicSettings();
+  const showExplanations = publicSettings?.["algorithm.show_explanations_to_soldiers"] !== false;
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -731,6 +765,9 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     onAcceptDraft: handleAcceptDraft,
     onRejectDraft: handleRejectDraft,
     dutyTypeById,
+    showExplanations,
+    canViewExplanations,
+    whyLabel: t(isOtherSoldier ? "algorithm.why_received_other" : "algorithm.why_button"),
     t,
   };
 

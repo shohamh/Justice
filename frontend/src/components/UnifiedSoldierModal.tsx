@@ -893,6 +893,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             soldierId={soldier.id}
             soldierName={soldier.full_name}
             canManage={canManage}
+            canViewExplanations={canViewAll}
             isActive={tab === "duty_history"}
             initialTypes={initialHistoryTypes}
           />

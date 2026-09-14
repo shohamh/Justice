@@ -22,6 +22,10 @@ vi.mock("../../hooks/useModalBackClose", () => ({
   useModalBackClose: () => {},
 }));
 
+vi.mock("../ExplanationModal", () => ({
+  default: ({ title }: { title?: string }) => <div data-testid="explanation-modal">{title}</div>,
+}));
+
 // ShiftDetailPanel is only shown after clicking "פרטי משמרת"; it has its own
 // heavy set of dependencies, so it's stubbed out here to keep this test
 // focused on DutyDetailModal's own header rendering.
@@ -89,6 +93,20 @@ describe("DutyDetailModal holiday badge", () => {
   beforeEach(() => {
     vi.mocked(listDutyTypes).mockReset().mockResolvedValue([]);
     vi.mocked(getCalendarShift).mockReset();
+  });
+
+  it("shows an explanation action for every soldier on the shift", async () => {
+    vi.mocked(getCalendarShift).mockResolvedValue(makeShift({
+      assignees: [
+        { ...makeShift().assignees[0], assignment_id: "asg-other", soldier_id: "sol-other", soldier_name: "חייל אחר", is_reserve: false },
+      ],
+    }));
+
+    render(
+      <DutyDetailModal duty={duty} typeNames={typeNames} locationNames={locationNames} onClose={() => {}} />
+    );
+
+    expect(await screen.findByTestId("why-assignment-asg-other")).toHaveTextContent("למה קיבל/ה?");
   });
 
   it("shows a holiday badge once the shift crosses a holiday", async () => {

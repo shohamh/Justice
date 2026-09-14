@@ -63,6 +63,10 @@ vi.mock("../hooks/useModalBackClose", () => ({
   useModalBackClose: () => {},
 }));
 
+vi.mock("./ExplanationModal", () => ({
+  default: ({ title }: { title?: string }) => <div data-testid="explanation-modal">{title}</div>,
+}));
+
 vi.mock("../api/dutyConfig", () => ({
   listDutyTypes: vi.fn().mockResolvedValue([
     {
@@ -199,6 +203,12 @@ describe("UpcomingSnapshot grouping", () => {
     renderWithRouter();
     fireEvent.click(screen.getByText("דני כהן"));
     expect(mockOpenSoldierModal).toHaveBeenCalledWith("sol-1");
+  });
+
+  it("shows an explanation action on each in-scope soldier", () => {
+    renderWithRouter();
+    expect(screen.getByTestId("why-assignment-asg-1")).toHaveTextContent("algorithm.why_received_other");
+    expect(screen.getByTestId("why-assignment-asg-2")).toHaveTextContent("algorithm.why_received_other");
   });
 
   it("clicking the duty header opens the duty details modal directly", async () => {
