@@ -5,12 +5,41 @@ import ExplanationModal from "./ExplanationModal";
 import * as algorithmApi from "../api/algorithm";
 
 vi.mock("../hooks/useModalBackClose", () => ({ useModalBackClose: vi.fn() }));
+vi.mock("./SoldierLink", () => ({
+  default: ({ id, name }: { id: string; name: string }) => <span data-testid={`soldier-link-${id}`}>{name}</span>,
+}));
 vi.mock("../api/algorithm", async () => {
   const actual = await vi.importActual<typeof import("../api/algorithm")>("../api/algorithm");
   return { ...actual, getExplanationByAssignment: vi.fn(), getExplanation: vi.fn() };
 });
 
 describe("ExplanationModal soldier view", () => {
+  it("uses burden-share labels and SoldierLink for every candidate in the full view", async () => {
+    vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
+      duty_id: "d1",
+      assigned_soldier_id: "s1",
+      tiebreaker_note: null,
+      candidates: [{
+        soldier_id: "s2",
+        soldier_name: "חיילת ב",
+        blocked: false,
+        blocking_constraints: [],
+        pre_norm_score: 0.12,
+        post_norm_score: 0.18,
+      }],
+      global_before: {},
+      global_after: {},
+    });
+
+    render(<ExplanationModal assignmentId="full-a1" onClose={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTestId("soldier-link-s2")).toBeInTheDocument());
+    expect(screen.getByText("חלק בנטל לפני")).toBeInTheDocument();
+    expect(screen.getByText("חלק בנטל אחרי")).toBeInTheDocument();
+    expect(screen.queryByText("ניקוד מנורמל לפני")).not.toBeInTheDocument();
+    expect(screen.queryByText("ניקוד מנורמל אחרי")).not.toBeInTheDocument();
+  });
+
   it("renders the aggregate breakdown by reason, with counts only", async () => {
     vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
       assigned: true,

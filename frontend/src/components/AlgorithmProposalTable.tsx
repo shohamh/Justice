@@ -251,9 +251,11 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
                 <button type="button" onClick={() => handleReject(p)} className="text-red-700 hover:underline">{t("algorithm.reject")}</button>{" "}
               </>
             )}
-            <button type="button" onClick={() => setExplanationTarget({ jobId, assignmentId: p.assignment_id })} className="text-blue-600 dark:text-blue-400 hover:underline">
-              {t("algorithm.why_button")}
-            </button>
+            {!p.is_reserve && (
+              <button type="button" onClick={() => setExplanationTarget({ jobId, assignmentId: p.assignment_id })} className="text-blue-600 dark:text-blue-400 hover:underline">
+                {t("algorithm.why_received_other")}
+              </button>
+            )}
           </span>
         );
       },
@@ -355,6 +357,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
         <ExplanationModal
           jobId={explanationTarget.jobId}
           assignmentId={explanationTarget.assignmentId}
+          title={t("algorithm.why_received_other")}
           onClose={() => setExplanationTarget(null)}
         />
       )}

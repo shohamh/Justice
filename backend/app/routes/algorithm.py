@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.authz import Action, authorize, is_duty_manager
+from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
 from app.db.models import (
     AlgorithmJob,
@@ -29,6 +29,7 @@ from app.db.models import (
 from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services.algorithm_bridge import HIGH_RANDOMNESS_RATIO_THRESHOLD, analyze_shift_availability, run_algorithm_job
+from app.services.authority import can_view_soldier_scope
 from app.services.duty_eligibility_watch import recheck_assignments
 from app.services.score_projection import refresh_projection_for_assignment_change, refresh_projections_for_assignments_bulk
 
@@ -131,6 +132,7 @@ class ProposalOut(BaseModel):
     ahead_count: int | None = None
     randomness_count: int | None = None
     is_high_randomness: bool = False
+    is_reserve: bool = False
 
 
 class JobOut(BaseModel):
@@ -308,6 +310,7 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                 ahead_count=a.ahead_count,
                 randomness_count=a.randomness_count,
                 is_high_randomness=_is_high_randomness(a.ahead_count, a.randomness_count),
+                is_reserve=a.is_reserve,
             )
             for a in fast_rows
         ]
@@ -397,6 +400,7 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                 ahead_count=ahead_count,
                 randomness_count=randomness_count,
                 is_high_randomness=_is_high_randomness(ahead_count, randomness_count),
+                is_reserve=a.is_reserve,
             )
         )
     return proposals
@@ -406,9 +410,16 @@ def _explanation_response(
     session: Session, assignment: DutyAssignment, user: Soldier
 ) -> dict[str, Any]:
     """Build the explanation response dict, redacted for soldiers."""
-    is_dm = user.role == "admin" or is_duty_manager(session, user.id)
     is_assignee = assignment.soldier_id == user.id
-    if not is_dm and not is_assignee:
+    assignee = session.get(Soldier, assignment.soldier_id)
+    target_node = None
+    if assignee and assignee.hierarchy_node_id:
+        from app.db.models import HierarchyNode
+        target_node = session.get(HierarchyNode, assignee.hierarchy_node_id)
+    is_scoped_manager = user.role == "admin" or (
+        not is_assignee and can_view_soldier_scope(session, user, target_node)
+    )
+    if not is_scoped_manager and not is_assignee:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     exp = session.execute(
@@ -416,11 +427,8 @@ def _explanation_response(
             AssignmentExplanation.duty_assignment_id == assignment.id
         )
     ).scalar_one_or_none()
-    if exp is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
     # Build context block included in every response variant
-    assignee = session.get(Soldier, assignment.soldier_id)
     duty_type = session.get(DutyType, assignment.duty_type_id)
     assignment_context = {
         "soldier_name": assignee.full_name if assignee else str(assignment.soldier_id)[:8],
@@ -429,9 +437,41 @@ def _explanation_response(
         "end_date": assignment.end_date.isoformat() if assignment.end_date else assignment.start_date.isoformat(),
     }
 
+    if exp is None:
+        unavailable = {
+            "assigned": True,
+            "explanation_available": False,
+            "assignment_context": assignment_context,
+        }
+        if is_scoped_manager and not is_assignee:
+            return {
+                **unavailable,
+                "duty_id": str(assignment.duty_shift_id) if assignment.duty_shift_id else str(assignment.id),
+                "assigned_soldier_id": str(assignment.soldier_id),
+                "tiebreaker_note": None,
+                "candidates": [],
+                "global_before": {},
+                "global_after": {},
+            }
+        return unavailable
+
     payload = exp.payload
-    if is_dm:
-        return {**payload, "assignment_context": assignment_context}
+    if is_scoped_manager and not is_assignee:
+        # Older jobs may contain negative pre/post scores from a negative
+        # manual adjustment. Keep those records readable after the fix too.
+        safe_payload = {
+            **payload,
+            "candidates": [
+                {
+                    **candidate,
+                    "pre_norm_score": _non_negative_burden_score(candidate.get("pre_norm_score")),
+                    "post_norm_score": _non_negative_burden_score(candidate.get("post_norm_score")),
+                }
+                for candidate in payload.get("candidates", [])
+            ],
+            "assignment_context": assignment_context,
+        }
+        return safe_payload
 
     # Soldier-redacted view: aggregate, name-free counts only. No other
     # soldier's name, id, or score is ever included here -- see
@@ -461,8 +501,8 @@ def _explanation_response(
     my_score = _score(my_candidate) if my_candidate else None
     return {
         "assigned": True,
-        "norm_score_before": my_score,
-        "norm_score_after": my_candidate.get("post_norm_score") if my_candidate else None,
+        "norm_score_before": _non_negative_burden_score(my_score),
+        "norm_score_after": _non_negative_burden_score(my_candidate.get("post_norm_score")) if my_candidate else None,
         "blocked_count": blocked_count,
         "tiebreaker_note": payload.get("tiebreaker_note"),
         "global_before": payload.get("global_before", {}),

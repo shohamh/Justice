@@ -88,6 +88,18 @@ describe("AlgorithmPage - job list load error", () => {
     expect(await screen.findByText("algorithm.no_runs")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("renders planning dates in Israeli before-date-after-date order", async () => {
+    vi.mocked(algorithmApi.listJobs).mockResolvedValue({
+      items: [{ ...job, planning_start: "2026-11-12", planning_end: "2026-07-02" }],
+      total: 1,
+    });
+
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: /02\.07\.2026.*12\.11\.2026/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /2026-11-12.*2026-07-02/ })).not.toBeInTheDocument();
+  });
 });
 
 describe("AlgorithmPage - selected job load error", () => {
@@ -97,7 +109,7 @@ describe("AlgorithmPage - selected job load error", () => {
 
     renderPage();
 
-    const jobButton = await screen.findByText(/2026-01-01/);
+    const jobButton = await screen.findByText(/01\.01\.2026/);
     fireEvent.click(jobButton);
 
     await waitFor(() => {

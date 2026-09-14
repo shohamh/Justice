@@ -20,6 +20,7 @@ _PUBLIC_KEYS = {
     "shifts.auto_split_node_quotas",
     "telegram.enabled",
     "forced_callup.enabled",
+    "algorithm.show_explanations_to_soldiers",
 }
 
 

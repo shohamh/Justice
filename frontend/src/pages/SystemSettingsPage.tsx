@@ -201,6 +201,13 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
     label: "אלגוריתם — הוגנות",
     settings: [
+      {
+        key: "algorithm.show_explanations_to_soldiers",
+        label: "הצגת למה קיבלתי לחיילים",
+        description: "האם להציג לחיילים את פירוט הסיבות לשיבוץ שלהם בתורנויות.",
+        type: "boolean" as const,
+        defaultValue: true,
+      },
       { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לרזרבה", description: "משקל קרבה היררכית בבחירת חיילי רזרבה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
       {
         key: "fairness.reset_date",
