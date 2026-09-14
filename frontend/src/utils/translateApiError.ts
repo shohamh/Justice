@@ -38,8 +38,8 @@ function extractStatus(err: unknown): number | undefined {
   return undefined;
 }
 
-export function translateApiError(err: unknown, t: TFn, fallback?: string): string {
-  const fallbackText = fallback ?? t("errors.generic");
+export function translateApiError(err: unknown, t: TFn, fallback: string): string {
+  const fallbackText = fallback;
   const detail = extractDetail(err);
   if (!detail) {
     const status = extractStatus(err);

@@ -646,7 +646,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
       }
       await load();
     } catch {
-      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
+      setMessage("שגיאה באישור בקשת הפטור");
     }
   }
 
@@ -655,7 +655,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
       await rejectExemptionRequest(id, note);
       await load();
     } catch {
-      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
+      setMessage("שגיאה בדחיית בקשת הפטור");
     }
   }
 
@@ -664,7 +664,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
       await approveConstraint(id);
       await load();
     } catch {
-      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
+      setMessage("שגיאה באישור האילוץ");
     }
   }
 
@@ -673,7 +673,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
       await rejectConstraint(id, note);
       await load();
     } catch {
-      setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
+      setMessage("שגיאה בדחיית האילוץ");
     }
   }
 
@@ -686,7 +686,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
       if (httpStatus === 409) {
         await load();
       } else {
-        setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
+        setMessage("שגיאה באישור הצעת השיבוץ");
       }
     }
   }
@@ -700,7 +700,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
       if (httpStatus === 409) {
         await load();
       } else {
-        setMessage(t("duty_history.operation_error", "שגיאה בביצוע הפעולה"));
+        setMessage("שגיאה בדחיית הצעת השיבוץ");
       }
     }
   }

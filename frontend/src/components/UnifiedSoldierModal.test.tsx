@@ -637,7 +637,7 @@ describe("UnifiedSoldierModal constraint rejection", () => {
     fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
     fireEvent.click(screen.getByTestId("input-dialog-confirm"));
 
-    expect(await screen.findByText("errors.generic")).toBeInTheDocument();
+    expect(await screen.findByText("שגיאה בדחיית בקשת עדכון האילוץ")).toBeInTheDocument();
     expect(screen.getByTestId("input-dialog-confirm")).not.toBeDisabled();
   });
 

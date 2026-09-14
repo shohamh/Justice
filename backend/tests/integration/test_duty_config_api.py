@@ -372,6 +372,45 @@ def _create_duty_type(client: TestClient, admin: Soldier, name: str) -> str:
     return r.json()["id"]
 
 
+def test_delete_duty_type_blocks_when_score_projection_references_it(
+    client: TestClient, admin_session: Session
+):
+    from datetime import date
+    from decimal import Decimal
+
+    from app.db.models import SoldierQuarterScoreProjection
+
+    admin = create_soldier(admin_session, personal_number="5300006", role="admin")
+    admin_session.flush()
+    duty_type_id = _create_duty_type(client, admin, "סוג-עם-היסטוריית-ניקוד")
+    admin_session.add(SoldierQuarterScoreProjection(
+        soldier_id=admin.id,
+        quarter_start=date(2026, 7, 1),
+        duty_type_id=duty_type_id,
+        projection_version="test",
+        effective_weighted_days=Decimal("1"),
+        duty_score=Decimal("1"),
+        adjustment_score=Decimal("0"),
+        source_fingerprint={},
+        raw_day_count=1,
+    ))
+    admin_session.commit()
+
+    usage = client.get(
+        f"/api/duty-config/duty-types/{duty_type_id}/usage",
+        headers=auth_headers(admin),
+    )
+    assert usage.status_code == 200, usage.text
+    assert usage.json()["score_projection_count"] == 1
+
+    response = client.delete(
+        f"/api/duty-config/duty-types/{duty_type_id}",
+        headers=auth_headers(admin),
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == "duty_type_in_use"
+
+
 def test_delete_location_in_use_by_shift(client: TestClient, admin_session: Session):
     from datetime import date
 

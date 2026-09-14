@@ -553,7 +553,7 @@ export default function DismissalModal({
 
             {commitMutation.isError && (
               <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded-lg p-3 mb-3 text-sm text-red-700">
-                {translateApiError(commitMutation.error, t, "שגיאה בביצוע")}
+                {translateApiError(commitMutation.error, t, "שגיאה בביצוע שחרור התורנות")}
                 {String(
                   (commitMutation.error as { response?: { data?: { detail?: string } } })
                     ?.response?.data?.detail ?? ""

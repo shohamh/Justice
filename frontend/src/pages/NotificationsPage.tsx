@@ -11,6 +11,7 @@ import { decideRangeExcusal } from "../api/ranges";
 import { Check, ChevronDown, ChevronUp, Eye, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getNotificationTitle, NotificationDetails } from "../components/notifications/NotificationDetails";
+import { translateApiError } from "../utils/translateApiError";
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
@@ -19,6 +20,7 @@ export default function NotificationsPage() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>("all");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<string | null>(null);
   const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
 
   const notificationsQuery = useQuery({
@@ -34,18 +36,30 @@ export default function NotificationsPage() {
   const total = notificationsQuery.data?.total ?? 0;
 
   async function handleMarkRead(id: string) {
-    await markRead(id);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+    try {
+      await markRead(id);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+    } catch (err) {
+      setActionError(translateApiError(err, t, "שגיאה בסימון ההתראה כנקראה"));
+    }
   }
 
   async function handleMarkAll() {
-    await markAllRead();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+    try {
+      await markAllRead();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+    } catch (err) {
+      setActionError(translateApiError(err, t, "שגיאה בסימון כל ההתראות כנקראו"));
+    }
   }
 
   async function handleDelete(id: string) {
-    await deleteNotification(id);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+    try {
+      await deleteNotification(id);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+    } catch (err) {
+      setActionError(translateApiError(err, t, "שגיאה במחיקת ההתראה"));
+    }
   }
 
   async function handleDecision(n: NotificationDTO, approve: boolean) {
@@ -60,7 +74,13 @@ export default function NotificationsPage() {
         return;
       }
       await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
-    } catch { /* ignore — individual failures surface through the swap/range pages */ }
+    } catch (err) {
+      setActionError(translateApiError(
+        err,
+        t,
+        approve ? "שגיאה באישור הבקשה מההתראה" : "שגיאה בדחיית הבקשה מההתראה",
+      ));
+    }
   }
 
   function handleNotificationClick(n: NotificationDTO) {
@@ -90,6 +110,12 @@ export default function NotificationsPage() {
         {notificationsQuery.isError && (
           <p role="alert" className="text-sm text-red-600 dark:text-red-400 mb-4" dir="rtl">
             {t("notifications.load_error")}
+          </p>
+        )}
+        {actionError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400 mb-4" dir="rtl">
+            {actionError}
+            <button type="button" className="mr-2 underline" onClick={() => setActionError(null)}>{t("common.close", "סגירה")}</button>
           </p>
         )}
         <div className="flex gap-2 mb-4">

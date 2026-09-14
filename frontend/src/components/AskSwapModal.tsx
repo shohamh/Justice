@@ -109,7 +109,7 @@ export default function AskSwapModal({
       }
       onCreated();
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, t, "שגיאה"));
+      setError(extractErrorMessage(err, t, "שגיאה בשמירת בקשת ההחלפה"));
     }
   }
 

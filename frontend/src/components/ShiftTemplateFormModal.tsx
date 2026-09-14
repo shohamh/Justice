@@ -280,7 +280,7 @@ export default function ShiftTemplateFormModal({
       }
       await onSubmit();
     } catch (err: unknown) {
-      setError(translateApiError(err, t, "שגיאה"));
+      setError(translateApiError(err, t, initial ? "שגיאה בעדכון תבנית התורנות" : "שגיאה ביצירת תבנית התורנות"));
     }
   }
 

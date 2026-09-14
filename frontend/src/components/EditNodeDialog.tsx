@@ -113,7 +113,7 @@ export default function EditNodeDialog({
       onRenamed();
       onClose();
     } catch {
-      setMessage(t("errors.generic"));
+      setMessage("שגיאה בשמירת פרטי היחידה");
     }
   }
 
@@ -142,7 +142,7 @@ export default function EditNodeDialog({
       if (detail?.violations) {
         setViolations(detail.violations);
       } else {
-        setMessage(t("errors.generic"));
+        setMessage("שגיאה בשמירת סדר סוגי הדרגות");
       }
     }
   }
@@ -156,7 +156,7 @@ export default function EditNodeDialog({
       setNewTypeLabel("");
       await refresh();
     } catch {
-      setMessage(t("errors.generic"));
+      setMessage("שגיאה ביצירת סוג הדרגה");
     }
   }
 

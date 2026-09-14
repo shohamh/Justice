@@ -66,8 +66,7 @@ async function handleExportApprovals() {
   URL.revokeObjectURL(url);
 }
 
-function describeError(err: unknown): string {
-  const fallback = "שגיאה בביצוע הפעולה";
+function describeError(err: unknown, fallback: string): string {
   if (err && typeof err === "object" && "response" in err) {
     const resp = (err as { response?: { data?: { detail?: string } } }).response;
     const detail = resp?.data?.detail;
@@ -355,7 +354,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה באישור האילוץ"));
     }
   }
   async function onReject(id: string) {
@@ -369,7 +368,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה בדחיית האילוץ"));
     }
   }
 
@@ -402,7 +401,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה בדחיית בקשת הפטור"));
     }
   }
 
@@ -413,7 +412,7 @@ export default function ApprovalsPage() {
       const url = URL.createObjectURL(blob);
       setPreviewFile({ url, name: fileName, contentType: blob.type || "application/octet-stream" });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה בפתיחת קובץ הפטור"));
     }
   }
 
@@ -423,7 +422,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdates() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה באישור עדכון פרטי החייל"));
     }
   }
   async function onFuReject(item: FieldUpdateDTO) {
@@ -434,7 +433,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdates() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה בדחיית עדכון פרטי החייל"));
     }
   }
 
@@ -445,7 +444,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה באישור ההחלפה"));
       // Another approver may have already finalized/rejected this request
       // (e.g. lost a finalize race) — refresh so the resolved card disappears
       // instead of sitting there with a now-stale action button.
@@ -465,7 +464,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה בדחיית ההחלפה"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
@@ -482,7 +481,7 @@ export default function ApprovalsPage() {
       setEnrollRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה בדחיית ההרשמה"));
     }
   }
 
@@ -491,7 +490,7 @@ export default function ApprovalsPage() {
       await withPending(`transfer-${id}`, () => approveTransferRequest(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה באישור בקשת העברת היחידה"));
     }
   }
   async function onTransferReject(id: string) {
@@ -504,7 +503,7 @@ export default function ApprovalsPage() {
       setTransferRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() });
     } catch (err) {
-      setActionError(describeError(err));
+      setActionError(describeError(err, "שגיאה בדחיית בקשת העברת היחידה"));
     }
   }
 

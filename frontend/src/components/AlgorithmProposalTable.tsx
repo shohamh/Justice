@@ -44,7 +44,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       if (detail) return `שגיאה ${status ?? ""}: ${detail}`;
       return `שגיאה HTTP ${status ?? ""}`;
     }
-    return t("errors.generic");
+    return "שגיאה בטעינת תוצאות האלגוריתם";
   }
 
   const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);

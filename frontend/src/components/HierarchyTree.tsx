@@ -507,7 +507,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
       await deleteNode(nodeId);
       onChanged();
     } catch (error) {
-      setMessage(translateApiError(error, t));
+      setMessage(translateApiError(error, t, "שגיאה במחיקת היחידה"));
     }
   }
 
@@ -527,7 +527,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
       setExpanded((prev) => new Set(prev).add(nodeId));
       onChanged();
     } catch (error) {
-      setMessage(translateApiError(error, t));
+      setMessage(translateApiError(error, t, soldier ? "שגיאה בהכנת בקשת העברת החייל" : "שגיאה בהוספת החייל ליחידה"));
     }
   }
 
@@ -569,7 +569,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
       onChanged();
       setTransferSuccess({ commander: findApprovingCommander(transfer.nodeId) });
     } catch (error) {
-      setMessage(translateApiError(error, t));
+      setMessage(translateApiError(error, t, "שגיאה בשליחת בקשת העברת החייל"));
     }
   }
 
@@ -592,7 +592,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
       try {
         openTransferConfirmation(dragData.id, dragData.name, overNodeId);
       } catch (error) {
-        setMessage(translateApiError(error, t));
+        setMessage(translateApiError(error, t, "שגיאה בהכנת בקשת העברת החייל"));
       }
     } else if (dragData.kind === "node") {
       if (dragData.id === overNodeId) return;
@@ -604,7 +604,7 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         await moveNode(dragData.id, overNodeId);
         onChanged();
       } catch (error) {
-        setMessage(translateApiError(error, t));
+        setMessage(translateApiError(error, t, "שגיאה בהעברת היחידה"));
       }
     }
   }

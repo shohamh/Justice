@@ -130,7 +130,7 @@ test("shows an error and stays in edit mode when updateExemptionType fails", asy
   );
   fireEvent.click(screen.getByTestId("exemption-edit-pencil"));
   fireEvent.click(screen.getByTestId("exemption-edit-save"));
-  await waitFor(() => expect(screen.getByText("שגיאה")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("שגיאה בעדכון סוג הפטור")).toBeInTheDocument());
   expect(onSaved).not.toHaveBeenCalled();
   expect(screen.getByTestId("exemption-edit-save")).toBeInTheDocument();
 });
