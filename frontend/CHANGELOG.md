@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-14
+
+### Features
+- Added scoped assignment explanations across algorithm results, duty history, upcoming-duty views, and shift details, including burden-share before/after metrics and privacy-preserving soldier links.
+- Added unsaved-changes protection for forms, settings, in-app navigation, browser back/forward, and tab close or refresh.
+- Added clearer range-attendance workflows, including mark-all-attended and saved-status prefill.
+- Added individually problematic-assignment indicators and improved range-candidate reason translations.
+
+### Fixes
+- Fixed interleaved solver batches leaving eligible duties unassigned by giving each component a bounded residual assignment pass, with matching runtime-budget headroom.
+- Fixed algorithm cancellation and timeout handling so long-running jobs are not incorrectly cancelled or left stuck as running.
+- Fixed explanation authorization and redaction for scoped commanders and soldiers, including older or unavailable explanation records.
+- Optimized homepage loading by removing duplicate settings/data requests and fetching calendar and range data concurrently.
+- Made score-projection backfill self-healing on backend startup, with resumable batches, retrying, and protected multi-process execution.
+- Fixed UTC-versus-local date handling, same-day range completion, and several mobile fairness and burden-breakdown layout issues.
+
+### Chores
+- Expanded backend, frontend, and browser regression coverage for algorithm, fairness, range, navigation, and homepage behavior.
+
 ## 2026-09-12
 
 ### Features
