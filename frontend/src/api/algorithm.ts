@@ -223,6 +223,13 @@ export interface DmExplanation {
   duty_id: string;
   assigned_soldier_id: string;
   tiebreaker_note: string | null;
+  pool_size?: number;
+  assigned_rank?: number | null;
+  score_at_assignment?: number | null;
+  eligible_count?: number;
+  rank_from_bottom?: number | null;
+  ahead_count?: number | null;
+  ahead_breakdown?: AheadBreakdown | null;
   candidates: CandidateInfo[];
   global_before: Record<string, number>;
   global_after: Record<string, number>;

@@ -14,6 +14,121 @@ vi.mock("../api/algorithm", async () => {
 });
 
 describe("ExplanationModal soldier view", () => {
+  it("shows the soldier decision summary before the manager candidate table", async () => {
+    vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
+      duty_id: "d1",
+      assigned_soldier_id: "s1",
+      tiebreaker_note: null,
+      global_before: { min_gap: 2, norm_variance: 0 },
+      global_after: { min_gap: 3, norm_variance: 0 },
+      pool_size: 3,
+      assigned_rank: 2,
+      rank_from_bottom: 2,
+      ahead_count: 1,
+      ahead_breakdown: {
+        personal_constraint: 1, exemption: 0, weapon_ineligible: 0, overlap: 0, randomness: 0,
+      },
+      candidates: [
+        {
+          soldier_id: "s2",
+          soldier_name: "חייל א",
+          blocked: false,
+          blocking_constraints: [],
+          pre_norm_score: 0.1,
+          post_norm_score: 0.1,
+        },
+        {
+          soldier_id: "s1",
+          soldier_name: "חייל ב",
+          blocked: false,
+          blocking_constraints: [],
+          pre_norm_score: 0.2,
+          post_norm_score: 0.2,
+        },
+      ],
+    } as never);
+
+    render(<ExplanationModal assignmentId="manager-a1" onClose={vi.fn()} />);
+
+    const summary = await screen.findByTestId("explanation-decision-summary");
+    const table = screen.getAllByRole("table")[1];
+    expect(summary.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(summary).toHaveTextContent("20.00%");
+  });
+
+  it("shows unavailable spread metrics, precise shares, and a reason for eligible candidates ahead", async () => {
+    vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
+      duty_id: "d1",
+      assigned_soldier_id: "s1",
+      tiebreaker_note: "lowest_post_effort_score",
+      global_before: {},
+      global_after: {},
+      pool_size: 2,
+      assigned_rank: 2,
+      rank_from_bottom: 2,
+      ahead_count: 1,
+      ahead_breakdown: {
+        personal_constraint: 0, exemption: 0, weapon_ineligible: 0, overlap: 0, randomness: 1,
+      },
+      candidates: [
+        {
+          soldier_id: "s2",
+          soldier_name: "חייל א",
+          blocked: false,
+          blocking_constraints: [],
+          pre_norm_score: 0.0004,
+          post_norm_score: 0.0006,
+        },
+        {
+          soldier_id: "s1",
+          soldier_name: "חייל ב",
+          blocked: false,
+          blocking_constraints: [],
+          pre_norm_score: 0.002,
+          post_norm_score: 0.003,
+        },
+      ],
+    } as never);
+
+    render(<ExplanationModal assignmentId="manager-a1" onClose={vi.fn()} />);
+
+    const summary = await screen.findByTestId("explanation-decision-summary");
+    expect(screen.getByTestId("explanation-min-gap-before")).toHaveTextContent("—");
+    expect(screen.getByTestId("explanation-min-gap-after")).toHaveTextContent("—");
+    expect(summary).toHaveTextContent("חייל אחד מדורג לפניך:");
+    expect(summary).toHaveTextContent("פתרונות שקולים");
+    expect(screen.getByText("כשיר אך לא נבחר בפתרון הסופי")).toBeInTheDocument();
+    expect(screen.getByText("0.04%")).toBeInTheDocument();
+    expect(screen.getAllByText("0.20%")).toHaveLength(2);
+    expect(screen.getAllByRole("table")[1]).toHaveClass("min-w-[600px]");
+  });
+
+  it("does not claim the lowest burden when the rank is unavailable", async () => {
+    vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
+      assigned: true,
+      norm_score_before: 0.2,
+      norm_score_after: 0.3,
+      blocked_count: 0,
+      tiebreaker_note: null,
+      global_before: { min_gap: 0, norm_variance: 0 },
+      global_after: { min_gap: 0, norm_variance: 0 },
+      score_at_assignment: 0.2,
+      eligible_count: 5,
+      soldier_rank: null,
+      rank_from_bottom: null,
+      ahead_count: null,
+      ahead_breakdown: null,
+    });
+
+    render(<ExplanationModal assignmentId="a1" onClose={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTestId("explanation-decision-summary")).toBeInTheDocument());
+    expect(screen.getByText(/הדירוג המלא אינו זמין/)).toBeInTheDocument();
+    expect(screen.queryByText(/העומס הנמוך ביותר/)).not.toBeInTheDocument();
+  });
+
   it("uses burden-share labels and SoldierLink for every candidate in the full view", async () => {
     vi.mocked(algorithmApi.getExplanationByAssignment).mockResolvedValue({
       duty_id: "d1",
@@ -61,12 +176,12 @@ describe("ExplanationModal soldier view", () => {
 
     render(<ExplanationModal assignmentId="a1" onClose={vi.fn()} />);
 
-    await waitFor(() => expect(screen.getByText(/מדורג 15 מהתחתית/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/מדורג במקום 15 לפי העומס/)).toBeInTheDocument());
     expect(screen.getByText(/14 חיילים מדורגים לפניך/)).toBeInTheDocument();
     expect(screen.getByText(/5 בגלל אילוץ אישי/)).toBeInTheDocument();
     expect(screen.getByText(/3 פטורים מסוג תורנות זה/)).toBeInTheDocument();
     expect(screen.getByText(/3 לא כשירים \(נשק\/טווח\)/)).toBeInTheDocument();
-    expect(screen.getByText(/3 מסיבות אחרות של האלגוריתם/)).toBeInTheDocument();
+    expect(screen.getByText(/3 סיבות אחרות של האלגוריתם/)).toBeInTheDocument();
     // overlap is 0 -- must not render a "0 כבר משובצים" line
     expect(screen.queryByText(/כבר משובצים/)).not.toBeInTheDocument();
   });
@@ -92,7 +207,7 @@ describe("ExplanationModal soldier view", () => {
 
     const { container } = render(<ExplanationModal assignmentId="a1" onClose={vi.fn()} />);
 
-    await waitFor(() => expect(screen.getByText(/מדורג 2 מהתחתית/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/מדורג במקום 2 לפי העומס/)).toBeInTheDocument());
     // Sanity: the modal renders real content, this isn't a trivially-empty check.
     expect(container.textContent).toContain("בגלל אילוץ אישי");
   });
