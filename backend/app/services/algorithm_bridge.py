@@ -97,6 +97,11 @@ def estimate_max_job_seconds(
     production logs on this deployment, where 4 of 5 recent runs were killed
     at the flat 600s floor while the one run that completed took 919s.
 
+    Interleaved components also receive one bounded residual pass after their
+    normal batches, so reserve one additional relaxation-chain budget. This is
+    intentionally flat headroom because component count is unknown until the
+    solver builds its eligibility graph.
+
     Never returns less than configured_floor_seconds (the "algorithm.max_job_seconds"
     system setting) -- this is a floor, not a cap: an honestly large or
     relaxation-heavy job should never be killed before it can finish.
@@ -108,7 +113,9 @@ def estimate_max_job_seconds(
         + math.ceil(max(0, settings.relax_t_ceiling - settings.T) / 2)
     )
     estimated_worst_case_seconds = (
-        estimated_batches * max_relaxation_attempts * settings.batch_time_limit_seconds + 60
+        estimated_batches * max_relaxation_attempts * settings.batch_time_limit_seconds
+        + max_relaxation_attempts * settings.batch_time_limit_seconds
+        + 60
     )
     return max(configured_floor_seconds, estimated_worst_case_seconds)
 
