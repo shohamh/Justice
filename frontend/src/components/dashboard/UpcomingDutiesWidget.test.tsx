@@ -79,6 +79,13 @@ describe("UpcomingDutiesWidget", () => {
     expect(screen.queryByTestId(/draft-badge-/)).not.toBeInTheDocument();
   });
 
+  it("offers an explanation for a primary duty", () => {
+    render(
+      <UpcomingDutiesWidget duties={[makeDuty()]} typeNames={{ dt1: "×©×ž×™×¨×”" }} locationNames={{ loc1: "×©×¢×¨" }} onOpenDuty={vi.fn()} />,
+    );
+    expect(screen.getByTestId("why-assignment-a1")).toBeInTheDocument();
+  });
+
   it("renders the empty state instead of crashing when duties is a malformed non-array", () => {
     // listEffectiveDuties (api/assignments.ts) is currently an unguarded
     // pass-through — this defends the widget against a malformed API

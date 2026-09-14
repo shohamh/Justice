@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { api } from "./client";
-import { getAlgorithmDefaults, listJobs, pollJob } from "./algorithm";
+import { getAlgorithmDefaults, getExplanationByAssignment, listJobs, pollJob } from "./algorithm";
 
 vi.mock("./client");
 
@@ -82,5 +82,21 @@ describe("getAlgorithmDefaults", () => {
     vi.mocked(api.get).mockResolvedValue({ data: { T: 8, Wt: 14, R: 15, Wr: 28 } });
 
     await expect(getAlgorithmDefaults()).resolves.toEqual({ T: 8, Wt: 14, R: 15, Wr: 28 });
+  });
+});
+
+describe("explanation request caching", () => {
+  it("deduplicates concurrent requests for the same assignment", async () => {
+    const response = { data: { assigned: true } };
+    const callsBefore = vi.mocked(api.get).mock.calls.length;
+    vi.mocked(api.get).mockResolvedValue(response);
+
+    const [first, second] = await Promise.all([
+      getExplanationByAssignment("cache-a1"),
+      getExplanationByAssignment("cache-a1"),
+    ]);
+
+    expect(first).toBe(second);
+    expect(api.get).toHaveBeenCalledTimes(callsBefore + 1);
   });
 });

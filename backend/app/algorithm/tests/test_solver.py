@@ -1102,6 +1102,45 @@ def test_interleaved_solve_cancellation_keeps_completed_batches(monkeypatch) -> 
     )
 
 
+def test_interleaved_solve_retries_eligible_residual_duties_after_component(monkeypatch) -> None:
+    """A duty missed in its batch gets one fresh attempt after its component."""
+    import app.algorithm.solver as solver_mod
+    from app.algorithm.types import Assignment, SolverResult
+
+    soldier_id = uuid4()
+    duty_type_id = uuid4()
+    soldiers = [SoldierInput(
+        id=soldier_id, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=100,
+    )]
+    duties = _line_duties(date(2026, 6, 1), duty_type_id, 2)
+    calls: list[list[UUID]] = []
+
+    def miss_batches_then_fill_residual(_soldiers, sub_duties, _existing, _settings, *_args, **_kwargs):
+        calls.append([d.id for d in sub_duties])
+        if len(calls) <= 2:
+            return SolverResult(assignments=[], status="FEASIBLE")
+        return SolverResult(
+            assignments=[Assignment(duty_id=sub_duties[0].id, soldier_id=soldier_id)],
+            status="FEASIBLE",
+        )
+
+    monkeypatch.setattr(solver_mod, "_infeasibility_relaxation_chain", miss_batches_then_fill_residual)
+
+    result = solver_mod._interleaved_solve(
+        soldiers, duties, [],
+        SolverSettings(decomposition="interleaved", interleaved_batch_size=1),
+        reserve_dist=None, cancel_event=None,
+    )
+
+    assert len(calls) == 3
+    assert all(len(batch) == 1 for batch in calls[:2])
+    assert sorted(calls[2]) == sorted([d.id for d in duties])
+    assert len(result.assignments) == 1
+    assert len(result.batch_results) == 3
+    assert result.batch_results[-1].duty_count == 2
+    assert result.batch_results[-1].assigned_count == 1
+
+
 def test_decomposed_solve_cancellation_keeps_completed_batches(monkeypatch) -> None:
     # Two duties 44 days apart with a 28-day window -> 2 calendar batches.
     # cancel_event is set only after the first batch's solve returns.

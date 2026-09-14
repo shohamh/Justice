@@ -114,6 +114,7 @@ export interface ProposalRow {
   ahead_count: number | null;
   randomness_count: number | null;
   is_high_randomness: boolean;
+  is_reserve?: boolean;
 }
 
 export interface CountSpaceStats {
@@ -187,6 +188,7 @@ export interface AheadBreakdown {
 
 export interface SoldierExplanation {
   assigned: boolean;
+  explanation_available?: boolean;
   norm_score_before: number | null;
   norm_score_after: number | null;
   blocked_count: number;
@@ -217,6 +219,7 @@ export interface CandidateInfo {
 }
 
 export interface DmExplanation {
+  explanation_available?: boolean;
   duty_id: string;
   assigned_soldier_id: string;
   tiebreaker_note: string | null;
@@ -268,21 +271,37 @@ export async function getExplanation(
   jobId: string,
   assignmentId: string
 ): Promise<SoldierExplanation | DmExplanation> {
-  return (
-    await api.get<SoldierExplanation | DmExplanation>(
-      `/algorithm/jobs/${jobId}/explanations/${assignmentId}`
-    )
-  ).data;
+  return getCachedExplanation(
+    `job:${jobId}:${assignmentId}`,
+    `/algorithm/jobs/${jobId}/explanations/${assignmentId}`,
+  );
 }
 
 export async function getExplanationByAssignment(
   assignmentId: string
 ): Promise<SoldierExplanation | DmExplanation> {
-  return (
-    await api.get<SoldierExplanation | DmExplanation>(
-      `/algorithm/explanations/${assignmentId}`
-    )
-  ).data;
+  return getCachedExplanation(`assignment:${assignmentId}`, `/algorithm/explanations/${assignmentId}`);
+}
+
+const explanationCache = new Map<string, SoldierExplanation | DmExplanation>();
+const explanationRequests = new Map<string, Promise<SoldierExplanation | DmExplanation>>();
+
+function getCachedExplanation(
+  key: string,
+  url: string,
+): Promise<SoldierExplanation | DmExplanation> {
+  const cached = explanationCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const pending = explanationRequests.get(key);
+  if (pending) return pending;
+  const request = api.get<SoldierExplanation | DmExplanation>(url)
+    .then(({ data }) => {
+      explanationCache.set(key, data);
+      return data;
+    })
+    .finally(() => explanationRequests.delete(key));
+  explanationRequests.set(key, request);
+  return request;
 }
 
 export async function acceptProposal(jobId: string, assignmentId: string): Promise<void> {

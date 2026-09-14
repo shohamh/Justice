@@ -30,7 +30,7 @@ vi.mock("./SoldierLink", () => ({
 const job: AlgorithmJob = {
   id: "job-1", status: "done", mode: "shadow", planning_start: "2026-01-01", planning_end: "2026-01-02",
   started_at: null, finished_at: null, error_message: null, progress_message: null, solver_metrics: {}, relaxed: [], reasons: [], batch_results: [], result_metadata: null,
-  proposals: [{ assignment_id: "assignment-1", soldier_id: "soldier-1", duty_type_id: "type-1", duty_location_id: "location-1", start_date: "2026-01-01", end_date: "2026-01-01", status: "algorithm_draft", reserve_soldier_id: null, norm_score_before: null, norm_score_after: null, duty_shift_id: null, candidate_rank: null, candidate_pool_size: null, batch_index: null, ahead_count: null, randomness_count: null, is_high_randomness: false }],
+  proposals: [{ assignment_id: "assignment-1", soldier_id: "soldier-1", duty_type_id: "type-1", duty_location_id: "location-1", start_date: "2026-01-01", end_date: "2026-01-01", status: "algorithm_draft", reserve_soldier_id: null, norm_score_before: null, norm_score_after: null, duty_shift_id: null, candidate_rank: null, candidate_pool_size: null, batch_index: null, ahead_count: null, randomness_count: null, is_high_randomness: false, is_reserve: false }],
 };
 
 describe("AlgorithmProposalTable", () => {
@@ -80,5 +80,11 @@ describe("AlgorithmProposalTable", () => {
     expect(badge).toHaveAttribute("title", expect.stringContaining("3"));
     expect(badge).toHaveAttribute("title", expect.stringContaining("4"));
     expect(screen.queryByTestId("high-randomness-assignment-normal")).not.toBeInTheDocument();
+  });
+
+  it("does not offer an explanation for reserve assignments", () => {
+    const reserveJob = { ...job, proposals: [{ ...job.proposals[0], is_reserve: true }] };
+    render(<AlgorithmProposalTable job={reserveJob} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "דני כהן" }]} dutyTypes={[{ id: "type-1", name: "שמירה" }]} isDraft onProposalUpdate={vi.fn()} />);
+    expect(screen.queryByText("algorithm.why_received_other")).not.toBeInTheDocument();
   });
 });

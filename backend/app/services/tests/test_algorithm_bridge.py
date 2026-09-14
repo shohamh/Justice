@@ -515,23 +515,22 @@ def test_estimate_max_job_seconds_accounts_for_relaxation_retries():
         interleaved_batch_size=300, batch_time_limit_seconds=120,
     )
     result = estimate_max_job_seconds(duty_count=1001, settings=settings, configured_floor_seconds=600.0)
-    # 4 batches * (1 base attempt + 3 R-relaxation rungs [15->17->19->20] +
-    # 1 T-relaxation rung [8->10]) * 120s + 60 = 4 * 5 * 120 + 60 = 2460
-    assert result == 2460.0
+    # 4 batches * 5 attempts * 120s + 60, plus one extra 5-attempt residual
+    # pass per component as headroom: 2400 + 60 + 600 = 3060.
+    assert result == 3060.0
     # The old, buggy formula would have returned max(600, 4*120+60) == 600 --
     # confirm the fix actually changes the outcome, not just the code shape.
     assert result > 600.0
 
 
 def test_estimate_max_job_seconds_no_relaxation_headroom_matches_simple_formula():
-    """When R/T are already at their ceilings, there's no relaxation ladder to
-    retry -- exactly one attempt per batch, matching the pre-fix formula."""
+    """Residual-pass headroom applies even without relaxation rungs."""
     settings = SolverSettings(
         R=20, T=10, relax_r_ceiling=20, relax_t_ceiling=10,
         interleaved_batch_size=300, batch_time_limit_seconds=120,
     )
     result = estimate_max_job_seconds(duty_count=1001, settings=settings, configured_floor_seconds=600.0)
-    assert result == max(600.0, 4 * 1 * 120 + 60)
+    assert result == max(600.0, 4 * 1 * 120 + 1 * 120 + 60)
 
 
 def test_estimate_max_job_seconds_never_drops_below_configured_floor():

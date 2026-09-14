@@ -10,6 +10,7 @@ import {
   getExplanationByAssignment,
 } from "../api/algorithm";
 import { DataTable, type ColDef } from "./DataTable";
+import SoldierLink from "./SoldierLink";
 import { lastDutyDay } from "../utils/formatDate";
 
 interface EnrichedSoldierExplanation extends SoldierExplanation {
@@ -27,6 +28,7 @@ const AHEAD_BREAKDOWN_ORDER: (keyof AheadBreakdown)[] = [
 interface Props {
   jobId?: string;
   assignmentId: string;
+  title?: string;
   onClose: () => void;
 }
 
@@ -38,7 +40,7 @@ function isEnriched(e: SoldierExplanation): e is EnrichedSoldierExplanation {
   return "eligible_count" in e;
 }
 
-export default function ExplanationModal({ jobId, assignmentId, onClose }: Props) {
+export default function ExplanationModal({ jobId, assignmentId, title, onClose }: Props) {
   useModalBackClose(onClose);
   const { t } = useTranslation();
   const [data, setData] = useState<SoldierExplanation | DmExplanation | null>(null);
@@ -74,7 +76,7 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
       >
         {/* Header */}
         <div className="flex justify-between items-center">
-          <h3 className="text-base font-semibold">{t("algorithm.why_button")}</h3>
+          <h3 className="text-base font-semibold">{title ?? t("algorithm.why_button")}</h3>
           <button
             onClick={onClose}
             aria-label={t("app.close")}
@@ -95,9 +97,14 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
 
         {loading && <p className="text-gray-500">{t("app.loading")}</p>}
         {error && <p className="text-red-500">{error}</p>}
+        {data?.explanation_available === false && (
+          <p className="text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded p-3">
+            {t("algorithm.explanation_manual")}
+          </p>
+        )}
 
         {/* DM view */}
-        {data && isDmExplanation(data) && (
+        {data && data.explanation_available !== false && isDmExplanation(data) && (
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700 p-3 rounded text-xs">
               <p>
@@ -112,7 +119,12 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                 {
                   id: "name",
                   header: t("algorithm.explanation_candidate_col"),
-                  cell: (c) => c.soldier_name || c.soldier_id.slice(0, 8),
+                  cell: (c) => (
+                    <SoldierLink
+                      id={c.soldier_id}
+                      name={c.soldier_name || c.soldier_id.slice(0, 8)}
+                    />
+                  ),
                   sortValue: (c) => c.soldier_name || c.soldier_id,
                   filterValue: (c) => c.soldier_name || c.soldier_id,
                 },
@@ -129,14 +141,14 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                     c.blocking_constraints.map((k) => t(`algorithm.constraint_${k}`, k)).join(", "),
                 },
                 {
-                  id: "norm_before",
-                  header: t("algorithm.norm_before"),
+                  id: "burden_share_before",
+                  header: t("algorithm.burden_share_before"),
                   cell: (c) => c.pre_norm_score != null ? (c.pre_norm_score * 100).toFixed(1) + "%" : "—",
                   sortValue: (c) => c.pre_norm_score ?? null,
                 },
                 {
-                  id: "norm_after",
-                  header: t("algorithm.norm_after"),
+                  id: "burden_share_after",
+                  header: t("algorithm.burden_share_after"),
                   cell: (c) => c.post_norm_score != null ? (c.post_norm_score * 100).toFixed(1) + "%" : "—",
                   sortValue: (c) => c.post_norm_score ?? null,
                 },
@@ -159,7 +171,7 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
         )}
 
         {/* Soldier view */}
-        {data && !isDmExplanation(data) && (() => {
+        {data && data.explanation_available !== false && !isDmExplanation(data) && (() => {
           const enriched = isEnriched(data) ? data : null;
 
           if (!enriched || enriched.eligible_count === 0) {
