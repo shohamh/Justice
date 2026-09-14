@@ -6,11 +6,9 @@ export async function loadCalendarData(
   loadRanges: () => Promise<RangeEvent[]>,
   rangesEnabled: boolean,
 ): Promise<{ calendar: CalendarShiftsResponse; ranges: RangeEvent[] }> {
-  const calendar = await loadCalendar();
-  if (!rangesEnabled) return { calendar, ranges: [] };
-  try {
-    return { calendar, ranges: await loadRanges() };
-  } catch {
-    return { calendar, ranges: [] };
-  }
+  const calendarPromise = loadCalendar();
+  if (!rangesEnabled) return { calendar: await calendarPromise, ranges: [] };
+  const rangesPromise = loadRanges().catch(() => [] as RangeEvent[]);
+  const [calendar, ranges] = await Promise.all([calendarPromise, rangesPromise]);
+  return { calendar, ranges };
 }

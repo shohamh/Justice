@@ -1,5 +1,6 @@
 import asyncio
 import json as _json
+import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
@@ -12,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.authz import Action, authorize, is_duty_manager
+from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
 from app.db.models import (
     AlgorithmJob,
@@ -27,13 +28,31 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.rate_limit import limiter
-from app.services.algorithm_bridge import analyze_shift_availability, run_algorithm_job
+from app.services.algorithm_bridge import HIGH_RANDOMNESS_RATIO_THRESHOLD, analyze_shift_availability, run_algorithm_job
+from app.services.authority import can_view_soldier_scope
 from app.services.duty_eligibility_watch import recheck_assignments
 from app.services.score_projection import refresh_projection_for_assignment_change, refresh_projections_for_assignments_bulk
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
+_logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/algorithm", tags=["algorithm"])
+
+
+def _is_high_randomness(ahead_count: int | None, randomness_count: int | None) -> bool:
+    """Same per-row analogue of the per-job admin-inbox threshold: flag an
+    assignment when most of the candidates ranked ahead of it by burden were
+    fully eligible yet not picked, for no hard-constraint reason."""
+    if not ahead_count:
+        return False
+    return (randomness_count or 0) / ahead_count > HIGH_RANDOMNESS_RATIO_THRESHOLD
+
+
+def _non_negative_burden_score(value: Any) -> float | None:
+    """Keep legacy and newly persisted explanation scores display-safe."""
+    if value is None:
+        return None
+    return max(0.0, float(value))
 
 
 def _compute_candidate_rank(
@@ -106,6 +125,14 @@ class ProposalOut(BaseModel):
     candidate_rank: int | None = None
     candidate_pool_size: int | None = None
     batch_index: int | None = None
+    # How many candidates ranked ahead of this soldier by burden, and how many
+    # of those were fully eligible yet not picked ("randomness" -- see
+    # algorithm_bridge._explanation_ahead_breakdown). is_high_randomness uses
+    # the same ratio threshold as the per-job admin-inbox alert.
+    ahead_count: int | None = None
+    randomness_count: int | None = None
+    is_high_randomness: bool = False
+    is_reserve: bool = False
 
 
 class JobOut(BaseModel):
@@ -274,12 +301,16 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                 end_date=a.end_date,
                 status=a.status,
                 reserve_assignment_id=reserve_map.get(a.id),
-                norm_score_before=a.norm_score_before,
-                norm_score_after=a.norm_score_after,
+                norm_score_before=_non_negative_burden_score(a.norm_score_before),
+                norm_score_after=_non_negative_burden_score(a.norm_score_after),
                 duty_shift_id=a.duty_shift_id,
                 candidate_rank=a.candidate_rank,
                 candidate_pool_size=a.candidate_pool_size,
                 batch_index=a.batch_index,
+                ahead_count=a.ahead_count,
+                randomness_count=a.randomness_count,
+                is_high_randomness=_is_high_randomness(a.ahead_count, a.randomness_count),
+                is_reserve=a.is_reserve,
             )
             for a in fast_rows
         ]
@@ -334,17 +365,22 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
         norm_after = None
         candidate_rank = None
         candidate_pool_size = None
+        ahead_count = None
+        randomness_count = None
         if exp:
             payload = exp.payload
             candidates = payload.get("candidates", [])
             for c in candidates:
                 if c["soldier_id"] == str(a.soldier_id) and not c.get("blocked"):
-                    norm_before = c.get("pre_norm_score")
-                    norm_after = c.get("post_norm_score")
+                    norm_before = _non_negative_burden_score(c.get("pre_norm_score"))
+                    norm_after = _non_negative_burden_score(c.get("post_norm_score"))
                     break
             candidate_rank, candidate_pool_size = _compute_candidate_rank(
                 candidates, str(a.soldier_id), payload=payload
             )
+            ahead_count = payload.get("ahead_count")
+            ahead_breakdown = payload.get("ahead_breakdown")
+            randomness_count = ahead_breakdown.get("randomness") if ahead_breakdown else None
         proposals.append(
             ProposalOut(
                 assignment_id=a.id,
@@ -361,6 +397,10 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                 candidate_rank=candidate_rank,
                 candidate_pool_size=candidate_pool_size,
                 batch_index=a.batch_index,
+                ahead_count=ahead_count,
+                randomness_count=randomness_count,
+                is_high_randomness=_is_high_randomness(ahead_count, randomness_count),
+                is_reserve=a.is_reserve,
             )
         )
     return proposals
@@ -370,9 +410,16 @@ def _explanation_response(
     session: Session, assignment: DutyAssignment, user: Soldier
 ) -> dict[str, Any]:
     """Build the explanation response dict, redacted for soldiers."""
-    is_dm = user.role == "admin" or is_duty_manager(session, user.id)
     is_assignee = assignment.soldier_id == user.id
-    if not is_dm and not is_assignee:
+    assignee = session.get(Soldier, assignment.soldier_id)
+    target_node = None
+    if assignee and assignee.hierarchy_node_id:
+        from app.db.models import HierarchyNode
+        target_node = session.get(HierarchyNode, assignee.hierarchy_node_id)
+    is_scoped_manager = user.role == "admin" or (
+        not is_assignee and can_view_soldier_scope(session, user, target_node)
+    )
+    if not is_scoped_manager and not is_assignee:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     exp = session.execute(
@@ -380,11 +427,8 @@ def _explanation_response(
             AssignmentExplanation.duty_assignment_id == assignment.id
         )
     ).scalar_one_or_none()
-    if exp is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
     # Build context block included in every response variant
-    assignee = session.get(Soldier, assignment.soldier_id)
     duty_type = session.get(DutyType, assignment.duty_type_id)
     assignment_context = {
         "soldier_name": assignee.full_name if assignee else str(assignment.soldier_id)[:8],
@@ -393,25 +437,52 @@ def _explanation_response(
         "end_date": assignment.end_date.isoformat() if assignment.end_date else assignment.start_date.isoformat(),
     }
 
-    payload = exp.payload
-    if is_dm:
-        return {**payload, "assignment_context": assignment_context}
+    if exp is None:
+        unavailable = {
+            "assigned": True,
+            "explanation_available": False,
+            "assignment_context": assignment_context,
+        }
+        if is_scoped_manager and not is_assignee:
+            return {
+                **unavailable,
+                "duty_id": str(assignment.duty_shift_id) if assignment.duty_shift_id else str(assignment.id),
+                "assigned_soldier_id": str(assignment.soldier_id),
+                "tiebreaker_note": None,
+                "candidates": [],
+                "global_before": {},
+                "global_after": {},
+            }
+        return unavailable
 
-    # Soldier-redacted view
+    payload = exp.payload
+    if is_scoped_manager and not is_assignee:
+        # Older jobs may contain negative pre/post scores from a negative
+        # manual adjustment. Keep those records readable after the fix too.
+        safe_payload = {
+            **payload,
+            "candidates": [
+                {
+                    **candidate,
+                    "pre_norm_score": _non_negative_burden_score(candidate.get("pre_norm_score")),
+                    "post_norm_score": _non_negative_burden_score(candidate.get("post_norm_score")),
+                }
+                for candidate in payload.get("candidates", [])
+            ],
+            "assignment_context": assignment_context,
+        }
+        return safe_payload
+
+    # Soldier-redacted view: aggregate, name-free counts only. No other
+    # soldier's name, id, or score is ever included here -- see
+    # _explanation_ahead_breakdown (algorithm_bridge.py) for how these are
+    # computed from the full (pre-truncation) candidate list at persist time.
     candidates = payload.get("candidates", [])
-    # Use pre-computed aggregates when available (new records); fall back to counting
-    # the truncated candidate list for old records that predate the truncation change.
     blocked_count = payload.get("blocked_count") if payload.get("blocked_count") is not None else sum(1 for c in candidates if c.get("blocked"))
     my_candidate = next(
         (c for c in candidates if c["soldier_id"] == str(user.id)),
         None,
     )
-
-    _CONSTRAINT_LABELS_HE: dict[str, str] = {
-        "exemption": "פטור",
-        "personal_constraint": "אילוץ אישי",
-        "overlap": "חפיפה",
-    }
 
     def _score(c: dict) -> float | None:
         # Support both new key (pre_norm_score) and old key (pre_effort_score) for stored records
@@ -420,41 +491,18 @@ def _explanation_response(
             v = c.get("pre_effort_score")
         return v
 
-    # Build enriched soldier view for the redesigned explanation modal
-    eligible = [c for c in candidates if not c.get("blocked")]
-    eligible_sorted = sorted(eligible, key=lambda c: (_score(c) or 0))
-    eligible_count = payload.get("pool_size") if payload.get("pool_size") is not None else len(eligible)
-    my_id = str(user.id)
-    soldier_rank = payload.get("assigned_rank") if payload.get("assigned_rank") is not None else next(
-        (i + 1 for i, c in enumerate(eligible_sorted) if c["soldier_id"] == my_id),
-        1,
-    )
-    ranked_candidates = [
-        {
-            "soldier_id": c["soldier_id"],
-            "full_name": c.get("soldier_name") or c["soldier_id"][:8],
-            "score": _score(c),
-            "reason_excluded": None,
-        }
-        for c in eligible_sorted
-        if c["soldier_id"] != my_id
-    ][:5]
-    for c in candidates:
-        if c.get("blocked") and len(ranked_candidates) < 5:
-            constraints = c.get("blocking_constraints", [])
-            reason = ", ".join(_CONSTRAINT_LABELS_HE.get(k, k) for k in constraints) or "חסום"
-            ranked_candidates.append({
-                "soldier_id": c["soldier_id"],
-                "full_name": c.get("soldier_name") or c["soldier_id"][:8],
-                "score": _score(c),
-                "reason_excluded": reason,
-            })
+    eligible_count = payload.get("pool_size") if payload.get("pool_size") is not None else sum(1 for c in candidates if not c.get("blocked"))
+    soldier_rank = payload.get("assigned_rank")
 
+    # Records persisted before this aggregation existed have no ahead_breakdown
+    # stored -- there's no way to reconstruct it from the (already truncated)
+    # candidate list, so it's surfaced as unavailable rather than guessed.
+    ahead_breakdown = payload.get("ahead_breakdown")
     my_score = _score(my_candidate) if my_candidate else None
     return {
         "assigned": True,
-        "norm_score_before": my_score,
-        "norm_score_after": my_candidate.get("post_norm_score") if my_candidate else None,
+        "norm_score_before": _non_negative_burden_score(my_score),
+        "norm_score_after": _non_negative_burden_score(my_candidate.get("post_norm_score")) if my_candidate else None,
         "blocked_count": blocked_count,
         "tiebreaker_note": payload.get("tiebreaker_note"),
         "global_before": payload.get("global_before", {}),
@@ -463,9 +511,9 @@ def _explanation_response(
         "score_at_assignment": my_score,
         "eligible_count": eligible_count,
         "soldier_rank": soldier_rank,
-        "constraint_count": len(my_candidate.get("blocking_constraints", [])) if my_candidate else 0,
-        "my_constraints": my_candidate.get("blocking_constraints", []) if my_candidate else [],
-        "ranked_candidates": ranked_candidates,
+        "rank_from_bottom": payload.get("rank_from_bottom"),
+        "ahead_count": payload.get("ahead_count"),
+        "ahead_breakdown": ahead_breakdown,
         "assignment_context": assignment_context,
     }
 
@@ -790,6 +838,7 @@ def cancel_job(
     from app.services.algorithm_bridge import _cancel_events
     event = _cancel_events.get(str(job_id))
     if event:
+        _logger.warning("[job %s] cancel_event set by user request (actor=%s)", job_id, user.id)
         event.set()
 
 

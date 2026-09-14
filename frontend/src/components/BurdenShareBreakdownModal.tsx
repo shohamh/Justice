@@ -10,6 +10,17 @@ interface Props {
   onClose: () => void;
 }
 
+// Most adjustment reasons are free text an admin typed in and should show as-is.
+// A handful come from the backend as fixed internal codes (see ranges.py's
+// create_adjustment calls) rather than prose — translate just those known codes.
+const ADJUSTMENT_REASON_LABELS: Record<string, string> = {
+  range_no_show: "אי-הופעה למטווח",
+  range_no_show_reversed: "ביטול אי-הופעה למטווח",
+};
+function adjustmentLabel(reason: string): string {
+  return ADJUSTMENT_REASON_LABELS[reason] ?? reason;
+}
+
 export default function BurdenShareBreakdownModal({ soldierName, breakdown, onClose }: Props) {
   useModalBackClose(onClose);
   const [openQuarterInfo, setOpenQuarterInfo] = useState<string | null>(null);
@@ -162,19 +173,19 @@ export default function BurdenShareBreakdownModal({ soldierName, breakdown, onCl
                           {q.contributions.map((c, ci) => (
                             <div
                               key={`${q.quarter_label}-${ci}`}
-                              className="flex items-center justify-between gap-2 px-2 py-1 text-gray-600 dark:text-gray-400"
+                              className="flex flex-col gap-0.5 px-2 py-1.5 text-gray-600 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between sm:gap-2"
                             >
                               <span className="flex flex-col min-w-0">
-                                <span className="truncate">
+                                <span className="break-words">
                                   {c.kind === "adjustment" && <span className="text-green-600 dark:text-green-400 ml-1">✏️</span>}
-                                  {c.label}
+                                  {c.kind === "adjustment" ? adjustmentLabel(c.label) : c.label}
                                   {c.start_date && c.end_date && (
                                     <span className="text-gray-400 dark:text-gray-500"> ({formatDate(c.start_date)}–{formatDate(c.end_date)})</span>
                                   )}
                                 </span>
                                 {c.detail && <span className="text-xs text-gray-400 dark:text-gray-500">{c.detail}</span>}
                               </span>
-                              <span className="tabular-nums shrink-0">
+                              <span className="tabular-nums shrink-0 self-end sm:self-auto">
                                 {c.kind === "duty" ? `${c.days} ${c.days === 1 ? "יום" : "ימים"} × ${parseFloat(c.multiplier).toFixed(2)} = ` : ""}
                                 <strong className="text-indigo-600 dark:text-indigo-300">{parseFloat(c.score).toFixed(3)}</strong>
                               </span>

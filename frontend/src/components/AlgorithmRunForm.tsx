@@ -6,7 +6,7 @@ import { DutyType } from "../api/dutyConfig";
 import SubHierarchySelector from "./SubHierarchySelector";
 import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 import Combobox from "./Combobox";
-import { lastDutyDay } from "../utils/formatDate";
+import { dateToLocalIso, lastDutyDay, todayIso } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "../components/DateInput";
 
@@ -22,13 +22,13 @@ const DEFAULT_SETTINGS: SolverSettings = {
 };
 
 function todayStr() {
-  return new Date().toISOString().split("T")[0];
+  return todayIso();
 }
 
 function thirtyDaysStr() {
   const d = new Date();
   d.setDate(d.getDate() + 30);
-  return d.toISOString().split("T")[0];
+  return dateToLocalIso(d);
 }
 
 const FILL_COLORS: Record<string, string> = {

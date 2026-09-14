@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import threading
 import time
 import uuid
@@ -160,6 +161,7 @@ def solve(
     cancel_event: threading.Event | None = None,
     progress_cb: ProgressCb | None = None,
     swap_progress_cb: Callable[[], None] | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
     node_parents: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics.
@@ -173,6 +175,12 @@ def solve(
     ``progress_cb(done, total)`` is invoked once with (0, total) before solving
     and after each batch completes. Both values are duty counts, so larger batches
     cause proportionally more progress-bar movement.
+
+    ``relax_attempt_cb(attempt, max_attempts, last_label)`` is invoked before
+    every solve attempt within a batch's infeasibility-relaxation chain
+    (attempt=1 is the unrelaxed base try), so the UI can distinguish "still
+    working on this batch" from a frozen bar during a batch that needs several
+    relaxation rungs, each costing up to another full batch_time_limit_seconds.
 
     ``swap_progress_cb()`` is called (no arguments) just before the post-solve
     swap pass begins, so the UI can show a distinct "balancing loads…" label.
@@ -195,6 +203,7 @@ def solve(
                 reserve_dist,
                 cancel_event=cancel_event,
                 progress_cb=progress_cb,
+                relax_attempt_cb=relax_attempt_cb,
             )
     elif settings.decomposition == "effort_rounds" and settings.batching_enabled:
         with _profile_phase("batching"):
@@ -217,13 +226,17 @@ def solve(
                 reserve_dist,
                 cancel_event=cancel_event,
                 progress_cb=progress_cb,
+                relax_attempt_cb=relax_attempt_cb,
             )
     else:
         # Unknown/``"none"`` decomposition value or batching disabled → whole solve in one model.
         total_duties = len(duties)
         if progress_cb:
             progress_cb(0, total_duties)
-        result = _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist, cancel_event=cancel_event)
+        result = _infeasibility_relaxation_chain(
+            soldiers, duties, existing, settings, reserve_dist,
+            cancel_event=cancel_event, relax_attempt_cb=relax_attempt_cb,
+        )
         if progress_cb:
             progress_cb(total_duties, total_duties)
 
@@ -453,6 +466,7 @@ def _interleaved_solve(
     reserve_dist: dict[tuple[int, int], int] | None,
     cancel_event: threading.Event | None,
     progress_cb: ProgressCb | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
 ) -> SolverResult:
     """Duty-interleaved decomposition.
 
@@ -468,6 +482,7 @@ def _interleaved_solve(
     work = [dataclasses.replace(s) for s in soldiers]
     soldier_by_id = {s.id: s for s in work}
     duty_by_id = {d.id: d for d in duties}
+    duty_index_by_id = {d.id: i for i, d in enumerate(duties)}
 
     pairs = _eligible_pairs(work, duties, settings)
     components = _connected_components(len(duties), len(work), pairs)
@@ -494,6 +509,17 @@ def _interleaved_solve(
     all_assignments: list[Assignment] = []
     relaxed: list[str] = []
     carry_existing: list[ExistingAssignment] = list(existing)
+    residual_by_component: dict[int, list[DutyBlock]] = {}
+
+    def _reserve_for_batch(batch_idxs: Sequence[int], component_soldier_idxs: Sequence[int]):
+        if reserve_dist is None:
+            return None
+        return {
+            (local_di, local_si): reserve_dist[(gdi, gsi)]
+            for local_di, gdi in enumerate(batch_idxs)
+            for local_si, gsi in enumerate(component_soldier_idxs)
+            if (gdi, gsi) in reserve_dist
+        }
 
     for done, (comp_idx, soldier_idxs, batch) in enumerate(plan, start=1):
         if cancel_event is not None and cancel_event.is_set():
@@ -509,19 +535,12 @@ def _interleaved_solve(
         sub_soldiers = [work[si] for si in soldier_idxs]
         sub_duties = [duties[di] for di in batch]
 
-        sub_rd: dict[tuple[int, int], int] | None = None
-        if reserve_dist is not None:
-            sub_rd = {}
-            for local_di, gdi in enumerate(batch):
-                for local_si, gsi in enumerate(soldier_idxs):
-                    v = reserve_dist.get((gdi, gsi))
-                    if v is not None:
-                        sub_rd[(local_di, local_si)] = v
+        sub_rd = _reserve_for_batch(batch, soldier_idxs)
 
         t0 = time.monotonic()
         res = _infeasibility_relaxation_chain(
             sub_soldiers, sub_duties, carry_existing, batch_settings, sub_rd,
-            cancel_event=cancel_event,
+            cancel_event=cancel_event, relax_attempt_cb=relax_attempt_cb,
         )
         if res.status == "INFEASIBLE":
             # Hard-coverage model proved infeasible: some duties in this batch
@@ -544,6 +563,15 @@ def _interleaved_solve(
 
         assigned_duty_ids = {a.duty_id for a in res.assignments}
         unassigned = [duties[di] for di in batch if duties[di].id not in assigned_duty_ids]
+        residual_by_component.setdefault(comp_idx, []).extend(
+            d for d in unassigned
+            if analyze_duty_availability(
+                sub_soldiers,
+                d,
+                existing=carry_existing,
+                enforce_weapon_qualification=batch_settings.enforce_weapon_qualification,
+            ).eligible_count > 0
+        )
         saturation_clusters = (
             analyze_saturation(unassigned, sub_soldiers, all_assignments, carry_existing, duty_by_id)
             if unassigned else []
@@ -593,6 +621,85 @@ def _interleaved_solve(
         duties_done += len(batch)
         if progress_cb:
             progress_cb(duties_done, total_duties)
+
+        # Batches partition duties, so an unfilled but eligible duty would
+        # otherwise never get another chance. Give each component's residual
+        # duties one fresh attempt after all of its normal batches complete.
+        is_last_component_batch = done == len(plan) or plan[done][0] != comp_idx
+        residual = residual_by_component.pop(comp_idx, []) if is_last_component_batch else []
+        if residual:
+            if cancel_event is not None and cancel_event.is_set():
+                return SolverResult(
+                    assignments=list(all_assignments), status="CANCELLED",
+                    seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+                    relaxed=relaxed, batch_results=batch_results,
+                )
+
+            residual_duty_indices = [duty_index_by_id[d.id] for d in residual]
+            sub_soldiers = [work[si] for si in soldier_idxs]
+            sub_rd = _reserve_for_batch(residual_duty_indices, soldier_idxs)
+            t0 = time.monotonic()
+            residual_res = _infeasibility_relaxation_chain(
+                sub_soldiers, residual, carry_existing, batch_settings, sub_rd,
+                cancel_event=cancel_event, relax_attempt_cb=relax_attempt_cb,
+            )
+            if residual_res.status == "INFEASIBLE":
+                residual_res = _solve_soft_coverage(
+                    sub_soldiers, residual, carry_existing, batch_settings, sub_rd,
+                    cancel_event=cancel_event,
+                )
+            wall_time = time.monotonic() - t0
+
+            if residual_res.status == "CANCELLED":
+                return SolverResult(
+                    assignments=list(all_assignments), status="CANCELLED",
+                    seed=residual_res.seed, relaxed=relaxed, batch_results=batch_results,
+                )
+            relaxed.extend(residual_res.relaxed)
+            all_assignments.extend(residual_res.assignments)
+            residual_assigned_ids = {a.duty_id for a in residual_res.assignments}
+            residual_unassigned = [d for d in residual if d.id not in residual_assigned_ids]
+            batch_results.append(BatchResult(
+                batch_index=len(batch_results),
+                component_index=comp_idx,
+                date_from=min(d.start_date for d in residual),
+                date_to=max(d.end_date for d in residual),
+                duty_count=len(residual),
+                soldier_count=len(soldier_idxs),
+                assigned_count=len(residual_res.assignments),
+                unassigned_count=len(residual_unassigned),
+                outcome=residual_res.status,
+                relaxations=list(residual_res.relaxed),
+                wall_time_seconds=round(wall_time, 3),
+                shifts=[
+                    BatchShiftFill(
+                        shift_id=d.id,
+                        required_count=1,
+                        assigned_count=1 if d.id in residual_assigned_ids else 0,
+                        eligible_count=(availability := analyze_duty_availability(
+                            sub_soldiers, d, existing=carry_existing,
+                            enforce_weapon_qualification=batch_settings.enforce_weapon_qualification,
+                        )).eligible_count,
+                        available_count=availability.available_count,
+                        blocker_counts=availability.blocker_counts,
+                    )
+                    for d in residual
+                ],
+                saturation_clusters=(
+                    analyze_saturation(
+                        residual_unassigned, sub_soldiers, all_assignments,
+                        carry_existing, duty_by_id,
+                    ) if residual_unassigned else []
+                ),
+            ))
+            for a in residual_res.assignments:
+                d = duty_by_id[a.duty_id]
+                carry_existing.append(ExistingAssignment(
+                    soldier_id=a.soldier_id, duty_type_id=d.duty_type_id,
+                    start_date=d.start_date, end_date=d.end_date, is_reserve=d.is_reserve,
+                ))
+                s = soldier_by_id[a.soldier_id]
+                s.effort_offset += s.effort_per_milli * _block_score(d)
 
     all_assignments.sort(key=lambda a: a.duty_id)
     assigned_ids = {a.duty_id for a in all_assignments}
@@ -644,6 +751,7 @@ def _decomposed_solve(
     reserve_dist: dict[tuple[int, int], int] | None,
     cancel_event: threading.Event | None,
     progress_cb: ProgressCb | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
 ) -> SolverResult:
     # Work on copies so the cross-batch effort feedback doesn't mutate the
     # caller's soldiers (the bridge still needs original effort for explanations).
@@ -704,7 +812,7 @@ def _decomposed_solve(
         t0 = time.monotonic()
         res = _infeasibility_relaxation_chain(
             sub_soldiers, sub_duties, carry_existing, batch_settings, sub_rd,
-            cancel_event=cancel_event,
+            cancel_event=cancel_event, relax_attempt_cb=relax_attempt_cb,
         )
         wall_time = time.monotonic() - t0
 
@@ -1344,6 +1452,7 @@ def _infeasibility_relaxation_chain(
     settings: SolverSettings,
     reserve_dist: dict[tuple[int, int], int] | None = None,
     cancel_event: threading.Event | None = None,
+    relax_attempt_cb: Callable[[int, int, str], None] | None = None,
 ) -> SolverResult:
     # Copy so we can relax T/R without touching the caller's settings.
     current = dataclasses.replace(settings)
@@ -1353,15 +1462,35 @@ def _infeasibility_relaxation_chain(
     # hops of 2 up to relax_r_ceiling, absorbing reserve overload before real-duty
     # fairness is touched. Then T (real only) loosens up to relax_t_ceiling.
     # The invariant T <= R holds throughout.
+    #
+    # Each rung re-solves the whole batch from scratch (up to another full
+    # time_limit_seconds), so a batch needing several rungs can sit with no
+    # externally-visible progress for minutes. relax_attempt_cb -- called
+    # before every attempt, including the first unrelaxed one -- lets the
+    # caller surface *which* attempt is in flight instead of a frozen bar.
+    max_attempts = 1 + math.ceil(max(0, settings.relax_r_ceiling - settings.R) / 2) \
+        + math.ceil(max(0, settings.relax_t_ceiling - settings.T) / 2)
+    attempt = 0
     while True:
+        attempt += 1
+        if relax_attempt_cb:
+            relax_attempt_cb(attempt, max_attempts, relaxed[-1] if relaxed else "בסיס")
         solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist, cancel_event=cancel_event)
         status_name = solver.StatusName(status)
 
-        # UNKNOWN means StopSearch() fired before a solution was found \u2014 treat as cancelled
-        if status_name not in ("OPTIMAL", "FEASIBLE", "INFEASIBLE"):
+        # UNKNOWN means StopSearch() fired (or CP-SAT's own time budget ran out)
+        # before a solution was found either way. That's only a real
+        # cancellation if cancel_event says so -- StopSearch also fires from
+        # the stall guard (STALL_SECONDS with no improving solution), which
+        # has nothing to do with cancellation. Confirmed in production: three
+        # runs of the same large job were mislabeled CANCELLED this way with
+        # cancel_event never touched, aborting the whole run instead of
+        # relaxing further or falling back to soft coverage like a genuine
+        # INFEASIBLE does.
+        if status_name not in ("OPTIMAL", "FEASIBLE", "INFEASIBLE") and cancel_event is not None and cancel_event.is_set():
             return SolverResult(assignments=[], status="CANCELLED", seed=(current.seed if current.seed is not None else DEFAULT_SOLVER_SEED), relaxed=relaxed)
 
-        if status_name == "INFEASIBLE":
+        if status_name != "OPTIMAL" and status_name != "FEASIBLE":
             label = _relax_step(current)
             if label is not None:
                 relaxed.append(label)

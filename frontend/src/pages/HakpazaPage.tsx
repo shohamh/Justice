@@ -7,7 +7,7 @@ import { SoldierDTO, listSoldiers, getSoldier } from "../api/soldiers";
 import { Assignment, listAssignments } from "../api/assignments";
 import { Candidate, createHakpaza, findCandidates } from "../api/hakpaza";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
-import { formatDate, formatDutyRange, lastDutyDay } from "../utils/formatDate";
+import { formatDate, formatDutyRange, lastDutyDay, todayIso } from "../utils/formatDate";
 import DateInput from "../components/DateInput";
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -33,7 +33,7 @@ export default function HakpazaPage() {
   const [done, setDone] = useState(false);
   const [soldierSearch, setSoldierSearch] = useState("");
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIso();
 
   const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
   const scopedSoldiers = useMemo(() => soldiersQuery.data ?? [], [soldiersQuery.data]);

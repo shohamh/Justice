@@ -40,7 +40,15 @@ export function isDateRangeValid(from: string | undefined, to: string | undefine
  * midnight for timezones ahead of UTC).
  */
 export function todayIso(): string {
-  const d = new Date();
+  return dateToLocalIso(new Date());
+}
+
+/**
+ * Converts a `Date` to a yyyy-mm-dd string using its local calendar day (not
+ * UTC — `Date#toISOString()` would shift the day near local midnight for
+ * timezones ahead of UTC, e.g. Israel).
+ */
+export function dateToLocalIso(d: Date): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");

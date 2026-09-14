@@ -25,6 +25,7 @@ import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../utils/rangeLabels";
 import { translateApiError } from "../utils/translateApiError";
+import { todayIso } from "../utils/formatDate";
 
 export default function RangesPage() {
   const { t } = useTranslation();
@@ -102,10 +103,10 @@ export default function RangesPage() {
     () => plannedSelectedEvents.filter(e => e.can_manage !== false),
     [plannedSelectedEvents],
   );
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayStr = todayIso();
   const clearableSelectedEvents = useMemo(
-    () => selectedEvents.filter(e => e.status === "planned" && e.date >= todayIso && e.can_manage !== false),
-    [selectedEvents, todayIso],
+    () => selectedEvents.filter(e => e.status === "planned" && e.date >= todayStr && e.can_manage !== false),
+    [selectedEvents, todayStr],
   );
   const skippedClearEvents = selectedEvents.length - clearableSelectedEvents.length;
   const deletableCount = selectedEvents.filter(e => count(e, false) === 0 && count(e, true) === 0).length;

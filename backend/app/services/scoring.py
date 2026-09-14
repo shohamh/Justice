@@ -2241,22 +2241,34 @@ def soldier_burden_share(session: Session, soldier_id: uuid.UUID) -> dict[str, A
     return _soldier_burden_share(built, soldier_id)
 
 
-def fairness_components(session: Session, *, viewer: Soldier | None = None) -> dict[str, Any]:
+def fairness_components(
+    session: Session, *, viewer: Soldier | None = None, node_id: uuid.UUID | None = None
+) -> dict[str, Any]:
     """Burden-share spread (פיזור) split by connected components of soldiers who share
     duty-type eligibility, plus the soldiers exempt from every active duty type.
-    Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope)."""
+    Soldier lists are scoped to what `viewer` may see (see can_view_soldier_scope), and
+    further narrowed to `node_id`'s subtree when given."""
 
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     visible_soldiers = [
         soldier
         for soldier in soldiers
-        if viewer is None
-        or viewer.role == "admin"
-        or can_view_soldier_scope(
-            session,
-            viewer,
-            nodes.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None,
+        if (
+            viewer is None
+            or viewer.role == "admin"
+            or can_view_soldier_scope(
+                session,
+                viewer,
+                nodes.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None,
+            )
+        )
+        and (
+            node_id is None
+            or (
+                (soldier_node := nodes.get(soldier.hierarchy_node_id)) is not None
+                and node_id in soldier_node.path_ids
+            )
         )
     ]
     visible_ids = {soldier.id for soldier in visible_soldiers}

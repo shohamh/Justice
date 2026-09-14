@@ -23,7 +23,7 @@ import { reportCannotAttend } from "../api/reserves";
 import { getCalendarShift, CalendarShift } from "../api/calendar";
 import DismissalModal from "../components/DismissalModal";
 import { queryKeys } from "../queryKeys";
-import { formatDateTimeIsrael, formatDutyRange, lastDutyDay } from "../utils/formatDate";
+import { formatDateTimeIsrael, formatDutyRange, lastDutyDay, todayIso } from "../utils/formatDate";
 
 function avg(rows: TransparencyRow[], key: "normalised_score" | "active_days" | "shift_count"): number {
   if (rows.length === 0) return 0;
@@ -93,7 +93,7 @@ export default function MyDutiesPage() {
   const reserveStatsQuery = useQuery({ queryKey: queryKeys.reserveStats(), queryFn: getReserveStats });
   const reserveStats = reserveStatsQuery.data ?? null;
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIso();
   // end_date is exclusive, so "over" means end_date is today or earlier.
   const pastDuties = (dutiesQuery.data ?? []).filter((d) => d.end_date <= today);
   const pastCount = pastDuties.length;

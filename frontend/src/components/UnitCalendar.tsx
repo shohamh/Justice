@@ -19,6 +19,7 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import { useAuth } from "../auth/AuthContext";
 import { canApprove } from "../auth/permissions";
 import { formatDate, formatRangeEligibilityExplanation } from "../utils/rangeEligibilityExplanation";
+import { dateToLocalIso } from "../utils/formatDate";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import RangeDetailModal from "./ranges/RangeDetailModal";
 import EventDetailModal from "./planning/EventDetailModal";
@@ -82,6 +83,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const canSeeEligibilityBadges = canApprove(user);
   const publicSettings = usePublicSettings();
   const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
+  const publicSettingsReady = publicSettings !== null;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
   const [ranges, setRanges] = useState<RangeEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -111,6 +113,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const nodeIdsKey = effectiveNodeIds.join(",");
 
   const fetchData = useCallback(async (from: string, to: string) => {
+    if (!publicSettingsReady) return;
     if (effectiveNodeIds.length === 0 && !soldierId && !highlightSoldierId) return;
     setLoading(true);
     setError(null);
@@ -161,7 +164,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId, highlightSoldierId, rangesEnabled, t]);
+  }, [nodeIdsKey, soldierId, highlightSoldierId, publicSettingsReady, rangesEnabled, t]);
 
   useEffect(() => {
     dateRangeRef.current = null;
@@ -191,8 +194,8 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
 
   function handleDatesSet(arg: DatesSetArg) {
     setActiveViewType(arg.view.type);
-    const from = arg.start.toISOString().slice(0, 10);
-    const to = arg.end.toISOString().slice(0, 10);
+    const from = dateToLocalIso(arg.start);
+    const to = dateToLocalIso(arg.end);
     const prev = dateRangeRef.current;
     if (prev && prev.from === from && prev.to === to) return;
     dateRangeRef.current = { from, to };

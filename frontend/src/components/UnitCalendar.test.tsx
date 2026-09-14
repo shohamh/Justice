@@ -8,7 +8,10 @@ import type { RangeEvent } from "../api/ranges";
 import { useAuth } from "../auth/AuthContext";
 import UnitCalendar, { filterCalendarShifts } from "./UnitCalendar";
 
-const mocks = vi.hoisted(() => ({ t: (key: string) => key }));
+const mocks = vi.hoisted(() => ({
+  t: (key: string) => key,
+  publicSettings: { "mitvachim.enabled": false } as Record<string, unknown> | null,
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mocks.t }),
@@ -19,7 +22,7 @@ vi.mock("../auth/AuthContext", () => ({
 }));
 
 vi.mock("../hooks/usePublicSettings", () => ({
-  usePublicSettings: () => ({ "mitvachim.enabled": false }),
+  usePublicSettings: vi.fn(() => mocks.publicSettings),
 }));
 
 vi.mock("../api/calendar", () => ({
@@ -100,7 +103,10 @@ vi.mock("@fullcalendar/react", () => ({
   ),
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.publicSettings = { "mitvachim.enabled": false };
+});
 
 function shift(
   id: string,
@@ -230,6 +236,19 @@ function loadCalendarWith(shifts: CalendarShift[], ranges: RangeEvent[] = []) {
 }
 
 describe("UnitCalendar", () => {
+  test("waits for public settings before fetching the visible calendar", async () => {
+    mocks.publicSettings = null;
+    loadCalendarWith([]);
+
+    const rendered = renderCalendar();
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+    expect(calendarDataApi.loadCalendarData).not.toHaveBeenCalled();
+
+    mocks.publicSettings = { "mitvachim.enabled": false };
+    rendered.rerenderCalendar({ nodeId: "node-1" });
+    await waitFor(() => expect(calendarDataApi.loadCalendarData).toHaveBeenCalledTimes(1));
+  });
+
   test("shows both own and other command duties by default, highlighting own duties", async () => {
     loadCalendarWith([
       shift("own-duty", "guard", false, { soldier_id: "me" }),

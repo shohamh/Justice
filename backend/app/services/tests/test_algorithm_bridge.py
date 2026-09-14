@@ -4,15 +4,42 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
-from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
-from app.db.models import DutyLocation, HierarchyNode
+from app.algorithm.types import (
+    Assignment,
+    AssignmentExplanation as AlgoExplanation,
+    CandidateInfo,
+    DutyBlock,
+    ExistingAssignment,
+    ExplanationData,
+    SoldierInput,
+    SolverResult,
+    SolverSettings,
+)
+from app.db.models import AlgorithmJob, DutyLocation, DutyType, HierarchyNode
 from app.services.algorithm_bridge import (
     _build_node_parents,
+    _count_space_stats,
+    _explanation_ahead_breakdown,
     build_hierarchy_maps,
+    estimate_max_job_seconds,
     load_duty_blocks_from_shifts,
+    persist_results,
     resolve_solver_settings,
     serialize_solver_inputs,
 )
+
+
+def test_count_space_stats_exposes_fairness_gap() -> None:
+    s1 = SoldierInput(id=uuid.uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=1)
+    s2 = SoldierInput(id=uuid.uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=1)
+    s1.effort_offset = 100_000_000
+    s2.effort_offset = 400_000_000
+
+    stats = _count_space_stats([s1, s2], [], [], effort_resolution=1_000)
+
+    assert stats["min_gap"] == 300.0
+
+
 from app.services.duty_config import create_duty_type
 from app.services.settings_loader import set_setting
 from app.services.shift_quotas import set_shift_quotas
@@ -472,3 +499,179 @@ def test_load_soldier_inputs_scopes_to_cohort(admin_session):
     assert scoped_values.cumulative_score == unscoped_kept.cumulative_score
     assert scoped_values.active_days == unscoped_kept.active_days
     assert scoped_values.exempted_duty_type_ids == unscoped_kept.exempted_duty_type_ids
+
+
+# ── Watchdog worst-case job-time estimate ───────────────────────────────────
+
+def test_estimate_max_job_seconds_accounts_for_relaxation_retries():
+    """Regression test for the production incident this fixes: the old formula
+    (batches * batch_time_limit_seconds) didn't multiply by how many times a
+    batch can retry via the R/T relaxation ladder, so a 1001-duty run with
+    interleaved_batch_size=300 (4 batches) estimated only 4*120+60=540s --
+    under the 600s floor -- and got killed by the watchdog before finishing,
+    even though the actual solve legitimately needed 919s."""
+    settings = SolverSettings(
+        R=15, T=8, relax_r_ceiling=20, relax_t_ceiling=10,
+        interleaved_batch_size=300, batch_time_limit_seconds=120,
+    )
+    result = estimate_max_job_seconds(duty_count=1001, settings=settings, configured_floor_seconds=600.0)
+    # 4 batches * 5 attempts * 120s + 60, plus one extra 5-attempt residual
+    # pass per component as headroom: 2400 + 60 + 600 = 3060.
+    assert result == 3060.0
+    # The old, buggy formula would have returned max(600, 4*120+60) == 600 --
+    # confirm the fix actually changes the outcome, not just the code shape.
+    assert result > 600.0
+
+
+def test_estimate_max_job_seconds_no_relaxation_headroom_matches_simple_formula():
+    """Residual-pass headroom applies even without relaxation rungs."""
+    settings = SolverSettings(
+        R=20, T=10, relax_r_ceiling=20, relax_t_ceiling=10,
+        interleaved_batch_size=300, batch_time_limit_seconds=120,
+    )
+    result = estimate_max_job_seconds(duty_count=1001, settings=settings, configured_floor_seconds=600.0)
+    assert result == max(600.0, 4 * 1 * 120 + 1 * 120 + 60)
+
+
+def test_estimate_max_job_seconds_never_drops_below_configured_floor():
+    settings = SolverSettings(interleaved_batch_size=10_000, batch_time_limit_seconds=30)
+    result = estimate_max_job_seconds(duty_count=5, settings=settings, configured_floor_seconds=900.0)
+    assert result == 900.0
+
+
+# ── Soldier-facing "why" explanation: aggregate, name-free breakdown ───────
+
+def _candidate(soldier_id, score, blocking=None):
+    return CandidateInfo(
+        soldier_id=soldier_id, blocked=bool(blocking), blocking_constraints=blocking or [],
+        pre_effort_score=score, post_effort_score=score,
+    )
+
+
+def test_explanation_ahead_breakdown_buckets_by_reason():
+    """One bucket per candidate ranked ahead of the assignee (lower score),
+    keyed by their first blocking reason, or 'randomness' if they were fully
+    eligible and simply not the one picked. Never includes names/ids."""
+    assigned = uuid.uuid4()
+    exp = AlgoExplanation(
+        duty_id=uuid.uuid4(),
+        assigned_soldier_id=assigned,
+        candidates=[
+            _candidate(assigned, score=0.50),
+            _candidate(uuid.uuid4(), score=0.10, blocking=["personal_constraint"]),
+            _candidate(uuid.uuid4(), score=0.15, blocking=["exemption"]),
+            _candidate(uuid.uuid4(), score=0.20, blocking=["weapon_ineligible"]),
+            _candidate(uuid.uuid4(), score=0.25, blocking=["overlap"]),
+            _candidate(uuid.uuid4(), score=0.30),  # eligible, ranked ahead, not chosen
+            _candidate(uuid.uuid4(), score=0.90),  # ranked BEHIND assignee -- must not count
+        ],
+    )
+    result = _explanation_ahead_breakdown(exp)
+    assert result["ahead_count"] == 5
+    assert result["rank_from_bottom"] == 6
+    assert result["ahead_breakdown"] == {
+        "personal_constraint": 1, "exemption": 1, "weapon_ineligible": 1,
+        "overlap": 1, "randomness": 1,
+    }
+
+
+def test_explanation_ahead_breakdown_no_candidates_ahead():
+    assigned = uuid.uuid4()
+    exp = AlgoExplanation(
+        duty_id=uuid.uuid4(), assigned_soldier_id=assigned,
+        candidates=[_candidate(assigned, score=0.10), _candidate(uuid.uuid4(), score=0.90)],
+    )
+    result = _explanation_ahead_breakdown(exp)
+    assert result["ahead_count"] == 0
+    assert result["rank_from_bottom"] == 1
+    assert sum(result["ahead_breakdown"].values()) == 0
+
+
+def _setup_persist_job(session, suffix: str):
+    dt = DutyType(name=f"שמירה_exp_{suffix}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"שער_exp_{suffix}")
+    session.add(dt)
+    session.add(loc)
+    session.flush()
+    from tests.helpers import create_node, create_soldier
+    node = create_node(session, level="branch", name=f"exp_node_{suffix}")
+    dm = create_soldier(session, personal_number=f"exp_dm_{suffix}", role="duty_manager", hierarchy_node_id=node.id)
+    job = AlgorithmJob(
+        planning_start=date(2027, 5, 1), planning_end=date(2027, 5, 7),
+        shift_ids=[], settings_json={}, mode="shadow", created_by=dm.id, status="done",
+    )
+    session.add(job)
+    session.commit()
+    return dt, loc, dm, job
+
+
+def test_persist_results_logs_high_randomness_to_admin_error_inbox(admin_session, caplog):
+    """A job where the assignee was passed over ahead-of by mostly-eligible,
+    unblocked peers (no hard-constraint reason) gets flagged to the admin
+    error inbox via the standard backend.errors logger."""
+    from tests.helpers import create_soldier
+    dt, loc, dm, job = _setup_persist_job(admin_session, "hi")
+    soldier = create_soldier(admin_session, personal_number="exp_hi_soldier").id
+    duty_id = uuid.uuid4()
+    block = DutyBlock(
+        id=duty_id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 5, 1), end_date=date(2027, 5, 2),
+        score_per_day=Decimal("1.00"), is_reserve=False,
+    )
+    result = SolverResult(assignments=[Assignment(duty_id=duty_id, soldier_id=soldier)], status="OPTIMAL")
+    exp = AlgoExplanation(
+        duty_id=duty_id, assigned_soldier_id=soldier,
+        candidates=[
+            _candidate(soldier, score=0.50),
+            _candidate(uuid.uuid4(), score=0.10),  # eligible, ahead, not chosen -- randomness
+            _candidate(uuid.uuid4(), score=0.20),  # same
+        ],
+    )
+    explanation_data = ExplanationData(per_assignment=[exp])
+
+    with caplog.at_level("ERROR", logger="backend.errors"):
+        persist_results(
+            admin_session, job=job, result=result, explanation_data=explanation_data,
+            duty_blocks=[block], soldier_names={soldier: "Test Soldier"}, actor_id=dm.id,
+        )
+    admin_session.commit()
+
+    high_randomness_records = [r for r in caplog.records if "unexplained" in r.message]
+    assert len(high_randomness_records) == 1
+    assert high_randomness_records[0].job_id == str(job.id)
+    assert high_randomness_records[0].randomness_ratio == 1.0
+
+
+def test_persist_results_does_not_log_when_randomness_low(admin_session, caplog):
+    """When candidates ranked ahead of the assignee are mostly blocked by a
+    real hard-constraint reason (not unexplained randomness), no alert fires."""
+    from tests.helpers import create_soldier
+    dt, loc, dm, job = _setup_persist_job(admin_session, "lo")
+    soldier = create_soldier(admin_session, personal_number="exp_lo_soldier").id
+    duty_id = uuid.uuid4()
+    block = DutyBlock(
+        id=duty_id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 5, 1), end_date=date(2027, 5, 2),
+        score_per_day=Decimal("1.00"), is_reserve=False,
+    )
+    result = SolverResult(assignments=[Assignment(duty_id=duty_id, soldier_id=soldier)], status="OPTIMAL")
+    exp = AlgoExplanation(
+        duty_id=duty_id, assigned_soldier_id=soldier,
+        candidates=[
+            _candidate(soldier, score=0.50),
+            _candidate(uuid.uuid4(), score=0.10, blocking=["personal_constraint"]),
+            _candidate(uuid.uuid4(), score=0.20, blocking=["exemption"]),
+            _candidate(uuid.uuid4(), score=0.30, blocking=["weapon_ineligible"]),
+            _candidate(uuid.uuid4(), score=0.40),  # the only unexplained one -- 1/4 = 25% < threshold
+        ],
+    )
+    explanation_data = ExplanationData(per_assignment=[exp])
+
+    with caplog.at_level("ERROR", logger="backend.errors"):
+        persist_results(
+            admin_session, job=job, result=result, explanation_data=explanation_data,
+            duty_blocks=[block], soldier_names={soldier: "Test Soldier"}, actor_id=dm.id,
+        )
+    admin_session.commit()
+
+    assert [r for r in caplog.records if "unexplained" in r.message] == []

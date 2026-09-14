@@ -5,6 +5,10 @@ services:
       POSTGRES_USER: db_admin
       POSTGRES_PASSWORD: db_admin_pw
       POSTGRES_DB: justice
+    # Match production's Asia/Jerusalem timezone so CURRENT_DATE-based
+    # defaults (e.g. Soldier.enrolled_at) don't drift near local midnight —
+    # see backend/Dockerfile for the same fix on the app side.
+    command: postgres -c timezone=Asia/Jerusalem
     ports:
       - "5432:5432"
     volumes:

@@ -11,6 +11,7 @@ import { AlgorithmJob, listJobs, pollJob, cancelJob } from "../api/algorithm";
 import { listDutyTypes } from "../api/dutyConfig";
 import { listSoldiers } from "../api/soldiers";
 import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
+import { formatDateRange } from "../utils/formatDate";
 
 const JOBS_LIMIT = 20;
 const JOBS_OFFSET = 0;
@@ -210,7 +211,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                   {statusIcon(job.status)}
                 </span>
                 <span className="font-medium truncate text-xs">
-                  {job.planning_start} — {job.planning_end}
+                  {formatDateRange(job.planning_end, job.planning_start)}
                 </span>
                 <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[job.status] ?? STATUS_BADGE.pending}`}>
                   {STATUS_LABEL[job.status] ?? job.status}

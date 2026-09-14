@@ -954,3 +954,161 @@ def test_dual_role_commander_sees_unredacted_explanation(client, admin_session):
     assert r.status_code == 200
     assert "candidates" in r.json()
     assert "blocked_count" not in r.json()  # only the soldier-redacted view adds this key
+
+
+def test_assignee_explanation_view_never_leaks_other_soldiers(client, admin_session):
+    """The soldier who received a duty can see an aggregate, name-free
+    breakdown of why the people ranked ahead of them (by burden) weren't
+    picked instead — but never another soldier's name, id, or score, since
+    that would leak the existence of their personal constraint/exemption."""
+    from decimal import Decimal
+    from datetime import date
+    from app.db.models import AssignmentExplanation, DutyAssignment, DutyLocation, DutyType
+    from tests.helpers import create_soldier, auth_headers
+
+    assignee = create_soldier(admin_session, personal_number="algo-leak-assignee")
+    other_soldier = create_soldier(admin_session, personal_number="algo-leak-other")
+    dt = DutyType(name="algo-leak-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="algo-leak-loc")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=assignee.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    admin_session.add(
+        AssignmentExplanation(
+            duty_assignment_id=assignment.id,
+            payload={
+                "candidates": [
+                    {
+                        "soldier_id": str(other_soldier.id),
+                        "soldier_name": "בלעדי לזיהוי",
+                        "blocked": True,
+                        "blocking_constraints": ["personal_constraint"],
+                        "pre_norm_score": 0.1,
+                    },
+                ],
+                "pool_size": 3, "blocked_count": 1, "assigned_rank": 4,
+                "ahead_count": 3, "rank_from_bottom": 4,
+                "ahead_breakdown": {
+                    "personal_constraint": 1, "exemption": 0, "weapon_ineligible": 0,
+                    "overlap": 0, "randomness": 2,
+                },
+            },
+            algorithm_version="test",
+            solver_seed="0",
+        )
+    )
+    admin_session.commit()
+
+    r = client.get(f"/api/algorithm/explanations/{assignment.id}", headers=auth_headers(assignee))
+    assert r.status_code == 200
+    body = r.json()
+
+    raw = r.text
+    assert str(other_soldier.id) not in raw
+    assert "בלעדי לזיהוי" not in raw
+    assert "candidates" not in body
+    assert "ranked_candidates" not in body
+
+    assert body["rank_from_bottom"] == 4
+    assert body["ahead_count"] == 3
+    assert body["ahead_breakdown"] == {
+        "personal_constraint": 1, "exemption": 0, "weapon_ineligible": 0,
+        "overlap": 0, "randomness": 2,
+    }
+
+
+def test_manager_who_is_assignee_still_gets_redacted_explanation(client, admin_session):
+    """Being a duty manager must not reveal the full candidate list for their own duty."""
+    from decimal import Decimal
+    from datetime import date
+    from app.db.models import AssignmentExplanation, DutyAssignment, DutyLocation, DutyManagerScope, DutyType
+    from tests.helpers import create_node, create_soldier, auth_headers
+
+    node = create_node(admin_session, level="department", name="algo-own-dm-node")
+    manager = create_soldier(admin_session, personal_number="algo-own-dm", role="duty_manager")
+    admin_session.add(DutyManagerScope(duty_manager_id=manager.id, hierarchy_node_id=node.id))
+    other = create_soldier(admin_session, personal_number="algo-own-dm-other", hierarchy_node_id=node.id)
+    dt = DutyType(name="algo-own-dm-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="algo-own-dm-loc")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=manager.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    admin_session.add(AssignmentExplanation(
+        duty_assignment_id=assignment.id,
+        payload={"candidates": [{"soldier_id": str(other.id), "soldier_name": "סודי", "blocked": False}]},
+        algorithm_version="test", solver_seed="0",
+    ))
+    admin_session.commit()
+
+    r = client.get(f"/api/algorithm/explanations/{assignment.id}", headers=auth_headers(manager))
+    assert r.status_code == 200
+    assert "candidates" not in r.json()
+    assert str(other.id) not in r.text
+
+
+def test_commander_can_view_explanation_for_soldier_in_command_scope(client, admin_session):
+    from decimal import Decimal
+    from datetime import date
+    from app.db.models import AssignmentExplanation, DutyAssignment, DutyLocation, DutyType
+    from tests.helpers import create_node, create_soldier, auth_headers
+
+    node = create_node(admin_session, level="department", name="algo-commander-node")
+    commander = create_soldier(admin_session, personal_number="algo-commander", role="commander")
+    node.commander_id = commander.id
+    assignee = create_soldier(admin_session, personal_number="algo-commander-assignee", hierarchy_node_id=node.id)
+    dt = DutyType(name="algo-commander-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="algo-commander-loc")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=assignee.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    admin_session.add(AssignmentExplanation(
+        duty_assignment_id=assignment.id,
+        payload={"candidates": []}, algorithm_version="test", solver_seed="0",
+    ))
+    admin_session.commit()
+
+    r = client.get(f"/api/algorithm/explanations/{assignment.id}", headers=auth_headers(commander))
+    assert r.status_code == 200
+    assert "candidates" in r.json()
+
+
+def test_scoped_commander_gets_unavailable_response_when_assignment_has_no_explanation(client, admin_session):
+    from decimal import Decimal
+    from datetime import date
+    from app.db.models import DutyAssignment, DutyLocation, DutyType
+    from tests.helpers import create_node, create_soldier, auth_headers
+
+    node = create_node(admin_session, level="department", name="algo-no-explanation-node")
+    commander = create_soldier(admin_session, personal_number="algo-no-explanation-commander", role="commander")
+    node.commander_id = commander.id
+    assignee = create_soldier(admin_session, personal_number="algo-no-explanation-assignee", hierarchy_node_id=node.id)
+    dt = DutyType(name="algo-no-explanation-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="algo-no-explanation-loc")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=assignee.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.commit()
+
+    r = client.get(f"/api/algorithm/explanations/{assignment.id}", headers=auth_headers(commander))
+    assert r.status_code == 200
+    assert r.json()["explanation_available"] is False

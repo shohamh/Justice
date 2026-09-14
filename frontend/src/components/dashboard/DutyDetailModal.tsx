@@ -5,11 +5,12 @@ import { CalendarShift, CalendarShiftAssignee, getCalendarShift } from "../../ap
 import { DutyType, listDutyTypes } from "../../api/dutyConfig";
 import { formatDutyRange } from "../../utils/formatDate";
 import { useAuth } from "../../auth/AuthContext";
-import { useSoldierModal } from "../../contexts/SoldierModalContext";
 import ShiftDetailPanel from "../ShiftDetailPanel";
 import { useModalBackClose } from "../../hooks/useModalBackClose";
 import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 import HolidayBadge from "../HolidayBadge";
+import ExplanationModal from "../ExplanationModal";
+import SoldierLink from "../SoldierLink";
 
 interface Props {
   duty: EffectiveDuty | null;
@@ -25,15 +26,15 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
   const { t } = useTranslation();
   useModalBackClose(onClose);
   const { user } = useAuth();
-  const { openSoldierModal } = useSoldierModal();
   const [shift, setShift] = useState<CalendarShift | null>(null);
   const [dutyType, setDutyType] = useState<DutyType | null>(null);
   const [dutyTypeLookupState, setDutyTypeLookupState] = useState<DutyTypeLookupState>("loading");
   const [loading, setLoading] = useState(false);
   const [showShiftPanel, setShowShiftPanel] = useState(false);
+  const [explanationTarget, setExplanationTarget] = useState<{ id: string; isMe: boolean } | null>(null);
 
   useEffect(() => {
-    if (!duty) { setShift(null); setDutyType(null); setDutyTypeLookupState("loading"); setShowShiftPanel(false); return; }
+    if (!duty) { setShift(null); setDutyType(null); setDutyTypeLookupState("loading"); setShowShiftPanel(false); setExplanationTarget(null); return; }
     function handleKeyDown(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
@@ -161,7 +162,7 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
               ) : (
                 <ul className="space-y-1">
                   {primaries.map((a) => (
-                    <AssigneeRow key={a.assignment_id} assignee={a} isMe={a.soldier_id === user?.id} onClickSoldier={openSoldierModal} />
+                    <AssigneeRow key={a.assignment_id} assignee={a} isMe={a.soldier_id === user?.id} onExplain={(id, isMe) => setExplanationTarget({ id, isMe })} />
                   ))}
                 </ul>
               )}
@@ -170,7 +171,7 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
                   <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 mt-3 mb-1">רזרבות</p>
                   <ul className="space-y-1">
                     {reserves.map((a) => (
-                      <AssigneeRow key={a.assignment_id} assignee={a} isMe={a.soldier_id === user?.id} reserve onClickSoldier={openSoldierModal} />
+                      <AssigneeRow key={a.assignment_id} assignee={a} isMe={a.soldier_id === user?.id} reserve onExplain={(id, isMe) => setExplanationTarget({ id, isMe })} />
                     ))}
                   </ul>
                 </>
@@ -209,26 +210,31 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
           onRefreshNeeded={() => {}}
         />
       )}
+      {explanationTarget && (
+        <ExplanationModal
+          assignmentId={explanationTarget.id}
+          title={t(explanationTarget.isMe ? "algorithm.why_button" : "algorithm.why_received_other")}
+          onClose={() => setExplanationTarget(null)}
+        />
+      )}
     </div>
   );
 }
 
-function AssigneeRow({ assignee, isMe, reserve, onClickSoldier }: {
+function AssigneeRow({ assignee, isMe, reserve, onExplain }: {
   assignee: CalendarShiftAssignee;
   isMe: boolean;
   reserve?: boolean;
-  onClickSoldier?: (id: string) => void;
+  onExplain?: (id: string, isMe: boolean) => void;
 }) {
   return (
     <li className={`flex items-center gap-2 text-sm ${isMe ? "font-semibold text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-300"}`}>
       <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${reserve ? "bg-gray-300 dark:bg-gray-600" : isMe ? "bg-indigo-500" : "bg-gray-400"}`} />
-      <button
-        type="button"
-        className={`truncate text-right hover:underline ${isMe ? "text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-300"}`}
-        onClick={() => onClickSoldier?.(assignee.soldier_id)}
-      >
-        {assignee.soldier_name}
-      </button>
+      <SoldierLink
+        id={assignee.soldier_id}
+        name={assignee.soldier_name}
+        className={`truncate text-right ${isMe ? "text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-300"}`}
+      />
       {assignee.hierarchy_label && (
         <span className="text-xs text-gray-400 shrink-0">{assignee.hierarchy_label}</span>
       )}
@@ -236,6 +242,16 @@ function AssigneeRow({ assignee, isMe, reserve, onClickSoldier }: {
         <span className="text-xs text-amber-600 dark:text-amber-400 shrink-0">הוקפץ</span>
       )}
       {isMe && <span className="text-xs text-indigo-400 shrink-0">(את/ה)</span>}
+      {onExplain && (
+        <button
+          type="button"
+          data-testid={`why-assignment-${assignee.assignment_id}`}
+          className="text-xs text-blue-600 dark:text-blue-400 hover:underline shrink-0"
+          onClick={(event) => { event.stopPropagation(); onExplain(assignee.assignment_id, isMe); }}
+        >
+          {isMe ? "למה קיבלתי?" : "למה קיבל/ה?"}
+        </button>
+      )}
     </li>
   );
 }

@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { createSwap, takeDutyFree, listMySwaps, SwapRequest, EligibilityResult, getEligibleDuties, checkCoverEligibility, CoverEligibilityResult } from "../api/swaps";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
-import { lastDutyDay } from "../utils/formatDate";
+import { lastDutyDay, todayIso } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
@@ -64,7 +64,7 @@ export default function OfferSwapModal({
 
   useEffect(() => {
     if (!user) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     Promise.all([
       listEffectiveDuties(user.id, { date_from: today, include_drafts: true }),
       listDutyTypes().catch(() => [] as DutyType[]),

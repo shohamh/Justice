@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import math
 import threading
 import uuid
@@ -50,6 +51,7 @@ from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
 
 _cancel_events: dict[str, threading.Event] = {}
+_logger = logging.getLogger(__name__)
 
 
 def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_seconds: float) -> None:
@@ -67,6 +69,9 @@ def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_sec
 
     if cancel_event.wait(timeout=max_seconds):
         return  # finished normally, or cancelled by the user, before the deadline
+    _logger.warning(
+        "[job %s] watchdog firing cancel_event: no activity within max_seconds=%.1f", job_id, max_seconds,
+    )
     with session_scope() as session:
         job = session.get(AlgorithmJob, job_id)
         if job is not None and job.status == "running":
@@ -75,6 +80,44 @@ def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_sec
             job.finished_at = datetime.now(tz=UTC)
             session.commit()
     cancel_event.set()
+
+
+def estimate_max_job_seconds(
+    *, duty_count: int, settings: SolverSettings, configured_floor_seconds: float,
+) -> float:
+    """Worst-case wall-clock budget for the watchdog thread (_watch_job_timeout).
+
+    The solver decomposes a run into roughly duty_count/interleaved_batch_size
+    sequential batches, each allowed up to batch_time_limit_seconds PER ATTEMPT.
+    A batch that comes back infeasible retries via the graduated R/T relaxation
+    ladder (solver._relax_step: R loosens in hops of 2 up to relax_r_ceiling,
+    then T up to relax_t_ceiling), each rung spending up to another full
+    batch_time_limit_seconds. A formula that omits that per-batch retry
+    multiplier undershoots for any run needing relaxation -- confirmed from
+    production logs on this deployment, where 4 of 5 recent runs were killed
+    at the flat 600s floor while the one run that completed took 919s.
+
+    Interleaved components also receive one bounded residual pass after their
+    normal batches, so reserve one additional relaxation-chain budget. This is
+    intentionally flat headroom because component count is unknown until the
+    solver builds its eligibility graph.
+
+    Never returns less than configured_floor_seconds (the "algorithm.max_job_seconds"
+    system setting) -- this is a floor, not a cap: an honestly large or
+    relaxation-heavy job should never be killed before it can finish.
+    """
+    estimated_batches = max(1, math.ceil(duty_count / max(1, settings.interleaved_batch_size)))
+    max_relaxation_attempts = (
+        1
+        + math.ceil(max(0, settings.relax_r_ceiling - settings.R) / 2)
+        + math.ceil(max(0, settings.relax_t_ceiling - settings.T) / 2)
+    )
+    estimated_worst_case_seconds = (
+        estimated_batches * max_relaxation_attempts * settings.batch_time_limit_seconds
+        + max_relaxation_attempts * settings.batch_time_limit_seconds
+        + 60
+    )
+    return max(configured_floor_seconds, estimated_worst_case_seconds)
 
 
 def _count_space_stats(
@@ -114,7 +157,10 @@ def _count_space_stats(
         totals.append(float(offset + weight))
 
     if not totals:
-        return {"cv": None, "mean": None, "stddev": None, "min": None, "max": None, "n": 0}
+        return {
+            "cv": None, "mean": None, "stddev": None,
+            "min": None, "max": None, "min_gap": None, "n": 0,
+        }
     mean = sum(totals) / len(totals)
     variance = sum((t - mean) ** 2 for t in totals) / len(totals)
     stddev = math.sqrt(variance)
@@ -125,6 +171,9 @@ def _count_space_stats(
         "stddev": round(stddev, 2),
         "min": round(min(totals), 2),
         "max": round(max(totals), 2),
+        # The explanation UI calls this the minimum fairness gap: the spread
+        # between the least- and most-loaded soldiers in count space.
+        "min_gap": round(max(totals) - min(totals), 2),
         "n": len(totals),
     }
 
@@ -804,6 +853,56 @@ def _build_node_parents(
     return {node_id: parent_id for node_id, parent_id in hierarchy_parent.items() if parent_id is not None}
 
 
+# Above this fraction of "ahead of the assigned soldier" candidates being
+# unexplained (fully eligible, yet not the one picked -- see
+# _explanation_ahead_breakdown's "randomness" bucket), a job is flagged to
+# the admin error inbox as worth a manual look, since it suggests the
+# solver's ordering is drifting away from a clean lowest-burden-first
+# story for a meaningful share of assignments.
+HIGH_RANDOMNESS_RATIO_THRESHOLD = 0.3
+
+
+def _explanation_ahead_breakdown(exp: AlgoExplanation) -> dict[str, Any]:
+    """Aggregate, name-free breakdown of everyone who ranks ahead of the
+    assigned soldier by burden score (blocked or not), computed from the FULL
+    candidate list before it gets truncated for storage below.
+
+    Each candidate contributes to exactly one bucket (their first recorded
+    blocking reason, in the order explain.py checks them: exemption,
+    weapon_ineligible, personal_constraint, overlap), or to "randomness" if
+    they were fully eligible and simply weren't the one chosen this time.
+    Intentionally counts only, never names or soldier_ids, so this is safe to
+    surface directly to the assigned soldier -- see the soldier-facing
+    /explanation endpoint in routes/algorithm.py.
+    """
+    assigned_id = exp.assigned_soldier_id
+    assigned_c = next((c for c in exp.candidates if c.soldier_id == assigned_id), None)
+    assigned_score = assigned_c.pre_effort_score if assigned_c else None
+
+    breakdown = {"personal_constraint": 0, "exemption": 0, "weapon_ineligible": 0, "overlap": 0, "randomness": 0}
+    ahead_count = 0
+    if assigned_score is not None:
+        for c in exp.candidates:
+            if c.soldier_id == assigned_id:
+                continue
+            score = c.pre_effort_score if c.pre_effort_score is not None else float("inf")
+            if score >= assigned_score:
+                continue
+            ahead_count += 1
+            if c.blocking_constraints:
+                reason = c.blocking_constraints[0]
+                if reason in breakdown:
+                    breakdown[reason] += 1
+            else:
+                breakdown["randomness"] += 1
+
+    return {
+        "ahead_count": ahead_count,
+        "rank_from_bottom": ahead_count + 1,
+        "ahead_breakdown": breakdown,
+    }
+
+
 def _explanation_payload(
     exp: AlgoExplanation,
     *,
@@ -812,10 +911,10 @@ def _explanation_payload(
 ) -> dict[str, Any]:
     """Serialise one AssignmentExplanation to a JSON-safe dict.
 
-    Pre-computes pool_size/blocked_count/assigned_rank from the full candidate
-    list, then truncates to top-10 unblocked + 5 blocked before storing.
-    Keeps JSONB payloads small (~1-2KB instead of ~40KB) while preserving the
-    aggregate stats the UI needs.
+    Pre-computes pool_size/blocked_count/assigned_rank/ahead_breakdown from
+    the full candidate list, then truncates to top-10 unblocked + 5 blocked
+    before storing. Keeps JSONB payloads small (~1-2KB instead of ~40KB)
+    while preserving the aggregate stats the UI needs.
     """
     assigned_id = exp.assigned_soldier_id
 
@@ -824,6 +923,7 @@ def _explanation_payload(
 
     pool_size = len(unblocked)
     blocked_count = len(blocked_list)
+    ahead = _explanation_ahead_breakdown(exp)
 
     unblocked_sorted = sorted(
         unblocked,
@@ -863,6 +963,7 @@ def _explanation_payload(
         "blocked_count": blocked_count,
         "assigned_rank": assigned_rank,
         "candidates": candidates,
+        **ahead,
     }
 
 
@@ -947,6 +1048,8 @@ def persist_results(
     _pr_phase("pass1 flush done")
 
     # Pass 2: insert AssignmentExplanation rows (FK to duty_assignments now safe)
+    total_ahead_count = 0
+    total_randomness_count = 0
     for da, duty_id in created:
         block: DutyBlock = duty_map[duty_id]
         if not block.is_reserve:
@@ -976,6 +1079,10 @@ def persist_results(
                 payload = _explanation_payload(exp, dm_view=True, soldier_names=soldier_names)
                 payload["global_before"] = explanation_data.global_metrics_before
                 payload["global_after"] = explanation_data.global_metrics_after
+                da.ahead_count = payload["ahead_count"]
+                da.randomness_count = payload["ahead_breakdown"]["randomness"]
+                total_ahead_count += payload["ahead_count"]
+                total_randomness_count += payload["ahead_breakdown"]["randomness"]
                 session.add(AssignmentExplanation(
                     duty_assignment_id=da.id,
                     payload=payload,
@@ -984,6 +1091,19 @@ def persist_results(
                 ))
 
     _pr_phase("pass2 explanations added")
+    if total_ahead_count > 0:
+        randomness_ratio = total_randomness_count / total_ahead_count
+        if randomness_ratio > HIGH_RANDOMNESS_RATIO_THRESHOLD:
+            _logging.getLogger("backend.errors").error(
+                "Algorithm job has a high rate of unexplained assignment ordering "
+                "(soldiers passed over for a lower-burden peer with no hard-constraint reason)",
+                extra={
+                    "job_id": str(job.id),
+                    "randomness_ratio": round(randomness_ratio, 3),
+                    "randomness_count": total_randomness_count,
+                    "ahead_count": total_ahead_count,
+                },
+            )
     if primary_assignments and reserve_assignments and soldier_node is not None:
         links = link_reserves(
             primary_assignments=primary_assignments,
@@ -1338,15 +1458,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     configured_max_job_seconds = float(get_setting(session, "algorithm.max_job_seconds"))
                 except Exception:
                     configured_max_job_seconds = 600.0
-                # A flat budget doesn't scale with workload: the solver decomposes into
-                # roughly len(duties)/interleaved_batch_size sequential batches, each
-                # allowed up to batch_time_limit_seconds. Extend the watchdog (never
-                # shrink below the configured floor) to cover that worst case, plus
-                # headroom for setup/persisting, so an honestly large job isn't killed
-                # before it can finish.
-                estimated_batches = max(1, math.ceil(len(duties) / max(1, settings.interleaved_batch_size)))
-                estimated_worst_case_seconds = estimated_batches * settings.batch_time_limit_seconds + 60
-                max_job_seconds = max(configured_max_job_seconds, estimated_worst_case_seconds)
+                max_job_seconds = estimate_max_job_seconds(
+                    duty_count=len(duties), settings=settings, configured_floor_seconds=configured_max_job_seconds,
+                )
                 threading.Thread(
                     target=_watch_job_timeout, args=(job_id, cancel_event, max_job_seconds), daemon=True,
                 ).start()
@@ -1469,12 +1583,38 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 # calls this back once with (0, total) then after each duty batch.
                 # Both arguments are DUTY counts, so the bar advances proportionally
                 # to work done.  5–93 % leaves room for the swap pass and persisting.
+                _last_batch_progress = {"done": 0, "total": 1}
+
                 def _report_progress(done: int, total: int) -> None:
                     total = max(total, 1)
+                    _last_batch_progress["done"] = done
+                    _last_batch_progress["total"] = total
                     pct = 5 + int(88 * done / total)
                     label = (
                         f"פותר — {done} מתוך {total} תורנויות" if done > 0
                         else f"מתחיל לפתור — {total} תורנויות"
+                    )
+                    job.progress_message = json.dumps({"pct": pct, "label": label})
+                    session.commit()
+
+                # A batch that comes back infeasible retries via the R/T relaxation
+                # ladder -- each rung re-solving from scratch, up to another full
+                # batch_time_limit_seconds -- during which _report_progress above
+                # doesn't fire again (duties_done only advances once the WHOLE batch,
+                # including all its retries, finishes). Without this, the bar and its
+                # label sit frozen for however long that takes, indistinguishable from
+                # a hang. Only commit once attempt > 1 (i.e. relaxation is genuinely
+                # happening) -- the common first-attempt-succeeds case is already
+                # covered by _report_progress and needs no extra write.
+                def _report_relax_attempt(attempt: int, max_attempts: int, last_label: str) -> None:
+                    if attempt <= 1:
+                        return
+                    done = _last_batch_progress["done"]
+                    total = _last_batch_progress["total"]
+                    pct = 5 + int(88 * done / total)
+                    label = (
+                        f"מרפה אילוצים (ניסיון {attempt}/{max_attempts}: {last_label}) — "
+                        f"{done} מתוך {total} תורנויות הושלמו"
                     )
                     job.progress_message = json.dumps({"pct": pct, "label": label})
                     session.commit()
@@ -1498,6 +1638,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         reserve_dist=reserve_dist, cancel_event=cancel_event,
                         progress_cb=_report_progress,
                         swap_progress_cb=_report_swap_start,
+                        relax_attempt_cb=_report_relax_attempt,
                         node_parents=node_parents,
                     )
                 except BaseException as _solve_exc:
@@ -1508,16 +1649,45 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     )
                     raise
                 _phase(f"solver: done (status={result.status}, assignments={len(result.assignments)})")
-                job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
-                session.commit()
 
                 # Solver was interrupted by cancellation (timeout watchdog or explicit
-                # user cancel both set cancel_event the same way — the DB row already
-                # has whichever terminal status/error_message that path committed).
-                # With nothing assigned before the cutoff there's nothing to salvage.
+                # user cancel both set cancel_event the same way, each committing its
+                # own terminal status/error_message on job's DB row from a different
+                # session/thread). With nothing assigned before the cutoff there's
+                # nothing to salvage.
                 salvaging_timeout = False
                 if result.status == "CANCELLED" and not result.assignments:
                     session.rollback()
+                    # This thread's in-memory `job` predates whichever writer set
+                    # cancel_event -- refresh before trusting the DB row already
+                    # reflects that writer's terminal status. Previously this branch
+                    # returned unconditionally on that assumption; if cancel_event
+                    # got set through a path that never itself reached the DB (or
+                    # simply hadn't yet), the job was silently abandoned in "running"
+                    # forever with a stale progress_message from below, showing a
+                    # perpetual "96% שומר הצעות" the UI could never resolve out of
+                    # (confirmed in production: job ea460404 stuck exactly this way).
+                    session.refresh(job)
+                    if job.status not in ("failed", "done", "published"):
+                        # Neither known writer (the cancel route, which sets
+                        # error_message="cancelled_by_user"; the watchdog, which
+                        # sets reason="timed_out") had already committed a terminal
+                        # status by the time we got here -- so cancel_event was set
+                        # through some other path. That's worth surfacing loudly:
+                        # it means a real trigger for this job's cancellation is
+                        # unknown, not just that the job needs a retry.
+                        logging.getLogger("backend.errors").error(
+                            "[job %s] cancel_event was set but neither the cancel "
+                            "route nor the timeout watchdog had recorded a terminal "
+                            "status for it -- cancellation trigger is unattributed. "
+                            "elapsed=%.1fs duty_count=%d",
+                            job_id, _time.monotonic() - _t0, len(duties),
+                            extra={"job_id": str(job_id), "duty_count": len(duties)},
+                        )
+                        job.status = "failed"
+                        job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "cancelled_no_assignments"})
+                        job.finished_at = datetime.now(tz=UTC)
+                        session.commit()
                     return
                 if result.status == "CANCELLED":
                     session.refresh(job)
@@ -1531,6 +1701,12 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     # discarding it. Falls through to the normal persistence path
                     # below, which will mark the job "done" with a PARTIAL note.
                     salvaging_timeout = True
+
+                # Only reachable once we know we're either fully done or salvaging a
+                # partial result -- a cancelled-with-nothing-to-save run already
+                # returned above, so it never shows a "saving…" label it can't back up.
+                job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
+                session.commit()
 
                 if result.status == "INFEASIBLE":
                     from app.algorithm.diagnose import diagnose_infeasibility

@@ -23,6 +23,7 @@ import { sortNodesByTree } from "../../utils/sortNodesByTree";
 import { WHOLE_ORG_ID } from "../../utils/wholeOrg";
 import ExemptionsCell from "../../components/ExemptionsCell";
 import DateInput from "../../components/DateInput";
+import { todayIso } from "../../utils/formatDate";
 
 export default function PotentialPage() {
   const { t } = useTranslation();
@@ -32,7 +33,7 @@ export default function PotentialPage() {
     () => new Map(levelTypes.map((lt) => [lt.key, lt.label])),
     [levelTypes],
   );
-  const [referenceDate, setReferenceDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [referenceDate, setReferenceDate] = useState<string>(todayIso());
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
   const [newReason, setNewReason] = useState("");
   const [newDelta, setNewDelta] = useState(0);

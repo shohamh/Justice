@@ -111,6 +111,10 @@ export interface ProposalRow {
   candidate_rank: number | null;
   candidate_pool_size: number | null;
   batch_index: number | null;
+  ahead_count: number | null;
+  randomness_count: number | null;
+  is_high_randomness: boolean;
+  is_reserve?: boolean;
 }
 
 export interface CountSpaceStats {
@@ -174,8 +178,17 @@ export interface AssignmentContext {
   end_date: string;
 }
 
+export interface AheadBreakdown {
+  personal_constraint: number;
+  exemption: number;
+  weapon_ineligible: number;
+  overlap: number;
+  randomness: number;
+}
+
 export interface SoldierExplanation {
   assigned: boolean;
+  explanation_available?: boolean;
   norm_score_before: number | null;
   norm_score_after: number | null;
   blocked_count: number;
@@ -183,18 +196,17 @@ export interface SoldierExplanation {
   global_before: { min_gap: number; norm_variance: number };
   global_after: { min_gap: number; norm_variance: number };
   assignment_context?: AssignmentContext;
-  // Enriched fields for redesigned explanation modal
+  // Enriched fields for redesigned explanation modal — aggregate counts only,
+  // never another soldier's name/id/score (see backend routes/algorithm.py's
+  // _explanation_response for why).
   score_at_assignment?: number | null;
   eligible_count?: number;
-  soldier_rank?: number;
-  constraint_count?: number;
-  my_constraints?: string[];
-  ranked_candidates?: Array<{
-    soldier_id: string;
-    full_name: string;
-    score: number | null;
-    reason_excluded: string | null;
-  }>;
+  soldier_rank?: number | null;
+  rank_from_bottom?: number | null;
+  ahead_count?: number | null;
+  // null on records persisted before this aggregation existed — shown as
+  // "not available" rather than guessed.
+  ahead_breakdown?: AheadBreakdown | null;
 }
 
 export interface CandidateInfo {
@@ -207,6 +219,7 @@ export interface CandidateInfo {
 }
 
 export interface DmExplanation {
+  explanation_available?: boolean;
   duty_id: string;
   assigned_soldier_id: string;
   tiebreaker_note: string | null;
@@ -258,21 +271,37 @@ export async function getExplanation(
   jobId: string,
   assignmentId: string
 ): Promise<SoldierExplanation | DmExplanation> {
-  return (
-    await api.get<SoldierExplanation | DmExplanation>(
-      `/algorithm/jobs/${jobId}/explanations/${assignmentId}`
-    )
-  ).data;
+  return getCachedExplanation(
+    `job:${jobId}:${assignmentId}`,
+    `/algorithm/jobs/${jobId}/explanations/${assignmentId}`,
+  );
 }
 
 export async function getExplanationByAssignment(
   assignmentId: string
 ): Promise<SoldierExplanation | DmExplanation> {
-  return (
-    await api.get<SoldierExplanation | DmExplanation>(
-      `/algorithm/explanations/${assignmentId}`
-    )
-  ).data;
+  return getCachedExplanation(`assignment:${assignmentId}`, `/algorithm/explanations/${assignmentId}`);
+}
+
+const explanationCache = new Map<string, SoldierExplanation | DmExplanation>();
+const explanationRequests = new Map<string, Promise<SoldierExplanation | DmExplanation>>();
+
+function getCachedExplanation(
+  key: string,
+  url: string,
+): Promise<SoldierExplanation | DmExplanation> {
+  const cached = explanationCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const pending = explanationRequests.get(key);
+  if (pending) return pending;
+  const request = api.get<SoldierExplanation | DmExplanation>(url)
+    .then(({ data }) => {
+      explanationCache.set(key, data);
+      return data;
+    })
+    .finally(() => explanationRequests.delete(key));
+  explanationRequests.set(key, request);
+  return request;
 }
 
 export async function acceptProposal(jobId: string, assignmentId: string): Promise<void> {

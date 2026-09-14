@@ -125,6 +125,42 @@ def test_fairness_components_403_for_plain_soldier_by_default(client: TestClient
     assert r.status_code == 403
 
 
+def test_fairness_components_node_id_scopes_to_subtree(client: TestClient, admin_session: Session):
+    # Two soldiers sharing one duty type normally land in the same component;
+    # scoping to one soldier's node should drop the other out of that component
+    # entirely (matching the "סנן לפי יחידה" unit filter elsewhere on the page).
+    from tests.helpers import create_node
+
+    admin = create_soldier(admin_session, personal_number="5600050", role="admin")
+    node_a = create_node(admin_session, level="team", name="team-fc-a")
+    node_b = create_node(admin_session, level="team", name="team-fc-b")
+    dt = DutyType(name="שמירה-fc", score_per_day=Decimal("2.00"))
+    admin_session.add(dt)
+    admin_session.flush()
+    s_a = create_soldier(admin_session, personal_number="5600051", hierarchy_node_id=node_a.id)
+    s_b = create_soldier(admin_session, personal_number="5600052", hierarchy_node_id=node_b.id)
+    admin_session.commit()
+
+    def soldiers_of(body: dict) -> set[str]:
+        comp = next(c for c in body["components"] if "שמירה-fc" in c["duty_type_names"])
+        return {s["soldier_id"] for s in comp["soldiers"]}
+
+    r_all = client.get("/api/scoring/fairness-components", headers=auth_headers(admin))
+    assert r_all.status_code == 200
+    all_ids = soldiers_of(r_all.json())
+    assert {str(s_a.id), str(s_b.id)}.issubset(all_ids)
+
+    r_scoped = client.get(
+        "/api/scoring/fairness-components",
+        params={"node_id": str(node_a.id)},
+        headers=auth_headers(admin),
+    )
+    assert r_scoped.status_code == 200
+    scoped_ids = soldiers_of(r_scoped.json())
+    assert str(s_a.id) in scoped_ids
+    assert str(s_b.id) not in scoped_ids
+
+
 def test_soldier_can_read_own_breakdown(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="5600004", role="soldier")
     r = client.get(f"/api/scoring/soldiers/{s.id}", headers=auth_headers(s))

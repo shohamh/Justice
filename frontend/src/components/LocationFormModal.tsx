@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { DutyLocation, createLocation } from "../api/dutyConfig";
 import { translateApiError } from "../utils/translateApiError";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 
 interface Props {
   onCreated: (loc: DutyLocation) => void;
@@ -10,32 +11,45 @@ interface Props {
 }
 
 export default function LocationFormModal({ onCreated, onClose }: Props) {
-  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function trySave(): Promise<boolean> {
     setError(null);
     setSaving(true);
     try {
       const loc = await createLocation({ name: name.trim() });
       onCreated(loc);
+      return true;
     } catch (err: unknown) {
       setError(translateApiError(err, t, "שגיאה"));
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
+  const { requestClose } = useUnsavedChangesGuard({
+    kind: "modal",
+    isDirty: name.trim() !== "",
+    onSave: trySave,
+    onDiscard: onClose,
+  });
+  useModalBackClose(requestClose);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    await trySave();
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={requestClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-80" dir="rtl" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-semibold text-base">{t("duty_config.add")} {t("duty_config.locations")}</h3>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+          <button type="button" onClick={requestClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <label className="block text-sm">
@@ -51,7 +65,7 @@ export default function LocationFormModal({ onCreated, onClose }: Props) {
           </label>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">
+            <button type="button" onClick={requestClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">
               {t("duty_config.cancel", "ביטול")}
             </button>
             <button type="submit" disabled={saving || !name.trim()}

@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import "../i18n";
 import { SystemSettingsContent } from "./SystemSettingsPage";
 import * as systemSettingsApi from "../api/systemSettings";
 import * as rankAdvancementApi from "../api/rankAdvancement";
 import * as hierarchyApi from "../api/hierarchy";
+import { UnsavedChangesProvider } from "../contexts/UnsavedChangesContext";
 
 vi.mock("../api/hierarchy");
 
@@ -394,5 +396,62 @@ describe("SystemSettingsContent reset-date overrides", () => {
     const dateInput = newRow!.querySelector('input[placeholder="dd/mm/yyyy"]') as HTMLInputElement | null;
     expect(dateInput).not.toBeNull();
     expect(dateInput!.value).toBe("10/05/2026");
+  });
+});
+
+function renderWithUnsavedChangesGuard(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <UnsavedChangesProvider>{ui}</UnsavedChangesProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
+
+describe("SystemSettingsContent unsaved-changes guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(systemSettingsApi.getSystemSettings).mockResolvedValue({
+      "eligibility.mitvahim_months": 6,
+    });
+    vi.mocked(rankAdvancementApi.getRankLadder).mockResolvedValue({
+      enlisted: [{ rank: "טוראי", months_to_next: 4, advance_on_career_entry: false }],
+      officer: [{ rank: "סגן", months_to_next: 12, advance_on_career_entry: false }],
+      officer_academic: [{ rank: "קאב", months_to_next: null, advance_on_career_entry: false }],
+    });
+  });
+
+  it("warns before a browser tab close while a boolean setting is toggled", async () => {
+    // A distinguishing value (differs from the field's own default of 6) lets us wait for
+    // the fetched settings to actually land in component state before interacting --
+    // otherwise the load-sync effect can fire after our click and clobber the draft (same
+    // race the "saves the transparency..." test above guards against).
+    vi.mocked(systemSettingsApi.getSystemSettings).mockResolvedValue({
+      "eligibility.mitvahim_months": 55,
+    });
+    renderWithUnsavedChangesGuard(<SystemSettingsContent />);
+    await screen.findByDisplayValue("55");
+
+    const [firstUntoggled] = screen.getAllByRole("button", { pressed: false });
+    fireEvent.click(firstUntoggled);
+
+    const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    const preventDefault = vi.spyOn(event, "preventDefault");
+    window.dispatchEvent(event);
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it("does not warn before a tab close when nothing was changed", async () => {
+    renderWithUnsavedChangesGuard(<SystemSettingsContent />);
+    await waitFor(() => expect(systemSettingsApi.getSystemSettings).toHaveBeenCalled());
+
+    const event = new Event("beforeunload", { cancelable: true }) as BeforeUnloadEvent;
+    const preventDefault = vi.spyOn(event, "preventDefault");
+    window.dispatchEvent(event);
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 });

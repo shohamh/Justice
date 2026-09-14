@@ -7,6 +7,8 @@ import { usePublicSettings } from "../hooks/usePublicSettings";
 import SoldierLink from "./SoldierLink";
 import DutyDetailModal from "./dashboard/DutyDetailModal";
 import ConfirmDialog from "./ConfirmDialog";
+import ExplanationModal from "./ExplanationModal";
+import { todayIso } from "../utils/formatDate";
 
 interface Props {
   data: UpcomingDay[] | null;
@@ -71,11 +73,15 @@ function SoldierRow({
   forcedCallupEnabled,
   onForcedRelease,
   reserve,
+  onExplain,
+  showExplanation,
 }: {
   a: UpcomingAssignment;
   forcedCallupEnabled: boolean;
   onForcedRelease: (a: UpcomingAssignment) => void;
   reserve?: boolean;
+  onExplain: (assignmentId: string) => void;
+  showExplanation: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -102,6 +108,16 @@ function SoldierRow({
           ⚑
         </button>
       )}
+      {showExplanation && a.soldier_id && (
+        <button
+          type="button"
+          data-testid={`why-assignment-${a.assignment_id}`}
+          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          onClick={() => onExplain(a.assignment_id)}
+        >
+          {t("algorithm.why_received_other")}
+        </button>
+      )}
     </li>
   );
 }
@@ -113,6 +129,7 @@ export default function UpcomingSnapshot({ data, scope = "command", scopeLabel: 
   const [detailDuty, setDetailDuty] = useState<EffectiveDuty | null>(null);
   const [detailLocationNames, setDetailLocationNames] = useState<Record<string, string>>({});
   const [forcedReleaseTarget, setForcedReleaseTarget] = useState<UpcomingAssignment | null>(null);
+  const [explanationAssignmentId, setExplanationAssignmentId] = useState<string | null>(null);
   const forcedCallupEnabled = publicSettings?.["forced_callup.enabled"] === true;
 
   function handleForcedRelease(a: UpcomingAssignment) {
@@ -142,7 +159,7 @@ export default function UpcomingSnapshot({ data, scope = "command", scopeLabel: 
       </section>
     );
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
 
   return (
     <section className="space-y-2" aria-label={scopeLabel}>
@@ -181,14 +198,14 @@ export default function UpcomingSnapshot({ data, scope = "command", scopeLabel: 
                       {group.primaries.length > 0 && (
                         <ul className="space-y-0.5">
                           {group.primaries.map((a) => (
-                            <SoldierRow key={a.assignment_id} a={a} forcedCallupEnabled={forcedCallupEnabled} onForcedRelease={setForcedReleaseTarget} />
+                            <SoldierRow key={a.assignment_id} a={a} forcedCallupEnabled={forcedCallupEnabled} onForcedRelease={setForcedReleaseTarget} onExplain={setExplanationAssignmentId} showExplanation={scope === "command"} />
                           ))}
                         </ul>
                       )}
                       {group.reserves.length > 0 && (
                         <ul className="space-y-0.5">
                           {group.reserves.map((a) => (
-                            <SoldierRow key={a.assignment_id} a={a} reserve forcedCallupEnabled={forcedCallupEnabled} onForcedRelease={setForcedReleaseTarget} />
+                            <SoldierRow key={a.assignment_id} a={a} reserve forcedCallupEnabled={forcedCallupEnabled} onForcedRelease={setForcedReleaseTarget} onExplain={setExplanationAssignmentId} showExplanation={scope === "command"} />
                           ))}
                         </ul>
                       )}
@@ -211,6 +228,13 @@ export default function UpcomingSnapshot({ data, scope = "command", scopeLabel: 
           setDetailLocationNames({});
         }}
       />
+      {explanationAssignmentId && (
+        <ExplanationModal
+          assignmentId={explanationAssignmentId}
+          title={t("algorithm.why_received_other")}
+          onClose={() => setExplanationAssignmentId(null)}
+        />
+      )}
       <ConfirmDialog
         open={forcedReleaseTarget !== null}
         title={t("command_dashboard.forced_callup_title", "שחרור פיקודי")}

@@ -596,7 +596,7 @@ def test_earlier_primary_range_qualifies_later_candidate_event(app_session: Sess
                 if candidate.soldier.id == soldier.id)
 
     assert mine.reason_code == "qualified"
-    assert mine.explanation == f"range_recently_completed:{(earlier_event.date + timedelta(days=180)).strftime('%d.%m.%Y')}"
+    assert mine.explanation == f"השלים לאחרונה, בתוקף עד {(earlier_event.date + timedelta(days=180)).strftime('%d.%m.%Y')}"
 
 
 def test_primary_coverage_is_stronger_than_reserve_coverage(app_session: Session) -> None:
@@ -718,8 +718,9 @@ def test_recently_qualified_candidate_stays_visible_but_is_not_auto_selectable(
                 if candidate.soldier.id == soldier.id)
 
     assert mine.reason_code == "qualified"
-    reason_template = "range_recently_completed" if not auto_selectable else "range_valid_expiring"
-    assert mine.explanation == f"{reason_template}:{(earlier_event.date + timedelta(days=180)).strftime('%d.%m.%Y')}"
+    expiry = (earlier_event.date + timedelta(days=180)).strftime('%d.%m.%Y')
+    expected = f"בתוקף, פג ב-{expiry}" if auto_selectable else f"השלים לאחרונה, בתוקף עד {expiry}"
+    assert mine.explanation == expected
     assert mine.auto_selectable is auto_selectable
 
 
@@ -824,7 +825,8 @@ def test_reason_code_available_and_balanced_when_no_qualification_or_duty(app_se
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "available_and_balanced"
-    assert mine.explanation == "range_never_completed"
+    assert mine.explanation == "מעולם לא הוסמך למטווח מסוג זה"
+    assert mine.system_reason_code == "never_completed"
 
 
 def test_reason_code_duty_priority_for_future_regular_weapon_duty(app_session: Session) -> None:
@@ -976,7 +978,9 @@ def test_explanation_shows_last_valid_until_when_previously_qualified(app_sessio
 
     mine = next(c for c in ranked if c.soldier.id == soldier.id)
     assert mine.reason_code == "available_and_balanced"
-    assert mine.explanation == f"range_last_completed:{expired_until.isoformat()}"
+    assert mine.explanation == f"הסמכה קודמת פגה ב-{expired_until.strftime('%d.%m.%Y')}"
+    assert mine.system_reason_code == "last_completed"
+    assert mine.system_reason_date == expired_until
 
 
 def test_excluded_candidates_reports_reasons_and_omits_them_from_ranking(app_session: Session) -> None:

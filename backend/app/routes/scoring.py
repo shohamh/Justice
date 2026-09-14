@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -131,6 +131,7 @@ def transparency(
 
 @router.get("/fairness-components")
 def fairness_components(
+    node_id: uuid.UUID | None = Query(None, description="Scope to this node's subtree"),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
@@ -138,7 +139,7 @@ def fairness_components(
     duty-type eligibility, plus the count of soldiers exempt from every duty."""
     if not has_any_visibility(session, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
-    return svc.fairness_components(session, viewer=user)
+    return svc.fairness_components(session, viewer=user, node_id=node_id)
 
 
 @router.get("/eligibility-groups")

@@ -43,6 +43,12 @@ function deviationEndColor(z: number, capZ: number): string {
 }
 const DEVIATION_NEUTRAL_RGB = `rgb(${DEVIATION_NEUTRAL.join(", ")})`;
 
+/** Shared column layout for the candidate list's header row and every data
+ * row below it, applied via inline style (not a Tailwind arbitrary-value
+ * class) so both are guaranteed the exact same computed grid regardless of
+ * how the build processes utility classes. */
+const CANDIDATE_ROW_GRID = "16px clamp(64px, 14vw, 200px) minmax(0,1fr) 40px 40px";
+
 interface BucketBurdenShareStats { mean: number; stddev: number; cv: number; min: number; max: number }
 
 /** Burden-share spread (same CV/stddev/range shape as the group-level badge)
@@ -383,7 +389,17 @@ function FairnessComponentCard({
               ? `חיילים בקבוצות שנבחרו (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
               : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
           </p>
-          <div className="space-y-1 min-w-[260px]">
+          <div
+            className="items-start gap-1 pr-1 border-r-2 border-transparent text-[10px] leading-tight text-gray-400 dark:text-gray-500"
+            style={{ display: "grid", gridTemplateColumns: CANDIDATE_ROW_GRID }}
+          >
+            <span>&nbsp;</span>
+            <span className="text-right">חייל</span>
+            <span className="text-center">מרחק מהממוצע</span>
+            <span className="text-center">חלק בנטל</span>
+            {mean != null && <span className="text-center">סטייה מהממוצע</span>}
+          </div>
+          <div className="space-y-1">
             {displayedSoldiers.map((s, rank) => {
               const burdenSharePct = (s.burden_share * 100).toFixed(2);
               const dev = mean != null ? s.burden_share - mean : null;
@@ -410,16 +426,20 @@ function FairnessComponentCard({
               return (
                 <div
                   key={s.soldier_id}
-                  className="flex items-center gap-2 pr-1 border-r-2 rounded transition-colors"
-                  style={{ borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent" }}
+                  className="items-center gap-1 pr-1 border-r-2 rounded transition-colors"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: CANDIDATE_ROW_GRID,
+                    borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent",
+                  }}
                 >
-                  <span className={`text-xs w-5 text-center font-bold shrink-0 ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
+                  <span className={`text-xs text-center font-bold ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
                     {rank + 1}
                   </span>
                   <SoldierLink
                     id={s.soldier_id}
                     name={s.full_name}
-                    className="text-xs w-28 truncate shrink-0 block text-right"
+                    className="text-xs truncate block text-right"
                   />
                   {/* Fills from the center line (the group mean) toward
                       whichever side this soldier sits on, growing only as
@@ -431,7 +451,7 @@ function FairnessComponentCard({
                       that itself only reaches 30% of the way to red/green,
                       not the fully-saturated color every bar would
                       otherwise end in regardless of how far it reaches. */}
-                  <div className="relative flex-1 bg-gray-200 dark:bg-gray-700 rounded h-1.5" title="מרחק מהממוצע">
+                  <div className="relative bg-gray-200 dark:bg-gray-700 rounded h-1.5" title="מרחק מהממוצע">
                     <div className="absolute inset-y-0 right-1/2 w-px bg-gray-400 dark:bg-gray-500" />
                     {z != null && (
                       <div
@@ -445,11 +465,11 @@ function FairnessComponentCard({
                       />
                     )}
                   </div>
-                  <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 w-12 text-left shrink-0">
+                  <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 text-left">
                     {burdenSharePct}%
                   </span>
                   {devStr && (
-                    <span className={`text-xs tabular-nums w-12 text-left shrink-0 ${devCls}`}>
+                    <span className={`text-xs tabular-nums text-left ${devCls}`}>
                       {devStr}
                     </span>
                   )}
@@ -483,6 +503,10 @@ export interface FairnessComponentsCardProps {
   activeGroupKeys?: Set<GroupKey>;
   onGroupToggle?: (soldierIds: string[], key: GroupKey) => void;
   onClearGroups?: () => void;
+  /** Scope the fairness data (and its per-group means/stddev/CV) to this
+   * node's subtree, matching the "סנן לפי יחידה" unit filter elsewhere on
+   * the page — omit/null for the whole organization. */
+  nodeId?: string | null;
 }
 
 /**
@@ -491,13 +515,15 @@ export interface FairnessComponentsCardProps {
  * everything and by mixing groups that can't substitute for each other — into a
  * per-group spread plus the count of soldiers exempt from all duties.
  */
-export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle, onClearGroups }: FairnessComponentsCardProps) {
+export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle, onClearGroups, nodeId }: FairnessComponentsCardProps) {
   const [data, setData] = useState<FairnessComponents | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    getFairnessComponents().then(setData).catch(() => setFailed(true));
-  }, []);
+    setData(null);
+    setFailed(false);
+    getFairnessComponents(nodeId).then(setData).catch(() => setFailed(true));
+  }, [nodeId]);
 
   if (failed) return null;
 

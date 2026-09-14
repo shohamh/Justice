@@ -6,6 +6,7 @@ import { EventDetailModal } from "../planning";
 import TableSearchInput from "../TableSearchInput";
 import { translateApiError } from "../../utils/translateApiError";
 import { formatDate } from "../../utils/formatDate";
+import { formatRangeCandidateReason } from "../../utils/rangeCandidateReason";
 import OverrideReasonModal from "../OverrideReasonModal";
 import SoldierLink from "../SoldierLink";
 import InputDialog from "../InputDialog";
@@ -332,7 +333,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                   <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50 dark:bg-indigo-950/40">
                     <td className="p-2 text-indigo-700 dark:text-indigo-300"><SoldierLink id={c.soldier_id} name={c.full_name} /><span className="mr-2 text-xs text-indigo-400">{text("ranges.unsaved", "טרם נשמר")}</span></td>
                     <td className="p-2 text-indigo-500 dark:text-indigo-300">{text("ranges.primary_short", "ראשי")}</td>
-                    <td className="p-2 text-indigo-400 dark:text-indigo-500">{REASON_LABEL[c.reason_code] ?? c.reason_code}</td>
+                    <td className="p-2 text-indigo-400 dark:text-indigo-500">{formatRangeCandidateReason(c, t)}</td>
                     <td className="p-2 text-center whitespace-nowrap">
                       <span className="inline-block h-7 w-7" />
                       <button
@@ -350,7 +351,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
                   <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50/50 dark:bg-indigo-950/20">
                     <td className="p-2 text-indigo-600 dark:text-indigo-300"><SoldierLink id={c.soldier_id} name={c.full_name} /><span className="mr-2 text-xs text-indigo-300">{text("ranges.unsaved", "טרם נשמר")}</span></td>
                     <td className="p-2 text-indigo-400">{text("ranges.reserve_short", "רזרבה")}</td>
-                    <td className="p-2 text-indigo-400 dark:text-indigo-500">{REASON_LABEL[c.reason_code] ?? c.reason_code}</td>
+                    <td className="p-2 text-indigo-400 dark:text-indigo-500">{formatRangeCandidateReason(c, t)}</td>
                     <td className="p-2 text-center whitespace-nowrap">
                       <span className="inline-block h-7 w-7" />
                       <button
@@ -534,7 +535,7 @@ function CandidateTable({ candidates, selected, onToggle, testIdPrefix, full, lo
                 </td>
                 <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
                 <td className="p-2 text-gray-500 dark:text-gray-400">
-                  {c.explanation || (REASON_LABEL[c.reason_code] ?? c.reason_code)}
+                  {formatRangeCandidateReason(c, t)}
                   {c.conflict_warning && (
                     <span className="block text-amber-600 dark:text-amber-400">{c.conflict_warning}</span>
                   )}

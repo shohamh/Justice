@@ -840,6 +840,100 @@ def test_relax_r_ceiling_is_configurable() -> None:
     assert result_capped.relaxed == []
 
 
+def test_infeasibility_relaxation_chain_treats_genuine_timeout_as_infeasible_not_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test for a confirmed production bug: three runs of the same
+    large job were labeled CANCELLED (aborting the whole run) even though
+    cancel_event was never set anywhere. The relaxation chain treated ANY
+    non-OPTIMAL/FEASIBLE/INFEASIBLE solver status as a cancellation, but
+    StopSearch() -- which produces UNKNOWN -- also fires from the stall guard
+    (STALL_SECONDS with no improving solution), which has nothing to do with
+    cancellation. Without cancel_event.is_set(), UNKNOWN must be handled like
+    INFEASIBLE (relax further or give up as INFEASIBLE), never CANCELLED."""
+    import app.algorithm.solver as solver_mod
+
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    duties = [_single_day_duty(date(2026, 6, 1), duty_type, is_reserve=False)]
+
+    def fake_solve_with_settings(*args: Any, **kwargs: Any) -> tuple[cp_model.CpSolver, dict, int]:
+        # Simulates the stall guard calling StopSearch() before a solution was
+        # found -- UNKNOWN, with cancel_event never touched.
+        return cp_model.CpSolver(), {}, cp_model.UNKNOWN
+
+    monkeypatch.setattr(solver_mod, "_solve_with_settings", fake_solve_with_settings)
+
+    result = solver_mod._infeasibility_relaxation_chain(
+        soldiers, duties, [],
+        SolverSettings(T=1, R=1, relax_r_ceiling=1, relax_t_ceiling=1),
+        cancel_event=None,
+    )
+    assert result.status == "INFEASIBLE"
+
+
+def test_infeasibility_relaxation_chain_still_reports_cancelled_when_cancel_event_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The flip side of the regression above: a genuine cancellation (UNKNOWN
+    status with cancel_event actually set) must still report CANCELLED, not
+    get swallowed into the new INFEASIBLE-fallback path."""
+    import app.algorithm.solver as solver_mod
+
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    duties = [_single_day_duty(date(2026, 6, 1), duty_type, is_reserve=False)]
+
+    def fake_solve_with_settings(*args: Any, **kwargs: Any) -> tuple[cp_model.CpSolver, dict, int]:
+        return cp_model.CpSolver(), {}, cp_model.UNKNOWN
+
+    monkeypatch.setattr(solver_mod, "_solve_with_settings", fake_solve_with_settings)
+
+    cancel_event = threading.Event()
+    cancel_event.set()
+    result = solver_mod._infeasibility_relaxation_chain(
+        soldiers, duties, [],
+        SolverSettings(T=1, R=1, relax_r_ceiling=5, relax_t_ceiling=5),
+        cancel_event=cancel_event,
+    )
+    assert result.status == "CANCELLED"
+
+
+def test_relax_attempt_cb_reports_each_attempt_in_the_ladder() -> None:
+    """relax_attempt_cb fires once per solve attempt within a batch's
+    relaxation chain -- including the unrelaxed base attempt -- so a caller
+    can show which rung is in flight instead of a frozen progress bar during
+    a batch that needs several rungs, each costing another full
+    batch_time_limit_seconds."""
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    # 5 real duties: needs T>=5 to be feasible. T=3 forces exactly one relax step (T: 3->5).
+    duties5 = [_single_day_duty(base + timedelta(days=i), duty_type, is_reserve=False) for i in range(5)]
+
+    calls: list[tuple[int, int, str]] = []
+    result = solve(
+        soldiers, duties5, [],
+        # R=5 is already sufficient on its own (and has no relax headroom, since
+        # relax_r_ceiling==R), so _relax_step falls straight through to T on the
+        # very first relax call -- R relaxes first per its documented order, but
+        # only when there's R headroom to use.
+        SolverSettings(T=3, R=5, Wt=14, Wr=14, relax_r_ceiling=5, relax_t_ceiling=10, batching_enabled=False),
+        relax_attempt_cb=lambda attempt, max_attempts, label: calls.append((attempt, max_attempts, label)),
+    )
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert "T→5" in result.relaxed
+    # Attempt 1 = the unrelaxed base try (label "בסיס"), attempt 2 = after the
+    # T->5 relax step succeeded and found a solution, so the chain stops there.
+    assert calls == [(1, calls[0][1], "בסיס"), (2, calls[0][1], "T→5")]
+
+
 def test_batched_reserve_carryforward_counts_toward_R_not_T() -> None:
     """A reserve duty assigned in batch N must not consume T headroom in batch N+1.
 
@@ -1006,6 +1100,45 @@ def test_interleaved_solve_cancellation_keeps_completed_batches(monkeypatch) -> 
         "the completed first batch's assignments should be kept, not discarded, "
         "while later (never-run) batches correctly contribute nothing"
     )
+
+
+def test_interleaved_solve_retries_eligible_residual_duties_after_component(monkeypatch) -> None:
+    """A duty missed in its batch gets one fresh attempt after its component."""
+    import app.algorithm.solver as solver_mod
+    from app.algorithm.types import Assignment, SolverResult
+
+    soldier_id = uuid4()
+    duty_type_id = uuid4()
+    soldiers = [SoldierInput(
+        id=soldier_id, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=100,
+    )]
+    duties = _line_duties(date(2026, 6, 1), duty_type_id, 2)
+    calls: list[list[UUID]] = []
+
+    def miss_batches_then_fill_residual(_soldiers, sub_duties, _existing, _settings, *_args, **_kwargs):
+        calls.append([d.id for d in sub_duties])
+        if len(calls) <= 2:
+            return SolverResult(assignments=[], status="FEASIBLE")
+        return SolverResult(
+            assignments=[Assignment(duty_id=sub_duties[0].id, soldier_id=soldier_id)],
+            status="FEASIBLE",
+        )
+
+    monkeypatch.setattr(solver_mod, "_infeasibility_relaxation_chain", miss_batches_then_fill_residual)
+
+    result = solver_mod._interleaved_solve(
+        soldiers, duties, [],
+        SolverSettings(decomposition="interleaved", interleaved_batch_size=1),
+        reserve_dist=None, cancel_event=None,
+    )
+
+    assert len(calls) == 3
+    assert all(len(batch) == 1 for batch in calls[:2])
+    assert sorted(calls[2]) == sorted([d.id for d in duties])
+    assert len(result.assignments) == 1
+    assert len(result.batch_results) == 3
+    assert result.batch_results[-1].duty_count == 2
+    assert result.batch_results[-1].assigned_count == 1
 
 
 def test_decomposed_solve_cancellation_keeps_completed_batches(monkeypatch) -> None:

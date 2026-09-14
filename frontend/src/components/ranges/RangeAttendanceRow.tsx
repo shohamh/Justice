@@ -8,7 +8,9 @@ interface Props {
 }
 
 export function RangeAttendanceRow({ eventId, assignment, onMarked }: Props) {
-  const [status, setStatus] = useState<RangeAttendanceStatus | null>(null);
+  const [status, setStatus] = useState<RangeAttendanceStatus | null>(
+    assignment.attendance_status !== "pending" ? assignment.attendance_status : null
+  );
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -13,12 +13,12 @@ from app.services.settings_loader import apply_settings
 from tests.helpers import create_node, create_range_location, create_soldier
 
 
-def _event(session: Session, *, event_date: date, reserve_count: int = 1):
-    node = create_node(session, level="branch", name=f"auto-mark-{event_date}")
-    location = create_range_location(session, name="auto-mark-loc")
+def _event(session: Session, *, event_date: date, reserve_count: int = 1, end_time: str | None = None):
+    node = create_node(session, level="branch", name=f"auto-mark-{event_date}-{end_time}")
+    location = create_range_location(session, name=f"auto-mark-loc-{event_date}-{end_time}")
     # Create a weapon duty type to make soldiers eligible for range events
     weapon_duty = DutyType(
-        name=f"weapon-duty-{event_date}", score_per_day=Decimal("1.00"),
+        name=f"weapon-duty-{event_date}-{end_time}", score_per_day=Decimal("1.00"),
         requires_weapon=True, eligible_node_ids=[node.id],
     )
     session.add(weapon_duty)
@@ -26,7 +26,7 @@ def _event(session: Session, *, event_date: date, reserve_count: int = 1):
     event = create_range_event(
         session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=event_date, range_location_id=location.id,
-        required_count=1, reserve_count=reserve_count,
+        required_count=1, reserve_count=reserve_count, end_time=end_time,
     )
     return node, event
 
@@ -78,7 +78,37 @@ def test_cancelled_event_not_touched(app_session: Session) -> None:
     assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
     cancel_range_event(app_session, event=event, reason="בוטל", actor_id=soldier.id)
 
-    count = auto_mark_present_for_elapsed_events(app_session, today=date.today() + timedelta(days=2))
+    count = auto_mark_present_for_elapsed_events(
+        app_session, now=datetime.combine(date.today() + timedelta(days=2), time(12, 0))
+    )
+
+    assert count == 0
+    app_session.refresh(assignment)
+    assert assignment.attendance_status == RangeAttendanceStatus.pending
+
+
+def test_same_day_event_marked_present_after_end_time(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
+    today = date.today()
+    node, event = _event(app_session, event_date=today, end_time="08:25")
+    soldier = create_soldier(app_session, personal_number="am-008", hierarchy_node_id=node.id)
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    count = auto_mark_present_for_elapsed_events(app_session, now=datetime.combine(today, time(10, 44)))
+
+    assert count == 1
+    app_session.refresh(assignment)
+    assert assignment.attendance_status == RangeAttendanceStatus.present
+
+
+def test_same_day_event_not_yet_marked_before_end_time(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
+    today = date.today()
+    node, event = _event(app_session, event_date=today, end_time="14:00")
+    soldier = create_soldier(app_session, personal_number="am-009", hierarchy_node_id=node.id)
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    count = auto_mark_present_for_elapsed_events(app_session, now=datetime.combine(today, time(10, 44)))
 
     assert count == 0
     app_session.refresh(assignment)

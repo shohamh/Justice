@@ -167,6 +167,22 @@ describe("DutyHistoryPanel personal constraint events", () => {
   });
 });
 
+describe("DutyHistoryPanel assignment explanations", () => {
+  it("offers an explanation for a primary assignment", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([
+      {
+        id: "assignment-1", event_type: "assignment", date: "2026-09-01", end_date: "2026-09-02",
+        title: "×©×ž×™×¨×” ×‘×ž×•×¦×‘", description: null, status: "published",
+        metadata: { is_reserve: "false", score_total: "1.0" },
+        created_at: "2026-08-01T00:00:00Z",
+      },
+    ]);
+    render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} />);
+    const card = await screen.findByTestId("history-event-assignment");
+    expect(within(card).getByTestId("why-assignment-assignment-1")).toBeInTheDocument();
+  });
+});
+
 vi.mock('../api/exemptions', () => ({
   approveExemptionRequestCommanderStep: vi.fn(() => Promise.resolve()),
   approveExemptionRequestDutyManagerStep: vi.fn(() => Promise.resolve()),

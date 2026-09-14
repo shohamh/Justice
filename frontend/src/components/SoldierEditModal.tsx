@@ -5,6 +5,7 @@ import { SoldierDTO } from "../api/soldiers";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "./Combobox";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 
 interface Props {
   soldier: SoldierDTO;
@@ -13,7 +14,6 @@ interface Props {
 }
 
 export default function SoldierEditModal({ soldier, onSave, onClose }: Props) {
-  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");
@@ -27,18 +27,39 @@ export default function SoldierEditModal({ soldier, onSave, onClose }: Props) {
     })();
   }, []);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  function diff() {
     const data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null } = {};
     if (fullName !== soldier.full_name) data.full_name = fullName;
     if (phone !== (soldier.phone ?? "")) data.phone = phone || null;
     if (hierarchyNodeId !== (soldier.hierarchy_node_id ?? "")) data.hierarchy_node_id = hierarchyNodeId || null;
-    await onSave(data);
-    onClose();
+    return data;
+  }
+
+  async function trySave(): Promise<boolean> {
+    try {
+      await onSave(diff());
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const { requestClose } = useUnsavedChangesGuard({
+    kind: "modal",
+    isDirty: Object.keys(diff()).length > 0,
+    onSave: trySave,
+    onDiscard: onClose,
+  });
+  useModalBackClose(requestClose);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const ok = await trySave();
+    if (ok) onClose();
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={requestClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-96" onClick={(e) => e.stopPropagation()} data-testid="soldier-edit-modal">
         <h3 className="font-semibold mb-4">{t("team.edit_soldier")}: {soldier.full_name}</h3>
         <form onSubmit={onSubmit} className="space-y-3">
@@ -61,7 +82,7 @@ export default function SoldierEditModal({ soldier, onSave, onClose }: Props) {
             />
           </label>
           <div className="flex justify-end gap-2">
-            <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+            <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={requestClose}>{t("team.cancel")}</button>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="edit-soldier-submit">{t("duty_config.save")}</button>
           </div>
         </form>

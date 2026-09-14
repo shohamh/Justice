@@ -115,6 +115,35 @@ describe("DutyHistoryWidget", () => {
     expect(screen.getByText(/פירוט חישוב חלק בנטל — דני כהן/)).toBeInTheDocument();
   });
 
+  it("shows the hovered group's percentage and position", async () => {
+    renderWidget({ burdenShare: share(), burdenShareBreakdown: breakdown });
+
+    await userEvent.hover(screen.getAllByTestId("burden-dot-peer")[0]);
+
+    expect(screen.getByRole("status")).toHaveTextContent("5.0%");
+    expect(screen.getByRole("status")).toHaveTextContent("מקום 12 מתוך 12");
+  });
+
+  it("identifies the soldier's highlighted dot when hovered", async () => {
+    renderWidget({ burdenShare: share(), burdenShareBreakdown: breakdown });
+
+    await userEvent.hover(screen.getByTestId("burden-dot-me"));
+
+    expect(screen.getByRole("status")).toHaveTextContent("שלי");
+    expect(screen.getByRole("status")).toHaveTextContent("34.2%");
+  });
+
+  it("keeps a clicked dot's details visible after the pointer leaves", async () => {
+    renderWidget({ burdenShare: share(), burdenShareBreakdown: breakdown });
+    const dot = screen.getAllByTestId("burden-dot-peer")[0];
+
+    await userEvent.click(dot);
+    await userEvent.unhover(dot);
+
+    expect(screen.getByRole("status")).toHaveTextContent("5.0%");
+    expect(screen.getByRole("status")).toHaveTextContent("מקום 12 מתוך 12");
+  });
+
   it("renders the burden-share trend chart when breakdown quarters exist", () => {
     renderWidget({ burdenShare: share(), burdenShareBreakdown: breakdown });
     expect(screen.getByText("חלק בנטל לאורך זמן")).toBeInTheDocument();

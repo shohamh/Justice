@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { EffectiveDuty } from "../../api/assignments";
-import { formatDutyRange } from "../../utils/formatDate";
+import { formatDutyRange, todayIso } from "../../utils/formatDate";
+import { usePublicSettings } from "../../hooks/usePublicSettings";
+import ExplanationModal from "../ExplanationModal";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -23,7 +26,9 @@ function statusLabel(t: TFunction, d: EffectiveDuty): { text: string; calledUp: 
 
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty, title }: Props) {
   const { t } = useTranslation();
-  const today = new Date().toISOString().split("T")[0];
+  const publicSettings = usePublicSettings();
+  const [explanationAssignmentId, setExplanationAssignmentId] = useState<string | null>(null);
+  const today = todayIso();
   // Defensive guard: listEffectiveDuties (api/assignments.ts) is currently
   // an unguarded pass-through, so a malformed non-array response would
   // otherwise crash .filter() here. Normalize to [] rather than throwing —
@@ -79,10 +84,23 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {formatDutyRange(d.start_date, d.end_date)} · {locationNames[d.duty_location_id] ?? "—"}
                 </div>
+                {!d.is_reserve && publicSettings?.["algorithm.show_explanations_to_soldiers"] !== false && (
+                  <button
+                    type="button"
+                    data-testid={`why-assignment-${d.assignment_id}`}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1"
+                    onClick={(event) => { event.stopPropagation(); setExplanationAssignmentId(d.assignment_id); }}
+                  >
+                    {t("algorithm.why_button")}
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
+      )}
+      {explanationAssignmentId && (
+        <ExplanationModal assignmentId={explanationAssignmentId} onClose={() => setExplanationAssignmentId(null)} />
       )}
     </section>
   );

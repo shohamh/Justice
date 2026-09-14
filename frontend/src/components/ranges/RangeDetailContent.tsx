@@ -4,6 +4,7 @@ import { FoodAssignmentSummary, RangeAssignment, RangeAttendanceStatus, RangeEve
 import { RosterSection } from "../planning";
 import { RangeAttendanceStatusPicker } from "./RangeAttendanceStatusPicker";
 import { ATTENDANCE_STATUS_LABELS } from "../../utils/rangeLabels";
+import { todayIso } from "../../utils/formatDate";
 import SoldierLink from "../SoldierLink";
 
 interface Props {
@@ -31,9 +32,10 @@ export default function RangeDetailContent(p: Props) {
   const [reason, setReason] = useState("");
   const [rosterSearch, setRosterSearch] = useState("");
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, { status: RangeAttendanceStatus; note: string }>>({});
+  const [autoMarkedIds, setAutoMarkedIds] = useState<Set<string>>(new Set());
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [attendanceSaveError, setAttendanceSaveError] = useState("");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const future = event.date > today;
   const selfAssignment = event.assignments.find(a => future && !a.is_draft && a.soldier_id === p.userId);
   const actionClass = "rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50";
@@ -65,8 +67,9 @@ export default function RangeDetailContent(p: Props) {
   const reserve = event.assignments.filter(a => a.is_reserve && matchesSearch(a));
 
   const row = (a: RangeAssignment) => {
+    const buttonsShown = attendanceEditable && !a.is_draft;
     const statusLabel = ATTENDANCE_STATUS_LABELS[a.attendance_status] ?? a.attendance_status;
-    const status = a.note ? `${statusLabel} — ${a.note}` : statusLabel;
+    const status = buttonsShown ? a.note : a.note ? `${statusLabel} — ${a.note}` : statusLabel;
     return { id: a.id, soldierId: a.soldier_id, soldierName: p.soldierName(a.soldier_id), isDraft: a.is_draft, status };
   };
   const attendanceNoteRequired = (assignment: RangeAssignment, status: RangeAttendanceStatus) => {
@@ -83,9 +86,74 @@ export default function RangeDetailContent(p: Props) {
         assignment={assignment}
         pendingStatus={pending?.status}
         pendingNote={pending?.note}
-        onStatusChange={status => setPendingAttendance(prev => ({ ...prev, [assignmentId]: { status, note: prev[assignmentId]?.note ?? "" } }))}
+        onStatusChange={status => {
+          setPendingAttendance(prev => ({ ...prev, [assignmentId]: { status, note: prev[assignmentId]?.note ?? "" } }));
+          setAutoMarkedIds(prev => {
+            if (!prev.has(assignmentId)) return prev;
+            const next = new Set(prev);
+            next.delete(assignmentId);
+            return next;
+          });
+        }}
         onNoteChange={note => setPendingAttendance(prev => ({ ...prev, [assignmentId]: { status: prev[assignmentId]?.status ?? "present", note } }))}
       />
+    );
+  };
+  const eligibleForBulkAttendance = (kind: "primary" | "reserve") =>
+    event.assignments.filter(a => !a.is_draft && a.is_reserve === (kind === "reserve"));
+  const bulkAttendanceActive = (kind: "primary" | "reserve") => eligibleForBulkAttendance(kind).some(a => autoMarkedIds.has(a.id));
+  const toggleMarkAllAttended = (kind: "primary" | "reserve") => {
+    const eligible = eligibleForBulkAttendance(kind);
+    if (bulkAttendanceActive(kind)) {
+      setPendingAttendance(prev => {
+        const next = { ...prev };
+        for (const a of eligible) if (autoMarkedIds.has(a.id)) delete next[a.id];
+        return next;
+      });
+      setAutoMarkedIds(prev => {
+        const next = new Set(prev);
+        for (const a of eligible) next.delete(a.id);
+        return next;
+      });
+      return;
+    }
+    const newIds: string[] = [];
+    setPendingAttendance(prev => {
+      const next = { ...prev };
+      for (const a of eligible) {
+        if (!next[a.id]) {
+          next[a.id] = { status: "present", note: "" };
+          newIds.push(a.id);
+        }
+      }
+      return next;
+    });
+    setAutoMarkedIds(prev => {
+      const next = new Set(prev);
+      newIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+  const markAllButton = (kind: "primary" | "reserve", defaultTitle: string) => {
+    const eligible = eligibleForBulkAttendance(kind);
+    if (!attendanceEditable || eligible.length === 0) return defaultTitle;
+    const active = bulkAttendanceActive(kind);
+    return (
+      <span className="flex flex-wrap items-center gap-2">
+        <span>{defaultTitle}</span>
+        <button
+          type="button"
+          data-testid={`mark-all-attended-${kind}`}
+          onClick={() => toggleMarkAllAttended(kind)}
+          className={`rounded px-2 py-0.5 text-xs font-medium ${
+            active
+              ? "bg-green-600 text-white"
+              : "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/40 dark:text-green-300 dark:hover:bg-green-800"
+          }`}
+        >
+          {active ? text("ranges.unmark_all_attended", "בטל סימון נוכחות כללי") : text("ranges.mark_all_attended", "סמן הכל כנכחו")}
+        </button>
+      </span>
     );
   };
   const canSaveAttendance = Object.keys(pendingAttendance).length > 0 && Object.entries(pendingAttendance).every(([id, v]) => {
@@ -133,8 +201,8 @@ export default function RangeDetailContent(p: Props) {
         placeholder="חיפוש חייל..."
         className="w-full rounded border p-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
       />
-      <RosterSection kind="primary" assignments={primary.map(row)} count={event.required_count} assignmentActionRenderer={rowData => attendanceAction(rowData.id)} />
-      <RosterSection kind="reserve" assignments={reserve.map(row)} count={event.reserve_count} assignmentActionRenderer={rowData => attendanceAction(rowData.id)} />
+      <RosterSection kind="primary" title={markAllButton("primary", "ראשיים")} assignments={primary.map(row)} count={event.required_count} assignmentActionRenderer={rowData => attendanceAction(rowData.id)} />
+      <RosterSection kind="reserve" title={markAllButton("reserve", "רזרבה")} assignments={reserve.map(row)} count={event.reserve_count} assignmentActionRenderer={rowData => attendanceAction(rowData.id)} />
       {attendanceEditable && <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"

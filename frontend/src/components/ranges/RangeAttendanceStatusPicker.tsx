@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function RangeAttendanceStatusPicker({ assignment, pendingStatus, pendingNote, onStatusChange, onNoteChange }: Props) {
-  const status = pendingStatus ?? null;
+  const status = pendingStatus ?? (assignment.attendance_status !== "pending" ? assignment.attendance_status : null);
   const isCorrection = assignment.attendance_status !== "pending" && status !== null && status !== assignment.attendance_status;
   const noteRequired = status === "no_show" || isCorrection;
 

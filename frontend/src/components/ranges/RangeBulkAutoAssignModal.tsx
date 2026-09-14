@@ -5,6 +5,7 @@ import { EventDetailModal } from "../planning";
 import OverrideReasonModal from "../OverrideReasonModal";
 import { formatDate } from "../../utils/formatDate";
 import { translateApiError } from "../../utils/translateApiError";
+import { formatRangeCandidateReason } from "../../utils/rangeCandidateReason";
 import SoldierLink from "../SoldierLink";
 
 interface AssignmentPlan {
@@ -39,23 +40,7 @@ export default function RangeBulkAutoAssignModal({ open, events, canManage, onCl
     const translated = t(key);
     return translated === key ? fallback : translated;
   };
-  const systemReason = (candidate: RangeCandidate) => {
-    const date = candidate.system_reason_date
-      ? candidate.system_reason_date.split("-").reverse().join(".")
-      : "";
-    const templates: Record<string, [string, string]> = {
-      recent: ["ranges.system_reason_recent", "מטווחים בוצעו לאחרונה, יפוג תוקף ב־{{date}}"],
-      valid_expiring: ["ranges.system_reason_valid", "מטווחים בתוקף, עומדים לפוג ב־{{date}}"],
-      last_completed: ["ranges.system_reason_last", "מטווח אחרון ב־{{date}}"],
-      never_completed: ["ranges.system_reason_never", "מעולם לא ביצע מטווחים"],
-    };
-    const template = templates[candidate.system_reason_code ?? ""];
-    if (template) {
-      const translated = t(template[0], { date });
-      return translated === template[0] ? template[1].replace("{{date}}", date) : translated;
-    }
-    return text(`ranges.assignment_reasons.${candidate.reason_code}`, candidate.explanation || candidate.reason_code);
-  };
+  const systemReason = (candidate: RangeCandidate) => formatRangeCandidateReason(candidate, t);
   const [plans, setPlans] = useState<AssignmentPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

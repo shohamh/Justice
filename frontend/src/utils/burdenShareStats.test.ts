@@ -39,22 +39,45 @@ describe("computeBurdenShareStats", () => {
 });
 
 describe("getBurdenShareColor", () => {
-  it("returns green class when value is within 1 stddev of mean", () => {
-    // mean=0.2, stddev=0.1: value 0.25 is 0.5σ away
-    expect(getBurdenShareColor(0.25, 0.2, 0.1)).toContain("green");
-  });
-
-  it("returns yellow class when value is between 1 and 2 stddev", () => {
-    // mean=0.2, stddev=0.1: value 0.35 is 1.5σ away
-    expect(getBurdenShareColor(0.35, 0.2, 0.1)).toContain("yellow");
-  });
-
-  it("returns red class when value is beyond 2 stddev", () => {
-    // mean=0.2, stddev=0.1: value 0.45 is 2.5σ away
-    expect(getBurdenShareColor(0.45, 0.2, 0.1)).toContain("red");
-  });
-
   it("returns empty string when stddev is 0", () => {
     expect(getBurdenShareColor(0.2, 0.2, 0)).toBe("");
+  });
+
+  it("returns empty string when the raw gap is below the meaningful-difference floor", () => {
+    // mean=0.2, stddev=0.001 (a tightly-clustered subgroup): 0.201 is 1σ away,
+    // but the raw gap (0.1 percentage points) is trivial and must stay uncolored.
+    expect(getBurdenShareColor(0.201, 0.2, 0.001)).toBe("");
+  });
+
+  it("colors a value near the mean closer to green than one far from it", () => {
+    // mean=0.2, stddev=0.1: 0.25 is 0.5σ away, 0.45 is 2.5σ away.
+    const near = getBurdenShareColor(0.25, 0.2, 0.1);
+    const far = getBurdenShareColor(0.45, 0.2, 0.1);
+    expect(near).not.toBe("");
+    expect(far).not.toBe("");
+    // Green's the low end of the scale, red the high end — a value near the
+    // mean should carry far more green and far less red than one at 2.5σ.
+    const [, nr, ng] = near.match(/rgba\((\d+), (\d+), (\d+)/) ?? [];
+    const [, fr, fg] = far.match(/rgba\((\d+), (\d+), (\d+)/) ?? [];
+    expect(Number(ng)).toBeGreaterThan(Number(fg));
+    expect(Number(fr)).toBeGreaterThan(Number(nr));
+  });
+
+  it("increases opacity as the deviation grows", () => {
+    const near = getBurdenShareColor(0.25, 0.2, 0.1);
+    const far = getBurdenShareColor(0.45, 0.2, 0.1);
+    const nearAlpha = Number(near.match(/[\d.]+\)$/)?.[0].replace(")", ""));
+    const farAlpha = Number(far.match(/[\d.]+\)$/)?.[0].replace(")", ""));
+    expect(farAlpha).toBeGreaterThan(nearAlpha);
+  });
+
+  it("caps out at the fully-saturated red end for extreme deviations", () => {
+    // mean=0.2, stddev=0.1: 0.5 is 3σ away (at or past BURDEN_SHARE_MAX_Z)
+    expect(getBurdenShareColor(0.5, 0.2, 0.1)).toBe("rgba(239, 68, 68, 0.550)");
+  });
+
+  it("never escalates further past the max-z cap", () => {
+    // mean=0.2, stddev=0.1: 0.9 is 7σ away, well past BURDEN_SHARE_MAX_Z
+    expect(getBurdenShareColor(0.9, 0.2, 0.1)).toBe(getBurdenShareColor(0.5, 0.2, 0.1));
   });
 });

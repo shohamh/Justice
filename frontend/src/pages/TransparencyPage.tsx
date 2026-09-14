@@ -193,7 +193,7 @@ export default function TransparencyPage() {
 
   const fairnessComponentsQuery = useQuery({
     queryKey: queryKeys.fairnessComponents(),
-    queryFn: getFairnessComponents,
+    queryFn: () => getFairnessComponents(),
     enabled: canViewTransparency,
   });
   const fairnessComponents = fairnessComponentsQuery.data ?? null;
@@ -430,7 +430,7 @@ export default function TransparencyPage() {
     },
     {
       id: "name", header: t("transparency.name"),
-      cell: (r) => <SoldierLink id={r.soldier_id} name={r.full_name} />,
+      cell: (r) => <SoldierLink id={r.soldier_id} name={r.full_name} className="text-right" />,
       sortValue: (r) => r.full_name, filterValue: (r) => r.full_name,
     },
     {
@@ -517,9 +517,9 @@ export default function TransparencyPage() {
       cell: (r) => {
         const n = r.burden_share;
         const label = isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
-        const colorClass = burdenShareStats ? getBurdenShareColor(n, burdenShareStats.mean, burdenShareStats.stddev) : "";
+        const backgroundColor = burdenShareStats ? getBurdenShareColor(n, burdenShareStats.mean, burdenShareStats.stddev) : "";
         return (
-          <span className={`inline-block w-full rounded px-0.5 ${colorClass}`}>
+          <span className="inline-block w-full rounded px-0.5" style={backgroundColor ? { backgroundColor } : undefined}>
             <button
               className="text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
               onClick={() => openBurdenShareBreakdown(r.soldier_id, r.full_name)}
@@ -883,6 +883,7 @@ export default function TransparencyPage() {
             activeGroupKeys={activeGroupKeys}
             onGroupToggle={handleGroupToggle}
             onClearGroups={clearGroupFilter}
+            nodeId={selectedNodeId}
           />
         )}
 

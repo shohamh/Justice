@@ -11,6 +11,7 @@ import { queryKeys } from "../queryKeys";
 import { useLevelTypes } from "../hooks/useLevelTypes";
 import DateInput from "../components/DateInput";
 import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
+import { useUnsavedChangesGuard } from "../hooks/useUnsavedChangesGuard";
 
 interface SettingDef {
   key: string;
@@ -200,6 +201,13 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
     label: "אלגוריתם — הוגנות",
     settings: [
+      {
+        key: "algorithm.show_explanations_to_soldiers",
+        label: "הצגת למה קיבלתי לחיילים",
+        description: "האם להציג לחיילים את פירוט הסיבות לשיבוץ שלהם בתורנויות.",
+        type: "boolean" as const,
+        defaultValue: true,
+      },
       { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לרזרבה", description: "משקל קרבה היררכית בבחירת חיילי רזרבה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
       {
         key: "fairness.reset_date",
@@ -234,6 +242,13 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       { key: "algorithm.batching_enabled", label: "פירוק וקבוצות", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולקבוצות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
       { key: "algorithm.interleaved_batch_size", label: "גודל קבוצה (תורנויות)", description: "מספר התורנויות המרבי בקבוצה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
       { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לקבוצה (שניות)", description: "תקציב זמן הפותר לכל קבוצה.", type: "number", defaultValue: 120 },
+      {
+        key: "algorithm.max_job_seconds",
+        label: "רצפת זמן כולל להרצה (שניות)",
+        description: "אחרי כמה זמן הרצה שנתקעת (לא מגיבה) תבוטל אוטומטית. המערכת מאריכה זמן זה אוטומטית להרצות גדולות/עם הרפיית אילוצים לפי מספר הקבוצות והרפיות האפשריות — ערך זה הוא רק הרצפה המינימלית. ברירת מחדל: 600 (10 דקות).",
+        type: "number",
+        defaultValue: 600,
+      },
     ],
   },
   {
@@ -514,6 +529,20 @@ export function SystemSettingsContent() {
       : null;
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
+
+  useUnsavedChangesGuard({
+    kind: "page",
+    isDirty,
+    onSave: async () => {
+      try {
+        await saveMutation.mutateAsync(draft);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    onDiscard: () => setDraft(settings),
+  });
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

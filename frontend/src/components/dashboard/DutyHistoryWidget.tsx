@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { BlockMath } from "react-katex";
 import { EffectiveDuty } from "../../api/assignments";
 import { TransparencyRow, BurdenShare, BurdenShareBreakdown } from "../../api/scoring";
-import { formatDutyRange } from "../../utils/formatDate";
+import { formatDutyRange, todayIso } from "../../utils/formatDate";
 import BurdenShareBreakdownModal from "../BurdenShareBreakdownModal";
 import BurdenShareTrendChart from "./BurdenShareTrendChart";
 import HelpModal from "../HelpModal";
@@ -30,9 +30,11 @@ export default function DutyHistoryWidget({
   burdenShare, burdenShareBreakdown, soldierName,
 }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [hoveredBurdenDot, setHoveredBurdenDot] = useState<{ value: number; position: number; isMine: boolean } | null>(null);
+  const [selectedBurdenDot, setSelectedBurdenDot] = useState<{ value: number; position: number; isMine: boolean } | null>(null);
   const [breakdownModalOpen, setBreakdownModalOpen] = useState(false);
   const [activeDaysHelpOpen, setActiveDaysHelpOpen] = useState(false);
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayIso();
   const past = duties
     // end_date is exclusive, so "over" means end_date is today or earlier.
     .filter((d) => d.end_date <= today)
@@ -128,19 +130,34 @@ export default function DutyHistoryWidget({
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">איפה אני ביחס לקבוצה שלי</p>
               <div className="relative h-6 bg-gray-100 dark:bg-gray-700 rounded">
                 {peers.map((v, i) => {
-                  const left = ((v - min) / range) * 100;
+                  const fraction = (v - min) / range;
                   const isMine = v === myScore;
+                  const position = peers.length - i;
+                  const dot = { value: v, position, isMine };
                   return (
                     <div
                       key={i}
                       data-testid={isMine ? "burden-dot-me" : "burden-dot-peer"}
-                      className={`absolute top-1/2 -translate-y-1/2 rounded-full ${
+                      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
                         isMine ? "w-3 h-3 bg-indigo-600 ring-2 ring-white dark:ring-gray-800 z-10" : "w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500"
                       }`}
-                      style={{ left: `calc(${left}% - 2px)` }}
+                      style={{ left: `calc(6px + ${fraction} * (100% - 12px))` }}
+                      onMouseEnter={() => setHoveredBurdenDot(dot)}
+                      onMouseLeave={() => setHoveredBurdenDot(null)}
+                      onClick={() => setSelectedBurdenDot((current) => current?.position === position && current.value === v ? null : dot)}
                     />
                   );
                 })}
+                {(hoveredBurdenDot ?? selectedBurdenDot) && (
+                  <div
+                    role="status"
+                    className="absolute bottom-full mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow"
+                    style={{ left: `calc(6px + ${(((hoveredBurdenDot ?? selectedBurdenDot)!.value - min) / range)} * (100% - 12px))` }}
+                  >
+                    {(hoveredBurdenDot ?? selectedBurdenDot)!.isMine && <span>שלי · </span>}
+                    {((hoveredBurdenDot ?? selectedBurdenDot)!.value * 100).toFixed(1)}% · מקום {(hoveredBurdenDot ?? selectedBurdenDot)!.position} מתוך {peers.length}
+                  </div>
+                )}
               </div>
               {burdenShare.mean != null && (
                 <p className="text-xs text-gray-400 mt-1">

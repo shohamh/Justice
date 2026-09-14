@@ -112,8 +112,8 @@ export interface FairnessComponents {
   components: FairnessComponent[];
 }
 
-export async function getFairnessComponents(): Promise<FairnessComponents> {
-  const r = await api.get<unknown>(`/scoring/fairness-components`);
+export async function getFairnessComponents(nodeId?: string | null): Promise<FairnessComponents> {
+  const r = await api.get<unknown>(`/scoring/fairness-components`, { params: nodeId ? { node_id: nodeId } : undefined });
   const data = requiredObjectResponse(r.data, "Invalid fairness components response");
   const exemptFromAll = isRecord(data.exempt_from_all) ? data.exempt_from_all : {};
   return {
