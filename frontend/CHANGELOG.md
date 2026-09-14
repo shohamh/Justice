@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-15
+
+### Features
+- Added the soldier-style decision summary to commander and duty-manager explanation modals above the detailed candidate table.
+
+### Fixes
+- Fixed explanation modals showing ambiguous rank, tie-breaker, and burden-spread wording or blank values.
+- Added precise burden percentages, eligible-candidate reasons, correct Hebrew singular/plural text, and a mobile-scrollable candidate table.
+
+### Chores
+- Added regression coverage for manager summaries, missing metrics, ranking states, translations, burden precision, and mobile table layout.
+
 ## 2026-09-14
 
 ### Fixes
