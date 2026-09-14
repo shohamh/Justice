@@ -34,6 +34,14 @@ const AHEAD_BREAKDOWN_ORDER: (keyof AheadBreakdown)[] = [
   "personal_constraint", "exemption", "weapon_ineligible", "overlap", "randomness",
 ];
 
+function formatBurdenShare(value: number | null | undefined): string {
+  return value == null ? "—" : `${(value * 100).toFixed(2)}%`;
+}
+
+function aheadBreakdownLabelKey(key: keyof AheadBreakdown, count: number): string {
+  return `algorithm.explanation_ahead_${key}_${count === 1 ? "one" : "other"}`;
+}
+
 interface Props {
   jobId?: string;
   assignmentId: string;
@@ -85,9 +93,7 @@ function DecisionSummary({ data }: { data: DecisionSummaryData }) {
             <tr className="border-b dark:border-gray-700">
               <td className="py-1 text-gray-500 w-40">{t("algorithm.explanation_load")}</td>
               <td className="py-1 font-medium">
-                {data.score_at_assignment != null
-                  ? (data.score_at_assignment * 100).toFixed(1) + "%"
-                  : "—"}
+                {formatBurdenShare(data.score_at_assignment)}
               </td>
             </tr>
           </tbody>
@@ -96,7 +102,9 @@ function DecisionSummary({ data }: { data: DecisionSummaryData }) {
 
       <div>
         <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">
-          {data.rank_from_bottom != null && data.rank_from_bottom > 1
+          {data.rank_from_bottom == null ? (
+            t("algorithm.explanation_rank_unavailable")
+          ) : data.rank_from_bottom > 1
             ? t("algorithm.explanation_rank_from_bottom", { rank: data.rank_from_bottom })
             : t("algorithm.explanation_rank_from_bottom_top")}
         </p>
@@ -107,12 +115,21 @@ function DecisionSummary({ data }: { data: DecisionSummaryData }) {
         ) : data.ahead_count != null && data.ahead_count > 0 ? (
           <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
             <li className="font-medium text-gray-700 dark:text-gray-300">
-              {t("algorithm.explanation_ahead_intro", { count: data.ahead_count })}
+              {t(
+                data.ahead_count === 1
+                  ? "algorithm.explanation_ahead_intro_one"
+                  : "algorithm.explanation_ahead_intro_other",
+                { count: data.ahead_count },
+              )}
             </li>
             {AHEAD_BREAKDOWN_ORDER.filter((key) => data.ahead_breakdown![key] > 0).map((key) => (
               <li key={key} className="flex gap-2">
                 <span className="text-gray-400">•</span>
-                <span>{t(`algorithm.explanation_ahead_${key}`, { count: data.ahead_breakdown![key] })}</span>
+                <span>
+                  {t(aheadBreakdownLabelKey(key, data.ahead_breakdown![key]), {
+                    count: data.ahead_breakdown![key],
+                  })}
+                </span>
               </li>
             ))}
           </ul>
@@ -197,10 +214,10 @@ export default function ExplanationModal({ jobId, assignmentId, title, onClose }
             <DecisionSummary data={getManagerDecisionSummary(data)} />
             <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700 p-3 rounded text-xs">
               <p>
-                {t("algorithm.min_gap_before")}: <strong>{data.global_before?.min_gap}</strong>
+                {t("algorithm.min_gap_before")}: <strong data-testid="explanation-min-gap-before">{data.global_before?.min_gap ?? "—"}</strong>
               </p>
               <p>
-                {t("algorithm.min_gap_after")}: <strong>{data.global_after?.min_gap}</strong>
+                {t("algorithm.min_gap_after")}: <strong data-testid="explanation-min-gap-after">{data.global_after?.min_gap ?? "—"}</strong>
               </p>
             </div>
             {(() => {
@@ -227,18 +244,22 @@ export default function ExplanationModal({ jobId, assignmentId, title, onClose }
                   id: "reason",
                   header: t("algorithm.explanation_reason_col"),
                   cell: (c) =>
-                    c.blocking_constraints.map((k) => t(`algorithm.constraint_${k}`, k)).join(", "),
+                    c.blocking_constraints.length > 0
+                      ? c.blocking_constraints.map((k) => t(`algorithm.constraint_${k}`, k)).join(", ")
+                      : c.soldier_id === data.assigned_soldier_id
+                        ? t("algorithm.explanation_reason_assigned")
+                        : t("algorithm.explanation_reason_eligible_not_selected"),
                 },
                 {
                   id: "burden_share_before",
                   header: t("algorithm.burden_share_before"),
-                  cell: (c) => c.pre_norm_score != null ? (c.pre_norm_score * 100).toFixed(1) + "%" : "—",
+                  cell: (c) => formatBurdenShare(c.pre_norm_score),
                   sortValue: (c) => c.pre_norm_score ?? null,
                 },
                 {
                   id: "burden_share_after",
                   header: t("algorithm.burden_share_after"),
-                  cell: (c) => c.post_norm_score != null ? (c.post_norm_score * 100).toFixed(1) + "%" : "—",
+                  cell: (c) => formatBurdenShare(c.post_norm_score),
                   sortValue: (c) => c.post_norm_score ?? null,
                 },
               ];
@@ -247,6 +268,7 @@ export default function ExplanationModal({ jobId, assignmentId, title, onClose }
                   columns={candidateCols}
                   data={data.candidates}
                   filterPlaceholder={t("table.filter_placeholder")}
+                  tableClassName="min-w-[600px]"
                   rowClassName={(c) => (c.blocked ? "bg-red-50 dark:bg-red-950" : "bg-green-50 dark:bg-green-950")}
                 />
               );

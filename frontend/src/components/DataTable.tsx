@@ -46,6 +46,7 @@ interface DataTableProps<T> {
   data: T[];
   filterPlaceholder?: string;
   className?: string;
+  tableClassName?: string;
   rowClassName?: (row: T) => string;
   rowStyle?: (row: T) => React.CSSProperties;
   emptyMessage?: string;
@@ -169,6 +170,7 @@ export function DataTable<T>({
   data,
   filterPlaceholder = "סנן...",
   className,
+  tableClassName,
   rowClassName,
   rowStyle,
   emptyMessage = "—",
@@ -286,7 +288,7 @@ export function DataTable<T>({
         className="mb-2 border rounded p-1 text-sm w-full sm:w-64 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
       />
       <div className="overflow-x-auto -mx-1">
-      <table className="w-full text-xs border-collapse">
+      <table className={`w-full text-xs border-collapse${tableClassName ? ` ${tableClassName}` : ""}`}>
         <thead>
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id} className="bg-gray-100 dark:bg-gray-700 text-right">
