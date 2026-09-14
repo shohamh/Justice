@@ -480,6 +480,7 @@ export default function HomePage() {
           lastMitvahimDate={user?.last_mitvahim_date ?? null}
           lastAlalDate={user?.last_alal_date ?? null}
           settings={settings}
+          duties={duties}
         />
 
         {commandScopeAvailable && (

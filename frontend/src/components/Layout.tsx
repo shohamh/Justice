@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CircleUser, Settings, HelpCircle, Sun, Moon, Monitor, LogOut } from "lucide-react";
@@ -8,7 +8,7 @@ import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
 import HeaderSearch from "./HeaderSearch";
-import { getPublicSettings } from "../api/publicSettings";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 import JusticeLogo from "./JusticeLogo";
 import BugReportTrigger from "./BugReportTrigger";
 import { getAdminBugReportUnreadCount, getAdminErrorUnreadCount } from "../api/bugReports";
@@ -29,26 +29,14 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
   const adminUnread = (errorUnread.data ?? 0) + (bugUnread.data ?? 0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<string | undefined>(undefined);
-  const [gimelimEnabled, setGimelimEnabled] = useState(true);
-  const [hakpazaEnabled, setHakpazaEnabled] = useState(false);
+  const publicSettings = usePublicSettings();
+  const gimelimEnabled = publicSettings?.["gimalim.enabled"] !== false;
+  const hakpazaEnabled = publicSettings?.["forced_callup.enabled"] === true;
 
   function openHelp(tab?: string) {
     setHelpTab(tab);
     setHelpOpen(true);
   }
-
-  useEffect(() => {
-    getPublicSettings().then((settings) => {
-      const enabled = settings["gimalim.enabled"];
-      setGimelimEnabled(enabled === true || enabled === undefined);
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    getPublicSettings().then((settings) => {
-      setHakpazaEnabled(settings["forced_callup.enabled"] === true);
-    }).catch(() => {});
-  }, []);
 
   return (
     <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">

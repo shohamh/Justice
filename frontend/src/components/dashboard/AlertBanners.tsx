@@ -1,16 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { SettingsMap, getSystemSettings } from "../../api/systemSettings";
+import { SettingsMap } from "../../api/systemSettings";
 import { formatDate } from "../../utils/formatDate";
-import { listEffectiveDuties, EffectiveDuty } from "../../api/assignments";
+import { EffectiveDuty } from "../../api/assignments";
 import { useAuth } from "../../auth/AuthContext";
 
 interface Props {
   lastMitvahimDate: string | null;
   lastAlalDate: string | null;
   settings: SettingsMap;
+  duties: EffectiveDuty[];
 }
 
 function getNum(settings: SettingsMap, key: string, fallback: number): number {
@@ -55,30 +56,19 @@ function formatDaysUntil(days: number, t: TFunction): string {
   return t("upcoming_duty_alert.in_days", { count: days });
 }
 
-export default function AlertBanners({ lastMitvahimDate, lastAlalDate, settings }: Props) {
+export default function AlertBanners({ lastMitvahimDate, lastAlalDate, settings, duties }: Props) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { user } = useAuth();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [upcomingAlerts, setUpcomingAlerts] = useState<{ duty: EffectiveDuty; days: number }[]>([]);
-
-  useEffect(() => {
-    if (!user) return;
-    void (async () => {
-      const [duties, fetchedSettingsResult] = await Promise.all([
-        listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
-        getSystemSettings().catch(() => ({} as SettingsMap)),
-      ]);
-      const fetchedSettings = fetchedSettingsResult ?? {};
-      const alertDays = Number(fetchedSettings["alerts.upcoming_duty_days"] ?? 3);
-      if (alertDays === 0) return;
-      const alerts = duties
-        .map(d => ({ duty: d, days: daysUntil(d.start_date) }))
-        .filter(({ days }) => days >= 0 && days <= alertDays)
-        .sort((a, b) => a.days - b.days);
-      setUpcomingAlerts(alerts);
-    })();
-  }, [user]);
+  const upcomingAlerts = useMemo(() => {
+    const alertDays = Number(settings["alerts.upcoming_duty_days"] ?? 3);
+    if (alertDays === 0) return [];
+    return duties
+      .map(d => ({ duty: d, days: daysUntil(d.start_date) }))
+      .filter(({ days }) => days >= 0 && days <= alertDays)
+      .sort((a, b) => a.days - b.days);
+  }, [duties, settings]);
 
   const mitvahimValidity = getNum(settings, "home.mitvahim_validity_days", 180);
   const mitvahimWarn = getNum(settings, "home.mitvahim_warn_days", 30);
