@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
-from app.db.models import HierarchyNode, SystemSetting
+from app.db.models import DutyAssignment, HierarchyNode, SystemSetting
 from app.services.scoring import burden_shares_by_soldier
 from tests.helpers import create_soldier
 
@@ -53,3 +54,49 @@ def test_burden_shares_by_soldier_honors_hierarchy_override(admin_session):
     # source-inspection tests below, which prove the override CAN reach this
     # function at all rather than being silently discarded by an explicit arg.
     assert shares[s.id] > 0
+
+
+def test_burden_shares_by_soldier_include_drafts_stays_unit_consistent(admin_session):
+    """The include_drafts variant must stay a scale-invariant A_i/W_i ratio
+    (like the published-only default), not a raw days*score_per_day quantity
+    layered on top of one -- and must ignore drafts entirely when the flag is
+    off, and honor exclude_assignment_ids when it is on."""
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-07-01"))
+    admin_session.flush()
+
+    dt, loc = _seed_duty_type(admin_session, "burden-drafts")
+    plain = create_soldier(admin_session, personal_number="9930010")
+    drafted = create_soldier(admin_session, personal_number="9930011")
+    for s in (plain, drafted):
+        s.enrolled_at = date(2025, 1, 1)
+    admin_session.flush()
+
+    draft_assignment = DutyAssignment(
+        soldier_id=drafted.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 5),
+        status="algorithm_draft",
+    )
+    admin_session.add(draft_assignment)
+    admin_session.commit()
+
+    published_only = burden_shares_by_soldier(admin_session, [plain, drafted])
+    assert published_only[plain.id] == 0.0
+    # A draft-only assignment must not leak into the published-only score.
+    assert published_only[drafted.id] == 0.0
+
+    with_drafts = burden_shares_by_soldier(admin_session, [plain, drafted], include_drafts=True)
+    assert with_drafts[plain.id] == 0.0
+    assert with_drafts[drafted.id] > 0.0
+    # A scale-invariant A_i/W_i ratio never exceeds 1 -- if this were the raw
+    # days*score_per_day quantity the old buggy code added on top of the
+    # ratio, a 4-day duty at score_per_day=1.00 would blow well past that.
+    assert with_drafts[drafted.id] <= 1.0
+
+    excluded = burden_shares_by_soldier(
+        admin_session, [plain, drafted],
+        include_drafts=True, exclude_assignment_ids={draft_assignment.id},
+    )
+    assert excluded[drafted.id] == 0.0

@@ -294,6 +294,7 @@ def replace_assignment(
     assignment: DutyAssignment,
     replacement_soldier_id: uuid.UUID,
     actor_id: uuid.UUID | None = None,
+    override_reason: str | None = None,
 ) -> DutyAssignment:
     """Replace an assignment owner in-place, retaining status and reserve links."""
     if assignment.status == "cancelled":
@@ -320,6 +321,17 @@ def replace_assignment(
         start_date=assignment.start_date, end_date=assignment.end_date,
     ):
         raise AssignmentError("exempted")
+    constraint = session.execute(
+        select(PersonalConstraint).where(
+            PersonalConstraint.soldier_id == replacement_soldier_id,
+            PersonalConstraint.status == "approved",
+            PersonalConstraint.start_date < assignment.end_date,
+            PersonalConstraint.end_date >= assignment.start_date,
+        )
+    ).scalars().first()
+    if constraint is not None:
+        if not override_reason or not override_reason.strip():
+            raise AssignmentError("override_reason_required")
     before_soldier_id = assignment.soldier_id
     duty_type = session.get(DutyType, assignment.duty_type_id)
     assignment.soldier_id = replacement_soldier_id
@@ -341,6 +353,21 @@ def replace_assignment(
         before={"soldier_id": str(before_soldier_id)},
         after={"soldier_id": str(replacement_soldier_id)},
     )
+    if constraint is not None:
+        session.add(PersonalConstraintOverride(
+            personal_constraint_id=constraint.id,
+            soldier_id=replacement_soldier_id,
+            overridden_by=actor_id,
+            assignment_kind="duty",
+            reference_id=assignment.id,
+            reason=override_reason.strip(),
+        ))
+        from app.services.notifications import notify_personal_constraint_overridden
+
+        notify_personal_constraint_overridden(
+            session, soldier_id=replacement_soldier_id, assignment_kind="duty",
+            reason=override_reason.strip(), actor_id=actor_id,
+        )
     create_notification(
         session, soldier_id=before_soldier_id, type=NotificationType.assignment_removed,
         title="שיבוץ בוטל", reference_type="duty_assignment", reference_id=assignment.id,

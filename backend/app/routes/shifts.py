@@ -11,7 +11,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize, dm_scope_node_ids, scope_root_ids
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from sqlalchemy import delete as sa_delete, func
 from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, HierarchyNode, NotificationType, PersonalConstraint, ShiftTemplate, Soldier, SwapRequest
@@ -703,6 +703,7 @@ class ShiftCandidateOut(BaseModel):
 def get_shift_candidates(
     shift_id: uuid.UUID,
     include_drafts: bool = False,
+    replace_assignment_id: uuid.UUID | None = None,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftCandidateOut]:
@@ -711,17 +712,21 @@ def get_shift_candidates(
     Approved personal constraints are warnings here: manual assignment may
     override them with a reason. Automatic assignment remains responsible for
     excluding constrained soldiers in the algorithm path.
+
+    `replace_assignment_id` (only meaningful together with include_drafts=true)
+    excludes that assignment from the draft-aware replacement_score so the
+    assignment about to move does not bias any candidate's ranking.
     """
     shift = _load(session, shift_id)
     authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
 
+    dm_scope: set[uuid.UUID] = set() if user.role == "admin" else dm_scope_node_ids(session, user.id)
+
     def _soldier_in_manager_scope(soldier: Soldier) -> bool:
         if user.role == "admin":
             return True
-        from app.auth.authz import dm_scope_node_ids
-        roots = dm_scope_node_ids(session, user.id)
         node = node_map.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
-        return node is not None and bool(roots & set(node.path_ids))
+        return node is not None and bool(dm_scope & set(node.path_ids))
 
     from app.db.models import DutyType as _DutyType
     from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
@@ -789,18 +794,14 @@ def get_shift_candidates(
 
     candidate_soldiers = [soldier_map[si.id] for si in soldier_inputs if si.id in soldier_map]
     burden_share_by_id = burden_shares_by_soldier(session, candidate_soldiers)
-    replacement_score_by_id = dict(burden_share_by_id)
+    replacement_score_by_id: dict[uuid.UUID, float] = {}
     if include_drafts:
-        draft_spans = scoring_svc.effective_duty_spans_with_drafts(
-            session, soldier_ids=set(soldier_map), date_from=None, date_to=None,
+        exclude_assignment_ids = (
+            {replace_assignment_id} if replace_assignment_id is not None else None
         )
-        duty_scores = {dt.id: float(dt.score_per_day) for dt in session.execute(select(_DutyType)).scalars()}
-        for span in draft_spans:
-            if span["assignment_id"] == shift_id:
-                continue
-            replacement_score_by_id[span["soldier_id"]] = replacement_score_by_id.get(span["soldier_id"], 0.0) + (
-                (span["end_date"] - span["start_date"]).days * duty_scores.get(span["duty_type_id"], 0.0)
-            )
+        replacement_score_by_id = burden_shares_by_soldier(
+            session, candidate_soldiers, include_drafts=True, exclude_assignment_ids=exclude_assignment_ids,
+        )
 
     from app.db.models import ExemptionDutyTypeMap, ExemptionType, SoldierExemption
     from app.services.eligibility import duty_type_ineligibility_reason
@@ -944,6 +945,7 @@ class AssignmentOut(BaseModel):
 
 class AssignmentReplacementRequest(BaseModel):
     replacement_soldier_id: uuid.UUID
+    override_reason: str | None = Field(default=None, max_length=1000)
 
 
 @router.post("/{shift_id}/assignments/{assignment_id}/replace", response_model=AssignmentOut)
@@ -960,14 +962,14 @@ def replace_shift_assignment(
     if assignment is None or assignment.duty_shift_id != shift.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
+    dm_scope: set[uuid.UUID] = set() if user.role == "admin" else dm_scope_node_ids(session, user.id)
+
     def _in_scope(soldier_id: uuid.UUID) -> bool:
         if user.role == "admin":
             return True
-        from app.auth.authz import dm_scope_node_ids
-        roots = dm_scope_node_ids(session, user.id)
         soldier = session.get(Soldier, soldier_id)
         node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier and soldier.hierarchy_node_id else None
-        return node is not None and bool(roots & set(node.path_ids))
+        return node is not None and bool(dm_scope & set(node.path_ids))
 
     if not _in_scope(assignment.soldier_id) or not _in_scope(body.replacement_soldier_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
@@ -975,6 +977,7 @@ def replace_shift_assignment(
     try:
         asvc.replace_assignment(
             session, assignment=assignment, replacement_soldier_id=body.replacement_soldier_id, actor_id=user.id,
+            override_reason=body.override_reason,
         )
     except asvc.AssignmentError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
