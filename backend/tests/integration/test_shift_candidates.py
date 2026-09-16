@@ -4,7 +4,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.db.models import (
-    DutyLocation, DutyType, ExemptionDutyTypeMap, ExemptionType, PersonalConstraint, SoldierExemption,
+    DutyLocation, DutyManagerScope, DutyType, ExemptionDutyTypeMap, ExemptionType, PersonalConstraint,
+    SoldierExemption,
 )
 from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
@@ -20,6 +21,29 @@ def _setup(session, pn: str):
     session.add(loc)
     session.commit()
     return node, dm, dt, loc
+
+
+def test_candidates_are_limited_to_duty_manager_scope(client, admin_session):
+    scoped_node = create_node(admin_session, level="branch", name="scope-candidates")
+    outside_node = create_node(admin_session, level="branch", name="outside-candidates")
+    dm = create_soldier(admin_session, personal_number="scope-candidates-dm", role="duty_manager")
+    in_scope = create_soldier(admin_session, personal_number="scope-candidates-in", hierarchy_node_id=scoped_node.id)
+    outside = create_soldier(admin_session, personal_number="scope-candidates-out", hierarchy_node_id=outside_node.id)
+    dt = DutyType(name="scope-candidates-type", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="scope-candidates-location")
+    admin_session.add_all([DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=scoped_node.id), dt, loc])
+    admin_session.commit()
+
+    shift = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
+        "start_date": "2026-08-01", "end_date": "2026-08-03", "required_count": 2,
+    }, headers=auth_headers(dm))
+    assert shift.status_code == 201, shift.text
+
+    response = client.get(f"/api/shifts/{shift.json()['id']}/candidates", headers=auth_headers(dm))
+    assert response.status_code == 200, response.text
+    assert {item["soldier_id"] for item in response.json()} == {str(in_scope.id)}
+    assert str(outside.id) not in {item["soldier_id"] for item in response.json()}
 
 
 def test_constrained_soldier_shows_warning_when_override_allowed(client, admin_session):

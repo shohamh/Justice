@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from app.db.models import DutyLocation, DutyType
+from app.db.models import DutyAssignment, DutyLocation, DutyManagerScope, DutyType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -15,6 +15,72 @@ def _setup(session, pn: str):
     session.add(dt); session.add(loc)
     session.commit()
     return dm, dt, loc
+
+
+def test_scoped_manager_cannot_replace_out_of_scope_soldier(client, admin_session):
+    scoped_node = create_node(admin_session, level="branch", name="replace-scope")
+    outside_node = create_node(admin_session, level="branch", name="replace-outside")
+    dm = create_soldier(admin_session, personal_number="replace-scope-dm", role="duty_manager")
+    current = create_soldier(admin_session, personal_number="replace-scope-current", hierarchy_node_id=scoped_node.id)
+    replacement = create_soldier(admin_session, personal_number="replace-scope-replacement", hierarchy_node_id=scoped_node.id)
+    outside = create_soldier(admin_session, personal_number="replace-scope-outside", hierarchy_node_id=outside_node.id)
+    dt = DutyType(name="replace-scope-type", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="replace-scope-location")
+    admin_session.add_all([DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=scoped_node.id), dt, loc])
+    admin_session.commit()
+
+    shift = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
+        "start_date": "2026-09-01", "end_date": "2026-09-03", "required_count": 1,
+    }, headers=auth_headers(dm))
+    assert shift.status_code == 201, shift.text
+    shift_id = shift.json()["id"]
+    assignment = client.post(f"/api/shifts/{shift_id}/assign-batch", json={
+        "primaries": [str(current.id)], "reserves": [],
+    }, headers=auth_headers(dm))
+    assert assignment.status_code == 201, assignment.text
+    assignment_id = assignment.json()["primary_assignment_ids"][0]
+
+    denied = client.post(
+        f"/api/shifts/{shift_id}/assignments/{assignment_id}/replace",
+        json={"replacement_soldier_id": str(outside.id)}, headers=auth_headers(dm),
+    )
+    assert denied.status_code == 403
+
+    allowed = client.post(
+        f"/api/shifts/{shift_id}/assignments/{assignment_id}/replace",
+        json={"replacement_soldier_id": str(replacement.id)}, headers=auth_headers(dm),
+    )
+    assert allowed.status_code == 200, allowed.text
+    admin_session.expire_all()
+    updated = admin_session.get(DutyAssignment, uuid.UUID(assignment_id))
+    assert updated.soldier_id == replacement.id
+
+
+def test_scoped_manager_cannot_remove_out_of_scope_assignment(client, admin_session):
+    scoped_node = create_node(admin_session, level="branch", name="remove-scope")
+    outside_node = create_node(admin_session, level="branch", name="remove-outside")
+    dm = create_soldier(admin_session, personal_number="remove-scope-dm", role="duty_manager")
+    outside = create_soldier(admin_session, personal_number="remove-scope-outside", hierarchy_node_id=outside_node.id)
+    dt = DutyType(name="remove-scope-type", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="remove-scope-location")
+    admin_session.add_all([DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=scoped_node.id), dt, loc])
+    admin_session.commit()
+
+    shift = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
+        "start_date": "2026-10-01", "end_date": "2026-10-03", "required_count": 1,
+    }, headers=auth_headers(dm))
+    assert shift.status_code == 201
+    shift_id = shift.json()["id"]
+    assignment = client.post(f"/api/shifts/{shift_id}/assign-batch", json={
+        "primaries": [str(outside.id)], "reserves": [],
+    }, headers=auth_headers(create_soldier(admin_session, personal_number="remove-admin", role="admin")))
+    assert assignment.status_code == 201, assignment.text
+    assignment_id = assignment.json()["primary_assignment_ids"][0]
+
+    denied = client.delete(f"/api/shifts/{shift_id}/assignments/{assignment_id}", headers=auth_headers(dm))
+    assert denied.status_code == 403
 
 
 def test_create_shift_returns_201(client, admin_session):

@@ -18,6 +18,7 @@ from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutySh
 from app.db.session import get_session
 from app.services.notifications import create_notification
 from app.services import shifts as svc
+from app.services import scoring as scoring_svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
 from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, compute_two_level_split, get_shift_quotas, set_shift_quotas
 from app.services.shift_responsibility import auto_assign_responsibility
@@ -695,11 +696,13 @@ class ShiftCandidateOut(BaseModel):
     weapon_warning: bool = False
     hierarchy_path_ids: list[str] = []
     personal_constraint_warning: PersonalConstraintWarningOut | None = None
+    replacement_score: float | None = None
 
 
 @router.get("/{shift_id}/candidates", response_model=list[ShiftCandidateOut])
 def get_shift_candidates(
     shift_id: uuid.UUID,
+    include_drafts: bool = False,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftCandidateOut]:
@@ -711,6 +714,14 @@ def get_shift_candidates(
     """
     shift = _load(session, shift_id)
     authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    def _soldier_in_manager_scope(soldier: Soldier) -> bool:
+        if user.role == "admin":
+            return True
+        from app.auth.authz import dm_scope_node_ids
+        roots = dm_scope_node_ids(session, user.id)
+        node = node_map.get(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
+        return node is not None and bool(roots & set(node.path_ids))
 
     from app.db.models import DutyType as _DutyType
     from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
@@ -768,6 +779,7 @@ def get_shift_candidates(
             if node is not None and eligible_id_set & set(node.path_ids):
                 candidate_soldier_ids.add(soldier.id)
     candidate_soldier_ids -= already_on_shift
+    candidate_soldier_ids = {sid for sid in candidate_soldier_ids if _soldier_in_manager_scope(soldier_map[sid])}
 
     soldier_inputs = load_soldier_inputs(
         session, as_of=shift.start_date, soldier_ids=candidate_soldier_ids
@@ -777,6 +789,18 @@ def get_shift_candidates(
 
     candidate_soldiers = [soldier_map[si.id] for si in soldier_inputs if si.id in soldier_map]
     burden_share_by_id = burden_shares_by_soldier(session, candidate_soldiers)
+    replacement_score_by_id = dict(burden_share_by_id)
+    if include_drafts:
+        draft_spans = scoring_svc.effective_duty_spans_with_drafts(
+            session, soldier_ids=set(soldier_map), date_from=None, date_to=None,
+        )
+        duty_scores = {dt.id: float(dt.score_per_day) for dt in session.execute(select(_DutyType)).scalars()}
+        for span in draft_spans:
+            if span["assignment_id"] == shift_id:
+                continue
+            replacement_score_by_id[span["soldier_id"]] = replacement_score_by_id.get(span["soldier_id"], 0.0) + (
+                (span["end_date"] - span["start_date"]).days * duty_scores.get(span["duty_type_id"], 0.0)
+            )
 
     from app.db.models import ExemptionDutyTypeMap, ExemptionType, SoldierExemption
     from app.services.eligibility import duty_type_ineligibility_reason
@@ -902,6 +926,7 @@ def get_shift_candidates(
             weapon_warning=weapon_warning,
             hierarchy_path_ids=path_ids,
             personal_constraint_warning=personal_constraint_warning,
+            replacement_score=round(replacement_score_by_id.get(si.id, burden_share), 3) if include_drafts else None,
         ))
 
     result.sort(key=lambda x: (x.blocked, x.personal_constraint_warning is not None, x.weapon_warning, x.burden_share))
@@ -915,6 +940,49 @@ class AssignmentOut(BaseModel):
     start_date: date
     end_date: date
     status: str
+
+
+class AssignmentReplacementRequest(BaseModel):
+    replacement_soldier_id: uuid.UUID
+
+
+@router.post("/{shift_id}/assignments/{assignment_id}/replace", response_model=AssignmentOut)
+def replace_shift_assignment(
+    shift_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    body: AssignmentReplacementRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> AssignmentOut:
+    shift = _load(session, shift_id)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+    assignment = session.get(DutyAssignment, assignment_id)
+    if assignment is None or assignment.duty_shift_id != shift.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+
+    def _in_scope(soldier_id: uuid.UUID) -> bool:
+        if user.role == "admin":
+            return True
+        from app.auth.authz import dm_scope_node_ids
+        roots = dm_scope_node_ids(session, user.id)
+        soldier = session.get(Soldier, soldier_id)
+        node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier and soldier.hierarchy_node_id else None
+        return node is not None and bool(roots & set(node.path_ids))
+
+    if not _in_scope(assignment.soldier_id) or not _in_scope(body.replacement_soldier_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    from app.services import assignments as asvc
+    try:
+        asvc.replace_assignment(
+            session, assignment=assignment, replacement_soldier_id=body.replacement_soldier_id, actor_id=user.id,
+        )
+    except asvc.AssignmentError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    session.commit()
+    return AssignmentOut(
+        id=assignment.id, soldier_id=assignment.soldier_id, duty_type_id=assignment.duty_type_id,
+        start_date=assignment.start_date, end_date=assignment.end_date, status=assignment.status,
+    )
 
 
 @router.get("/{shift_id}/assignments", response_model=list[AssignmentOut])
@@ -1097,6 +1165,12 @@ def remove_shift_assignment(
     a = session.get(DutyAssignment, assignment_id)
     if a is None or a.duty_shift_id != shift_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if user.role != "admin":
+        from app.auth.authz import dm_scope_node_ids
+        soldier = session.get(Soldier, a.soldier_id)
+        node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier and soldier.hierarchy_node_id else None
+        if node is None or not (dm_scope_node_ids(session, user.id) & set(node.path_ids)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     if a.status != "cancelled":
         if a.is_reserve:
             session.execute(
