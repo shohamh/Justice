@@ -64,6 +64,9 @@ export interface CalendarShiftAssignee {
   weapon_ineligible_reason: string | null;
   range_eligibility: DutyEligibilityFact | null;
   problems: CalendarDutyProblem[];
+  // Whether the current user may replace this assignee (scope check — always
+  // true for admins, false for a DM outside the assignee's hierarchy).
+  can_replace?: boolean;
 }
 
 export async function dismissReserve(

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DutyShift, assignBatch, removeShiftAssignment } from "../api/shifts";
+import {
+  DutyShift,
+  ShiftReplacementCandidate,
+  assignBatch,
+  getShiftReplacementCandidates,
+  removeShiftAssignment,
+  replaceShiftAssignment,
+} from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
@@ -22,6 +29,22 @@ interface Props {
   dutyTypes: DutyType[];
   onSaved: () => void;
   onClose: () => void;
+  // When set, the modal opens in scoped, draft-aware replacement mode for this
+  // single assignment instead of the normal batch primary/reserve add flow —
+  // see the "Algorithm-result replacement" design section.
+  replaceAssignmentId?: string;
+}
+
+// Lowest-scoring eligible candidate — used to pre-select the auto choice in
+// replacement mode. Excludes blocked candidates and ones with a personal
+// constraint warning, mirroring the normal-mode auto-select behavior.
+function pickAutomaticReplacement(candidates: ShiftReplacementCandidate[]): string | null {
+  const eligible = candidates.filter(c => !c.blocked && !c.personal_constraint_warning);
+  if (eligible.length === 0) return null;
+  const sorted = [...eligible].sort(
+    (a, b) => (a.replacement_score ?? a.burden_share) - (b.replacement_score ?? b.burden_share)
+  );
+  return sorted[0].soldier_id;
 }
 
 const BLOCKED_REASON_LABEL: Record<string, string> = {
@@ -42,13 +65,15 @@ function hierarchyDistance(pathA: string[], pathB: string[]): number {
 
 type ReserveCandidate = ShiftCandidate & { dist: number; coveringNames: string[]; coveringPrimarySoldierId: string | null };
 
-export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, onClose }: Props) {
+export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, onClose, replaceAssignmentId }: Props) {
   const { t } = useTranslation();
+  const isReplacementMode = replaceAssignmentId != null;
   const [shiftDetail, setShiftDetail] = useState<CalendarShift | null>(null);
   const [candidates, setCandidates] = useState<ShiftCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [primarySelected, setPrimarySelected] = useState<Set<string>>(new Set());
   const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());
+  const [replacementSelected, setReplacementSelected] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [hasRemovals, setHasRemovals] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,11 +89,61 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getCalendarShift(shift.id), getShiftCandidates(shift.id)])
-      .then(([detail, cands]) => { setShiftDetail(detail); setCandidates(cands); })
+    setReplacementSelected(null);
+    const candidatesPromise = replaceAssignmentId
+      ? getShiftReplacementCandidates(shift.id, replaceAssignmentId)
+      : getShiftCandidates(shift.id);
+    Promise.all([getCalendarShift(shift.id), candidatesPromise])
+      .then(([detail, cands]) => {
+        setShiftDetail(detail);
+        setCandidates(cands);
+        if (replaceAssignmentId) {
+          setReplacementSelected(pickAutomaticReplacement(cands as ShiftReplacementCandidate[]));
+        }
+      })
       .catch(() => setError("שגיאה בטעינת נתונים"))
       .finally(() => setLoading(false));
-  }, [shift.id]);
+  }, [shift.id, replaceAssignmentId]);
+
+  // The assignee currently occupying the slot being replaced, and whether the
+  // current user is even permitted to replace them (scope check) — see the
+  // `can_replace` flag surfaced on calendar assignees.
+  const replacementTargetAssignee = useMemo(
+    () => (replaceAssignmentId ? shiftDetail?.assignees.find(a => a.assignment_id === replaceAssignmentId) ?? null : null),
+    [shiftDetail, replaceAssignmentId]
+  );
+  const replacementBlockedByScope = isReplacementMode && replacementTargetAssignee != null && replacementTargetAssignee.can_replace === false;
+
+  function selectReplacement(id: string) {
+    setError(null);
+    setReplacementSelected(id);
+  }
+
+  function handleReplaceSave() {
+    if (!replaceAssignmentId || !replacementSelected) return;
+    const candidate = candidates.find(c => c.soldier_id === replacementSelected);
+    if (candidate?.personal_constraint_warning) {
+      setPendingOverride({ primaries: [replacementSelected], reserves: [] });
+      return;
+    }
+    void doReplace();
+  }
+
+  async function doReplace(overrideReason?: string) {
+    if (!replaceAssignmentId || !replacementSelected) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await replaceShiftAssignment(shift.id, replaceAssignmentId, {
+        replacement_soldier_id: replacementSelected,
+        ...(overrideReason ? { override_reason: overrideReason } : {}),
+      });
+      onSaved();
+    } catch (e: unknown) {
+      setError(translateApiError(e, t, "שגיאה בהחלפה"));
+      setSaving(false);
+    }
+  }
 
   // Current saved assignees
   const currentPrimaries = useMemo(
@@ -267,6 +342,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   }
 
   function handleSave() {
+    if (isReplacementMode) { handleReplaceSave(); return; }
     if (totalSelected === 0) { onSaved(); return; }
     if (primaryFilled > shift.required_count) {
       setError("אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף");
@@ -333,15 +409,37 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   const canSave = totalSelected > 0 || hasRemovals;
 
   return (
+    <div data-testid="shift-edit-assignments-modal" data-replace-assignment-id={replaceAssignmentId}>
     <EventDetailModal
       open
-      title="ערוך שיבוצים"
+      title={isReplacementMode ? "החלף שיבוץ" : "ערוך שיבוצים"}
       subtitle={`${dutyTypeName} · ${shift.start_date} עד ${lastDutyDay(shift.end_date)}`}
       onClose={onClose}
     >
         {loading && <p className="text-sm text-gray-500 py-6 text-center">טוען...</p>}
 
-        {!loading && (
+        {!loading && isReplacementMode && (
+          <div className="space-y-3" data-testid={`replace-assignment-modal-${shift.id}`}>
+            {replacementTargetAssignee && (
+              <p className="text-sm">
+                מחליף את <span className="font-medium">{replacementTargetAssignee.soldier_name}</span>
+              </p>
+            )}
+            {replacementBlockedByScope ? (
+              <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400">
+                אין הרשאה להחליף שיבוץ זה — החייל המוחלף מחוץ לטווח הסמכות שלך
+              </p>
+            ) : (
+              <ReplacementCandidateTable
+                candidates={candidates as ShiftReplacementCandidate[]}
+                selected={replacementSelected}
+                onSelect={selectReplacement}
+              />
+            )}
+          </div>
+        )}
+
+        {!loading && !isReplacementMode && (
           <div className="overflow-y-auto flex-1 space-y-5" data-testid={`manual-assignment-modal-${shift.id}`}>
             {/* Summary table — current + pending */}
             <div>
@@ -565,7 +663,11 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
           open={pendingOverride !== null}
           count={pendingOverride ? pendingOverride.primaries.length + pendingOverride.reserves.length : 0}
           onCancel={() => setPendingOverride(null)}
-          onConfirm={(reason) => { setPendingOverride(null); void doSave(reason); }}
+          onConfirm={(reason) => {
+            setPendingOverride(null);
+            if (isReplacementMode) void doReplace(reason);
+            else void doSave(reason);
+          }}
         />
 
         <div className="flex justify-end gap-2 mt-4 pt-3 border-t dark:border-gray-600 flex-wrap">
@@ -574,15 +676,18 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
           </button>
           <button
             type="button"
-            data-testid="manual-assignment-save"
+            data-testid={isReplacementMode ? "replace-assignment-save" : "manual-assignment-save"}
             onClick={handleSave}
-            disabled={!canSave || saving}
+            disabled={isReplacementMode ? (!replacementSelected || saving || replacementBlockedByScope) : (!canSave || saving)}
             className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? "שומר..." : `שמור${totalSelected > 0 ? ` (${totalSelected})` : ""}`}
+            {isReplacementMode
+              ? (saving ? "מחליף..." : "החלף")
+              : (saving ? "שומר..." : `שמור${totalSelected > 0 ? ` (${totalSelected})` : ""}`)}
           </button>
         </div>
     </EventDetailModal>
+    </div>
   );
 }
 
@@ -726,6 +831,87 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
               <td className="p-2 font-mono">{c.burden_share.toFixed(3)}</td>
               {showDist && <td className="p-2"></td>}
+              <td className="p-2 text-gray-400 whitespace-nowrap">{blockedReasonText(c)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+interface ReplacementCandidateTableProps {
+  candidates: ShiftReplacementCandidate[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+}
+
+// Single-select candidate list for the atomic replacement flow. Renders
+// exactly what the scoped endpoint returned — no additional frontend scope
+// filtering — sorted by the draft-aware replacement_score ascending so the
+// lowest-burden (and therefore automatically-selected) candidate leads.
+function ReplacementCandidateTable({ candidates, selected, onSelect }: ReplacementCandidateTableProps) {
+  const [blockedOpen, setBlockedOpen] = useState(true);
+  const unblocked = [...candidates.filter(c => !c.blocked)].sort(
+    (a, b) => (a.replacement_score ?? a.burden_share) - (b.replacement_score ?? b.burden_share)
+  );
+  const blocked = candidates.filter(c => c.blocked);
+
+  return (
+    <div className="border dark:border-gray-600 rounded overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="bg-gray-50 dark:bg-gray-700">
+          <tr>
+            <th className="p-2 w-8"></th>
+            <th className="text-right p-2 font-medium">שם</th>
+            <th className="text-right p-2 font-medium">מ&quot;א</th>
+            <th className="text-right p-2 font-medium">עומס (כולל טיוטות)</th>
+            <th className="p-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {unblocked.length === 0 && blocked.length === 0 && (
+            <tr><td colSpan={4} className="p-2 text-center text-gray-400 italic">אין מועמדים זמינים</td></tr>
+          )}
+          {unblocked.map(c => {
+            const isSelected = selected === c.soldier_id;
+            return (
+              <tr key={c.soldier_id}
+                data-testid={`replacement-candidate-${c.soldier_id}`}
+                className="border-t dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                onClick={() => onSelect(c.soldier_id)}>
+                <td className="p-2">
+                  <input type="radio" name="replacement-candidate" checked={isSelected} onChange={() => onSelect(c.soldier_id)} onClick={e => e.stopPropagation()} />
+                </td>
+                <td className="p-2">
+                  {c.full_name}
+                  {c.personal_constraint_warning && (
+                    <ConstraintWarningIcon warning={c.personal_constraint_warning} />
+                  )}
+                </td>
+                <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
+                <td className="p-2 font-mono">{(c.replacement_score ?? c.burden_share).toFixed(3)}</td>
+                <td className="p-2"></td>
+              </tr>
+            );
+          })}
+          {blocked.length > 0 && (
+            <tr className="border-t dark:border-gray-600">
+              <td colSpan={4} className="px-2 py-1 bg-gray-50 dark:bg-gray-700/50">
+                <button type="button" onClick={() => setBlockedOpen(v => !v)}
+                  className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center gap-1">
+                  <span>{blockedOpen ? "▾" : "▸"}</span>
+                  <span>חסומים ({blocked.length})</span>
+                </button>
+              </td>
+            </tr>
+          )}
+          {blockedOpen && blocked.map(c => (
+            <tr key={c.soldier_id} className="border-t dark:border-gray-600 opacity-40">
+              <td className="p-2"><input type="radio" disabled /></td>
+              <td className="p-2">{c.full_name}</td>
+              <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
+              <td className="p-2 font-mono">{(c.replacement_score ?? c.burden_share).toFixed(3)}</td>
               <td className="p-2 text-gray-400 whitespace-nowrap">{blockedReasonText(c)}</td>
             </tr>
           ))}

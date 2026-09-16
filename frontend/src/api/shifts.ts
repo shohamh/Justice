@@ -1,5 +1,6 @@
 import { api } from "./client";
 import { isRecord, optionalArrayResponse } from "./responseGuards";
+import type { ShiftCandidate } from "./assignments";
 
 export interface DutyShift {
   id: string;
@@ -182,4 +183,45 @@ export async function bulkClearAssignments(dateFrom: string, dateTo: string): Pr
 export async function getWeaponIneligibleCount(): Promise<number> {
   const r = await api.get<{ count: number }>("/shifts/weapon-ineligible/count");
   return r.data.count;
+}
+
+// — Scoped, draft-aware replacement (algorithm-result replacement flow) —
+
+export interface ShiftReplacementCandidate extends ShiftCandidate {
+  // Draft-aware burden score: counts active drafts alongside published
+  // assignments and excludes the assignment being replaced. Only populated
+  // when requested with include_drafts=true — see getShiftReplacementCandidates.
+  replacement_score: number | null;
+}
+
+export async function getShiftReplacementCandidates(
+  shiftId: string,
+  replaceAssignmentId: string,
+): Promise<ShiftReplacementCandidate[]> {
+  const data = (await api.get<unknown>(`/shifts/${shiftId}/candidates`, {
+    params: { include_drafts: true, replace_assignment_id: replaceAssignmentId },
+  })).data;
+  return optionalArrayResponse<ShiftReplacementCandidate>(data);
+}
+
+export interface AssignmentReplacementInput {
+  replacement_soldier_id: string;
+  override_reason?: string;
+}
+
+export interface ReplacedAssignment {
+  id: string;
+  soldier_id: string;
+  duty_type_id: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+}
+
+export async function replaceShiftAssignment(
+  shiftId: string,
+  assignmentId: string,
+  input: AssignmentReplacementInput,
+): Promise<ReplacedAssignment> {
+  return (await api.post<ReplacedAssignment>(`/shifts/${shiftId}/assignments/${assignmentId}/replace`, input)).data;
 }

@@ -220,6 +220,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
           jobId={jobId}
           soldiers={soldiers}
           dutyTypes={dutyTypes}
+          shiftsById={shiftsById}
           onProposalUpdate={onProposalUpdate}
           isDraft={job.proposals.some(p => p.status === "algorithm_draft")}
         />
