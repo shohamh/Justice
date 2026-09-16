@@ -4,7 +4,13 @@ import * as algorithmApi from "../api/algorithm";
 
 vi.mock("../api/algorithm", () => ({
   submitJob: vi.fn(),
-  getAlgorithmDefaults: vi.fn().mockResolvedValue({ T: 8, Wt: 14, R: 15, Wr: 28 }),
+  getAlgorithmDefaults: vi.fn().mockResolvedValue({
+    T: 8,
+    Wt: 14,
+    R: 15,
+    Wr: 28,
+    enforce_weapon_qualification: false,
+  }),
 }));
 
 vi.mock("./SubHierarchySelector", () => ({
@@ -85,11 +91,19 @@ test("calls submitJob and onJobSubmitted on run", async () => {
     />
   );
 
+  await waitFor(() => {
+    expect(algorithmApi.getAlgorithmDefaults).toHaveBeenCalled();
+  });
+
   fireEvent.click(screen.getByRole("button", { name: /הרץ שיבוץ/ }));
 
   await waitFor(() => {
     expect(mockSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ shift_ids: ["s1", "s2"], mode: "shadow" })
+      expect.objectContaining({
+        shift_ids: ["s1", "s2"],
+        mode: "shadow",
+        settings: expect.objectContaining({ enforce_weapon_qualification: false }),
+      })
     );
     expect(onJobSubmitted).toHaveBeenCalledWith("job-123");
     expect(onClose).toHaveBeenCalled();

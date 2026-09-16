@@ -14,6 +14,7 @@ interface Props {
 
 const DEFAULT_SETTINGS: SolverSettings = {
   K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30, num_workers: 1,
+  enforce_weapon_qualification: true,
 };
 
 export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted, onClose }: Props) {
@@ -30,7 +31,14 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
 
   useEffect(() => {
     void getAlgorithmDefaults()
-      .then(d => setSettings(s => ({ ...s, T: d.T, Wt: d.Wt, R: d.R, Wr: d.Wr })))
+      .then(d => setSettings(s => ({
+        ...s,
+        T: d.T,
+        Wt: d.Wt,
+        R: d.R,
+        Wr: d.Wr,
+        enforce_weapon_qualification: d.enforce_weapon_qualification,
+      })))
       .catch(() => {});
   }, []);
 

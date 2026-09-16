@@ -21,6 +21,7 @@ export interface AlgorithmDefaults {
   Wt: number;
   R: number;
   Wr: number;
+  enforce_weapon_qualification: boolean;
 }
 
 export interface CreateJobRequest {
@@ -372,6 +373,9 @@ export async function getAlgorithmDefaults(): Promise<AlgorithmDefaults> {
     Wt: requiredNumberField(data.Wt, "Invalid algorithm defaults response"),
     R: requiredNumberField(data.R, "Invalid algorithm defaults response"),
     Wr: requiredNumberField(data.Wr, "Invalid algorithm defaults response"),
+    enforce_weapon_qualification: typeof data.enforce_weapon_qualification === "boolean"
+      ? data.enforce_weapon_qualification
+      : (() => { throw new Error("Invalid algorithm defaults response"); })(),
   };
 }
 

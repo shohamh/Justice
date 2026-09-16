@@ -79,9 +79,17 @@ describe("getAlgorithmDefaults", () => {
   });
 
   it("returns a well-formed defaults payload", async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: { T: 8, Wt: 14, R: 15, Wr: 28 } });
+    vi.mocked(api.get).mockResolvedValue({
+      data: { T: 8, Wt: 14, R: 15, Wr: 28, enforce_weapon_qualification: false },
+    });
 
-    await expect(getAlgorithmDefaults()).resolves.toEqual({ T: 8, Wt: 14, R: 15, Wr: 28 });
+    await expect(getAlgorithmDefaults()).resolves.toEqual({
+      T: 8,
+      Wt: 14,
+      R: 15,
+      Wr: 28,
+      enforce_weapon_qualification: false,
+    });
   });
 });
 
