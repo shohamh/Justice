@@ -332,6 +332,86 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByText("full_name is required")).toBeInTheDocument();
   });
 
+  it("hides the duty-type picker for an assignment with a resolved duty type, even when the row errors for another reason", async () => {
+    // Regression: the assignment row's duty-type combobox used to be keyed off
+    // the whole row's action ("error" showed it), not resolved_duty_type_id.
+    // A row can have a resolved type but still error for an unrelated reason
+    // (e.g. a full-name mismatch) — the picker must stay hidden in that case,
+    // and a shift-matching warning must remain visible regardless.
+    const detail = makeDraftDetail();
+    detail.parsed_state.assignments = [
+      {
+        row: 2,
+        action: "error",
+        errors: ["שם מלא 'דני לוי' אינו תואם לחייל עם מספר אישי '1234567' ('יוסי כהן')"],
+        warnings: ["לא נמצאה משמרת תואמת"],
+        personal_number: "1234567",
+        full_name: "דני לוי",
+        duty_type_name: "שמירה",
+        duty_location_name: "שער",
+        start_date: "2026-07-01",
+        end_date: "2026-07-02",
+        start_time: null,
+        end_time: null,
+        is_reserve: false,
+        notes: null,
+        resolved_soldier_id: null,
+        resolved_duty_type_id: "dt-1",
+        resolved_duty_location_id: "loc-1",
+        resolved_duty_shift_id: null,
+        matched_session_row: null,
+        generated_shift_key: "generated:dt-1:loc-1:2026-07-01:2026-07-02:00:00:23:59",
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+
+    fireEvent.click(screen.getByText("שיבוצים (1)"));
+    const row = (await screen.findByText("שמירה")).closest("tr")!;
+
+    expect(within(row).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByText("לא נמצאה משמרת תואמת")).toBeInTheDocument();
+  });
+
+  it("shows the duty-type picker for an assignment with an unresolved duty type", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.assignments = [
+      {
+        row: 2,
+        action: "error",
+        errors: ["סוג תורנות לא מזוהה 'שמירה'"],
+        warnings: [],
+        personal_number: "1234567",
+        full_name: "יוסי כהן",
+        duty_type_name: "שמירה",
+        duty_location_name: "שער",
+        start_date: "2026-07-01",
+        end_date: "2026-07-02",
+        start_time: null,
+        end_time: null,
+        is_reserve: false,
+        notes: null,
+        resolved_soldier_id: "sol-1",
+        resolved_duty_type_id: null,
+        resolved_duty_location_id: "loc-1",
+        resolved_duty_shift_id: null,
+        matched_session_row: null,
+        generated_shift_key: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+
+    fireEvent.click(screen.getByText("שיבוצים (1)"));
+    const row = (await screen.findAllByText("שמירה"))[0].closest("tr")!;
+
+    expect(within(row).getByRole("combobox")).toBeInTheDocument();
+  });
+
   it("pre-fills the create-node dialog with the unresolved soldier row name", async () => {
     renderPage();
     await screen.findByDisplayValue("יוסי כהן");

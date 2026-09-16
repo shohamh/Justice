@@ -1248,16 +1248,21 @@ def _resolve_assignments(
         if location is None:
             errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
 
+        # The type is resolved independently of shift matching, so the review UI can
+        # keep the duty-type combobox hidden as soon as the type itself is known —
+        # even when no shift exists yet for this type/location/date/time combination.
+        resolved_duty_type_id = str(duty_type.id) if duty_type is not None else None
+        resolved_duty_location_id = str(location.id) if location is not None else None
+
         resolved_duty_shift_id: str | None = None
         matched_session_row: int | None = None
         shift_key_str: str | None = None
         required_count: int | None = None
+        generated_shift_key: str | None = None
         if duty_type is not None and location is not None and start_date and end_date:
-            key = (
-                duty_type.id, location.id, start_date, end_date,
-                _default_time(start_time, "00:00"),
-                _default_time(end_time, "23:59"),
-            )
+            norm_start_time = _default_time(start_time, "00:00")
+            norm_end_time = _default_time(end_time, "23:59")
+            key = (duty_type.id, location.id, start_date, end_date, norm_start_time, norm_end_time)
             existing_match = existing_shift_by_key.get(key)
             session_match = session_shift_by_key.get(key)
             if existing_match is not None:
@@ -1269,7 +1274,15 @@ def _resolve_assignments(
                 shift_key_str = f"session_row:{matched_session_row}"
                 required_count = session_match["required_count"]
             else:
-                errors.append("לא נמצאה משמרת תואמת (סוג תורנות, מיקום, תאריכים ושעות)")
+                # No matching shift exists yet — the type/location/date/time are all
+                # resolved, so this is not an unresolved-type error. Share one stable
+                # key across every row with the same type/location/dates/times so
+                # confirmation creates a single generated shift for all of them.
+                generated_shift_key = (
+                    f"generated:{duty_type.id}:{location.id}:{start_date}:{end_date}:"
+                    f"{norm_start_time}:{norm_end_time}"
+                )
+                warnings.append("לא נמצאה משמרת תואמת")
 
         action = "error" if errors else "new"
 
@@ -1309,8 +1322,11 @@ def _resolve_assignments(
             "is_reserve": is_reserve,
             "notes": notes,
             "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
+            "resolved_duty_type_id": resolved_duty_type_id,
+            "resolved_duty_location_id": resolved_duty_location_id,
             "resolved_duty_shift_id": resolved_duty_shift_id,
             "matched_session_row": matched_session_row,
+            "generated_shift_key": generated_shift_key,
         })
     return out
 
@@ -1733,6 +1749,53 @@ def confirm_session(
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_shifts", "error": str(exc)})
 
+    # ── Generated shifts for assignments with no matching shift ──────────
+    # A row with a generated_shift_key has a fully resolved type/location/date/time
+    # but no existing or session-created shift to attach to. Rows sharing a key are
+    # grouped here and get one shift each, created before the Assignments loop below
+    # maps every row to it. Only rows that will actually become assignments (not
+    # skipped, not erroring, not out of scope) count toward the group, so a key with
+    # every linked assignment skipped never creates an orphan shift.
+    generated_shift_key_to_id: dict[str, uuid.UUID] = {}
+    assignment_rows_by_generated_key: dict[str, list[dict]] = {}
+    for row in state.get("assignments", []):
+        key = row.get("generated_shift_key")
+        if not key:
+            continue
+        effective = _effective_action(selections, "assignments", row)
+        if row["action"] in ("error", "out_of_scope") or effective != "new":
+            continue
+        assignment_rows_by_generated_key.setdefault(key, []).append(row)
+
+    for key, rows in assignment_rows_by_generated_key.items():
+        first = rows[0]
+        try:
+            # Primary/reserve counts are derived from the selected assignments
+            # themselves — there is no source shift row to read them from.
+            primary_count = sum(1 for r in rows if not r.get("is_reserve"))
+            reserve_count = sum(1 for r in rows if r.get("is_reserve"))
+            with session.begin_nested():
+                shift = DutyShift(
+                    duty_type_id=uuid.UUID(first["resolved_duty_type_id"]),
+                    duty_location_id=uuid.UUID(first["resolved_duty_location_id"]),
+                    start_date=date_type.fromisoformat(first["start_date"]),
+                    end_date=date_type.fromisoformat(first["end_date"]),
+                    required_count=max(primary_count, 1),
+                    reserve_count_override=reserve_count or None,
+                )
+                if first.get("start_time"):
+                    shift.start_time = first["start_time"]
+                if first.get("end_time"):
+                    shift.end_time = first["end_time"]
+                session.add(shift)
+                session.flush()
+
+            created += 1
+            created_duty_shifts.append(str(shift.id))
+            generated_shift_key_to_id[key] = shift.id
+        except Exception as exc:
+            errors.append({"row": first["row"], "type": "duty_shifts", "error": str(exc)})
+
     # ── Assignments ─────────────────────────────────────────────────────
     for row in state.get("assignments", []):
         effective = _effective_action(selections, "assignments", row)
@@ -1751,6 +1814,15 @@ def confirm_session(
                     errors.append({
                         "row": row["row"], "type": "assignments",
                         "error": "המשמרת המתאימה לא נוצרה (דולגה או נכשלה)",
+                    })
+                    continue
+                duty_shift_id = mapped
+            elif row.get("generated_shift_key"):
+                mapped = generated_shift_key_to_id.get(row["generated_shift_key"])
+                if mapped is None:
+                    errors.append({
+                        "row": row["row"], "type": "assignments",
+                        "error": "המשמרת שהייתה אמורה להיווצר לא נוצרה (דולגה או נכשלה)",
                     })
                     continue
                 duty_shift_id = mapped
