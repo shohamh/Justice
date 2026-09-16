@@ -11,6 +11,7 @@ import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 import HolidayBadge from "../HolidayBadge";
 import ExplanationModal from "../ExplanationModal";
 import SoldierLink from "../SoldierLink";
+import { MODAL_STACK_BASE_Z_INDEX, useModalLayer } from "../../contexts/ModalStackContext";
 
 interface Props {
   duty: EffectiveDuty | null;
@@ -23,6 +24,7 @@ interface Props {
 type DutyTypeLookupState = "loading" | "available" | "unavailable";
 
 export default function DutyDetailModal({ duty, typeNames, locationNames, onClose, onRequestSwap }: Props) {
+  const layer = useModalLayer(!!duty);
   const { t } = useTranslation();
   useModalBackClose(onClose);
   const { user } = useAuth();
@@ -74,7 +76,7 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
   const time = timeLabel();
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: MODAL_STACK_BASE_Z_INDEX + layer }} onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
