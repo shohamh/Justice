@@ -477,13 +477,18 @@ def test_upload_and_confirm_assignments_end_to_end(client, admin_session):
         [soldier.personal_number, soldier.full_name, dt.name, loc.name,
          "15.06.2024", "16.06.2024", "", "", "false", ""],
     ])
-    # No matching shift exists yet, so this row will resolve as an error —
-    # this test only verifies the end-to-end wiring (upload -> list -> get -> confirm),
-    # not the resolution rules (covered in test_import_sessions_service.py).
+    # No matching shift exists yet, but type/location/dates all resolve, so this
+    # row resolves as "new" with a generated_shift_key rather than an error —
+    # this test only verifies the end-to-end wiring (upload -> list -> get ->
+    # confirm), not the resolution rules (covered in
+    # test_import_sessions_service.py).
     resp = _upload(client, _token(admin), _to_bytes(wb))
     assert resp.status_code == 200
     session_id = resp.json()["session_id"]
-    assert resp.json()["preview"]["assignments"][0]["action"] == "error"
+    uploaded_row = resp.json()["preview"]["assignments"][0]
+    assert uploaded_row["action"] == "new"
+    assert uploaded_row["resolved_duty_type_id"] == str(dt.id)
+    assert uploaded_row["generated_shift_key"]
 
     list_resp = client.get(
         "/api/import/sessions", headers={"Authorization": f"Bearer {_token(admin)}"}
@@ -494,15 +499,18 @@ def test_upload_and_confirm_assignments_end_to_end(client, admin_session):
     detail_resp = client.get(
         f"/api/import/sessions/{session_id}", headers={"Authorization": f"Bearer {_token(admin)}"}
     )
-    assert detail_resp.json()["parsed_state"]["assignments"][0]["action"] == "error"
+    assert detail_resp.json()["parsed_state"]["assignments"][0]["action"] == "new"
 
     confirm_resp = client.post(
         f"/api/import/sessions/{session_id}/confirm",
         headers={"Authorization": f"Bearer {_token(admin)}"},
     )
     assert confirm_resp.status_code == 200
-    assert confirm_resp.json()["created"] == 0  # error row, nothing created
-    assert admin_session.execute(select(DutyAssignment)).scalars().all() == []
+    # 1 generated duty shift + 1 assignment against it
+    assert confirm_resp.json()["created"] == 2
+    assert confirm_resp.json()["errors"] == []
+    created_assignments = admin_session.execute(select(DutyAssignment)).scalars().all()
+    assert len(created_assignments) == 1
 
 
 def test_confirm_skips_an_excluded_group_even_when_rows_would_otherwise_import(client, admin_session):
