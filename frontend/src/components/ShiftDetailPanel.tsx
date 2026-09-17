@@ -98,6 +98,10 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [replaceTarget, setReplaceTarget] = useState<DutyShift | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setRemoveError(null);
+  }, [shift.id]);
+
   async function handleRemoveForReplacement(assignmentId: string) {
     setRemoveError(null);
     try {
