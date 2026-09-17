@@ -447,6 +447,24 @@ describe("ShiftDetailPanel Replace action", () => {
     expect(screen.getByText("החלף")).toBeInTheDocument();
   });
 
+  it("does not show a Replace button for an out-of-scope assignee (can_replace is false)", () => {
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          assignment_id: "a-bad",
+          soldier_id: "s-bad",
+          soldier_name: "חייל לא כשיר",
+          weapon_ineligible: true,
+          weapon_ineligible_reason: WEAPON_REASON,
+          can_replace: false,
+        }),
+      ])
+    );
+
+    expect(screen.queryByText("החלף")).toBeNull();
+  });
+
   it("does not show a Replace button for a plain soldier", () => {
     mockUseAuth.mockReturnValue({ user: { id: "s1", role: "soldier", is_duty_manager: false } });
     renderPanel(
@@ -506,6 +524,32 @@ describe("ShiftDetailPanel Replace action", () => {
     expect(screen.getAllByText("מועמד חלופי").length).toBeGreaterThan(0);
     expect(screen.getByText("רזרביים")).toBeInTheDocument();
     expect(assignmentsApi.getShiftCandidates).toHaveBeenCalledWith("shift-1");
+  });
+
+  it("surfaces an error instead of silently failing when removeShiftAssignment rejects (e.g. a 403 out-of-scope response)", async () => {
+    mockUseAuth.mockReturnValue({ user: { id: "mgr-1", role: "duty_manager", is_duty_manager: true } });
+    vi.mocked(shiftsApi.removeShiftAssignment).mockRejectedValueOnce(new Error("forbidden"));
+    renderPanel(
+      makeShift([
+        makeAssignee({
+          assignment_id: "a-bad",
+          soldier_id: "s-bad",
+          soldier_name: "חייל לא כשיר",
+          weapon_ineligible: true,
+          weapon_ineligible_reason: WEAPON_REASON,
+        }),
+      ])
+    );
+
+    fireEvent.click(screen.getByText("החלף"));
+
+    await waitFor(() =>
+      expect(shiftsApi.removeShiftAssignment).toHaveBeenCalledWith("shift-1", "a-bad")
+    );
+    // Must not open the ShiftAssignModal on failure and must not silently
+    // swallow the rejection.
+    expect(await screen.findByText("שגיאה בהסרת שיבוץ")).toBeInTheDocument();
+    expect(shiftsApi.getShift).not.toHaveBeenCalled();
   });
 
   it("Replace also works for an ineligible reserve assignment", async () => {

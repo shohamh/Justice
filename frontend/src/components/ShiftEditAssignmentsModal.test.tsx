@@ -129,6 +129,50 @@ describe("ShiftEditAssignmentsModal", () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("assignment-primary-pending-soldier-candidate")).toBeVisible();
   });
+
+  it("hides the remove button for an out-of-scope assignee (can_replace: false) but keeps it for one in scope", async () => {
+    vi.mocked(calendarApi.getCalendarShift).mockResolvedValue({
+      assignees: [
+        {
+          assignment_id: "primary-1",
+          soldier_id: "soldier-primary",
+          soldier_name: "Primary Soldier",
+          is_reserve: false,
+          dismissals: [],
+          reserve_assignment_id: null,
+          primary_assignment_ids: [],
+          hierarchy_path_ids: [],
+          can_replace: false,
+        },
+        {
+          assignment_id: "reserve-1",
+          soldier_id: "soldier-reserve",
+          soldier_name: "Reserve Soldier",
+          is_reserve: true,
+          dismissals: [],
+          reserve_assignment_id: null,
+          primary_assignment_ids: [],
+          hierarchy_path_ids: [],
+          can_replace: true,
+        },
+      ],
+    } as Awaited<ReturnType<typeof calendarApi.getCalendarShift>>);
+
+    render(
+      <ShiftEditAssignmentsModal
+        shift={shift}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const outOfScopeRow = await screen.findByTestId("assignment-primary-primary-1");
+    expect(outOfScopeRow.querySelector("button")).toBeNull();
+
+    const inScopeRow = screen.getByTestId("assignment-reserve-reserve-1");
+    expect(inScopeRow.querySelector("button")).not.toBeNull();
+  });
 });
 
 describe("ShiftEditAssignmentsModal personal constraint override", () => {

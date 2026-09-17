@@ -30,6 +30,45 @@ describe("modal opening order", () => {
     rerender(<StackFixture firstOpen={false} secondOpen />);
     rerender(<StackFixture firstOpen secondOpen />);
     const reopenedFirst = screen.getByRole("dialog", { name: "First modal" }).parentElement!;
-    expect(Number(reopenedFirst.style.zIndex)).toBeGreaterThan(secondLayer);
+    // Compare against the SECOND modal's current (live) z-index rather than the
+    // value captured earlier: z-index is now rank-based among currently active
+    // modals (bounded), so second's own z-index shifts down once first closes
+    // and back up as other modals close around it. The invariant that must
+    // hold is relative order at this point in time -- the reopened modal
+    // (opened most recently) must render above the still-open second modal.
+    const secondNow = screen.getByRole("dialog", { name: "Second modal" }).parentElement!;
+    expect(Number(reopenedFirst.style.zIndex)).toBeGreaterThan(Number(secondNow.style.zIndex));
+  });
+
+  test("keeps the maximum z-index bounded by concurrently open modals, not lifetime history", () => {
+    // Open and close 15 modals in sequence (far more than would ever be open
+    // at once) via a single modal slot, then open two more together -- the
+    // max z-index among currently-open modals must stay low (below the first
+    // real fixed z-index tier, 60), even though many more than that many
+    // modals were opened over the session's lifetime.
+    function ChurnFixture({ openIndex, alsoOpen }: { openIndex: number; alsoOpen: boolean }) {
+      return (
+        <ModalStackProvider>
+          <EventDetailModal open={openIndex >= 0} title="Churned modal" onClose={() => {}}>
+            Churned content
+          </EventDetailModal>
+          <EventDetailModal open={alsoOpen} title="Companion modal" onClose={() => {}}>
+            Companion content
+          </EventDetailModal>
+        </ModalStackProvider>
+      );
+    }
+
+    const { rerender } = render(<ChurnFixture openIndex={-1} alsoOpen={false} />);
+    for (let i = 0; i < 15; i++) {
+      rerender(<ChurnFixture openIndex={i} alsoOpen={false} />);
+      rerender(<ChurnFixture openIndex={-1} alsoOpen={false} />);
+    }
+    rerender(<ChurnFixture openIndex={15} alsoOpen />);
+
+    const churned = screen.getByRole("dialog", { name: "Churned modal" }).parentElement!;
+    const companion = screen.getByRole("dialog", { name: "Companion modal" }).parentElement!;
+    expect(Number(churned.style.zIndex)).toBeLessThan(60);
+    expect(Number(companion.style.zIndex)).toBeLessThan(60);
   });
 });

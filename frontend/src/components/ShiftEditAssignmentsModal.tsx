@@ -482,11 +482,13 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                             <td className="p-2 text-gray-500 dark:text-gray-400">ראשי</td>
                             <td className="p-2">{coverCell}</td>
                             <td className="p-2 text-center">
-                              <button type="button" onClick={() => handleRemove(a.assignment_id)}
-                                disabled={removing === a.assignment_id}
-                                className="text-red-500 hover:text-red-700 disabled:opacity-40 text-sm leading-none" title="הסר">
-                                {removing === a.assignment_id ? "…" : "✕"}
-                              </button>
+                              {a.can_replace !== false && (
+                                <button type="button" onClick={() => handleRemove(a.assignment_id)}
+                                  disabled={removing === a.assignment_id}
+                                  className="text-red-500 hover:text-red-700 disabled:opacity-40 text-sm leading-none" title="הסר">
+                                  {removing === a.assignment_id ? "…" : "✕"}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );
@@ -520,11 +522,13 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                             <td className="p-2 text-gray-400">רזרבה</td>
                             <td className="p-2 text-gray-400 dark:text-gray-500 max-w-[140px] truncate" title={coveredNames}>{coveredNames}</td>
                             <td className="p-2 text-center">
-                              <button type="button" onClick={() => handleRemove(a.assignment_id)}
-                                disabled={removing === a.assignment_id}
-                                className="text-red-500 hover:text-red-700 disabled:opacity-40 text-sm leading-none" title="הסר">
-                                {removing === a.assignment_id ? "…" : "✕"}
-                              </button>
+                              {a.can_replace !== false && (
+                                <button type="button" onClick={() => handleRemove(a.assignment_id)}
+                                  disabled={removing === a.assignment_id}
+                                  className="text-red-500 hover:text-red-700 disabled:opacity-40 text-sm leading-none" title="הסר">
+                                  {removing === a.assignment_id ? "…" : "✕"}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );

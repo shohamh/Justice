@@ -368,19 +368,21 @@ def replace_assignment(
             session, soldier_id=replacement_soldier_id, assignment_kind="duty",
             reason=override_reason.strip(), actor_id=actor_id,
         )
-    create_notification(
-        session, soldier_id=before_soldier_id, type=NotificationType.assignment_removed,
-        title="שיבוץ בוטל", reference_type="duty_assignment", reference_id=assignment.id,
-        actor_id=actor_id,
-    )
-    create_notification(
-        session, soldier_id=replacement_soldier_id, type=NotificationType.assignment_created,
-        title="שיבוץ חדש נוצר עבורך", reference_type="duty_assignment", reference_id=assignment.id,
-        actor_id=actor_id,
-    )
     if assignment.status == "published":
+        create_notification(
+            session, soldier_id=before_soldier_id, type=NotificationType.assignment_removed,
+            title="שיבוץ בוטל", reference_type="duty_assignment", reference_id=assignment.id,
+            actor_id=actor_id,
+        )
+        create_notification(
+            session, soldier_id=replacement_soldier_id, type=NotificationType.assignment_created,
+            title="שיבוץ חדש נוצר עבורך", reference_type="duty_assignment", reference_id=assignment.id,
+            actor_id=actor_id,
+        )
         from app.services.score_projection import refresh_projection_for_assignment_change
-        refresh_projection_for_assignment_change(session, assignment=assignment)
+        refresh_projection_for_assignment_change(
+            session, assignment=assignment, extra_soldier_ids={before_soldier_id}
+        )
     return assignment
 
 
