@@ -288,6 +288,104 @@ def cancel_assignment(
     return assignment
 
 
+def replace_assignment(
+    session: Session,
+    *,
+    assignment: DutyAssignment,
+    replacement_soldier_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+    override_reason: str | None = None,
+) -> DutyAssignment:
+    """Replace an assignment owner in-place, retaining status and reserve links."""
+    if assignment.status == "cancelled":
+        raise AssignmentError("assignment_cancelled")
+    if replacement_soldier_id == assignment.soldier_id:
+        raise AssignmentError("same_soldier")
+    if _lock_soldier(session, replacement_soldier_id) is None:
+        raise AssignmentError("soldier_not_found")
+    if _has_overlap(
+        session, soldier_id=replacement_soldier_id,
+        start_date=assignment.start_date, end_date=assignment.end_date,
+        exclude_id=assignment.id,
+    ):
+        raise AssignmentError("overlap")
+    if _has_insufficient_rest(
+        session, soldier_id=replacement_soldier_id, duty_type_id=assignment.duty_type_id,
+        start_date=assignment.start_date, end_date=assignment.end_date,
+        start_time=assignment.start_time, end_time=assignment.end_time,
+        exclude_id=assignment.id,
+    ):
+        raise AssignmentError("insufficient_rest")
+    if _has_blocking_exemption(
+        session, soldier_id=replacement_soldier_id, duty_type_id=assignment.duty_type_id,
+        start_date=assignment.start_date, end_date=assignment.end_date,
+    ):
+        raise AssignmentError("exempted")
+    constraint = session.execute(
+        select(PersonalConstraint).where(
+            PersonalConstraint.soldier_id == replacement_soldier_id,
+            PersonalConstraint.status == "approved",
+            PersonalConstraint.start_date < assignment.end_date,
+            PersonalConstraint.end_date >= assignment.start_date,
+        )
+    ).scalars().first()
+    if constraint is not None:
+        if not override_reason or not override_reason.strip():
+            raise AssignmentError("override_reason_required")
+    before_soldier_id = assignment.soldier_id
+    duty_type = session.get(DutyType, assignment.duty_type_id)
+    assignment.soldier_id = replacement_soldier_id
+    assignment.weapon_ineligible = False
+    assignment.weapon_ineligible_reason = None
+    assignment.weapon_ineligible_detected_at = None
+    if duty_type and duty_type.required_range_type is not None:
+        eligible, _ = compute_eligibility(
+            session, soldier_id=replacement_soldier_id,
+            required_range_type=duty_type.required_range_type, as_of=assignment.start_date,
+        )
+        if not eligible:
+            assignment.weapon_ineligible = True
+            assignment.weapon_ineligible_reason = "אין הכשרת נשק בתוקף לתאריך התורנות"
+            assignment.weapon_ineligible_detected_at = datetime.now(UTC)
+    write_audit(
+        session, actor_id=actor_id, action="assignment.replace", entity_type="duty_assignment",
+        entity_id=assignment.id,
+        before={"soldier_id": str(before_soldier_id)},
+        after={"soldier_id": str(replacement_soldier_id)},
+    )
+    if constraint is not None:
+        session.add(PersonalConstraintOverride(
+            personal_constraint_id=constraint.id,
+            soldier_id=replacement_soldier_id,
+            overridden_by=actor_id,
+            assignment_kind="duty",
+            reference_id=assignment.id,
+            reason=override_reason.strip(),
+        ))
+        from app.services.notifications import notify_personal_constraint_overridden
+
+        notify_personal_constraint_overridden(
+            session, soldier_id=replacement_soldier_id, assignment_kind="duty",
+            reason=override_reason.strip(), actor_id=actor_id,
+        )
+    if assignment.status == "published":
+        create_notification(
+            session, soldier_id=before_soldier_id, type=NotificationType.assignment_removed,
+            title="שיבוץ בוטל", reference_type="duty_assignment", reference_id=assignment.id,
+            actor_id=actor_id,
+        )
+        create_notification(
+            session, soldier_id=replacement_soldier_id, type=NotificationType.assignment_created,
+            title="שיבוץ חדש נוצר עבורך", reference_type="duty_assignment", reference_id=assignment.id,
+            actor_id=actor_id,
+        )
+        from app.services.score_projection import refresh_projection_for_assignment_change
+        refresh_projection_for_assignment_change(
+            session, assignment=assignment, extra_soldier_ids={before_soldier_id}
+        )
+    return assignment
+
+
 def _day_busy(
     session: Session,
     *,

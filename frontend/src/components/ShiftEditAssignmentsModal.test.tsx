@@ -12,7 +12,12 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("../api/assignments", () => ({ getShiftCandidates: vi.fn() }));
 vi.mock("../api/calendar", () => ({ getCalendarShift: vi.fn() }));
-vi.mock("../api/shifts", () => ({ assignBatch: vi.fn(), removeShiftAssignment: vi.fn() }));
+vi.mock("../api/shifts", () => ({
+  assignBatch: vi.fn(),
+  removeShiftAssignment: vi.fn(),
+  getShiftReplacementCandidates: vi.fn(),
+  replaceShiftAssignment: vi.fn(),
+}));
 
 const shift: DutyShift = {
   id: "shift-1",
@@ -123,6 +128,50 @@ describe("ShiftEditAssignmentsModal", () => {
     }));
     expect(onSaved).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("assignment-primary-pending-soldier-candidate")).toBeVisible();
+  });
+
+  it("hides the remove button for an out-of-scope assignee (can_replace: false) but keeps it for one in scope", async () => {
+    vi.mocked(calendarApi.getCalendarShift).mockResolvedValue({
+      assignees: [
+        {
+          assignment_id: "primary-1",
+          soldier_id: "soldier-primary",
+          soldier_name: "Primary Soldier",
+          is_reserve: false,
+          dismissals: [],
+          reserve_assignment_id: null,
+          primary_assignment_ids: [],
+          hierarchy_path_ids: [],
+          can_replace: false,
+        },
+        {
+          assignment_id: "reserve-1",
+          soldier_id: "soldier-reserve",
+          soldier_name: "Reserve Soldier",
+          is_reserve: true,
+          dismissals: [],
+          reserve_assignment_id: null,
+          primary_assignment_ids: [],
+          hierarchy_path_ids: [],
+          can_replace: true,
+        },
+      ],
+    } as Awaited<ReturnType<typeof calendarApi.getCalendarShift>>);
+
+    render(
+      <ShiftEditAssignmentsModal
+        shift={shift}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const outOfScopeRow = await screen.findByTestId("assignment-primary-primary-1");
+    expect(outOfScopeRow.querySelector("button")).toBeNull();
+
+    const inScopeRow = screen.getByTestId("assignment-reserve-reserve-1");
+    expect(inScopeRow.querySelector("button")).not.toBeNull();
   });
 });
 
@@ -244,5 +293,120 @@ describe("ShiftEditAssignmentsModal personal constraint override", () => {
 
     expect(screen.getByTestId("assignment-primary-pending-soldier-clean")).toBeVisible();
     expect(screen.queryByTestId("assignment-primary-pending-soldier-candidate")).not.toBeInTheDocument();
+  });
+});
+
+describe("ShiftEditAssignmentsModal replacement mode", () => {
+  beforeEach(() => {
+    vi.mocked(calendarApi.getCalendarShift).mockResolvedValue({
+      assignees: [
+        {
+          assignment_id: "assignment-to-replace",
+          soldier_id: "soldier-outgoing",
+          soldier_name: "Outgoing Soldier",
+          is_reserve: false,
+          dismissals: [],
+          reserve_assignment_id: null,
+          primary_assignment_ids: [],
+          hierarchy_path_ids: [],
+        },
+      ],
+    } as Awaited<ReturnType<typeof calendarApi.getCalendarShift>>);
+  });
+
+  it("auto-selects the lower draft-aware score candidate and renders only the scoped candidates the API returned", async () => {
+    vi.mocked(shiftsApi.getShiftReplacementCandidates).mockResolvedValue([
+      {
+        soldier_id: "soldier-high-burden",
+        full_name: "High Burden Soldier",
+        personal_number: "11111111",
+        burden_share: 0.6,
+        blocked: false,
+        blocked_reason: null,
+        blocked_detail: null,
+        weapon_warning: false,
+        hierarchy_path_ids: [],
+        personal_constraint_warning: null,
+        replacement_score: 0.6,
+      },
+      {
+        soldier_id: "soldier-low-burden",
+        full_name: "Low Burden Soldier",
+        personal_number: "22222222",
+        burden_share: 0.2,
+        blocked: false,
+        blocked_reason: null,
+        blocked_detail: null,
+        weapon_warning: false,
+        hierarchy_path_ids: [],
+        personal_constraint_warning: null,
+        replacement_score: 0.2,
+      },
+    ]);
+
+    render(
+      <ShiftEditAssignmentsModal
+        shift={shift}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        replaceAssignmentId="assignment-to-replace"
+        onSaved={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByTestId("shift-edit-assignments-modal")).toHaveAttribute(
+      "data-replace-assignment-id", "assignment-to-replace"
+    );
+
+    const lowBurdenRow = await screen.findByTestId("replacement-candidate-soldier-low-burden");
+    const highBurdenRow = screen.getByTestId("replacement-candidate-soldier-high-burden");
+    expect(lowBurdenRow.querySelector("input[type=radio]")).toBeChecked();
+    expect(highBurdenRow.querySelector("input[type=radio]")).not.toBeChecked();
+
+    // Only the two scoped candidates the API returned are rendered — the
+    // component must not add its own out-of-scope candidate.
+    expect(screen.getAllByTestId(/^replacement-candidate-/)).toHaveLength(2);
+
+    expect(vi.mocked(shiftsApi.getShiftReplacementCandidates)).toHaveBeenCalledWith("shift-1", "assignment-to-replace");
+  });
+
+  it("replaces the assignment with the selected candidate via the atomic replace endpoint", async () => {
+    vi.mocked(shiftsApi.getShiftReplacementCandidates).mockResolvedValue([
+      {
+        soldier_id: "soldier-low-burden",
+        full_name: "Low Burden Soldier",
+        personal_number: "22222222",
+        burden_share: 0.2,
+        blocked: false,
+        blocked_reason: null,
+        blocked_detail: null,
+        weapon_warning: false,
+        hierarchy_path_ids: [],
+        personal_constraint_warning: null,
+        replacement_score: 0.2,
+      },
+    ]);
+    vi.mocked(shiftsApi.replaceShiftAssignment).mockResolvedValue({
+      id: "assignment-to-replace", soldier_id: "soldier-low-burden", duty_type_id: "duty-type-1",
+      start_date: shift.start_date, end_date: shift.end_date, status: "algorithm_draft",
+    });
+    const onSaved = vi.fn();
+
+    render(
+      <ShiftEditAssignmentsModal
+        shift={shift}
+        dutyTypes={[{ id: "duty-type-1", name: "Duty", eligible_node_ids: [] }]}
+        replaceAssignmentId="assignment-to-replace"
+        onSaved={onSaved}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await screen.findByTestId("replace-assignment-save"));
+
+    await waitFor(() => expect(shiftsApi.replaceShiftAssignment).toHaveBeenCalledWith(
+      "shift-1", "assignment-to-replace", { replacement_soldier_id: "soldier-low-burden" }
+    ));
+    expect(onSaved).toHaveBeenCalledTimes(1);
   });
 });

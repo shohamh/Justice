@@ -10,8 +10,10 @@ from dateutil.relativedelta import relativedelta
 
 import app.services.import_parsers.v1_standard  # noqa: F401
 from app.db.models import (
+    DutyAssignment,
     DutyManagerScope,
     DutyLocation,
+    DutyShift,
     DutyType,
     ExemptionDutyTypeMap,
     ExemptionType,
@@ -135,6 +137,48 @@ def test_confirm_preserves_active_false_and_reserve_minimum_zero(client, admin_s
     assert dt.active is False
     assert dt.reserve_minimum == 0
     assert dt.is_external is False
+
+
+def test_confirm_creates_shift_for_assignments_with_no_matching_shift(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier1 = create_soldier(admin_session, personal_number=f"sol1_{_uid()}")
+    soldier2 = create_soldier(admin_session, personal_number=f"sol2_{_uid()}")
+    admin_session.commit()
+
+    xlsx = _wb({
+        "assignments": [
+            ["personal_number", "full_name", "duty_type_name", "duty_location_name",
+             "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes"],
+            [soldier1.personal_number, soldier1.full_name, dt.name, loc.name,
+             "15.06.2024", "16.06.2024", "", "", "false", ""],
+            [soldier2.personal_number, soldier2.full_name, dt.name, loc.name,
+             "15.06.2024", "16.06.2024", "", "", "false", ""],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    parsed = resp.json()["preview"]["assignments"]
+    for row in parsed:
+        assert row["resolved_duty_type_id"] == str(dt.id)
+        assert row["generated_shift_key"]
+        assert "לא נמצאה משמרת תואמת" in row["warnings"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    body = confirmed.json()
+    assert body["errors"] == []
+
+    shifts = admin_session.query(DutyShift).filter_by(duty_type_id=dt.id, duty_location_id=loc.id).all()
+    assert len(shifts) == 1
+    assignments = admin_session.query(DutyAssignment).filter_by(duty_shift_id=shifts[0].id).all()
+    assert len(assignments) == 2
 
 
 def test_confirm_creates_hierarchy_node_with_commander_and_duty_manager(client, admin_session):

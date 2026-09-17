@@ -81,6 +81,42 @@ def effective_duty_days(
     ]
 
 
+def effective_duty_days_with_drafts(
+    session: Session,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    exclude_assignment_ids: set[uuid.UUID] | None = None,
+) -> list[tuple[date, uuid.UUID, uuid.UUID, Decimal]]:
+    """Published + algorithm_draft assignments expanded per day, for
+    replacement-candidate burden ranking only (see
+    ``burden_shares_by_soldier``'s ``include_drafts`` flag). Never call this
+    from the canonical scoring/effort/fairness pipeline — that remains
+    ``effective_duty_days`` (published only).
+
+    ``exclude_assignment_ids`` drops specific assignments (e.g. the assignment
+    currently being replaced) from both the numerator and denominator so a
+    soon-to-move duty does not bias the ranking of any candidate.
+    """
+    rows = _effective_duty_day_rows(
+        session,
+        statuses=["published", "algorithm_draft"],
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if exclude_assignment_ids:
+        rows = [row for row in rows if row["assignment_id"] not in exclude_assignment_ids]
+    return [
+        (
+            row["day"],
+            row["effective_soldier_id"],
+            row["duty_type_id"],
+            row["weighted_multiplier"],
+        )
+        for row in rows
+    ]
+
+
 def _effective_duty_spans_impl(
     session: Session,
     *,
@@ -1695,13 +1731,27 @@ def _try_projected_burden_share_breakdown(
 
 
 def burden_shares_by_soldier(
-    session: Session, soldiers: list[Soldier]
+    session: Session,
+    soldiers: list[Soldier],
+    *,
+    include_drafts: bool = False,
+    exclude_assignment_ids: set[uuid.UUID] | None = None,
 ) -> dict[uuid.UUID, float]:
     """Burden share (scale-invariant A_i/W_i ratio) per soldier id, using the
-    same reset-date/planning-horizon rules as the transparency page."""
-    projected = _try_projected_burden_shares(session, soldiers)
-    if projected is not None:
-        return projected
+    same reset-date/planning-horizon rules as the transparency page.
+
+    ``include_drafts=True`` folds algorithm_draft assignments into the same
+    numerator/denominator as published ones (for replacement-candidate
+    ranking only — see ``ShiftCandidateOut.replacement_score``). The result
+    stays a like-for-like A_i/W_i ratio because both sides of the ratio use
+    the same widened day source; this bypasses the published-only projection
+    cache. ``exclude_assignment_ids`` drops specific assignments (typically
+    the assignment being replaced) from that widened source.
+    """
+    if not include_drafts:
+        projected = _try_projected_burden_shares(session, soldiers)
+        if projected is not None:
+            return projected
 
     from app.services.effort_score import compute_effort_data
 
@@ -1721,6 +1771,8 @@ def burden_shares_by_soldier(
         soldiers=soldiers,
         planning_start=planning_start,
         planning_end=planning_start,
+        include_drafts=include_drafts,
+        exclude_assignment_ids=exclude_assignment_ids,
     )
     return {sid: float(data.effort_score) for sid, data in effort_map.items()}
 

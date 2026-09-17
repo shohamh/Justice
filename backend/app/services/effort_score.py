@@ -314,6 +314,8 @@ def compute_effort_data(
     planning_end: date,
     reset_date: date | None = None,
     pending_duties: Sequence[Any] = (),  # DutyBlock-like: about to be planned, not yet published
+    include_drafts: bool = False,
+    exclude_assignment_ids: set[uuid.UUID] | None = None,
 ) -> dict[uuid.UUID, EffortData]:
     """
     Compute EffortData for all soldiers using published assignment history plus
@@ -331,13 +333,25 @@ def compute_effort_data(
     denominator-only contribution — nobody is credited yet. This stops a thin quarter
     from making one pre-existing duty look like a huge personal share.
 
+    `include_drafts=True` widens the duty-day source to published +
+    algorithm_draft assignments (both numerator and denominator), for
+    replacement-candidate ranking only — never for the canonical
+    scoring/effort/fairness pipeline (leave this False there).
+    `exclude_assignment_ids` drops specific assignments from that widened
+    source (typically the assignment currently being replaced); ignored when
+    `include_drafts` is False.
+
     Returns dict[soldier_id, EffortData] with effort_per_milli=0;
     the caller (bridge) sets effort_per_milli after knowing unit_score_milli.
     """
     from sqlalchemy import select
     from app.db.models import DutyType, ScoreAdjustment
 
-    from app.services.scoring import _earliest_configured_reset_date, resolve_reset_dates_for_soldiers
+    from app.services.scoring import (
+        _earliest_configured_reset_date,
+        effective_duty_days_with_drafts,
+        resolve_reset_dates_for_soldiers,
+    )
 
     if reset_date is not None:
         soldier_reset_dates = {s.id: reset_date for s in soldiers}
@@ -364,8 +378,17 @@ def compute_effort_data(
             next_month = q_e + timedelta(days=1)
             q_s = next_month
 
-    # Fetch ALL published duties from reset_date onwards (covers past and future)
-    days_data = effective_duty_days(session, date_from=reset_date, date_to=date(2099, 12, 31))
+    # Fetch ALL published (+ algorithm_draft, when include_drafts) duties from
+    # reset_date onwards (covers past and future).
+    if include_drafts:
+        days_data = effective_duty_days_with_drafts(
+            session,
+            date_from=reset_date,
+            date_to=date(2099, 12, 31),
+            exclude_assignment_ids=exclude_assignment_ids,
+        )
+    else:
+        days_data = effective_duty_days(session, date_from=reset_date, date_to=date(2099, 12, 31))
 
     # Build future quarters from dates after planning_end
     future_quarters = _build_future_quarters(days_data, planning_end)

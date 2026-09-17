@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useModalBackClose } from "../../hooks/useModalBackClose";
+import { MODAL_STACK_BASE_Z_INDEX, useModalLayer } from "../../contexts/ModalStackContext";
 
 export interface EventMetadataItem {
   id?: string;
@@ -20,6 +21,7 @@ export interface EventDetailModalProps {
 }
 
 export function EventDetailModal({ open, title, subtitle, metadata = [], actions, onClose, children }: EventDetailModalProps) {
+  const layer = useModalLayer(open);
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -58,7 +60,7 @@ export function EventDetailModal({ open, title, subtitle, metadata = [], actions
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30 p-4" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 p-4" style={{ zIndex: MODAL_STACK_BASE_Z_INDEX + layer }} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-gray-800" dir="rtl" onClick={event => event.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

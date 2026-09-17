@@ -4,7 +4,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.db.models import (
-    DutyLocation, DutyType, ExemptionDutyTypeMap, ExemptionType, PersonalConstraint, SoldierExemption,
+    DutyAssignment, DutyLocation, DutyManagerScope, DutyType, ExemptionDutyTypeMap, ExemptionType,
+    PersonalConstraint, SoldierExemption, SystemSetting,
 )
 from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
@@ -20,6 +21,29 @@ def _setup(session, pn: str):
     session.add(loc)
     session.commit()
     return node, dm, dt, loc
+
+
+def test_candidates_are_limited_to_duty_manager_scope(client, admin_session):
+    scoped_node = create_node(admin_session, level="branch", name="scope-candidates")
+    outside_node = create_node(admin_session, level="branch", name="outside-candidates")
+    dm = create_soldier(admin_session, personal_number="scope-candidates-dm", role="duty_manager")
+    in_scope = create_soldier(admin_session, personal_number="scope-candidates-in", hierarchy_node_id=scoped_node.id)
+    outside = create_soldier(admin_session, personal_number="scope-candidates-out", hierarchy_node_id=outside_node.id)
+    dt = DutyType(name="scope-candidates-type", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="scope-candidates-location")
+    admin_session.add_all([DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=scoped_node.id), dt, loc])
+    admin_session.commit()
+
+    shift = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
+        "start_date": "2026-08-01", "end_date": "2026-08-03", "required_count": 2,
+    }, headers=auth_headers(dm))
+    assert shift.status_code == 201, shift.text
+
+    response = client.get(f"/api/shifts/{shift.json()['id']}/candidates", headers=auth_headers(dm))
+    assert response.status_code == 200, response.text
+    assert {item["soldier_id"] for item in response.json()} == {str(in_scope.id)}
+    assert str(outside.id) not in {item["soldier_id"] for item in response.json()}
 
 
 def test_constrained_soldier_shows_warning_when_override_allowed(client, admin_session):
@@ -242,3 +266,103 @@ def test_structurally_ineligible_candidate_shows_requirement_detail(client, admi
 
     assert row["blocked_reason"] == "ineligible"
     assert row["blocked_detail"] == "מגדר לא מתאים לדרישות התורנות"
+
+
+def test_candidates_replacement_score_reflects_draft_assignments_and_stays_bounded(
+    client, admin_session
+):
+    """include_drafts=true's replacement_score must fold algorithm_draft
+    assignments into the same scale-invariant ratio as burden_share (not a
+    raw days*score_per_day quantity stacked on top of it), and a candidate
+    with no draft assignments must score the same either way."""
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-01-01"))
+    admin_session.commit()
+
+    node, dm, dt, loc = _setup(admin_session, "rs_001")
+    plain_candidate = create_soldier(admin_session, personal_number="rs_001_plain", hierarchy_node_id=node.id)
+    drafted_candidate = create_soldier(admin_session, personal_number="rs_001_drafted", hierarchy_node_id=node.id)
+    # Enrolled well before the reset date / draft-assignment quarter, so
+    # active_frac is nonzero for the quarters being scored.
+    plain_candidate.enrolled_at = date(2025, 1, 1)
+    drafted_candidate.enrolled_at = date(2025, 1, 1)
+    admin_session.commit()
+
+    shift_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
+        "start_date": "2026-08-01", "end_date": "2026-08-05", "required_count": 1,
+    }, headers=auth_headers(dm))
+    assert shift_resp.status_code == 201, shift_resp.text
+    shift_id = shift_resp.json()["id"]
+
+    # A draft assignment on unrelated dates -- must not overlap the shift
+    # itself, or the candidate would be excluded as blocked_by_assignment
+    # rather than scored.
+    draft_assignment = DutyAssignment(
+        soldier_id=drafted_candidate.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 5, 1), end_date=date(2026, 5, 5), status="algorithm_draft",
+    )
+    admin_session.add(draft_assignment)
+    admin_session.commit()
+
+    resp = client.get(
+        f"/api/shifts/{shift_id}/candidates", params={"include_drafts": "true"}, headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200, resp.text
+    rows = {row["soldier_id"]: row for row in resp.json()}
+
+    plain_row = rows[str(plain_candidate.id)]
+    drafted_row = rows[str(drafted_candidate.id)]
+
+    assert plain_row["replacement_score"] == plain_row["burden_share"]
+    assert drafted_row["replacement_score"] is not None
+    assert drafted_row["replacement_score"] > drafted_row["burden_share"]
+    # Scale-invariant ratio: never exceeds 1, unlike the raw days*score
+    # quantity the old buggy implementation added on top of burden_share.
+    assert drafted_row["replacement_score"] <= 1.0
+
+    without_drafts = client.get(f"/api/shifts/{shift_id}/candidates", headers=auth_headers(dm))
+    assert without_drafts.status_code == 200, without_drafts.text
+    for row in without_drafts.json():
+        assert row["replacement_score"] is None
+
+
+def test_candidates_replacement_score_excludes_target_assignment(client, admin_session):
+    """replace_assignment_id must drop that specific assignment from the
+    draft-aware score, not the current shift's own id."""
+    admin_session.add(SystemSetting(key="fairness.reset_date", value="2026-01-01"))
+    admin_session.commit()
+
+    node, dm, dt, loc = _setup(admin_session, "rs_002")
+    candidate = create_soldier(admin_session, personal_number="rs_002_cand", hierarchy_node_id=node.id)
+    candidate.enrolled_at = date(2025, 1, 1)
+    admin_session.commit()
+
+    shift_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
+        "start_date": "2026-08-01", "end_date": "2026-08-05", "required_count": 1,
+    }, headers=auth_headers(dm))
+    assert shift_resp.status_code == 201, shift_resp.text
+    shift_id = shift_resp.json()["id"]
+
+    draft_assignment = DutyAssignment(
+        soldier_id=candidate.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 5, 1), end_date=date(2026, 5, 5), status="algorithm_draft",
+    )
+    admin_session.add(draft_assignment)
+    admin_session.commit()
+
+    included = client.get(
+        f"/api/shifts/{shift_id}/candidates", params={"include_drafts": "true"}, headers=auth_headers(dm),
+    )
+    assert included.status_code == 200, included.text
+    included_row = next(r for r in included.json() if r["soldier_id"] == str(candidate.id))
+    assert included_row["replacement_score"] > included_row["burden_share"]
+
+    excluded = client.get(
+        f"/api/shifts/{shift_id}/candidates",
+        params={"include_drafts": "true", "replace_assignment_id": str(draft_assignment.id)},
+        headers=auth_headers(dm),
+    )
+    assert excluded.status_code == 200, excluded.text
+    excluded_row = next(r for r in excluded.json() if r["soldier_id"] == str(candidate.id))
+    assert excluded_row["replacement_score"] == excluded_row["burden_share"]

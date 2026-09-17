@@ -9,6 +9,7 @@ from app.db.models import (
     DutyAssignment,
     DutyDismissal,
     DutyLocation,
+    DutyManagerScope,
     DutyReserveLink,
     DutyShift,
     DutyType,
@@ -1030,3 +1031,111 @@ def test_calendar_shifts_preserves_scoped_linked_reserve_weapon_fields(
     )
     assert outsider_assignee["weapon_ineligible"] is False
     assert outsider_assignee["weapon_ineligible_reason"] is None
+
+
+def _setup_scoped_replace_shift(session, pn: str):
+    """Two soldiers in sibling branches under one parent; a duty manager
+    scoped to only one branch; a single shift with both soldiers assigned."""
+    parent = create_node(session, level="division", name=f"can-replace-parent-{pn}")
+    in_scope_node = create_node(session, level="branch", name=f"can-replace-in-{pn}", parent=parent)
+    out_scope_node = create_node(session, level="branch", name=f"can-replace-out-{pn}", parent=parent)
+    dm = create_soldier(session, personal_number=f"canrepl-dm-{pn}", role="duty_manager")
+    session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=in_scope_node.id))
+    in_scope_soldier = create_soldier(
+        session, personal_number=f"canrepl-in-{pn}", hierarchy_node_id=in_scope_node.id
+    )
+    out_scope_soldier = create_soldier(
+        session, personal_number=f"canrepl-out-{pn}", hierarchy_node_id=out_scope_node.id
+    )
+    dt, loc = _make_duty_type_and_location(session, f"canrepl-{pn}")
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=6),
+        required_count=2, status="active",
+    )
+    session.add(shift)
+    session.flush()
+    session.add_all([
+        DutyAssignment(
+            soldier_id=in_scope_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+            duty_shift_id=shift.id, start_date=shift.start_date, end_date=shift.end_date,
+            status="published",
+        ),
+        DutyAssignment(
+            soldier_id=out_scope_soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+            duty_shift_id=shift.id, start_date=shift.start_date, end_date=shift.end_date,
+            status="published",
+        ),
+    ])
+    session.commit()
+    return parent, dm, in_scope_soldier, out_scope_soldier, shift
+
+
+def test_shift_detail_can_replace_reflects_duty_manager_scope(
+    client: TestClient, admin_session: Session
+):
+    _parent, dm, in_scope_soldier, out_scope_soldier, shift = _setup_scoped_replace_shift(
+        admin_session, "detail"
+    )
+
+    r = client.get(f"/api/calendar/shifts/{shift.id}", headers=auth_headers(dm))
+    assert r.status_code == 200, r.text
+    assignees = {a["soldier_id"]: a for a in r.json()["assignees"]}
+    assert assignees[str(in_scope_soldier.id)]["can_replace"] is True
+    assert assignees[str(out_scope_soldier.id)]["can_replace"] is False
+
+
+def test_calendar_shifts_can_replace_reflects_duty_manager_scope(
+    client: TestClient, admin_session: Session
+):
+    parent, dm, in_scope_soldier, out_scope_soldier, shift = _setup_scoped_replace_shift(
+        admin_session, "list"
+    )
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={parent.id}"
+        f"&date_from={date.today().isoformat()}&date_to={(date.today() + timedelta(days=30)).isoformat()}",
+        headers=auth_headers(dm),
+    )
+    assert r.status_code == 200, r.text
+    row = next(s for s in r.json()["shifts"] if s["id"] == str(shift.id))
+    assignees = {a["soldier_id"]: a for a in row["assignees"]}
+    assert assignees[str(in_scope_soldier.id)]["can_replace"] is True
+    assert assignees[str(out_scope_soldier.id)]["can_replace"] is False
+
+
+def test_shift_detail_can_replace_is_true_for_admin_regardless_of_scope(
+    client: TestClient, admin_session: Session
+):
+    _parent, _dm, in_scope_soldier, out_scope_soldier, shift = _setup_scoped_replace_shift(
+        admin_session, "admin-detail"
+    )
+    admin = create_soldier(admin_session, personal_number="canrepl-admin-detail", role="admin")
+    admin_session.commit()
+
+    r = client.get(f"/api/calendar/shifts/{shift.id}", headers=auth_headers(admin))
+    assert r.status_code == 200, r.text
+    assignees = {a["soldier_id"]: a for a in r.json()["assignees"]}
+    assert assignees[str(in_scope_soldier.id)]["can_replace"] is True
+    assert assignees[str(out_scope_soldier.id)]["can_replace"] is True
+
+
+def test_calendar_shifts_can_replace_is_true_for_admin_regardless_of_scope(
+    client: TestClient, admin_session: Session
+):
+    parent, _dm, in_scope_soldier, out_scope_soldier, shift = _setup_scoped_replace_shift(
+        admin_session, "admin-list"
+    )
+    admin = create_soldier(admin_session, personal_number="canrepl-admin-list", role="admin")
+    admin_session.commit()
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={parent.id}"
+        f"&date_from={date.today().isoformat()}&date_to={(date.today() + timedelta(days=30)).isoformat()}",
+        headers=auth_headers(admin),
+    )
+    assert r.status_code == 200, r.text
+    row = next(s for s in r.json()["shifts"] if s["id"] == str(shift.id))
+    assignees = {a["soldier_id"]: a for a in row["assignees"]}
+    assert assignees[str(in_scope_soldier.id)]["can_replace"] is True
+    assert assignees[str(out_scope_soldier.id)]["can_replace"] is True

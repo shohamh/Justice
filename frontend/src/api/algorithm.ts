@@ -1,5 +1,5 @@
 import { api } from "./client";
-import { isRecord, optionalArrayResponse, requiredNumberField, requiredObjectResponse } from "./responseGuards";
+import { isRecord, optionalArrayResponse, requiredBooleanField, requiredNumberField, requiredObjectResponse } from "./responseGuards";
 
 export interface SolverSettings {
   K: number;
@@ -21,6 +21,7 @@ export interface AlgorithmDefaults {
   Wt: number;
   R: number;
   Wr: number;
+  enforce_weapon_qualification: boolean;
 }
 
 export interface CreateJobRequest {
@@ -372,6 +373,7 @@ export async function getAlgorithmDefaults(): Promise<AlgorithmDefaults> {
     Wt: requiredNumberField(data.Wt, "Invalid algorithm defaults response"),
     R: requiredNumberField(data.R, "Invalid algorithm defaults response"),
     Wr: requiredNumberField(data.Wr, "Invalid algorithm defaults response"),
+    enforce_weapon_qualification: requiredBooleanField(data.enforce_weapon_qualification, "Invalid algorithm defaults response"),
   };
 }
 

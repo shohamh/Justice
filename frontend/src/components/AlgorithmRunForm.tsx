@@ -19,6 +19,7 @@ interface Props {
 const DEFAULT_SETTINGS: SolverSettings = {
   K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30, num_workers: 1,
   auto_relax_node_quotas: false,
+  enforce_weapon_qualification: true,
 };
 
 function todayStr() {
@@ -74,7 +75,14 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
 
   useEffect(() => {
     void getAlgorithmDefaults()
-      .then(d => setSettings(s => ({ ...s, T: d.T, Wt: d.Wt, R: d.R, Wr: d.Wr })))
+      .then(d => setSettings(s => ({
+        ...s,
+        T: d.T,
+        Wt: d.Wt,
+        R: d.R,
+        Wr: d.Wr,
+        enforce_weapon_qualification: d.enforce_weapon_qualification,
+      })))
       .catch(() => setDefaultsError(true)); // keep the hardcoded DEFAULT_SETTINGS fallback
   }, []);
 
@@ -293,7 +301,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={settings.enforce_weapon_qualification ?? true}
+              checked={settings.enforce_weapon_qualification}
               onChange={e => setSettings(s => ({ ...s, enforce_weapon_qualification: e.target.checked }))}
             />
             אכוף כשירות הכשרת נשק בשיבוץ אוטומטי

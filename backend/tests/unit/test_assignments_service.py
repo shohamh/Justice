@@ -19,6 +19,7 @@ from app.services.assignments import (
     create_assignment,
     list_assignments,
     list_assignments_for_soldiers,
+    replace_assignment,
     set_day_override,
 )
 from app.services.duty_config import map_exemption_to_duty_type
@@ -521,3 +522,82 @@ def test_list_assignments_by_soldier_and_range(admin_session):
     assert len(july) == 1
     both = list_assignments_for_soldiers(admin_session, soldier_ids=[s.id])
     assert len(both) == 2
+
+
+def test_replace_assignment_on_draft_sends_no_notifications(admin_session):
+    """Regression for Finding 2: replacing a draft (algorithm_draft) assignment
+    must not notify either soldier -- the algorithm-draft lifecycle is
+    notification-free until the assignment is actually published."""
+    s = create_soldier(admin_session, personal_number="8300001")
+    repl = create_soldier(admin_session, personal_number="8300002")
+    dt = _dt(admin_session, "שמירה-draft-replace")
+    loc = _loc(admin_session, "מוצב-draft-replace")
+    a = create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 2),
+        notes=None,
+        actor_id=None,
+    )
+    a.status = "algorithm_draft"
+    admin_session.flush()
+
+    replace_assignment(admin_session, assignment=a, replacement_soldier_id=repl.id)
+    admin_session.flush()
+
+    removed = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == s.id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).first()
+    created = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == repl.id,
+            Notification.type == NotificationType.assignment_created,
+        )
+    ).first()
+    assert removed is None
+    assert created is None
+
+
+def test_replace_assignment_on_published_notifies_both_soldiers(admin_session):
+    """Replacing a published assignment must still notify the outgoing
+    soldier (removed) and the incoming soldier (created)."""
+    s = create_soldier(admin_session, personal_number="8300003")
+    repl = create_soldier(admin_session, personal_number="8300004")
+    dt = _dt(admin_session, "שמירה-published-replace")
+    loc = _loc(admin_session, "מוצב-published-replace")
+    a = create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 2),
+        notes=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    assert a.status == "published"
+
+    replace_assignment(admin_session, assignment=a, replacement_soldier_id=repl.id)
+    admin_session.flush()
+
+    removed = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == s.id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).first()
+    created = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == repl.id,
+            Notification.type == NotificationType.assignment_created,
+        )
+    ).first()
+    assert removed is not None
+    assert created is not None

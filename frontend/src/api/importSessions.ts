@@ -104,8 +104,11 @@ export interface AssignmentRow extends RowBase {
   is_reserve: boolean;
   notes: string | null;
   resolved_soldier_id: string | null;
+  resolved_duty_type_id: string | null;
+  resolved_duty_location_id: string | null;
   resolved_duty_shift_id: string | null;
   matched_session_row: number | null;
+  generated_shift_key: string | null;
 }
 
 export interface RangeLocationImportRow extends RowBase {

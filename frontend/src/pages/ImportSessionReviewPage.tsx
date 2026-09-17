@@ -1359,7 +1359,7 @@ export default function ImportSessionReviewPage() {
                 {assignments.map((row: AssignmentRow) => {
                   const canToggle =
                     row.action !== "error" && row.action !== "out_of_scope";
-                  const unresolvedType = row.action === "error" && !!row.duty_type_name;
+                  const unresolvedType = !row.resolved_duty_type_id;
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
                       <td className="p-3">{row.full_name}</td>

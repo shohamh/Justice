@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize, dm_scope_node_ids, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, RangeType, Soldier, SwapRequest
 from app.db.session import get_session
@@ -88,6 +88,7 @@ class CalendarShiftAssignee(BaseModel):
     weapon_ineligible_reason: str | None = None
     range_eligibility: CalendarRangeEligibilityFact | None = None
     problems: list[CalendarDutyProblem] = []
+    can_replace: bool = True
 
 
 class CalendarShiftOut(BaseModel):
@@ -185,6 +186,18 @@ def _redact_shift_reasons(shift: CalendarShiftOut, user: Soldier, roots: set[uui
                 user, assignee.soldier_id, assignee.hierarchy_path_ids, roots, problem.reason
             )
 
+
+def _annotate_replace_capability(
+    shift: CalendarShiftOut, user: Soldier, dm_scope: set[uuid.UUID]
+) -> None:
+    for assignee in shift.assignees:
+        if user.role == "admin":
+            assignee.can_replace = True
+            continue
+        path_uuids = {uuid.UUID(p) for p in assignee.hierarchy_path_ids}
+        assignee.can_replace = bool(dm_scope & path_uuids)
+
+
 @router.get("/shifts/{shift_id}", response_model=CalendarShiftOut)
 def get_shift_detail(
     shift_id: uuid.UUID,
@@ -199,6 +212,8 @@ def get_shift_detail(
     shift = CalendarShiftOut(**raw, swap_request_count=swap_count, crossed_holidays=crossed_holidays)
     roots = scope_root_ids(session, user)
     _redact_shift_reasons(shift, user, roots)
+    dm_scope = dm_scope_node_ids(session, user.id)
+    _annotate_replace_capability(shift, user, dm_scope)
     return shift
 
 
@@ -285,6 +300,7 @@ def calendar_shifts(
     else:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="node_id_or_soldier_id_required")
     roots = scope_root_ids(session, user)
+    dm_scope = dm_scope_node_ids(session, user.id)
     raw = get_calendar_shifts(
         session,
         node_id=node_id,
@@ -303,6 +319,7 @@ def calendar_shifts(
             crossed_holidays=crossed_holidays,
         )
         _redact_shift_reasons(shift, user, roots)
+        _annotate_replace_capability(shift, user, dm_scope)
         shifts.append(shift)
     return CalendarShiftsResponse(shifts=shifts)
 

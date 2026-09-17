@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "react-i18next";
-import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, rejectProposal } from "../api/algorithm";
+import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, pollJob } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
+import { DutyShift } from "../api/shifts";
 import Combobox from "./Combobox";
 import { DataTable, type ColDef } from "./DataTable";
 import ExplanationModal from "./ExplanationModal";
+import ShiftEditAssignmentsModal from "./ShiftEditAssignmentsModal";
 import SoldierLink from "./SoldierLink";
 import ConfirmDialog from "./ConfirmDialog";
 
@@ -15,14 +17,16 @@ interface Props {
   jobId: string;
   soldiers: SoldierDTO[];
   dutyTypes: DutyType[];
+  shiftsById?: Record<string, DutyShift>;
   onProposalUpdate: (updated: AlgorithmJob) => void;
   isDraft: boolean;
 }
 
-export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes, onProposalUpdate, isDraft }: Props) {
+export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes, shiftsById = {}, onProposalUpdate, isDraft }: Props) {
   const { t } = useTranslation();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [explanationTarget, setExplanationTarget] = useState<{ jobId: string; assignmentId: string } | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<{ shift: DutyShift; assignmentId: string } | null>(null);
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
@@ -81,14 +85,19 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     }
   }
 
-  async function handleReject(proposal: ProposalRow) {
-    await rejectProposal(jobId, proposal.assignment_id);
-    onProposalUpdate({
-      ...job,
-      proposals: job.proposals.map(p =>
-        p.assignment_id === proposal.assignment_id ? { ...p, status: "algorithm_rejected" } : p
-      ),
-    });
+  function handleReplaceClick(proposal: ProposalRow) {
+    const shift = proposal.duty_shift_id ? shiftsById[proposal.duty_shift_id] : undefined;
+    if (!shift) {
+      setApproveError("שגיאה בטעינת פרטי המשמרת להחלפה");
+      return;
+    }
+    setReplaceTarget({ shift, assignmentId: proposal.assignment_id });
+  }
+
+  async function handleReplaceSaved() {
+    setReplaceTarget(null);
+    const fresh = await pollJob(jobId);
+    onProposalUpdate(fresh);
   }
 
   async function handleApproveSelected() {
@@ -248,7 +257,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
             {!isAccepted && !isRejected && (
               <>
                 <button type="button" onClick={() => handleAccept(p)} className="text-green-700 font-bold hover:underline">{t("algorithm.accept")}</button>{" "}
-                <button type="button" onClick={() => handleReject(p)} className="text-red-700 hover:underline">{t("algorithm.reject")}</button>{" "}
+                <button type="button" onClick={() => handleReplaceClick(p)} className="text-red-700 hover:underline">{t("algorithm.replace", "החלף")}</button>{" "}
               </>
             )}
             {!p.is_reserve && (
@@ -359,6 +368,15 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
           assignmentId={explanationTarget.assignmentId}
           title={t("algorithm.why_received_other")}
           onClose={() => setExplanationTarget(null)}
+        />
+      )}
+      {replaceTarget && (
+        <ShiftEditAssignmentsModal
+          shift={replaceTarget.shift}
+          dutyTypes={dutyTypes}
+          replaceAssignmentId={replaceTarget.assignmentId}
+          onSaved={() => void handleReplaceSaved()}
+          onClose={() => setReplaceTarget(null)}
         />
       )}
       <ConfirmDialog

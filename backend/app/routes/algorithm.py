@@ -179,6 +179,7 @@ class AlgorithmDefaultsOut(BaseModel):
     Wt: int
     R: int
     Wr: int
+    enforce_weapon_qualification: bool
 
 
 class DraftPreviewItem(BaseModel):
@@ -667,7 +668,13 @@ def get_algorithm_defaults(
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
     from app.services.algorithm_bridge import resolve_solver_settings
     s = resolve_solver_settings(session, {})
-    return AlgorithmDefaultsOut(T=s.T, Wt=s.Wt, R=s.R, Wr=s.Wr)
+    return AlgorithmDefaultsOut(
+        T=s.T,
+        Wt=s.Wt,
+        R=s.R,
+        Wr=s.Wr,
+        enforce_weapon_qualification=s.enforce_weapon_qualification,
+    )
 
 
 @router.get("/jobs", response_model=JobListOut)

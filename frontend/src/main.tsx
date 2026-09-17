@@ -10,6 +10,7 @@ import "katex/dist/katex.min.css";
 import { AlgorithmSeenProvider } from "./contexts/AlgorithmSeenContext";
 import { NavigationHistoryProvider } from "./hooks/useNavigationHistory";
 import { UnsavedChangesProvider } from "./contexts/UnsavedChangesContext";
+import { ModalStackProvider } from "./contexts/ModalStackContext";
 import { installGlobalErrorReporting } from "./errorReporting";
 
 installGlobalErrorReporting();
@@ -20,13 +21,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <UnsavedChangesProvider>
-          <NavigationHistoryProvider>
-            <AlgorithmSeenProvider>
-              <App />
-            </AlgorithmSeenProvider>
-          </NavigationHistoryProvider>
-        </UnsavedChangesProvider>
+        <ModalStackProvider>
+          <UnsavedChangesProvider>
+            <NavigationHistoryProvider>
+              <AlgorithmSeenProvider>
+                <App />
+              </AlgorithmSeenProvider>
+            </NavigationHistoryProvider>
+          </UnsavedChangesProvider>
+        </ModalStackProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,

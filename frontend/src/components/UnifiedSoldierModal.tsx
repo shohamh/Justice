@@ -25,6 +25,7 @@ import InputDialog from "./InputDialog";
 import MessageDialog from "./MessageDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import { UNIT_JOIN_DATE_CONFIRMATION } from "../constants/activeDays";
+import { MODAL_STACK_BASE_Z_INDEX, useModalLayer } from "../contexts/ModalStackContext";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -60,6 +61,7 @@ const ALL_TABS = ["details", "profile", "exemptions", "constraints", "duty_histo
 export type TabKey = (typeof ALL_TABS)[number];
 
 export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false, initialTab, initialHistoryTypes }: Props) {
+  const layer = useModalLayer(true);
   useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -358,7 +360,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4" style={{ zIndex: MODAL_STACK_BASE_Z_INDEX + layer }} onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-[32rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="unified-soldier-modal">
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-3">

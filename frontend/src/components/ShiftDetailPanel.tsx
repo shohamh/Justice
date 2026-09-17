@@ -6,6 +6,7 @@ import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { getShift, removeShiftAssignment } from "../api/shifts";
 import type { DutyShift } from "../api/shifts";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
+import { translateApiError } from "../utils/translateApiError";
 import DismissalModal from "./DismissalModal";
 import ReserveDismissalModal from "./ReserveDismissalModal";
 import SoldierLink from "./SoldierLink";
@@ -95,6 +96,22 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [canOfferReplace, setCanOfferReplace] = useState(true);
   const [coverIneligibleReason, setCoverIneligibleReason] = useState<string | null>(null);
   const [replaceTarget, setReplaceTarget] = useState<DutyShift | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRemoveError(null);
+  }, [shift.id]);
+
+  async function handleRemoveForReplacement(assignmentId: string) {
+    setRemoveError(null);
+    try {
+      await removeShiftAssignment(shift.id, assignmentId);
+      setReplaceTarget(await getShift(shift.id));
+      onRefreshNeeded();
+    } catch (e: unknown) {
+      setRemoveError(translateApiError(e, t, "שגיאה בהסרת שיבוץ"));
+    }
+  }
 
   useEffect(() => {
     getPublicSettings().then((settings) => {
@@ -231,6 +248,11 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
       }
       onClose={onClose}
     >
+        {removeError && (
+          <p className="mb-3 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
+            {removeError}
+          </p>
+        )}
         {dutyRequirements.length > 0 && (
           <div className="mb-4 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700">
             <p className="font-medium text-gray-700 dark:text-gray-200">דרישות תפקיד</p>
@@ -370,14 +392,10 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                           )}
                         </>
                       )}
-                      {(user?.role === "admin" || user?.is_duty_manager) && a.weapon_ineligible && (
+                      {(user?.role === "admin" || user?.is_duty_manager) && a.weapon_ineligible && a.can_replace !== false && (
                         <button
                           className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
-                          onClick={async () => {
-                            await removeShiftAssignment(shift.id, a.assignment_id);
-                            setReplaceTarget(await getShift(shift.id));
-                            onRefreshNeeded();
-                          }}
+                          onClick={() => void handleRemoveForReplacement(a.assignment_id)}
                         >
                           {t("weapon_ineligible.replace")}
                         </button>
@@ -482,14 +500,10 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         {t("dismiss_action")}
                       </button>
                     )}
-                    {(user?.role === "admin" || user?.is_duty_manager) && a.weapon_ineligible && (
+                    {(user?.role === "admin" || user?.is_duty_manager) && a.weapon_ineligible && a.can_replace !== false && (
                       <button
                         className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
-                        onClick={async () => {
-                          await removeShiftAssignment(shift.id, a.assignment_id);
-                          setReplaceTarget(await getShift(shift.id));
-                          onRefreshNeeded();
-                        }}
+                        onClick={() => void handleRemoveForReplacement(a.assignment_id)}
                       >
                         {t("weapon_ineligible.replace")}
                       </button>

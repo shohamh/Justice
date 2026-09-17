@@ -29,6 +29,13 @@ export function requiredNumberField(value: unknown, errorMessage: string): numbe
   return value;
 }
 
+export function requiredBooleanField(value: unknown, errorMessage: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(errorMessage);
+  }
+  return value;
+}
+
 export function requiredStringArrayField(value: unknown, errorMessage: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(errorMessage);

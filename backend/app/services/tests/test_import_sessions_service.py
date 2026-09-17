@@ -829,6 +829,30 @@ def test_assignment_matches_existing_shift(admin_session):
     assert row["matched_session_row"] is None
 
 
+def test_assignment_with_resolved_type_has_generated_shift_metadata(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier.personal_number, soldier.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+
+    row = sess.parsed_state["assignments"][0]
+    assert row["resolved_duty_type_id"] == str(dt.id)
+    assert row["generated_shift_key"]
+    assert "לא נמצאה משמרת תואמת" in row["warnings"]
+    assert row["action"] == "new"
+
+
 def test_assignment_matches_session_duty_shifts_row(admin_session):
     dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
     loc = DutyLocation(name=f"loc_{_uid()}")
@@ -891,10 +915,14 @@ def test_assignment_personal_number_unknown_falls_back_to_full_name(admin_sessio
         admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
     )
     row = sess.parsed_state["assignments"][0]
-    assert row["action"] == "error"  # no matching shift exists for this dt/loc/dates
+    # No matching shift exists for this dt/loc/dates, but the type/location/soldier
+    # all resolved, so a shift is generated on confirmation rather than erroring:
+    assert row["action"] == "new"
+    assert row["generated_shift_key"]
     # Soldier itself resolved via fallback despite no shift match:
     assert row["resolved_soldier_id"] == str(soldier.id)
     assert any("נמצא לפי שם" in w for w in row["warnings"])
+    assert "לא נמצאה משמרת תואמת" in row["warnings"]
 
 
 def test_assignment_ambiguous_full_name_errors(admin_session):
@@ -1096,6 +1124,84 @@ def test_confirm_session_assignment_matched_shift_skipped_errors_gracefully(admi
     assert result["created"] == 0
     assert len(result["errors"]) == 1
     assert result["errors"][0]["type"] == "assignments"
+    assert sess.created_links["assignments"] == []
+
+
+def test_confirm_session_generates_one_shift_shared_by_matching_assignments(admin_session):
+    from app.db.models import DutyAssignment, DutyShift
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier1 = create_soldier(admin_session, personal_number=f"sol1_{_uid()}")
+    soldier2 = create_soldier(admin_session, personal_number=f"sol2_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier1.personal_number, soldier1.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+        [soldier2.personal_number, soldier2.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    for row in sess.parsed_state["assignments"]:
+        assert row["generated_shift_key"]
+        assert row["generated_shift_key"] == sess.parsed_state["assignments"][0]["generated_shift_key"]
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert len(sess.created_links["duty_shifts"]) == 1
+    assert len(sess.created_links["assignments"]) == 2
+    assert result["errors"] == []
+
+    shift_id = uuid.UUID(sess.created_links["duty_shifts"][0])
+    shift = admin_session.get(DutyShift, shift_id)
+    assert shift is not None
+    assert shift.duty_type_id == dt.id
+    assert shift.duty_location_id == loc.id
+
+    for assignment_id in sess.created_links["assignments"]:
+        created = admin_session.get(DutyAssignment, uuid.UUID(assignment_id))
+        assert created.duty_shift_id == shift_id
+
+
+def test_confirm_session_skips_generated_shift_when_all_linked_assignments_skipped(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier1 = create_soldier(admin_session, personal_number=f"sol1_{_uid()}")
+    soldier2 = create_soldier(admin_session, personal_number=f"sol2_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier1.personal_number, soldier1.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+        [soldier2.personal_number, soldier2.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_nums = [r["row"] for r in sess.parsed_state["assignments"]]
+    set_selections(admin_session, session_id=sess.id, selections={
+        "assignments": {str(n): "skip" for n in row_nums},
+    })
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 0
+    assert sess.created_links["duty_shifts"] == []
     assert sess.created_links["assignments"] == []
 
 

@@ -194,16 +194,18 @@ def test_create_job_with_eligible_node_ids_returns_202(client, admin_session):
 def test_algorithm_defaults_returns_resolved_settings(client, admin_session):
     from app.services.settings_loader import set_setting
     dm, _node = _setup_dm(admin_session, "route_alg_def")
-    set_setting(admin_session, "algorithm.max_total_duties_per_window", 10, actor_id=None)
+    set_setting(admin_session, "algorithm.max_total_duties_per_window", 15, actor_id=None)
+    set_setting(admin_session, "weapon_qualification.enforce_eligibility", False, actor_id=None)
     admin_session.commit()
 
     resp = client.get("/api/algorithm/defaults", headers=auth_headers(dm))
     assert resp.status_code == 200
     body = resp.json()
     assert body["T"] == 8
-    assert body["R"] == 10
+    assert body["R"] == 15
     assert body["Wt"] == 14
     assert body["Wr"] == 28
+    assert body["enforce_weapon_qualification"] is False
 
 
 def test_create_job_rejects_T_greater_than_R(client, admin_session):

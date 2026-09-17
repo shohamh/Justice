@@ -3,7 +3,8 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import AlgorithmProposalTable from "./AlgorithmProposalTable";
 import type { AlgorithmJob } from "../api/algorithm";
-import { bulkAcceptProposals, bulkRejectProposals } from "../api/algorithm";
+import { bulkAcceptProposals, bulkRejectProposals, pollJob } from "../api/algorithm";
+import type { DutyShift } from "../api/shifts";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -21,16 +22,28 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 vi.mock("../api/algorithm", () => ({
-  acceptProposal: vi.fn(), bulkAcceptProposals: vi.fn(), bulkRejectProposals: vi.fn(), rejectProposal: vi.fn(),
+  acceptProposal: vi.fn(), bulkAcceptProposals: vi.fn(), bulkRejectProposals: vi.fn(), pollJob: vi.fn(),
 }));
 vi.mock("./SoldierLink", () => ({
   default: ({ name }: { name: string }) => <span>{name}</span>,
 }));
+vi.mock("./ShiftEditAssignmentsModal", () => ({
+  default: ({ shift, replaceAssignmentId }: { shift: { id: string }; replaceAssignmentId?: string }) => (
+    <div data-testid="shift-edit-assignments-modal" data-replace-assignment-id={replaceAssignmentId} data-shift-id={shift.id} />
+  ),
+}));
+
+const shift: DutyShift = {
+  id: "shift-1", duty_type_id: "type-1", duty_location_id: "location-1",
+  start_date: "2026-01-01", end_date: "2026-01-01", required_count: 1, notes: null,
+  assigned_count: 1, reserve_assigned_count: 0, fill_status: "full", status: "active",
+  ineligible_count: 0,
+};
 
 const job: AlgorithmJob = {
   id: "job-1", status: "done", mode: "shadow", planning_start: "2026-01-01", planning_end: "2026-01-02",
   started_at: null, finished_at: null, error_message: null, progress_message: null, solver_metrics: {}, relaxed: [], reasons: [], batch_results: [], result_metadata: null,
-  proposals: [{ assignment_id: "assignment-1", soldier_id: "soldier-1", duty_type_id: "type-1", duty_location_id: "location-1", start_date: "2026-01-01", end_date: "2026-01-01", status: "algorithm_draft", reserve_soldier_id: null, norm_score_before: null, norm_score_after: null, duty_shift_id: null, candidate_rank: null, candidate_pool_size: null, batch_index: null, ahead_count: null, randomness_count: null, is_high_randomness: false, is_reserve: false }],
+  proposals: [{ assignment_id: "assignment-1", soldier_id: "soldier-1", duty_type_id: "type-1", duty_location_id: "location-1", start_date: "2026-01-01", end_date: "2026-01-01", status: "algorithm_draft", reserve_soldier_id: null, norm_score_before: null, norm_score_after: null, duty_shift_id: "shift-1", candidate_rank: null, candidate_pool_size: null, batch_index: null, ahead_count: null, randomness_count: null, is_high_randomness: false, is_reserve: false }],
 };
 
 describe("AlgorithmProposalTable", () => {
@@ -86,5 +99,28 @@ describe("AlgorithmProposalTable", () => {
     const reserveJob = { ...job, proposals: [{ ...job.proposals[0], is_reserve: true }] };
     render(<AlgorithmProposalTable job={reserveJob} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "דני כהן" }]} dutyTypes={[{ id: "type-1", name: "שמירה" }]} isDraft onProposalUpdate={vi.fn()} />);
     expect(screen.queryByText("algorithm.why_received_other")).not.toBeInTheDocument();
+  });
+
+  it("opens the shift's assignments modal in replacement mode instead of rejecting", async () => {
+    vi.mocked(pollJob).mockResolvedValue(job);
+    const proposal = job.proposals[0];
+    render(
+      <AlgorithmProposalTable
+        job={job}
+        jobId="job-1"
+        soldiers={[{ id: "soldier-1", full_name: "דני כהן" }]}
+        dutyTypes={[{ id: "type-1", name: "שמירה" }]}
+        shiftsById={{ "shift-1": shift }}
+        isDraft
+        onProposalUpdate={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "דחה" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "החלף" }));
+
+    const modal = screen.getByTestId("shift-edit-assignments-modal");
+    expect(modal).toHaveAttribute("data-replace-assignment-id", proposal.assignment_id);
+    expect(modal).toHaveAttribute("data-shift-id", "shift-1");
   });
 });

@@ -26,7 +26,13 @@ from app.routes.algorithm import (
     reset_published_assignments,
 )
 from app.services.adjustments import create_adjustment
-from app.services.assignments import cancel_assignment, clear_day_override, create_assignment, set_day_override
+from app.services.assignments import (
+    cancel_assignment,
+    clear_day_override,
+    create_assignment,
+    replace_assignment,
+    set_day_override,
+)
 from app.services.effort_score import quarter_start
 from app.services.exemption_requests import approve_duty_manager_step, submit_request
 from app.services.exemptions import grant_exemption, revoke_exemption
@@ -190,6 +196,56 @@ def test_assignment_publish_and_cancel_refresh_persisted_projection(admin_sessio
     assert _committed_projection_summary(
         admin_engine, soldier_id=soldier.id, quarter_start_value=target_quarter
     ) == (Decimal("0.000000"), Decimal("0.000000"), 0)
+
+
+def test_replace_assignment_refreshes_outgoing_soldier_projection(admin_session, admin_engine):
+    """Regression for Finding 1: replace_assignment must dirty/refresh the
+    OUTGOING soldier's projection bucket too, not just the replacement's --
+    otherwise the outgoing soldier's cached quarter keeps counting a duty
+    they no longer hold."""
+    _seed_scoring_settings(admin_session)
+    outgoing = create_soldier(admin_session, personal_number="fresh-replace-outgoing")
+    replacement = create_soldier(admin_session, personal_number="fresh-replace-incoming")
+    duty_type = _duty_type(admin_session, name="fresh-replace-duty")
+    location = _location(admin_session, name="fresh-replace-location")
+    target_quarter = date(2026, 7, 1)
+
+    assignment = create_assignment(
+        admin_session,
+        soldier_id=outgoing.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 7, 8),
+        end_date=date(2026, 7, 10),
+    )
+    admin_session.commit()
+
+    _assert_committed_bucket_is_fresh(
+        admin_engine, soldier_id=outgoing.id, quarter_start_value=target_quarter
+    )
+    assert _committed_projection_summary(
+        admin_engine, soldier_id=outgoing.id, quarter_start_value=target_quarter
+    ) == (Decimal("4.000000"), Decimal("0.000000"), 1)
+
+    replace_assignment(
+        admin_session, assignment=assignment, replacement_soldier_id=replacement.id,
+    )
+    admin_session.commit()
+
+    # Both buckets must be persisted fresh -- the outgoing soldier's bucket
+    # must no longer count this assignment, and the replacement's must.
+    _assert_committed_bucket_is_fresh(
+        admin_engine, soldier_id=outgoing.id, quarter_start_value=target_quarter
+    )
+    _assert_committed_bucket_is_fresh(
+        admin_engine, soldier_id=replacement.id, quarter_start_value=target_quarter
+    )
+    assert _committed_projection_summary(
+        admin_engine, soldier_id=outgoing.id, quarter_start_value=target_quarter
+    ) == (Decimal("0.000000"), Decimal("0.000000"), 0)
+    assert _committed_projection_summary(
+        admin_engine, soldier_id=replacement.id, quarter_start_value=target_quarter
+    ) == (Decimal("4.000000"), Decimal("0.000000"), 1)
 
 
 def test_algorithm_proposal_accept_route_refreshes_committed_projection(admin_session, admin_engine):
