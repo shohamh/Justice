@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-17
+
+### Features
+- Changed the algorithm-results action from "reject" to "replace": it now opens the shift's assignment editor scoped to that soldier, with an automatic lowest-burden suggestion or manual candidate selection.
+- Added scoped, atomic duty-assignment replacement for duty managers — both from algorithm results and ordinary shift editing — restricted to soldiers within the manager's own scope, with server-side eligibility and capacity checks.
+- Excel assignment imports now automatically create the missing duty shift when a row's type, location, dates, and times are valid but no matching shift exists, instead of blocking the row as an error.
+- Exposed the system's range-qualification (weapon-eligibility) default when starting an algorithm run, with an explicit per-run override.
+
+### Fixes
+- Fixed nested modals (shift/event detail, duty detail, soldier) rendering in a fixed stacking order; they now layer by actual opening order, so a modal opened from within another modal always renders above it.
+- Fixed a stale fairness-score cache after replacing a soldier on an assignment, so the previous soldier's burden and duty totals update correctly instead of over-counting a duty they no longer hold.
+- Fixed spurious "duty cancelled"/"new duty assigned" notifications firing when replacing a soldier on an unpublished algorithm-draft assignment.
+- Fixed remove/replace controls remaining visible (and silently failing) for duty managers acting outside their assignment scope.
+
+### Chores
+- Added regression coverage for generated-shift imports, scoped candidate/replacement APIs, draft-aware replacement scoring, modal opening-order layering, and algorithm range-qualification defaults.
+
 ## 2026-09-15
 
 ### Features
