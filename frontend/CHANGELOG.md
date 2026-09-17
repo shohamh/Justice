@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-09-17
+
+### Features
+- Changed the algorithm-results action from "reject" to "replace": it now opens the shift's assignment editor scoped to that soldier, with an automatic lowest-burden suggestion or manual candidate selection.
+- Added scoped, atomic duty-assignment replacement for duty managers — both from algorithm results and ordinary shift editing — restricted to soldiers within the manager's own scope, with server-side eligibility and capacity checks.
+- Excel assignment imports now automatically create the missing duty shift when a row's type, location, dates, and times are valid but no matching shift exists, instead of blocking the row as an error.
+- Exposed the system's range-qualification (weapon-eligibility) default when starting an algorithm run, with an explicit per-run override.
+
+### Fixes
+- Fixed nested modals (shift/event detail, duty detail, soldier) rendering in a fixed stacking order; they now layer by actual opening order, so a modal opened from within another modal always renders above it.
+- Fixed a stale fairness-score cache after replacing a soldier on an assignment, so the previous soldier's burden and duty totals update correctly instead of over-counting a duty they no longer hold.
+- Fixed spurious "duty cancelled"/"new duty assigned" notifications firing when replacing a soldier on an unpublished algorithm-draft assignment.
+- Fixed remove/replace controls remaining visible (and silently failing) for duty managers acting outside their assignment scope.
+
+### Chores
+- Added regression coverage for generated-shift imports, scoped candidate/replacement APIs, draft-aware replacement scoring, modal opening-order layering, and algorithm range-qualification defaults.
+
+## 2026-09-15
+
+### Features
+- Added the soldier-style decision summary to commander and duty-manager explanation modals above the detailed candidate table.
+
+### Fixes
+- Fixed explanation modals showing ambiguous rank, tie-breaker, and burden-spread wording or blank values.
+- Added precise burden percentages, eligible-candidate reasons, correct Hebrew singular/plural text, and a mobile-scrollable candidate table.
+
+### Chores
+- Added regression coverage for manager summaries, missing metrics, ranking states, translations, burden precision, and mobile table layout.
+
+## 2026-09-14
+
+### Fixes
+- Replaced generic action-error messages across the system with specific Hebrew messages that identify the failed operation.
+- Fixed duty-type deletion when score-history records still reference the duty type; the UI now explains the conflict and offers deactivation.
+- Added the missing Hebrew labels for notification settings instead of displaying raw notification IDs.
+
+### Chores
+- Added regression coverage for duty-type usage conflicts, translated API errors, and notification-label parity.
+
+## 2026-09-14
+
+### Features
+- Added scoped assignment explanations across algorithm results, duty history, upcoming-duty views, and shift details, including burden-share before/after metrics and privacy-preserving soldier links.
+- Added unsaved-changes protection for forms, settings, in-app navigation, browser back/forward, and tab close or refresh.
+- Added clearer range-attendance workflows, including mark-all-attended and saved-status prefill.
+- Added individually problematic-assignment indicators and improved range-candidate reason translations.
+
+### Fixes
+- Fixed interleaved solver batches leaving eligible duties unassigned by giving each component a bounded residual assignment pass, with matching runtime-budget headroom.
+- Fixed algorithm cancellation and timeout handling so long-running jobs are not incorrectly cancelled or left stuck as running.
+- Fixed explanation authorization and redaction for scoped commanders and soldiers, including older or unavailable explanation records.
+- Optimized homepage loading by removing duplicate settings/data requests and fetching calendar and range data concurrently.
+- Made score-projection backfill self-healing on backend startup, with resumable batches, retrying, and protected multi-process execution.
+- Fixed UTC-versus-local date handling, same-day range completion, and several mobile fairness and burden-breakdown layout issues.
+
+### Chores
+- Expanded backend, frontend, and browser regression coverage for algorithm, fairness, range, navigation, and homepage behavior.
+
 ## 2026-09-12
 
 ### Features
