@@ -138,6 +138,26 @@ class SoldierHrProfile(Base):
     )
 
 
+class HrHierarchySync(Base):
+    __tablename__ = "hr_hierarchy_syncs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    parsed_state: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
+    )
+    created_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    matched_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    held_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 
