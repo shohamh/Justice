@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import select
 
 from app.services.eligibility import SOLDIER_EDITABLE_FIELDS
 from app.services.rank_advancement import upsert_interval
@@ -247,4 +248,103 @@ def test_approve_field_update_rank_without_interval_leaves_next_rank_date_none(a
 
     assert soldier.rank == "רבט"
     assert soldier.next_rank_date is None
+
+
+def test_approving_hr_owned_field_update_marks_it_overridden(admin_session):
+    from app.db.models import SoldierHrProfile
+    from tests.helpers import create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="hr_override_node")
+    commander = create_soldier(admin_session, personal_number="hr_override_cmd", role="commander")
+    node.commander_id = commander.id
+    soldier = create_soldier(admin_session, personal_number="hr_override_sol", hierarchy_node_id=node.id)
+    admin_session.add(SoldierHrProfile(personal_number=soldier.personal_number, raw_dto={}, soldier_id=soldier.id))
+    admin_session.commit()
+
+    req = submit_field_update(
+        admin_session, soldier_id=soldier.id, field_name="phone", new_value="050-9998888",
+        actor_id=soldier.id,
+    )
+    admin_session.commit()
+
+    approve_field_update(admin_session, update=req, actor_id=commander.id)
+    admin_session.commit()
+
+    profile = admin_session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier.id)
+    ).scalar_one()
+    assert profile.overridden_fields == ["phone"]
+
+
+def test_approving_hr_owned_field_update_is_idempotent_on_overridden_fields(admin_session):
+    from app.db.models import SoldierHrProfile
+    from tests.helpers import create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="hr_override_idem_node")
+    commander = create_soldier(admin_session, personal_number="hr_override_idem_cmd", role="commander")
+    node.commander_id = commander.id
+    soldier = create_soldier(admin_session, personal_number="hr_override_idem_sol", hierarchy_node_id=node.id)
+    admin_session.add(SoldierHrProfile(personal_number=soldier.personal_number, raw_dto={}, soldier_id=soldier.id))
+    admin_session.commit()
+
+    for value in ("050-1112222", "050-3334444"):
+        req = submit_field_update(
+            admin_session, soldier_id=soldier.id, field_name="phone", new_value=value,
+            actor_id=soldier.id,
+        )
+        admin_session.commit()
+        approve_field_update(admin_session, update=req, actor_id=commander.id)
+        admin_session.commit()
+
+    profile = admin_session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier.id)
+    ).scalar_one()
+    assert profile.overridden_fields == ["phone"]
+
+
+def test_approving_field_update_without_hr_profile_does_not_error(admin_session):
+    from tests.helpers import create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="no_hr_profile_node")
+    commander = create_soldier(admin_session, personal_number="no_hr_profile_cmd", role="commander")
+    node.commander_id = commander.id
+    soldier = create_soldier(admin_session, personal_number="no_hr_profile_sol", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    req = submit_field_update(
+        admin_session, soldier_id=soldier.id, field_name="phone", new_value="050-1230000",
+        actor_id=soldier.id,
+    )
+    admin_session.commit()
+
+    approve_field_update(admin_session, update=req, actor_id=commander.id)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+    assert soldier.phone == "050-1230000"
+
+
+def test_approving_non_hr_owned_field_update_does_not_touch_hr_profile(admin_session):
+    from app.db.models import SoldierHrProfile
+    from tests.helpers import create_node, create_soldier
+
+    node = create_node(admin_session, level="branch", name="non_hr_field_node")
+    commander = create_soldier(admin_session, personal_number="non_hr_field_cmd", role="commander")
+    node.commander_id = commander.id
+    soldier = create_soldier(admin_session, personal_number="non_hr_field_sol", hierarchy_node_id=node.id)
+    admin_session.add(SoldierHrProfile(personal_number=soldier.personal_number, raw_dto={}, soldier_id=soldier.id))
+    admin_session.commit()
+
+    req = submit_field_update(
+        admin_session, soldier_id=soldier.id, field_name="food_type", new_value="vegetarian",
+        actor_id=soldier.id,
+    )
+    admin_session.commit()
+
+    approve_field_update(admin_session, update=req, actor_id=commander.id)
+    admin_session.commit()
+
+    profile = admin_session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier.id)
+    ).scalar_one()
+    assert profile.overridden_fields == []
     assert soldier.next_rank_date_overridden is False

@@ -609,6 +609,27 @@ def submit_field_update(
     return req
 
 
+def _mark_hr_field_overridden(
+    session: Session, *, soldier_id: uuid.UUID, field_name: str, actor_id: uuid.UUID,
+) -> None:
+    from app.db.models import SoldierHrProfile
+    from app.services.hr.mapping import HR_OWNED_FIELDS
+    if field_name not in HR_OWNED_FIELDS:
+        return
+    profile = session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier_id)
+    ).scalar_one_or_none()
+    if profile is None:
+        return
+    if field_name not in profile.overridden_fields:
+        profile.overridden_fields = [*profile.overridden_fields, field_name]
+        write_audit(
+            session, actor_id=actor_id, action="hr_sync.field_overridden",
+            entity_type="soldier_hr_profile", entity_id=profile.id,
+            context={"field_name": field_name, "soldier_id": str(soldier_id)},
+        )
+
+
 def approve_field_update(
     session: Session,
     *,
@@ -752,6 +773,7 @@ def approve_field_update(
         entity_id=update.id,
         after={"field": field, "value": raw},
     )
+    _mark_hr_field_overridden(session, soldier_id=soldier.id, field_name=field, actor_id=actor_id)
     if field in {"last_mitvahim_date", "last_alal_date"}:
         from app.services.duty_eligibility_watch import recheck_soldier_assignments
         recheck_soldier_assignments(session, soldier.id)
