@@ -248,6 +248,7 @@ def test_approve_field_update_rank_without_interval_leaves_next_rank_date_none(a
 
     assert soldier.rank == "רבט"
     assert soldier.next_rank_date is None
+    assert soldier.next_rank_date_overridden is False
 
 
 def test_approving_hr_owned_field_update_marks_it_overridden(admin_session):
@@ -347,4 +348,3 @@ def test_approving_non_hr_owned_field_update_does_not_touch_hr_profile(admin_ses
         select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier.id)
     ).scalar_one()
     assert profile.overridden_fields == []
-    assert soldier.next_rank_date_overridden is False
