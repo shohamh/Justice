@@ -109,6 +109,12 @@ def test_map_hr_user_empty_personal_number_held_for_review():
     assert any("personal_number" in r for r in result.reasons)
 
 
+def test_map_hr_user_empty_full_name_held_for_review():
+    result = map_hr_user(_hr_user(full_name=""))
+    assert isinstance(result, HeldForReview)
+    assert any("full_name" in r for r in result.reasons)
+
+
 def test_hr_owned_fields_contains_expected_names():
     from app.services.hr.mapping import HR_OWNED_FIELDS
     assert HR_OWNED_FIELDS == frozenset({
