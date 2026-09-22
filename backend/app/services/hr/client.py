@@ -1,5 +1,6 @@
 import ssl
 import time
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -82,6 +83,20 @@ class HrApiClient:
         data = await self._get(f"/api/v1/user/{prop}/{id}/subhierarchy", params=params)
         return HrUserWithReports.model_validate(data)
 
+    async def iter_users(self, **filters: object) -> AsyncIterator[HrUser]:
+        if "image" in filters:
+            filters["photo"] = filters.pop("image")
+        page = 1
+        while True:
+            params = {**filters, "take": self._page_size, "page": page}
+            data = await self._get("/api/v1/user", params=params)
+            records = [HrUser.model_validate(item) for item in data]
+            for record in records:
+                yield record
+            if len(records) < self._page_size:
+                return
+            page += 1
+
     async def get_user_image(self, prop: str, id: str) -> bytes:
         try:
             response = await self._http.get(f"/api/v1/user/{prop}/{id}/image")
@@ -99,6 +114,18 @@ class HrApiClient:
         params = {"maximumDepth": maximum_depth} if maximum_depth is not None else None
         data = await self._get(f"/api/v1/group/{group_id}/subhierarchy", params=params)
         return HrGroupWithReports.model_validate(data)
+
+    async def iter_groups(self, **filters: object) -> AsyncIterator[HrGroup]:
+        page = 1
+        while True:
+            params = {**filters, "take": self._page_size, "page": page}
+            data = await self._get("/api/v1/group", params=params)
+            records = [HrGroup.model_validate(item) for item in data]
+            for record in records:
+                yield record
+            if len(records) < self._page_size:
+                return
+            page += 1
 
     async def check_connection(self) -> HrHealthCheckResult:
         start = time.monotonic()
