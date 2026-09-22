@@ -335,6 +335,8 @@ _AREA_MARKERS: dict[str, str] = {
     "test_hierarchy_api": "hierarchy",
     "test_hierarchy_service": "hierarchy",
     "test_dm_scope_routes": "hierarchy",
+    "test_hr_hierarchy_sync_model": "hierarchy",
+    "test_hr_hierarchy_sync": "hierarchy",
     # duty: assignments, shifts, swaps, constraints, exemptions, gimelim, hakpaza, duty config
     "test_assignments_api": "duty",
     "test_assignments_service": "duty",
@@ -404,6 +406,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_errors": "misc",
     "test_schemas": "misc",
     "test_mapping": "misc",
+    "test_hierarchy_sync_topo": "misc",
 }
 
 
