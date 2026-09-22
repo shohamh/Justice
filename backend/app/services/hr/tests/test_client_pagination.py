@@ -110,6 +110,22 @@ async def test_iter_groups_stops_on_short_page(hr_base_url, hr_api_key):
 
 
 @pytest.mark.asyncio
+async def test_iter_groups_advances_to_next_page_when_page_is_full(hr_base_url, hr_api_key):
+    page1 = load_fixture("groups_page1_full.json")
+    empty = load_fixture("users_page_empty.json")
+    with respx.mock(base_url=hr_base_url) as mock:
+        mock.get("/api/v1/group", params={"take": "2", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=page1)
+        )
+        mock.get("/api/v1/group", params={"take": "2", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=empty)
+        )
+        async with HrApiClient(base_url=hr_base_url, api_key=hr_api_key, page_size=2) as client:
+            groups = [g async for g in client.iter_groups()]
+        assert [g.id for g in groups] == ["g1", "g2"]
+
+
+@pytest.mark.asyncio
 async def test_get_user_subhierarchy_parses_manages(hr_base_url, hr_api_key):
     fixture = load_fixture("user_subhierarchy.json")
     with respx.mock(base_url=hr_base_url) as mock:

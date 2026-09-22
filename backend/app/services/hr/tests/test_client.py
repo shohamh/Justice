@@ -111,6 +111,30 @@ async def test_get_user_image_returns_raw_bytes(hr_base_url, hr_api_key):
 
 
 @pytest.mark.asyncio
+async def test_get_user_image_raises_hr_api_error_on_404(hr_base_url, hr_api_key):
+    with respx.mock(base_url=hr_base_url) as mock:
+        mock.get("/api/v1/user/personalNumber/missing/image").mock(
+            return_value=httpx.Response(404, text="not found")
+        )
+        async with HrApiClient(base_url=hr_base_url, api_key=hr_api_key) as client:
+            with pytest.raises(HrApiError) as exc_info:
+                await client.get_user_image("personalNumber", "missing")
+        assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_user_image_raises_hr_api_error_on_timeout(hr_base_url, hr_api_key):
+    with respx.mock(base_url=hr_base_url) as mock:
+        mock.get("/api/v1/user/personalNumber/7654321/image").mock(
+            side_effect=httpx.ConnectTimeout("timed out")
+        )
+        async with HrApiClient(base_url=hr_base_url, api_key=hr_api_key) as client:
+            with pytest.raises(HrApiError) as exc_info:
+                await client.get_user_image("personalNumber", "7654321")
+        assert exc_info.value.status_code is None
+
+
+@pytest.mark.asyncio
 async def test_get_group_parses_response(hr_base_url, hr_api_key):
     fixture = load_fixture("group_single.json")
     with respx.mock(base_url=hr_base_url) as mock:

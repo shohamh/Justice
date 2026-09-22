@@ -1,0 +1,4 @@
+[
+  {"id": "g1", "name": "Group One", "kind": "unit", "unit": "Unit 1", "parentKind": null, "parentId": null, "parentName": null},
+  {"id": "g2", "name": "Group Two", "kind": "unit", "unit": "Unit 1", "parentKind": null, "parentId": null, "parentName": null}
+]

@@ -388,7 +388,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_soldiers_api": "soldiers",
     "test_import_excel": "soldiers",
     "test_import_lookup": "soldiers",
-    # misc: health check, audit log, settings loader
+    # misc: health check, audit log, settings loader, HR integration client
     "test_health": "misc",
     "test_audit_append_only": "misc",
     "test_settings_loader": "misc",
@@ -396,6 +396,10 @@ _AREA_MARKERS: dict[str, str] = {
     "test_bug_reports_service": "misc",
     "test_bug_reports_api": "misc",
     "test_audit_logs_api": "misc",
+    "test_client": "misc",
+    "test_client_pagination": "misc",
+    "test_errors": "misc",
+    "test_schemas": "misc",
 }
 
 
