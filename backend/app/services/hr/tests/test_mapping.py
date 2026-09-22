@@ -118,6 +118,6 @@ def test_map_hr_user_empty_full_name_held_for_review():
 def test_hr_owned_fields_contains_expected_names():
     from app.services.hr.mapping import HR_OWNED_FIELDS
     assert HR_OWNED_FIELDS == frozenset({
-        "full_name", "personal_number", "email", "phone", "gender", "rank",
+        "full_name", "personal_number", "email", "phone", "gender", "rank", "rank_track",
         "profile_picture_url", "enlistment_date", "mandatory_end_date", "discharge_date",
     })

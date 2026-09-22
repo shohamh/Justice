@@ -774,6 +774,13 @@ def approve_field_update(
         after={"field": field, "value": raw},
     )
     _mark_hr_field_overridden(session, soldier_id=soldier.id, field_name=field, actor_id=actor_id)
+    if field == "rank":
+        # The `rank` branch above always (re)assigns soldier.rank_track as a
+        # side effect of resolving the rank/track pair, so a rank approval
+        # can silently change rank_track too — mark it overridden as well.
+        # _mark_hr_field_overridden is idempotent, so this is safe even when
+        # rank_track ends up unchanged from its prior value.
+        _mark_hr_field_overridden(session, soldier_id=soldier.id, field_name="rank_track", actor_id=actor_id)
     if field in {"last_mitvahim_date", "last_alal_date"}:
         from app.services.duty_eligibility_watch import recheck_soldier_assignments
         recheck_soldier_assignments(session, soldier.id)

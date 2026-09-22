@@ -348,3 +348,41 @@ def test_approving_non_hr_owned_field_update_does_not_touch_hr_profile(admin_ses
         select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier.id)
     ).scalar_one()
     assert profile.overridden_fields == []
+
+
+def test_approving_rank_field_update_also_marks_rank_track_overridden(admin_session):
+    """Final-review Finding 1: approving a `rank` field update can also
+    change `rank_track` as a side effect (see the `elif field == "rank":`
+    branch in approve_field_update), so it must be marked overridden too —
+    not just `rank` itself — or a future HR sync could silently clobber it."""
+    from app.db.models import SoldierHrProfile
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name=f"unit_{uuid.uuid4().hex[:8]}")
+    soldier = Soldier(
+        personal_number=f"pn_{uuid.uuid4().hex[:8]}",
+        full_name="Test Soldier",
+        password_hash="x",
+        hierarchy_node_id=node.id,
+        rank="טוראי",
+    )
+    admin_session.add(soldier)
+    admin_session.flush()
+    admin_session.add(
+        SoldierHrProfile(personal_number=soldier.personal_number, raw_dto={}, soldier_id=soldier.id)
+    )
+    admin_session.commit()
+
+    req = submit_field_update(
+        admin_session, soldier_id=soldier.id, field_name="rank", new_value="סמר",
+        actor_id=soldier.id,
+    )
+    admin_session.commit()
+
+    approve_field_update(admin_session, update=req, actor_id=soldier.id)
+    admin_session.commit()
+
+    profile = admin_session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier.id)
+    ).scalar_one()
+    assert set(profile.overridden_fields) == {"rank", "rank_track"}
