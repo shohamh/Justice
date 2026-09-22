@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
     smtp_from: str = Field(default="", alias="SMTP_FROM")
 
+    hr_api_base_url: str = Field(default="", alias="HR_API_BASE_URL")
+    hr_api_key: str = Field(default="", alias="HR_API_KEY")
+    hr_api_ca_bundle_path: str = Field(default="", alias="HR_API_CA_BUNDLE_PATH")
+    hr_api_page_size: int = Field(default=200, alias="HR_API_PAGE_SIZE")
+
     bootstrap_admin_personal_number: str | None = Field(
         default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"
     )
@@ -53,6 +58,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def hr_sync_enabled(self) -> bool:
+        return bool(self.hr_api_base_url and self.hr_api_key)
 
 
 @lru_cache(maxsize=1)
