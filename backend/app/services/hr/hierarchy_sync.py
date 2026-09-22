@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import HierarchyNode
+from app.db.models import HierarchyNode, HrHierarchySync
 from app.services import hierarchy as hierarchy_service
+from app.services.hr.client import HrApiClient
 from app.services.hr.schemas import HrGroup
 
 # HR's Group.kind -> Justice HierarchyLevelType.key. Unmapped kinds (and
@@ -112,13 +115,6 @@ def _resolve_group(
         hr_group_id=group.id, name=group.name, action="created",
         resolved_node_id=node.id, level=level, reason=None,
     )
-
-
-from datetime import datetime, timezone
-from typing import Any
-
-from app.db.models import HrHierarchySync
-from app.services.hr.client import HrApiClient
 
 
 async def run_hierarchy_sync(session: Session, client: HrApiClient) -> HrHierarchySync:
