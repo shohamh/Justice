@@ -1,5 +1,3 @@
-import os
-
 from app.settings import Settings
 
 
@@ -23,6 +21,7 @@ def test_hr_sync_enabled_true_when_both_set(monkeypatch):
 
 
 def test_hr_sync_enabled_false_when_only_one_set(monkeypatch):
+    monkeypatch.delenv("HR_API_KEY", raising=False)
     s = Settings(
         _env_file=None,
         DATABASE_URL="x",

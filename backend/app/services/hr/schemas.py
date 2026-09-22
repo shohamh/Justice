@@ -96,6 +96,7 @@ class HrGroupWithReports(HrGroup):
     shallow (one level of sub_groups) rather than guessing a deep recursive
     shape — revisit if real fixture data shows otherwise."""
 
+    # TODO: "subGroups" key name unconfirmed against real HR API responses — spec doesn't detail group subhierarchy shape beyond "+ manages" for users.
     sub_groups: list[HrGroup] = Field(default_factory=list, alias="subGroups")
 
 

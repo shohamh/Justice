@@ -99,6 +99,23 @@ async def test_get_user_raises_hr_api_error_on_malformed_json(hr_base_url, hr_ap
 
 
 @pytest.mark.asyncio
+async def test_get_user_raises_hr_api_error_on_missing_required_field(hr_base_url, hr_api_key):
+    # personalNumber is a required field on HrUser; a 200 response missing it
+    # is a malformed response, not a transport/HTTP failure, but callers
+    # catching HrApiError must still see it wrapped rather than a bare
+    # pydantic.ValidationError.
+    malformed = {"fullName": "John Doe", "mail": "jdoe@example.mil"}
+    with respx.mock(base_url=hr_base_url) as mock:
+        mock.get("/api/v1/user/personalNumber/7654321").mock(
+            return_value=httpx.Response(200, json=malformed)
+        )
+        async with HrApiClient(base_url=hr_base_url, api_key=hr_api_key) as client:
+            with pytest.raises(HrApiError) as exc_info:
+                await client.get_user("personalNumber", "7654321")
+        assert exc_info.value.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_get_user_image_returns_raw_bytes(hr_base_url, hr_api_key):
     image_bytes = b"\x89PNG\r\n\x1a\n" + b"fake-image-data"
     with respx.mock(base_url=hr_base_url) as mock:

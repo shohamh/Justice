@@ -1,8 +1,10 @@
 import ssl
 import time
 from collections.abc import AsyncIterator
+from typing import TypeVar
 
 import httpx
+from pydantic import BaseModel, ValidationError
 
 from app.services.hr.errors import HrApiError, HrClientNotConfigured
 from app.services.hr.schemas import (
@@ -12,6 +14,8 @@ from app.services.hr.schemas import (
     HrUser,
     HrUserWithReports,
 )
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 class HrApiClient:
@@ -55,6 +59,10 @@ class HrApiClient:
         await self._http.aclose()
 
     async def _get(self, path: str, params: dict | None = None) -> dict | list:
+        response = await self._get_response(path, params)
+        return self._parse_json(response)
+
+    async def _get_response(self, path: str, params: dict | None = None) -> httpx.Response:
         try:
             response = await self._http.get(path, params=params)
         except httpx.HTTPError as exc:
@@ -65,6 +73,9 @@ class HrApiClient:
                 message=response.text,
                 url=str(response.url),
             )
+        return response
+
+    def _parse_json(self, response: httpx.Response) -> dict | list:
         try:
             return response.json()
         except ValueError as exc:
@@ -72,25 +83,43 @@ class HrApiClient:
                 status_code=response.status_code, message=f"malformed JSON: {exc}", url=str(response.url)
             ) from exc
 
+    def _validate(self, model_cls: type[_ModelT], data: object, response: httpx.Response) -> _ModelT:
+        try:
+            return model_cls.model_validate(data)
+        except ValidationError as exc:
+            raise HrApiError(
+                status_code=response.status_code, message=f"malformed response: {exc}", url=str(response.url)
+            ) from exc
+
+    async def _get_parsed(self, path: str, model_cls: type[_ModelT], params: dict | None = None) -> _ModelT:
+        response = await self._get_response(path, params)
+        data = self._parse_json(response)
+        return self._validate(model_cls, data, response)
+
+    async def _get_parsed_list(
+        self, path: str, model_cls: type[_ModelT], params: dict | None = None
+    ) -> list[_ModelT]:
+        response = await self._get_response(path, params)
+        data = self._parse_json(response)
+        return [self._validate(model_cls, item, response) for item in data]
+
     async def get_user(self, prop: str, id: str) -> HrUser:
-        data = await self._get(f"/api/v1/user/{prop}/{id}")
-        return HrUser.model_validate(data)
+        return await self._get_parsed(f"/api/v1/user/{prop}/{id}", HrUser)
 
     async def get_user_subhierarchy(
         self, prop: str, id: str, maximum_depth: int | None = None
     ) -> HrUserWithReports:
         params = {"maximumDepth": maximum_depth} if maximum_depth is not None else None
-        data = await self._get(f"/api/v1/user/{prop}/{id}/subhierarchy", params=params)
-        return HrUserWithReports.model_validate(data)
+        return await self._get_parsed(f"/api/v1/user/{prop}/{id}/subhierarchy", HrUserWithReports, params=params)
 
     async def iter_users(self, **filters: object) -> AsyncIterator[HrUser]:
         if "image" in filters:
             filters["photo"] = filters.pop("image")
+        # TODO: page indexing base (1 vs 0) unconfirmed against real HR API — assumed 1-based per design doc.
         page = 1
         while True:
             params = {**filters, "take": self._page_size, "page": page}
-            data = await self._get("/api/v1/user", params=params)
-            records = [HrUser.model_validate(item) for item in data]
+            records = await self._get_parsed_list("/api/v1/user", HrUser, params=params)
             for record in records:
                 yield record
             if len(records) < self._page_size:
@@ -107,20 +136,18 @@ class HrApiClient:
         return response.content
 
     async def get_group(self, group_id: str) -> HrGroup:
-        data = await self._get(f"/api/v1/group/{group_id}")
-        return HrGroup.model_validate(data)
+        return await self._get_parsed(f"/api/v1/group/{group_id}", HrGroup)
 
     async def get_group_subhierarchy(self, group_id: str, maximum_depth: int | None = None) -> HrGroupWithReports:
         params = {"maximumDepth": maximum_depth} if maximum_depth is not None else None
-        data = await self._get(f"/api/v1/group/{group_id}/subhierarchy", params=params)
-        return HrGroupWithReports.model_validate(data)
+        return await self._get_parsed(f"/api/v1/group/{group_id}/subhierarchy", HrGroupWithReports, params=params)
 
     async def iter_groups(self, **filters: object) -> AsyncIterator[HrGroup]:
+        # TODO: page indexing base (1 vs 0) unconfirmed against real HR API — assumed 1-based per design doc.
         page = 1
         while True:
             params = {**filters, "take": self._page_size, "page": page}
-            data = await self._get("/api/v1/group", params=params)
-            records = [HrGroup.model_validate(item) for item in data]
+            records = await self._get_parsed_list("/api/v1/group", HrGroup, params=params)
             for record in records:
                 yield record
             if len(records) < self._page_size:

@@ -32,7 +32,7 @@ jobs:
           .venv/bin/pip install -e ".[dev]"
 
       - name: Run tests
-        run: .venv/bin/pytest -q --ignore=app/routes/tests/test_candidate_rank.py
+        run: .venv/bin/pytest -q tests app/services/hr/tests app/tests --ignore=app/routes/tests/test_candidate_rank.py
 
   # ─────────────────────────────────────────
   # Job 2: Frontend — lint + vitest
