@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert a value into something the JSONB `context` column can store.
+    `date`/`datetime` aren't JSON-native and would otherwise raise
+    `TypeError` from the underlying `json.dumps` call."""
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return value
 
 
 def record_sync_divergence(
@@ -26,5 +36,9 @@ def record_sync_divergence(
         action="hr_sync.field_skipped_overridden",
         entity_type="soldier_hr_profile",
         entity_id=soldier_hr_profile_id,
-        context={"field_name": field_name, "hr_value": hr_value, "local_value": local_value},
+        context={
+            "field_name": field_name,
+            "hr_value": _json_safe(hr_value),
+            "local_value": _json_safe(local_value),
+        },
     )
