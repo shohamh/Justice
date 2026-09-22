@@ -111,6 +111,33 @@ class AuditLog(Base):
     )
 
 
+class SoldierHrProfile(Base):
+    __tablename__ = "soldier_hr_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    personal_number: Mapped[str] = mapped_column(Text, unique=True)
+    raw_dto: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), unique=True, nullable=True, default=None
+    )
+    sync_status: Mapped[str] = mapped_column(
+        Text, server_default=text("'held_for_review'"), default="held_for_review"
+    )
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    overridden_fields: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 
