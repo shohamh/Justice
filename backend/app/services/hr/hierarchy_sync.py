@@ -31,7 +31,7 @@ def _topological_order(groups: list[HrGroup]) -> list[HrGroup]:
     id), when that's determinable. A dangling parent reference or a cycle
     among the remaining groups doesn't raise — those groups are appended
     at the end in their original relative order, and the per-group
-    resolution logic (added in Task 3) holds them individually since their
+    resolution logic (`_resolve_group`) holds them individually since their
     parent will never appear in the resolved-node map."""
     resolved_ids: set[str] = set()
     ordered: list[HrGroup] = []
@@ -85,11 +85,6 @@ def _resolve_group(
 
     if group.parent_id is None:
         parent_node_id: uuid.UUID | None = None
-        existing = session.execute(
-            select(HierarchyNode).where(
-                HierarchyNode.parent_id.is_(None), HierarchyNode.name == group.name
-            )
-        ).scalar_one_or_none()
     else:
         parent_node_id = hr_id_to_node_id.get(group.parent_id)
         if parent_node_id is None:
@@ -98,17 +93,43 @@ def _resolve_group(
                 resolved_node_id=None, level=None,
                 reason=f"parent group unresolved: {group.parent_id!r}",
             )
-        existing = session.execute(
-            select(HierarchyNode).where(
-                HierarchyNode.parent_id == parent_node_id, HierarchyNode.name == group.name
-            )
-        ).scalar_one_or_none()
 
-    if existing is not None:
+    matches = session.execute(
+        select(HierarchyNode).where(
+            HierarchyNode.parent_id.is_(None) if parent_node_id is None
+            else HierarchyNode.parent_id == parent_node_id,
+            HierarchyNode.name == group.name,
+        )
+    ).scalars().all()
+
+    if len(matches) > 1:
+        return GroupResolution(
+            hr_group_id=group.id, name=group.name, action="held",
+            resolved_node_id=None, level=None,
+            reason=f"ambiguous match: {len(matches)} existing nodes named {group.name!r}",
+        )
+
+    if len(matches) == 1:
+        existing = matches[0]
         return GroupResolution(
             hr_group_id=group.id, name=group.name, action="matched",
             resolved_node_id=existing.id, level=level, reason=None,
         )
+
+    if parent_node_id is not None:
+        parent_node = session.get(HierarchyNode, parent_node_id)
+        child_rank = hierarchy_service.get_level_rank(session, level)
+        parent_rank = (
+            hierarchy_service.get_level_rank(session, parent_node.level)
+            if parent_node is not None else None
+        )
+        if parent_node is None or parent_rank is None or child_rank is None or child_rank <= parent_rank:
+            parent_level_desc = parent_node.level if parent_node is not None else "<missing>"
+            return GroupResolution(
+                hr_group_id=group.id, name=group.name, action="held",
+                resolved_node_id=None, level=None,
+                reason=f"level rank not below parent: {level!r} vs parent's {parent_level_desc!r}",
+            )
 
     node = hierarchy_service.create_node(session, level=level, name=group.name, parent_id=parent_node_id)
     return GroupResolution(
