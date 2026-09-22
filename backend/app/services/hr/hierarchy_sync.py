@@ -112,3 +112,62 @@ def _resolve_group(
         hr_group_id=group.id, name=group.name, action="created",
         resolved_node_id=node.id, level=level, reason=None,
     )
+
+
+from datetime import datetime, timezone
+from typing import Any
+
+from app.db.models import HrHierarchySync
+from app.services.hr.client import HrApiClient
+
+
+async def run_hierarchy_sync(session: Session, client: HrApiClient) -> HrHierarchySync:
+    run = HrHierarchySync()
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+
+    try:
+        groups = [group async for group in client.iter_groups()]
+        ordered = _topological_order(groups)
+
+        hr_id_to_node_id: dict[str, uuid.UUID] = {}
+        results: list[dict[str, Any]] = []
+        created = matched = held = 0
+
+        for group in ordered:
+            resolution = _resolve_group(session, group, hr_id_to_node_id=hr_id_to_node_id)
+            if resolution.resolved_node_id is not None:
+                hr_id_to_node_id[group.id] = resolution.resolved_node_id
+            if resolution.action == "created":
+                created += 1
+            elif resolution.action == "matched":
+                matched += 1
+            else:
+                held += 1
+            results.append(
+                {
+                    "hr_group_id": resolution.hr_group_id,
+                    "name": resolution.name,
+                    "action": resolution.action,
+                    "resolved_node_id": str(resolution.resolved_node_id) if resolution.resolved_node_id else None,
+                    "level": resolution.level,
+                    "reason": resolution.reason,
+                }
+            )
+
+        run.parsed_state = results
+        run.created_count = created
+        run.matched_count = matched
+        run.held_count = held
+        run.status = "completed"
+        run.completed_at = datetime.now(tz=timezone.utc)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        run.status = "failed"
+        run.error_message = str(exc)
+        run.completed_at = datetime.now(tz=timezone.utc)
+        session.commit()
+
+    return run

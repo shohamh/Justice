@@ -73,6 +73,7 @@ RESET_TABLES = (
     "system_settings",
     "soldiers",
     "hierarchy_level_types",
+    "hr_hierarchy_syncs",
     "hierarchy_nodes",
 )
 
