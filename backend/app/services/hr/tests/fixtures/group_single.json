@@ -1,0 +1,9 @@
+{
+  "id": "g1",
+  "name": "Group One",
+  "kind": "unit",
+  "unit": "Unit 1",
+  "parentKind": "branch",
+  "parentId": "b1",
+  "parentName": "Branch 1"
+}
