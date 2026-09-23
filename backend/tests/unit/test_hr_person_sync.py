@@ -415,6 +415,7 @@ async def test_run_person_sync_per_person_error_does_not_abort_run(admin_session
     assert run.status == "completed"
     assert run.created_count == 1
     assert run.error_count == 1
+    assert run.total_fetched == 2
     errors = admin_session.execute(
         select(HrPersonSyncError).where(HrPersonSyncError.hr_person_sync_id == run.id)
     ).scalars().all()
@@ -477,3 +478,56 @@ async def test_run_person_sync_updates_existing_linked_person(admin_session):
     assert run.updated_count == 1
     admin_session.refresh(soldier)
     assert soldier.phone == "050-7778888"
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_first_link_applies_hr_fields_same_run(admin_session):
+    """A Soldier manually enrolled before HR sync existed, whose
+    personal_number first shows up in an HR sync run, must have its fields
+    updated to the HR values in THAT SAME run — not left stale until the
+    next run — and must be counted as updated, not created (no new Soldier
+    row was actually created)."""
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="ps-firstlink-1")
+    soldier.phone = "050-0000000"
+    soldier.rank = "טוראי"
+    admin_session.commit()
+
+    payload = [_user_payload("ps-firstlink-1", phone="050-9998888", rank="רבט")]
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    assert run.updated_count == 1
+    assert run.created_count == 0
+    admin_session.refresh(soldier)
+    assert soldier.phone == "050-9998888"
+    assert soldier.rank == "רבט"
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_outer_failure_marks_status_failed(admin_session):
+    """An error outside the per-person loop (here: the initial iter_users()
+    fetch itself failing) must leave the run recorded as status=failed with
+    an error_message, not propagate uncaught and leave the run stuck at
+    status=running forever."""
+    with respx.mock(base_url="https://hr.example.internal") as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(500, text="HR server error")
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "failed"
+    assert run.error_message is not None
+    all_runs = admin_session.execute(select(HrPersonSync)).scalars().all()
+    assert len(all_runs) == 1
+    assert all_runs[0].id == run.id

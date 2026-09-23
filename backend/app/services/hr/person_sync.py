@@ -92,12 +92,25 @@ def _apply_new_person(
         session.add(soldier)
         session.flush()
 
+        profile = _find_or_create_soldier_hr_profile(session, mapped.personal_number)
+        profile.soldier_id = soldier.id
+        profile.raw_dto = user.model_dump(by_alias=True)
+        profile.sync_status = "synced"
+        profile.review_reason = None
+        profile.last_synced_at = datetime.now(tz=timezone.utc)
+        return soldier, profile
+
+    # An already-existing Soldier row (e.g. manually enrolled before HR sync
+    # existed) matches this HR person by personal_number. Link the profile to
+    # it, then apply the mapped HR fields through the normal override-aware
+    # update path (_apply_existing_person) so the soldier's actual field
+    # values don't sit stale for a whole extra sync run — it never touches
+    # password_hash / role / hierarchy_node_id, so this is safe even though
+    # the soldier predates HR sync.
     profile = _find_or_create_soldier_hr_profile(session, mapped.personal_number)
     profile.soldier_id = soldier.id
-    profile.raw_dto = user.model_dump(by_alias=True)
-    profile.sync_status = "synced"
     profile.review_reason = None
-    profile.last_synced_at = datetime.now(tz=timezone.utc)
+    _apply_existing_person(session, profile, user, mapped)
     return soldier, profile
 
 
@@ -160,7 +173,7 @@ def _notify_admins_of_anomaly(session: Session, run: HrPersonSync) -> None:
     for admin in admins:
         create_notification(
             session, soldier_id=admin.id, type=NotificationType.hr_sync_anomaly_aborted,
-            title="HR sync aborted: unexpectedly few users returned",
+            title="סנכרון HR הופסק: התקבלו פחות משתמשים מהצפוי",
             body=run.error_message,
         )
 
@@ -171,76 +184,99 @@ async def run_person_sync(session: Session, client: HrApiClient) -> HrPersonSync
     session.commit()
     session.refresh(run)
 
-    users = [user async for user in client.iter_users()]
-    run.total_fetched = len(users)
+    try:
+        users = [user async for user in client.iter_users()]
+        run.total_fetched = len(users)
+        # Committed separately (not deferred to the per-person loop's own
+        # commits) so an early per-person failure's rollback can't discard
+        # it — the NEXT run's anomaly baseline depends on this surviving.
+        session.commit()
 
-    last_completed = session.execute(
-        select(HrPersonSync)
-        .where(HrPersonSync.status == "completed", HrPersonSync.id != run.id)
-        .order_by(HrPersonSync.started_at.desc())
-        .limit(1)
-    ).scalar_one_or_none()
+        last_completed = session.execute(
+            select(HrPersonSync)
+            .where(HrPersonSync.status == "completed", HrPersonSync.id != run.id)
+            .order_by(HrPersonSync.started_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
 
-    if last_completed is not None and last_completed.total_fetched > 0:
-        fraction = len(users) / last_completed.total_fetched
-        if fraction < _min_fraction_of_last_run(session):
-            run.status = "aborted_anomaly"
-            run.error_message = (
-                f"fetched {len(users)} users, below {_min_fraction_of_last_run(session):.0%} "
-                f"of last run's {last_completed.total_fetched}"
-            )
-            run.completed_at = datetime.now(tz=timezone.utc)
-            _notify_admins_of_anomaly(session, run)
-            session.commit()
-            return run
+        if last_completed is not None and last_completed.total_fetched > 0:
+            fraction = len(users) / last_completed.total_fetched
+            if fraction < _min_fraction_of_last_run(session):
+                run.status = "aborted_anomaly"
+                run.error_message = (
+                    f"fetched {len(users)} users, below {_min_fraction_of_last_run(session):.0%} "
+                    f"of last run's {last_completed.total_fetched}"
+                )
+                run.completed_at = datetime.now(tz=timezone.utc)
+                _notify_admins_of_anomaly(session, run)
+                session.commit()
+                return run
 
-    seen_personal_numbers: set[str] = set()
-    created = updated = held = error_count = 0
+        seen_personal_numbers: set[str] = set()
+        created = updated = held = error_count = 0
 
-    for user in users:
-        seen_personal_numbers.add(user.personal_number)
-        try:
-            mapped = map_hr_user(user)
-            if isinstance(mapped, HeldForReview):
-                _mark_held(session, user, mapped)
-                held += 1
-            else:
-                profile = session.execute(
-                    select(SoldierHrProfile).where(SoldierHrProfile.personal_number == mapped.personal_number)
-                ).scalar_one_or_none()
-                if profile is not None and profile.soldier_id is not None:
-                    _apply_existing_person(session, profile, user, mapped)
-                    updated += 1
+        for user in users:
+            seen_personal_numbers.add(user.personal_number)
+            try:
+                mapped = map_hr_user(user)
+                if isinstance(mapped, HeldForReview):
+                    _mark_held(session, user, mapped)
+                    held += 1
                 else:
-                    _apply_new_person(session, user, mapped)
-                    created += 1
-            session.commit()
-        except Exception as exc:
-            session.rollback()
-            session.add(HrPersonSyncError(
-                hr_person_sync_id=run.id, personal_number=user.personal_number, error_message=str(exc),
-            ))
-            session.commit()
-            error_count += 1
+                    profile = session.execute(
+                        select(SoldierHrProfile).where(SoldierHrProfile.personal_number == mapped.personal_number)
+                    ).scalar_one_or_none()
+                    if profile is not None and profile.soldier_id is not None:
+                        _apply_existing_person(session, profile, user, mapped)
+                        updated += 1
+                    else:
+                        # Distinguish "brand-new Soldier row created" from
+                        # "linked to an already-existing Soldier" (e.g. one
+                        # manually enrolled before HR sync existed) so the
+                        # latter isn't miscounted as "created" when no new
+                        # Soldier row was actually created.
+                        pre_existing_soldier_id = session.execute(
+                            select(Soldier.id).where(Soldier.personal_number == mapped.personal_number)
+                        ).scalar_one_or_none()
+                        _apply_new_person(session, user, mapped)
+                        if pre_existing_soldier_id is not None:
+                            updated += 1
+                        else:
+                            created += 1
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                session.add(HrPersonSyncError(
+                    hr_person_sync_id=run.id, personal_number=user.personal_number, error_message=str(exc),
+                ))
+                session.commit()
+                error_count += 1
 
-    vanished = 0
-    linked_profiles = session.execute(
-        select(SoldierHrProfile).where(
-            SoldierHrProfile.soldier_id.is_not(None), SoldierHrProfile.sync_status == "synced",
-        )
-    ).scalars().all()
-    for profile in linked_profiles:
-        if profile.personal_number not in seen_personal_numbers:
-            profile.sync_status = "vanished"
-            vanished += 1
-    session.commit()
+        vanished = 0
+        linked_profiles = session.execute(
+            select(SoldierHrProfile).where(
+                SoldierHrProfile.soldier_id.is_not(None), SoldierHrProfile.sync_status == "synced",
+            )
+        ).scalars().all()
+        for profile in linked_profiles:
+            if profile.personal_number not in seen_personal_numbers:
+                profile.sync_status = "vanished"
+                vanished += 1
+        session.commit()
 
-    run.created_count = created
-    run.updated_count = updated
-    run.held_count = held
-    run.vanished_count = vanished
-    run.error_count = error_count
-    run.status = "completed"
-    run.completed_at = datetime.now(tz=timezone.utc)
-    session.commit()
+        run.created_count = created
+        run.updated_count = updated
+        run.held_count = held
+        run.vanished_count = vanished
+        run.error_count = error_count
+        run.status = "completed"
+        run.completed_at = datetime.now(tz=timezone.utc)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        run.status = "failed"
+        run.error_message = str(exc)
+        run.completed_at = datetime.now(tz=timezone.utc)
+        session.commit()
+
     return run
