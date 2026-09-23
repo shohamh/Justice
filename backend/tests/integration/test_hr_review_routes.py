@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from app.db.models import HrRankConflict, SoldierHrProfile
@@ -54,6 +55,26 @@ def test_dismiss_held_for_review_action(client, admin_session):
     assert profile.review_dismissed_at is not None
 
 
+def test_dismiss_held_for_review_returns_404_for_unknown_profile(client, admin_session):
+    headers = _admin_headers(admin_session)
+    r = client.post(
+        f"/api/admin/hr-sync/held-for-review/{uuid.uuid4()}/dismiss", headers=headers,
+    )
+    assert r.status_code == 404
+    assert r.json()["detail"] == "profile_not_found"
+
+
+def test_dismiss_held_for_review_returns_409_when_not_held(client, admin_session):
+    headers = _admin_headers(admin_session)
+    profile = SoldierHrProfile(personal_number="hrr-4b", raw_dto={}, sync_status="synced")
+    admin_session.add(profile)
+    admin_session.commit()
+
+    r = client.post(f"/api/admin/hr-sync/held-for-review/{profile.id}/dismiss", headers=headers)
+    assert r.status_code == 409
+    assert r.json()["detail"] == "not_held_for_review"
+
+
 def test_divergences_lists_field_skipped_overridden_audit_rows(client, admin_session):
     headers = _admin_headers(admin_session)
     soldier = create_soldier(admin_session, personal_number="hrr-5")
@@ -94,6 +115,34 @@ def test_clear_override_action(client, admin_session):
     assert r.status_code == 200
     admin_session.refresh(profile)
     assert profile.overridden_fields == []
+
+
+def test_clear_override_returns_404_for_unknown_profile(client, admin_session):
+    headers = _admin_headers(admin_session)
+    r = client.post(
+        f"/api/admin/hr-sync/divergences/{uuid.uuid4()}/clear-override",
+        headers=headers, json={"field_name": "phone"},
+    )
+    assert r.status_code == 404
+    assert r.json()["detail"] == "profile_not_found"
+
+
+def test_clear_override_returns_400_for_unknown_field_name(client, admin_session):
+    headers = _admin_headers(admin_session)
+    soldier = create_soldier(admin_session, personal_number="hrr-6b")
+    profile = SoldierHrProfile(
+        personal_number="hrr-6b", raw_dto={}, soldier_id=soldier.id, sync_status="synced",
+        overridden_fields=["phone"],
+    )
+    admin_session.add(profile)
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/admin/hr-sync/divergences/{profile.id}/clear-override",
+        headers=headers, json={"field_name": "not_a_real_field"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "unknown_field"
 
 
 def test_vanished_lists_vanished_profiles(client, admin_session):

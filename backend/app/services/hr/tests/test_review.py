@@ -63,6 +63,11 @@ def test_clear_field_override_removes_field_and_writes_audit(admin_session):
     assert profile.overridden_fields == ["email"]
 
 
+def test_clear_field_override_raises_on_unknown_profile(admin_session):
+    with pytest.raises(ReviewActionError, match="profile_not_found"):
+        clear_field_override(admin_session, profile_id=uuid.uuid4(), field_name="phone", actor_id=None)
+
+
 def test_clear_field_override_raises_on_unknown_field_name(admin_session):
     soldier = create_soldier(admin_session, personal_number="rev-4")
     profile = SoldierHrProfile(

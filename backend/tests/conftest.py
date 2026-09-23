@@ -337,12 +337,14 @@ _AREA_MARKERS: dict[str, str] = {
     "test_require_hr_onboarding_complete": "auth",
     "test_hr_onboarding_service": "auth",
     "test_hr_onboarding_route": "auth",
+    "test_hr_review_routes": "auth",
     # hierarchy: hierarchy nodes and duty-manager scope
     "test_hierarchy_api": "hierarchy",
     "test_hierarchy_service": "hierarchy",
     "test_dm_scope_routes": "hierarchy",
     "test_hr_hierarchy_sync_model": "hierarchy",
     "test_hr_hierarchy_sync": "hierarchy",
+    "test_hr_sync_worker": "hierarchy",
     # duty: assignments, shifts, swaps, constraints, exemptions, gimelim, hakpaza, duty config
     "test_assignments_api": "duty",
     "test_assignments_service": "duty",
@@ -401,6 +403,9 @@ _AREA_MARKERS: dict[str, str] = {
     "test_soldiers_field_updates": "soldiers",
     "test_hr_person_sync_model": "soldiers",
     "test_hr_person_sync": "soldiers",
+    "test_hr_rank_conflict_model": "soldiers",
+    "test_update_soldier_profile_rank_provenance": "soldiers",
+    "test_rank_advancement_worker": "soldiers",
     # misc: health check, audit log, settings loader, HR integration client
     "test_health": "misc",
     "test_audit_append_only": "misc",
@@ -415,6 +420,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_schemas": "misc",
     "test_mapping": "misc",
     "test_hierarchy_sync_topo": "misc",
+    "test_review": "misc",
 }
 
 
