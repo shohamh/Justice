@@ -7,7 +7,7 @@ from unittest.mock import patch
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Soldier
+from app.db.models import Soldier, SoldierHrProfile
 from app.rank_advancement_worker import (
     _promote_due_soldiers,
     _promote_on_career_entry,
@@ -444,3 +444,44 @@ def test_promote_on_career_entry_remains_after_earlier_scheduled_promotion(app_s
         _promote_on_career_entry(today=date(2026, 6, 1))
 
     assert s.rank == "סמר"
+
+
+def test_promote_soldier_sets_rank_last_set_by_worker(app_session) -> None:
+    s = create_soldier(app_session, personal_number="1000009")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    app_session.flush()
+
+    _promote_soldier(app_session, s, today=date(2026, 1, 1))
+
+    assert s.rank_last_set_by == "worker"
+
+
+def test_promote_due_soldiers_skips_hr_linked_soldiers(app_session) -> None:
+    s = create_soldier(app_session, personal_number="1000010")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    app_session.add(SoldierHrProfile(personal_number="1000010", raw_dto={}, soldier_id=s.id, sync_status="synced"))
+    app_session.commit()
+
+    _promote_due_soldiers()
+
+    app_session.refresh(s)
+    assert s.rank == "טוראי"
+    assert s.rank_last_set_by is None
+
+
+def test_promote_due_soldiers_still_promotes_non_hr_linked_soldiers(app_session) -> None:
+    s = create_soldier(app_session, personal_number="1000011")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    app_session.commit()
+
+    _promote_due_soldiers()
+
+    app_session.refresh(s)
+    assert s.rank == "רבט"
+    assert s.rank_last_set_by == "worker"
