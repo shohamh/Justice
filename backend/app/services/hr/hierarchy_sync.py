@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import HierarchyNode, HrHierarchySync
+from app.db.models import HierarchyNode, HrHierarchyNodeMap, HrHierarchySync
 from app.services import hierarchy as hierarchy_service
 from app.services.hr.client import HrApiClient
 from app.services.hr.schemas import HrGroup
@@ -63,6 +63,16 @@ class GroupResolution:
     reason: str | None
 
 
+def _upsert_group_node_map(session: Session, *, hr_group_id: str, node_id: uuid.UUID) -> None:
+    existing = session.execute(
+        select(HrHierarchyNodeMap).where(HrHierarchyNodeMap.hr_group_id == hr_group_id)
+    ).scalar_one_or_none()
+    if existing is None:
+        session.add(HrHierarchyNodeMap(hr_group_id=hr_group_id, node_id=node_id))
+    else:
+        existing.node_id = node_id
+
+
 def _resolve_group(
     session: Session,
     group: HrGroup,
@@ -99,6 +109,7 @@ def _resolve_group(
             HierarchyNode.parent_id.is_(None) if parent_node_id is None
             else HierarchyNode.parent_id == parent_node_id,
             HierarchyNode.name == group.name,
+            HierarchyNode.level == level,
         )
     ).scalars().all()
 
@@ -111,6 +122,7 @@ def _resolve_group(
 
     if len(matches) == 1:
         existing = matches[0]
+        _upsert_group_node_map(session, hr_group_id=group.id, node_id=existing.id)
         return GroupResolution(
             hr_group_id=group.id, name=group.name, action="matched",
             resolved_node_id=existing.id, level=level, reason=None,
@@ -132,6 +144,7 @@ def _resolve_group(
             )
 
     node = hierarchy_service.create_node(session, level=level, name=group.name, parent_id=parent_node_id)
+    _upsert_group_node_map(session, hr_group_id=group.id, node_id=node.id)
     return GroupResolution(
         hr_group_id=group.id, name=group.name, action="created",
         resolved_node_id=node.id, level=level, reason=None,

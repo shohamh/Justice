@@ -158,6 +158,24 @@ class HrHierarchySync(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
+class HrHierarchyNodeMap(Base):
+    __tablename__ = "hr_hierarchy_node_map"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    hr_group_id: Mapped[str] = mapped_column(Text, unique=True)
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="CASCADE"), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 

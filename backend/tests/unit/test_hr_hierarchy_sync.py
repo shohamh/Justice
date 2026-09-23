@@ -382,3 +382,76 @@ async def test_run_hierarchy_sync_held_parent_cascades_to_held_child(admin_sessi
     assert by_hr_id["hr-parent"]["action"] == "held"
     assert by_hr_id["hr-child"]["action"] == "held"
     assert "hr-parent" in by_hr_id["hr-child"]["reason"]
+
+
+def test_resolve_group_matched_upserts_node_map(admin_session):
+    from app.db.models import HierarchyNode, HrHierarchyNodeMap
+
+    existing = HierarchyNode(level="unit", name="Mapped Unit", parent_id=None, path_ids=[])
+    admin_session.add(existing)
+    admin_session.flush()
+    existing.path_ids = [existing.id]
+    admin_session.commit()
+
+    group = _group("hr-map-1", "Mapped Unit", kind="unit")
+    resolution = _resolve_group(admin_session, group, hr_id_to_node_id={})
+    admin_session.commit()
+
+    assert resolution.action == "matched"
+    row = admin_session.execute(
+        select(HrHierarchyNodeMap).where(HrHierarchyNodeMap.hr_group_id == "hr-map-1")
+    ).scalar_one()
+    assert row.node_id == existing.id
+
+
+def test_resolve_group_created_upserts_node_map(admin_session):
+    from app.db.models import HrHierarchyNodeMap
+
+    group = _group("hr-map-2", "Brand New Unit", kind="unit")
+    resolution = _resolve_group(admin_session, group, hr_id_to_node_id={})
+    admin_session.commit()
+
+    assert resolution.action == "created"
+    row = admin_session.execute(
+        select(HrHierarchyNodeMap).where(HrHierarchyNodeMap.hr_group_id == "hr-map-2")
+    ).scalar_one()
+    assert row.node_id == resolution.resolved_node_id
+
+
+def test_resolve_group_node_map_upsert_is_idempotent_across_runs(admin_session):
+    from app.db.models import HrHierarchyNodeMap
+
+    group = _group("hr-map-3", "Idempotent Unit", kind="unit")
+    _resolve_group(admin_session, group, hr_id_to_node_id={})
+    admin_session.commit()
+    # Re-resolve the same group in a later "run" — should match (not create
+    # a duplicate node) and update the same map row, not insert a second one.
+    resolution2 = _resolve_group(admin_session, group, hr_id_to_node_id={})
+    admin_session.commit()
+
+    assert resolution2.action == "matched"
+    rows = admin_session.execute(
+        select(HrHierarchyNodeMap).where(HrHierarchyNodeMap.hr_group_id == "hr-map-3")
+    ).scalars().all()
+    assert len(rows) == 1
+
+
+def test_resolve_group_same_name_different_level_no_longer_ambiguous(admin_session):
+    from app.db.models import HierarchyNode
+
+    existing_team = HierarchyNode(level="team", name="Signal", parent_id=None, path_ids=[])
+    admin_session.add(existing_team)
+    admin_session.flush()
+    existing_team.path_ids = [existing_team.id]
+    admin_session.commit()
+
+    # A "unit"-kind HR group with the same name and same (root) parent as
+    # the existing "team" node must NOT be treated as ambiguous — different
+    # level means it's a different real-world entity, so this should create
+    # a new node rather than holding on "ambiguous match".
+    group = _group("hr-map-4", "Signal", kind="unit")
+    resolution = _resolve_group(admin_session, group, hr_id_to_node_id={})
+    admin_session.commit()
+
+    assert resolution.action == "created"
+    assert resolution.resolved_node_id != existing_team.id
