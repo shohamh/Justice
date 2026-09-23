@@ -371,3 +371,40 @@ def test_apply_sets_created_by_on_imported_assignments(client, admin_session):
     assignment = admin_session.query(DutyAssignment).filter_by(soldier_id=soldier.id).one_or_none()
     assert assignment is not None
     assert assignment.created_by == dm.id
+
+
+def test_apply_update_stamps_rank_last_set_by_manual(client, admin_session):
+    """A bulk Excel update that changes `rank` is a deliberate human-controlled
+    edit (someone prepared the Excel file and imported it) -- same category as
+    update_soldier_profile's manual edit, so it must stamp
+    rank_last_set_by="manual" just like that path does."""
+    node = create_node(admin_session, level="branch", name="ie_node_rank_stamp")
+    dm = create_soldier(admin_session, personal_number="ie_dm_rank_stamp", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_rank_stamp", hierarchy_node_id=node.id)
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "hr_sync"
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "update",
+                "personal_number": soldier.personal_number, "full_name": soldier.full_name,
+                "rank": "רבט", "gender": None, "is_officer": None,
+                "hierarchy_node_id": None, "enrolled_at": None,
+                "enlistment_date": None, "phone": None, "email": None,
+                "existing_id": str(soldier.id),
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["errors"] == []
+
+    admin_session.expire_all()
+    updated = admin_session.get(type(soldier), soldier.id)
+    assert updated.rank == "רבט"
+    assert updated.rank_last_set_by == "manual"

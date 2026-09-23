@@ -5,8 +5,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
 
 from app.auth.deps import require_roles
 from app.db.models import (
@@ -93,13 +93,35 @@ class DivergencePageOut(BaseModel):
 
 @router.get("/divergences", response_model=DivergencePageOut)
 def list_divergences(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_roles("admin")),
 ) -> DivergencePageOut:
-    rows = session.execute(
+    # A field that stays overridden across many sync runs would otherwise
+    # keep piling up one "hr_sync.field_skipped_overridden" audit row per
+    # run, so this selects only the LATEST row per (profile, field) pair
+    # (a Postgres DISTINCT ON, ordered to match) and, since clear_field_override
+    # removes the field from overridden_fields without deleting old audit
+    # rows, also drops any pair whose field is no longer actually overridden.
+    field_name_expr = AuditLog.context["field_name"].astext
+    latest_subq = (
         select(AuditLog)
-        .where(AuditLog.action == "hr_sync.field_skipped_overridden")
-        .order_by(AuditLog.created_at.desc())
+        .join(SoldierHrProfile, SoldierHrProfile.id == AuditLog.entity_id)
+        .where(
+            AuditLog.action == "hr_sync.field_skipped_overridden",
+            func.jsonb_exists(SoldierHrProfile.overridden_fields, field_name_expr),
+        )
+        .order_by(AuditLog.entity_id, field_name_expr, AuditLog.created_at.desc())
+        .distinct(AuditLog.entity_id, field_name_expr)
+        .subquery()
+    )
+    latest = aliased(AuditLog, latest_subq)
+    rows = session.execute(
+        select(latest)
+        .order_by(latest.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     ).scalars().all()
     return DivergencePageOut(items=[
         DivergenceItemOut(

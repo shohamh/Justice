@@ -53,6 +53,41 @@ def _upload(client, token, xlsx: bytes):
     )
 
 
+def test_confirm_update_stamps_rank_last_set_by_manual(client, admin_session):
+    """A bulk Excel update session that changes an existing soldier's `rank`
+    is a deliberate human-controlled edit -- someone prepared the Excel file
+    and imported it -- same category as update_soldier_profile's manual
+    edit, so confirm_session's update path must stamp
+    rank_last_set_by="manual" too."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    existing.rank = "טוראי"
+    existing.rank_last_set_by = "hr_sync"
+    admin_session.commit()
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank"],
+            [existing.personal_number, existing.full_name, "רבט"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    admin_session.expire_all()
+    admin_session.refresh(existing)
+    assert existing.rank == "רבט"
+    assert existing.rank_last_set_by == "manual"
+
+
 def test_confirm_creates_duty_location_and_duty_type(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     name = f"שמירה_{_uid()}"

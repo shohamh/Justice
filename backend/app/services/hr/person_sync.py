@@ -65,7 +65,7 @@ def _find_or_create_soldier_hr_profile(session: Session, personal_number: str) -
 
 
 def _apply_new_person(
-    session: Session, user: HrUser, mapped: MappedSoldierFields,
+    session: Session, user: HrUser, mapped: MappedSoldierFields, *, hr_person_sync_id: uuid.UUID | None = None,
 ) -> tuple[Soldier, SoldierHrProfile]:
     soldier = session.execute(
         select(Soldier).where(Soldier.personal_number == mapped.personal_number)
@@ -99,6 +99,8 @@ def _apply_new_person(
         profile.raw_dto = user.model_dump(by_alias=True)
         profile.sync_status = "synced"
         profile.review_reason = None
+        profile.review_dismissed_at = None
+        profile.review_dismissed_reasons = None
         profile.last_synced_at = datetime.now(tz=timezone.utc)
         return soldier, profile
 
@@ -112,7 +114,7 @@ def _apply_new_person(
     profile = _find_or_create_soldier_hr_profile(session, mapped.personal_number)
     profile.soldier_id = soldier.id
     profile.review_reason = None
-    _apply_existing_person(session, profile, user, mapped)
+    _apply_existing_person(session, profile, user, mapped, hr_person_sync_id=hr_person_sync_id)
     return soldier, profile
 
 
@@ -133,6 +135,7 @@ _DEPENDENT_LOGIC_TRIGGER_FIELDS = frozenset({"rank", "mandatory_end_date", "disc
 
 def _flag_rank_conflict_if_needed(
     session: Session, *, soldier: Soldier, old_rank: str, new_rank: str,
+    hr_person_sync_id: uuid.UUID | None = None,
 ) -> None:
     """Record a conflict and notify the soldier + their commander(s) when
     HR's incoming rank either overrides a decision the worker made on its
@@ -158,6 +161,7 @@ def _flag_rank_conflict_if_needed(
         soldier_id=soldier.id, old_rank=old_rank, new_rank=new_rank,
         triggered_by_worker_decision=triggered_by_worker_decision,
         non_sequential_jump=non_sequential_jump,
+        hr_person_sync_id=hr_person_sync_id,
     ))
     title = "דרגתך עודכנה בעקבות סנכרון מול מערכת משאבי אנוש"
     body = f"הדרגה עודכנה מ-{old_rank} ל-{new_rank} בעקבות נתוני משאבי אנוש, שאינם תואמים את ההתקדמות הצפויה."
@@ -169,6 +173,7 @@ def _flag_rank_conflict_if_needed(
 
 def _apply_existing_person(
     session: Session, profile: SoldierHrProfile, user: HrUser, mapped: MappedSoldierFields,
+    *, hr_person_sync_id: uuid.UUID | None = None,
 ) -> None:
     soldier = session.get(Soldier, profile.soldier_id)
     changed_dependent_field = False
@@ -189,7 +194,10 @@ def _apply_existing_person(
         if field_name in _DEPENDENT_LOGIC_TRIGGER_FIELDS and old_value != new_value:
             changed_dependent_field = True
         if field_name == "rank" and old_value != new_value and old_value is not None:
-            _flag_rank_conflict_if_needed(session, soldier=soldier, old_rank=old_value, new_rank=new_value)
+            _flag_rank_conflict_if_needed(
+                session, soldier=soldier, old_rank=old_value, new_rank=new_value,
+                hr_person_sync_id=hr_person_sync_id,
+            )
         setattr(soldier, field_name, new_value)
         if field_name == "rank" and old_value != new_value:
             soldier.rank_last_set_by = "hr_sync"
@@ -203,6 +211,8 @@ def _apply_existing_person(
 
     profile.raw_dto = user.model_dump(by_alias=True)
     profile.sync_status = "synced"
+    profile.review_dismissed_at = None
+    profile.review_dismissed_reasons = None
     profile.last_synced_at = datetime.now(tz=timezone.utc)
 
 
@@ -272,7 +282,7 @@ async def run_person_sync(session: Session, client: HrApiClient) -> HrPersonSync
                         select(SoldierHrProfile).where(SoldierHrProfile.personal_number == mapped.personal_number)
                     ).scalar_one_or_none()
                     if profile is not None and profile.soldier_id is not None:
-                        _apply_existing_person(session, profile, user, mapped)
+                        _apply_existing_person(session, profile, user, mapped, hr_person_sync_id=run.id)
                         updated += 1
                     else:
                         # Distinguish "brand-new Soldier row created" from
@@ -283,7 +293,7 @@ async def run_person_sync(session: Session, client: HrApiClient) -> HrPersonSync
                         pre_existing_soldier_id = session.execute(
                             select(Soldier.id).where(Soldier.personal_number == mapped.personal_number)
                         ).scalar_one_or_none()
-                        _apply_new_person(session, user, mapped)
+                        _apply_new_person(session, user, mapped, hr_person_sync_id=run.id)
                         if pre_existing_soldier_id is not None:
                             updated += 1
                         else:

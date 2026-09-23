@@ -98,6 +98,70 @@ def test_divergences_lists_field_skipped_overridden_audit_rows(client, admin_ses
     assert r.json()["items"][0]["field_name"] == "phone"
 
 
+def test_divergences_dedupes_to_latest_row_per_profile_and_field(client, admin_session):
+    """A field that stays overridden across many sync runs previously kept
+    piling up one audit row per run -- /divergences must return only the
+    LATEST row for a given (profile, field) pair, not every stale one."""
+    headers = _admin_headers(admin_session)
+    soldier = create_soldier(admin_session, personal_number="hrr-9")
+    profile = SoldierHrProfile(
+        personal_number="hrr-9", raw_dto={}, soldier_id=soldier.id, sync_status="synced",
+        overridden_fields=["phone"],
+    )
+    admin_session.add(profile)
+    admin_session.commit()
+
+    from app.services.hr.divergence import record_sync_divergence
+    record_sync_divergence(
+        admin_session, soldier_hr_profile_id=profile.id, field_name="phone",
+        hr_value="050-1112222", local_value="050-9998888",
+    )
+    admin_session.commit()
+    record_sync_divergence(
+        admin_session, soldier_hr_profile_id=profile.id, field_name="phone",
+        hr_value="050-3334444", local_value="050-9998888",
+    )
+    admin_session.commit()
+
+    r = client.get("/api/admin/hr-sync/divergences", headers=headers)
+    assert r.status_code == 200
+    items = [i for i in r.json()["items"] if i["soldier_hr_profile_id"] == str(profile.id)]
+    assert len(items) == 1
+    assert items[0]["hr_value"] == "050-3334444"
+
+
+def test_divergences_excludes_fields_no_longer_overridden(client, admin_session):
+    """clear_field_override removes the field from overridden_fields but
+    doesn't delete the old audit row -- /divergences must stop showing that
+    (profile, field) pair once the override has been cleared."""
+    headers = _admin_headers(admin_session)
+    soldier = create_soldier(admin_session, personal_number="hrr-10")
+    profile = SoldierHrProfile(
+        personal_number="hrr-10", raw_dto={}, soldier_id=soldier.id, sync_status="synced",
+        overridden_fields=["phone"],
+    )
+    admin_session.add(profile)
+    admin_session.commit()
+
+    from app.services.hr.divergence import record_sync_divergence
+    record_sync_divergence(
+        admin_session, soldier_hr_profile_id=profile.id, field_name="phone",
+        hr_value="050-1112222", local_value="050-9998888",
+    )
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/admin/hr-sync/divergences/{profile.id}/clear-override",
+        headers=headers, json={"field_name": "phone"},
+    )
+    assert r.status_code == 200
+
+    r = client.get("/api/admin/hr-sync/divergences", headers=headers)
+    assert r.status_code == 200
+    items = [i for i in r.json()["items"] if i["soldier_hr_profile_id"] == str(profile.id)]
+    assert items == []
+
+
 def test_clear_override_action(client, admin_session):
     headers = _admin_headers(admin_session)
     soldier = create_soldier(admin_session, personal_number="hrr-6")

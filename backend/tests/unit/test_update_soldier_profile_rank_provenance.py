@@ -31,3 +31,24 @@ def test_update_soldier_profile_leaves_rank_last_set_by_unset_when_rank_not_edit
     update_soldier_profile(app_session, soldier=s, fields={"phone": "0501234567"}, actor_id=None)
 
     assert s.rank_last_set_by == "worker"
+
+
+def test_update_soldier_profile_leaves_rank_last_set_by_unset_when_rank_resent_unchanged(app_session) -> None:
+    """Both frontend save paths always send `rank` in the payload regardless of
+    whether the user actually changed it. A PATCH that re-sends the soldier's
+    current rank value (alongside an actual change to another field) must not
+    overwrite an existing "worker"/"hr_sync" provenance value with "manual" --
+    only a PATCH whose rank value genuinely differs from the soldier's prior
+    rank should stamp "manual"."""
+    s = create_soldier(app_session, personal_number="2000003")
+    s.rank = "טוראי"
+    s.rank_last_set_by = "hr_sync"
+    app_session.commit()
+
+    update_soldier_profile(
+        app_session, soldier=s, fields={"rank": "טוראי", "phone": "0501234567"}, actor_id=None
+    )
+
+    assert s.rank == "טוראי"
+    assert s.phone == "0501234567"
+    assert s.rank_last_set_by == "hr_sync"

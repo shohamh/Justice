@@ -395,11 +395,11 @@ async def test_run_person_sync_per_person_error_does_not_abort_run(admin_session
     original = person_sync_module._apply_new_person
     call_count = {"n": 0}
 
-    def _flaky_apply_new_person(session, user, mapped):
+    def _flaky_apply_new_person(session, user, mapped, **kwargs):
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise RuntimeError("simulated failure")
-        return original(session, user, mapped)
+        return original(session, user, mapped, **kwargs)
 
     monkeypatch.setattr(person_sync_module, "_apply_new_person", _flaky_apply_new_person)
 
@@ -519,6 +519,122 @@ def test_apply_existing_person_no_conflict_when_rank_unchanged(admin_session):
     admin_session.commit()
 
     assert admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).count() == 0
+
+
+def test_apply_existing_person_stamps_hr_person_sync_id_on_conflict(admin_session):
+    """HrRankConflict rows exist specifically to link a conflict back to the
+    sync run that caused it -- hr_person_sync_id must be populated whenever
+    the caller threads a run id through, not left null."""
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="ps-rc-5")
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "worker"
+    profile = _linked_profile(admin_session, soldier)
+    run = HrPersonSync()
+    admin_session.add(run)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-rc-5")
+    mapped = _mapped(personal_number="ps-rc-5", rank="סמל")
+
+    _apply_existing_person(admin_session, profile, user, mapped, hr_person_sync_id=run.id)
+    admin_session.commit()
+
+    conflict = admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).one()
+    assert conflict.hr_person_sync_id == run.id
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_stamps_hr_person_sync_id_on_conflict(admin_session):
+    """End-to-end: a real run_person_sync-driven sync that flags a rank
+    conflict must leave the created HrRankConflict row's hr_person_sync_id
+    pointing at the actual run, not null."""
+    from tests.helpers import create_soldier
+
+    holding = _holding_node(admin_session)
+    soldier = create_soldier(admin_session, personal_number="ps-rc-e2e-1", hierarchy_node_id=holding.id)
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "worker"
+    profile = _linked_profile(admin_session, soldier)
+    admin_session.commit()
+
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "full_name": "ישראל ישראלי", "personal_number": "ps-rc-e2e-1", "rank": "סמל",
+                    "team_id": None, "mador_id": None, "branch_id": None,
+                    "department_id": None, "shetach_id": None, "unit_id": None,
+                },
+            ])
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    conflict = admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).one()
+    assert conflict.hr_person_sync_id == run.id
+
+
+def test_apply_new_person_clears_stale_dismissal_when_linking_held_profile(admin_session):
+    """A profile that was previously held-for-review and dismissed, then
+    successfully mapped and applied on a later sync (transitioning to
+    "synced"), has no reason to carry stale held-for-review dismissal state."""
+    from tests.helpers import create_soldier
+
+    holding = _holding_node(admin_session)
+    soldier = create_soldier(admin_session, personal_number="ps-dismiss-new-1", hierarchy_node_id=holding.id)
+    profile = SoldierHrProfile(
+        personal_number="ps-dismiss-new-1", raw_dto={}, sync_status="held_for_review",
+        review_reason="bad date",
+        review_dismissed_at=datetime.now(tz=timezone.utc),
+        review_dismissed_reasons=["bad date"],
+    )
+    admin_session.add(profile)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-dismiss-new-1")
+    mapped = _mapped(personal_number="ps-dismiss-new-1")
+
+    _apply_new_person(admin_session, user, mapped)
+    admin_session.commit()
+    admin_session.refresh(profile)
+
+    assert profile.sync_status == "synced"
+    assert profile.review_dismissed_at is None
+    assert profile.review_dismissed_reasons is None
+
+
+def test_apply_existing_person_clears_stale_dismissal_on_synced(admin_session):
+    """Same as above but through the existing-person update path -- a profile
+    that was held-for-review and dismissed, then successfully synced again,
+    must have both dismissal fields cleared."""
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="ps-dismiss-upd-1")
+    profile = SoldierHrProfile(
+        personal_number="ps-dismiss-upd-1", raw_dto={}, soldier_id=soldier.id,
+        sync_status="held_for_review", review_reason="bad date",
+        review_dismissed_at=datetime.now(tz=timezone.utc),
+        review_dismissed_reasons=["bad date"],
+    )
+    admin_session.add(profile)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-dismiss-upd-1")
+    mapped = _mapped(personal_number="ps-dismiss-upd-1", phone="050-1112222")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+    admin_session.refresh(profile)
+
+    assert profile.sync_status == "synced"
+    assert profile.review_dismissed_at is None
+    assert profile.review_dismissed_reasons is None
 
 
 def test_holding_node_id_raises_when_not_bootstrapped(admin_session):

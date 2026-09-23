@@ -1614,6 +1614,7 @@ def confirm_session(
                     s.full_name = row["full_name"]
                     if row.get("rank") is not None:
                         s.rank = row["rank"]
+                        s.rank_last_set_by = "manual"
                         from app.services.rank_advancement import resolve_track
                         s.rank_track = resolve_track(s.rank, s.rank_track)
                     if row.get("rank_track") is not None:

@@ -361,9 +361,9 @@ def update_soldier_profile(
     old_enlistment_date = soldier.enlistment_date
     for k, v in fields.items():
         if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
-            setattr(soldier, k, v)
-            if k == "rank":
+            if k == "rank" and v != old_rank:
                 soldier.rank_last_set_by = "manual"
+            setattr(soldier, k, v)
     rank_or_track_changed = (
         ("rank" in fields and fields["rank"] != old_rank)
         or ("rank_track" in fields and fields["rank_track"] != old_rank_track)

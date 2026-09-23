@@ -1469,7 +1469,8 @@
     "type_mitvahim_expired": "תוקף מטווחים פג",
     "type_alal_expiring_soon": "תוקף אל\"ל יפוג בקרוב",
     "type_alal_expired": "תוקף אל\"ל פג",
-    "type_hr_sync_anomaly_aborted": "סנכרון HR הופסק"
+    "type_hr_sync_anomaly_aborted": "סנכרון HR הופסק",
+    "type_hr_rank_conflict": "עדכון דרגה עקב סנכרון HR"
   },
   "announcements": {
     "title": "הכרזות",
