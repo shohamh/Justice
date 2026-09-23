@@ -217,6 +217,39 @@ def test_approve_field_update_rank_initializes_next_rank_date(admin_session):
     assert soldier.next_rank_date_overridden is False
 
 
+def test_approve_field_update_rank_sets_rank_last_set_by_manual(admin_session):
+    """Task 2 fix: approve_field_update()'s `elif field == "rank":` branch is
+    a human decision writing Soldier.rank, same as update_soldier_profile's
+    manual edit path — it must stamp rank_last_set_by="manual" so Task 3's
+    HR-sync conflict detection can tell it apart from a worker promotion."""
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="unit", name=f"unit_{uuid.uuid4().hex[:8]}")
+    soldier = Soldier(
+        personal_number=f"pn_{uuid.uuid4().hex[:8]}",
+        full_name="Test Soldier",
+        password_hash="x",
+        hierarchy_node_id=node.id,
+        rank="טוראי",
+        enlistment_date=date(2021, 1, 15),
+    )
+    admin_session.add(soldier)
+    admin_session.flush()
+    req = submit_field_update(
+        admin_session,
+        soldier_id=soldier.id,
+        field_name="rank",
+        new_value="סמר",
+        actor_id=soldier.id,
+    )
+    admin_session.flush()
+
+    approve_field_update(admin_session, update=req, actor_id=soldier.id)
+
+    assert soldier.rank == "סמר"
+    assert soldier.rank_last_set_by == "manual"
+
+
 def test_approve_field_update_rank_without_interval_leaves_next_rank_date_none(admin_session):
     from tests.helpers import create_node
 

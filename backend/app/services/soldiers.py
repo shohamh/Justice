@@ -737,6 +737,7 @@ def approve_field_update(
         if rank_value is not None and rank_track_value is not None and resolved_track != rank_track_value:
             raise SoldierValidationError("rank_track_invalid")
         soldier.rank = rank_value
+        soldier.rank_last_set_by = "manual"
         soldier.rank_track = resolved_track
         _reset_rank_advancement(session, soldier, since=date.today())
     elif field == "rank_track":
