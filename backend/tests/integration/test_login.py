@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.password import hash_password
+from app.auth.password import hash_password, verify_password
 from app.db.models import Soldier
 
 
@@ -171,13 +171,15 @@ def test_login_with_valid_activation_code_succeeds(client: TestClient, admin_ses
     assert body["must_change_password"] is True
 
 
-def test_login_consumes_activation_code_so_it_cannot_be_reused(client: TestClient, admin_session: Session):
-    """The SoldierActivationCode row itself is single-use (used_at gets set).
-    Logging in again with the same string afterward still succeeds — but as
-    an ordinary password login, not a fresh activation, because (C1) the code
-    became the soldier's real password_hash on first use. That's the whole
-    point of the fix: the code isn't a dead end, it's now a real, working
-    temporary password until change-password replaces it."""
+def test_activation_code_becomes_temporary_password_until_changed(client: TestClient, admin_session: Session):
+    """The SoldierActivationCode row itself is single-use (used_at gets set
+    on first use). Logging in again with the same string right afterward
+    still succeeds — but as an ordinary password login, not a fresh
+    activation, because (C1) the code became the soldier's real
+    password_hash on first use. That window is short-lived though: once the
+    soldier actually changes their password via /auth/change-password, the
+    original code stops being a valid credential at all — proving the
+    code-as-temporary-password state doesn't linger past the change."""
     soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100002")
 
     first = client.post(
@@ -190,10 +192,26 @@ def test_login_consumes_activation_code_so_it_cannot_be_reused(client: TestClien
     ).scalar_one()
     assert code.used_at is not None
 
+    # Still works as an ordinary password login — the code is now password_hash.
     second = client.post(
         "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
     )
     assert second.status_code == 200
+    access_token = second.json()["access_token"]
+
+    change_resp = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "ACTV1234", "new_password": "Br4nd-New!Pass"},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert change_resp.status_code == 200
+
+    # Now that a real password has superseded it, the original code must no
+    # longer work as a credential at all.
+    third = client.post(
+        "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
+    )
+    assert third.status_code == 401
 
 
 def test_login_with_expired_activation_code_fails(client: TestClient, admin_session: Session):
@@ -264,7 +282,10 @@ def test_activation_code_login_bumps_token_version_invalidating_old_sessions(
 
     admin_session.refresh(soldier)
     assert soldier.token_version == old_token_version + 1
-    assert soldier.password_hash != hash_password("placeholder-nobody-knows-this")
+    # Positive check: the activation code itself now verifies as the
+    # soldier's real password_hash (a `!=` comparison against a freshly
+    # salted hash_password() call would be a tautology and prove nothing).
+    assert verify_password("ACTV9999", soldier.password_hash)
 
 
 def test_activation_code_login_writes_audit_context_marking_method(

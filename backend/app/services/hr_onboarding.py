@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.db.models import ExemptionRequest, ExemptionType, NotificationType, PersonalConstraint, Soldier, SoldierHrProfile
 from app.services.notifications import notify_commanders_of_request
 from app.services.registration import validate_personal_constraint
-from app.services.soldiers import SoldierValidationError, validate_soldier_dates
 
 # Mirrors the `food_type` Enum column in app/db/models.py. Kept as a plain
 # tuple rather than introspecting the column, to keep this validation free of
@@ -76,10 +75,14 @@ def complete_first_login_onboarding(
     soldier.last_mitvahim_date = last_mitvahim_date
     soldier.last_alal_date = last_alal_date
 
-    try:
-        validate_soldier_dates(soldier)
-    except SoldierValidationError as exc:
-        raise OnboardingError(str(exc)) from exc
+    # Deliberately NOT calling validate_soldier_dates(soldier) here: it checks
+    # rank/enlistment_date/unit_join_date/enrolled_at/discharge_date/
+    # mandatory_end_date/is_career — none of which this form sets. Those come
+    # from HR sync with no cross-field validation on the way in, so a soldier
+    # whose HR-sourced record already has an inconsistency (e.g. a bad
+    # discharge/enlistment combination) would get a 400 on every onboarding
+    # attempt forever, with no way to fix HR's own data through this form
+    # (the same class of lockout soldiers.py:396-402 already warns about).
 
     created_requests: list[ExemptionRequest] = []
     for er in exemption_requests:
@@ -94,16 +97,19 @@ def complete_first_login_onboarding(
         session.add(req)
         created_requests.append(req)
 
+    created_constraints: list[PersonalConstraint] = []
     for pc in personal_constraints:
-        session.add(PersonalConstraint(
+        constraint = PersonalConstraint(
             soldier_id=soldier.id,
             start_date=pc["start_date"],
             end_date=pc["end_date"],
             reason=pc.get("reason"),
             status="pending_commander",
-        ))
+        )
+        session.add(constraint)
+        created_constraints.append(constraint)
 
-    session.flush()  # assign IDs to the new ExemptionRequest rows before notifying
+    session.flush()  # assign IDs to the new rows before notifying
 
     for req in created_requests:
         notify_commanders_of_request(
@@ -116,6 +122,18 @@ def complete_first_login_onboarding(
             reference_id=req.id,
             actor_id=soldier.id,
             target_tab="exemptions",
+        )
+
+    for constraint in created_constraints:
+        notify_commanders_of_request(
+            session,
+            soldier_id=soldier.id,
+            type=NotificationType.constraint_pending,
+            title=f"בקשת אילוץ חדשה: {constraint.start_date} – {constraint.end_date}",
+            body=constraint.reason,
+            reference_type="personal_constraint",
+            reference_id=constraint.id,
+            actor_id=soldier.id,
         )
 
     if last_mitvahim_date is not None or last_alal_date is not None:

@@ -237,23 +237,31 @@ def test_accepts_all_valid_food_types(admin_session):
         assert result.food_type == food_type
 
 
-def test_rejects_bad_soldier_dates(admin_session):
-    """validate_soldier_dates must be applied to the mandatory_end_date /
-    discharge_date already on the soldier row, in combination with the dates
-    this call sets — a bad discharge/enlistment combination should raise
-    instead of silently reaching the DB."""
+def test_does_not_reject_onboarding_for_pre_existing_bad_hr_dates(admin_session):
+    """Round-2 review Important #1: this form only sets last_mitvahim_date/
+    last_alal_date. It must NOT run validate_soldier_dates against the whole
+    soldier row — that checks rank/enlistment_date/unit_join_date/
+    enrolled_at/discharge_date/mandatory_end_date/is_career, none of which
+    this form touches. Those come from HR sync with no cross-field
+    validation on the way in, so a soldier whose HR-sourced record already
+    has e.g. discharge_date <= enlistment_date must still be able to
+    complete onboarding — otherwise they're permanently locked out with no
+    way to fix HR's own data through this form."""
     soldier = _eligible_soldier(admin_session, personal_number="onb-15")
     soldier.enlistment_date = date(2025, 1, 1)
-    soldier.discharge_date = date(2024, 1, 1)  # before enlistment: invalid
+    soldier.discharge_date = date(2024, 1, 1)  # inconsistent HR data, pre-existing
     admin_session.commit()
 
-    with pytest.raises(OnboardingError) as exc_info:
-        complete_first_login_onboarding(
-            admin_session, soldier=soldier,
-            food_type=None, food_constraints=None, last_mitvahim_date=None, last_alal_date=None,
-            exemption_requests=[], personal_constraints=[],
-        )
-    assert str(exc_info.value) == "discharge_date_before_enlistment"
+    result = complete_first_login_onboarding(
+        admin_session, soldier=soldier,
+        food_type=None, food_constraints=None,
+        last_mitvahim_date=date(2026, 1, 1), last_alal_date=None,
+        exemption_requests=[], personal_constraints=[],
+    )
+    admin_session.commit()
+
+    assert result.hr_onboarding_completed_at is not None
+    assert result.last_mitvahim_date == date(2026, 1, 1)
 
 
 def test_notifies_commanders_for_each_created_exemption_request(admin_session, monkeypatch):
@@ -283,4 +291,35 @@ def test_notifies_commanders_for_each_created_exemption_request(admin_session, m
     assert calls[0]["soldier_id"] == soldier.id
     assert calls[0]["reference_id"] == req.id
     assert calls[0]["reference_type"] == "exemption_request"
+    assert calls[0]["actor_id"] == soldier.id
+
+
+def test_notifies_commanders_for_each_created_personal_constraint(admin_session, monkeypatch):
+    """Round-2 review Important #2: PersonalConstraint rows created here must
+    notify commanders too, same as ExemptionRequest rows do — otherwise they
+    sit silently in the approval queue with nobody told."""
+    import app.services.hr_onboarding as hr_onboarding_module
+
+    calls: list[dict] = []
+
+    def _fake_notify(session, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(hr_onboarding_module, "notify_commanders_of_request", _fake_notify)
+
+    soldier = _eligible_soldier(admin_session, personal_number="onb-17")
+
+    complete_first_login_onboarding(
+        admin_session, soldier=soldier,
+        food_type=None, food_constraints=None, last_mitvahim_date=None, last_alal_date=None,
+        exemption_requests=[],
+        personal_constraints=[{"start_date": date(2026, 1, 1), "end_date": date(2026, 1, 5), "reason": "test"}],
+    )
+    admin_session.commit()
+
+    constraint = admin_session.query(PersonalConstraint).filter_by(soldier_id=soldier.id).one()
+    assert len(calls) == 1
+    assert calls[0]["soldier_id"] == soldier.id
+    assert calls[0]["reference_id"] == constraint.id
+    assert calls[0]["reference_type"] == "personal_constraint"
     assert calls[0]["actor_id"] == soldier.id
