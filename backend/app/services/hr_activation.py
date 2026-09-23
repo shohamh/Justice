@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.authz import scope_root_ids
 from app.db.models import HierarchyNode, Soldier, SoldierActivationCode, SoldierHrProfile
 from app.services.authority import dm_scope_covers_target
@@ -70,6 +71,15 @@ def generate_activation_code(
         raise ActivationCodeError("not_hr_linked")
     if target.hr_onboarding_completed_at is not None:
         raise ActivationCodeError("already_activated")
+    if not target.must_change_password:
+        # A soldier who already has a real, working password — either a
+        # pre-existing soldier later linked to an HR profile (must_change_password
+        # is False for those), or one who already activated via a code and
+        # changed their password (change-password flips must_change_password
+        # back to False) — must never be eligible for a fresh code: that would
+        # let anyone with generation scope silently mint credentials that log
+        # in AS them, invisibly and without touching their real password.
+        raise ActivationCodeError("already_activated")
 
     now = datetime.now(tz=timezone.utc)
     session.execute(
@@ -89,6 +99,13 @@ def generate_activation_code(
     )
     session.add(code)
     session.flush()
+    write_audit(
+        session,
+        actor_id=actor.id,
+        action="hr_activation.code_generated",
+        entity_type="soldier",
+        entity_id=target.id,
+    )
     return code
 
 

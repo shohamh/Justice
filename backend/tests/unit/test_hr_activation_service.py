@@ -14,8 +14,15 @@ from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_soldier
 
 
-def _hr_linked_soldier(session, *, personal_number: str, hierarchy_node_id=None):
-    soldier = create_soldier(session, personal_number=personal_number, hierarchy_node_id=hierarchy_node_id)
+def _hr_linked_soldier(session, *, personal_number: str, hierarchy_node_id=None, must_change_password: bool = True):
+    # must_change_password=True by default: mirrors a real HR-synced soldier,
+    # who never had a real password yet — that's exactly the population
+    # eligible for a fresh activation code (see generate_activation_code's
+    # must_change_password check, closing the C2 impersonation finding).
+    soldier = create_soldier(
+        session, personal_number=personal_number, hierarchy_node_id=hierarchy_node_id,
+        must_change_password=must_change_password,
+    )
     session.add(SoldierHrProfile(personal_number=personal_number, raw_dto={}, soldier_id=soldier.id))
     session.commit()
     return soldier
@@ -96,6 +103,58 @@ def test_generate_rejects_already_onboarded_soldier(admin_session):
         assert False, "expected ActivationCodeError"
     except ActivationCodeError as exc:
         assert str(exc) == "already_activated"
+
+
+def test_generate_rejects_soldier_with_real_password_already(admin_session):
+    """C2: a soldier with must_change_password=False already has a real,
+    working password — a pre-existing soldier later linked to an HR profile,
+    or one who already activated via a code and changed their password.
+    Neither should be eligible for a fresh code, which would otherwise let
+    anyone with scope silently mint credentials that log in as them."""
+    admin = create_soldier(admin_session, personal_number="hract-admin-11", role="admin")
+    target = _hr_linked_soldier(admin_session, personal_number="hract-target-18", must_change_password=False)
+
+    try:
+        generate_activation_code(admin_session, target_soldier_id=target.id, actor=admin)
+        assert False, "expected ActivationCodeError"
+    except ActivationCodeError as exc:
+        assert str(exc) == "already_activated"
+
+
+def test_generate_rejects_soldier_who_already_changed_password_after_activation(admin_session):
+    """The exact C1/C2 interaction: soldier activates via code, changes their
+    password (must_change_password flips back to False), then a commander
+    tries to mint a fresh code for them — must stay blocked."""
+    admin = create_soldier(admin_session, personal_number="hract-admin-12", role="admin")
+    target = _hr_linked_soldier(admin_session, personal_number="hract-target-19", must_change_password=True)
+    target.must_change_password = False
+    admin_session.commit()
+
+    try:
+        generate_activation_code(admin_session, target_soldier_id=target.id, actor=admin)
+        assert False, "expected ActivationCodeError"
+    except ActivationCodeError as exc:
+        assert str(exc) == "already_activated"
+
+
+def test_generate_writes_audit_row(admin_session):
+    from sqlalchemy import text
+
+    admin = create_soldier(admin_session, personal_number="hract-admin-13", role="admin")
+    target = _hr_linked_soldier(admin_session, personal_number="hract-target-20")
+
+    generate_activation_code(admin_session, target_soldier_id=target.id, actor=admin)
+    admin_session.commit()
+
+    rows = admin_session.execute(
+        text(
+            "SELECT actor_id, entity_id FROM audit_log WHERE action='hr_activation.code_generated' "
+            "ORDER BY created_at DESC LIMIT 1"
+        )
+    ).all()
+    assert len(rows) == 1
+    assert str(rows[0].actor_id) == str(admin.id)
+    assert str(rows[0].entity_id) == str(target.id)
 
 
 def test_generate_invalidates_prior_unused_code(admin_session):

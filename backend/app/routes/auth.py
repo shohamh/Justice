@@ -252,6 +252,17 @@ def login(
     soldier.failed_login_count = 0
     soldier.locked_until = None
 
+    if activation_consumed:
+        # The activation code the soldier just typed becomes their real,
+        # temporary password (same shape as onboard_soldier's temp-password
+        # flow) so /auth/change-password's current_password check has
+        # something real to verify against next — without this, the soldier
+        # is stuck: must_change_password blocks every other route and they
+        # can never supply a working current_password. Also invalidate any
+        # other outstanding sessions, same as a real password change would.
+        soldier.password_hash = hash_password(body.password)
+        bump_token_version(soldier)
+
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
     refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
 
@@ -261,7 +272,7 @@ def login(
         action="auth.login.success",
         entity_type="soldier",
         entity_id=soldier.id,
-        context=_client_context(request),
+        context={**_client_context(request), **({"method": "activation_code"} if activation_consumed else {})},
     )
     session.commit()
 

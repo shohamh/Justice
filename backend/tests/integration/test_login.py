@@ -172,17 +172,28 @@ def test_login_with_valid_activation_code_succeeds(client: TestClient, admin_ses
 
 
 def test_login_consumes_activation_code_so_it_cannot_be_reused(client: TestClient, admin_session: Session):
-    _hr_linked_soldier_with_code(admin_session, personal_number="8100002")
+    """The SoldierActivationCode row itself is single-use (used_at gets set).
+    Logging in again with the same string afterward still succeeds — but as
+    an ordinary password login, not a fresh activation, because (C1) the code
+    became the soldier's real password_hash on first use. That's the whole
+    point of the fix: the code isn't a dead end, it's now a real, working
+    temporary password until change-password replaces it."""
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100002")
 
     first = client.post(
         "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
     )
     assert first.status_code == 200
 
+    code = admin_session.execute(
+        select(SoldierActivationCode).where(SoldierActivationCode.soldier_id == soldier.id)
+    ).scalar_one()
+    assert code.used_at is not None
+
     second = client.post(
         "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
     )
-    assert second.status_code == 401
+    assert second.status_code == 200
 
 
 def test_login_with_expired_activation_code_fails(client: TestClient, admin_session: Session):
@@ -207,3 +218,72 @@ def test_login_with_wrong_activation_code_fails_normally(client: TestClient, adm
     )
     assert r.status_code == 401
     assert r.json()["detail"]["detail"] == "invalid_credentials"
+
+
+def test_activation_code_login_then_change_password_then_protected_route_succeeds(
+    client: TestClient, admin_session: Session
+):
+    """C1 end-to-end: activation-code login is no longer a dead end. The code
+    becomes the soldier's real current_password, so change-password succeeds
+    with it, and a protected route (gated by require_password_changed) is
+    reachable right afterward."""
+    _hr_linked_soldier_with_code(admin_session, personal_number="8100005", code="ACTV5678")
+
+    login_resp = client.post(
+        "/api/auth/login", json={"personal_number": "8100005", "password": "ACTV5678"}
+    )
+    assert login_resp.status_code == 200
+    assert login_resp.json()["must_change_password"] is True
+    access_token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # The activation code itself must now verify as current_password.
+    change_resp = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "ACTV5678", "new_password": "Br4nd-New!Pass"},
+        headers=headers,
+    )
+    assert change_resp.status_code == 200
+
+    protected_resp = client.get(
+        "/api/calendar/holidays", params={"year": 2026}, headers=headers,
+    )
+    assert protected_resp.status_code == 200
+
+
+def test_activation_code_login_bumps_token_version_invalidating_old_sessions(
+    client: TestClient, admin_session: Session,
+):
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100006", code="ACTV9999")
+    old_token_version = soldier.token_version
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100006", "password": "ACTV9999"}
+    )
+    assert r.status_code == 200
+
+    admin_session.refresh(soldier)
+    assert soldier.token_version == old_token_version + 1
+    assert soldier.password_hash != hash_password("placeholder-nobody-knows-this")
+
+
+def test_activation_code_login_writes_audit_context_marking_method(
+    client: TestClient, admin_session: Session,
+):
+    from sqlalchemy import text
+
+    _hr_linked_soldier_with_code(admin_session, personal_number="8100007", code="ACTV0007")
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100007", "password": "ACTV0007"}
+    )
+    assert r.status_code == 200
+
+    rows = admin_session.execute(
+        text(
+            "SELECT context FROM audit_log WHERE action='auth.login.success' "
+            "ORDER BY created_at DESC LIMIT 1"
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].context.get("method") == "activation_code"

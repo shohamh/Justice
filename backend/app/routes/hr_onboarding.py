@@ -46,7 +46,9 @@ def first_login_onboarding(
         )
     except OnboardingError as exc:
         session.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        detail = str(exc)
+        status_code = status.HTTP_409_CONFLICT if detail == "not_eligible" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     session.commit()
     return FirstLoginOnboardingResponse(
         food_type=soldier.food_type, food_constraints=soldier.food_constraints,

@@ -5,8 +5,11 @@ from app.db.models import SoldierHrProfile
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
-def _hr_linked_soldier(session, *, personal_number: str, hierarchy_node_id=None):
-    soldier = create_soldier(session, personal_number=personal_number, hierarchy_node_id=hierarchy_node_id)
+def _hr_linked_soldier(session, *, personal_number: str, hierarchy_node_id=None, must_change_password: bool = True):
+    soldier = create_soldier(
+        session, personal_number=personal_number, hierarchy_node_id=hierarchy_node_id,
+        must_change_password=must_change_password,
+    )
     session.add(SoldierHrProfile(personal_number=personal_number, raw_dto={}, soldier_id=soldier.id))
     session.commit()
     return soldier
