@@ -61,6 +61,12 @@ class Soldier(Base):
         Boolean, server_default=text("false"), default=False
     )
     current_rank_since: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    # Who last wrote `rank`: "hr_sync" | "worker" | "manual" | None (unknown
+    # provenance, e.g. pre-existing rows). Used by person_sync's conflict
+    # detection (app/services/hr/person_sync.py) to tell "HR is confirming
+    # what the worker already decided" apart from "HR is silently overriding
+    # the worker's own decision".
+    rank_last_set_by: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     bahad1_graduate: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
@@ -129,6 +135,18 @@ class SoldierHrProfile(Base):
         Text, server_default=text("'held_for_review'"), default="held_for_review"
     )
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Snapshot of `review_reason`'s reasons list at the moment an admin last
+    # dismissed this held-for-review record, plus when. `_mark_held`
+    # (app/services/hr/person_sync.py) clears both whenever the new run's
+    # reasons differ from this snapshot, so the admin review UI's
+    # held-for-review list only re-surfaces a record when HR's underlying
+    # data actually changed, not on every sync run.
+    review_dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    review_dismissed_reasons: Mapped[list[str] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )
     overridden_fields: Mapped[list[str]] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), default_factory=list
     )
@@ -210,6 +228,31 @@ class HrPersonSyncError(Base):
     )
     personal_number: Mapped[str] = mapped_column(Text)
     error_message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class HrRankConflict(Base):
+    __tablename__ = "hr_rank_conflicts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    old_rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    new_rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    triggered_by_worker_decision: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    non_sequential_jump: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    hr_person_sync_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hr_person_syncs.id", ondelete="SET NULL"), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -1645,6 +1688,7 @@ class NotificationType(str, _enum.Enum):
     alal_expired = "alal_expired"
     duty_instructions_updated = "duty_instructions_updated"
     hr_sync_anomaly_aborted = "hr_sync_anomaly_aborted"
+    hr_rank_conflict = "hr_rank_conflict"
 
 
 class Notification(Base):
