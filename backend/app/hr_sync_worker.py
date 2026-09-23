@@ -45,4 +45,8 @@ async def run_hr_sync_worker() -> None:
     poll_hours = _DEFAULT_POLL_HOURS
     while True:
         await asyncio.sleep(poll_hours * 3600)
-        poll_hours = await asyncio.to_thread(_run_hr_sync_cycle_in_own_session) or _DEFAULT_POLL_HOURS
+        try:
+            poll_hours = await asyncio.to_thread(_run_hr_sync_cycle_in_own_session) or _DEFAULT_POLL_HOURS
+        except Exception:
+            logger.warning("hr sync worker: unhandled error", exc_info=True)
+            poll_hours = _DEFAULT_POLL_HOURS

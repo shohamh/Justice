@@ -16,6 +16,23 @@ def test_worker_calls_sync_cycle_each_wake(app_session) -> None:
     mock_cycle.assert_called_once()
 
 
+def test_worker_survives_exception_from_own_session_cycle(app_session) -> None:
+    with patch(
+        "app.hr_sync_worker._run_hr_sync_cycle_in_own_session",
+        side_effect=RuntimeError("boom"),
+    ) as mock_cycle, patch(
+        "app.hr_sync_worker.asyncio.sleep", side_effect=[None, None, asyncio.CancelledError]
+    ):
+        try:
+            asyncio.run(run_hr_sync_worker())
+        except asyncio.CancelledError:
+            pass
+    # Two wakes reached _run_hr_sync_cycle_in_own_session before the loop was
+    # cancelled on the third sleep -- proving the RuntimeError from the first
+    # call did not kill the loop.
+    assert mock_cycle.call_count == 2
+
+
 def test_run_hr_sync_cycle_skips_when_hr_not_configured(app_session) -> None:
     with patch("app.hr_sync_worker.get_settings") as mock_settings:
         mock_settings.return_value.hr_sync_enabled = False
