@@ -77,3 +77,79 @@ def test_resolve_placement_unresolved_ids_use_holding_node(admin_session):
     node_id = resolve_placement_node_id(admin_session, user)
 
     assert node_id == holding.id
+
+
+import secrets
+
+from app.db.models import Soldier, SoldierHrProfile
+from app.services.hr.mapping import HeldForReview, MappedSoldierFields, map_hr_user
+from app.services.hr.person_sync import _apply_new_person, _mark_held
+
+
+def _mapped(**overrides: object) -> MappedSoldierFields:
+    defaults: dict[str, object] = dict(full_name="ישראל ישראלי", personal_number="ps-new-1")
+    defaults.update(overrides)
+    return MappedSoldierFields(**defaults)
+
+
+def test_apply_new_person_creates_soldier_with_placeholder_password(admin_session):
+    holding = _holding_node(admin_session)
+    user = _hr_user(personal_number="ps-new-1", full_name="ישראל ישראלי")
+    mapped = _mapped()
+
+    soldier, profile = _apply_new_person(admin_session, user, mapped)
+    admin_session.commit()
+
+    assert soldier.personal_number == "ps-new-1"
+    assert soldier.must_change_password is True
+    assert soldier.hierarchy_node_id == holding.id
+    assert profile.soldier_id == soldier.id
+    assert profile.sync_status == "synced"
+
+
+def test_apply_new_person_links_existing_soldier_without_touching_password(admin_session):
+    from tests.helpers import create_soldier
+
+    _holding_node(admin_session)
+    existing = create_soldier(admin_session, personal_number="ps-existing-1")
+    original_hash = existing.password_hash
+    original_role = existing.role
+
+    user = _hr_user(personal_number="ps-existing-1", full_name=existing.full_name)
+    mapped = _mapped(personal_number="ps-existing-1", full_name=existing.full_name)
+
+    soldier, profile = _apply_new_person(admin_session, user, mapped)
+    admin_session.commit()
+
+    assert soldier.id == existing.id
+    assert soldier.password_hash == original_hash
+    assert soldier.role == original_role
+    assert profile.soldier_id == existing.id
+
+
+def test_mark_held_creates_profile_without_soldier(admin_session):
+    user = _hr_user(personal_number="ps-held-1")
+    held = HeldForReview(personal_number="ps-held-1", reasons=["unmappable rank: 'x'"])
+
+    profile = _mark_held(admin_session, user, held)
+    admin_session.commit()
+
+    assert profile.soldier_id is None
+    assert profile.sync_status == "held_for_review"
+    assert "unmappable rank" in profile.review_reason
+    assert admin_session.query(Soldier).filter_by(personal_number="ps-held-1").first() is None
+
+
+def test_mark_held_updates_existing_held_profile_not_duplicate(admin_session):
+    user = _hr_user(personal_number="ps-held-2")
+    held1 = HeldForReview(personal_number="ps-held-2", reasons=["first reason"])
+    held2 = HeldForReview(personal_number="ps-held-2", reasons=["second reason"])
+
+    _mark_held(admin_session, user, held1)
+    admin_session.commit()
+    _mark_held(admin_session, user, held2)
+    admin_session.commit()
+
+    rows = admin_session.query(SoldierHrProfile).filter_by(personal_number="ps-held-2").all()
+    assert len(rows) == 1
+    assert "second reason" in rows[0].review_reason
