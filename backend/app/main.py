@@ -13,6 +13,7 @@ from starlette.responses import Response as StarletteResponse
 from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
 from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, request_data, request_id
+from app.hr_sync_worker import run_hr_sync_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.qualification_expiry_worker import run_qualification_expiry_worker
@@ -170,12 +171,13 @@ async def lifespan(app: FastAPI):
     range_attendance_task = asyncio.create_task(run_range_attendance_worker())
     duty_eligibility_task = asyncio.create_task(run_duty_eligibility_worker())
     rank_advancement_task = asyncio.create_task(run_rank_advancement_worker())
+    hr_sync_task = asyncio.create_task(run_hr_sync_worker())
     qualification_expiry_task = asyncio.create_task(run_qualification_expiry_worker())
     score_projection_revalidation_task = asyncio.create_task(run_score_projection_revalidation_worker())
     yield
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task, score_projection_revalidation_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
         task.cancel()
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task, score_projection_revalidation_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
         try:
             await task
         except asyncio.CancelledError:
