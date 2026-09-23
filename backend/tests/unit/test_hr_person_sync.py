@@ -153,3 +153,124 @@ def test_mark_held_updates_existing_held_profile_not_duplicate(admin_session):
     rows = admin_session.query(SoldierHrProfile).filter_by(personal_number="ps-held-2").all()
     assert len(rows) == 1
     assert "second reason" in rows[0].review_reason
+
+
+from app.services.hr.person_sync import _apply_existing_person
+
+
+def _linked_profile(session, soldier) -> SoldierHrProfile:
+    profile = SoldierHrProfile(
+        personal_number=soldier.personal_number, raw_dto={}, soldier_id=soldier.id, sync_status="synced",
+    )
+    session.add(profile)
+    session.commit()
+    return profile
+
+
+def test_apply_existing_person_updates_non_overridden_field(admin_session):
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="ps-upd-1")
+    profile = _linked_profile(admin_session, soldier)
+    user = _hr_user(personal_number="ps-upd-1")
+    mapped = _mapped(personal_number="ps-upd-1", phone="050-1112222")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+
+    assert soldier.phone == "050-1112222"
+
+
+def test_apply_existing_person_skips_overridden_field_and_records_divergence(admin_session):
+    from sqlalchemy import select as sa_select
+    from tests.helpers import create_soldier
+    from app.db.models import AuditLog
+
+    soldier = create_soldier(admin_session, personal_number="ps-upd-2")
+    soldier.phone = "050-0000000"
+    admin_session.commit()
+    profile = _linked_profile(admin_session, soldier)
+    profile.overridden_fields = ["phone"]
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-upd-2")
+    mapped = _mapped(personal_number="ps-upd-2", phone="050-9998888")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+
+    assert soldier.phone == "050-0000000"
+    entries = admin_session.execute(
+        sa_select(AuditLog).where(AuditLog.action == "hr_sync.field_skipped_overridden")
+    ).scalars().all()
+    assert len(entries) == 1
+
+
+def test_apply_existing_person_reruns_dependent_logic_on_rank_change(admin_session, monkeypatch):
+    from tests.helpers import create_soldier
+    import app.services.hr.person_sync as person_sync_module
+
+    soldier = create_soldier(admin_session, personal_number="ps-upd-3")
+    profile = _linked_profile(admin_session, soldier)
+    user = _hr_user(personal_number="ps-upd-3")
+    mapped = _mapped(personal_number="ps-upd-3", rank="רסל")
+
+    calls = []
+    monkeypatch.setattr(
+        person_sync_module, "_reset_rank_advancement",
+        lambda session, s, *, since: calls.append(("rank", s.id)),
+    )
+    monkeypatch.setattr(
+        person_sync_module, "recheck_soldier_assignments",
+        lambda session, soldier_id: calls.append(("eligibility", soldier_id)),
+    )
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+
+    assert ("rank", soldier.id) in calls
+    assert ("eligibility", soldier.id) in calls
+
+
+def test_apply_existing_person_does_not_rerun_dependent_logic_when_untracked_field_changes(admin_session, monkeypatch):
+    from tests.helpers import create_soldier
+    import app.services.hr.person_sync as person_sync_module
+
+    soldier = create_soldier(admin_session, personal_number="ps-upd-4")
+    profile = _linked_profile(admin_session, soldier)
+    user = _hr_user(personal_number="ps-upd-4")
+    mapped = _mapped(personal_number="ps-upd-4", phone="050-1231234")
+
+    calls = []
+    monkeypatch.setattr(
+        person_sync_module, "_reset_rank_advancement",
+        lambda session, s, *, since: calls.append("rank"),
+    )
+    monkeypatch.setattr(
+        person_sync_module, "recheck_soldier_assignments",
+        lambda session, soldier_id: calls.append("eligibility"),
+    )
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+
+    assert calls == []
+
+
+def test_apply_existing_person_flips_vanished_back_to_synced(admin_session):
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="ps-upd-5")
+    profile = _linked_profile(admin_session, soldier)
+    profile.sync_status = "vanished"
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-upd-5")
+    mapped = _mapped(personal_number="ps-upd-5")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+
+    assert profile.sync_status == "synced"

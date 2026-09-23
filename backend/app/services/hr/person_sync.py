@@ -96,3 +96,48 @@ def _mark_held(session: Session, user: HrUser, held: HeldForReview) -> SoldierHr
     profile.review_reason = "; ".join(held.reasons)
     profile.last_synced_at = datetime.now(tz=timezone.utc)
     return profile
+
+
+from datetime import date
+
+from app.services.duty_eligibility_watch import recheck_soldier_assignments
+from app.services.hr.divergence import record_sync_divergence
+from app.services.hr.mapping import HR_OWNED_FIELDS
+from app.services.soldiers import _reset_rank_advancement
+
+_DEPENDENT_LOGIC_TRIGGER_FIELDS = frozenset({"rank", "mandatory_end_date", "discharge_date"})
+
+
+def _apply_existing_person(
+    session: Session, profile: SoldierHrProfile, user: HrUser, mapped: MappedSoldierFields,
+) -> None:
+    soldier = session.get(Soldier, profile.soldier_id)
+    changed_dependent_field = False
+
+    for field_name in HR_OWNED_FIELDS:
+        if field_name == "personal_number":
+            continue
+        new_value = getattr(mapped, field_name)
+        if field_name in profile.overridden_fields:
+            old_value = getattr(soldier, field_name)
+            if old_value != new_value:
+                record_sync_divergence(
+                    session, soldier_hr_profile_id=profile.id, field_name=field_name,
+                    hr_value=new_value, local_value=old_value,
+                )
+            continue
+        old_value = getattr(soldier, field_name)
+        if field_name in _DEPENDENT_LOGIC_TRIGGER_FIELDS and old_value != new_value:
+            changed_dependent_field = True
+        setattr(soldier, field_name, new_value)
+
+    soldier.is_officer = mapped.is_officer
+    soldier.is_career = mapped.is_career
+
+    if changed_dependent_field:
+        _reset_rank_advancement(session, soldier, since=date.today())
+        recheck_soldier_assignments(session, soldier.id)
+
+    profile.raw_dto = user.model_dump(by_alias=True)
+    profile.sync_status = "synced"
+    profile.last_synced_at = datetime.now(tz=timezone.utc)
