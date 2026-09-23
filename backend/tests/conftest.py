@@ -331,6 +331,12 @@ _AREA_MARKERS: dict[str, str] = {
     "test_enrollment_routes": "auth",
     "test_security_hardening": "auth",
     "test_security_hardening_2": "auth",
+    "test_soldier_activation_code_model": "auth",
+    "test_hr_activation_service": "auth",
+    "test_hr_activation_route": "auth",
+    "test_require_hr_onboarding_complete": "auth",
+    "test_hr_onboarding_service": "auth",
+    "test_hr_onboarding_route": "auth",
     # hierarchy: hierarchy nodes and duty-manager scope
     "test_hierarchy_api": "hierarchy",
     "test_hierarchy_service": "hierarchy",

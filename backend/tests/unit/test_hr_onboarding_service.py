@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 import pytest
@@ -95,3 +96,76 @@ def test_rejects_invalid_personal_constraint(admin_session):
             personal_constraints=[{"start_date": date(2026, 1, 1), "end_date": None, "reason": ""}],
         )
     assert str(exc_info.value) == "constraint_missing_fields"
+
+
+def test_rejects_exemption_request_missing_type_id(admin_session):
+    soldier = create_soldier(admin_session, personal_number="onb-6")
+
+    with pytest.raises(OnboardingError) as exc_info:
+        complete_first_login_onboarding(
+            admin_session, soldier=soldier,
+            food_type=None, food_constraints=None, last_mitvahim_date=None, last_alal_date=None,
+            exemption_requests=[{"exemption_type_id": None}],
+            personal_constraints=[],
+        )
+    assert str(exc_info.value) == "exemption_missing_fields"
+
+
+def test_rejects_exemption_request_end_date_without_start_date(admin_session):
+    soldier = create_soldier(admin_session, personal_number="onb-7")
+    et = _exemption_type(admin_session)
+    admin_session.commit()
+
+    with pytest.raises(OnboardingError) as exc_info:
+        complete_first_login_onboarding(
+            admin_session, soldier=soldier,
+            food_type=None, food_constraints=None, last_mitvahim_date=None, last_alal_date=None,
+            exemption_requests=[{"exemption_type_id": str(et.id), "end_date": date(2026, 1, 5)}],
+            personal_constraints=[],
+        )
+    assert str(exc_info.value) == "start_date_required"
+
+
+def test_rejects_exemption_request_with_malformed_type_id(admin_session):
+    soldier = create_soldier(admin_session, personal_number="onb-8")
+
+    with pytest.raises(OnboardingError) as exc_info:
+        complete_first_login_onboarding(
+            admin_session, soldier=soldier,
+            food_type=None, food_constraints=None, last_mitvahim_date=None, last_alal_date=None,
+            exemption_requests=[{"exemption_type_id": "not-a-uuid"}],
+            personal_constraints=[],
+        )
+    assert str(exc_info.value) == "exemption_missing_fields"
+
+
+def test_rejects_exemption_request_with_unknown_type_id(admin_session):
+    soldier = create_soldier(admin_session, personal_number="onb-9")
+
+    with pytest.raises(OnboardingError) as exc_info:
+        complete_first_login_onboarding(
+            admin_session, soldier=soldier,
+            food_type=None, food_constraints=None, last_mitvahim_date=None, last_alal_date=None,
+            exemption_requests=[{"exemption_type_id": str(uuid.uuid4())}],
+            personal_constraints=[],
+        )
+    assert str(exc_info.value) == "exemption_type_not_found"
+
+
+def test_rejects_exemption_request_with_bad_date_range(admin_session):
+    soldier = create_soldier(admin_session, personal_number="onb-10")
+    et = _exemption_type(admin_session)
+    admin_session.commit()
+
+    with pytest.raises(OnboardingError) as exc_info:
+        complete_first_login_onboarding(
+            admin_session, soldier=soldier,
+            food_type=None, food_constraints=None, last_mitvahim_date=None, last_alal_date=None,
+            exemption_requests=[{
+                "exemption_type_id": str(et.id),
+                "start_date": date(2026, 1, 10),
+                "end_date": date(2026, 1, 5),
+            }],
+            personal_constraints=[],
+        )
+    assert str(exc_info.value) == "bad_date_range"

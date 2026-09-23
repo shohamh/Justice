@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.db.models import SoldierActivationCode, SoldierHrProfile
@@ -180,3 +181,51 @@ def test_consume_activation_code_wrong_soldier_fails(admin_session):
     admin_session.commit()
 
     assert consume_activation_code(admin_session, soldier_id=other.id, code=code.code) is False
+
+
+def test_generate_raises_when_target_soldier_missing(admin_session):
+    admin = create_soldier(admin_session, personal_number="hract-admin-10", role="admin")
+
+    try:
+        generate_activation_code(admin_session, target_soldier_id=uuid.uuid4(), actor=admin)
+        assert False, "expected ActivationCodeError"
+    except ActivationCodeError as exc:
+        assert str(exc) == "soldier_not_found"
+
+
+def test_commander_cannot_generate_for_target_with_no_hierarchy_node(admin_session):
+    node = create_node(admin_session, level="group", name="hract_mador_c")
+    commander = create_soldier(admin_session, personal_number="hract-cmd-4", role="commander", hierarchy_node_id=node.id)
+    node.commander_id = commander.id
+    admin_session.commit()
+    target = _hr_linked_soldier(admin_session, personal_number="hract-target-15", hierarchy_node_id=None)
+
+    assert can_generate_activation_code(admin_session, actor=commander, target=target) is False
+
+
+def test_commander_cannot_generate_for_target_with_dangling_hierarchy_node(admin_session):
+    node = create_node(admin_session, level="group", name="hract_mador_d")
+    commander = create_soldier(admin_session, personal_number="hract-cmd-5", role="commander", hierarchy_node_id=node.id)
+    node.commander_id = commander.id
+    target = _hr_linked_soldier(admin_session, personal_number="hract-target-16", hierarchy_node_id=node.id)
+    admin_session.commit()
+    # Point the target at a hierarchy node id that does not exist. The
+    # mutation is never flushed/committed to the DB (it would violate the FK
+    # constraint) — no_autoflush keeps the in-memory value visible to the
+    # lookup inside can_generate_activation_code without triggering a flush.
+    target.hierarchy_node_id = uuid.uuid4()
+    with admin_session.no_autoflush:
+        result = can_generate_activation_code(admin_session, actor=commander, target=target)
+
+    assert result is False
+
+
+def test_min_commander_level_setting_overrides_default(admin_session):
+    node = create_node(admin_session, level="team", name="hract_team_setting")
+    commander = create_soldier(admin_session, personal_number="hract-cmd-6", role="commander", hierarchy_node_id=node.id)
+    node.commander_id = commander.id
+    target = _hr_linked_soldier(admin_session, personal_number="hract-target-17", hierarchy_node_id=node.id)
+    set_setting(admin_session, "hr_activation.min_commander_level", "team", actor_id=None)
+    admin_session.commit()
+
+    assert can_generate_activation_code(admin_session, actor=commander, target=target) is True
