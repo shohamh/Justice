@@ -1467,7 +1467,8 @@
     "type_mitvahim_expiring_soon": "תוקף מטווחים יפוג בקרוב",
     "type_mitvahim_expired": "תוקף מטווחים פג",
     "type_alal_expiring_soon": "תוקף אל\"ל יפוג בקרוב",
-    "type_alal_expired": "תוקף אל\"ל פג"
+    "type_alal_expired": "תוקף אל\"ל פג",
+    "type_hr_sync_anomaly_aborted": "סנכרון HR הופסק"
   },
   "announcements": {
     "title": "הכרזות",
