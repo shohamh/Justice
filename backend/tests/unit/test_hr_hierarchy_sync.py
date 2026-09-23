@@ -455,3 +455,31 @@ def test_resolve_group_same_name_different_level_no_longer_ambiguous(admin_sessi
 
     assert resolution.action == "created"
     assert resolution.resolved_node_id != existing_team.id
+
+
+def test_resolve_group_reissued_hr_id_repoints_existing_node_map_row(admin_session):
+    """A second HrGroup with a DIFFERENT hr_group_id but the same
+    (name, parent, level) as one already mapped resolves to the SAME
+    existing node (a "matched" resolution) — simulating HR re-issuing a
+    group's id. _upsert_group_node_map must re-point the existing map row
+    to the new hr_group_id rather than inserting a second row for the same
+    node_id, which would violate the map's unique constraint on node_id."""
+    from app.db.models import HrHierarchyNodeMap
+
+    group_old_id = _group("hr-old-id", "Reissued Unit", kind="unit")
+    resolution1 = _resolve_group(admin_session, group_old_id, hr_id_to_node_id={})
+    admin_session.commit()
+    assert resolution1.action == "created"
+
+    group_new_id = _group("hr-new-id", "Reissued Unit", kind="unit")
+    resolution2 = _resolve_group(admin_session, group_new_id, hr_id_to_node_id={})
+    admin_session.commit()
+
+    assert resolution2.action == "matched"
+    assert resolution2.resolved_node_id == resolution1.resolved_node_id
+
+    rows = admin_session.execute(
+        select(HrHierarchyNodeMap).where(HrHierarchyNodeMap.node_id == resolution1.resolved_node_id)
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].hr_group_id == "hr-new-id"

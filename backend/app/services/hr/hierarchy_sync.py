@@ -67,10 +67,24 @@ def _upsert_group_node_map(session: Session, *, hr_group_id: str, node_id: uuid.
     existing = session.execute(
         select(HrHierarchyNodeMap).where(HrHierarchyNodeMap.hr_group_id == hr_group_id)
     ).scalar_one_or_none()
-    if existing is None:
-        session.add(HrHierarchyNodeMap(hr_group_id=hr_group_id, node_id=node_id))
-    else:
+    if existing is not None:
         existing.node_id = node_id
+        return
+
+    # node_id also carries a unique constraint (one HR group per node). If a
+    # DIFFERENT hr_group_id already maps to this node_id — e.g. HR re-issued
+    # a group's id and the new id's group resolved to the same existing node
+    # by (name, parent, level) — inserting a second row for this node_id
+    # would violate that constraint. Re-point the existing row instead: the
+    # node itself didn't change, only which HR id currently refers to it.
+    existing_by_node = session.execute(
+        select(HrHierarchyNodeMap).where(HrHierarchyNodeMap.node_id == node_id)
+    ).scalar_one_or_none()
+    if existing_by_node is not None:
+        existing_by_node.hr_group_id = hr_group_id
+        return
+
+    session.add(HrHierarchyNodeMap(hr_group_id=hr_group_id, node_id=node_id))
 
 
 def _resolve_group(
