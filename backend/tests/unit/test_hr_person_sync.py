@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import select
@@ -628,3 +629,44 @@ async def test_run_person_sync_outer_failure_marks_status_failed(admin_session):
     all_runs = admin_session.execute(select(HrPersonSync)).scalars().all()
     assert len(all_runs) == 1
     assert all_runs[0].id == run.id
+
+
+def test_mark_held_clears_dismissal_when_reasons_change(admin_session):
+    profile = SoldierHrProfile(
+        personal_number="ps-dismiss-1", raw_dto={}, sync_status="held_for_review",
+        review_reason="bad date",
+        review_dismissed_at=datetime.now(tz=timezone.utc),
+        review_dismissed_reasons=["bad date"],
+    )
+    admin_session.add(profile)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-dismiss-1")
+    held = HeldForReview(personal_number="ps-dismiss-1", reasons=["different reason now"])
+    _mark_held(admin_session, user, held)
+    admin_session.commit()
+    admin_session.refresh(profile)
+
+    assert profile.review_dismissed_at is None
+    assert profile.review_dismissed_reasons is None
+
+
+def test_mark_held_keeps_dismissal_when_reasons_unchanged(admin_session):
+    dismissed_at = datetime.now(tz=timezone.utc)
+    profile = SoldierHrProfile(
+        personal_number="ps-dismiss-2", raw_dto={}, sync_status="held_for_review",
+        review_reason="bad date",
+        review_dismissed_at=dismissed_at,
+        review_dismissed_reasons=["bad date"],
+    )
+    admin_session.add(profile)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-dismiss-2")
+    held = HeldForReview(personal_number="ps-dismiss-2", reasons=["bad date"])
+    _mark_held(admin_session, user, held)
+    admin_session.commit()
+    admin_session.refresh(profile)
+
+    assert profile.review_dismissed_at is not None
+    assert profile.review_dismissed_reasons == ["bad date"]

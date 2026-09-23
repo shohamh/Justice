@@ -122,6 +122,9 @@ def _mark_held(session: Session, user: HrUser, held: HeldForReview) -> SoldierHr
     profile.sync_status = "held_for_review"
     profile.review_reason = "; ".join(held.reasons)
     profile.last_synced_at = datetime.now(tz=timezone.utc)
+    if profile.review_dismissed_reasons != held.reasons:
+        profile.review_dismissed_at = None
+        profile.review_dismissed_reasons = None
     return profile
 
 
