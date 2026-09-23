@@ -1,0 +1,102 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { api } from "./client";
+import {
+  listHeldForReview,
+  listDivergences,
+  listVanished,
+  listRankConflicts,
+  listSyncRuns,
+  dismissHeldForReview,
+  clearFieldOverride,
+  runSyncNow,
+} from "./hrReview";
+
+vi.mock("./client", () => ({
+  api: { get: vi.fn(), post: vi.fn() },
+}));
+
+describe("hrReview api", () => {
+  beforeEach(() => {
+    vi.mocked(api.get).mockReset();
+    vi.mocked(api.post).mockReset();
+  });
+
+  it("listHeldForReview parses items", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { items: [{ id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null }] },
+    });
+    const result = await listHeldForReview();
+    expect(api.get).toHaveBeenCalledWith("/admin/hr-sync/held-for-review");
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].personal_number).toBe("123");
+  });
+
+  it("dismissHeldForReview posts to the right path", async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: { id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null },
+    });
+    await dismissHeldForReview("1");
+    expect(api.post).toHaveBeenCalledWith("/admin/hr-sync/held-for-review/1/dismiss");
+  });
+
+  it("listDivergences parses items", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        items: [{
+          id: "1", soldier_hr_profile_id: "2", field_name: "phone",
+          hr_value: "050-1", local_value: "050-2", created_at: "2026-01-01T00:00:00Z",
+        }],
+      },
+    });
+    const result = await listDivergences();
+    expect(result.items[0].field_name).toBe("phone");
+  });
+
+  it("clearFieldOverride posts field_name in the body", async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: { id: "1", personal_number: "123", review_reason: null, last_synced_at: null },
+    });
+    await clearFieldOverride("1", "phone");
+    expect(api.post).toHaveBeenCalledWith("/admin/hr-sync/divergences/1/clear-override", { field_name: "phone" });
+  });
+
+  it("listVanished parses items", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { items: [{ id: "1", personal_number: "123", last_synced_at: null }] },
+    });
+    const result = await listVanished();
+    expect(result.items).toHaveLength(1);
+  });
+
+  it("listRankConflicts parses items", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        items: [{
+          id: "1", soldier_id: "2", old_rank: "טוראי", new_rank: "סמל",
+          triggered_by_worker_decision: true, non_sequential_jump: false,
+          created_at: "2026-01-01T00:00:00Z",
+        }],
+      },
+    });
+    const result = await listRankConflicts();
+    expect(result.items[0].old_rank).toBe("טוראי");
+  });
+
+  it("listSyncRuns parses both run lists", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { person_syncs: [], hierarchy_syncs: [] },
+    });
+    const result = await listSyncRuns();
+    expect(result.person_syncs).toEqual([]);
+    expect(result.hierarchy_syncs).toEqual([]);
+  });
+
+  it("runSyncNow posts with no body", async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: { hierarchy_sync_id: "1", person_sync_id: "2" },
+    });
+    const result = await runSyncNow();
+    expect(api.post).toHaveBeenCalledWith("/admin/hr-sync/run-now");
+    expect(result.person_sync_id).toBe("2");
+  });
+});
