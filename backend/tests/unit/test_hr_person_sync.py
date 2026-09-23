@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from app.db.models import HierarchyNode, HrHierarchyNodeMap
+import pytest
+from sqlalchemy import select
+
+from app.db.models import HierarchyNode, HrHierarchyNodeMap, NotificationType
+from app.services.hr.client import HrApiClient
 from app.services.hr.person_sync import resolve_placement_node_id
 from app.services.hr.schemas import HrUser
 from app.services.settings_loader import set_setting
@@ -274,3 +278,145 @@ def test_apply_existing_person_flips_vanished_back_to_synced(admin_session):
     admin_session.commit()
 
     assert profile.sync_status == "synced"
+
+
+import httpx
+import respx
+
+from app.db.models import HrPersonSync, HrPersonSyncError, Notification
+from app.services.hr.person_sync import run_person_sync
+
+
+def _user_payload(personal_number: str, **overrides: object) -> dict:
+    payload = {"personalNumber": personal_number, "fullName": f"Soldier {personal_number}"}
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_creates_new_people(admin_session):
+    _holding_node(admin_session)
+    payload = [_user_payload("ps-run-1"), _user_payload("ps-run-2")]
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    assert run.total_fetched == 2
+    assert run.created_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_marks_vanished_person(admin_session):
+    from tests.helpers import create_soldier
+    from app.db.models import SoldierHrProfile
+
+    _holding_node(admin_session)
+    soldier = create_soldier(admin_session, personal_number="ps-vanish-1")
+    admin_session.add(SoldierHrProfile(
+        personal_number="ps-vanish-1", raw_dto={}, soldier_id=soldier.id, sync_status="synced",
+    ))
+    admin_session.commit()
+
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    assert run.vanished_count == 1
+    profile = admin_session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.personal_number == "ps-vanish-1")
+    ).scalar_one()
+    assert profile.sync_status == "vanished"
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_aborts_on_anomaly_and_notifies_admins(admin_session):
+    from tests.helpers import create_soldier
+
+    admin = create_soldier(admin_session, personal_number="ps-admin-1", role="admin")
+    prior_run = HrPersonSync(status="completed", total_fetched=100)
+    admin_session.add(prior_run)
+    admin_session.commit()
+
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=[_user_payload("ps-only-one")])
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "aborted_anomaly"
+    assert run.error_message is not None
+    notifications = admin_session.execute(
+        select(Notification).where(Notification.soldier_id == admin.id)
+    ).scalars().all()
+    assert len(notifications) == 1
+    assert notifications[0].type == NotificationType.hr_sync_anomaly_aborted
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_first_run_has_no_baseline_and_proceeds(admin_session):
+    _holding_node(admin_session)
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=[_user_payload("ps-first-1")])
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    assert run.created_count == 1
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_per_person_error_does_not_abort_run(admin_session, monkeypatch):
+    import app.services.hr.person_sync as person_sync_module
+
+    _holding_node(admin_session)
+    payload = [_user_payload("ps-err-1"), _user_payload("ps-err-2")]
+
+    original = person_sync_module._apply_new_person
+    call_count = {"n": 0}
+
+    def _flaky_apply_new_person(session, user, mapped):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("simulated failure")
+        return original(session, user, mapped)
+
+    monkeypatch.setattr(person_sync_module, "_apply_new_person", _flaky_apply_new_person)
+
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    assert run.created_count == 1
+    assert run.error_count == 1
+    errors = admin_session.execute(
+        select(HrPersonSyncError).where(HrPersonSyncError.hr_person_sync_id == run.id)
+    ).scalars().all()
+    assert len(errors) == 1
+    assert errors[0].personal_number == "ps-err-1"
