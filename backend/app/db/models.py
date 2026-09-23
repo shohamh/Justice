@@ -176,6 +176,42 @@ class HrHierarchyNodeMap(Base):
     )
 
 
+class HrPersonSync(Base):
+    __tablename__ = "hr_person_syncs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    total_fetched: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    created_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    held_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    vanished_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    error_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
+class HrPersonSyncError(Base):
+    __tablename__ = "hr_person_sync_errors"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    hr_person_sync_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hr_person_syncs.id", ondelete="CASCADE")
+    )
+    personal_number: Mapped[str] = mapped_column(Text)
+    error_message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 
@@ -1605,6 +1641,7 @@ class NotificationType(str, _enum.Enum):
     alal_expiring_soon = "alal_expiring_soon"
     alal_expired = "alal_expired"
     duty_instructions_updated = "duty_instructions_updated"
+    hr_sync_anomaly_aborted = "hr_sync_anomaly_aborted"
 
 
 class Notification(Base):
