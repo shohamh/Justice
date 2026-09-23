@@ -420,3 +420,60 @@ async def test_run_person_sync_per_person_error_does_not_abort_run(admin_session
     ).scalars().all()
     assert len(errors) == 1
     assert errors[0].personal_number == "ps-err-1"
+
+
+def test_holding_node_id_raises_when_not_bootstrapped(admin_session):
+    from app.services.hr.person_sync import _holding_node_id
+
+    with pytest.raises(RuntimeError, match="system.holding_node_id is not bootstrapped"):
+        _holding_node_id(admin_session)
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_holds_unmappable_person(admin_session):
+    _holding_node(admin_session)
+    payload = [_user_payload("ps-run-held-1", rank="not-a-real-rank")]
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    assert run.held_count == 1
+    profile = admin_session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.personal_number == "ps-run-held-1")
+    ).scalar_one()
+    assert profile.sync_status == "held_for_review"
+
+
+@pytest.mark.asyncio
+async def test_run_person_sync_updates_existing_linked_person(admin_session):
+    from tests.helpers import create_soldier
+
+    _holding_node(admin_session)
+    soldier = create_soldier(admin_session, personal_number="ps-run-upd-1")
+    admin_session.add(SoldierHrProfile(
+        personal_number="ps-run-upd-1", raw_dto={}, soldier_id=soldier.id, sync_status="synced",
+    ))
+    admin_session.commit()
+
+    payload = [_user_payload("ps-run-upd-1", phone="050-7778888")]
+    with respx.mock(base_url="https://hr.example.internal", assert_all_called=False) as mock:
+        mock.get("/api/v1/user", params={"take": "200", "page": "1"}).mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        mock.get("/api/v1/user", params={"take": "200", "page": "2"}).mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        async with HrApiClient(base_url="https://hr.example.internal", api_key="test-key") as client:
+            run = await run_person_sync(admin_session, client)
+
+    assert run.status == "completed"
+    assert run.updated_count == 1
+    admin_session.refresh(soldier)
+    assert soldier.phone == "050-7778888"

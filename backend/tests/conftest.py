@@ -393,6 +393,8 @@ _AREA_MARKERS: dict[str, str] = {
     "test_soldier_hr_profile_model": "soldiers",
     "test_hr_sync_divergence": "soldiers",
     "test_soldiers_field_updates": "soldiers",
+    "test_hr_person_sync_model": "soldiers",
+    "test_hr_person_sync": "soldiers",
     # misc: health check, audit log, settings loader, HR integration client
     "test_health": "misc",
     "test_audit_append_only": "misc",
