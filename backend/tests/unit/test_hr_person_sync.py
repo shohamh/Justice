@@ -423,6 +423,103 @@ async def test_run_person_sync_per_person_error_does_not_abort_run(admin_session
     assert errors[0].personal_number == "ps-err-1"
 
 
+from app.db.models import HrRankConflict
+
+
+def test_apply_existing_person_no_conflict_on_ordinary_sequential_advance(admin_session):
+    from tests.helpers import create_soldier
+    from app.services.rank_advancement import upsert_interval
+
+    soldier = create_soldier(admin_session, personal_number="ps-rc-1")
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "hr_sync"
+    profile = _linked_profile(admin_session, soldier)
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-rc-1")
+    mapped = _mapped(personal_number="ps-rc-1", rank="רבט")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+
+    assert soldier.rank == "רבט"
+    assert soldier.rank_last_set_by == "hr_sync"
+    assert admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).count() == 0
+
+
+def test_apply_existing_person_flags_conflict_when_worker_set_rank_first(admin_session):
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="ps-rc-2")
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "worker"
+    profile = _linked_profile(admin_session, soldier)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-rc-2")
+    mapped = _mapped(personal_number="ps-rc-2", rank="סמל")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+
+    assert soldier.rank == "סמל"
+    assert soldier.rank_last_set_by == "hr_sync"
+    conflicts = admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).all()
+    assert len(conflicts) == 1
+    assert conflicts[0].old_rank == "טוראי"
+    assert conflicts[0].new_rank == "סמל"
+    assert conflicts[0].triggered_by_worker_decision is True
+
+    soldier_notif = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.hr_rank_conflict
+    ).one_or_none()
+    assert soldier_notif is not None
+
+
+def test_apply_existing_person_flags_conflict_on_non_sequential_jump(admin_session):
+    from tests.helpers import create_soldier
+    from app.services.rank_advancement import upsert_interval
+
+    soldier = create_soldier(admin_session, personal_number="ps-rc-3")
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "hr_sync"
+    profile = _linked_profile(admin_session, soldier)
+    upsert_interval(admin_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-rc-3")
+    mapped = _mapped(personal_number="ps-rc-3", rank="סמל")  # not the next rank in sequence (רבט is)
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+
+    conflicts = admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).all()
+    assert len(conflicts) == 1
+    assert conflicts[0].non_sequential_jump is True
+    assert conflicts[0].triggered_by_worker_decision is False
+
+
+def test_apply_existing_person_no_conflict_when_rank_unchanged(admin_session):
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="ps-rc-4")
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "worker"
+    profile = _linked_profile(admin_session, soldier)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-rc-4")
+    mapped = _mapped(personal_number="ps-rc-4", rank="טוראי")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+
+    assert admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).count() == 0
+
+
 def test_holding_node_id_raises_when_not_bootstrapped(admin_session):
     from app.services.hr.person_sync import _holding_node_id
 

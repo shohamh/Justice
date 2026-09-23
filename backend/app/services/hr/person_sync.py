@@ -12,6 +12,7 @@ from app.db.models import (
     HrHierarchyNodeMap,
     HrPersonSync,
     HrPersonSyncError,
+    HrRankConflict,
     NotificationType,
     Soldier,
     SoldierHrProfile,
@@ -22,6 +23,7 @@ from app.services.hr.divergence import record_sync_divergence
 from app.services.hr.mapping import HR_OWNED_FIELDS, HeldForReview, MappedSoldierFields, map_hr_user
 from app.services.hr.schemas import HrUser
 from app.services.notifications import create_notification
+from app.services.rank_advancement import get_next_rank, resolve_track
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import _reset_rank_advancement
 
@@ -126,6 +128,42 @@ def _mark_held(session: Session, user: HrUser, held: HeldForReview) -> SoldierHr
 _DEPENDENT_LOGIC_TRIGGER_FIELDS = frozenset({"rank", "mandatory_end_date", "discharge_date"})
 
 
+def _flag_rank_conflict_if_needed(
+    session: Session, *, soldier: Soldier, old_rank: str, new_rank: str,
+) -> None:
+    """Record a conflict and notify the soldier + their commander(s) when
+    HR's incoming rank either overrides a decision the worker made on its
+    own, or isn't a simple one-step advance from where the soldier was.
+    HR's value is applied regardless (HR stays authoritative) -- this is a
+    visibility/audit action, not a block.
+
+    Only `create_notification` is called here (not also
+    `notify_commanders_of_request`): `create_notification` already cascades
+    to the soldier's commander(s)/deputies automatically for any type not in
+    its exclusion list (see notifications.py), and `hr_rank_conflict` is not
+    excluded -- calling both would double-notify every commander.
+    """
+    triggered_by_worker_decision = soldier.rank_last_set_by == "worker"
+    track = resolve_track(old_rank, soldier.rank_track)
+    expected_next = get_next_rank(old_rank, track=track) if old_rank else None
+    non_sequential_jump = new_rank != expected_next
+
+    if not (triggered_by_worker_decision or non_sequential_jump):
+        return
+
+    session.add(HrRankConflict(
+        soldier_id=soldier.id, old_rank=old_rank, new_rank=new_rank,
+        triggered_by_worker_decision=triggered_by_worker_decision,
+        non_sequential_jump=non_sequential_jump,
+    ))
+    title = "דרגתך עודכנה בעקבות סנכרון מול מערכת משאבי אנוש"
+    body = f"הדרגה עודכנה מ-{old_rank} ל-{new_rank} בעקבות נתוני משאבי אנוש, שאינם תואמים את ההתקדמות הצפויה."
+    create_notification(
+        session, soldier_id=soldier.id, type=NotificationType.hr_rank_conflict,
+        title=title, body=body, reference_type="soldier", reference_id=soldier.id,
+    )
+
+
 def _apply_existing_person(
     session: Session, profile: SoldierHrProfile, user: HrUser, mapped: MappedSoldierFields,
 ) -> None:
@@ -147,7 +185,11 @@ def _apply_existing_person(
         old_value = getattr(soldier, field_name)
         if field_name in _DEPENDENT_LOGIC_TRIGGER_FIELDS and old_value != new_value:
             changed_dependent_field = True
+        if field_name == "rank" and old_value != new_value and old_value is not None:
+            _flag_rank_conflict_if_needed(session, soldier=soldier, old_rank=old_value, new_rank=new_value)
         setattr(soldier, field_name, new_value)
+        if field_name == "rank" and old_value != new_value:
+            soldier.rank_last_set_by = "hr_sync"
 
     soldier.is_officer = mapped.is_officer
     soldier.is_career = mapped.is_career
