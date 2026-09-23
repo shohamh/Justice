@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.password import hash_password
@@ -130,3 +131,79 @@ def test_warns_when_secure_cookie_set_over_plain_http(client, admin_session, cap
     finally:
         monkeypatch.delenv("COOKIE_SECURE", raising=False)
         get_settings.cache_clear()
+
+
+from datetime import datetime, timedelta, timezone
+
+from app.db.models import SoldierActivationCode, SoldierHrProfile
+
+
+def _hr_linked_soldier_with_code(session, *, personal_number: str, code: str = "ACTV1234"):
+    from app.auth.password import hash_password
+
+    soldier = Soldier(
+        personal_number=personal_number,
+        full_name=f"Test {personal_number}",
+        password_hash=hash_password("placeholder-nobody-knows-this"),
+        must_change_password=True,
+    )
+    session.add(soldier)
+    session.flush()
+    session.add(SoldierHrProfile(personal_number=personal_number, raw_dto={}, soldier_id=soldier.id))
+    session.add(SoldierActivationCode(
+        soldier_id=soldier.id, code=code,
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(days=7),
+    ))
+    session.commit()
+    session.refresh(soldier)
+    return soldier
+
+
+def test_login_with_valid_activation_code_succeeds(client: TestClient, admin_session: Session):
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100001")
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100001", "password": "ACTV1234"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert "access_token" in body
+    assert body["must_change_password"] is True
+
+
+def test_login_consumes_activation_code_so_it_cannot_be_reused(client: TestClient, admin_session: Session):
+    _hr_linked_soldier_with_code(admin_session, personal_number="8100002")
+
+    first = client.post(
+        "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
+    )
+    assert second.status_code == 401
+
+
+def test_login_with_expired_activation_code_fails(client: TestClient, admin_session: Session):
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100003")
+    code = admin_session.execute(
+        select(SoldierActivationCode).where(SoldierActivationCode.soldier_id == soldier.id)
+    ).scalar_one()
+    code.expires_at = datetime.now(tz=timezone.utc) - timedelta(days=1)
+    admin_session.commit()
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100003", "password": "ACTV1234"}
+    )
+    assert r.status_code == 401
+
+
+def test_login_with_wrong_activation_code_fails_normally(client: TestClient, admin_session: Session):
+    _hr_linked_soldier_with_code(admin_session, personal_number="8100004")
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100004", "password": "WRONGCOD"}
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"]["detail"] == "invalid_credentials"
