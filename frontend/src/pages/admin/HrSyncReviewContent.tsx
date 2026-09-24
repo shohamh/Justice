@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import {
   listHeldForReview, dismissHeldForReview,
   listDivergences, clearFieldOverride,
@@ -8,12 +10,31 @@ import {
 import { DataTable, ColDef } from "../../components/DataTable";
 import type {
   HeldForReviewItemDTO, DivergenceItemDTO, VanishedItemDTO,
-  RankConflictItemDTO, PersonSyncRunDTO,
+  RankConflictItemDTO, PersonSyncRunDTO, HierarchySyncRunDTO,
 } from "../../api/hrReview";
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function soldierLabel(fullName: string | null, personalNumber: string | null): string {
+  if (!fullName && !personalNumber) return "—";
+  return [fullName, personalNumber].filter(Boolean).join(" · ");
+}
+
+function errorMessage(error: unknown): string | null {
+  if (!error) return null;
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
 
 export default function HrSyncReviewContent() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [selectedHeld, setSelectedHeld] = useState<HeldForReviewItemDTO | null>(null);
+  const [selectedRunErrors, setSelectedRunErrors] = useState<PersonSyncRunDTO | null>(null);
 
   const heldQuery = useQuery({ queryKey: ["hr-sync-held"], queryFn: listHeldForReview });
   const divergencesQuery = useQuery({ queryKey: ["hr-sync-divergences"], queryFn: listDivergences });
@@ -42,7 +63,19 @@ export default function HrSyncReviewContent() {
   });
 
   const heldColumns: ColDef<HeldForReviewItemDTO>[] = [
-    { id: "personal_number", header: t("admin.hr_sync.personal_number"), cell: (r) => r.personal_number },
+    {
+      id: "personal_number", header: t("admin.hr_sync.personal_number"),
+      cell: (r) => (
+        <button
+          type="button"
+          data-testid={`hr-sync-held-detail-${r.id}`}
+          className="text-indigo-600 dark:text-indigo-300 underline underline-offset-2 hover:text-indigo-800 dark:hover:text-indigo-200"
+          onClick={() => setSelectedHeld(r)}
+        >
+          {r.personal_number}
+        </button>
+      ),
+    },
     { id: "review_reason", header: t("admin.hr_sync.reason"), cell: (r) => r.review_reason ?? "—" },
     {
       id: "actions", header: "", cell: (r) => (
@@ -59,6 +92,10 @@ export default function HrSyncReviewContent() {
   ];
 
   const divergenceColumns: ColDef<DivergenceItemDTO>[] = [
+    {
+      id: "soldier", header: t("admin.hr_sync.soldier"),
+      cell: (r) => soldierLabel(r.soldier_full_name, r.soldier_personal_number),
+    },
     { id: "field_name", header: t("admin.hr_sync.field"), cell: (r) => r.field_name },
     { id: "hr_value", header: t("admin.hr_sync.hr_value"), cell: (r) => String(r.hr_value ?? "—") },
     { id: "local_value", header: t("admin.hr_sync.local_value"), cell: (r) => String(r.local_value ?? "—") },
@@ -81,25 +118,89 @@ export default function HrSyncReviewContent() {
   ];
 
   const conflictColumns: ColDef<RankConflictItemDTO>[] = [
+    {
+      id: "soldier", header: t("admin.hr_sync.soldier"),
+      cell: (r) => soldierLabel(r.soldier_full_name, r.soldier_personal_number),
+    },
     { id: "old_rank", header: t("admin.hr_sync.old_rank"), cell: (r) => r.old_rank ?? "—" },
     { id: "new_rank", header: t("admin.hr_sync.new_rank"), cell: (r) => r.new_rank ?? "—" },
     {
       id: "why", header: t("admin.hr_sync.why"),
-      cell: (r) => (r.triggered_by_worker_decision ? t("admin.hr_sync.why_worker") : t("admin.hr_sync.why_jump")),
+      cell: (r) => {
+        if (r.triggered_by_worker_decision && r.non_sequential_jump) {
+          return `${t("admin.hr_sync.why_worker")}, ${t("admin.hr_sync.why_jump")}`;
+        }
+        return r.triggered_by_worker_decision ? t("admin.hr_sync.why_worker") : t("admin.hr_sync.why_jump");
+      },
     },
   ];
 
   const runColumns: ColDef<PersonSyncRunDTO>[] = [
+    { id: "started_at", header: t("admin.hr_sync.started_at"), cell: (r) => formatDateTime(r.started_at) },
     { id: "status", header: t("admin.hr_sync.status"), cell: (r) => r.status },
     { id: "total_fetched", header: t("admin.hr_sync.total_fetched"), cell: (r) => r.total_fetched },
     { id: "created_count", header: t("admin.hr_sync.created_count"), cell: (r) => r.created_count },
     { id: "updated_count", header: t("admin.hr_sync.updated_count"), cell: (r) => r.updated_count },
     { id: "held_count", header: t("admin.hr_sync.held_count"), cell: (r) => r.held_count },
+    {
+      id: "errors", header: t("admin.hr_sync.errors"),
+      cell: (r) => (
+        r.errors.length > 0 ? (
+          <button
+            type="button"
+            data-testid={`hr-sync-run-errors-${r.id}`}
+            className="text-red-600 dark:text-red-400 underline underline-offset-2"
+            onClick={() => setSelectedRunErrors(r)}
+          >
+            {r.errors.length}
+          </button>
+        ) : (
+          "0"
+        )
+      ),
+    },
   ];
+
+  const hierarchyRunColumns: ColDef<HierarchySyncRunDTO>[] = [
+    { id: "started_at", header: t("admin.hr_sync.started_at"), cell: (r) => formatDateTime(r.started_at) },
+    { id: "status", header: t("admin.hr_sync.status"), cell: (r) => r.status },
+    { id: "created_count", header: t("admin.hr_sync.created_count"), cell: (r) => r.created_count },
+    { id: "held_count", header: t("admin.hr_sync.held_count"), cell: (r) => r.held_count },
+    { id: "error_message", header: t("admin.hr_sync.error_message"), cell: (r) => r.error_message ?? "—" },
+  ];
+
+  function renderSection<T>(
+    testId: string,
+    query: { isError: boolean; isLoading: boolean; data?: { items: T[] } | undefined },
+    columns: ColDef<T>[],
+    data: T[],
+  ) {
+    if (query.isError) {
+      return (
+        <div className="text-sm text-red-600 dark:text-red-400" data-testid={`${testId}-error`}>
+          {t("admin.hr_sync.load_error")}
+        </div>
+      );
+    }
+    if (query.isLoading) {
+      return (
+        <div className="text-sm text-gray-500" data-testid={`${testId}-loading`}>
+          {t("admin.hr_sync.loading")}
+        </div>
+      );
+    }
+    return (
+      <DataTable columns={columns} data={data} testId={testId} emptyMessage={t("admin.hr_sync.empty")} />
+    );
+  }
+
+  const dismissError = errorMessage(dismissMutation.error);
+  const clearOverrideError = errorMessage(clearOverrideMutation.error);
+  const runNowError = errorMessage(runNowMutation.error);
 
   return (
     <div className="space-y-6" data-testid="hr-sync-review-content">
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
         <button
           type="button"
           data-testid="hr-sync-run-now"
@@ -109,57 +210,137 @@ export default function HrSyncReviewContent() {
         >
           {t("admin.hr_sync.run_now")}
         </button>
+        {runNowError && (
+          <div className="text-sm text-red-600 dark:text-red-400" data-testid="hr-sync-run-now-error">
+            {runNowError}
+          </div>
+        )}
       </div>
 
       <section>
         <h3 className="text-sm font-semibold mb-2">{t("admin.hr_sync.held_for_review")}</h3>
-        <DataTable
-          columns={heldColumns}
-          data={heldQuery.data?.items ?? []}
-          testId="hr-sync-held-table"
-          emptyMessage={t("admin.hr_sync.empty")}
-        />
+        {renderSection("hr-sync-held-table", heldQuery, heldColumns, heldQuery.data?.items ?? [])}
+        {dismissError && (
+          <div className="text-sm text-red-600 dark:text-red-400 mt-1" data-testid="hr-sync-dismiss-error">
+            {dismissError}
+          </div>
+        )}
       </section>
 
       <section>
         <h3 className="text-sm font-semibold mb-2">{t("admin.hr_sync.divergences")}</h3>
-        <DataTable
-          columns={divergenceColumns}
-          data={divergencesQuery.data?.items ?? []}
-          testId="hr-sync-divergences-table"
-          emptyMessage={t("admin.hr_sync.empty")}
-        />
+        {renderSection("hr-sync-divergences-table", divergencesQuery, divergenceColumns, divergencesQuery.data?.items ?? [])}
+        {clearOverrideError && (
+          <div className="text-sm text-red-600 dark:text-red-400 mt-1" data-testid="hr-sync-clear-override-error">
+            {clearOverrideError}
+          </div>
+        )}
       </section>
 
       <section>
         <h3 className="text-sm font-semibold mb-2">{t("admin.hr_sync.vanished")}</h3>
-        <DataTable
-          columns={vanishedColumns}
-          data={vanishedQuery.data?.items ?? []}
-          testId="hr-sync-vanished-table"
-          emptyMessage={t("admin.hr_sync.empty")}
-        />
+        {renderSection("hr-sync-vanished-table", vanishedQuery, vanishedColumns, vanishedQuery.data?.items ?? [])}
       </section>
 
       <section>
         <h3 className="text-sm font-semibold mb-2">{t("admin.hr_sync.rank_conflicts")}</h3>
-        <DataTable
-          columns={conflictColumns}
-          data={conflictsQuery.data?.items ?? []}
-          testId="hr-sync-conflicts-table"
-          emptyMessage={t("admin.hr_sync.empty")}
-        />
+        {renderSection("hr-sync-conflicts-table", conflictsQuery, conflictColumns, conflictsQuery.data?.items ?? [])}
       </section>
 
       <section>
         <h3 className="text-sm font-semibold mb-2">{t("admin.hr_sync.run_history")}</h3>
-        <DataTable
-          columns={runColumns}
-          data={runsQuery.data?.person_syncs ?? []}
-          testId="hr-sync-runs-table"
-          emptyMessage={t("admin.hr_sync.empty")}
-        />
+        {runsQuery.isError ? (
+          <div className="text-sm text-red-600 dark:text-red-400" data-testid="hr-sync-runs-table-error">
+            {t("admin.hr_sync.load_error")}
+          </div>
+        ) : runsQuery.isLoading ? (
+          <div className="text-sm text-gray-500" data-testid="hr-sync-runs-table-loading">
+            {t("admin.hr_sync.loading")}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <DataTable
+              columns={runColumns}
+              data={runsQuery.data?.person_syncs ?? []}
+              testId="hr-sync-runs-table"
+              emptyMessage={t("admin.hr_sync.empty")}
+            />
+            <DataTable
+              columns={hierarchyRunColumns}
+              data={runsQuery.data?.hierarchy_syncs ?? []}
+              testId="hr-sync-hierarchy-runs-table"
+              emptyMessage={t("admin.hr_sync.empty")}
+            />
+          </div>
+        )}
       </section>
+
+      {selectedHeld && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50"
+          data-testid="hr-sync-held-detail-modal"
+          onClick={() => setSelectedHeld(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-4 space-y-3 text-sm"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">{selectedHeld.personal_number}</h3>
+              <button
+                type="button"
+                data-testid="hr-sync-held-detail-close"
+                onClick={() => setSelectedHeld(null)}
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="text-gray-700 dark:text-gray-300">{selectedHeld.review_reason ?? "—"}</div>
+            <pre
+              dir="ltr"
+              data-testid="hr-sync-held-detail-raw-dto"
+              className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all"
+            >
+              {selectedHeld.raw_dto ? JSON.stringify(selectedHeld.raw_dto, null, 2) : "—"}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {selectedRunErrors && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50"
+          data-testid="hr-sync-run-errors-modal"
+          onClick={() => setSelectedRunErrors(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-4 space-y-2 text-sm"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">{t("admin.hr_sync.errors")}</h3>
+              <button
+                type="button"
+                data-testid="hr-sync-run-errors-close"
+                onClick={() => setSelectedRunErrors(null)}
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <ul className="space-y-1">
+              {selectedRunErrors.errors.map((e, i) => (
+                <li key={i} className="text-red-700 dark:text-red-300">
+                  <span dir="ltr">{e.personal_number}</span>: {e.error_message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

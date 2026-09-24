@@ -1951,7 +1951,13 @@
       "created_count": "נוצרו",
       "updated_count": "עודכנו",
       "held_count": "הוחזקו",
-      "empty": "לא נמצאו רשומות"
+      "empty": "לא נמצאו רשומות",
+      "soldier": "חייל",
+      "started_at": "התחיל בשעה",
+      "errors": "שגיאות",
+      "error_message": "הודעת שגיאה",
+      "load_error": "שגיאה בטעינת הנתונים",
+      "loading": "טוען..."
     }
   }
 }

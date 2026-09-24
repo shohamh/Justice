@@ -23,12 +23,18 @@ describe("hrReview api", () => {
 
   it("listHeldForReview parses items", async () => {
     vi.mocked(api.get).mockResolvedValue({
-      data: { items: [{ id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null }] },
+      data: {
+        items: [{
+          id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null,
+          raw_dto: { rank: "bad-value" },
+        }],
+      },
     });
     const result = await listHeldForReview();
     expect(api.get).toHaveBeenCalledWith("/admin/hr-sync/held-for-review");
     expect(result.items).toHaveLength(1);
     expect(result.items[0].personal_number).toBe("123");
+    expect(result.items[0].raw_dto).toEqual({ rank: "bad-value" });
   });
 
   it("dismissHeldForReview posts to the right path", async () => {
@@ -43,13 +49,16 @@ describe("hrReview api", () => {
     vi.mocked(api.get).mockResolvedValue({
       data: {
         items: [{
-          id: "1", soldier_hr_profile_id: "2", field_name: "phone",
+          id: "1", soldier_hr_profile_id: "2",
+          soldier_full_name: "ישראל ישראלי", soldier_personal_number: "1234567",
+          field_name: "phone",
           hr_value: "050-1", local_value: "050-2", created_at: "2026-01-01T00:00:00Z",
         }],
       },
     });
     const result = await listDivergences();
     expect(result.items[0].field_name).toBe("phone");
+    expect(result.items[0].soldier_full_name).toBe("ישראל ישראלי");
   });
 
   it("clearFieldOverride posts field_name in the body", async () => {
@@ -72,7 +81,9 @@ describe("hrReview api", () => {
     vi.mocked(api.get).mockResolvedValue({
       data: {
         items: [{
-          id: "1", soldier_id: "2", old_rank: "טוראי", new_rank: "סמל",
+          id: "1", soldier_id: "2",
+          soldier_full_name: "ישראל ישראלי", soldier_personal_number: "1234567",
+          old_rank: "טוראי", new_rank: "סמל",
           triggered_by_worker_decision: true, non_sequential_jump: false,
           created_at: "2026-01-01T00:00:00Z",
         }],
@@ -80,6 +91,7 @@ describe("hrReview api", () => {
     });
     const result = await listRankConflicts();
     expect(result.items[0].old_rank).toBe("טוראי");
+    expect(result.items[0].soldier_full_name).toBe("ישראל ישראלי");
   });
 
   it("listSyncRuns parses both run lists", async () => {

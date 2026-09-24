@@ -6,6 +6,7 @@ export interface HeldForReviewItemDTO {
   personal_number: string;
   review_reason: string | null;
   last_synced_at: string | null;
+  raw_dto: Record<string, unknown> | null;
 }
 
 export async function listHeldForReview(): Promise<{ items: HeldForReviewItemDTO[] }> {
@@ -22,6 +23,8 @@ export async function dismissHeldForReview(profileId: string): Promise<HeldForRe
 export interface DivergenceItemDTO {
   id: string;
   soldier_hr_profile_id: string;
+  soldier_full_name: string | null;
+  soldier_personal_number: string | null;
   field_name: string;
   hr_value: unknown;
   local_value: unknown;
@@ -58,6 +61,8 @@ export async function listVanished(): Promise<{ items: VanishedItemDTO[] }> {
 export interface RankConflictItemDTO {
   id: string;
   soldier_id: string;
+  soldier_full_name: string | null;
+  soldier_personal_number: string | null;
   old_rank: string | null;
   new_rank: string | null;
   triggered_by_worker_decision: boolean;

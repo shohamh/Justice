@@ -18,14 +18,17 @@ function renderWithClient() {
 describe("HrSyncReviewContent", () => {
   beforeEach(() => {
     vi.mocked(hrReviewApi.listHeldForReview).mockResolvedValue({
-      items: [{ id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null }],
+      items: [{
+        id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null,
+        raw_dto: { rank: "bad-value" },
+      }],
     });
     vi.mocked(hrReviewApi.listDivergences).mockResolvedValue({ items: [] });
     vi.mocked(hrReviewApi.listVanished).mockResolvedValue({ items: [] });
     vi.mocked(hrReviewApi.listRankConflicts).mockResolvedValue({ items: [] });
     vi.mocked(hrReviewApi.listSyncRuns).mockResolvedValue({ person_syncs: [], hierarchy_syncs: [] });
     vi.mocked(hrReviewApi.dismissHeldForReview).mockResolvedValue({
-      id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null,
+      id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null, raw_dto: null,
     });
   });
 
@@ -48,5 +51,51 @@ describe("HrSyncReviewContent", () => {
     await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("hr-sync-run-now"));
     await waitFor(() => expect(hrReviewApi.runSyncNow).toHaveBeenCalled());
+  });
+
+  it("shows an error message when the run-now mutation fails", async () => {
+    vi.mocked(hrReviewApi.runSyncNow).mockRejectedValue(new Error("hr_sync_already_running"));
+    renderWithClient();
+    await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("hr-sync-run-now"));
+    await waitFor(() => expect(screen.getByTestId("hr-sync-run-now-error")).toHaveTextContent("hr_sync_already_running"));
+  });
+
+  it("shows a load error when a query fails", async () => {
+    vi.mocked(hrReviewApi.listVanished).mockRejectedValue(new Error("boom"));
+    renderWithClient();
+    await waitFor(() => expect(screen.getByTestId("hr-sync-vanished-table-error")).toBeInTheDocument());
+  });
+
+  it("opens the raw payload detail modal for a held-for-review row", async () => {
+    renderWithClient();
+    await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("hr-sync-held-detail-1"));
+    await waitFor(() => expect(screen.getByTestId("hr-sync-held-detail-modal")).toBeInTheDocument());
+    expect(screen.getByTestId("hr-sync-held-detail-raw-dto")).toHaveTextContent("bad-value");
+  });
+
+  it("shows soldier identity and can expand run errors", async () => {
+    vi.mocked(hrReviewApi.listRankConflicts).mockResolvedValue({
+      items: [{
+        id: "c1", soldier_id: "s1", soldier_full_name: "ישראל ישראלי", soldier_personal_number: "1234567",
+        old_rank: "טוראי", new_rank: "סמל", triggered_by_worker_decision: true, non_sequential_jump: false,
+        created_at: "2026-01-01T00:00:00Z",
+      }],
+    });
+    vi.mocked(hrReviewApi.listSyncRuns).mockResolvedValue({
+      person_syncs: [{
+        id: "r1", status: "completed", started_at: "2026-01-01T00:00:00Z", completed_at: null,
+        total_fetched: 10, created_count: 1, updated_count: 1, held_count: 0, vanished_count: 0,
+        error_count: 1, error_message: null,
+        errors: [{ personal_number: "999", error_message: "bad row" }],
+      }],
+      hierarchy_syncs: [],
+    });
+    renderWithClient();
+    await waitFor(() => expect(screen.getByText(/ישראל ישראלי/)).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("hr-sync-run-errors-r1"));
+    await waitFor(() => expect(screen.getByTestId("hr-sync-run-errors-modal")).toBeInTheDocument());
+    expect(screen.getByTestId("hr-sync-run-errors-modal")).toHaveTextContent("bad row");
   });
 });
