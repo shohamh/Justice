@@ -22,7 +22,7 @@ def test_held_for_review_excludes_dismissed_unchanged_records(client, admin_sess
     headers = _admin_headers(admin_session)
     admin_session.add_all([
         SoldierHrProfile(
-            personal_number="hrr-2", raw_dto={}, sync_status="held_for_review",
+            personal_number="hrr-2", raw_dto={"rank": "bad-value"}, sync_status="held_for_review",
             review_reason="bad date",
         ),
         SoldierHrProfile(
@@ -39,6 +39,8 @@ def test_held_for_review_excludes_dismissed_unchanged_records(client, admin_sess
     personal_numbers = {item["personal_number"] for item in r.json()["items"]}
     assert "hrr-2" in personal_numbers
     assert "hrr-3" not in personal_numbers
+    held_item = next(item for item in r.json()["items"] if item["personal_number"] == "hrr-2")
+    assert held_item["raw_dto"] == {"rank": "bad-value"}
 
 
 def test_dismiss_held_for_review_action(client, admin_session):
@@ -96,6 +98,8 @@ def test_divergences_lists_field_skipped_overridden_audit_rows(client, admin_ses
     assert r.status_code == 200
     assert len(r.json()["items"]) == 1
     assert r.json()["items"][0]["field_name"] == "phone"
+    assert r.json()["items"][0]["soldier_full_name"] == soldier.full_name
+    assert r.json()["items"][0]["soldier_personal_number"] == "hrr-5"
 
 
 def test_divergences_dedupes_to_latest_row_per_profile_and_field(client, admin_session):
@@ -232,6 +236,8 @@ def test_rank_conflicts_lists_conflicts(client, admin_session):
     assert r.status_code == 200
     assert len(r.json()["items"]) == 1
     assert r.json()["items"][0]["old_rank"] == "טוראי"
+    assert r.json()["items"][0]["soldier_full_name"] == soldier.full_name
+    assert r.json()["items"][0]["soldier_personal_number"] == "hrr-8"
 
 
 def test_sync_runs_lists_recent_runs(client, admin_session):

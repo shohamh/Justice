@@ -32,6 +32,7 @@ class HeldForReviewItemOut(BaseModel):
     personal_number: str
     review_reason: str | None
     last_synced_at: datetime | None
+    raw_dto: dict[str, object] | None = None
 
 
 class HeldForReviewPageOut(BaseModel):
@@ -53,6 +54,7 @@ def list_held_for_review(
         HeldForReviewItemOut(
             id=r.id, personal_number=r.personal_number,
             review_reason=r.review_reason, last_synced_at=r.last_synced_at,
+            raw_dto=r.raw_dto,
         ) for r in rows
     ])
 
@@ -80,6 +82,8 @@ def dismiss_held_for_review_route(
 class DivergenceItemOut(BaseModel):
     id: uuid.UUID
     soldier_hr_profile_id: uuid.UUID
+    soldier_full_name: str | None
+    soldier_personal_number: str | None
     field_name: str
     hr_value: object
     local_value: object
@@ -122,9 +126,22 @@ def list_divergences(
         .limit(limit)
         .offset(offset)
     ).scalars().all()
+
+    profile_ids = {r.entity_id for r in rows if r.entity_id is not None}
+    soldier_by_profile_id: dict[uuid.UUID, Soldier] = {}
+    if profile_ids:
+        for profile_id, soldier in session.execute(
+            select(SoldierHrProfile.id, Soldier)
+            .join(Soldier, Soldier.id == SoldierHrProfile.soldier_id)
+            .where(SoldierHrProfile.id.in_(profile_ids))
+        ).all():
+            soldier_by_profile_id[profile_id] = soldier
+
     return DivergencePageOut(items=[
         DivergenceItemOut(
             id=r.id, soldier_hr_profile_id=r.entity_id,
+            soldier_full_name=soldier_by_profile_id[r.entity_id].full_name if r.entity_id in soldier_by_profile_id else None,
+            soldier_personal_number=soldier_by_profile_id[r.entity_id].personal_number if r.entity_id in soldier_by_profile_id else None,
             field_name=(r.context or {}).get("field_name", ""),
             hr_value=(r.context or {}).get("hr_value"),
             local_value=(r.context or {}).get("local_value"),
@@ -189,6 +206,8 @@ def list_vanished(
 class RankConflictItemOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
+    soldier_full_name: str | None
+    soldier_personal_number: str | None
     old_rank: str | None
     new_rank: str | None
     triggered_by_worker_decision: bool
@@ -206,14 +225,19 @@ def list_rank_conflicts(
     user: Soldier = Depends(require_roles("admin")),
 ) -> RankConflictPageOut:
     rows = session.execute(
-        select(HrRankConflict).order_by(HrRankConflict.created_at.desc())
-    ).scalars().all()
+        select(HrRankConflict, Soldier)
+        .outerjoin(Soldier, Soldier.id == HrRankConflict.soldier_id)
+        .order_by(HrRankConflict.created_at.desc())
+    ).all()
     return RankConflictPageOut(items=[
         RankConflictItemOut(
-            id=r.id, soldier_id=r.soldier_id, old_rank=r.old_rank, new_rank=r.new_rank,
+            id=r.id, soldier_id=r.soldier_id,
+            soldier_full_name=soldier.full_name if soldier else None,
+            soldier_personal_number=soldier.personal_number if soldier else None,
+            old_rank=r.old_rank, new_rank=r.new_rank,
             triggered_by_worker_decision=r.triggered_by_worker_decision,
             non_sequential_jump=r.non_sequential_jump, created_at=r.created_at,
-        ) for r in rows
+        ) for r, soldier in rows
     ])
 
 
