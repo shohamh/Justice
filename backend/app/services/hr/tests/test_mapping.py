@@ -74,7 +74,7 @@ def test_map_hr_user_unmappable_rank_held_for_review():
 def test_map_hr_user_unmappable_service_type_held_for_review():
     result = map_hr_user(_hr_user(serv_type="unknown_type"))
     assert isinstance(result, HeldForReview)
-    assert any("servicType" in r for r in result.reasons)
+    assert any("serviceType" in r for r in result.reasons)
 
 
 def test_map_hr_user_unparseable_date_held_for_review():

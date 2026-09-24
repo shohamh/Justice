@@ -35,7 +35,7 @@ function splitReasons(reviewReason: string | null): string[] {
 }
 
 // Human-friendly labels for the HR payload's own field names (raw_dto is
-// stored by HR's JSON aliases, e.g. "fullName"/"servicType", not our
+// stored by HR's JSON aliases, e.g. "fullName"/"serviceType", not our
 // snake_case names) — curated to the fields relevant for a held-for-review
 // decision, in the order they should read.
 const RAW_DTO_FIELD_LABELS: [key: string, label: string][] = [
@@ -43,7 +43,7 @@ const RAW_DTO_FIELD_LABELS: [key: string, label: string][] = [
   ["personalNumber", "מספר אישי"],
   ["rank", "דרגה"],
   ["gender", "מגדר"],
-  ["servicType", "סוג שירות"],
+  ["serviceType", "סוג שירות"],
   ["dateOfBirth", "תאריך לידה"],
   ["serviceStartDate", "תאריך תחילת שירות"],
   ["serviceEndDate", "תאריך סיום שירות"],

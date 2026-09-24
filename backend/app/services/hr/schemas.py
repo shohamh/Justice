@@ -35,7 +35,7 @@ class HrUser(BaseModel):
     personal_number: str = Field(alias="personalNumber")
     rank: str | None = None
     gender: str | None = None
-    serv_type: str | None = Field(default=None, alias="servicType")
+    serv_type: str | None = Field(default=None, alias="serviceType")
     job: str | None = None
     profession: str | None = None
     profession_id: str | None = Field(default=None, alias="professionId")

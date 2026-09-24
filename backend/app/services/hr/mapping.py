@@ -19,7 +19,7 @@ GENDER_MAP: dict[str, str] = {
 # that translation goes, one confirmed entry at a time.
 RANK_MAP: dict[str, str] = {rank: rank for rank in (*ENLISTED_RANKS, *OFFICER_RANKS)}
 
-# HR's `servicType` -> Soldier.rank_track. Confirmed against real HR API
+# HR's `serviceType` -> Soldier.rank_track. Confirmed against real HR API
 # responses: the raw value IS the Hebrew word itself ("חובה" mandatory /
 # "קבע" career), not an English transliteration — identity-shaped like
 # RANK_MAP, kept as an explicit dict (not a passthrough) so an unexpected
@@ -97,7 +97,7 @@ def map_hr_user(hr_user: HrUser) -> MappedSoldierFields | HeldForReview:
     if hr_user.serv_type is not None:
         mapped_track = SERVICE_TYPE_TO_TRACK_MAP.get(hr_user.serv_type)
         if mapped_track is None:
-            reasons.append(f"unmappable servicType: {hr_user.serv_type!r}")
+            reasons.append(f"unmappable serviceType: {hr_user.serv_type!r}")
 
     enlistment_date = _parse_date(hr_user.service_start_date, "serviceStartDate", reasons)
     mandatory_end_date = _parse_date(hr_user.end_hova_date, "endHovaDate", reasons)

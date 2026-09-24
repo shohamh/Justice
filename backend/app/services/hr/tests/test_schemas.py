@@ -20,7 +20,7 @@ def test_hr_user_parses_full_payload():
         "personalNumber": "7654321",
         "rank": "רב טוראי",
         "gender": "male",
-        "servicType": "chova",
+        "serviceType": "חובה",
         "job": "operator",
         "profession": "logistics",
         "professionId": "42",
