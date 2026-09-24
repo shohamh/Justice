@@ -319,13 +319,19 @@ def test_run_now_returns_409_when_sync_already_running(client, admin_session, mo
 
     from app.hr_sync_worker import _SYNC_LOCK_KEY
     from sqlalchemy import text
-    admin_session.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY})
-    admin_session.commit()
-    try:
-        r = client.post("/api/admin/hr-sync/run-now", headers=headers)
-        assert r.status_code == 409
-        assert r.json()["detail"] == "hr_sync_already_running"
-    finally:
-        admin_session.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
-        admin_session.commit()
-        get_settings.cache_clear()
+
+    # Hold the lock on a connection dedicated to it (not admin_session's own
+    # connection, which SQLAlchemy would silently return to the pool on any
+    # commit -- including the one right below -- detaching the later unlock
+    # from the connection that actually holds the lock and leaking it
+    # forever). This mirrors the fix in app/hr_sync_worker.py's _sync_lock.
+    engine = admin_session.get_bind()
+    with engine.connect() as lock_conn:
+        lock_conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY})
+        try:
+            r = client.post("/api/admin/hr-sync/run-now", headers=headers)
+            assert r.status_code == 409
+            assert r.json()["detail"] == "hr_sync_already_running"
+        finally:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
+    get_settings.cache_clear()

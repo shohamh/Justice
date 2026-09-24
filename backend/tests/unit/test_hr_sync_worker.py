@@ -93,19 +93,68 @@ def test_run_hr_sync_cycle_in_own_session_skips_when_lock_held(app_session) -> N
     set_setting(app_session, "hr_sync.poll_hours", "9", actor_id=None)
     app_session.commit()
 
-    app_session.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY})
-    app_session.commit()
-    try:
-        with patch("app.hr_sync_worker.run_hierarchy_sync") as mock_hierarchy, \
-             patch("app.hr_sync_worker.run_person_sync") as mock_person:
-            poll_hours = _run_hr_sync_cycle_in_own_session()
-    finally:
-        app_session.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
-        app_session.commit()
+    # Hold the lock on a connection dedicated to it (not app_session's own
+    # connection, which SQLAlchemy would silently return to the pool on any
+    # commit, detaching the later unlock from the connection that actually
+    # holds the lock and leaking it forever). This mirrors the fix in
+    # app/hr_sync_worker.py's _sync_lock.
+    engine = app_session.get_bind()
+    with engine.connect() as lock_conn:
+        lock_conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY})
+        try:
+            with patch("app.hr_sync_worker.run_hierarchy_sync") as mock_hierarchy, \
+                 patch("app.hr_sync_worker.run_person_sync") as mock_person:
+                poll_hours = _run_hr_sync_cycle_in_own_session()
+        finally:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
 
     assert poll_hours == 9
     mock_hierarchy.assert_not_called()
     mock_person.assert_not_called()
+
+
+def test_run_hr_sync_cycle_in_own_session_releases_lock_despite_internal_commits(app_session) -> None:
+    """Regression test for a real production deadlock: run_hierarchy_sync/
+    run_person_sync commit their own session internally several times while
+    the lock is meant to be held. SQLAlchemy returns a Session's connection
+    to the pool on every commit(), so if the lock were taken/released on
+    that same ORM session (as an earlier version of this code did), the
+    unlock could run on a *different* physical connection than the one that
+    took the lock -- silently leaking it forever. Prove the lock is
+    genuinely free afterward by acquiring it from a completely separate
+    connection."""
+    from sqlalchemy import text
+    from app.hr_sync_worker import _SYNC_LOCK_KEY
+    from app.services.settings_loader import set_setting
+
+    set_setting(app_session, "hr_sync.poll_hours", "9", actor_id=None)
+    app_session.commit()
+
+    def _hierarchy_side_effect(session, client):
+        session.commit()
+
+    def _person_side_effect(session, client):
+        session.commit()
+
+    with patch("app.hr_sync_worker.get_settings") as mock_settings:
+        mock_settings.return_value.hr_sync_enabled = True
+        mock_settings.return_value.hr_api_base_url = "https://hr.example"
+        mock_settings.return_value.hr_api_key = "key"
+        mock_settings.return_value.hr_api_ca_bundle_path = ""
+        mock_settings.return_value.hr_api_page_size = 200
+        with patch("app.hr_sync_worker.HrApiClient"), \
+             patch("app.hr_sync_worker.run_hierarchy_sync", new_callable=AsyncMock, side_effect=_hierarchy_side_effect), \
+             patch("app.hr_sync_worker.run_person_sync", new_callable=AsyncMock, side_effect=_person_side_effect):
+            _run_hr_sync_cycle_in_own_session()
+
+    engine = app_session.get_bind()
+    with engine.connect() as probe_conn:
+        reacquired = bool(
+            probe_conn.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY}).scalar()
+        )
+        if reacquired:
+            probe_conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
+    assert reacquired, "lock was not released -- it leaked on a pooled connection"
 
 
 def test_run_hr_sync_cycle_logs_and_swallows_exceptions(app_session) -> None:
