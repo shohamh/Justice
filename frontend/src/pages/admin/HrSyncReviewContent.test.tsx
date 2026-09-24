@@ -19,8 +19,10 @@ describe("HrSyncReviewContent", () => {
   beforeEach(() => {
     vi.mocked(hrReviewApi.listHeldForReview).mockResolvedValue({
       items: [{
-        id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null,
-        raw_dto: { rank: "bad-value" },
+        id: "1", personal_number: "123",
+        review_reason: "unmappable gender: 'X'; unparseable dateOfBirth: 'Y'",
+        last_synced_at: null,
+        raw_dto: { fullName: "ישראל ישראלי", rank: "bad-value" },
       }],
     });
     vi.mocked(hrReviewApi.listDivergences).mockResolvedValue({ items: [] });
@@ -34,12 +36,12 @@ describe("HrSyncReviewContent", () => {
 
   it("shows the held-for-review section with the fetched item", async () => {
     renderWithClient();
-    await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
   });
 
   it("dismisses a held-for-review item on button click", async () => {
     renderWithClient();
-    await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
     const button = screen.getByTestId("hr-sync-dismiss-1");
     fireEvent.click(button);
     await waitFor(() => expect(hrReviewApi.dismissHeldForReview).toHaveBeenCalledWith("1"));
@@ -48,7 +50,7 @@ describe("HrSyncReviewContent", () => {
   it("triggers a manual sync run when the run-now button is clicked", async () => {
     vi.mocked(hrReviewApi.runSyncNow).mockResolvedValue({ hierarchy_sync_id: "h1", person_sync_id: "p1" });
     renderWithClient();
-    await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("hr-sync-run-now"));
     await waitFor(() => expect(hrReviewApi.runSyncNow).toHaveBeenCalled());
   });
@@ -56,7 +58,7 @@ describe("HrSyncReviewContent", () => {
   it("shows an error message when the run-now mutation fails", async () => {
     vi.mocked(hrReviewApi.runSyncNow).mockRejectedValue(new Error("hr_sync_already_running"));
     renderWithClient();
-    await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("hr-sync-run-now"));
     await waitFor(() => expect(screen.getByTestId("hr-sync-run-now-error")).toHaveTextContent("hr_sync_already_running"));
   });
@@ -69,10 +71,22 @@ describe("HrSyncReviewContent", () => {
 
   it("opens the raw payload detail modal for a held-for-review row", async () => {
     renderWithClient();
-    await waitFor(() => expect(screen.getByText("123")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("hr-sync-held-detail-1"));
     await waitFor(() => expect(screen.getByTestId("hr-sync-held-detail-modal")).toBeInTheDocument());
     expect(screen.getByTestId("hr-sync-held-detail-raw-dto")).toHaveTextContent("bad-value");
+  });
+
+  it("shows the soldier's name and each reason as its own bullet in the detail modal", async () => {
+    renderWithClient();
+    await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("hr-sync-held-detail-1"));
+    const modal = await screen.findByTestId("hr-sync-held-detail-modal");
+    expect(modal).toHaveTextContent("ישראל ישראלי");
+    const reasons = screen.getByTestId("hr-sync-held-detail-reasons");
+    expect(reasons.children).toHaveLength(2);
+    expect(reasons).toHaveTextContent("unmappable gender: 'X'");
+    expect(reasons).toHaveTextContent("unparseable dateOfBirth: 'Y'");
   });
 
   it("shows soldier identity and can expand run errors", async () => {
@@ -93,7 +107,8 @@ describe("HrSyncReviewContent", () => {
       hierarchy_syncs: [],
     });
     renderWithClient();
-    await waitFor(() => expect(screen.getByText(/ישראל ישראלי/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/ישראל ישראלי/).length).toBeGreaterThan(0));
+    expect(screen.getByTestId("hr-sync-conflicts-table")).toHaveTextContent("ישראל ישראלי · 1234567");
     fireEvent.click(screen.getByTestId("hr-sync-run-errors-r1"));
     await waitFor(() => expect(screen.getByTestId("hr-sync-run-errors-modal")).toBeInTheDocument());
     expect(screen.getByTestId("hr-sync-run-errors-modal")).toHaveTextContent("bad row");

@@ -24,6 +24,16 @@ function soldierLabel(fullName: string | null, personalNumber: string | null): s
   return [fullName, personalNumber].filter(Boolean).join(" · ");
 }
 
+function rawDtoFullName(rawDto: Record<string, unknown> | null): string | null {
+  const value = rawDto?.fullName;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function splitReasons(reviewReason: string | null): string[] {
+  if (!reviewReason) return [];
+  return reviewReason.split("; ").map((r) => r.trim()).filter(Boolean);
+}
+
 function errorMessage(error: unknown): string | null {
   if (!error) return null;
   if (error instanceof Error) return error.message;
@@ -64,7 +74,7 @@ export default function HrSyncReviewContent() {
 
   const heldColumns: ColDef<HeldForReviewItemDTO>[] = [
     {
-      id: "personal_number", header: t("admin.hr_sync.personal_number"),
+      id: "personal_number", header: t("admin.hr_sync.soldier"),
       cell: (r) => (
         <button
           type="button"
@@ -72,11 +82,18 @@ export default function HrSyncReviewContent() {
           className="text-indigo-600 dark:text-indigo-300 underline underline-offset-2 hover:text-indigo-800 dark:hover:text-indigo-200"
           onClick={() => setSelectedHeld(r)}
         >
-          {r.personal_number}
+          {soldierLabel(rawDtoFullName(r.raw_dto), r.personal_number)}
         </button>
       ),
     },
-    { id: "review_reason", header: t("admin.hr_sync.reason"), cell: (r) => r.review_reason ?? "—" },
+    {
+      id: "review_reason", header: t("admin.hr_sync.reason"),
+      cell: (r) => {
+        const reasons = splitReasons(r.review_reason);
+        if (reasons.length === 0) return "—";
+        return reasons.length === 1 ? reasons[0] : `${reasons[0]} (+${reasons.length - 1})`;
+      },
+    },
     {
       id: "actions", header: "", cell: (r) => (
         <button
@@ -287,7 +304,16 @@ export default function HrSyncReviewContent() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">{selectedHeld.personal_number}</h3>
+              <div>
+                <h3 className="text-base font-semibold">
+                  {rawDtoFullName(selectedHeld.raw_dto) ?? selectedHeld.personal_number}
+                </h3>
+                {rawDtoFullName(selectedHeld.raw_dto) && (
+                  <div dir="ltr" className="text-xs text-gray-500 dark:text-gray-400">
+                    {selectedHeld.personal_number}
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 data-testid="hr-sync-held-detail-close"
@@ -297,14 +323,37 @@ export default function HrSyncReviewContent() {
                 <X size={18} />
               </button>
             </div>
-            <div className="text-gray-700 dark:text-gray-300">{selectedHeld.review_reason ?? "—"}</div>
-            <pre
-              dir="ltr"
-              data-testid="hr-sync-held-detail-raw-dto"
-              className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all"
-            >
-              {selectedHeld.raw_dto ? JSON.stringify(selectedHeld.raw_dto, null, 2) : "—"}
-            </pre>
+
+            <div>
+              <div className="mb-1 text-gray-500 dark:text-gray-400">{t("admin.hr_sync.reasons")}</div>
+              {splitReasons(selectedHeld.review_reason).length > 0 ? (
+                <ul className="space-y-1" data-testid="hr-sync-held-detail-reasons">
+                  {splitReasons(selectedHeld.review_reason).map((reason, i) => (
+                    <li
+                      key={i}
+                      className="rounded bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300 px-2 py-1"
+                    >
+                      {reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-gray-700 dark:text-gray-300">—</div>
+              )}
+            </div>
+
+            <details>
+              <summary className="cursor-pointer text-gray-500 dark:text-gray-400">
+                {t("admin.hr_sync.raw_payload")}
+              </summary>
+              <pre
+                dir="ltr"
+                data-testid="hr-sync-held-detail-raw-dto"
+                className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all mt-2"
+              >
+                {selectedHeld.raw_dto ? JSON.stringify(selectedHeld.raw_dto, null, 2) : "—"}
+              </pre>
+            </details>
           </div>
         </div>
       )}
