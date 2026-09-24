@@ -408,3 +408,39 @@ def test_apply_update_stamps_rank_last_set_by_manual(client, admin_session):
     updated = admin_session.get(type(soldier), soldier.id)
     assert updated.rank == "רבט"
     assert updated.rank_last_set_by == "manual"
+
+
+def test_apply_update_does_not_stamp_rank_last_set_by_when_rank_unchanged(client, admin_session):
+    """An Excel re-import that re-sends the same rank value (unrelated fields
+    changed, e.g. phone) must not overwrite an existing "worker"/"hr_sync"
+    provenance -- only an actual rank change is a manual override."""
+    node = create_node(admin_session, level="branch", name="ie_node_rank_unchanged")
+    dm = create_soldier(admin_session, personal_number="ie_dm_rank_unchanged", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_rank_unchanged", hierarchy_node_id=node.id)
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "worker"
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "update",
+                "personal_number": soldier.personal_number, "full_name": soldier.full_name,
+                "rank": "טוראי", "gender": None, "is_officer": None,
+                "hierarchy_node_id": None, "enrolled_at": None,
+                "enlistment_date": None, "phone": "050-9998877", "email": None,
+                "existing_id": str(soldier.id),
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["errors"] == []
+
+    admin_session.expire_all()
+    updated = admin_session.get(type(soldier), soldier.id)
+    assert updated.rank == "טוראי"
+    assert updated.rank_last_set_by == "worker"

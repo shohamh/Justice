@@ -47,7 +47,7 @@ class ImportSoldierRow(BaseModel):
 class ImportDutyShiftRow(BaseModel):
     source_row: int
     duty_type_name: str
-    duty_location_name: str
+    duty_location_name: str | None = None
     start_date: str
     end_date: str
     start_time: str | None = None

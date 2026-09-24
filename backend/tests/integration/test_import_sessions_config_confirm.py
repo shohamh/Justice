@@ -88,6 +88,39 @@ def test_confirm_update_stamps_rank_last_set_by_manual(client, admin_session):
     assert existing.rank_last_set_by == "manual"
 
 
+def test_confirm_update_does_not_stamp_rank_last_set_by_when_rank_unchanged(client, admin_session):
+    """Re-importing a sheet that re-sends the same rank value (only an
+    unrelated field changed) must not overwrite existing "worker"/"hr_sync"
+    provenance -- only an actual rank change is a manual override."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    existing.rank = "טוראי"
+    existing.rank_last_set_by = "worker"
+    admin_session.commit()
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank", "phone"],
+            [existing.personal_number, existing.full_name, "טוראי", "050-9998877"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    admin_session.expire_all()
+    admin_session.refresh(existing)
+    assert existing.rank == "טוראי"
+    assert existing.rank_last_set_by == "worker"
+
+
 def test_confirm_creates_duty_location_and_duty_type(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     name = f"שמירה_{_uid()}"

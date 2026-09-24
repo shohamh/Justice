@@ -112,14 +112,14 @@ def list_divergences(
             AuditLog.action == "hr_sync.field_skipped_overridden",
             func.jsonb_exists(SoldierHrProfile.overridden_fields, field_name_expr),
         )
-        .order_by(AuditLog.entity_id, field_name_expr, AuditLog.created_at.desc())
+        .order_by(AuditLog.entity_id, field_name_expr, AuditLog.created_at.desc(), AuditLog.id.desc())
         .distinct(AuditLog.entity_id, field_name_expr)
         .subquery()
     )
     latest = aliased(AuditLog, latest_subq)
     rows = session.execute(
         select(latest)
-        .order_by(latest.created_at.desc())
+        .order_by(latest.created_at.desc(), latest.id.desc())
         .limit(limit)
         .offset(offset)
     ).scalars().all()

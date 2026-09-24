@@ -411,8 +411,9 @@ def apply(
                 if s:
                     s.full_name = row.full_name
                     if row.rank is not None:
+                        if row.rank != s.rank:
+                            s.rank_last_set_by = "manual"
                         s.rank = row.rank
-                        s.rank_last_set_by = "manual"
                         s.rank_track = resolve_track(s.rank, s.rank_track)
                     if row.rank_track is not None:
                         s.rank_track = row.rank_track
