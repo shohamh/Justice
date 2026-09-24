@@ -77,6 +77,22 @@ describe("HrSyncReviewContent", () => {
     expect(screen.getByTestId("hr-sync-held-detail-raw-dto")).toHaveTextContent("bad-value");
   });
 
+  it("shows the HR payload as a labeled field table with the offending field highlighted", async () => {
+    renderWithClient();
+    await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("hr-sync-held-detail-1"));
+    await screen.findByTestId("hr-sync-held-detail-modal");
+
+    const table = screen.getByTestId("hr-sync-held-detail-fields");
+    expect(table).toHaveTextContent("שם מלא");
+    expect(table).toHaveTextContent("ישראל ישראלי");
+
+    const genderRow = screen.getByTestId("hr-sync-held-detail-field-gender");
+    expect(genderRow.className).toContain("bg-red-50");
+    const rankRow = screen.getByTestId("hr-sync-held-detail-field-rank");
+    expect(rankRow.className).not.toContain("bg-red-50");
+  });
+
   it("shows the soldier's name and each reason as its own bullet in the detail modal", async () => {
     renderWithClient();
     await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
