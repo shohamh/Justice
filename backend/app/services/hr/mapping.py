@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS, derive_is_career
 from app.services.hr.schemas import HrUser
 
+# Confirmed against real HR API responses: gender comes back as a bare "M"/"F".
 GENDER_MAP: dict[str, str] = {
-    "male": "male",
-    "female": "female",
+    "M": "male",
+    "F": "female",
 }
 
 # Keys are HR's raw `rank` string; values are Justice's existing rank
@@ -18,12 +19,15 @@ GENDER_MAP: dict[str, str] = {
 # that translation goes, one confirmed entry at a time.
 RANK_MAP: dict[str, str] = {rank: rank for rank in (*ENLISTED_RANKS, *OFFICER_RANKS)}
 
-# HR's `servicType` -> Soldier.rank_track ("חובה" mandatory / "קבע" career).
-# TODO: "chova"/"kva" are placeholder keys, unconfirmed against real HR API
-# responses — see design doc's "Open questions" section.
+# HR's `servicType` -> Soldier.rank_track. Confirmed against real HR API
+# responses: the raw value IS the Hebrew word itself ("חובה" mandatory /
+# "קבע" career), not an English transliteration — identity-shaped like
+# RANK_MAP, kept as an explicit dict (not a passthrough) so an unexpected
+# third value still lands in held-for-review instead of being silently
+# accepted.
 SERVICE_TYPE_TO_TRACK_MAP: dict[str, str] = {
-    "chova": "חובה",
-    "kva": "קבע",
+    "חובה": "חובה",
+    "קבע": "קבע",
 }
 
 HR_OWNED_FIELDS: frozenset[str] = frozenset({
@@ -60,6 +64,15 @@ def _parse_date(value: str | None, field_label: str, reasons: list[str]) -> date
         return None
     try:
         return date.fromisoformat(value)
+    except ValueError:
+        pass
+    # HR's date fields are confirmed to sometimes come back as a full ISO
+    # datetime ("...T...", e.g. with a midnight time component and/or a
+    # timezone offset) rather than a bare date — date.fromisoformat rejects
+    # that outright, so fall back to parsing it as a datetime and taking
+    # just the date part.
+    try:
+        return datetime.fromisoformat(value).date()
     except ValueError:
         reasons.append(f"unparseable {field_label}: {value!r}")
         return None

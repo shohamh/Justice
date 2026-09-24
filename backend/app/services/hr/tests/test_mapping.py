@@ -14,9 +14,9 @@ def _hr_user(**overrides: object) -> HrUser:
         mail="israel@example.mil",
         phone="050-1112222",
         image_url="https://hr.example/img/1",
-        gender="male",
+        gender="M",
         rank="טוראי",
-        serv_type="chova",
+        serv_type="חובה",
         service_start_date="2024-01-01",
         end_hova_date="2026-01-01",
         service_end_date=None,
@@ -43,14 +43,14 @@ def test_map_hr_user_happy_path_enlisted():
 
 
 def test_map_hr_user_officer_rank_sets_is_officer_and_kva_track():
-    result = map_hr_user(_hr_user(rank=OFFICER_RANKS[0], serv_type="kva"))
+    result = map_hr_user(_hr_user(rank=OFFICER_RANKS[0], serv_type="קבע"))
     assert isinstance(result, MappedSoldierFields)
     assert result.is_officer is True
     assert result.rank_track == "קבע"
 
 
 def test_map_hr_user_is_career_matches_derive_is_career_directly():
-    hr = _hr_user(rank="רסל", serv_type="kva", end_hova_date="2020-01-01")
+    hr = _hr_user(rank="רסל", serv_type="קבע", end_hova_date="2020-01-01")
     result = map_hr_user(hr)
     assert isinstance(result, MappedSoldierFields)
     expected = derive_is_career("רסל", date(2020, 1, 1), None)
@@ -113,6 +113,22 @@ def test_map_hr_user_empty_full_name_held_for_review():
     result = map_hr_user(_hr_user(full_name=""))
     assert isinstance(result, HeldForReview)
     assert any("full_name" in r for r in result.reasons)
+
+
+def test_map_hr_user_parses_full_iso_datetime_date_field():
+    # Confirmed against real HR API responses: date fields sometimes come
+    # back as a full ISO datetime ("...T...") rather than a bare date.
+    result = map_hr_user(_hr_user(service_start_date="2024-01-01T00:00:00.000Z"))
+    assert isinstance(result, MappedSoldierFields)
+    assert result.enlistment_date == date(2024, 1, 1)
+
+
+def test_map_hr_user_image_buffer_becomes_no_image():
+    # Confirmed against real HR API responses: some users' imageUrl is a raw
+    # byte-buffer object instead of a URL string.
+    result = map_hr_user(_hr_user(image_url={"type": "Buffer", "data": [1, 2, 3]}))
+    assert isinstance(result, MappedSoldierFields)
+    assert result.profile_picture_url is None
 
 
 def test_hr_owned_fields_contains_expected_names():

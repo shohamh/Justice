@@ -86,6 +86,24 @@ def test_hr_user_tolerates_missing_optional_fields():
     assert user.rank is None
 
 
+def test_hr_user_image_url_raw_buffer_becomes_none():
+    # Confirmed against real HR API responses: some users' imageUrl comes
+    # back as a raw byte-buffer object instead of a URL string.
+    user = HrUser.model_validate({
+        "personalNumber": "1", "fullName": "Buffer User",
+        "imageUrl": {"type": "Buffer", "data": [1, 2, 3]},
+    })
+    assert user.image_url is None
+
+
+def test_hr_user_image_url_string_passes_through():
+    user = HrUser.model_validate({
+        "personalNumber": "1", "fullName": "URL User",
+        "imageUrl": "https://hr.example/img/1",
+    })
+    assert user.image_url == "https://hr.example/img/1"
+
+
 def test_hr_user_with_reports_parses_manages_list():
     payload = {
         "personalNumber": "1",

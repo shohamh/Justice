@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class HrUser(BaseModel):
@@ -13,6 +13,22 @@ class HrUser(BaseModel):
     last_name: str | None = Field(default=None, alias="lastName")
     full_name: str = Field(alias="fullName")
     image_url: str | None = Field(default=None, alias="imageUrl")
+
+    @field_validator("image_url", mode="before")
+    @classmethod
+    def _drop_raw_image_buffers(cls, value: object) -> object:
+        """Confirmed against real HR API responses: some users (observed for
+        reserve-duty "מלואים" personnel) have `imageUrl` returned as a raw
+        byte buffer object (`{"type": "Buffer", "data": [...]}`) instead of
+        a URL string. We have no infra to store/serve that binary blob via
+        this field, so treat it as "no image" — the alternative (a plain
+        `str` type) would raise a ValidationError, and since the HR client
+        validates one item at a time but the caller iterates a whole page,
+        that single bad record would abort every other user in the same
+        page, not just this one."""
+        if isinstance(value, dict):
+            return None
+        return value
     mail: str | None = None
     status: str | None = None
     national_identifier: str | None = Field(default=None, alias="nationalIdentifier")
