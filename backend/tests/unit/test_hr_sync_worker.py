@@ -82,6 +82,32 @@ def test_run_hr_sync_cycle_in_own_session_opens_session_and_returns_poll_hours(a
     assert poll_hours == 9
 
 
+def test_run_hr_sync_cycle_in_own_session_skips_when_lock_held(app_session) -> None:
+    """A concurrent manual "run sync now" (or another cron process) holds the
+    shared advisory lock -- the cron cycle must skip this wake rather than
+    block waiting for it."""
+    from sqlalchemy import text
+    from app.hr_sync_worker import _SYNC_LOCK_KEY
+    from app.services.settings_loader import set_setting
+
+    set_setting(app_session, "hr_sync.poll_hours", "9", actor_id=None)
+    app_session.commit()
+
+    app_session.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY})
+    app_session.commit()
+    try:
+        with patch("app.hr_sync_worker.run_hierarchy_sync") as mock_hierarchy, \
+             patch("app.hr_sync_worker.run_person_sync") as mock_person:
+            poll_hours = _run_hr_sync_cycle_in_own_session()
+    finally:
+        app_session.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
+        app_session.commit()
+
+    assert poll_hours == 9
+    mock_hierarchy.assert_not_called()
+    mock_person.assert_not_called()
+
+
 def test_run_hr_sync_cycle_logs_and_swallows_exceptions(app_session) -> None:
     with patch("app.hr_sync_worker.get_settings") as mock_settings:
         mock_settings.return_value.hr_sync_enabled = True

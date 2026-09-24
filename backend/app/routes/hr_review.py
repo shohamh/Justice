@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 
@@ -19,9 +20,7 @@ from app.db.models import (
     SoldierHrProfile,
 )
 from app.db.session import get_session
-from app.services.hr.client import HrApiClient
-from app.services.hr.hierarchy_sync import run_hierarchy_sync
-from app.services.hr.person_sync import run_person_sync
+from app.hr_sync_worker import SyncAlreadyRunningError, run_sync_now_in_own_session
 from app.services.hr.review import ReviewActionError, clear_field_override, dismiss_held_for_review
 from app.settings import get_settings
 
@@ -299,16 +298,13 @@ class RunNowOut(BaseModel):
 
 @router.post("/run-now", response_model=RunNowOut)
 async def run_sync_now(
-    session: Session = Depends(get_session),
     user: Soldier = Depends(require_roles("admin")),
 ) -> RunNowOut:
     settings = get_settings()
     if not settings.hr_sync_enabled:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="hr_sync_not_configured")
-    client = HrApiClient(
-        settings.hr_api_base_url, settings.hr_api_key,
-        ca_bundle_path=settings.hr_api_ca_bundle_path, page_size=settings.hr_api_page_size,
-    )
-    hierarchy_run = await run_hierarchy_sync(session, client)
-    person_run = await run_person_sync(session, client)
-    return RunNowOut(hierarchy_sync_id=hierarchy_run.id, person_sync_id=person_run.id)
+    try:
+        hierarchy_sync_id, person_sync_id = await asyncio.to_thread(run_sync_now_in_own_session)
+    except SyncAlreadyRunningError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="hr_sync_already_running") from exc
+    return RunNowOut(hierarchy_sync_id=hierarchy_sync_id, person_sync_id=person_sync_id)

@@ -260,10 +260,14 @@ def test_run_now_requires_hr_sync_configured(client, admin_session, monkeypatch)
 
 
 def test_run_now_triggers_sync(client, admin_session, monkeypatch):
+    """The manual trigger now runs off-thread via run_sync_now_in_own_session
+    (app/hr_sync_worker.py), which opens its own session and calls
+    run_hierarchy_sync/run_person_sync from there -- patch at that module,
+    not at app.routes.hr_review, which no longer imports them directly."""
     headers = _admin_headers(admin_session)
     from unittest.mock import AsyncMock
 
-    import app.routes.hr_review as hr_review_module
+    import app.hr_sync_worker as hr_sync_worker_module
     from app.db.models import HrHierarchySync, HrPersonSync
 
     async def _fake_hierarchy_sync(session, client_):
@@ -278,8 +282,8 @@ def test_run_now_triggers_sync(client, admin_session, monkeypatch):
         session.flush()
         return run
 
-    monkeypatch.setattr(hr_review_module, "run_hierarchy_sync", AsyncMock(side_effect=_fake_hierarchy_sync))
-    monkeypatch.setattr(hr_review_module, "run_person_sync", AsyncMock(side_effect=_fake_person_sync))
+    monkeypatch.setattr(hr_sync_worker_module, "run_hierarchy_sync", AsyncMock(side_effect=_fake_hierarchy_sync))
+    monkeypatch.setattr(hr_sync_worker_module, "run_person_sync", AsyncMock(side_effect=_fake_person_sync))
 
     from app.settings import get_settings
     get_settings.cache_clear()
@@ -288,6 +292,34 @@ def test_run_now_triggers_sync(client, admin_session, monkeypatch):
 
     r = client.post("/api/admin/hr-sync/run-now", headers=headers)
     assert r.status_code == 200
-    hr_review_module.run_hierarchy_sync.assert_called_once()
-    hr_review_module.run_person_sync.assert_called_once()
+    body = r.json()
+    assert body["hierarchy_sync_id"] is not None
+    assert body["person_sync_id"] is not None
+    hr_sync_worker_module.run_hierarchy_sync.assert_called_once()
+    hr_sync_worker_module.run_person_sync.assert_called_once()
     get_settings.cache_clear()
+
+
+def test_run_now_returns_409_when_sync_already_running(client, admin_session, monkeypatch):
+    """A concurrent sync (the cron cycle or another manual trigger) holds the
+    shared advisory lock -- run-now must not block waiting for it, and must
+    surface a clean 409 rather than crash or hang."""
+    headers = _admin_headers(admin_session)
+
+    from app.settings import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setenv("HR_API_BASE_URL", "https://hr.example")
+    monkeypatch.setenv("HR_API_KEY", "key")
+
+    from app.hr_sync_worker import _SYNC_LOCK_KEY
+    from sqlalchemy import text
+    admin_session.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY})
+    admin_session.commit()
+    try:
+        r = client.post("/api/admin/hr-sync/run-now", headers=headers)
+        assert r.status_code == 409
+        assert r.json()["detail"] == "hr_sync_already_running"
+    finally:
+        admin_session.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
+        admin_session.commit()
+        get_settings.cache_clear()
