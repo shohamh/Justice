@@ -480,6 +480,78 @@ def test_apply_existing_person_flags_conflict_when_worker_set_rank_first(admin_s
     assert soldier_notif is not None
 
 
+def test_apply_existing_person_notifies_commander_even_when_soldier_opts_out(admin_session):
+    """The soldier's own notification preference must not be able to
+    silently suppress their commander's copy of a rank-conflict
+    notification too -- see notifications.py's create_notification
+    exclusion list and this module's explicit notify_commanders_of_request
+    call."""
+    from tests.helpers import create_node, create_soldier
+    from app.db.models import CommanderNotificationScope, NotificationPreference
+
+    node = create_node(admin_session, level="unit", name="rank-conflict-pref-node")
+    commander = create_soldier(admin_session, personal_number="ps-rc-pref-cmd", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ps-rc-pref-sol", hierarchy_node_id=node.id)
+    soldier.rank = "טוראי"
+    soldier.rank_last_set_by = "worker"
+    admin_session.add(CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=node.id))
+    admin_session.add(NotificationPreference(
+        soldier_id=soldier.id, notification_type=NotificationType.hr_rank_conflict, in_app_enabled=False,
+    ))
+    profile = _linked_profile(admin_session, soldier)
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-rc-pref-sol")
+    mapped = _mapped(personal_number="ps-rc-pref-sol", rank="סמל")
+
+    _apply_existing_person(admin_session, profile, user, mapped)
+    admin_session.commit()
+
+    soldier_notif = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.hr_rank_conflict
+    ).one_or_none()
+    assert soldier_notif is None  # the soldier opted out of their own copy
+
+    commander_notif = admin_session.query(Notification).filter_by(
+        soldier_id=commander.id, type=NotificationType.hr_rank_conflict
+    ).one_or_none()
+    assert commander_notif is not None  # but the commander must still be told
+
+
+def test_apply_new_person_records_conflict_but_skips_notification_on_first_link(admin_session):
+    """Linking a pre-existing soldier to HR for the first time routinely
+    disagrees with HR's rank by more than one step -- flooding every
+    newly-linked soldier and their commander on initial rollout isn't a
+    meaningful signal, so the conflict is recorded (for admin visibility)
+    but not notified."""
+    from tests.helpers import create_node, create_soldier
+    from app.db.models import CommanderNotificationScope
+
+    node = create_node(admin_session, level="unit", name="rank-conflict-first-link-node")
+    commander = create_soldier(admin_session, personal_number="ps-rc-fl-cmd", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ps-rc-fl-sol", hierarchy_node_id=node.id)
+    soldier.rank = "טוראי"
+    admin_session.add(CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=node.id))
+    admin_session.commit()
+
+    user = _hr_user(personal_number="ps-rc-fl-sol")
+    mapped = _mapped(personal_number="ps-rc-fl-sol", rank="סמל")
+
+    _apply_new_person(admin_session, user, mapped)
+    admin_session.commit()
+
+    conflicts = admin_session.query(HrRankConflict).filter_by(soldier_id=soldier.id).all()
+    assert len(conflicts) == 1
+    assert conflicts[0].non_sequential_jump is True
+
+    assert admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.hr_rank_conflict
+    ).one_or_none() is None
+    assert admin_session.query(Notification).filter_by(
+        soldier_id=commander.id, type=NotificationType.hr_rank_conflict
+    ).one_or_none() is None
+
+
 def test_apply_existing_person_flags_conflict_on_non_sequential_jump(admin_session):
     from tests.helpers import create_soldier
     from app.services.rank_advancement import upsert_interval

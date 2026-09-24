@@ -22,7 +22,7 @@ from app.services.hr.client import HrApiClient
 from app.services.hr.divergence import record_sync_divergence
 from app.services.hr.mapping import HR_OWNED_FIELDS, HeldForReview, MappedSoldierFields, map_hr_user
 from app.services.hr.schemas import HrUser
-from app.services.notifications import create_notification
+from app.services.notifications import create_notification, notify_commanders_of_request
 from app.services.rank_advancement import get_next_rank, resolve_track
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import _reset_rank_advancement
@@ -114,7 +114,9 @@ def _apply_new_person(
     profile = _find_or_create_soldier_hr_profile(session, mapped.personal_number)
     profile.soldier_id = soldier.id
     profile.review_reason = None
-    _apply_existing_person(session, profile, user, mapped, hr_person_sync_id=hr_person_sync_id)
+    _apply_existing_person(
+        session, profile, user, mapped, hr_person_sync_id=hr_person_sync_id, is_first_link=True,
+    )
     return soldier, profile
 
 
@@ -135,7 +137,7 @@ _DEPENDENT_LOGIC_TRIGGER_FIELDS = frozenset({"rank", "mandatory_end_date", "disc
 
 def _flag_rank_conflict_if_needed(
     session: Session, *, soldier: Soldier, old_rank: str, new_rank: str,
-    hr_person_sync_id: uuid.UUID | None = None,
+    hr_person_sync_id: uuid.UUID | None = None, is_first_link: bool = False,
 ) -> None:
     """Record a conflict and notify the soldier + their commander(s) when
     HR's incoming rank either overrides a decision the worker made on its
@@ -143,11 +145,20 @@ def _flag_rank_conflict_if_needed(
     HR's value is applied regardless (HR stays authoritative) -- this is a
     visibility/audit action, not a block.
 
-    Only `create_notification` is called here (not also
-    `notify_commanders_of_request`): `create_notification` already cascades
-    to the soldier's commander(s)/deputies automatically for any type not in
-    its exclusion list (see notifications.py), and `hr_rank_conflict` is not
-    excluded -- calling both would double-notify every commander.
+    Both `create_notification` (soldier) and `notify_commanders_of_request`
+    (commanders) are called: `hr_rank_conflict` is deliberately excluded from
+    `create_notification`'s automatic commander cascade (see
+    notifications.py) precisely so the soldier's own notification preference
+    can never silently suppress their commander's copy too -- the explicit
+    call here is unconditional on that.
+
+    `is_first_link=True` (the very first time an HR profile is linked to a
+    soldier, e.g. one manually enrolled before HR sync existed) still records
+    the HrRankConflict row for admin visibility, but skips both
+    notifications: two independently-maintained systems reconciling for the
+    first time will routinely disagree by more than one step, and flooding
+    every newly-linked soldier and their commander on initial rollout isn't
+    a meaningful signal the way an in-flight conflict is.
     """
     triggered_by_worker_decision = soldier.rank_last_set_by == "worker"
     track = resolve_track(old_rank, soldier.rank_track)
@@ -163,9 +174,15 @@ def _flag_rank_conflict_if_needed(
         non_sequential_jump=non_sequential_jump,
         hr_person_sync_id=hr_person_sync_id,
     ))
+    if is_first_link:
+        return
     title = "דרגתך עודכנה בעקבות סנכרון מול מערכת משאבי אנוש"
     body = f"הדרגה עודכנה מ-{old_rank} ל-{new_rank} בעקבות נתוני משאבי אנוש, שאינם תואמים את ההתקדמות הצפויה."
     create_notification(
+        session, soldier_id=soldier.id, type=NotificationType.hr_rank_conflict,
+        title=title, body=body, reference_type="soldier", reference_id=soldier.id,
+    )
+    notify_commanders_of_request(
         session, soldier_id=soldier.id, type=NotificationType.hr_rank_conflict,
         title=title, body=body, reference_type="soldier", reference_id=soldier.id,
     )
@@ -173,7 +190,7 @@ def _flag_rank_conflict_if_needed(
 
 def _apply_existing_person(
     session: Session, profile: SoldierHrProfile, user: HrUser, mapped: MappedSoldierFields,
-    *, hr_person_sync_id: uuid.UUID | None = None,
+    *, hr_person_sync_id: uuid.UUID | None = None, is_first_link: bool = False,
 ) -> None:
     soldier = session.get(Soldier, profile.soldier_id)
     changed_dependent_field = False
@@ -196,7 +213,7 @@ def _apply_existing_person(
         if field_name == "rank" and old_value != new_value and old_value is not None:
             _flag_rank_conflict_if_needed(
                 session, soldier=soldier, old_rank=old_value, new_rank=new_value,
-                hr_person_sync_id=hr_person_sync_id,
+                hr_person_sync_id=hr_person_sync_id, is_first_link=is_first_link,
             )
         setattr(soldier, field_name, new_value)
         if field_name == "rank" and old_value != new_value:
