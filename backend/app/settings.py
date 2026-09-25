@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     login_account_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_ACCOUNT_RATE_LIMIT")
     invite_code_rate_limit: str = Field(default="20/hour", alias="INVITE_CODE_RATE_LIMIT")
     cookie_secure: bool = Field(default=True, alias="COOKIE_SECURE")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    loki_url: str = Field(default="", alias="LOKI_URL")
     error_log_rate_limit_max_per_window: int = Field(default=10, alias="ERROR_LOG_RATE_LIMIT_MAX_PER_WINDOW")
     error_log_rate_limit_window_seconds: float = Field(default=60.0, alias="ERROR_LOG_RATE_LIMIT_WINDOW_SECONDS")
 

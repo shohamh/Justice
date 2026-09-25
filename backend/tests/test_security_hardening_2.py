@@ -112,38 +112,30 @@ def test_gimelim_resolve_preview_token_returns_none_for_unknown():
 
 def test_gimelim_resolve_preview_token_returns_none_for_expired():
     import uuid
-    from datetime import datetime, timedelta, timezone
+    from app.redis_client import get_redis
     from app.services import gimelim as svc
 
     token = str(uuid.uuid4())
     primary_id = uuid.uuid4()
-    expired_time = datetime.now(timezone.utc) - timedelta(seconds=1)
-    svc._PREVIEW_STORE[token] = (
-        expired_time,
-        {"primary_assignment_id": str(primary_id)},
-    )
+    svc._store_preview(token, {"primary_assignment_id": str(primary_id)})
+    # Simulate Redis TTL eviction (SETEX handles this for real in production —
+    # here we evict immediately to exercise the "expired" path).
+    get_redis().delete(svc._preview_key(token))
     result = svc.resolve_preview_token_assignment(token)
     assert result is None
-    # clean up
-    svc._PREVIEW_STORE.pop(token, None)
 
 
 def test_gimelim_resolve_preview_token_returns_id_for_valid():
     import uuid
-    from datetime import datetime, timedelta, timezone
     from app.services import gimelim as svc
 
     token = str(uuid.uuid4())
     primary_id = uuid.uuid4()
-    future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
-    svc._PREVIEW_STORE[token] = (
-        future_time,
-        {"primary_assignment_id": str(primary_id)},
-    )
+    svc._store_preview(token, {"primary_assignment_id": str(primary_id)})
     result = svc.resolve_preview_token_assignment(token)
     assert result == primary_id
     # clean up
-    del svc._PREVIEW_STORE[token]
+    svc.consume_preview_token(token)
 
 
 def test_register_nodes_requires_invite_code():

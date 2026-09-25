@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -12,7 +13,7 @@ from starlette.responses import Response as StarletteResponse
 
 from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
-from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, request_data, request_id
+from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, redact, request_data, request_id
 from app.hr_sync_worker import run_hr_sync_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -81,7 +82,7 @@ from app.services.import_parsers import v1_standard as _v1_standard_import_parse
 from app.settings import get_settings
 from app.swap_expiry_worker import run_swap_expiry_worker
 
-setup_logging("backend.log")
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -108,10 +109,31 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 headers={REQUEST_ID_HEADER: request.state.request_id},
             )
         if response.status_code >= 500 and not logged_exception:
+            # A route can return a >=500 response directly (rather than raising)
+            # after call_next() has already finished, e.g. the readiness probe's
+            # 503 — by that point the ASGI receive channel BaseHTTPMiddleware
+            # handed to the downstream app is no longer available, so re-reading
+            # the request body here raises RuntimeError. Fall back to logging
+            # without the body rather than losing the error report entirely.
+            try:
+                data = await request_data(request)
+            except RuntimeError:
+                headers = {
+                    key: request.headers[key]
+                    for key in ("content-type", "user-agent", "referer")
+                    if key in request.headers
+                }
+                data = {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "query": redact(dict(request.query_params)),
+                    "headers": redact(headers),
+                    "body": None,
+                }
             log_backend_exception(
                 request,
                 RuntimeError(f"HTTP {response.status_code} response"),
-                await request_data(request),
+                data,
             )
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return response
@@ -261,6 +283,7 @@ def create_app() -> FastAPI:
     app.include_router(range_qualification_visibility_routes.soldiers_router, prefix="/api")
     app.include_router(ranges_routes.router, prefix="/api")
     app.include_router(range_locations_routes.router, prefix="/api")
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     return app
 
 

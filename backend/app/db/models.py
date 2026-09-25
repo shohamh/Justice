@@ -2019,6 +2019,16 @@ class AdminErrorRead(Base):
     __table_args__ = (sa.UniqueConstraint("admin_id", "source", "record_key", name="uq_admin_error_reads_admin_source_record_key"),)
 
 
+class AdminErrorClear(Base):
+    """Per-admin soft-clear cursor for the admin error inbox: error log
+    entries at or before `cleared_before` are hidden for this admin only.
+    The log data itself (in Loki) is never deleted."""
+    __tablename__ = "admin_error_clears"
+
+    admin_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), primary_key=True)
+    cleared_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class BugReportComment(Base):
     __tablename__ = "bug_report_comments"
 

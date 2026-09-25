@@ -13,15 +13,19 @@
 # direct collection under the "tests" testpath, and importing them here too
 # would double-register e.g. the --slow CLI option.
 from tests.conftest import (  # noqa: F401
+    _apply_schema,
+    _configure_redis_settings,
     _database_runtime,
+    _flush_redis,
+    _reset_rate_limiter,
+    _truncate_tables,
     admin_engine,
     admin_session,
     app_engine,
     app_session,
     client,
     db_admin_url,
+    monkeypatch_session,
     pg_container,
-    _apply_schema,
-    _reset_rate_limiter,
-    _truncate_tables,
+    redis_container,
 )

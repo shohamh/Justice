@@ -27,6 +27,7 @@ foreach ($envFile in @("$root\.env.defaults", "$root\.env")) {
 }
 $localDbUrl    = $envVars['DATABASE_URL'] -replace '@db:', '@localhost:'
 $localAdminUrl = $envVars['DB_ADMIN_URL']  -replace '@db:', '@localhost:'
+$localRedisUrl = $envVars['REDIS_URL'] -replace '://redis:', '://localhost:'
 
 # ── PyPI mirror support ───────────────────────────────────────────────────────
 # pip reads PIP_INDEX_URL from the environment automatically.
@@ -103,8 +104,12 @@ foreach ($port in @(8000, 5173)) {
 }
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
-Write-Host "[dev] Starting DB container..." -ForegroundColor Cyan
-$dbOut = docker compose up db -d 2>&1
+Write-Host "[dev] Starting DB + Redis + observability containers..." -ForegroundColor Cyan
+#    --no-deps: prometheus's `depends_on: backend` would otherwise pull the
+#    dockerized backend container up too, fighting the natively-run backend
+#    for port 8000 (this script stops the dockerized backend above precisely
+#    so the native one can bind that port).
+$dbOut = docker compose up db redis loki prometheus grafana -d --no-deps 2>&1
 if ($LASTEXITCODE -ne 0) {
     if ($dbOut -match "ports are not available|access a socket") {
         # Windows reserved the port range that includes 5432 (Hyper-V/WinNAT).
@@ -112,7 +117,7 @@ if ($LASTEXITCODE -ne 0) {
         Write-Host "[dev] Port 5432 reserved by Windows — resetting WinNAT (UAC prompt may appear)..." -ForegroundColor Yellow
         Start-Process powershell -Verb RunAs -ArgumentList '-Command', 'net stop winnat; net start winnat' -Wait -WindowStyle Hidden
         Start-Sleep -Seconds 2
-        $dbOut = docker compose up db -d 2>&1
+        $dbOut = docker compose up db redis loki prometheus grafana -d --no-deps 2>&1
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[dev] DB container failed to start: $dbOut"; exit 1
@@ -129,10 +134,22 @@ for ($i = 0; $i -lt 30; $i++) {
 if ($health -ne "healthy") { Write-Error "DB did not become healthy in time."; exit 1 }
 Write-Host "[dev] DB ready." -ForegroundColor Green
 
+Write-Host "[dev] Waiting for Redis to be healthy..." -ForegroundColor Cyan
+$redisContainer = docker compose ps -q redis
+for ($i = 0; $i -lt 30; $i++) {
+    $redisHealth = docker inspect --format '{{.State.Health.Status}}' $redisContainer 2>$null
+    if ($redisHealth -eq "healthy") { break }
+    Start-Sleep -Seconds 1
+}
+if ($redisHealth -ne "healthy") { Write-Error "Redis did not become healthy in time."; exit 1 }
+Write-Host "[dev] Redis ready." -ForegroundColor Green
+
 # ── Run migrations against localhost ─────────────────────────────────────────
 Write-Host "[dev] Running migrations..." -ForegroundColor Cyan
 $env:DATABASE_URL = $localDbUrl
 $env:DB_ADMIN_URL = $localAdminUrl
+$env:REDIS_URL = $localRedisUrl
+$env:LOKI_URL = "http://localhost:3100"
 Push-Location "$root\backend"
 & $venvPy -m alembic upgrade head
 $migrationExitCode = $LASTEXITCODE
@@ -156,7 +173,11 @@ $cmds.Add("cd /d `"$root\frontend`" && npm run dev")
 
 if ($TelegramBot) {
     $names.Add("bot");  $colors.Add("magenta")
-    $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
+    # LOKI_APP_LABEL distinguishes the bot's Loki stream (app="justice-bot")
+    # from the backend's (app="justice-backend", the default) so Grafana can
+    # filter one from the other. Set only for this command's cmd.exe shell —
+    # LOKI_URL itself is already inherited from the parent process env above.
+    $cmds.Add("set LOKI_APP_LABEL=justice-bot && cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
 }
 
 # ── Kill any stale bot processes ─────────────────────────────────────────────

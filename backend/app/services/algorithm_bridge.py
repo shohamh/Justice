@@ -53,6 +53,43 @@ from app.services.settings_loader import get_setting_int
 _cancel_events: dict[str, threading.Event] = {}
 _logger = logging.getLogger(__name__)
 
+_CANCEL_KEY_PREFIX = "algo_job_cancel:"
+_CANCEL_KEY_TTL_SECONDS = 3600  # long enough to outlive any single job run
+_CANCEL_POLL_SECONDS = 0.5
+
+
+def request_job_cancellation(job_id: uuid.UUID) -> None:
+    """Mark a job as cancel-requested in Redis, visible to whichever replica
+    is actually running it (which may not be the one handling this request)."""
+    from app.redis_client import get_redis
+
+    get_redis().set(f"{_CANCEL_KEY_PREFIX}{job_id}", "1", ex=_CANCEL_KEY_TTL_SECONDS)
+
+
+def _is_cancellation_requested(job_id: uuid.UUID) -> bool:
+    from app.redis_client import get_redis
+
+    return bool(get_redis().exists(f"{_CANCEL_KEY_PREFIX}{job_id}"))
+
+
+def _clear_cancellation_request(job_id: uuid.UUID) -> None:
+    from app.redis_client import get_redis
+
+    get_redis().delete(f"{_CANCEL_KEY_PREFIX}{job_id}")
+
+
+def _watch_job_cancel_requested(job_id: uuid.UUID, cancel_event: threading.Event) -> None:
+    """Daemon thread: bridges a cross-replica cancel request into the local
+    threading.Event the solver's hot loop polls in-process. Polling Redis
+    directly from that hot loop would add a network round-trip to every
+    check inside the solve; this thread absorbs that cost at a coarse
+    interval instead, so the solver itself never talks to Redis."""
+    while not cancel_event.wait(timeout=_CANCEL_POLL_SECONDS):
+        if _is_cancellation_requested(job_id):
+            _logger.warning("[job %s] cancel_event set via Redis cancel request", job_id)
+            cancel_event.set()
+            return
+
 
 def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_seconds: float) -> None:
     """Daemon thread: force-cancels a job still running after max_seconds.
@@ -1420,7 +1457,10 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         _log.info("[job %s] phase=%-30s elapsed=%.1fs", job_id, label, _time.monotonic() - _t0)
 
     cancel_event = threading.Event()
-    _cancel_events[str(job_id)] = cancel_event
+    _cancel_events[str(job_id)] = cancel_event  # same-replica fast path — see cancel_job
+    threading.Thread(
+        target=_watch_job_cancel_requested, args=(job_id, cancel_event), daemon=True,
+    ).start()
 
     try:
         with session_scope() as session:
@@ -1889,7 +1929,16 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
 
                         err_session.commit()
     finally:
+        # Unblocks _watch_job_cancel_requested (and lets _watch_job_timeout's
+        # wait() return immediately instead of idling for its full budget)
+        # regardless of how this job ended -- success, failure, or
+        # cancellation -- so the per-job watcher threads never outlive the
+        # job itself. Safe to set unconditionally: by this point the solve
+        # loop has already returned, so nothing downstream still reads
+        # cancel_event as a "should I stop" signal.
+        cancel_event.set()
         _cancel_events.pop(str(job_id), None)
+        _clear_cancellation_request(job_id)
 
 
 def serialize_solver_inputs(

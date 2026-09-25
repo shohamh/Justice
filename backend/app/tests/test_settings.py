@@ -8,6 +8,20 @@ def test_hr_sync_enabled_false_when_unset(monkeypatch):
     assert s.hr_sync_enabled is False
 
 
+def test_redis_url_defaults_to_localhost(monkeypatch):
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    s = Settings(_env_file=None, DATABASE_URL="x", DB_ADMIN_URL="x", JWT_SECRET="x" * 32)
+    assert s.redis_url == "redis://localhost:6379/0"
+
+
+def test_redis_url_reads_from_env():
+    s = Settings(
+        _env_file=None, DATABASE_URL="x", DB_ADMIN_URL="x", JWT_SECRET="x" * 32,
+        REDIS_URL="redis://redis:6379/0",
+    )
+    assert s.redis_url == "redis://redis:6379/0"
+
+
 def test_hr_sync_enabled_true_when_both_set(monkeypatch):
     s = Settings(
         _env_file=None,

@@ -4,7 +4,7 @@
 #   - Build frontend: cd frontend && npm ci && npm run build
 #   - Place TLS certs at deploy/certs/cert.pem and deploy/certs/key.pem
 #   - Copy deploy/.env.production.example to deploy/.env.production and fill in values
-#   - Create dirs: sudo mkdir -p /opt/justice/pgdata /opt/justice/backups /opt/justice/logs /opt/justice/wal-archive
+#   - Create dirs: sudo mkdir -p /opt/justice/pgdata /opt/justice/backups /opt/justice/logs /opt/justice/wal-archive /opt/justice/redis-data
 
 services:
   db:
@@ -35,18 +35,36 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - /opt/justice/redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ../backend
       target: production
     restart: unless-stopped
     env_file: deploy/.env.production
+    # No LOKI_URL is configured here (accepted, human-escalated decision — a
+    # Loki instance is only provisioned for dev, see deploy/observability/).
+    # Without it, the admin errors inbox has no log store to read from and
+    # returns 503 by design. See docs/architecture.md for details; set
+    # LOKI_URL (to a reachable production Loki) once one is deployed.
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
       TZ: Asia/Jerusalem  # see backend/Dockerfile — keeps date.today()/now() on Israel's calendar day
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - /opt/justice/logs:/app/logs
@@ -80,6 +98,8 @@ services:
     command: python -m bot.main
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   nginx:
