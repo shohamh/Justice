@@ -9,7 +9,9 @@ import pytest
 # instead of `pytest_plugins = ["tests.conftest"]`.
 from tests.conftest import (  # noqa: F401
     _apply_schema,
+    _configure_redis_settings,
     _database_runtime,
+    _flush_redis,
     _reset_rate_limiter,
     _truncate_tables,
     admin_engine,
@@ -18,7 +20,9 @@ from tests.conftest import (  # noqa: F401
     app_session,
     client,
     db_admin_url,
+    monkeypatch_session,
     pg_container,
+    redis_container,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
