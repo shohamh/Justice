@@ -118,6 +118,8 @@ services:
         required: false
     environment:
       - LOG_DIR=/app/logs
+      - LOKI_URL=http://loki:3100
+      - LOKI_APP_LABEL=justice-bot
     volumes:
       - ./backend:/app
       - ./logs:/app/logs

@@ -173,7 +173,11 @@ $cmds.Add("cd /d `"$root\frontend`" && npm run dev")
 
 if ($TelegramBot) {
     $names.Add("bot");  $colors.Add("magenta")
-    $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
+    # LOKI_APP_LABEL distinguishes the bot's Loki stream (app="justice-bot")
+    # from the backend's (app="justice-backend", the default) so Grafana can
+    # filter one from the other. Set only for this command's cmd.exe shell —
+    # LOKI_URL itself is already inherited from the parent process env above.
+    $cmds.Add("set LOKI_APP_LABEL=justice-bot && cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
 }
 
 # ── Kill any stale bot processes ─────────────────────────────────────────────
