@@ -121,10 +121,17 @@ def test_first_registration_initializes_absent_active_days_reference_date(client
     invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
     admin_session.commit()
 
-    response = _register(client, _registration_payload(invite.code, requested_node.id))
+    payload = _registration_payload(invite.code, requested_node.id)
+    response = _register(client, payload)
 
     assert response.status_code == 200, response.text
-    assert admin_session.get(SystemSetting, REFERENCE_DATE_KEY).value == date.today().isoformat()
+    # enrolled_at defaults to the DB's own CURRENT_DATE (Asia/Jerusalem, per
+    # docker-compose.yml), which can be a different calendar day than this
+    # test process's local date.today() -- compare against the soldier's own
+    # enrolled_at instead of an independently recomputed "today" so the
+    # assertion doesn't flake on the timezone gap.
+    soldier = admin_session.query(Soldier).filter_by(personal_number=payload["personal_number"]).one()
+    assert admin_session.get(SystemSetting, REFERENCE_DATE_KEY).value == soldier.enrolled_at.isoformat()
 
 
 def test_registration_preserves_existing_active_days_reference_date(client, admin_session):
