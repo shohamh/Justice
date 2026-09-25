@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -18,12 +19,16 @@ from app.algorithm.types import (
 from app.db.models import AlgorithmJob, DutyLocation, DutyType, HierarchyNode
 from app.services.algorithm_bridge import (
     _build_node_parents,
+    _cancel_events,
     _count_space_stats,
     _explanation_ahead_breakdown,
+    _is_cancellation_requested,
+    _watch_job_cancel_requested,
     build_hierarchy_maps,
     estimate_max_job_seconds,
     load_duty_blocks_from_shifts,
     persist_results,
+    request_job_cancellation,
     resolve_solver_settings,
     serialize_solver_inputs,
 )
@@ -675,3 +680,62 @@ def test_persist_results_does_not_log_when_randomness_low(admin_session, caplog)
     admin_session.commit()
 
     assert [r for r in caplog.records if "unexplained" in r.message] == []
+
+
+# ── Cross-replica cancellation bridge (Redis) ───────────────────────────────
+
+def test_request_job_cancellation_is_visible_via_is_cancellation_requested():
+    job_id = uuid.uuid4()
+    assert _is_cancellation_requested(job_id) is False
+    request_job_cancellation(job_id)
+    assert _is_cancellation_requested(job_id) is True
+
+
+def test_watch_job_cancel_requested_sets_local_event_when_redis_flag_appears():
+    job_id = uuid.uuid4()
+    cancel_event = threading.Event()
+    watcher = threading.Thread(
+        target=_watch_job_cancel_requested, args=(job_id, cancel_event), daemon=True,
+    )
+    watcher.start()
+
+    assert cancel_event.wait(timeout=0.3) is False  # nothing requested yet
+
+    request_job_cancellation(job_id)
+
+    assert cancel_event.wait(timeout=2.0) is True  # bridged within one poll interval
+    watcher.join(timeout=1.0)
+
+
+def test_cross_replica_cancel_request_converges_via_independent_threads():
+    """Simulates cancel_job() being handled on a DIFFERENT replica than the one
+    running the solver: the two sides only share state through Redis, never
+    through a shared in-process dict or variable.
+
+    One thread stands in for "this replica's" job runner: it registers the
+    job in _cancel_events (as run_algorithm_job does) and starts the bridge
+    watcher. A second, fully independent thread stands in for cancel_job()
+    handled on another replica: it has no visibility into this replica's
+    _cancel_events, so it can only call request_job_cancellation (the Redis
+    fallback branch in app.routes.algorithm.cancel_job). The two threads never
+    share a cancel_event object directly -- only Redis bridges them.
+    """
+    job_id = uuid.uuid4()
+    cancel_event = threading.Event()
+    _cancel_events[str(job_id)] = cancel_event
+
+    watcher = threading.Thread(
+        target=_watch_job_cancel_requested, args=(job_id, cancel_event), daemon=True,
+    )
+    watcher.start()
+    try:
+        assert cancel_event.wait(timeout=0.3) is False  # nothing requested yet
+
+        other_replica = threading.Thread(target=request_job_cancellation, args=(job_id,), daemon=True)
+        other_replica.start()
+        other_replica.join(timeout=1.0)
+
+        assert cancel_event.wait(timeout=2.0) is True
+        watcher.join(timeout=1.0)
+    finally:
+        _cancel_events.pop(str(job_id), None)

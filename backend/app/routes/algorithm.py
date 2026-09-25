@@ -842,11 +842,17 @@ def cancel_job(
     job.finished_at = datetime.now(tz=timezone.utc)
     session.commit()
 
-    from app.services.algorithm_bridge import _cancel_events
+    from app.services.algorithm_bridge import _cancel_events, request_job_cancellation
     event = _cancel_events.get(str(job_id))
     if event:
+        # Same replica is running the job — set it directly, no need to wait
+        # out a Redis poll interval.
         _logger.warning("[job %s] cancel_event set by user request (actor=%s)", job_id, user.id)
         event.set()
+    else:
+        # A different replica may be running it — always also write the
+        # Redis flag so that replica's watcher thread picks it up.
+        request_job_cancellation(job_id)
 
 
 @router.get("/drafts-preview", response_model=DraftsPreviewOut)
