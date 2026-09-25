@@ -124,3 +124,21 @@ def test_setup_logging_installs_excepthook():
     logging_config.setup_logging()
 
     assert sys.excepthook is logging_config._log_uncaught_exception
+
+
+def test_setup_logging_warns_when_loki_is_not_configured(caplog):
+    with caplog.at_level(logging.WARNING, logger="app.logging_config"):
+        logging_config.setup_logging()
+
+    warnings = [r for r in caplog.records if r.name == "app.logging_config" and r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "LOKI_URL" in warnings[0].getMessage()
+
+
+def test_setup_logging_does_not_warn_when_loki_is_configured(monkeypatch, caplog):
+    monkeypatch.setenv("LOKI_URL", "http://loki.test:3100")
+
+    with caplog.at_level(logging.WARNING, logger="app.logging_config"):
+        logging_config.setup_logging()
+
+    assert not [r for r in caplog.records if r.name == "app.logging_config"]

@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
@@ -154,29 +155,40 @@ def test_admin_errors_endpoints_require_admin(client: TestClient, admin_session:
     assert client.delete("/api/admin/errors", headers=headers, params={"through": CUTOFF.isoformat()}).status_code == 403
 
 
-def test_admin_errors_returns_503_when_loki_is_unreachable(
-    client: TestClient, admin_session: Session, loki_url: str,
+def test_admin_errors_returns_503_and_logs_a_warning_when_loki_is_unreachable(
+    client: TestClient, admin_session: Session, loki_url: str, caplog: pytest.LogCaptureFixture,
 ):
     admin = _admin(admin_session, "errors-admin-loki-down")
     with respx.mock(assert_all_called=False) as router:
         router.get(QUERY_RANGE).mock(side_effect=httpx.ConnectError("connection refused"))
-        response = client.get("/api/admin/errors", headers=auth_headers(admin))
+        with caplog.at_level(logging.WARNING, logger="app.routes.admin_errors"):
+            response = client.get("/api/admin/errors", headers=auth_headers(admin))
 
     assert response.status_code == 503
+    warnings = [r for r in caplog.records if r.name == "app.routes.admin_errors" and r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert warnings[0].exc_info is not None
+    assert "connection refused" in str(warnings[0].exc_info[1].__cause__)
 
 
-def test_admin_errors_is_empty_when_loki_is_not_configured(
-    client: TestClient, admin_session: Session, monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("get", "/api/admin/errors"), ("get", "/api/admin/errors/unread-count"), ("post", "/api/admin/errors/mark-all-read")],
+)
+def test_admin_errors_returns_503_when_loki_is_not_configured(
+    client: TestClient, admin_session: Session, monkeypatch: pytest.MonkeyPatch, method: str, path: str,
 ):
-    monkeypatch.delenv("LOKI_URL", raising=False)
+    # An unconfigured error-log store must not look like "no errors".
+    monkeypatch.setenv("LOKI_URL", "")
     get_settings.cache_clear()
     admin = _admin(admin_session, "errors-admin-no-loki")
     try:
-        response = client.get("/api/admin/errors", headers=auth_headers(admin))
-        count = client.get("/api/admin/errors/unread-count", headers=auth_headers(admin))
+        with respx.mock(assert_all_called=False) as router:
+            loki_route = router.get(url__regex=r".*").mock(return_value=httpx.Response(500))
+            response = getattr(client, method)(path, headers=auth_headers(admin))
     finally:
         get_settings.cache_clear()
 
-    assert response.status_code == 200
-    assert response.json() == {"items": [], "total": 0}
-    assert count.json() == {"count": 0}
+    assert response.status_code == 503
+    assert "Loki" in response.json()["detail"]
+    assert not loki_route.called

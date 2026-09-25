@@ -174,3 +174,9 @@ def setup_logging() -> None:
         uv_logger.propagate = True
 
     sys.excepthook = _log_uncaught_exception
+
+    if not loki_url:
+        logging.getLogger(__name__).warning(
+            "LOKI_URL is not set: logs go to stdout only, and the admin errors "
+            "page will report the error-log store as unavailable (HTTP 503)."
+        )

@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -13,6 +14,13 @@ from app.error_logs import LokiQueryError, PaginatedErrorLogs, cleared_before, m
 from app.settings import get_settings
 
 router = APIRouter(tags=["admin_errors"])
+
+# A plain module logger (propagates to root), deliberately not
+# backend.errors/frontend.errors: a Loki outage must not feed the very
+# error-log stream this module reads from.
+logger = logging.getLogger(__name__)
+
+_LOKI_UNAVAILABLE = "Error log store (Loki) is unavailable"
 
 # Reading "everything" (unread count, mark-all-read) is bounded by
 # error_logs.LOKI_MAX_ENTRIES anyway; this just asks for all of it.
@@ -57,10 +65,15 @@ def _apply_soft_clear(session: Session, admin: Soldier, from_: datetime | None, 
 
 
 def _read(**kwargs) -> PaginatedErrorLogs:
+    loki_url = get_settings().loki_url
+    if not loki_url:
+        # Unconfigured must not look like "no errors" in the admin UI.
+        raise HTTPException(status_code=503, detail=f"{_LOKI_UNAVAILABLE}: LOKI_URL is not configured")
     try:
-        return read_error_logs(get_settings().loki_url, **kwargs)
+        return read_error_logs(loki_url, **kwargs)
     except LokiQueryError as exc:
-        raise HTTPException(status_code=503, detail="Error log store (Loki) is unavailable") from exc
+        logger.warning("Admin errors: Loki query failed", exc_info=exc)
+        raise HTTPException(status_code=503, detail=_LOKI_UNAVAILABLE) from exc
 
 
 def _read_keys(session: Session, admin: Soldier) -> set[str]:
