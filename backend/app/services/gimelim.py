@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -31,10 +32,30 @@ from app.services.scoring import duty_score_by_soldier
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 
 
-# ── In-process preview token store ──────────────────────────────────────────
-# Maps token (str UUID) → (expires_at, preview_payload dict)
-_PREVIEW_STORE: dict[str, tuple[datetime, dict[str, Any]]] = {}
+# ── Preview token store (Redis) ─────────────────────────────────────────────
+# A gimelim preview must be visible to whichever replica handles the
+# follow-up commit request, which may not be the one that created it — so
+# this can't be a module-level dict. Redis's own TTL (via SETEX) replaces
+# the manual lazy-expiry sweep the old in-memory version needed.
 _TOKEN_TTL_SECONDS = 300  # 5 minutes
+_PREVIEW_KEY_PREFIX = "gimelim_preview:"
+
+
+def _preview_key(token: str) -> str:
+    return f"{_PREVIEW_KEY_PREFIX}{token}"
+
+
+def _store_preview(token: str, payload: dict[str, Any]) -> None:
+    from app.redis_client import get_redis
+
+    get_redis().setex(_preview_key(token), _TOKEN_TTL_SECONDS, json.dumps(payload, default=str))
+
+
+def _load_preview(token: str) -> dict[str, Any] | None:
+    from app.redis_client import get_redis
+
+    raw = get_redis().get(_preview_key(token))
+    return json.loads(raw) if raw is not None else None
 
 
 class GimelimError(Exception):
@@ -403,13 +424,7 @@ def preview_gimelim(
         "future_c_soldier_id": str(future_result[1].soldier_id) if future_result else None,
         "future_c_status_snapshot": future_result[1].status if future_result else None,
     }
-    _PREVIEW_STORE[token] = (expires_at, payload)
-
-    # Clean up expired tokens (lazy cleanup)
-    now = datetime.now(timezone.utc)
-    expired = [k for k, (exp, _) in _PREVIEW_STORE.items() if exp < now]
-    for k in expired:
-        del _PREVIEW_STORE[k]
+    _store_preview(token, payload)
 
     b_soldier = session.get(Soldier, reserve_b.soldier_id)
 
@@ -436,7 +451,9 @@ def consume_preview_token(preview_token: str) -> None:
     Callers must only invoke this once session.commit() has succeeded — see
     commit_gimelim's docstring note on why the token isn't consumed there.
     """
-    _PREVIEW_STORE.pop(preview_token, None)
+    from app.redis_client import get_redis
+
+    get_redis().delete(_preview_key(preview_token))
 
 
 def resolve_preview_token_assignment(preview_token: str) -> uuid.UUID | None:
@@ -444,12 +461,8 @@ def resolve_preview_token_assignment(preview_token: str) -> uuid.UUID | None:
 
     Returns None if the token is unknown or expired, without consuming it.
     """
-    entry = _PREVIEW_STORE.get(preview_token)
-    if entry is None:
-        return None
-    expires_at, payload = entry
-    now = datetime.now(timezone.utc)
-    if expires_at < now:
+    payload = _load_preview(preview_token)
+    if payload is None:
         return None
     raw = payload.get("primary_assignment_id")
     if not raw:
@@ -467,15 +480,13 @@ def commit_gimelim(
     actor_id: uuid.UUID,
 ) -> GimelimCommitResult:
     """Execute the gimelim atomically. Validates preview token before writing."""
-    now = datetime.now(timezone.utc)
-
-    entry = _PREVIEW_STORE.get(preview_token)
-    if entry is None:
+    payload = _load_preview(preview_token)
+    if payload is None:
+        # Redis's TTL already evicted expired tokens, so "expired" and
+        # "never existed" collapse into one case — routes/gimelim.py
+        # surfaces GimelimError's message as-is and neither the frontend
+        # nor any test distinguished the two previously.
         raise GimelimError("token_not_found")
-    expires_at, payload = entry
-    if expires_at < now:
-        del _PREVIEW_STORE[preview_token]
-        raise GimelimError("token_expired")
 
     if str(shift_id) != payload["shift_id"]:
         raise GimelimError("token_shift_mismatch")
