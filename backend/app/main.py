@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -282,6 +283,7 @@ def create_app() -> FastAPI:
     app.include_router(range_qualification_visibility_routes.soldiers_router, prefix="/api")
     app.include_router(ranges_routes.router, prefix="/api")
     app.include_router(range_locations_routes.router, prefix="/api")
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     return app
 
 
