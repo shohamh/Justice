@@ -12,7 +12,7 @@ from starlette.responses import Response as StarletteResponse
 
 from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
-from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, request_data, request_id
+from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, redact, request_data, request_id
 from app.hr_sync_worker import run_hr_sync_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -117,11 +117,16 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
             try:
                 data = await request_data(request)
             except RuntimeError:
+                headers = {
+                    key: request.headers[key]
+                    for key in ("content-type", "user-agent", "referer")
+                    if key in request.headers
+                }
                 data = {
                     "method": request.method,
                     "path": request.url.path,
-                    "query": dict(request.query_params),
-                    "headers": {},
+                    "query": redact(dict(request.query_params)),
+                    "headers": redact(headers),
                     "body": None,
                 }
             log_backend_exception(
