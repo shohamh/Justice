@@ -52,6 +52,11 @@ services:
       target: production
     restart: unless-stopped
     env_file: deploy/.env.production
+    # No LOKI_URL is configured here (accepted, human-escalated decision — a
+    # Loki instance is only provisioned for dev, see deploy/observability/).
+    # Without it, the admin errors inbox has no log store to read from and
+    # returns 503 by design. See docs/architecture.md for details; set
+    # LOKI_URL (to a reachable production Loki) once one is deployed.
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
