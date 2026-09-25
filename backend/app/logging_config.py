@@ -11,7 +11,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import sys
+import threading
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -53,14 +55,35 @@ class _LokiHandler(logging.Handler):
 
     Deliberately not a DaemonSet/Promtail setup — see the design doc. This
     means the app talks to Loki directly, so a Loki outage must never be
-    allowed to crash or block request handling: every failure is swallowed.
+    allowed to crash or block request handling: every failure is swallowed
+    AND the actual HTTP call never runs on the calling thread. Once LOKI_URL
+    is set, this handler sits on the root logger (every INFO+ line) and on
+    backend.errors/frontend.errors (called synchronously from the request
+    path on every unhandled 500 — see app/error_logging.py). ASGI workers are
+    single-threaded per event loop, so a slow/unreachable Loki must not be
+    allowed to stall emit() for up to `timeout` seconds, which would cascade
+    into concurrent request timeouts. emit() therefore only formats the
+    record and enqueues it (non-blocking, dropping the line if the bounded
+    queue is full); a single background daemon thread drains the queue and
+    performs the actual POSTs sequentially.
     """
 
-    def __init__(self, loki_url: str, app_label: str, timeout: float = 2.0) -> None:
+    def __init__(
+        self,
+        loki_url: str,
+        app_label: str,
+        timeout: float = 2.0,
+        queue_maxsize: int = 1000,
+    ) -> None:
         super().__init__()
         self._push_url = loki_url.rstrip("/") + "/loki/api/v1/push"
         self._app_label = app_label
         self._client = httpx.Client(timeout=timeout)
+        self._queue: queue.Queue = queue.Queue(maxsize=queue_maxsize)
+        self._thread = threading.Thread(
+            target=self._drain_queue, name="loki-handler", daemon=True
+        )
+        self._thread.start()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -74,9 +97,19 @@ class _LokiHandler(logging.Handler):
                     }
                 ]
             }
-            self._client.post(self._push_url, json=payload)
+            self._queue.put_nowait(payload)
         except Exception:
+            # Covers queue.Full (queue saturated — drop the line rather than
+            # block) and anything else (e.g. formatting errors).
             pass
+
+    def _drain_queue(self) -> None:
+        while True:
+            payload = self._queue.get()
+            try:
+                self._client.post(self._push_url, json=payload)
+            except Exception:
+                pass
 
 
 def _log_uncaught_exception(exc_type, exc_value, exc_tb) -> None:
