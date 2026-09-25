@@ -84,6 +84,189 @@ def test_apply_creates_soldier(client, admin_session):
     assert resp.json()["errors"] == []
 
 
+def test_apply_creates_soldier_with_password_hash_and_does_not_force_change(client, admin_session):
+    """A new soldier row that supplies a password_hash already has a real,
+    working password -- unlike the placeholder path for soldiers created
+    without one, it must not be forced to change it."""
+    node = create_node(admin_session, level="branch", name="ie_node_pw_new")
+    dm = create_soldier(admin_session, personal_number="ie_dm_pw_new", role="duty_manager", hierarchy_node_id=node.id)
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+    fake_hash = "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$c29tZWhhc2g"
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "new",
+                "personal_number": "ie_apply_pw_new", "full_name": "טסט סיסמה",
+                "rank": None, "gender": None, "is_officer": None,
+                "hierarchy_node_id": str(node.id), "enrolled_at": None,
+                "enlistment_date": None, "phone": None, "email": None, "existing_id": None,
+                "password_hash": fake_hash,
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    from app.db.models import Soldier
+    created = admin_session.query(Soldier).filter_by(personal_number="ie_apply_pw_new").one()
+    assert created.password_hash == fake_hash
+    assert created.must_change_password is False
+
+
+def test_apply_creates_soldier_without_password_hash_gets_placeholder_and_forced_change(client, admin_session):
+    """A new soldier row with no password_hash at all falls back to the same
+    random-placeholder-plus-forced-change pattern already used for soldiers
+    created without a password by HR sync (person_sync._apply_new_person)."""
+    node = create_node(admin_session, level="branch", name="ie_node_pw_none")
+    dm = create_soldier(admin_session, personal_number="ie_dm_pw_none", role="duty_manager", hierarchy_node_id=node.id)
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "new",
+                "personal_number": "ie_apply_pw_none", "full_name": "טסט בלי סיסמה",
+                "rank": None, "gender": None, "is_officer": None,
+                "hierarchy_node_id": str(node.id), "enrolled_at": None,
+                "enlistment_date": None, "phone": None, "email": None, "existing_id": None,
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    from app.db.models import Soldier
+    created = admin_session.query(Soldier).filter_by(personal_number="ie_apply_pw_none").one()
+    assert created.password_hash
+    assert created.must_change_password is True
+
+
+def test_apply_update_without_password_hash_does_not_wipe_existing_password(client, admin_session):
+    """An update row that omits password_hash (e.g. an unrelated phone edit)
+    must not wipe the soldier's real password back to a random placeholder,
+    nor flip must_change_password."""
+    node = create_node(admin_session, level="branch", name="ie_node_pw_update_blank")
+    dm = create_soldier(admin_session, personal_number="ie_dm_pw_update_blank", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_pw_update_blank", hierarchy_node_id=node.id)
+    original_hash = soldier.password_hash
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "update",
+                "personal_number": soldier.personal_number, "full_name": soldier.full_name,
+                "rank": None, "gender": None, "is_officer": None,
+                "hierarchy_node_id": None, "enrolled_at": None,
+                "enlistment_date": None, "phone": "050-1112233", "email": None,
+                "existing_id": str(soldier.id),
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["errors"] == []
+
+    admin_session.expire_all()
+    updated = admin_session.get(type(soldier), soldier.id)
+    assert updated.password_hash == original_hash
+    assert updated.must_change_password is False
+    assert updated.phone == "050-1112233"
+
+
+def test_apply_update_with_password_hash_overwrites_existing_hash(client, admin_session):
+    """An update row that DOES supply a password_hash must overwrite the
+    existing soldier's hash, without itself forcing a password change."""
+    node = create_node(admin_session, level="branch", name="ie_node_pw_update_set")
+    dm = create_soldier(admin_session, personal_number="ie_dm_pw_update_set", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_pw_update_set", hierarchy_node_id=node.id, must_change_password=True)
+    new_hash = "$argon2id$v=19$m=65536,t=3,p=4$YW5vdGhlcnNhbHQ$YW5vdGhlcmhhc2g"
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "update",
+                "personal_number": soldier.personal_number, "full_name": soldier.full_name,
+                "rank": None, "gender": None, "is_officer": None,
+                "hierarchy_node_id": None, "enrolled_at": None,
+                "enlistment_date": None, "phone": None, "email": None,
+                "existing_id": str(soldier.id),
+                "password_hash": new_hash,
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["errors"] == []
+
+    admin_session.expire_all()
+    updated = admin_session.get(type(soldier), soldier.id)
+    assert updated.password_hash == new_hash
+    assert updated.must_change_password is True
+
+
+def test_export_reimport_roundtrip_via_apply_preserves_password_hash(client, admin_session):
+    """Genuine export -> re-parse -> apply round trip: an existing soldier's
+    real password_hash must survive unchanged, and must_change_password must
+    not be flipped, even though the export/apply cycle passes through the
+    row-preview parsing used by this route."""
+    import app.services.import_parsers.v1_standard  # noqa: F401
+    from app.services.import_parsers.registry import get_parser
+
+    node = create_node(admin_session, level="branch", name="ie_node_pw_roundtrip")
+    dm = create_soldier(admin_session, personal_number="ie_dm_pw_roundtrip", role="duty_manager", hierarchy_node_id=node.id)
+    admin = create_soldier(admin_session, personal_number="ie_admin_pw_roundtrip", role="admin")
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_pw_roundtrip", hierarchy_node_id=node.id)
+    original_hash = soldier.password_hash
+    admin_session.commit()
+
+    admin_token = auth_headers(admin)["Authorization"].split(" ", 1)[1]
+    export_resp = client.get("/api/import/export?sheets=soldiers", headers={"Authorization": f"Bearer {admin_token}"})
+    assert export_resp.status_code == 200
+
+    wb = openpyxl.load_workbook(io.BytesIO(export_resp.content), data_only=True)
+    parsed = get_parser("v1_standard").parse(wb)
+    row = next(r for r in parsed.soldiers if r.personal_number == soldier.personal_number)
+    assert row.password_hash == original_hash
+
+    dm_token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": row.source_row, "action": "update",
+                "personal_number": row.personal_number, "full_name": row.full_name,
+                "rank": None, "gender": None, "is_officer": None,
+                "hierarchy_node_id": None, "enrolled_at": None,
+                "enlistment_date": None, "phone": None, "email": None,
+                "existing_id": str(soldier.id),
+                "password_hash": row.password_hash,
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {dm_token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["errors"] == []
+
+    admin_session.expire_all()
+    updated = admin_session.get(type(soldier), soldier.id)
+    assert updated.password_hash == original_hash
+    assert updated.must_change_password is False
+
+
 def test_apply_rejects_out_of_scope_hierarchy_node(client, admin_session):
     """A duty manager scoped to unit A must not be able to import a soldier
     into unit B via /import/apply."""

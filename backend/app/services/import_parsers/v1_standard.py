@@ -212,6 +212,7 @@ class V1StandardParser:
                 last_mitvahim_date=_parse_date(r.get("last_mitvahim_date")),
                 last_alal_date=_parse_date(r.get("last_alal_date")),
                 left_at=_parse_date(r.get("left_at")),
+                password_hash=str(r.get("password_hash") or "").strip() or None,
             )
             for r in _sheet_rows(wb, "soldiers")
         ]

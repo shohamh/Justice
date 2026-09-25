@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from contextlib import contextmanager
+from typing import Iterator
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -22,9 +24,19 @@ _DEFAULT_POLL_HOURS = 6
 # cron cycle (below) and the admin "run sync now" manual trigger
 # (app/routes/hr_review.py), so the two can never run concurrently against
 # the same HR data -- a concurrent run could otherwise create duplicate
-# conflict rows and per-person IntegrityErrors. Session-scoped (tied to the
-# underlying connection), so it must be released before that connection
-# returns to the pool.
+# conflict rows and per-person IntegrityErrors.
+#
+# Session-level (tied to a specific physical connection, not to a
+# transaction), which is exactly why it must be taken and released on a
+# connection dedicated to holding it -- see `_sync_lock` below. An earlier
+# version of this code took/released the lock on the ORM Session used for
+# the actual sync work, whose connection SQLAlchemy returns to the pool on
+# every commit() -- including the several commits run_hierarchy_sync/
+# run_person_sync make internally while the lock is meant to be held. That
+# silently detached the unlock call from the connection that actually held
+# the lock, leaking it forever on an idle pooled connection and permanently
+# wedging every later acquire attempt (confirmed in production: the full
+# test suite deadlocked for hours on exactly this).
 _SYNC_LOCK_KEY = 0x48525359  # "HRSY"
 
 
@@ -33,12 +45,23 @@ class SyncAlreadyRunningError(Exception):
     (the scheduled cron cycle or a concurrent manual trigger)."""
 
 
-def _try_acquire_sync_lock(session: Session) -> bool:
-    return bool(session.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY}).scalar())
-
-
-def _release_sync_lock(session: Session) -> None:
-    session.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
+@contextmanager
+def _sync_lock(session: Session) -> Iterator[bool]:
+    """Try to acquire the shared advisory lock for the duration of the
+    `with` block, on a connection dedicated to holding it -- independent of
+    whatever connection(s) `session` itself checks out and returns to the
+    pool via its own commits during that time. Yields whether the lock was
+    acquired; always releases on exit if it was."""
+    engine = session.get_bind()
+    with engine.connect() as lock_conn:
+        acquired = bool(
+            lock_conn.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": _SYNC_LOCK_KEY}).scalar()
+        )
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                lock_conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _SYNC_LOCK_KEY})
 
 
 async def _run_hr_sync_cycle(session: Session) -> None:
@@ -60,16 +83,14 @@ async def _run_hr_sync_cycle(session: Session) -> None:
 def _run_hr_sync_cycle_in_own_session() -> int:
     with session_scope() as session:
         poll_hours = get_setting_int(session, "hr_sync.poll_hours", _DEFAULT_POLL_HOURS)
-        if not _try_acquire_sync_lock(session):
-            # A manual "run sync now" is in flight -- skip this cycle rather
-            # than block; the next scheduled wake will try again.
-            logger.info("hr sync worker: skipping cycle, sync already running")
-            return poll_hours
-        try:
+        with _sync_lock(session) as acquired:
+            if not acquired:
+                # A manual "run sync now" is in flight -- skip this cycle
+                # rather than block; the next scheduled wake will try again.
+                logger.info("hr sync worker: skipping cycle, sync already running")
+                return poll_hours
             asyncio.run(_run_hr_sync_cycle(session))
             session.commit()
-        finally:
-            _release_sync_lock(session)
         return poll_hours
 
 
@@ -80,9 +101,9 @@ def run_sync_now_in_own_session() -> tuple[uuid.UUID, uuid.UUID]:
     SyncAlreadyRunningError if the lock is already held. Caller is
     responsible for checking settings.hr_sync_enabled first."""
     with session_scope() as session:
-        if not _try_acquire_sync_lock(session):
-            raise SyncAlreadyRunningError("hr sync already running")
-        try:
+        with _sync_lock(session) as acquired:
+            if not acquired:
+                raise SyncAlreadyRunningError("hr sync already running")
             settings = get_settings()
             client = HrApiClient(
                 settings.hr_api_base_url, settings.hr_api_key,
@@ -92,8 +113,6 @@ def run_sync_now_in_own_session() -> tuple[uuid.UUID, uuid.UUID]:
             hierarchy_run, person_run = asyncio.run(_run_manual_sync(session, client))
             session.commit()
             return hierarchy_run, person_run
-        finally:
-            _release_sync_lock(session)
 
 
 async def _run_manual_sync(session: Session, client: HrApiClient) -> tuple[uuid.UUID, uuid.UUID]:

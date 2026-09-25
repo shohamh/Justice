@@ -126,6 +126,7 @@ class ApplySoldierRow(BaseModel):
     next_rank_date_overridden: bool | None = None
     current_rank_since: str | None = None
     existing_id: uuid.UUID | None
+    password_hash: str | None = None
 
 
 class ApplyAssignmentRow(BaseModel):
@@ -352,8 +353,8 @@ def apply(
                 new_soldier = Soldier(
                     personal_number=row.personal_number,
                     full_name=row.full_name,
-                    password_hash=hash_password(secrets.token_hex(16)),
-                    must_change_password=True,
+                    password_hash=row.password_hash or hash_password(secrets.token_hex(16)),
+                    must_change_password=row.password_hash is None,
                     rank=row.rank,
                     gender=row.gender,
                     is_officer=row.is_officer,
@@ -410,6 +411,8 @@ def apply(
                 s = session.get(Soldier, row.existing_id)
                 if s:
                     s.full_name = row.full_name
+                    if row.password_hash is not None:
+                        s.password_hash = row.password_hash
                     if row.rank is not None:
                         if row.rank != s.rank:
                             s.rank_last_set_by = "manual"
@@ -708,7 +711,7 @@ def export_current_data(
                       "last_mitvahim_date", "last_alal_date", "left_at", "profile_picture_url",
                       "telegram_chat_id", "telegram_username", "telegram_is_verified",
                       "telegram_notifications_enabled", "telegram_verified_at",
-                      "next_rank_date_overridden", "current_rank_since"])
+                      "next_rank_date_overridden", "current_rank_since", "password_hash"])
         for s in session.execute(select(Soldier)).scalars():
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
             ws_s.append([
@@ -746,6 +749,7 @@ def export_current_data(
                 else "",
                 "true" if s.next_rank_date_overridden else "false",
                 s.current_rank_since.strftime("%d.%m.%Y") if s.current_rank_since else "",
+                s.password_hash,
             ])
 
     # `assignments` needs shift lookups even when the `duty_shifts` sheet itself isn't requested.

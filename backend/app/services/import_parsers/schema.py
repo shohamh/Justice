@@ -42,6 +42,7 @@ class ImportSoldierRow(BaseModel):
     last_mitvahim_date: str | None = None
     last_alal_date: str | None = None
     left_at: str | None = None
+    password_hash: str | None = None
 
 
 class ImportDutyShiftRow(BaseModel):
