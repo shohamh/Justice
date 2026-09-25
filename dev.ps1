@@ -104,8 +104,12 @@ foreach ($port in @(8000, 5173)) {
 }
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
-Write-Host "[dev] Starting DB + Redis containers..." -ForegroundColor Cyan
-$dbOut = docker compose up db redis -d 2>&1
+Write-Host "[dev] Starting DB + Redis + observability containers..." -ForegroundColor Cyan
+#    --no-deps: prometheus's `depends_on: backend` would otherwise pull the
+#    dockerized backend container up too, fighting the natively-run backend
+#    for port 8000 (this script stops the dockerized backend above precisely
+#    so the native one can bind that port).
+$dbOut = docker compose up db redis loki prometheus grafana -d --no-deps 2>&1
 if ($LASTEXITCODE -ne 0) {
     if ($dbOut -match "ports are not available|access a socket") {
         # Windows reserved the port range that includes 5432 (Hyper-V/WinNAT).
@@ -113,7 +117,7 @@ if ($LASTEXITCODE -ne 0) {
         Write-Host "[dev] Port 5432 reserved by Windows — resetting WinNAT (UAC prompt may appear)..." -ForegroundColor Yellow
         Start-Process powershell -Verb RunAs -ArgumentList '-Command', 'net stop winnat; net start winnat' -Wait -WindowStyle Hidden
         Start-Sleep -Seconds 2
-        $dbOut = docker compose up db redis -d 2>&1
+        $dbOut = docker compose up db redis loki prometheus grafana -d --no-deps 2>&1
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[dev] DB container failed to start: $dbOut"; exit 1
@@ -145,6 +149,7 @@ Write-Host "[dev] Running migrations..." -ForegroundColor Cyan
 $env:DATABASE_URL = $localDbUrl
 $env:DB_ADMIN_URL = $localAdminUrl
 $env:REDIS_URL = $localRedisUrl
+$env:LOKI_URL = "http://localhost:3100"
 Push-Location "$root\backend"
 & $venvPy -m alembic upgrade head
 $migrationExitCode = $LASTEXITCODE
