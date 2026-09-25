@@ -108,10 +108,26 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 headers={REQUEST_ID_HEADER: request.state.request_id},
             )
         if response.status_code >= 500 and not logged_exception:
+            # A route can return a >=500 response directly (rather than raising)
+            # after call_next() has already finished, e.g. the readiness probe's
+            # 503 — by that point the ASGI receive channel BaseHTTPMiddleware
+            # handed to the downstream app is no longer available, so re-reading
+            # the request body here raises RuntimeError. Fall back to logging
+            # without the body rather than losing the error report entirely.
+            try:
+                data = await request_data(request)
+            except RuntimeError:
+                data = {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "query": dict(request.query_params),
+                    "headers": {},
+                    "body": None,
+                }
             log_backend_exception(
                 request,
                 RuntimeError(f"HTTP {response.status_code} response"),
-                await request_data(request),
+                data,
             )
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return response

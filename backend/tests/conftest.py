@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 from tests.support import app as test_app_support
 from tests.support import database, profiling
@@ -469,6 +470,40 @@ def db_admin_url(request: pytest.FixtureRequest) -> Iterator[str]:
 
     pg = request.getfixturevalue("pg_container")
     yield database.render_psycopg_url(pg.get_connection_url())
+
+
+@pytest.fixture(scope="session")
+def redis_container() -> Iterator[RedisContainer]:
+    with RedisContainer("redis:7-alpine") as redis_c:
+        yield redis_c
+
+
+@pytest.fixture(scope="session")
+def monkeypatch_session() -> Iterator[pytest.MonkeyPatch]:
+    mp = pytest.MonkeyPatch()
+    yield mp
+    mp.undo()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_redis_settings(redis_container: RedisContainer, monkeypatch_session: pytest.MonkeyPatch) -> None:
+    """Point every test at the throwaway Redis container instead of whatever
+    REDIS_URL is set to in the developer's own environment."""
+    from app.settings import get_settings
+
+    host = redis_container.get_container_host_ip()
+    port = redis_container.get_exposed_port(6379)
+    monkeypatch_session.setenv("REDIS_URL", f"redis://{host}:{port}/0")
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _flush_redis() -> Iterator[None]:
+    """Test isolation: every test starts with an empty Redis DB."""
+    from app.redis_client import get_redis
+
+    get_redis().flushdb()
+    yield
 
 
 @pytest.fixture(scope="session")
