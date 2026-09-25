@@ -110,3 +110,42 @@ def test_loki_handler_emit_does_not_block_on_slow_loki():
         f"emit() blocked for {elapsed_seconds:.2f}s — the HTTP push must run "
         "on a background thread, not on the calling thread"
     )
+
+
+@respx.mock
+def test_loki_handler_on_root_logger_does_not_feed_back_on_itself():
+    """Regression test for an infinite feedback loop when _LokiHandler sits
+    on the ROOT logger (the real setup_logging() configuration once LOKI_URL
+    is set).
+
+    httpx (used internally by _drain_queue to POST to Loki) logs every
+    outgoing request at INFO level on the "httpx" logger. That logger has no
+    level of its own, so it inherits root's level, and its records propagate
+    to root — where this same handler instance is attached. Without a guard,
+    each push would log an httpx INFO line, which would get queued as another
+    push, forever. This test attaches to root (unlike the other tests above,
+    which use a throwaway child logger and would never observe this loop) and
+    asserts Loki receives exactly one POST for one logged line.
+    """
+    route = respx.post("http://loki.test:3100/loki/api/v1/push").mock(
+        return_value=httpx.Response(204)
+    )
+    handler = _LokiHandler(loki_url="http://loki.test:3100", app_label="justice-backend")
+    handler.setFormatter(logging.Formatter("%(message)s"))
+
+    root = logging.getLogger()
+    previous_level = root.level
+    # Matches setup_logging(): root must be at INFO for httpx's INFO request
+    # log to even be emitted, which is what makes this loop possible.
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+    try:
+        logging.getLogger("test.loki_handler_root").error("boom")
+        time.sleep(1.0)  # let the drain thread (and any runaway re-entrancy) run
+        assert route.call_count == 1, (
+            f"expected exactly 1 POST to Loki, got {route.call_count} — "
+            "the handler is feeding httpx's own request logging back into itself"
+        )
+    finally:
+        root.removeHandler(handler)
+        root.setLevel(previous_level)

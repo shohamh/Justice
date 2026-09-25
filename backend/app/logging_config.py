@@ -89,6 +89,13 @@ class _LokiHandler(logging.Handler):
         self._thread.start()
 
     def emit(self, record: logging.LogRecord) -> None:
+        # Guard against a feedback loop: httpx (used by _drain_queue below to
+        # perform the actual POST) logs every outgoing request at INFO level
+        # on the "httpx" logger, which propagates to root — where this same
+        # handler instance may be attached. Without this check, each push
+        # would log an httpx line, which would queue another push, forever.
+        if threading.current_thread() is self._thread:
+            return
         try:
             line = self.format(record)
             ts_ns = str(int(record.created * 1_000_000_000))
@@ -132,6 +139,12 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(stream_handler)
+
+    # Defense in depth against log noise (and, combined with the drain-thread
+    # guard in _LokiHandler.emit, a feedback loop): httpx logs every request
+    # at INFO and httpcore (which it uses internally) logs at INFO/DEBUG.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     loki_url = os.environ.get("LOKI_URL", "").strip()
     app_label = os.environ.get("LOKI_APP_LABEL", "justice-backend")
