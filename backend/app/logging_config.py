@@ -1,10 +1,12 @@
 """Shared logging setup for the backend API and the Telegram bot process.
 
-Attaches a rotating file handler (so crashes leave a trail on disk) and a
-stdout handler (so the existing dev.ps1 / docker compose logs terminal view
-keeps working) to the root logger, reroutes uvicorn's own loggers through
-it, and installs a sys.excepthook so an uncaught exception in the main
-thread is logged before the process dies.
+Logs go to stdout (the dev.ps1 / docker compose logs / container-runtime
+view) and, when LOKI_URL is set, are also pushed straight to Loki. Nothing
+is written to local log files: the process must stay stateless so it can
+run as several replicas, and the admin errors page reads from Loki. Also
+reroutes uvicorn's own loggers through the root logger and installs a
+sys.excepthook so an uncaught exception in the main thread is logged before
+the process dies.
 """
 from __future__ import annotations
 
@@ -15,16 +17,16 @@ import queue
 import sys
 import threading
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import httpx
 
-# Native (dev.ps1) runs land here by default: backend/app/logging_config.py
-# -> app/ -> backend/ -> <project root>/logs. Docker overrides this via the
-# LOG_DIR env var (set to /app/logs in docker-compose.yml) since the
-# container's filesystem view starts at backend/, with nothing mounted above
-# it.
+# No longer used for logging itself (see the module docstring) — still the
+# root for bug-report JSON mirrors (app/services/bug_reports.py). Native
+# (dev.ps1) runs land here by default: backend/app/logging_config.py -> app/
+# -> backend/ -> <project root>/logs. Docker overrides this via the LOG_DIR
+# env var (set to /app/logs in docker-compose.yml) since the container's
+# filesystem view starts at backend/, with nothing mounted above it.
 _DEFAULT_LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 LOG_DIR = Path(os.environ.get("LOG_DIR", str(_DEFAULT_LOG_DIR)))
 
@@ -74,10 +76,11 @@ class _LokiHandler(logging.Handler):
         app_label: str,
         timeout: float = 2.0,
         queue_maxsize: int = 1000,
+        extra_labels: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         self._push_url = loki_url.rstrip("/") + "/loki/api/v1/push"
-        self._app_label = app_label
+        self._labels = {"app": app_label, **(extra_labels or {})}
         self._client = httpx.Client(timeout=timeout)
         self._queue: queue.Queue = queue.Queue(maxsize=queue_maxsize)
         self._thread = threading.Thread(
@@ -92,7 +95,7 @@ class _LokiHandler(logging.Handler):
             payload = {
                 "streams": [
                     {
-                        "stream": {"app": self._app_label, "level": record.levelname},
+                        "stream": {**self._labels, "level": record.levelname},
                         "values": [[ts_ns, line]],
                     }
                 ]
@@ -119,49 +122,52 @@ def _log_uncaught_exception(exc_type, exc_value, exc_tb) -> None:
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
 
-def setup_logging(log_filename: str) -> None:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+def setup_logging() -> None:
     use_json = os.environ.get("LOG_FORMAT", "").lower() == "json"
     formatter = _JsonFormatter() if use_json else logging.Formatter(_FORMAT)
-
-    file_handler = RotatingFileHandler(
-        LOG_DIR / log_filename, maxBytes=10_000_000, backupCount=5
-    )
-    file_handler.setFormatter(formatter)
 
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(formatter)
 
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    root.addHandler(file_handler)
     root.addHandler(stream_handler)
 
     loki_url = os.environ.get("LOKI_URL", "").strip()
+    app_label = os.environ.get("LOKI_APP_LABEL", "justice-backend")
     if loki_url:
-        app_label = os.environ.get("LOKI_APP_LABEL", "justice-backend")
         loki_handler = _LokiHandler(loki_url, app_label)
         loki_handler.setFormatter(formatter)
         root.addHandler(loki_handler)
-    else:
-        loki_handler = None
 
-    for logger_name, filename in (("backend.errors", "backend-errors.log"), ("frontend.errors", "frontend-errors.log")):
+    # The error loggers get their own Loki handler (created lazily, shared by
+    # both): always JSON (the admin errors page parses every line, whatever
+    # LOG_FORMAT says) and on a separate log_type="errors" stream, so
+    # app/error_logs.py can select exactly these records instead of the
+    # root INFO+ firehose.
+    error_loki_handler: _LokiHandler | None = None
+    for logger_name in ("backend.errors", "frontend.errors"):
         error_logger = logging.getLogger(logger_name)
-        if not any(getattr(handler, "_justice_error_log", False) for handler in error_logger.handlers):
-            error_handler = RotatingFileHandler(LOG_DIR / filename, maxBytes=10_000_000, backupCount=5)
-            error_handler.setFormatter(_JsonFormatter())
-            error_handler._justice_error_log = True  # type: ignore[attr-defined]
-            error_logger.addHandler(error_handler)
-        if loki_handler is not None and not any(isinstance(h, _LokiHandler) for h in error_logger.handlers):
-            error_logger.addHandler(loki_handler)
+        # propagate=False below keeps these records off the root handlers, so
+        # give them their own stdout handler — otherwise, without Loki, they
+        # would only reach logging's bare lastResort stderr fallback.
+        if not any(getattr(h, "_justice_error_stdout", False) for h in error_logger.handlers):
+            error_stream_handler = logging.StreamHandler(sys.stdout)
+            error_stream_handler.setFormatter(formatter)
+            error_stream_handler._justice_error_stdout = True  # type: ignore[attr-defined]
+            error_logger.addHandler(error_stream_handler)
+        if loki_url and not any(isinstance(h, _LokiHandler) for h in error_logger.handlers):
+            if error_loki_handler is None:
+                error_loki_handler = _LokiHandler(loki_url, app_label, extra_labels={"log_type": "errors"})
+                error_loki_handler.setFormatter(_JsonFormatter())
+            error_logger.addHandler(error_loki_handler)
         error_logger.setLevel(logging.ERROR)
         error_logger.propagate = False
 
     # uvicorn configures its own loggers with propagate=False and its own
     # StreamHandler before our module is imported. Clear those handlers and
     # let the records bubble to root instead, so uvicorn's request/error
-    # logs land in the same file without printing twice to stdout.
+    # logs go through the same handlers without printing twice to stdout.
     for name in _UVICORN_LOGGER_NAMES:
         uv_logger = logging.getLogger(name)
         uv_logger.handlers = []

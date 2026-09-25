@@ -44,6 +44,26 @@ def test_loki_handler_pushes_formatted_record():
 
 
 @respx.mock
+def test_loki_handler_adds_extra_stream_labels():
+    route = respx.post("http://loki.test:3100/loki/api/v1/push").mock(
+        return_value=httpx.Response(204)
+    )
+    handler = _LokiHandler(
+        loki_url="http://loki.test:3100", app_label="justice-backend", extra_labels={"log_type": "errors"}
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+
+    logger = logging.getLogger("test.loki_handler_labels")
+    logger.addHandler(handler)
+    logger.setLevel(logging.ERROR)
+    logger.error("boom")
+
+    _wait_until(lambda: route.called)
+    stream = json.loads(route.calls.last.request.content)["streams"][0]
+    assert stream["stream"] == {"app": "justice-backend", "level": "ERROR", "log_type": "errors"}
+
+
+@respx.mock
 def test_loki_handler_never_raises_when_loki_is_unreachable():
     respx.post("http://loki.test:3100/loki/api/v1/push").mock(
         side_effect=httpx.ConnectError("connection refused")

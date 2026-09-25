@@ -31,10 +31,10 @@ def log(msg: str) -> None:
 
 
 def write_crash_marker(exit_code: int | None) -> None:
-    # Appends to the same logs/bot.log that the bot process's own RotatingFileHandler
-    # (app/logging_config.py, running inside the bot — a separate OS process) writes/rotates.
-    # No file locking between the two writers; accepted tradeoff since this script is
-    # dev-only (never used in Docker/production, just the native dev.ps1 workflow).
+    # Appends to logs/bot.log. The bot process itself no longer writes log files
+    # (app/logging_config.py logs to stdout/Loki only), so this file holds just this
+    # runner's crash/exit markers. Dev-only (never used in Docker/production, just
+    # the native dev.ps1 workflow).
     ts = datetime.datetime.now().isoformat()
     with open(CRASH_LOG, "a", encoding="utf-8") as f:
         f.write(f"{ts} CRITICAL run_dev_bot: === CRASH DETECTED exit_code={exit_code}, restarting ===\n")

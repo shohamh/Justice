@@ -115,19 +115,22 @@ def pytest_configure(config: pytest.Config) -> None:
     # workers, and hash_password memoizes argon2 seeding across tests.
     os.environ.setdefault("JUSTICE_TESTING", "1")
 
-    # app.main calls logging_config.setup_logging() at import time, which
-    # attaches real RotatingFileHandlers to the process-wide "backend.errors"
-    # / "frontend.errors" loggers pointed at LOG_DIR (the real dev/prod logs/
-    # directory by default). The very first test module that imports app.main
-    # (directly or transitively) triggers this, so every test run — including
-    # tests that deliberately log synthetic "boom" errors to exercise the
-    # rate limiter — would otherwise write real-looking entries into
-    # logs/backend-errors.log and logs/frontend-errors.log, indistinguishable
-    # downstream from a live incident. Redirect LOG_DIR to a throwaway
-    # directory before any test module gets a chance to import app.main, so
-    # test-run log output never lands where a real deployment's log
-    # collection watches. Runs once per process (each xdist worker gets its
-    # own isolated directory); an operator-provided LOG_DIR is respected.
+    # app.main calls logging_config.setup_logging() at import time, which —
+    # when LOKI_URL is set (dev.ps1 sets it for its shell) — attaches real
+    # Loki push handlers to the process-wide "backend.errors" /
+    # "frontend.errors" loggers. The very first test module that imports
+    # app.main (directly or transitively) triggers this, so every test run —
+    # including tests that deliberately log synthetic "boom" errors to
+    # exercise the rate limiter — would otherwise push real-looking entries
+    # into the dev Loki, indistinguishable in the admin errors inbox from a
+    # live incident. Blank LOKI_URL before any test module gets a chance to
+    # import app.main; tests that need it set it themselves.
+    os.environ["LOKI_URL"] = ""
+
+    # LOG_DIR still roots bug-report JSON mirrors (app/services/bug_reports.py);
+    # keep test runs from writing into the real logs/ directory. Runs once per
+    # process (each xdist worker gets its own isolated directory); an
+    # operator-provided LOG_DIR is respected.
     if "LOG_DIR" not in os.environ:
         test_log_dir = tempfile.mkdtemp(prefix="justice-test-logs-")
         os.environ["LOG_DIR"] = test_log_dir
@@ -412,6 +415,8 @@ _AREA_MARKERS: dict[str, str] = {
     "test_audit_append_only": "misc",
     "test_settings_loader": "misc",
     "test_logging_config": "misc",
+    "test_error_logs": "misc",
+    "test_admin_errors_routes": "misc",
     "test_bug_reports_service": "misc",
     "test_bug_reports_api": "misc",
     "test_audit_logs_api": "misc",

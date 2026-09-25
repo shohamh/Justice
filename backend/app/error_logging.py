@@ -21,7 +21,7 @@ _MAX_BODY = 16000
 
 # Caps how many times the *same* error can be logged in a burst — e.g. a hot
 # loop hitting a broken endpoint, or a broken frontend retry loop — without
-# flooding backend-errors.log/frontend-errors.log (and, downstream, the admin
+# flooding the error log stream in Loki (and, downstream, the admin
 # error inbox and its unread-count poll). Distinct errors are never affected:
 # the limit is keyed per fingerprint, not global. Configurable via
 # ERROR_LOG_RATE_LIMIT_MAX_PER_WINDOW / ERROR_LOG_RATE_LIMIT_WINDOW_SECONDS

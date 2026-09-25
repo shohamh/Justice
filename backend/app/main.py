@@ -82,7 +82,7 @@ from app.services.import_parsers import v1_standard as _v1_standard_import_parse
 from app.settings import get_settings
 from app.swap_expiry_worker import run_swap_expiry_worker
 
-setup_logging("backend.log")
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
