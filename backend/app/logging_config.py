@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import httpx
+
 # Native (dev.ps1) runs land here by default: backend/app/logging_config.py
 # -> app/ -> backend/ -> <project root>/logs. Docker overrides this via the
 # LOG_DIR env var (set to /app/logs in docker-compose.yml) since the
@@ -46,6 +48,37 @@ class _JsonFormatter(logging.Formatter):
         }, ensure_ascii=False)
 
 
+class _LokiHandler(logging.Handler):
+    """Pushes formatted log records straight to Loki's HTTP push API.
+
+    Deliberately not a DaemonSet/Promtail setup — see the design doc. This
+    means the app talks to Loki directly, so a Loki outage must never be
+    allowed to crash or block request handling: every failure is swallowed.
+    """
+
+    def __init__(self, loki_url: str, app_label: str, timeout: float = 2.0) -> None:
+        super().__init__()
+        self._push_url = loki_url.rstrip("/") + "/loki/api/v1/push"
+        self._app_label = app_label
+        self._client = httpx.Client(timeout=timeout)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            line = self.format(record)
+            ts_ns = str(int(record.created * 1_000_000_000))
+            payload = {
+                "streams": [
+                    {
+                        "stream": {"app": self._app_label, "level": record.levelname},
+                        "values": [[ts_ns, line]],
+                    }
+                ]
+            }
+            self._client.post(self._push_url, json=payload)
+        except Exception:
+            pass
+
+
 def _log_uncaught_exception(exc_type, exc_value, exc_tb) -> None:
     logging.getLogger("uncaught").critical(
         "UNCAUGHT EXCEPTION", exc_info=(exc_type, exc_value, exc_tb)
@@ -71,6 +104,15 @@ def setup_logging(log_filename: str) -> None:
     root.addHandler(file_handler)
     root.addHandler(stream_handler)
 
+    loki_url = os.environ.get("LOKI_URL", "").strip()
+    if loki_url:
+        app_label = os.environ.get("LOKI_APP_LABEL", "justice-backend")
+        loki_handler = _LokiHandler(loki_url, app_label)
+        loki_handler.setFormatter(formatter)
+        root.addHandler(loki_handler)
+    else:
+        loki_handler = None
+
     for logger_name, filename in (("backend.errors", "backend-errors.log"), ("frontend.errors", "frontend-errors.log")):
         error_logger = logging.getLogger(logger_name)
         if not any(getattr(handler, "_justice_error_log", False) for handler in error_logger.handlers):
@@ -78,6 +120,8 @@ def setup_logging(log_filename: str) -> None:
             error_handler.setFormatter(_JsonFormatter())
             error_handler._justice_error_log = True  # type: ignore[attr-defined]
             error_logger.addHandler(error_handler)
+        if loki_handler is not None and not any(isinstance(h, _LokiHandler) for h in error_logger.handlers):
+            error_logger.addHandler(loki_handler)
         error_logger.setLevel(logging.ERROR)
         error_logger.propagate = False
 
