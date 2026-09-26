@@ -24,7 +24,8 @@ def _wait_until(condition, timeout_seconds: float = 2.0, poll_interval_seconds: 
 
 
 @respx.mock
-def test_loki_handler_pushes_formatted_record():
+def test_loki_handler_pushes_formatted_record(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
     route = respx.post("http://loki.test:3100/loki/api/v1/push").mock(
         return_value=httpx.Response(204)
     )
@@ -48,7 +49,8 @@ def test_loki_handler_pushes_formatted_record():
 
 
 @respx.mock
-def test_loki_handler_adds_extra_stream_labels():
+def test_loki_handler_adds_extra_stream_labels(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
     route = respx.post("http://loki.test:3100/loki/api/v1/push").mock(
         return_value=httpx.Response(204)
     )
