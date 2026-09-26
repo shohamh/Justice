@@ -408,7 +408,11 @@ def test_roster_change_notifies_existing_and_removed_assignees(app_session: Sess
         Notification.reference_id == event.id,
     )).scalars().first()
     assert notification is not None
-    assert notification.metadata_json == {
+    metadata = dict(notification.metadata_json)
+    metadata["assignments"] = sorted(
+        metadata["assignments"], key=lambda assignment: assignment["soldier_name"]
+    )
+    assert metadata == {
         "range_date": "2026-08-20",
         "range_type": "laser",
         "range_location": "×ž×˜×•×•×—",
