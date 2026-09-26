@@ -11,7 +11,11 @@ gimelim preview tokens).
 
 ```bash
 grep -rn "^[A-Za-z_][A-Za-z0-9_]*\s*:\s*dict\[" app --include=*.py | grep -v "/tests/\|test_"
+grep -rn "^[A-Za-z_][A-Za-z0-9_]*\s*:\s*list\[" app --include=*.py | grep -v "/tests/\|test_"
+grep -rn "^[A-Za-z_][A-Za-z0-9_]*\s*:\s*set\[" app --include=*.py | grep -v "/tests/\|test_"
 grep -rn "^[A-Za-z_][A-Za-z0-9_]*\s*=\s*{}" app --include=*.py | grep -v "/tests/\|test_"
+grep -rn "^[A-Za-z_][A-Za-z0-9_]*\s*=\s*\[\]" app --include=*.py | grep -v "/tests/\|test_"
+grep -rn "^[A-Za-z_][A-Za-z0-9_]*\s*=\s*set()" app --include=*.py | grep -v "/tests/\|test_"
 grep -rn "threading\.\(Lock\|Event\|RLock\)" app --include=*.py | grep -v "/tests/\|test_"
 grep -rln "@lru_cache" app --include=*.py | grep -v "/tests/\|test_"
 ```
@@ -47,6 +51,12 @@ app/services/ranges.py:751:_FALLBACK_VALIDITY_DAYS: dict[str, int] = {
 app/services/rank_advancement.py:30:_LADDERS: dict[Track, list[str]] = {
 ```
 
+### typed list/set module-level assignments
+
+app/algorithm/solver.py:57:_profile_callbacks: list[_ProfileCallback] = []
+
+No typed set globals were found. No bare empty-list or set() globals.
+
 ### Bare `= {}` module-level assignments (no type annotation)
 
 No hits (all the empty-dict globals in the codebase use a type annotation, so they were already caught by the first pattern above).
@@ -75,6 +85,12 @@ app/redis_client.py
 app/services/holidays.py
 app/settings.py
 ```
+
+The list hit is _profile_callbacks in algorithm/solver.py. _capture_profile is used by
+the profiling support context and removes the callback in finally. _profile_phase
+snapshots active registrations and filters out inactive ones before invoking them.
+This list is temporary profiling instrumentation and does not retain request state
+across calls.
 
 ## Classification
 
