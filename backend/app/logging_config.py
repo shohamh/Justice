@@ -80,7 +80,11 @@ class _LokiHandler(logging.Handler):
     ) -> None:
         super().__init__()
         self._push_url = loki_url.rstrip("/") + "/loki/api/v1/push"
-        self._labels = {"app": app_label, **(extra_labels or {})}
+        self._labels = {
+            "app": app_label,
+            "env": os.environ.get("ENVIRONMENT", "development"),
+            **(extra_labels or {}),
+        }
         self._client = httpx.Client(timeout=timeout)
         self._queue: queue.Queue = queue.Queue(maxsize=queue_maxsize)
         self._thread = threading.Thread(

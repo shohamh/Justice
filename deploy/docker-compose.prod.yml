@@ -60,6 +60,7 @@ services:
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      ENVIRONMENT: production
       TZ: Asia/Jerusalem  # see backend/Dockerfile — keeps date.today()/now() on Israel's calendar day
     depends_on:
       db:
@@ -92,6 +93,7 @@ services:
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      ENVIRONMENT: production
       TZ: Asia/Jerusalem
     volumes:
       - /opt/justice/logs:/app/logs

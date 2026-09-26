@@ -37,6 +37,8 @@ spec:
               value: "http://loki.observability.svc.cluster.local:3100"
             - name: LOG_FORMAT
               value: json
+            - name: ENVIRONMENT
+              value: production
           livenessProbe:
             httpGet:
               path: /api/health/live

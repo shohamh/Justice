@@ -76,11 +76,13 @@ def test_error_loggers_still_reach_stdout_without_loki():
 
 def test_error_loggers_push_json_to_a_dedicated_loki_stream(monkeypatch):
     monkeypatch.setenv("LOKI_URL", "http://loki.test:3100")
+    monkeypatch.setenv("ENVIRONMENT", "test")
 
     logging_config.setup_logging()
 
     root_loki = [h for h in logging.getLogger().handlers if isinstance(h, logging_config._LokiHandler)]
     assert len(root_loki) == 1
+    assert root_loki[0]._labels["env"] == "test"
     assert "log_type" not in root_loki[0]._labels
 
     for name in _ERROR_LOGGER_NAMES:
@@ -88,9 +90,20 @@ def test_error_loggers_push_json_to_a_dedicated_loki_stream(monkeypatch):
         assert len(error_loki) == 1
         assert error_loki[0] is not root_loki[0]
         assert error_loki[0]._labels["log_type"] == "errors"
+        assert error_loki[0]._labels["env"] == "test"
         # The admin errors page parses these lines as JSON regardless of LOG_FORMAT.
         record = logging.LogRecord(name, logging.ERROR, __file__, 1, "boom", (), None)
         assert json.loads(error_loki[0].format(record))["logger"] == name
+
+
+def test_loki_uses_development_environment_by_default(monkeypatch):
+    monkeypatch.setenv("LOKI_URL", "http://loki.test:3100")
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    logging_config.setup_logging()
+
+    root_loki = [h for h in logging.getLogger().handlers if isinstance(h, logging_config._LokiHandler)]
+    assert root_loki[0]._labels["env"] == "development"
 
 
 def test_setup_logging_is_idempotent_for_error_loggers(monkeypatch):

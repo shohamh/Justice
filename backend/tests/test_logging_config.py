@@ -39,7 +39,11 @@ def test_loki_handler_pushes_formatted_record():
     _wait_until(lambda: route.called)
     body = json.loads(route.calls.last.request.content)
     stream = body["streams"][0]
-    assert stream["stream"] == {"app": "justice-backend", "level": "ERROR"}
+    assert stream["stream"] == {
+        "app": "justice-backend",
+        "env": "development",
+        "level": "ERROR",
+    }
     assert stream["values"][0][1] == "boom"
 
 
@@ -60,7 +64,12 @@ def test_loki_handler_adds_extra_stream_labels():
 
     _wait_until(lambda: route.called)
     stream = json.loads(route.calls.last.request.content)["streams"][0]
-    assert stream["stream"] == {"app": "justice-backend", "level": "ERROR", "log_type": "errors"}
+    assert stream["stream"] == {
+        "app": "justice-backend",
+        "env": "development",
+        "level": "ERROR",
+        "log_type": "errors",
+    }
 
 
 @respx.mock
