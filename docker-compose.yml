@@ -45,7 +45,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${PROMETHEUS_CONFIG:-./deploy/observability/prometheus.yml}:/etc/prometheus/prometheus.yml:ro
     depends_on:
       - backend
 

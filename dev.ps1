@@ -105,6 +105,9 @@ foreach ($port in @(8000, 5173)) {
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
 Write-Host "[dev] Starting DB + Redis + observability containers..." -ForegroundColor Cyan
+# Prometheus uses the native-backend target while dev.ps1 runs Uvicorn on the host.
+$previousPrometheusConfig = $env:PROMETHEUS_CONFIG
+$env:PROMETHEUS_CONFIG = ($root -replace '\\', '/') + '/deploy/observability/prometheus.native.yml'
 #    --no-deps: prometheus's `depends_on: backend` would otherwise pull the
 #    dockerized backend container up too, fighting the natively-run backend
 #    for port 8000 (this script stops the dockerized backend above precisely
@@ -124,6 +127,11 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
+if ($null -eq $previousPrometheusConfig) {
+    Remove-Item Env:PROMETHEUS_CONFIG -ErrorAction SilentlyContinue
+} else {
+    $env:PROMETHEUS_CONFIG = $previousPrometheusConfig
+}
 Write-Host "[dev] Waiting for DB to be healthy..." -ForegroundColor Cyan
 $dbContainer = docker compose ps -q db
 for ($i = 0; $i -lt 30; $i++) {
@@ -150,6 +158,7 @@ $env:DATABASE_URL = $localDbUrl
 $env:DB_ADMIN_URL = $localAdminUrl
 $env:REDIS_URL = $localRedisUrl
 $env:LOKI_URL = "http://localhost:3100"
+$env:ENVIRONMENT = $envVars['ENVIRONMENT']
 Push-Location "$root\backend"
 & $venvPy -m alembic upgrade head
 $migrationExitCode = $LASTEXITCODE
