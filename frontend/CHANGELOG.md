@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-27
+
+### Features
+- Added HR hierarchy and soldier-profile synchronization, with scheduled and manual runs plus admin review of held records, field disagreements, and rank conflicts.
+- Added HR-linked soldier activation codes and first-login onboarding, including admin code generation and activation-code password fallback.
+- Included soldier password hashes in Excel import/export round trips.
+- Added Redis-backed shared state for rate limiting, algorithm cancellation, and Gimelim preview tokens.
+- Added Prometheus metrics and Loki-based admin error monitoring with per-admin soft clearing, plus Grafana dashboards.
+
+### Fixes
+- Corrected HR payload mapping, rank provenance, review notifications, and sync-worker failure handling.
+- Made log delivery non-blocking, redacted sensitive query parameters and headers, and surfaced Loki outages instead of showing an empty error inbox.
+- Fixed native development metrics scraping and observability labels.
+
+### Chores
+- Added production observability configuration, OpenShift examples, architecture documentation, and regression coverage for HR sync, Redis state, logging, and onboarding.
+
 ## 2026-09-17
 
 ### Features
