@@ -103,4 +103,4 @@ Task 5: complete commits ca398445 + d507fefb + 2c40ca27 + 87674f98; fix rounds 1
 
 Task 5 out-of-scope observation for final whole-branch review: the syncio.to_thread(body.read, ...) worker can persist after its 8-second wait times out until the underlying read returns. The response closes the body and releases its lease; evaluate whether the storage socket timeout is sufficient or if worker lifecycle needs a separate fix.
 
-Task 6: dispatched to fresh implementer; base 985c04f8; brief .superpowers/sdd/2026-09-27-s3-compatible-file-storage/task-6-brief.md.
+Task 6: dispatched to fresh implementer; base 4921e52e; brief .superpowers/sdd/2026-09-27-s3-compatible-file-storage/task-6-brief.md.
