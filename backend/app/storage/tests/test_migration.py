@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from hashlib import sha256
 from io import BytesIO
+from uuid import UUID
 
 import pytest
 
 from app.settings import Settings
-from app.storage.migration import run_migration
+from app.storage.migration import _existing_storage_references, run_migration
 from app.storage.protocol import StoredObject
 
 KEY = "gimelim/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+OWNER_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 GOOD = b"verified object bytes"
 DIGEST = sha256(GOOD).hexdigest()
 
@@ -88,7 +90,7 @@ def migration_preflight(monkeypatch):
 def test_missing_preexisting_reference_blocks_cutover_readiness(migration_preflight) -> None:
     migration, settings = migration_preflight
     storage = ExistingObjectStorage(mode="missing")
-    session = ExistingReferenceSession([("gimelim", KEY, DIGEST, len(GOOD))])
+    session = ExistingReferenceSession([("gimelim", OWNER_ID, KEY, DIGEST, len(GOOD))])
 
     report = run_migration(session, storage, settings)
 
@@ -102,7 +104,7 @@ def test_corrupt_preexisting_body_blocks_cutover_even_when_head_metadata_matches
 ) -> None:
     migration, settings = migration_preflight
     storage = ExistingObjectStorage(mode="corrupt")
-    session = ExistingReferenceSession([("gimelim", KEY, DIGEST, len(GOOD))])
+    session = ExistingReferenceSession([("gimelim", OWNER_ID, KEY, DIGEST, len(GOOD))])
 
     report = run_migration(session, storage, settings)
 
@@ -116,7 +118,7 @@ def test_invalid_managed_prefix_blocks_cutover_readiness(migration_preflight) ->
     migration, settings = migration_preflight
     storage = ExistingObjectStorage(mode="good")
     session = ExistingReferenceSession(
-        [("gimelim", "other/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", DIGEST, len(GOOD))]
+        [("gimelim", OWNER_ID, "other/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", DIGEST, len(GOOD))]
     )
 
     report = run_migration(session, storage, settings)
@@ -129,7 +131,7 @@ def test_invalid_managed_prefix_blocks_cutover_readiness(migration_preflight) ->
 def test_valid_preexisting_reference_is_byte_verified_before_cutover(migration_preflight) -> None:
     migration, settings = migration_preflight
     storage = ExistingObjectStorage(mode="good")
-    session = ExistingReferenceSession([("gimelim", KEY, DIGEST, len(GOOD))])
+    session = ExistingReferenceSession([("gimelim", OWNER_ID, KEY, DIGEST, len(GOOD))])
 
     report = run_migration(session, storage, settings)
 
@@ -137,3 +139,27 @@ def test_valid_preexisting_reference_is_byte_verified_before_cutover(migration_p
     assert report["existing_verified"] == 1
     assert report["errors"] == {}
     assert report["cutover_ready"] is True
+
+
+def test_same_class_object_from_another_row_blocks_cutover(migration_preflight) -> None:
+    migration, settings = migration_preflight
+    storage = ExistingObjectStorage(mode="good")
+    other_object = "gimelim/cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    session = ExistingReferenceSession([("gimelim", OWNER_ID, other_object, DIGEST, len(GOOD))])
+
+    report = run_migration(session, storage, settings)
+
+    assert storage.reads == 0
+    assert report["cutover_ready"] is False
+    assert report["existing_verified"] == 0
+    assert report["errors"] == {"gimelim:object_key_record_mismatch": 1}
+
+
+def test_database_reference_enumerator_includes_owning_row_uuid() -> None:
+    class QuerySession:
+        def execute(self, statement):
+            return [(OWNER_ID, KEY, DIGEST, len(GOOD))]
+
+    reference = next(_existing_storage_references(QuerySession()))
+
+    assert reference == ("soldier_exemption", OWNER_ID, KEY, DIGEST, len(GOOD))

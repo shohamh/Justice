@@ -176,7 +176,7 @@ def _record_payloads(session: Session, batch_size: int):
 
 
 def _existing_storage_references(session: Session):
-    """Yield class, key, recorded digest, and size for every durable object ref."""
+    """Yield class, owning row UUID, key, recorded digest, and size for every object ref."""
     if hasattr(session, "storage_references"):
         yield from session.storage_references()
         return
@@ -215,12 +215,12 @@ def _existing_storage_references(session: Session):
     )
     for file_class, model, key_name, hash_name, size_name in model_columns:
         key_column = getattr(model, key_name)
-        selected = [key_column, getattr(model, hash_name)]
+        selected = [model.id, key_column, getattr(model, hash_name)]
         if size_name:
             selected.append(getattr(model, size_name))
         stmt = select(*selected).where(key_column.is_not(None)).execution_options(yield_per=256)
         for row in session.execute(stmt):
-            yield file_class, row[0], row[1], row[2] if size_name else None
+            yield file_class, row[0], row[1], row[2], row[3] if size_name else None
 
 
 def _verify_existing_objects(
@@ -229,11 +229,22 @@ def _verify_existing_objects(
     """Verify key namespace, S3 HEAD metadata, and streamed object bytes for every reference."""
     verified = 0
     failures: Counter[tuple[str, str]] = Counter()
-    for file_class, object_key, expected_hash, expected_size in _existing_storage_references(
-        session
-    ):
+    for (
+        file_class,
+        row_id,
+        object_key,
+        expected_hash,
+        expected_size,
+    ) in _existing_storage_references(session):
         if not validate_managed_key(object_key) or not object_key.startswith(f"{file_class}/"):
             failures[(file_class, "invalid_managed_key")] += 1
+            continue
+        try:
+            expected_key = make_object_key(file_class, row_id)
+        except (TypeError, ValueError):
+            expected_key = None
+        if object_key != expected_key:
+            failures[(file_class, "object_key_record_mismatch")] += 1
             continue
         if (
             not isinstance(expected_hash, str)
