@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app.file_authorization.schemas import ExemptionRequestFileRequest, FileAuthorizationDecision
 from app.file_gateway.main import create_app
-from app.file_gateway.routes import stream_authorized
+from app.file_gateway.routes import _DownloadLease, stream_authorized
 from app.storage.keys import make_object_key
 
 
@@ -167,3 +167,46 @@ def test_late_open_read_result_is_closed_after_timeout_and_permit_released(monke
         assert body.closed
 
     asyncio.run(run())
+
+
+def test_concurrent_lease_cleanup_waits_for_close_and_releases_once():
+    close_started = threading.Event()
+    finish_close = threading.Event()
+    second_started = threading.Event()
+    second_done = threading.Event()
+
+    class SlowCloseBody:
+        calls = 0
+
+        def close(self):
+            self.calls += 1
+            close_started.set()
+            finish_close.wait(2)
+
+    class Permit:
+        releases = 0
+
+        def release(self):
+            self.releases += 1
+
+    body = SlowCloseBody()
+    permit = Permit()
+    lease = _DownloadLease(body, permit)
+    first = threading.Thread(target=lease.close)
+    second = threading.Thread(target=lambda: (second_started.set(), lease.close(), second_done.set()))
+    try:
+        first.start()
+        assert close_started.wait(1)
+        second.start()
+        assert second_started.wait(1)
+        assert not second_done.wait(0.1)
+        assert permit.releases == 0
+    finally:
+        finish_close.set()
+        first.join(2)
+        if second.ident is not None:
+            second.join(2)
+    assert not first.is_alive() and not second.is_alive()
+    assert second_done.is_set()
+    assert body.calls == 1
+    assert permit.releases == 1

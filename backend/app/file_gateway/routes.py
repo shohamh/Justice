@@ -87,16 +87,18 @@ class _DownloadLease:
         self._body = body
         self._semaphore = semaphore
         self._closed = False
+        self._close_lock = threading.Lock()
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            self._body.close()
-        finally:
-            if self._semaphore is not None:
-                self._semaphore.release()
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+            try:
+                self._body.close()
+            finally:
+                if self._semaphore is not None:
+                    self._semaphore.release()
 
 
 class _ManagedStreamingResponse(StreamingResponse):
@@ -222,11 +224,14 @@ async def stream_authorized(request: Request, auth_request, *, inline: bool = Fa
             finally:
                 lease.close()
 
+        async def close_on_background() -> None:
+            lease.close()
+
         response = _ManagedStreamingResponse(
             chunks(),
             headers=headers,
             media_type=None,
-            background=BackgroundTask(lease.close),
+            background=BackgroundTask(close_on_background),
             lease=lease,
         )
         response_started = True

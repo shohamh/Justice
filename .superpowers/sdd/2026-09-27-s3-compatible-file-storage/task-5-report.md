@@ -52,12 +52,14 @@ A validated ingress X-Request-ID UUID (or one generated once at ingress) is forw
 Evidence:
 
     python -m pytest app/file_gateway/tests/test_review_lifecycle.py -q -n0 -ra --tb=short
-    2 passed, 1 warning
+    3 passed, 1 warning
     python -m pytest app/file_authorization/tests app/file_gateway/tests -q -n0 -ra --tb=short
-    33 passed, 1 warning
+    34 passed, 1 warning
     python -m ruff check --output-format concise app/file_authorization app/file_gateway app/audit/writer.py
     All checks passed!
     git diff --check
     passed
 
 The warning is from the installed environment's Starlette 0.37.2 starlette/formparsers.py:12, which imports multipart; installed python-multipart 0.0.30 emits PendingDeprecationWarning: Please use import python_multipart instead. The repository's backend/uv.lock resolves newer FastAPI 0.137.1 and Starlette 1.3.1. No application code imports that legacy module, and this fix does not change framework dependency resolution or suppress warnings. Container dependency validation remains in Task 8.
+
+After the first fix commit, a self-review found that Starlette can run synchronous background callbacks in a worker thread while ASGI finally closes on the event loop. The lease now locks close through object closure and permit release; a concurrent close regression checks that a second caller waits for the first and capacity is released exactly once. The background cleanup callback is async so the asyncio semaphore is released on the event loop. The final focused results above include this follow-up.
