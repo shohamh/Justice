@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Use HTTPS with certificate-chain and hostname verification for gateway-to-authorization and gateway-to-object-store traffic; mutual TLS is required between gateway and authorization service.
-- Do not publish a gateway, authorization service, MinIO host port; browsers reach downloads through the Justice origin proxy only.
+- Do not publish a host port for the gateway, authorization service, or MinIO; browsers reach downloads through the Justice origin proxy only.
 - API storage identity is put/get only; gateway identity is get only; maintenance/migration identity is the only runtime identity with scoped list/delete permissions. No runtime identity gets bucket administration or credential management.
 - Treat uploads and migrated payloads as untrusted. Enforce byte/type limits, MIME/signature consistency checks, and format-aware validation; do not claim files are malware-free. Reject unsupported or malformed files before storage or parsing.
 - XLSX limits: at most 4,096 ZIP entries, at most 100 MiB expanded data, no entry above a 100:1 compression ratio, reject VBA and external relationships, parse with a 60-second timeout and 512 MiB memory limit.
@@ -86,6 +86,7 @@
 - Create: deploy/minio/policies/api-put-get.json
 - Create: deploy/minio/policies/gateway-get.json
 - Create: deploy/minio/policies/maintenance.json
+- Test: backend/app/storage/tests/test_compose_storage.py
 
 **Interfaces:**
 - API identity has put/get only; gateway has get only; maintenance/migration has scoped list/get/put/delete. No runtime identity has bucket administration.
