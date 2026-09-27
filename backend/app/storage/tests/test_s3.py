@@ -66,17 +66,20 @@ def test_missing_head_returns_none_and_delete_uses_managed_key():
         stub.add_client_error("head_object", service_error_code="404", http_status_code=404,
                               expected_params={"Bucket": "private-files", "Key": KEY})
         stub.add_response("delete_object", {}, {"Bucket": "private-files", "Key": KEY})
-        storage = S3ObjectStorage(settings(), client=s3)
-        assert storage.head(key=KEY) is None
-        storage.delete(key=KEY)
+        runtime = S3ObjectStorage(settings(), client=s3)
+        assert runtime.head(key=KEY) is None
+        assert not hasattr(runtime, "delete")
+        S3MaintenanceObjectStorage(settings(), client=s3).delete(key=KEY)
 
 
 def test_bad_key_is_rejected_before_s3_call():
     storage = S3ObjectStorage(settings(), client=client())
     with pytest.raises(ValueError):
         storage.open_read(key="../private-files")
+    assert not hasattr(storage, "delete")
+    maintenance = S3MaintenanceObjectStorage(settings(), client=client())
     with pytest.raises(ValueError):
-        storage.delete(key="https://storage.example.invalid/private-files")
+        maintenance.delete(key="https://storage.example.invalid/private-files")
 
 
 def test_client_uses_verified_tls_and_configured_endpoint(monkeypatch):

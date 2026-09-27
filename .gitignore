@@ -62,3 +62,5 @@ backend/vendor/
 /pics/
 deploy/minio/certs/
 deploy/minio/secrets/
+
+/backend/var/file-storage-migration-report.json

@@ -1,6 +1,7 @@
 """Private S3-compatible adapter. Only maintenance callers can enumerate keys."""
 
 from collections.abc import Iterator
+from datetime import datetime
 from hashlib import sha256 as hash_sha256
 from typing import Any, BinaryIO
 
@@ -75,14 +76,17 @@ class S3ObjectStorage:
             response.get("ServerSideEncryption"), response.get("SSEKMSKeyId"),
         )
 
-    def delete(self, *, key: str) -> None:
-        self._client.delete_object(Bucket=self._bucket, Key=_checked_key(key))
-
-
 class S3MaintenanceObjectStorage(S3ObjectStorage):
     """Restricted maintenance identity for recovery enumeration and cleanup."""
 
+    def delete(self, *, key: str) -> None:
+        self._client.delete_object(Bucket=self._bucket, Key=_checked_key(key))
+
     def iter_keys(self, *, prefix: str) -> Iterator[str]:
+        for key, _ in self.iter_objects(prefix=prefix):
+            yield key
+
+    def iter_objects(self, *, prefix: str) -> Iterator[tuple[str, datetime | None]]:
         if prefix not in {f"{name}/" for name in MANAGED_PREFIXES}:
             raise ValueError("Invalid managed object prefix")
         paginator = self._client.get_paginator("list_objects_v2")
@@ -91,4 +95,4 @@ class S3MaintenanceObjectStorage(S3ObjectStorage):
                 key = item["Key"]
                 if not validate_managed_key(key) or not key.startswith(prefix):
                     raise ValueError("Invalid managed object key in listing")
-                yield key
+                yield key, item.get("LastModified")

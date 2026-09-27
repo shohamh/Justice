@@ -1,5 +1,6 @@
 """Interface used by trusted application storage callers."""
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import BinaryIO, Protocol
 
@@ -20,4 +21,10 @@ class ObjectStorage(Protocol):
 
     def head(self, *, key: str) -> StoredObject | None: ...
 
+
+class MaintenanceObjectStorage(ObjectStorage, Protocol):
+    """Narrowly privileged adapter reserved for migration/reconciliation."""
+
     def delete(self, *, key: str) -> None: ...
+
+    def iter_keys(self, *, prefix: str) -> Iterator[str]: ...

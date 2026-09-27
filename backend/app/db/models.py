@@ -6,9 +6,21 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 import sqlalchemy as sa
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -487,7 +499,10 @@ class SoldierExemptionFile(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -953,7 +968,10 @@ class ExemptionRequestFile(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -973,7 +991,10 @@ class GimelimAttachment(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -1509,7 +1530,10 @@ class ImportSession(Base):
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
     filename: Mapped[str] = mapped_column(Text)
-    raw_excel: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    raw_excel: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     status: Mapped[str] = mapped_column(
         Enum("draft", "confirmed", "cancelled", "done", name="import_session_status"),
         server_default="draft", default="draft",
@@ -1993,6 +2017,11 @@ class BugReport(Base):
         server_default="open", default="open",
     )
     screenshot: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    json_mirror_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    json_mirror_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     nav_history: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True, default=None)
     audit_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True, default=None)
     user_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
@@ -2058,10 +2087,28 @@ class BugReportCommentAttachment(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+
+
+class StorageDeleteOutbox(Base):
+    __tablename__ = "storage_delete_outbox"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    object_key: Mapped[str] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
