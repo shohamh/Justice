@@ -8,19 +8,24 @@
 
 services:
   db:
-    image: postgres:16-alpine
+    build:
+      context: ..
+      dockerfile: deploy/postgres/Dockerfile
+    image: justice-postgres:16-age1.2.1
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: justice
+      AGE_BACKUP_RECIPIENTS: ${AGE_BACKUP_RECIPIENTS:?set AGE_BACKUP_RECIPIENTS in .env.production}
+      AGE_BACKUP_RECIPIENTS_NEXT: ${AGE_BACKUP_RECIPIENTS_NEXT:-}
       # Enable WAL archiving for continuous backup
       POSTGRES_INITDB_ARGS: "--wal-segsize=64"
     command: >
       postgres
         -c wal_level=replica
         -c archive_mode=on
-        -c archive_command='cp %p /var/lib/postgresql/wal-archive/%f'
+        -c archive_command='/usr/local/bin/archive-wal.sh %p %f'
         -c archive_timeout=60
         -c max_wal_senders=3
         -c wal_keep_size=512
@@ -51,7 +56,7 @@ services:
       context: ../backend
       target: production
     restart: unless-stopped
-    env_file: deploy/.env.production
+    env_file: .env.production
     # No LOKI_URL is configured here (accepted, human-escalated decision — a
     # Loki instance is only provisioned for dev, see deploy/observability/).
     # Without it, the admin errors inbox has no log store to read from and
@@ -89,7 +94,7 @@ services:
       context: ../backend
       target: production
     restart: unless-stopped
-    env_file: deploy/.env.production
+    env_file: .env.production
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json

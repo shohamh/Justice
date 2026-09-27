@@ -69,3 +69,43 @@ RECOVERY_TARGET_TIME="2026-06-29 14:30:00+00" deploy/restore-pitr.sh /opt/justic
 # Restart
 docker compose -f deploy/docker-compose.prod.yml start backend telegram-bot
 ```
+
+## Encrypted PostgreSQL backups
+
+The PostgreSQL image uses the pinned age v1.2.1 binary and PostgreSQL 16.4
+Alpine base. Set AGE_BACKUP_RECIPIENTS in deploy/.env.production to one or
+more space-separated age public recipients. Keep the matching private identity
+outside the repository and do not mount it into production database, API, or bot
+services. Base backups and WAL segments are encrypted before they reach the
+backup/archive directories. Base backup plaintext is streamed directly from
+pg_basebackup into age and is not written to a temporary file.
+
+For rotation, add the new public recipient to AGE_BACKUP_RECIPIENTS_NEXT while
+retaining the old recipient. New archives then decrypt with either identity.
+Before removing the old recipient, verify every retained base backup can be
+decrypted with the new identity. WAL segments retained for recovery must also
+remain decryptable; keep the old identity available in a protected offline
+location until those segments expire.
+
+Generate a private key and public recipient in a controlled environment:
+
+    umask 077
+mkdir -p /secure/justice
+# Keep this identity in an encrypted/offline secret store; never commit it.
+docker run --rm -v /secure/justice:/secrets justice-postgres:16-age1.2.1 age-keygen -o /secrets/age-identity
+
+Store age-identity at the path configured by AGE_IDENTITY_PATH with permissions
+readable only by the recovery operator. To prepare an isolated recovery directory:
+
+    docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.recovery.yml --env-file deploy/.env.production --project-name justice-recovery run --rm --no-deps db true
+    RECOVERY_TARGET_TIME="2026-09-27 14:30:00+00" deploy/restore-pitr.sh /opt/justice/backups/base_YYYYMMDD_HHMMSS.tar.gz.age
+
+The first command validates the recovery-only Compose mounts without starting
+Postgres. The restore script decrypts the selected base archive inside the
+database image, extracts it into the separate PGDATA_RESTORE directory, and
+configures WAL replay through restore-wal.sh. Inspect recovery Postgres logs and
+confirm the expected point-in-time state before switching application services
+to the restored data directory. A missing or corrupt WAL segment makes
+PostgreSQL report a restore-command failure; check docker compose logs db and
+the host backup logs, then alert the operator before promoting the recovery
+instance.

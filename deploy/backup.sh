@@ -1,61 +1,40 @@
 #!/usr/bin/env bash
-# deploy/backup.sh
-# Continuous backup strategy:
-#   - WAL archiving: configured in docker-compose.prod.yml (archive_mode=on, archive_timeout=60s)
-#     WAL segments are written to /opt/justice/wal-archive/ every 60 seconds max.
-#   - Base backup: run this script daily via cron for a full physical snapshot.
-#
-# Add to crontab (daily at 2am):
-#   0 2 * * * /opt/justice/deploy/backup.sh >> /opt/justice/logs/backup.log 2>&1
-#
-# Point-in-time recovery:
-#   1. Restore a base backup to a new pgdata directory
-#   2. Create recovery.signal in the pgdata directory
-#   3. Set restore_command in postgresql.conf to replay WAL from wal-archive
-#   4. Optionally set recovery_target_time to a specific point
-#   See: https://www.postgresql.org/docs/16/continuous-archiving.html
-
+# Stream a tar-format PostgreSQL base backup through age. Plaintext backup bytes
+# only exist in the pg_basebackup-to-age pipe and are never written to disk.
 set -euo pipefail
-
 BACKUP_DIR="${BACKUP_DIR:-/opt/justice/backups}"
 WAL_ARCHIVE_DIR="${WAL_ARCHIVE_DIR:-/opt/justice/wal-archive}"
+KEEP_DAYS="${KEEP_DAYS:-7}"
 DB_CONTAINER="${DB_CONTAINER:-$(docker compose -f "$(dirname "$0")/docker-compose.prod.yml" ps -q db 2>/dev/null | head -1)}"
-# Override DB_CONTAINER if your container name differs (docker ps to check)
-DB_USER="${DB_USER:-justice}"
-KEEP_DAYS="${KEEP_DAYS:-7}"          # Keep 7 days of base backups (WAL archive covers gaps)
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BASE_BACKUP_DIR="$BACKUP_DIR/base_$TIMESTAMP"
-
-mkdir -p "$BACKUP_DIR" "$WAL_ARCHIVE_DIR"
-
+TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}"
+FINAL_FILE="$BACKUP_DIR/base_$TIMESTAMP.tar.gz.age"
 log() { echo "[$(date -Iseconds)] $*"; }
-
-log "=== Justice backup started ==="
-
-# ── Base backup (full physical snapshot via pg_basebackup) ──────────────────
-log "Taking base backup → $BASE_BACKUP_DIR"
-docker exec "$DB_CONTAINER" pg_basebackup \
-    -U "$DB_USER" \
-    -D "/backups/base_$TIMESTAMP" \
-    --format=tar \
-    --gzip \
-    --wal-method=stream \
-    --checkpoint=fast \
-    --progress
-
-SIZE=$(du -sh "$BASE_BACKUP_DIR" 2>/dev/null | cut -f1 || echo "unknown")
-log "Base backup complete — $SIZE"
-
-# ── Prune old base backups ───────────────────────────────────────────────────
-log "Pruning base backups older than $KEEP_DAYS days"
-find "$BACKUP_DIR" -maxdepth 1 -name "base_*" -mtime +"$KEEP_DAYS" -exec rm -rf {} + 2>/dev/null || true
-
-# ── WAL archive health check ─────────────────────────────────────────────────
-WAL_COUNT=$(find "$WAL_ARCHIVE_DIR" -maxdepth 1 -type f -mmin -120 2>/dev/null | wc -l || echo 0)
-if [ "$WAL_COUNT" -eq 0 ]; then
-    log "WARNING: No WAL segments archived in the last 2 hours. Check archive_command in docker-compose.prod.yml."
-else
-    log "WAL archive healthy — $WAL_COUNT segments in last 2h"
-fi
-
-log "=== Justice backup complete ==="
+if [[ -z "$DB_CONTAINER" ]]; then echo "No PostgreSQL container found; set DB_CONTAINER explicitly" >&2; exit 1; fi
+if [[ -e "$FINAL_FILE" ]]; then echo "Backup already exists: $FINAL_FILE" >&2; exit 1; fi
+mkdir -p "$BACKUP_DIR" "$WAL_ARCHIVE_DIR"
+TEMP_FILE="$(mktemp "$BACKUP_DIR/.base_$TIMESTAMP.tmp.XXXXXX")"
+cleanup() { rm -f "$TEMP_FILE"; }
+trap cleanup EXIT
+log "Streaming encrypted base backup to $FINAL_FILE"
+docker exec "$DB_CONTAINER" bash -o pipefail -c '
+    set -euo pipefail
+    recipients="${AGE_BACKUP_RECIPIENTS:-} ${AGE_BACKUP_RECIPIENTS_NEXT:-}"
+    if [[ -z "${recipients//[[:space:]]/}" ]]; then echo "No AGE_BACKUP_RECIPIENTS configured" >&2; exit 78; fi
+    custom_tablespaces="$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT count(*) FROM pg_tablespace WHERE oid NOT IN (1663,1664)")"
+    if [[ "$custom_tablespaces" != 0 ]]; then echo "Refusing streamed backup: custom tablespaces require a separate backup strategy" >&2; exit 1; fi
+    read -r -a recipients_array <<<"$recipients"
+    age_args=()
+    for recipient in "${recipients_array[@]}"; do [[ -n "$recipient" ]] && age_args+=(--recipient "$recipient"); done
+    pg_basebackup -U "$POSTGRES_USER" -D - --format=tar --gzip --wal-method=fetch --checkpoint=fast | age "${age_args[@]}"
+' >"$TEMP_FILE"
+if [[ ! -s "$TEMP_FILE" ]]; then echo "Encrypted base backup is empty" >&2; exit 1; fi
+mv -f "$TEMP_FILE" "$FINAL_FILE"
+trap - EXIT
+log "Encrypted base backup complete ($(du -h "$FINAL_FILE" | cut -f1))"
+find "$BACKUP_DIR" -maxdepth 1 -type f -name 'base_*.tar.gz.age' -mtime "+$KEEP_DAYS" -delete
+find "$WAL_ARCHIVE_DIR" -maxdepth 1 -type f -name '*.age' -mtime "+$KEEP_DAYS" -delete
+ARCHIVE_FAILURES="$(docker exec "$DB_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc 'SELECT CASE WHEN last_failed_time IS NOT NULL AND (last_archived_time IS NULL OR last_failed_time > last_archived_time) THEN 1 ELSE 0 END FROM pg_stat_archiver')"
+if [[ ! "$ARCHIVE_FAILURES" =~ ^[0-9]+$ ]]; then log "ERROR: Could not read pg_stat_archiver; inspect PostgreSQL logs."; exit 1; fi
+if [[ "$ARCHIVE_FAILURES" -ne 0 ]]; then log "ERROR: PostgreSQL has an unrecovered WAL archive failure; operator alert required."; exit 1; fi
+WAL_COUNT="$(find "$WAL_ARCHIVE_DIR" -maxdepth 1 -type f -name '*.age' -mmin -120 | wc -l)"
+if [[ "$WAL_COUNT" -eq 0 ]]; then log "WARNING: No encrypted WAL segments in the last 2 hours; check PostgreSQL archive_command and logs."; else log "Encrypted WAL archive healthy: $WAL_COUNT segment(s) in the last 2 hours"; fi
