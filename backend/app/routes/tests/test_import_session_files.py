@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import io
+import multiprocessing
+import os
+import threading
 import uuid
 from hashlib import sha256
 
@@ -72,6 +75,7 @@ def test_xlsx_validator_rejects_non_zip_before_parser():
         validate_xlsx(b"PK\x03\x04bad")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="bounded parser execution requires the Linux container path")
 def test_import_session_create_reparse_and_confirm_use_object_storage(admin_session):
     from app.services.import_sessions import confirm_session, create_session, reparse_session
     from tests.helpers import create_soldier
@@ -116,5 +120,78 @@ def test_import_upload_rejects_invalid_xlsx_before_put(client, admin_session):
         assert response.status_code == 400
         assert response.json()["detail"] == "invalid_file_type"
         assert not storage.objects
+    finally:
+        client.app.dependency_overrides.pop(get_object_storage, None)
+
+def test_parser_does_not_run_when_memory_limit_cannot_be_applied(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services import import_sessions as import_service
+    from app.services.import_sessions import _parse_workbook_child
+
+    monkeypatch.setattr(import_service.os, "name", "posix")
+    attempts = []
+    monkeypatch.setitem(__import__("sys").modules, "resource", SimpleNamespace(setrlimit=lambda *_args: (_ for _ in ()).throw(OSError("denied"))))
+    monkeypatch.setattr(openpyxl, "load_workbook", lambda *_args, **_kwargs: attempts.append("parsed"))
+
+    class Connection:
+        messages = None
+
+        def send(self, message):
+            self.messages = message
+
+        def close(self):
+            pass
+
+    connection = Connection()
+    _parse_workbook_child(connection, _workbook_bytes(), "v1_standard")
+
+    assert connection.messages[0] is False
+    assert attempts == []
+
+
+def test_parser_result_larger_than_pipe_capacity_is_drained_without_deadlock():
+    from app.services.import_sessions import _receive_parser_message
+
+    reader, writer = multiprocessing.get_context().Pipe(duplex=False)
+    payload = b"x" * (2 * 1024 * 1024)
+    sender = threading.Thread(target=lambda: writer.send((True, "v1_standard", payload)))
+    sender.start()
+    try:
+        message = _receive_parser_message(reader, timeout_seconds=5)
+        sender.join(timeout=5)
+        assert not sender.is_alive()
+        assert message == (True, "v1_standard", payload)
+    finally:
+        reader.close()
+        writer.close()
+        sender.join(timeout=5)
+
+
+def test_import_upload_rejects_mismatched_mime_before_parse_or_storage(client, admin_session, monkeypatch):
+    from app.routes import import_sessions as import_routes
+
+    storage = FakeStorage()
+    client.app.dependency_overrides[get_object_storage] = lambda: storage
+    admin = create_soldier(admin_session, personal_number=f"adm{uuid.uuid4().hex[:8]}", role="admin")
+    parse_calls = []
+    def record_parse(*args, **kwargs):
+        from types import SimpleNamespace
+
+        parse_calls.append("called")
+        return SimpleNamespace(id=uuid.uuid4(), storage_key=None, parsed_state=None)
+
+    monkeypatch.setattr(import_routes, "create_session", record_parse)
+    try:
+        response = client.post(
+            "/api/import/sessions",
+            files={"file": ("valid.xlsx", _workbook_bytes(), "application/zip")},
+            headers=auth_headers(admin),
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "invalid_content_type"
+        assert storage.put_count == 0
+        assert parse_calls == []
+        assert admin_session.query(ImportSession).count() == 0
     finally:
         client.app.dependency_overrides.pop(get_object_storage, None)

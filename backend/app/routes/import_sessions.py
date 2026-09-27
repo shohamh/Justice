@@ -28,6 +28,8 @@ from app.storage.protocol import ObjectStorage
 
 router = APIRouter(prefix="/import/sessions", tags=["import-sessions"])
 
+_XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 
 DEFAULT_STATUSES = ["draft", "confirmed"]
 
@@ -94,6 +96,8 @@ async def upload_import_session(
 ):
     if not (file.filename or "").lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="invalid_file_type")
+    if (file.content_type or "").split(";", 1)[0].strip().lower() != _XLSX_CONTENT_TYPE:
+        raise HTTPException(status_code=400, detail="invalid_content_type")
 
     content = await file.read(MAX_XLSX_BYTES + 1)
     try:

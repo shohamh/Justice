@@ -1,10 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import io
 import json
 import multiprocessing
+import os
 import secrets
+import time
 import uuid
 from datetime import UTC, datetime
 from datetime import date as date_type
@@ -44,7 +46,6 @@ from app.db.models import (
     SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
-    SystemSetting,
     TelegramLink,
 )
 from app.services.dm_scope import assign_dm_scope, remove_dm_scope
@@ -87,15 +88,25 @@ class ImportSessionError(Exception):
     pass
 
 
+def _apply_parser_memory_limit() -> None:
+    """Require an OS-enforced parser memory ceiling before opening a workbook."""
+    if os.name == "nt":
+        raise ImportSessionError("parser_memory_limit_unavailable_windows_use_container")
+    try:
+        import resource
+    except ImportError as exc:
+        raise ImportSessionError("parser_memory_limit_unavailable") from exc
+    try:
+        limit = 512 * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except (AttributeError, OSError, ValueError) as exc:
+        raise ImportSessionError("parser_memory_limit_failed") from exc
+
+
 def _parse_workbook_child(connection, content: bytes, parser_id: str | None) -> None:
     try:
+        _apply_parser_memory_limit()
         import app.services.import_parsers.v1_standard  # noqa: F401
-        try:
-            import resource
-            limit = 512 * 1024 * 1024
-            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-        except (ImportError, AttributeError, OSError, ValueError):
-            pass
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
         parser = get_parser(parser_id) if parser_id else auto_detect_parser(wb)
         connection.send((True, parser.id, parser.parse(wb)))
@@ -103,6 +114,13 @@ def _parse_workbook_child(connection, content: bytes, parser_id: str | None) -> 
         connection.send((False, type(exc).__name__, str(exc)[:200]))
     finally:
         connection.close()
+
+
+def _receive_parser_message(connection, *, timeout_seconds: float):
+    """Drain a child result before joining; large results can exceed pipe capacity."""
+    if not connection.poll(timeout_seconds):
+        raise TimeoutError("workbook_parse_timeout")
+    return connection.recv()
 
 
 def _parse_workbook(content: bytes, parser_id: str | None, *, bounded: bool):
@@ -119,21 +137,32 @@ def _parse_workbook(content: bytes, parser_id: str | None, *, bounded: bool):
     process = context.Process(target=_parse_workbook_child, args=(child, content, parser_id), daemon=True)
     process.start()
     child.close()
-    process.join(60)
-    if process.is_alive():
-        process.terminate()
-        process.join(5)
-        if process.is_alive() and hasattr(process, "kill"):
-            process.kill()
-            process.join()
+    deadline = time.monotonic() + 60
+    try:
+        try:
+            ok, parser_or_error, result = _receive_parser_message(
+                parent, timeout_seconds=max(0, deadline - time.monotonic()),
+            )
+        except TimeoutError as exc:
+            raise ImportSessionError("workbook_parse_timeout") from exc
+        except (EOFError, OSError) as exc:
+            raise ImportSessionError("workbook_parse_failed") from exc
+        process.join(max(0, deadline - time.monotonic()))
+        if process.is_alive():
+            raise ImportSessionError("workbook_parse_timeout")
+    except ImportSessionError:
+        if process.is_alive():
+            process.terminate()
+            process.join(5)
+            if process.is_alive() and hasattr(process, "kill"):
+                process.kill()
+                process.join()
+        raise
+    finally:
         parent.close()
-        raise ImportSessionError("workbook_parse_timeout")
-    if not parent.poll(1):
-        parent.close()
-        raise ImportSessionError("workbook_parse_failed")
-    ok, parser_or_error, result = parent.recv()
-    parent.close()
     if not ok:
+        if parser_or_error == "ImportSessionError" and result.startswith("parser_memory_limit_"):
+            raise ImportSessionError(result)
         raise ImportSessionError("invalid_workbook") from None
     return parser_or_error, result
 

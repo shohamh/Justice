@@ -8,8 +8,8 @@ Status: implementation complete on `feature/s3-object-storage`.
 - Migrated exemption request, soldier exemption, Gimelim, bug-report screenshot/comment, and Excel import uploads to object-first persistence. Existing parent authorization remains before file reads and storage writes.
 - Added bounded signature/format checks for supported exemption and Gimelim images/documents, bug-report attachments, and XLSX structure. XLSX checks enforce file size, ZIP entry/expanded-size/compression limits, reject VBA and external links, and parsing runs in a timed child process with a POSIX address-space cap.
 - Import create/reparse/confirm now read verified object bytes; legacy rows with no storage key still read `raw_excel`. A failed read of an object-backed row does not fall back to stale DB bytes.
-- Bug reports write a private JSON mirror object before the report transaction and retain it for maintenance recovery. Added `recover_bug_report_mirrors.py`; API cleanup is outbox-based and does not require delete permission.
-- Added fake-storage route/service regression coverage for object writes, validation-before-write, rollback/outbox behavior, import create/reparse/confirm, verified reads, legacy fallback, and failed-storage behavior.
+- Bug reports write a private JSON mirror object before the report transaction and retain it for maintenance recovery. Added `recover_bug_report_mirrors.py`; recovery now validates a referenced screenshot object key, PNG signature, bounded size, recorded size, and SHA-256 before importing the report. API cleanup is outbox-based and does not require delete permission.
+- Added fake-storage route/service regression coverage for object writes, validation-before-write, rollback/outbox behavior, import create/reparse/confirm, verified reads, legacy fallback, and failed-storage behavior. The review follow-up added tests for forced parser-limit failure, a 2 MiB result sent through a real multiprocessing pipe, MIME rejection before parse/write, malformed and missing mirrors, database failure followed by recovery retry, and valid/corrupt screenshot objects.
 
 ## Verification
 
@@ -26,4 +26,8 @@ From the worktree root:
 
 ## Limits
 
-All storage integration tests use a fake provider. Live MinIO/S3 put/get behavior and IAM enforcement remain unverified because the official Quay MinIO image pull returned HTTP 401 in Task 2. The parser memory cap uses `resource.RLIMIT_AS` on POSIX; Windows local execution has the timeout but not this OS-level cap. Malware scanning is intentionally not provided per the approved spec ruling removing ClamAV.
+All storage integration tests use a fake provider. Live MinIO/S3 put/get behavior and IAM enforcement remain unverified because the official Quay MinIO image pull returned HTTP 401 in Task 2. The parser requires a hard 512 MiB OS memory cap. POSIX workers use `resource.RLIMIT_AS`; native Windows workers fail closed with `parser_memory_limit_unavailable_windows_use_container`, so Excel parsing is available through the bounded Linux container path. The memory-limit failure test proved the parser is never called when the OS refuses the cap. Malware scanning is intentionally not provided per the approved spec ruling removing ClamAV.
+
+## Review follow-up
+
+TDD RED confirmed before implementation: forced `setrlimit` failure still attempted workbook parsing; mismatched XLSX MIME reached the create/parse path and returned success; recovery accepted a screenshot whose object did not match mirror metadata. The large-pipe test was added against a 2 MiB real multiprocessing message. GREEN: the focused suite above passes; malformed/missing mirror recovery and database failure/retry tests also pass.
