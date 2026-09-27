@@ -1,19 +1,55 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Start the full dev stack in one window (DB only in Docker).
+    Start the dev stack. Native app processes are the default; -Docker runs the full Compose stack.
     All services stream logs here with colored prefixes.
 
 .PARAMETER TelegramBot
     Include the Telegram bot.
 
+.PARAMETER Docker
+    Run the complete Docker Compose stack in the foreground.
+
 .EXAMPLE
-    .\dev.ps1                 # backend + frontend (default)
-    .\dev.ps1 -TelegramBot   # include the Telegram bot
+    .\dev.ps1                         # native backend + frontend (default)
+    .\dev.ps1 -TelegramBot            # native backend + frontend + bot
+    .\dev.ps1 -Docker                 # full Compose stack
+    .\dev.ps1 -Docker -TelegramBot    # include the bot in Compose
 #>
-param([switch]$TelegramBot)
+param([switch]$TelegramBot, [switch]$Docker)
 
 $root = $PSScriptRoot
+if ($Docker) {
+    # Keep the native default workflow available while allowing the complete
+    # app and observability stack to run together in Docker Compose.
+    $composeServices = @('db', 'redis', 'loki', 'prometheus', 'grafana', 'backend', 'frontend')
+    if ($TelegramBot) { $composeServices += 'telegram-bot' }
+
+    Write-Host '[dev] Starting the Docker Compose stack (Ctrl+C stops the attached services)...' -ForegroundColor Cyan
+    Write-Host '  Frontend : http://localhost:5173' -ForegroundColor White
+    Write-Host '  Backend  : http://localhost:8000/docs' -ForegroundColor White
+    $previousGrafanaPort = $env:GRAFANA_PORT
+    if (-not $env:GRAFANA_PORT -and (Test-Path (Join-Path $root '.env'))) {
+        $configuredPort = Get-Content (Join-Path $root '.env') | Where-Object { $_ -match '^GRAFANA_PORT=' } | Select-Object -Last 1
+        if ($configuredPort) { $env:GRAFANA_PORT = ($configuredPort -split '=', 2)[1] }
+    }
+    if (-not $env:GRAFANA_PORT) { $env:GRAFANA_PORT = '3000' }
+    if ($env:GRAFANA_PORT -eq '3000') {
+        try {
+            $portProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 3000)
+            $portProbe.Start()
+            $portProbe.Stop()
+        } catch {
+            $env:GRAFANA_PORT = '12080'
+            Write-Host '[dev] Host port 3000 is reserved; using Grafana port 12080.' -ForegroundColor Yellow
+        }
+    }
+    Write-Host ("  Grafana  : http://localhost:{0}" -f $env:GRAFANA_PORT) -ForegroundColor White
+    & docker compose --project-directory $root up --build $composeServices
+    $composeExitCode = $LASTEXITCODE
+    if ($null -eq $previousGrafanaPort) { Remove-Item Env:GRAFANA_PORT -ErrorAction SilentlyContinue } else { $env:GRAFANA_PORT = $previousGrafanaPort }
+    exit $composeExitCode
+}
 
 # ── Parse .env.defaults + .env (secrets/overrides win), replacing
 #    Docker-internal 'db' hostname with localhost ─────────────────────────────
