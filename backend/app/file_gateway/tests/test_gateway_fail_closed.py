@@ -16,7 +16,7 @@ class Client:
     def __init__(self, result=None, error=None):
         self.result, self.error = result, error
 
-    async def authorize(self, *args):
+    async def authorize(self, *args, **kwargs):
         if self.error:
             raise self.error
         return self.result

@@ -38,4 +38,26 @@ passed (Git emitted only an LF-to-CRLF working-copy advisory for backend/app/aud
 
 The authorization service `run()` configures Uvicorn with `ssl_cert_reqs=ssl.CERT_REQUIRED`, the server certificate/key, and the dedicated gateway CA bundle. Start it with `python -m app.file_authorization.main`. This applies client-certificate enforcement when that startup path is used. Compose/proxy wiring and deployed listener verification belong to Task 8 and are not complete in this deliverable.
 
-Tests use fakes/unit transports. Live MinIO/S3 was not verified; the Task 4 official Quay image pull returned HTTP 401. Independent Task 5 review is pending.
+Tests use fakes/unit transports. Live MinIO/S3 was not verified; the Task 4 official Quay image pull returned HTTP 401. Independent Task 5 review found two Important lifecycle issues and one Minor request-ID trace issue; fix round 1 is implemented and pending scoped re-review.
+
+
+## Fix round 1: stream ownership and request trace
+
+The first review found that Starlette cancellation could skip the generator finalizer and background task, leaving the object body and semaphore permit open. A managed response now closes an idempotent lease in its ASGI call's synchronous finally, and the generator/background paths use the same lease. A real ASGI disconnect test was RED (body remained open) and is GREEN.
+
+The review also found that asyncio.wait_for(asyncio.to_thread(open_read)) can time out while the worker still opens a body. The pending-open owner now records abandonment under a lock, closes any body already returned, and makes a late worker close its own result. The open task is shielded so timeout does not cancel the bookkeeping, and its terminal result is retrieved. A late-open timeout test was RED (body remained open) and is GREEN. Pre-response cleanup now releases the permit even if body closure raises.
+
+A validated ingress X-Request-ID UUID (or one generated once at ingress) is forwarded by AuthorizationClient to the authorization service. Its existing audit path stores that same header UUID. The ASGI test checks ingress-to-client propagation; the redirect transport test checks the client's outgoing header.
+
+Evidence:
+
+    python -m pytest app/file_gateway/tests/test_review_lifecycle.py -q -n0 -ra --tb=short
+    2 passed, 1 warning
+    python -m pytest app/file_authorization/tests app/file_gateway/tests -q -n0 -ra --tb=short
+    33 passed, 1 warning
+    python -m ruff check --output-format concise app/file_authorization app/file_gateway app/audit/writer.py
+    All checks passed!
+    git diff --check
+    passed
+
+The warning is from the installed environment's Starlette 0.37.2 starlette/formparsers.py:12, which imports multipart; installed python-multipart 0.0.30 emits PendingDeprecationWarning: Please use import python_multipart instead. The repository's backend/uv.lock resolves newer FastAPI 0.137.1 and Starlette 1.3.1. No application code imports that legacy module, and this fix does not change framework dependency resolution or suppress warnings. Container dependency validation remains in Task 8.

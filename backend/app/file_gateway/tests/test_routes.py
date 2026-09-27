@@ -45,7 +45,7 @@ class FakeClient:
     def __init__(self, result=None, error=None):
         self.result, self.error = result, error
 
-    async def authorize(self, request, token):
+    async def authorize(self, request, token, *, request_id=None):
         if self.error:
             raise self.error
         return self.result

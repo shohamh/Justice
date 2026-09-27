@@ -6,6 +6,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import AsyncIterator
+from contextlib import suppress
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -25,6 +26,7 @@ from app.storage.dependencies import get_object_storage
 from app.storage.keys import make_object_key, validate_managed_key
 
 router = APIRouter()
+_OPEN_READ_TIMEOUT_SECONDS = 8.0
 _LIMITS = {
     "exemption_request": 25 * 1024 * 1024,
     "soldier_exemption": 25 * 1024 * 1024,
@@ -41,6 +43,72 @@ _RESOURCE_ID = {
     "bug_report_comment": "attachment_id",
     "import_workbook": "session_id",
 }
+
+
+class _PendingOpen:
+    """Close an object returned after the waiting request has gone away."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._abandoned = False
+        self._body = None
+
+    def open(self, storage, key: str):
+        body, size = storage.open_read(key=key)
+        with self._lock:
+            abandoned = self._abandoned
+            if not abandoned:
+                self._body = body
+        if abandoned:
+            with suppress(Exception):
+                body.close()
+        return body, size
+
+    def take(self) -> None:
+        with self._lock:
+            self._body = None
+
+    def abandon(self) -> None:
+        with self._lock:
+            self._abandoned = True
+            body, self._body = self._body, None
+        if body is not None:
+            with suppress(Exception):
+                body.close()
+
+
+def _consume_open_result(task: asyncio.Task) -> None:
+    with suppress(Exception, asyncio.CancelledError):
+        task.result()
+
+
+class _DownloadLease:
+    def __init__(self, body, semaphore) -> None:
+        self._body = body
+        self._semaphore = semaphore
+        self._closed = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._body.close()
+        finally:
+            if self._semaphore is not None:
+                self._semaphore.release()
+
+
+class _ManagedStreamingResponse(StreamingResponse):
+    def __init__(self, *args, lease: _DownloadLease, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._lease = lease
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._lease.close()
 
 
 class SlidingWindowRateLimiter:
@@ -74,6 +142,10 @@ async def stream_authorized(request: Request, auth_request, *, inline: bool = Fa
     if limiter is not None and not limiter.allow():
         raise HTTPException(429, detail="download_rate_limit_exceeded")
     token = raw[7:].strip()
+    try:
+        request_id = str(uuid.UUID(request.headers["X-Request-ID"]))
+    except (KeyError, ValueError, TypeError, AttributeError):
+        request_id = str(uuid.uuid4())
     semaphore = getattr(request.app.state, "download_semaphore", None)
     acquired = False
     body = None
@@ -89,7 +161,9 @@ async def stream_authorized(request: Request, auth_request, *, inline: bool = Fa
             client = (
                 getattr(request.app.state, "authorization_client", None) or AuthorizationClient()
             )
-            decision = await asyncio.wait_for(client.authorize(auth_request, token), timeout=8.0)
+            decision = await asyncio.wait_for(
+                client.authorize(auth_request, token, request_id=request_id), timeout=8.0
+            )
         except PermissionError as exc:
             raise HTTPException(404, detail="file_not_found") from exc
         except Exception as exc:
@@ -109,17 +183,26 @@ async def stream_authorized(request: Request, auth_request, *, inline: bool = Fa
             )
         except (ValueError, TypeError) as exc:
             raise HTTPException(503, detail="file_metadata_invalid") from exc
+        pending = _PendingOpen()
         try:
-            body, actual_size = await asyncio.wait_for(
-                asyncio.to_thread(get_object_storage().open_read, key=decision.object_key),
-                timeout=8.0,
+            open_task = asyncio.create_task(
+                asyncio.to_thread(pending.open, get_object_storage(), decision.object_key)
             )
+            open_task.add_done_callback(_consume_open_result)
+            body, actual_size = await asyncio.wait_for(
+                asyncio.shield(open_task), timeout=_OPEN_READ_TIMEOUT_SECONDS
+            )
+            pending.take()
+        except asyncio.CancelledError:
+            pending.abandon()
+            raise
         except Exception as exc:
+            pending.abandon()
             raise HTTPException(503, detail="file_download_unavailable") from exc
         if actual_size != decision.size:
-            body.close()
-            body = None
             raise HTTPException(503, detail="file_metadata_invalid")
+
+        lease = _DownloadLease(body, semaphore if acquired else None)
 
         async def chunks() -> AsyncIterator[bytes]:
             sent = 0
@@ -137,16 +220,25 @@ async def stream_authorized(request: Request, auth_request, *, inline: bool = Fa
                 if sent != decision.size:
                     raise RuntimeError("object size differs from authorization")
             finally:
-                await asyncio.to_thread(body.close)
+                lease.close()
 
+        response = _ManagedStreamingResponse(
+            chunks(),
+            headers=headers,
+            media_type=None,
+            background=BackgroundTask(lease.close),
+            lease=lease,
+        )
         response_started = True
-        background = BackgroundTask(semaphore.release) if acquired else None
-        return StreamingResponse(chunks(), headers=headers, media_type=None, background=background)
+        return response
     finally:
-        if body is not None and not response_started:
-            body.close()
-        if acquired and not response_started:
-            semaphore.release()
+        if not response_started:
+            try:
+                if body is not None:
+                    body.close()
+            finally:
+                if acquired:
+                    semaphore.release()
 
 
 @router.get("/api/file-download/exemption-requests/{request_id}/files/{file_id}")

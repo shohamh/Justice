@@ -28,7 +28,14 @@ def test_bearer_is_only_sent_to_fixed_auth_service_and_redirect_is_not_followed(
         file_id="00000000-0000-0000-0000-000000000002",
     )
     with pytest.raises(RuntimeError):
-        asyncio.run(client.authorize(request, "sensitive-access-token"))
+        asyncio.run(
+            client.authorize(
+                request,
+                "sensitive-access-token",
+                request_id="00000000-0000-0000-0000-000000000003",
+            )
+        )
     assert len(seen) == 1
     assert str(seen[0].url) == "https://file-auth:8443/_internal/file-authorizations"
     assert seen[0].headers["Authorization"] == "Bearer sensitive-access-token"
+    assert seen[0].headers["X-Request-ID"] == "00000000-0000-0000-0000-000000000003"

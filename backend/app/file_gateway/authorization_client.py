@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 
 import httpx
 
@@ -30,9 +31,15 @@ class AuthorizationClient:
         self.follow_redirects = False
         self.transport = transport
 
-    async def authorize(self, request_data, bearer_token: str) -> FileAuthorizationDecision:
+    async def authorize(
+        self, request_data, bearer_token: str, *, request_id: str | uuid.UUID | None = None
+    ) -> FileAuthorizationDecision:
         if not bearer_token or any(ord(c) < 32 for c in bearer_token):
             raise ValueError("invalid bearer token")
+        try:
+            request_id = str(uuid.UUID(str(request_id))) if request_id is not None else str(uuid.uuid4())
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("invalid request id") from exc
         async with httpx.AsyncClient(
             base_url=self.base_url,
             verify=self.verify,
@@ -44,7 +51,10 @@ class AuthorizationClient:
             response = await client.post(
                 "/_internal/file-authorizations",
                 json=request_data.model_dump(mode="json"),
-                headers={"Authorization": f"Bearer {bearer_token}"},
+                headers={
+                    "Authorization": f"Bearer {bearer_token}",
+                    "X-Request-ID": request_id,
+                },
             )
         if response.is_redirect or response.status_code >= 500:
             raise RuntimeError("authorization service unavailable")
