@@ -100,3 +100,7 @@ Task 5 fix round 1 self-review follow-up: guard lease close with a thread lock a
 Task 5 fix round 2/5: Minor local Starlette warning addressed with exact pytest filter for PendingDeprecationWarning message and starlette.formparsers module. Locked offline uv run blocked by uncached botocore==1.43.103. Focused auth/gateway suite 34 passed with no warning summary. Temporary three-case warning probe showed other message, module, and category warnings remain visible; probe removed. No dependency declarations changed. Independent scoped re-review PASS: exact warning filter verified; no new breakage.
 
 Task 5: complete commits ca398445 + d507fefb + 2c40ca27 + 87674f98; fix rounds 1 and 2 independently re-reviewed PASS. Auth/gateway tests 34 passed without warnings; scoped Ruff and diff checks passed. mTLS startup enforces CERT_REQUIRED; Compose and deployed listener verification remain Task 8. Live MinIO/S3 remains unverified due to the official Quay 401.
+
+Task 5 out-of-scope observation for final whole-branch review: the syncio.to_thread(body.read, ...) worker can persist after its 8-second wait times out until the underlying read returns. The response closes the body and releases its lease; evaluate whether the storage socket timeout is sufficient or if worker lifecycle needs a separate fix.
+
+Task 6: dispatched to fresh implementer; base 985c04f8; brief .superpowers/sdd/2026-09-27-s3-compatible-file-storage/task-6-brief.md.
