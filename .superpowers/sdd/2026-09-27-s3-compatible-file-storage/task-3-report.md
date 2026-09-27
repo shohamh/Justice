@@ -34,3 +34,23 @@ Result: collection failed because `app.storage.backfill` and `app.storage.reconc
 ## Remaining verification limits
 
 No live PostgreSQL migration or MinIO/S3 operation was run. Task 2's official MinIO image pull was blocked by Quay HTTP 401; storage preflight, IAM behavior, production SSE metadata, and listing/deletion behavior against a real provider remain unverified. No production cutover is claimed.
+
+
+## Review-fix round
+
+The independent Task 3 review found that migration inventory ignored rows already carrying `storage_key`, allowing cutover readiness without verifying referenced objects. Fix commit: `b0afef16e6f67e022c92b2ef187ec8df41dff0a2` (`fix: verify existing storage refs before cutover`).
+
+### RED evidence
+
+Command from `backend/`: `python -m pytest app/storage/tests/test_migration.py -q` before the fix. Result: **3 failed**. A missing object and an invalid managed prefix incorrectly left `cutover_ready=True`; an object whose HEAD metadata matched but bytes were corrupt was not read.
+
+### GREEN evidence
+
+- `python -m pytest app/storage/tests/test_migration.py -q` ? **4 passed**, covering missing object, same-size corrupted bytes despite matching HEAD metadata, invalid managed prefix, and valid existing object.
+- `python -m pytest app/storage/tests/test_backfill.py app/storage/tests/test_reconciliation.py -q` ? **14 passed**.
+- `python -m pytest app/storage/tests/test_s3.py -q` ? **9 passed**.
+- Scoped Ruff with the existing `UP042` enum style warnings excluded ? passed; `git diff --check` ? passed.
+
+The migration now enumerates every DB object reference, checks that its key is valid and belongs to its declared managed prefix, compares HEAD key/hash/size against persisted metadata, and streams the body in bounded chunks to verify byte count and SHA-256. Verification failures use stable aggregate error codes and block `cutover_ready`.
+
+The same limits still apply: these checks used fake storage; no live PostgreSQL, MinIO, or provider S3 behavior was verified. Re-review is pending; Task 4 must not start until the coordinator records that review result.
