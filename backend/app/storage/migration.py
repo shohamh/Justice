@@ -1,7 +1,9 @@
 """Inventory, preflight, and bounded resumable legacy-file migration."""
+
 from __future__ import annotations
 
 import os
+import re
 from collections import Counter
 from contextlib import suppress
 from hashlib import sha256
@@ -22,12 +24,13 @@ from app.db.models import (
 )
 from app.settings import Settings
 from app.storage.backfill import (
+    MAX_LEGACY_BYTES,
     BackfillError,
     BackfillResult,
     backfill_record,
     validate_legacy_record,
 )
-from app.storage.keys import make_object_key
+from app.storage.keys import make_object_key, validate_managed_key
 from app.storage.protocol import MaintenanceObjectStorage
 
 FILE_MODELS = (
@@ -66,7 +69,11 @@ def _inventory(session: Session) -> dict[str, dict[str, int]]:
         except OSError:
             missing += 1
     result["bug_report_json_mirror"] = {
-        "rows": len(paths), "legacy_bytes": path_bytes, "pending": len(paths), "reachable": reachable, "unreachable": missing,
+        "rows": len(paths),
+        "legacy_bytes": path_bytes,
+        "pending": len(paths),
+        "reachable": reachable,
+        "unreachable": missing,
     }
     return result
 
@@ -75,10 +82,19 @@ def _preflight_object(storage: MaintenanceObjectStorage, settings: Settings) -> 
     data = b"justice-storage-preflight"
     digest = sha256(data).hexdigest()
     key = make_object_key("import_workbook", uuid4())
-    result = {"put": False, "get": False, "metadata": False, "checksum": False, "delete": False, "encryption": False}
+    result = {
+        "put": False,
+        "get": False,
+        "metadata": False,
+        "checksum": False,
+        "delete": False,
+        "encryption": False,
+    }
     uploaded = False
     try:
-        written = storage.put_bytes(key=key, data=data, content_type="application/octet-stream", sha256=digest)
+        written = storage.put_bytes(
+            key=key, data=data, content_type="application/octet-stream", sha256=digest
+        )
         uploaded = result["put"] = True
         body, length = storage.open_read(key=key)
         try:
@@ -89,8 +105,11 @@ def _preflight_object(storage: MaintenanceObjectStorage, settings: Settings) -> 
         head = storage.head(key=key)
         result["metadata"] = head is not None
         result["checksum"] = bool(
-            head and written.sha256 == digest and head.sha256 == digest
-            and written.size == len(data) and head.size == len(data)
+            head
+            and written.sha256 == digest
+            and head.sha256 == digest
+            and written.size == len(data)
+            and head.size == len(data)
         )
         production = os.getenv("ENVIRONMENT", "development").lower() == "production"
         result["encryption"] = not production or (
@@ -120,7 +139,12 @@ def _record_payloads(session: Session, batch_size: int):
         data_col = getattr(model, payload_column)
         attempted: set[Any] = set()
         while True:
-            stmt = select(model).where(key_col.is_(None), data_col.is_not(None)).order_by(model.id).limit(batch_size)
+            stmt = (
+                select(model)
+                .where(key_col.is_(None), data_col.is_not(None))
+                .order_by(model.id)
+                .limit(batch_size)
+            )
             if attempted:
                 stmt = stmt.where(model.id.not_in(attempted))
             batch = session.scalars(stmt).all()
@@ -132,9 +156,14 @@ def _record_payloads(session: Session, batch_size: int):
                 break
     attempted: set[Any] = set()
     while True:
-        stmt = select(BugReport).where(
-            BugReport.json_file_path.is_not(None), BugReport.json_mirror_storage_key.is_(None)
-        ).order_by(BugReport.id).limit(batch_size)
+        stmt = (
+            select(BugReport)
+            .where(
+                BugReport.json_file_path.is_not(None), BugReport.json_mirror_storage_key.is_(None)
+            )
+            .order_by(BugReport.id)
+            .limit(batch_size)
+        )
         if attempted:
             stmt = stmt.where(BugReport.id.not_in(attempted))
         batch = session.scalars(stmt).all()
@@ -144,6 +173,121 @@ def _record_payloads(session: Session, batch_size: int):
         attempted.update(report.id for report in batch)
         if len(batch) < batch_size:
             break
+
+
+def _existing_storage_references(session: Session):
+    """Yield class, key, recorded digest, and size for every durable object ref."""
+    if hasattr(session, "storage_references"):
+        yield from session.storage_references()
+        return
+    model_columns = (
+        (
+            "soldier_exemption",
+            SoldierExemptionFile,
+            "storage_key",
+            "storage_sha256",
+            "storage_size",
+        ),
+        (
+            "exemption_request",
+            ExemptionRequestFile,
+            "storage_key",
+            "storage_sha256",
+            "storage_size",
+        ),
+        ("gimelim", GimelimAttachment, "storage_key", "storage_sha256", "storage_size"),
+        (
+            "bug_report_comment",
+            BugReportCommentAttachment,
+            "storage_key",
+            "storage_sha256",
+            "storage_size",
+        ),
+        ("bug_report_screenshot", BugReport, "storage_key", "storage_sha256", "storage_size"),
+        (
+            "bug_report_json_mirror",
+            BugReport,
+            "json_mirror_storage_key",
+            "json_mirror_sha256",
+            None,
+        ),
+        ("import_workbook", ImportSession, "storage_key", "storage_sha256", "storage_size"),
+    )
+    for file_class, model, key_name, hash_name, size_name in model_columns:
+        key_column = getattr(model, key_name)
+        selected = [key_column, getattr(model, hash_name)]
+        if size_name:
+            selected.append(getattr(model, size_name))
+        stmt = select(*selected).where(key_column.is_not(None)).execution_options(yield_per=256)
+        for row in session.execute(stmt):
+            yield file_class, row[0], row[1], row[2] if size_name else None
+
+
+def _verify_existing_objects(
+    session: Session, storage: MaintenanceObjectStorage
+) -> tuple[int, Counter[tuple[str, str]]]:
+    """Verify key namespace, S3 HEAD metadata, and streamed object bytes for every reference."""
+    verified = 0
+    failures: Counter[tuple[str, str]] = Counter()
+    for file_class, object_key, expected_hash, expected_size in _existing_storage_references(
+        session
+    ):
+        if not validate_managed_key(object_key) or not object_key.startswith(f"{file_class}/"):
+            failures[(file_class, "invalid_managed_key")] += 1
+            continue
+        if (
+            not isinstance(expected_hash, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_hash) is None
+        ):
+            failures[(file_class, "missing_storage_hash")] += 1
+            continue
+        try:
+            metadata = storage.head(key=object_key)
+        except Exception:
+            failures[(file_class, "existing_object_unavailable")] += 1
+            continue
+        if metadata is None:
+            failures[(file_class, "existing_object_missing")] += 1
+            continue
+        if metadata.key != object_key or metadata.sha256 != expected_hash:
+            failures[(file_class, "existing_object_metadata_mismatch")] += 1
+            continue
+        if expected_size is not None and metadata.size != expected_size:
+            failures[(file_class, "existing_object_size_mismatch")] += 1
+            continue
+        if metadata.size < 0 or metadata.size > MAX_LEGACY_BYTES:
+            failures[(file_class, "existing_object_size_mismatch")] += 1
+            continue
+        try:
+            body, content_length = storage.open_read(key=object_key)
+            digest = sha256()
+            actual_size = 0
+            try:
+                while True:
+                    chunk = body.read(min(64 * 1024, MAX_LEGACY_BYTES + 1 - actual_size))
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    actual_size += len(chunk)
+                    if actual_size > MAX_LEGACY_BYTES:
+                        break
+            finally:
+                body.close()
+        except Exception:
+            failures[(file_class, "existing_object_read_failed")] += 1
+            continue
+        if (
+            content_length != metadata.size
+            or actual_size != metadata.size
+            or (expected_size is not None and actual_size != expected_size)
+        ):
+            failures[(file_class, "existing_object_size_mismatch")] += 1
+            continue
+        if digest.hexdigest() != expected_hash:
+            failures[(file_class, "existing_object_hash_mismatch")] += 1
+            continue
+        verified += 1
+    return verified, failures
 
 
 def run_migration(
@@ -167,7 +311,9 @@ def run_migration(
                 validate_legacy_record(record, payload=payload)
                 validated += 1
             except BackfillError as exc:
-                label = "bug_report_json_mirror" if payload == "json_mirror" else type(record).__name__
+                label = (
+                    "bug_report_json_mirror" if payload == "json_mirror" else type(record).__name__
+                )
                 errors[(label, exc.error_code)] += 1
     else:
         for record, payload in _record_payloads(session, batch_size):
@@ -176,17 +322,25 @@ def run_migration(
                 if result.status == "migrated":
                     migrated += 1
             except BackfillError as exc:
-                label = "bug_report_json_mirror" if payload == "json_mirror" else type(record).__name__
+                label = (
+                    "bug_report_json_mirror" if payload == "json_mirror" else type(record).__name__
+                )
                 errors[(label, exc.error_code)] += 1
             # Each record is committed independently for safe restart. batch_size
             # bounds the session identity map and caps each selection chunk.
             if migrated and migrated % batch_size == 0:
                 session.expire_all()
+    existing_verified, reference_errors = _verify_existing_objects(session, storage)
+    errors.update(reference_errors)
     failed = sum(errors.values())
     final_inventory = _inventory(session)
-    cutover_ready = (not dry_run) and failed == 0 and all(storage_check.values()) and all(
-        item.get("pending", 0) == 0 for item in final_inventory.values()
-    ) and final_inventory["bug_report_json_mirror"].get("unreachable", 0) == 0
+    cutover_ready = (
+        (not dry_run)
+        and failed == 0
+        and all(storage_check.values())
+        and all(item.get("pending", 0) == 0 for item in final_inventory.values())
+        and final_inventory["bug_report_json_mirror"].get("unreachable", 0) == 0
+    )
     return {
         "dry_run": dry_run,
         "inventory": inventory,
@@ -194,6 +348,7 @@ def run_migration(
         "storage_check": storage_check,
         "validated": validated,
         "migrated": migrated,
+        "existing_verified": existing_verified,
         "failed": failed,
         "errors": {f"{label}:{code}": count for (label, code), count in sorted(errors.items())},
         "cutover_ready": cutover_ready,
