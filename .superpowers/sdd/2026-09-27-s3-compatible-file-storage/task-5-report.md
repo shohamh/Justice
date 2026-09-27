@@ -63,3 +63,25 @@ Evidence:
 The warning is from the installed environment's Starlette 0.37.2 starlette/formparsers.py:12, which imports multipart; installed python-multipart 0.0.30 emits PendingDeprecationWarning: Please use import python_multipart instead. The repository's backend/uv.lock resolves newer FastAPI 0.137.1 and Starlette 1.3.1. No application code imports that legacy module, and this fix does not change framework dependency resolution or suppress warnings. Container dependency validation remains in Task 8.
 
 After the first fix commit, a self-review found that Starlette can run synchronous background callbacks in a worker thread while ASGI finally closes on the event loop. The lease now locks close through object closure and permit release; a concurrent close regression checks that a second caller waits for the first and capacity is released exactly once. The background cleanup callback is async so the asyncio semaphore is released on the event loop. The final focused results above include this follow-up.
+
+
+## Fix round 2: local dependency warning
+
+The scoped re-review accepted the lifecycle, late-open, and request-ID fixes but kept the Minor warning finding open. A locked offline environment was attempted without changing dependencies:
+
+    uv run --frozen --offline --extra dev python -m pytest app/file_authorization/tests app/file_gateway/tests -q -n0 -ra --tb=short
+
+The command could not create the environment: uv reported locked botocore==1.43.103 absent from its cache, with network disabled. The local interpreter has Starlette 0.37.2, while backend/uv.lock resolves Starlette 1.3.1. The warning is emitted by local Starlette 0.37.2 formparsers.py:12 importing multipart.
+
+Pytest now filters only the exact PendingDeprecationWarning message from starlette.formparsers, with a source comment in pyproject.toml. There is no blanket warning suppression or dependency change.
+
+Verification from backend:
+
+    python -m pytest app/file_authorization/tests app/file_gateway/tests -q -n0 -ra --tb=short
+    34 passed; no warning summary
+
+A temporary ignored probe at backend/.venv/other_warning_probe.py was run with:
+
+    python -m pytest -c pyproject.toml .venv/other_warning_probe.py -q -n0 -ra --tb=short
+
+Result: 3 passed and all three unrelated warnings were displayed: a different PendingDeprecationWarning message, the exact message from a different module, and the exact message as UserWarning. The probe was removed after the run.
