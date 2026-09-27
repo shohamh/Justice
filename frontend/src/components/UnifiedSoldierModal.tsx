@@ -57,8 +57,7 @@ interface Props {
   initialHistoryTypes?: string[];
 }
 
-const ALL_TABS = ["details", "profile", "exemptions", "constraints", "duty_history"] as const;
-export type TabKey = (typeof ALL_TABS)[number];
+export type TabKey = "details" | "profile" | "exemptions" | "constraints" | "duty_history";
 
 export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false, initialTab, initialHistoryTypes }: Props) {
   const layer = useModalLayer(true);
