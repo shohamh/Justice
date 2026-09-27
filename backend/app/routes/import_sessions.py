@@ -31,6 +31,13 @@ router = APIRouter(prefix="/import/sessions", tags=["import-sessions"])
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+def _import_session_http_error(exc: ImportSessionError) -> HTTPException:
+    detail = str(exc)
+    unavailable_prefixes = ("storage_", "upload_persistence", "parser_memory_limit_")
+    status_code = 503 if detail.startswith(unavailable_prefixes) else 400
+    return HTTPException(status_code=status_code, detail=detail)
+
+
 DEFAULT_STATUSES = ["draft", "confirmed"]
 
 
@@ -113,8 +120,7 @@ async def upload_import_session(
         commit_uploaded_objects(session, [sess.storage_key] if sess.storage_key else [])
     except ImportSessionError as exc:
         session.rollback()
-        status_code = 503 if str(exc).startswith(("storage_", "upload_persistence")) else 400
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise _import_session_http_error(exc) from exc
     except StorageUploadError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -161,7 +167,7 @@ def reparse_import_session(
         sess = reparse_session(session, session_id=session_id, actor=actor, storage=storage)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from None
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return _session_detail(sess)
@@ -179,7 +185,7 @@ def update_import_session_selections(
         set_selections(session, session_id=session_id, selections=req.selections)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from None
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return {"ok": True}
@@ -197,7 +203,7 @@ def confirm_import_session(
         result = confirm_session(session, session_id=session_id, actor=actor, storage=storage)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from None
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return result
@@ -214,7 +220,7 @@ def cancel_import_session(
         sess = cancel_session(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from None
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return {"status": sess.status}
@@ -231,7 +237,7 @@ def mark_import_session_done(
         sess = mark_done(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from None
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return {"status": sess.status}

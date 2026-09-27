@@ -15,8 +15,8 @@ Status: implementation complete on `feature/s3-object-storage`.
 
 From `backend/`:
 
-- `python -m pytest app/routes/tests/test_exemption_requests_files.py app/routes/tests/test_exemptions.py app/routes/tests/test_gimelim_attachments.py app/routes/tests/test_bug_reports.py app/routes/tests/test_import_session_files.py app/services/tests/test_import_sessions_service.py -q -n0` — passed (exit code 0; pytest emitted no failures).
-- `python -m ruff check --ignore UP017` on the Task 4 added/modified backend files — passed. `UP017` was ignored for the pre-existing `datetime.timezone.utc` style in `bug_reports.py`; no other findings remained.
+- `python -m pytest app/routes/tests/test_exemption_requests_files.py app/routes/tests/test_exemptions.py app/routes/tests/test_gimelim_attachments.py app/routes/tests/test_bug_reports.py app/routes/tests/test_import_session_files.py app/scripts/tests/test_recover_bug_report_mirrors.py app/services/tests/test_import_sessions_service.py -o addopts= -q -n0` - 127 passed, 1 skipped, 2 dependency deprecation warnings (75.27s). The skip is the object-backed parser integration on native Windows.
+- `python -m ruff check --ignore UP017,B023,SIM401,SIM105,SIM102,N802` on Task 4 follow-up files - passed. These ignores cover existing style findings in the parser service and multiprocessing API names on the test double.
 
 From the worktree root:
 
@@ -30,4 +30,4 @@ All storage integration tests use a fake provider. Live MinIO/S3 put/get behavio
 
 ## Review follow-up
 
-TDD RED confirmed before implementation: forced `setrlimit` failure still attempted workbook parsing; mismatched XLSX MIME reached the create/parse path and returned success; recovery accepted a screenshot whose object did not match mirror metadata. The large-pipe test was added against a 2 MiB real multiprocessing message. GREEN: the focused suite above passes; malformed/missing mirror recovery and database failure/retry tests also pass.
+TDD RED confirmed before implementation: forced `setrlimit` failure still attempted workbook parsing; mismatched XLSX MIME reached the create/parse path and returned success; recovery accepted a screenshot whose object did not match mirror metadata. The large-pipe test was added against a 2 MiB real multiprocessing message. The follow-up RED stalled a worker after the reader observed a partial message; GREEN proves the complete `recv()` is bounded by the remaining deadline, the child is terminated, and the reader unblocks. Parser memory-cap errors map to HTTP 503 with stable detail across upload/reparse/confirm routes. GREEN: the focused suite above passes; malformed/missing mirror recovery and database failure/retry tests also pass.

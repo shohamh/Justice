@@ -5,7 +5,9 @@ import io
 import json
 import multiprocessing
 import os
+import queue
 import secrets
+import threading
 import time
 import uuid
 from datetime import UTC, datetime
@@ -88,6 +90,9 @@ class ImportSessionError(Exception):
     pass
 
 
+_PARSER_TIMEOUT_SECONDS = 60
+
+
 def _apply_parser_memory_limit() -> None:
     """Require an OS-enforced parser memory ceiling before opening a workbook."""
     if os.name == "nt":
@@ -117,10 +122,24 @@ def _parse_workbook_child(connection, content: bytes, parser_id: str | None) -> 
 
 
 def _receive_parser_message(connection, *, timeout_seconds: float):
-    """Drain a child result before joining; large results can exceed pipe capacity."""
-    if not connection.poll(timeout_seconds):
-        raise TimeoutError("workbook_parse_timeout")
-    return connection.recv()
+    """Bound the complete recv, including a peer that stalls mid-message."""
+    received: queue.Queue[tuple[bool, object]] = queue.Queue(maxsize=1)
+
+    def read_message() -> None:
+        try:
+            received.put((True, connection.recv()))
+        except BaseException as exc:
+            received.put((False, exc))
+
+    reader = threading.Thread(target=read_message, name="workbook-result-reader", daemon=True)
+    reader.start()
+    try:
+        ok, value = received.get(timeout=timeout_seconds)
+    except queue.Empty as exc:
+        raise TimeoutError("workbook_parse_timeout") from exc
+    if not ok:
+        raise value
+    return value
 
 
 def _parse_workbook(content: bytes, parser_id: str | None, *, bounded: bool):
@@ -137,7 +156,7 @@ def _parse_workbook(content: bytes, parser_id: str | None, *, bounded: bool):
     process = context.Process(target=_parse_workbook_child, args=(child, content, parser_id), daemon=True)
     process.start()
     child.close()
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + _PARSER_TIMEOUT_SECONDS
     try:
         try:
             ok, parser_or_error, result = _receive_parser_message(

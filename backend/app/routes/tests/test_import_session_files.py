@@ -195,3 +195,128 @@ def test_import_upload_rejects_mismatched_mime_before_parse_or_storage(client, a
         assert admin_session.query(ImportSession).count() == 0
     finally:
         client.app.dependency_overrides.pop(get_object_storage, None)
+
+
+def test_partial_parser_pipe_response_times_out_and_terminates_worker(client, monkeypatch):
+    import time
+
+    from app.services import import_sessions as import_service
+
+    events = []
+    partial_frame = threading.Event()
+    release_reader = threading.Event()
+
+    class ReaderConnection:
+        def poll(self, _timeout):
+            return True
+
+        def recv(self):
+            events.append("partial-frame-read")
+            partial_frame.set()
+            release_reader.wait()
+            raise EOFError("worker terminated during partial frame")
+
+        def close(self):
+            release_reader.set()
+
+    class ChildConnection:
+        def close(self):
+            pass
+
+    reader = ReaderConnection()
+    child = ChildConnection()
+
+    class Worker:
+        def __init__(self):
+            self.alive = False
+            self.terminated = False
+
+        def start(self):
+            self.alive = True
+
+        def join(self, timeout=None):
+            if self.terminated:
+                self.alive = False
+            elif timeout:
+                time.sleep(min(timeout, 0.1))
+
+        def is_alive(self):
+            return self.alive
+
+        def terminate(self):
+            events.append("terminate")
+            self.terminated = True
+            self.alive = False
+            release_reader.set()
+
+        def kill(self):
+            self.terminate()
+
+    worker = Worker()
+
+    class Context:
+        def Pipe(self, *, duplex):
+            assert duplex is False
+            return reader, child
+
+        def Process(self, **_kwargs):
+            return worker
+
+    monkeypatch.setattr(import_service.multiprocessing, "get_context", lambda _name: Context())
+    monkeypatch.setattr(import_service, "_PARSER_TIMEOUT_SECONDS", 0.05, raising=False)
+    started = time.monotonic()
+    result = []
+
+    def parse():
+        try:
+            import_service._parse_workbook(_workbook_bytes(), None, bounded=True)
+        except Exception as exc:
+            result.append(exc)
+
+    caller = threading.Thread(target=parse)
+    caller.start()
+    assert partial_frame.wait(timeout=1)
+    caller.join(timeout=1)
+    try:
+        assert not caller.is_alive()
+        assert result and str(result[0]) == "workbook_parse_timeout"
+        assert worker.terminated
+        assert events.index("partial-frame-read") < events.index("terminate")
+        assert time.monotonic() - started < 1
+    finally:
+        release_reader.set()
+        reader.close()
+        caller.join(timeout=1)
+
+
+def test_parser_memory_cap_unavailable_returns_503(admin_session, monkeypatch):
+    import asyncio
+
+    from fastapi import HTTPException
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.routes import import_sessions as import_routes
+    from app.services.import_sessions import ImportSessionError
+
+    storage = FakeStorage()
+    admin = create_soldier(admin_session, personal_number=f"adm{uuid.uuid4().hex[:8]}", role="admin")
+    monkeypatch.setattr(
+        import_routes,
+        "create_session",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ImportSessionError("parser_memory_limit_unavailable_windows_use_container")
+        ),
+    )
+    upload = UploadFile(
+        filename="valid.xlsx",
+        file=io.BytesIO(_workbook_bytes()),
+        headers=Headers({"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
+    )
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(import_routes.upload_import_session(
+            file=upload, parser_id=None, session=admin_session, storage=storage, actor=admin,
+        ))
+    assert raised.value.status_code == 503
+    assert raised.value.detail == "parser_memory_limit_unavailable_windows_use_container"
+    assert storage.put_count == 0
+    assert admin_session.query(ImportSession).count() == 0
