@@ -70,3 +70,14 @@ def test_http_storage_endpoint_allowed_only_for_explicit_loopback_test_stub():
     with pytest.raises(ValueError):
         Settings(_env_file=None, DATABASE_URL="x", DB_ADMIN_URL="x", JWT_SECRET="x" * 32,
                  STORAGE_LOCAL_TEST_STUB=True, STORAGE_ENDPOINT_URL="http://storage.example.invalid")
+
+@pytest.mark.parametrize("suffix", ["?token=secret", "#fragment"])
+def test_https_storage_endpoint_rejects_query_or_fragment(suffix):
+    with pytest.raises(ValueError):
+        Settings(
+            _env_file=None,
+            DATABASE_URL="x",
+            DB_ADMIN_URL="x",
+            JWT_SECRET="x" * 32,
+            STORAGE_ENDPOINT_URL="https://storage.example.invalid" + suffix,
+        )

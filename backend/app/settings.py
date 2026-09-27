@@ -56,6 +56,8 @@ class Settings(BaseSettings):
         if not value:
             return value
         parsed = urlsplit(value)
+        if parsed.query or parsed.fragment:
+            raise ValueError('Storage endpoint must not contain query or fragment')
         if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password:
             return value
         local_stub = info.data.get("storage_local_test_stub", False)
