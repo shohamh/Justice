@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
+import multiprocessing
 import secrets
 import uuid
-from datetime import UTC, date as date_type, datetime
+from datetime import UTC, datetime
+from datetime import date as date_type
 from decimal import Decimal
 
 import openpyxl
@@ -54,11 +57,18 @@ from app.services.duty_config import (
     update_exemption_type,
     update_location,
 )
+from app.services.file_validation import MAX_XLSX_BYTES, FileValidationError, validate_xlsx
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
 from app.services.import_approvals import (
-    resolve_bug_reports, resolve_exemption_requests, resolve_personal_constraints,
-    resolve_range_excusal_requests, resolve_soldier_enrollment_requests, resolve_soldier_exemptions,
-    resolve_soldier_field_updates, resolve_soldier_range_qualifications, resolve_swap_requests,
+    resolve_bug_reports,
+    resolve_exemption_requests,
+    resolve_personal_constraints,
+    resolve_range_excusal_requests,
+    resolve_soldier_enrollment_requests,
+    resolve_soldier_exemptions,
+    resolve_soldier_field_updates,
+    resolve_soldier_range_qualifications,
+    resolve_swap_requests,
     resolve_system_settings,
 )
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
@@ -68,10 +78,97 @@ from app.services.range_locations import create_range_location
 from app.services.settings_loader import set_setting
 from app.services.shift_quotas import set_shift_quotas
 from app.services.shift_templates import create_template, update_template
+from app.services.storage_uploads import StorageUploadError, persist_uploaded_object
+from app.storage.keys import make_object_key
+from app.storage.protocol import ObjectStorage
 
 
 class ImportSessionError(Exception):
     pass
+
+
+def _parse_workbook_child(connection, content: bytes, parser_id: str | None) -> None:
+    try:
+        import app.services.import_parsers.v1_standard  # noqa: F401
+        try:
+            import resource
+            limit = 512 * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+        except (ImportError, AttributeError, OSError, ValueError):
+            pass
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        parser = get_parser(parser_id) if parser_id else auto_detect_parser(wb)
+        connection.send((True, parser.id, parser.parse(wb)))
+    except BaseException as exc:
+        connection.send((False, type(exc).__name__, str(exc)[:200]))
+    finally:
+        connection.close()
+
+
+def _parse_workbook(content: bytes, parser_id: str | None, *, bounded: bool):
+    try:
+        validate_xlsx(content)
+    except FileValidationError as exc:
+        raise ImportSessionError(str(exc)) from exc
+    if not bounded:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        parser = get_parser(parser_id) if parser_id else auto_detect_parser(wb)
+        return parser.id, parser.parse(wb)
+    context = multiprocessing.get_context("spawn")
+    parent, child = context.Pipe(duplex=False)
+    process = context.Process(target=_parse_workbook_child, args=(child, content, parser_id), daemon=True)
+    process.start()
+    child.close()
+    process.join(60)
+    if process.is_alive():
+        process.terminate()
+        process.join(5)
+        if process.is_alive() and hasattr(process, "kill"):
+            process.kill()
+            process.join()
+        parent.close()
+        raise ImportSessionError("workbook_parse_timeout")
+    if not parent.poll(1):
+        parent.close()
+        raise ImportSessionError("workbook_parse_failed")
+    ok, parser_or_error, result = parent.recv()
+    parent.close()
+    if not ok:
+        raise ImportSessionError("invalid_workbook") from None
+    return parser_or_error, result
+
+
+def read_import_workbook(session: Session, import_session: ImportSession, storage: ObjectStorage | None = None) -> bytes:
+    if import_session.storage_key:
+        expected_key = make_object_key("import_workbook", import_session.id)
+        if import_session.storage_key != expected_key or storage is None:
+            raise ImportSessionError("storage_unavailable")
+        try:
+            body, reported_size = storage.open_read(key=expected_key)
+            chunks: list[bytes] = []
+            size = 0
+            digest = hashlib.sha256()
+            while chunk := body.read(64 * 1024):
+                size += len(chunk)
+                if size > MAX_XLSX_BYTES:
+                    raise ImportSessionError("invalid_xlsx_metadata")
+                digest.update(chunk)
+                chunks.append(chunk)
+            content = b"".join(chunks)
+        except ImportSessionError:
+            raise
+        except Exception as exc:
+            raise ImportSessionError("storage_unavailable") from exc
+        finally:
+            close = getattr(locals().get("body"), "close", None)
+            if close:
+                close()
+        if size != reported_size or size != import_session.storage_size or digest.hexdigest() != import_session.storage_sha256:
+            raise ImportSessionError("storage_integrity_failed")
+        return content
+    if import_session.raw_excel is None:
+        raise ImportSessionError("workbook_not_found")
+    return import_session.raw_excel
 
 
 def _resolve_soldiers(
@@ -1378,48 +1475,40 @@ def _resolve_and_score(
 
 
 def create_session(
-    session: Session,
-    *,
-    filename: str,
-    content: bytes,
-    actor: Soldier,
-    parser_id: str | None = None,
+    session: Session, *, filename: str, content: bytes, actor: Soldier,
+    parser_id: str | None = None, storage: ObjectStorage | None = None,
 ) -> ImportSession:
-    wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
-    parser = get_parser(parser_id) if parser_id else auto_detect_parser(wb)
-    data = parser.parse(wb)
+    _, data = _parse_workbook(content, parser_id, bounded=storage is not None)
     parsed_state = _resolve_and_score(session, data, actor)
-
     import_session = ImportSession(
-        status="draft",
-        filename=filename,
-        raw_excel=content,
-        parsed_state=parsed_state,
-        user_selections={},
-        created_links={},
-        created_by=actor.id,
+        status="draft", filename=filename, raw_excel=content if storage is None else None,
+        parsed_state=parsed_state, user_selections={}, created_links={}, created_by=actor.id,
     )
     session.add(import_session)
     session.flush()
+    if storage is not None:
+        try:
+            persist_uploaded_object(
+                session, storage, import_session, file_class="import_workbook", data=content,
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except StorageUploadError as exc:
+            raise ImportSessionError(str(exc)) from exc
     return import_session
 
-
-def reparse_session(session: Session, *, session_id: uuid.UUID, actor: Soldier) -> ImportSession:
+def reparse_session(
+    session: Session, *, session_id: uuid.UUID, actor: Soldier, storage: ObjectStorage | None = None
+) -> ImportSession:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
         raise ImportSessionError("session_not_found")
     if import_session.status != "draft":
         raise ImportSessionError("only_draft_sessions_can_be_reparsed")
-
-    wb = openpyxl.load_workbook(io.BytesIO(import_session.raw_excel), data_only=True)
-    parser = get_parser(import_session.parsed_state["parser_id"])
-    data = parser.parse(wb)
-    parsed_state = _resolve_and_score(session, data, actor, selections=import_session.user_selections)
-
-    import_session.parsed_state = parsed_state
+    content = read_import_workbook(session, import_session, storage)
+    _, data = _parse_workbook(content, import_session.parsed_state["parser_id"], bounded=storage is not None)
+    import_session.parsed_state = _resolve_and_score(session, data, actor, selections=import_session.user_selections)
     session.flush()
     return import_session
-
 
 def set_selections(
     session: Session, *, session_id: uuid.UUID, selections: dict
@@ -1520,7 +1609,7 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
 
 
 def confirm_session(
-    session: Session, *, session_id: uuid.UUID, actor: Soldier
+    session: Session, *, session_id: uuid.UUID, actor: Soldier, storage: ObjectStorage | None = None
 ) -> dict:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
@@ -1539,11 +1628,9 @@ def confirm_session(
     # values.
     password_hash_by_row: dict[int, str | None] = {}
     if state.get("soldiers"):
-        wb = openpyxl.load_workbook(io.BytesIO(import_session.raw_excel), data_only=True)
-        parser = get_parser(state["parser_id"])
-        password_hash_by_row = {
-            r.source_row: r.password_hash for r in parser.parse(wb).soldiers
-        }
+        content = read_import_workbook(session, import_session, storage)
+        _, parsed = _parse_workbook(content, state["parser_id"], bounded=storage is not None)
+        password_hash_by_row = {r.source_row: r.password_hash for r in parsed.soldiers}
 
     created = 0
     updated = 0

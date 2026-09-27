@@ -1,4 +1,4 @@
-# SDD ledger -- plan: docs/superpowers/plans/2026-09-27-s3-compatible-file-storage.md
+﻿# SDD ledger -- plan: docs/superpowers/plans/2026-09-27-s3-compatible-file-storage.md
 
 Worktree: C:\Users\Shoham\.paseo\worktrees\1n26l98r\s3-object-storage
 Branch: feature/s3-object-storage
@@ -48,7 +48,7 @@ Plan workspace: .superpowers/sdd/2026-09-27-s3-compatible-file-storage
 - [x] Task 1: Build the shared S3 storage package
 - [ ] Task 2: Add local MinIO, TLS certificates, and least-privilege identities
 - [ ] Task 3: Add file metadata, transactional delete outbox, and restartable backfill
-- [ ] Task 4: Move upload, parse, and bug-report recovery flows to object storage
+- [x] Task 4: Move upload, parse, and bug-report recovery flows to object storage
 - [ ] Task 5: Add the private authorization service and streaming download gateway
 - [ ] Task 6: Route all browser downloads through the gateway
 - [ ] Task 7: Encrypt PostgreSQL base backups and WAL archives
@@ -83,3 +83,8 @@ Task 3 review finding: Medium, existing `storage_key` references were skipped, a
 
 
 Task 3 follow-up review finding: same-class references could point to another row's object UUID. Fix committed as `0481ad4432d074d4272fcac337c553dd0a3b9186`. RED: `pytest app/storage/tests/test_migration.py -q` 5 failed because the iterator/verifier lacked owner UUID. GREEN: migration regression suite 6 passed; planned backfill/reconciliation 14 passed; S3 adapter 9 passed; scoped Ruff and diff check passed. Every reference now carries its row UUID and must equal `make_object_key(file_class, row_id)` before any S3 access; mismatch blocks cutover. Re-review pending; Task 4 remains paused. Live provider behavior remains unverified. Report updated: task-3-report.md.
+
+Task 3: implementation commits 3fe72d5b + fixes b0afef16 / 0481ad44; evidence commits 475ce475 / 71460590 / a8cc3759. Independent final re-review PASS. Tests: migration 6/6, backfill/reconciliation 14/14, S3 adapter 9/9; scoped Ruff, diff checks, isolated Alembic SQL generation pass. Existing references are verified for canonical owner key, metadata, size, and streamed hash before cutover. Live PostgreSQL/MinIO/S3 remains unverified; full-history offline migration command hits a pre-existing static-result error in ba8eaf68d98c.
+Task 4: dispatched brief .superpowers/sdd/2026-09-27-s3-compatible-file-storage/task-4-brief.md; implementer pending.
+
+Task 4: implementation complete; focused fake-storage route/service suite passed with `python -m pytest app/routes/tests/test_exemption_requests_files.py app/routes/tests/test_exemptions.py app/routes/tests/test_gimelim_attachments.py app/routes/tests/test_bug_reports.py app/routes/tests/test_import_session_files.py app/services/tests/test_import_sessions_service.py -q -n0`; scoped Ruff passed (`UP017` ignored for existing timezone style); diff/encoding checks passed. Live MinIO/S3 remains unverified because the official Quay image pull returned HTTP 401. Report: task-4-report.md. Commit: `feat: store durable uploads in object storage`.
