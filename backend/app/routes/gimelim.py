@@ -254,6 +254,36 @@ def commit_gimelim_route(
     )
 
 
+@router.get(
+    "/gimelim/{dismissal_id}/attachments",
+    response_model=list[GimelimAttachmentOut],
+)
+def list_gimelim_attachments(
+    dismissal_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[GimelimAttachmentOut]:
+    dismissal = session.get(DutyDismissal, dismissal_id)
+    if dismissal is None or not dismissal.is_gimelim:
+        raise HTTPException(status_code=404, detail="gimelim_dismissal_not_found")
+    assignment = session.get(DutyAssignment, dismissal.duty_assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="gimelim_dismissal_not_found")
+    _require_gimelim_permission(session, user, assignment.soldier_id)
+    attachments = (
+        session.query(GimelimAttachment)
+        .filter(GimelimAttachment.dismissal_id == dismissal_id)
+        .order_by(GimelimAttachment.created_at, GimelimAttachment.id)
+        .all()
+    )
+    return [
+        GimelimAttachmentOut(
+            id=item.id, file_name=item.file_name, content_type=item.content_type, created_at=item.created_at
+        )
+        for item in attachments
+    ]
+
+
 @router.post(
     "/gimelim/{dismissal_id}/attachments",
     response_model=GimelimAttachmentOut,

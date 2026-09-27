@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import "../../i18n";
@@ -583,4 +583,23 @@ describe("BugReportsContent", () => {
       "ניתן לייבא עד 50 קבצים בכל פעם",
     ));
   });
+  it("revokes screenshot Blob URLs when a report disappears from the admin query list", async () => {
+    const reportWithScreenshot = { ...SAMPLE_REPORT, has_screenshot: true };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [reportWithScreenshot], total: 1 });
+    vi.mocked(bugReportsApi.fetchBugReportScreenshot).mockResolvedValue(new Blob(["image"]));
+    if (!URL.createObjectURL) URL.createObjectURL = vi.fn();
+    if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:admin-report");
+    const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={queryClient}><BugReportsContent /></QueryClientProvider></MemoryRouter>);
+    await screen.findByTestId("bug-report-row-r1");
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
+    await waitFor(() => expect(createUrl).toHaveBeenCalled());
+    act(() => queryClient.setQueryData(["bug-reports", "", "", 0], { items: [], total: 0 }));
+    await waitFor(() => expect(revokeUrl).toHaveBeenCalledWith("blob:admin-report"));
+    createUrl.mockRestore();
+    revokeUrl.mockRestore();
+  });
+
 });

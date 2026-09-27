@@ -76,5 +76,18 @@ def test_gimelim_upload_rejects_signature_mismatch_before_storage(client, admin_
         assert attachment.data is None
         assert attachment.storage_key == f"gimelim/{attachment.id}"
         assert storage.objects[attachment.storage_key] == valid_body
+
+        listed = client.get(f"/api/gimelim/{dismissal.id}/attachments", headers=auth_headers(soldier))
+        assert listed.status_code == 200
+        assert listed.json() == [{
+            "id": str(attachment.id),
+            "file_name": "valid.webp",
+            "content_type": "image/webp",
+            "created_at": listed.json()[0]["created_at"],
+        }]
+
+        outsider = create_soldier(admin_session, personal_number=f"outsider{uuid.uuid4().hex[:8]}")
+        forbidden = client.get(f"/api/gimelim/{dismissal.id}/attachments", headers=auth_headers(outsider))
+        assert forbidden.status_code == 403
     finally:
         client.app.dependency_overrides.pop(get_object_storage, None)

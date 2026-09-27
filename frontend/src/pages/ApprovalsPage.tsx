@@ -4,12 +4,13 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
-import { api, getAccessToken } from "../api/client";
+import { getAccessToken } from "../api/client";
 import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
 import DocumentPreviewModal from "../components/DocumentPreviewModal";
+import { revokeBlobUrl, sanitizeFilename } from "../utils/downloadFile";
 import DirectCommanderApproval, { DirectCommanderApprovalRow, groupByKind, isSideSatisfied } from "../components/DirectCommanderApproval";
 import SwapApprovalColumns, { requesterColumn, candidateColumn } from "../components/SwapApprovalColumns";
 import { useAuth } from "../auth/AuthContext";
@@ -23,7 +24,7 @@ import {
 import {
   approveExemptionRequestCommanderStep,
   approveExemptionRequestDutyManagerStep,
-  exemptionFileDownloadUrl,
+  downloadExemptionRequestFile,
   listPendingExemptionRequests,
   rejectExemptionRequest,
 } from "../api/exemptions";
@@ -222,6 +223,10 @@ export default function ApprovalsPage() {
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; contentType: string } | null>(null);
 
+  useEffect(() => () => {
+    if (previewFile) revokeBlobUrl(previewFile.url);
+  }, [previewFile]);
+
   function withPending<T>(key: string, fn: () => Promise<T>): Promise<T> {
     setPendingIds((prev) => new Set(prev).add(key));
     return fn().finally(() => {
@@ -407,10 +412,9 @@ export default function ApprovalsPage() {
 
   async function openExemptionFile(erId: string, fileId: string, fileName: string) {
     try {
-      const resp = await api.get(exemptionFileDownloadUrl(erId, fileId), { responseType: "blob" });
-      const blob = resp.data as Blob;
+      const blob = await downloadExemptionRequestFile(erId, fileId);
       const url = URL.createObjectURL(blob);
-      setPreviewFile({ url, name: fileName, contentType: blob.type || "application/octet-stream" });
+      setPreviewFile({ url, name: sanitizeFilename(fileName), contentType: blob.type || "application/octet-stream" });
     } catch (err) {
       setActionError(describeError(err, "שגיאה בפתיחת קובץ הפטור"));
     }

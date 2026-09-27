@@ -193,7 +193,7 @@ export async function getBugReportJson(id: string): Promise<unknown> {
 
 export async function fetchBugReportScreenshot(id: string): Promise<Blob> {
   try {
-    return (await api.get(`/admin/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
+    return (await api.get(`/file-download/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
   } catch (err: unknown) {
     if (err && typeof err === "object" && "response" in err) {
       const response = (err as { response?: { data?: unknown } }).response;
@@ -210,7 +210,7 @@ export async function fetchBugReportScreenshot(id: string): Promise<Blob> {
 }
 
 export async function fetchMyBugReportScreenshot(id: string): Promise<Blob> {
-  return (await api.get(`/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
+  return (await api.get(`/file-download/bug-reports/${id}/screenshot`, { responseType: "blob" })).data;
 }
 
 export async function updateBugReportStatus(id: string, status: BugReportStatus): Promise<BugReportSummary> {
@@ -313,10 +313,14 @@ export async function uploadCommentAttachment(
   ).data;
 }
 
-export function bugReportCommentAttachmentDownloadUrl(
+
+export async function downloadBugReportCommentAttachment(
   reportId: string,
   commentId: string,
   attachmentId: string,
-): string {
-  return `/bug-reports/${reportId}/comments/${commentId}/attachments/${attachmentId}`;
+): Promise<Blob> {
+  return (await api.get(
+    `/file-download/bug-reports/${reportId}/comments/${commentId}/attachments/${attachmentId}`,
+    { responseType: "blob" },
+  )).data;
 }

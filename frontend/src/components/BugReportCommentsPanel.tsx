@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
 import { queryKeys } from "../queryKeys";
 import {
   listComments,
   createComment,
   uploadCommentAttachment,
-  bugReportCommentAttachmentDownloadUrl,
+  downloadBugReportCommentAttachment,
   BugReportComment,
 } from "../api/bugReports";
 import { translateApiError } from "../utils/translateApiError";
 import DocumentPreviewModal from "./DocumentPreviewModal";
+import { createTemporaryBlobUrl, downloadBlob, revokeBlobUrl, sanitizeFilename } from "../utils/downloadFile";
 
 export interface BugReportCommentsPanelProps {
   reportId: string;
@@ -34,11 +34,9 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, cont
     let objectUrl: string | null = null;
     let cancelled = false;
     setFailed(false);
-    api
-      .get(bugReportCommentAttachmentDownloadUrl(reportId, commentId, attachmentId), { responseType: "blob" })
-      .then((res) => {
+    downloadBugReportCommentAttachment(reportId, commentId, attachmentId)
+      .then((b) => {
         if (cancelled) return;
-        const b = res.data as Blob;
         objectUrl = URL.createObjectURL(b);
         setUrl(objectUrl);
         setBlob(b);
@@ -52,7 +50,7 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, cont
       // attachment in the fullscreen preview, onOpen() below created a second,
       // independent object URL from the same blob for the modal to own, so
       // revoking this one here can't pull the rug out from under an open preview.
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (objectUrl) revokeBlobUrl(objectUrl);
     };
   }, [reportId, commentId, attachmentId]);
 
@@ -79,23 +77,23 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, cont
       alt={t("bug_reports.attachment_preview_alt")}
       title={fileName}
       className={`max-w-[160px] max-h-[160px] rounded border dark:border-gray-600 mt-1 ${isImage ? "cursor-zoom-in" : ""}`}
-      onClick={isImage ? () => onOpen(URL.createObjectURL(blob), fileName) : undefined}
+      onClick={isImage ? () => onOpen(createTemporaryBlobUrl(blob).url, fileName) : undefined}
     />
   );
   if (isImage) return (
     <div className="flex items-end gap-2">
       {img}
-      <a href={url} download={fileName} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+      <button type="button" onClick={() => downloadBlob(blob, fileName)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
         {t("bug_reports.download_attachment")}
-      </a>
+      </button>
     </div>
   );
   return (
     <div className="flex items-end gap-2">
-      <a href={url} target="_blank" rel="noopener noreferrer">{img}</a>
-      <a href={url} download={fileName} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+      <button type="button" className="text-left" onClick={() => onOpen(createTemporaryBlobUrl(blob).url, fileName)}>{img}</button>
+      <button type="button" onClick={() => downloadBlob(blob, fileName)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
         {t("bug_reports.download_attachment")}
-      </a>
+      </button>
     </div>
   );
 }
@@ -110,6 +108,10 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
   const [failedUpload, setFailedUpload] = useState<{ commentId: string; file: File } | null>(null);
   const [sending, setSending] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string; contentType: string } | null>(null);
+
+  useEffect(() => () => {
+    if (previewImage) revokeBlobUrl(previewImage.url);
+  }, [previewImage]);
   const [retryingCommentId, setRetryingCommentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Mirrors `failedUpload` synchronously so an in-flight retry can tell, after
@@ -222,7 +224,7 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
                 attachmentId={a.id}
                 fileName={a.file_name}
                 contentType={a.content_type}
-                onOpen={(url, name) => setPreviewImage({ url, name, contentType: a.content_type })}
+                onOpen={(url, name) => setPreviewImage({ url, name: sanitizeFilename(name), contentType: a.content_type })}
               />
             ))}
           </div>
@@ -285,7 +287,7 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
           fileName={previewImage.name}
           contentType={previewImage.contentType}
           onClose={() => {
-            URL.revokeObjectURL(previewImage.url);
+            revokeBlobUrl(previewImage.url);
             setPreviewImage(null);
           }}
         />

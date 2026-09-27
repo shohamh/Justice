@@ -17,6 +17,7 @@ import {
   grantCommanderExemption,
   listExemptions,
   listExemptionRequestsForSoldier,
+  downloadExemptionRequestFile,
   logExemptionForSoldier,
   rejectExemptionRequest,
   revokeExemption,
@@ -31,6 +32,7 @@ import Combobox from "./Combobox";
 import { DaysBadge } from "./DaysBadge";
 import ReasonPromptModal from "./ReasonPromptModal";
 import SoldierLink from "./SoldierLink";
+import { downloadBlob } from "../utils/downloadFile";
 
 export default function ExemptionsPanel({
   soldierId,
@@ -62,6 +64,7 @@ export default function ExemptionsPanel({
   const [commanderReason, setCommanderReason] = useState("");
   const [commanderError, setCommanderError] = useState<string | null>(null);
   const [requestActionError, setRequestActionError] = useState<string | null>(null);
+  const [fileDownloadError, setFileDownloadError] = useState<string | null>(null);
   const [commanderEscalate, setCommanderEscalate] = useState(!canApplyImmediately);
   const [commanderOfficialTypeId, setCommanderOfficialTypeId] = useState("");
   const [commanderApplyImmediately, setCommanderApplyImmediately] = useState(false);
@@ -286,6 +289,16 @@ export default function ExemptionsPanel({
     (exemption) => exemption.revoked_by_name || (exemption.end_date != null && exemption.end_date < today),
   );
 
+  async function onDownloadRequestFile(requestId: string, fileId: string, fileName: string) {
+    setFileDownloadError(null);
+    try {
+      const blob = await downloadExemptionRequestFile(requestId, fileId);
+      downloadBlob(blob, fileName);
+    } catch {
+      setFileDownloadError("לא ניתן להוריד את הקובץ.");
+    }
+  }
+
   return (
     <div data-testid="exemptions-panel" className="space-y-4">
       <div>
@@ -486,6 +499,17 @@ export default function ExemptionsPanel({
                     {request.start_date && <DaysBadge start={request.start_date} end={request.end_date} />}
                   </p>
                   {request.reason && <p className="text-xs text-gray-500 mb-2">{request.reason}</p>}
+                  {request.files.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2" data-testid={`exemption-request-files-${request.id}`}>
+                      {request.files.map((file) => (
+                        <button key={file.id} type="button" className="text-xs text-blue-600 dark:text-blue-400 hover:underline" onClick={(event) => {
+                          event.stopPropagation();
+                          void onDownloadRequestFile(request.id, file.id, file.file_name);
+                        }}>📎 {file.file_name}</button>
+                      ))}
+                    </div>
+                  )}
+                  {fileDownloadError && <p role="alert" className="text-xs text-red-600 mb-2">{fileDownloadError}</p>}
                   {isExpanded && (
                     <div className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-1.5 mb-2 space-y-1">
                       {request.commander_approved_by ? (
