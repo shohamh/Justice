@@ -1,4 +1,37 @@
 services:
+  minio:
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z}
+    command: server /data --address ":9000" --console-address ":9001" --certs-dir /certs/minio
+    volumes:
+      - minio-data:/data
+      - ./deploy/minio/certs:/certs:ro
+    networks:
+      - storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error --cacert /certs/ca.crt --resolve minio:9000:127.0.0.1 https://minio:9000/minio/health/ready >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-init:
+    image: ${MINIO_MC_IMAGE:-quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z}
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/init/init-bucket.sh"]
+    env_file:
+      - ./deploy/minio/secrets/initializer.env
+    environment:
+      MINIO_BUCKET: ${STORAGE_BUCKET:-justice-files}
+    volumes:
+      - ./deploy/minio/init-bucket.sh:/init/init-bucket.sh:ro
+      - ./deploy/minio/policies:/policies:ro
+      - ./deploy/minio/certs/ca.crt:/root/.mc/certs/CAs/ca.crt:ro
+    networks:
+      - storage
+    restart: "no"
   db:
     image: postgres:16-alpine
     environment:
@@ -129,3 +162,10 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  minio-data:
+
+networks:
+  storage:
+    internal: true

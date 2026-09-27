@@ -60,3 +60,5 @@ backend/vendor/
 # Local attachments and image assets
 .codex-remote-attachments/
 /pics/
+deploy/minio/certs/
+deploy/minio/secrets/
