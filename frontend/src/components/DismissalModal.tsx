@@ -69,7 +69,6 @@ export default function DismissalModal({
     }
     let cancelled = false;
     setAttachmentsByDismissalId({});
-    setAttachmentError(null);
     void Promise.all(gimelimDismissalIds.map(async (dismissalId) => {
       try {
         return [dismissalId, await listGimelimAttachments(dismissalId)] as const;
