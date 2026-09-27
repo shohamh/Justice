@@ -14,7 +14,7 @@
 
 - Use HTTPS with certificate-chain and hostname verification for gateway-to-authorization and gateway-to-object-store traffic; mutual TLS is required between gateway and authorization service.
 - Do not publish a host port for the gateway, authorization service, or MinIO; browsers reach downloads through the Justice origin proxy only.
-- API storage identity is put/get only; gateway identity is get only; maintenance/migration identity is the only runtime identity with scoped list/delete permissions. No runtime identity gets bucket administration or credential management.
+- API storage identity is put/get only; gateway identity is get only; maintenance/migration identity is the only application runtime identity with scoped list/delete permissions. The local MinIO server necessarily receives its generated root credentials as environment variables (MinIO otherwise defaults to `minioadmin`); the same root pair is mounted to the one-shot initializer, which is the only admin client. API, gateway, and maintenance processes never receive root credentials. No application runtime identity gets bucket administration or credential management.
 - Treat uploads and migrated payloads as untrusted. Enforce byte/type limits, MIME/signature consistency checks, and format-aware validation; do not claim files are malware-free. Reject unsupported or malformed files before storage or parsing.
 - XLSX limits: at most 4,096 ZIP entries, at most 100 MiB expanded data, no entry above a 100:1 compression ratio, reject VBA and external relationships, parse with a 60-second timeout and 512 MiB memory limit.
 - Generate opaque per-class object keys without names, personal numbers, or original filenames. Verify SHA-256 and size on backfill.
@@ -90,7 +90,7 @@
 
 **Interfaces:**
 - API identity has put/get only; gateway has get only; maintenance/migration has scoped list/get/put/delete. No runtime identity has bucket administration.
-- Local certificates cover gateway, authorization service, MinIO, and proxy Compose DNS names. Keep generated private keys and credentials ignored by Git.
+- Local certificates cover gateway, authorization service, MinIO, and proxy Compose DNS names. Keep generated private keys and credentials ignored by Git. The bucket name is validated and substituted into each IAM policy before policy creation; policy creation is reapplied on every initializer run so source policy files replace existing same-name policies.
 
 - [ ] **Step 1: Add failing tests for MinIO TLS, bucket initialization, and least-privilege policies**
 
@@ -102,7 +102,7 @@
 
 - [ ] **Step 3: Implement MinIO and its Compose topology**
 
-  Add MinIO with TLS server certificates, persistent data, private bucket initialization, and the least-privilege policies above. Keep it on the internal storage network and do not publish its port. Only the one-shot initializer receives MinIO root credentials; it creates the bucket and service users. Add generated certificates and secrets to .gitignore.
+  Add MinIO with TLS server certificates, persistent data, private bucket initialization, and the least-privilege policies above. Keep it on the internal storage network and do not publish its port. The MinIO server and one-shot initializer receive the same generated root credential pair because the server requires root environment variables to avoid its `minioadmin` fallback; only the initializer uses root credentials as an admin client and creates the private bucket and service users. The API, gateway, and maintenance containers never receive that root pair. The initializer validates the configured bucket name, renders bucket-scoped policy templates, and reapplies the named policies on every run. Add generated certificates and secrets to .gitignore.
 
 - [ ] **Step 4: Verify Compose configuration, TLS identity, and IAM**
 

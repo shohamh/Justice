@@ -2,6 +2,8 @@ services:
   minio:
     image: ${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z}
     command: server /data --address ":9000" --console-address ":9001" --certs-dir /certs/minio
+    env_file:
+      - ./deploy/minio/secrets/minio-root.env
     volumes:
       - minio-data:/data
       - ./deploy/minio/certs:/certs:ro

@@ -63,10 +63,11 @@ Write-Host "Private keys are local development credentials; do not share them."
 
 $secretsDirectory = Join-Path (Split-Path $OutputDirectory -Parent) "secrets"
 $initializerEnv = Join-Path $secretsDirectory "initializer.env"
+$minioRootEnv = Join-Path $secretsDirectory "minio-root.env"
 $apiEnv = Join-Path $secretsDirectory "api.env"
 $gatewayEnv = Join-Path $secretsDirectory "gateway.env"
 $maintenanceEnv = Join-Path $secretsDirectory "maintenance.env"
-if (-not (Test-Path $initializerEnv) -or -not (Test-Path $apiEnv) -or
+if (-not (Test-Path $initializerEnv) -or -not (Test-Path $minioRootEnv) -or -not (Test-Path $apiEnv) -or
     -not (Test-Path $gatewayEnv) -or -not (Test-Path $maintenanceEnv)) {
     $null = New-Item -ItemType Directory -Force -Path $secretsDirectory
     function New-Secret([int]$ByteCount = 36) {
@@ -84,6 +85,8 @@ if (-not (Test-Path $initializerEnv) -or -not (Test-Path $apiEnv) -or
     $gatewayPassword = New-Secret 36
     $maintenanceKey = "maint-$([guid]::NewGuid().ToString('N').Substring(0, 14))"
     $maintenancePassword = New-Secret 36
+    @("MINIO_ROOT_USER=$rootUser", "MINIO_ROOT_PASSWORD=$rootPassword") |
+        Set-Content -Path $minioRootEnv -Encoding ascii
     @("MINIO_ROOT_USER=$rootUser", "MINIO_ROOT_PASSWORD=$rootPassword", "MINIO_BUCKET=justice-files",
       "API_ACCESS_KEY=$apiKey", "API_SECRET_KEY=$apiPassword", "GATEWAY_ACCESS_KEY=$gatewayKey",
       "GATEWAY_SECRET_KEY=$gatewayPassword", "MAINTENANCE_ACCESS_KEY=$maintenanceKey",
