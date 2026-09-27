@@ -126,7 +126,7 @@ The authorization endpoint re-evaluates current account status, role/scope, reso
 
 ### Write and import path
 
-Uploads retain existing parent-resource authorization, content-type and magic-byte checks, and size limits, with the format-aware safety controls above. The writing service stores the bytes through the storage interface, then commits the object's opaque key and checksum with the domain record. Import-session parsing and reparsing load the original workbook through the same interface. File metadata such as original filename and content type remains associated with its domain record. No upload becomes downloadable until required validation/scanning has passed.
+Uploads retain existing parent-resource authorization, content-type and magic-byte checks, and size limits, with the format-aware safety controls above. The writing service stores the bytes through the storage interface, then commits the object's opaque key and checksum with the domain record. Import-session parsing and reparsing load the original workbook through the same interface. File metadata such as original filename and content type remains associated with its domain record. No upload becomes downloadable until its required format-aware validation and other specified checks have passed. This project does not provide malware scanning.
 
 ### Persistence model
 
