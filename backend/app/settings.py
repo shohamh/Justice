@@ -1,7 +1,9 @@
+import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Repo-root env files, resolved by absolute path so they're found regardless
@@ -16,7 +18,7 @@ _SECRETS_FILE = _REPO_ROOT / ".env"
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore"
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
     )
 
     database_url: str = Field(alias="DATABASE_URL")
@@ -35,6 +37,33 @@ class Settings(BaseSettings):
     loki_url: str = Field(default="", alias="LOKI_URL")
     error_log_rate_limit_max_per_window: int = Field(default=10, alias="ERROR_LOG_RATE_LIMIT_MAX_PER_WINDOW")
     error_log_rate_limit_window_seconds: float = Field(default=60.0, alias="ERROR_LOG_RATE_LIMIT_WINDOW_SECONDS")
+
+    storage_bucket: str = Field(default="", alias="STORAGE_BUCKET")
+    storage_region: str = Field(default="us-east-1", alias="STORAGE_REGION")
+    storage_local_test_stub: bool = Field(default=False, alias="STORAGE_LOCAL_TEST_STUB")
+    storage_endpoint_url: str = Field(default="", alias="STORAGE_ENDPOINT_URL")
+    storage_path_style: bool = Field(default=True, alias="STORAGE_PATH_STYLE")
+    storage_ca_bundle_path: str = Field(default="", alias="STORAGE_CA_BUNDLE_PATH")
+    storage_access_key_id: SecretStr = Field(default=SecretStr(""), alias="STORAGE_ACCESS_KEY_ID")
+    storage_secret_access_key: SecretStr = Field(default=SecretStr(""), alias="STORAGE_SECRET_ACCESS_KEY")
+    storage_session_token: SecretStr = Field(default=SecretStr(""), alias="STORAGE_SESSION_TOKEN")
+    storage_sse_algorithm: str = Field(default="", alias="STORAGE_SSE_ALGORITHM")
+    storage_sse_key_id: str = Field(default="", alias="STORAGE_SSE_KEY_ID")
+
+    @field_validator("storage_endpoint_url")
+    @classmethod
+    def validate_storage_endpoint(cls, value: str, info) -> str:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password:
+            return value
+        local_stub = info.data.get("storage_local_test_stub", False)
+        if (local_stub and os.getenv("PYTEST_CURRENT_TEST")
+                and parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+                and not parsed.username and not parsed.password):
+            return value
+        raise ValueError("Storage endpoint must use HTTPS without embedded credentials")
 
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_bot_username: str = Field(default="", alias="TELEGRAM_BOT_USERNAME")
