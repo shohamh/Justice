@@ -238,8 +238,8 @@ def test_preview_defaults_from_date_to_today(admin_session):
     token_entry = preview.preview_token
     assert token_entry is not None
     # from_date defaults to today when not passed
-    from app.services.gimelim import _PREVIEW_STORE
-    _, payload = _PREVIEW_STORE[token_entry]
+    from app.services.gimelim import _load_preview
+    payload = _load_preview(token_entry)
     assert payload["from_date"] == date.today().isoformat()
 
 
@@ -266,8 +266,8 @@ def test_preview_accepts_backdated_from_date(admin_session):
         from_date=backdated,
     )
 
-    from app.services.gimelim import _PREVIEW_STORE
-    _, payload = _PREVIEW_STORE[preview.preview_token]
+    from app.services.gimelim import _load_preview
+    payload = _load_preview(preview.preview_token)
     assert payload["from_date"] == backdated.isoformat()
 
 
@@ -293,8 +293,8 @@ def test_preview_accepts_from_date_equal_to_shift_start(admin_session):
         from_date=date(2026, 6, 10),  # == start_date, the earliest legal value
     )
 
-    from app.services.gimelim import _PREVIEW_STORE
-    _, payload = _PREVIEW_STORE[preview.preview_token]
+    from app.services.gimelim import _load_preview
+    payload = _load_preview(preview.preview_token)
     assert payload["from_date"] == date(2026, 6, 10).isoformat()
 
 
@@ -367,8 +367,8 @@ def test_preview_earliest_date_counts_from_dismissal_not_scheduled_end(admin_ses
         actor_id=a.id,
         from_date=date(2026, 7, 3),
     )
-    from app.services.gimelim import _PREVIEW_STORE
-    _, payload = _PREVIEW_STORE[preview.preview_token]
+    from app.services.gimelim import _load_preview
+    payload = _load_preview(preview.preview_token)
     # effective_end = 2026-07-03 08:00 (assignment's default start_time) +
     # 12h base rest = 2026-07-03 20:00, + 7 extra days = 2026-07-10 20:00,
     # which is mid-day so it rounds up to 2026-07-11.
@@ -399,8 +399,8 @@ def test_preview_earliest_date_without_dismissal_still_uses_scheduled_end(admin_
         actor_id=a.id,
         from_date=date(2026, 8, 4),  # end_date - 1, the last scheduled day
     )
-    from app.services.gimelim import _PREVIEW_STORE
-    _, payload = _PREVIEW_STORE[preview.preview_token]
+    from app.services.gimelim import _load_preview
+    payload = _load_preview(preview.preview_token)
     # effective_end = 2026-08-04 08:00 (default start_time) + 12h = 08-04 20:00
     # -> rounds up to 08-05.
     assert payload["earliest_date"] == "2026-08-05"
@@ -484,11 +484,11 @@ def test_commit_full_flow(admin_session):
     # commit shouldn't burn a token the caller could otherwise retry with.
     # The token is only removed once the caller explicitly confirms the
     # commit succeeded (routes/gimelim.py does this after session.commit()).
-    from app.services.gimelim import _PREVIEW_STORE, consume_preview_token
-    assert preview.preview_token in _PREVIEW_STORE
+    from app.services.gimelim import _load_preview, consume_preview_token
+    assert _load_preview(preview.preview_token) is not None
 
     consume_preview_token(preview.preview_token)
-    assert preview.preview_token not in _PREVIEW_STORE
+    assert _load_preview(preview.preview_token) is None
 
     # Verify token is consumed (second commit should fail)
     with pytest.raises(GimelimError, match="token_not_found"):
@@ -535,8 +535,8 @@ def test_commit_does_not_consume_token_on_its_own(admin_session):
         actor_id=actor.id,
     )
 
-    from app.services.gimelim import _PREVIEW_STORE
-    assert preview.preview_token in _PREVIEW_STORE, (
+    from app.services.gimelim import _load_preview
+    assert _load_preview(preview.preview_token) is not None, (
         "commit_gimelim must not consume the token itself — that's the caller's "
         "responsibility, only after its session.commit() actually succeeds"
     )

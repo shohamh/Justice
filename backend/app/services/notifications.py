@@ -377,6 +377,14 @@ def create_notification(
         NotificationType.announcement,
         NotificationType.system_announcement,
         NotificationType.bug_report_comment,
+        # Internal HR-sync ops noise — admin-only, must not cascade to their
+        # commanders/deputies.
+        NotificationType.hr_sync_anomaly_aborted,
+        # The soldier's own preference for hr_rank_conflict must not be able
+        # to silently suppress their commander's copy too — the caller
+        # (person_sync._flag_rank_conflict_if_needed) cascades to commanders
+        # itself via notify_commanders_of_request, unconditionally.
+        NotificationType.hr_rank_conflict,
     ):
         cascade_to_commanders(session, type=type, title=title, body=body,
                               reference_type=reference_type, reference_id=reference_id,

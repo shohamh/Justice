@@ -44,6 +44,10 @@ logs/*.log.*
 # Postgres data volume (when running compose locally)
 .docker-data/
 
+# HR CA bundle and other internal certs (mounted in docker-compose)
+backend/certs/*
+!backend/certs/.gitkeep
+
 # Playwright storage state (auth snapshot)
 frontend/tests/e2e/storageState.json
 nul

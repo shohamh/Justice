@@ -96,7 +96,8 @@
     "score_adjustments": "שינוי ניקוד ידני",
     "planning_export": "ייצוא לאקסל",
     "weapon_ineligible": "⚠️ חוסר כשירות",
-    "admin_audit_log": "יומן פעולות"
+    "admin_audit_log": "יומן פעולות",
+    "admin_hr_sync": "סנכרון כא\"מ"
   },
   "export": {
     "transparency_title": "ייצוא שקיפות",
@@ -1467,7 +1468,9 @@
     "type_mitvahim_expiring_soon": "תוקף מטווחים יפוג בקרוב",
     "type_mitvahim_expired": "תוקף מטווחים פג",
     "type_alal_expiring_soon": "תוקף אל\"ל יפוג בקרוב",
-    "type_alal_expired": "תוקף אל\"ל פג"
+    "type_alal_expired": "תוקף אל\"ל פג",
+    "type_hr_sync_anomaly_aborted": "סנכרון HR הופסק",
+    "type_hr_rank_conflict": "עדכון דרגה עקב סנכרון HR"
   },
   "announcements": {
     "title": "הכרזות",
@@ -1923,6 +1926,41 @@
       "after": "אחרי",
       "context": "הקשר",
       "deleted": "נמחק"
+    },
+    "hr_sync": {
+      "run_now": "הרץ סנכרון כעת",
+      "held_for_review": "ממתינים לבדיקה",
+      "divergences": "פערים",
+      "vanished": "נעלמו",
+      "rank_conflicts": "התנגשויות דרגה",
+      "run_history": "היסטוריית הרצות",
+      "personal_number": "מספר אישי",
+      "reason": "סיבה",
+      "dismiss": "בטל",
+      "field": "שדה",
+      "hr_value": "ערך כא\"מ",
+      "local_value": "ערך מקומי",
+      "clear_override": "נקה דריסה",
+      "old_rank": "דרגה קודמת",
+      "new_rank": "דרגה חדשה",
+      "why": "סיבה",
+      "why_worker": "החלטת מערכת",
+      "why_jump": "קפיצת דרגה לא רציפה",
+      "status": "סטטוס",
+      "total_fetched": "סה\"כ נשלפו",
+      "created_count": "נוצרו",
+      "updated_count": "עודכנו",
+      "held_count": "הוחזקו",
+      "empty": "לא נמצאו רשומות",
+      "soldier": "חייל",
+      "started_at": "התחיל בשעה",
+      "errors": "שגיאות",
+      "error_message": "הודעת שגיאה",
+      "load_error": "שגיאה בטעינת הנתונים",
+      "loading": "טוען...",
+      "reasons": "סיבות",
+      "hr_data": "פרטים מכא\"מ",
+      "raw_payload": "מידע גולמי (JSON)"
     }
   }
 }

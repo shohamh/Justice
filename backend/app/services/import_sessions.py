@@ -1531,6 +1531,20 @@ def confirm_session(
     selections = import_session.user_selections or {}
     state = import_session.parsed_state
 
+    # `password_hash` is deliberately never stored on `parsed_state` (it is
+    # persisted verbatim and also handed back to the browser as-is by
+    # GET /import/sessions/{id} and the upload response) — it's re-extracted
+    # here straight from the original workbook bytes, by source row, and used
+    # only in-memory below. Never log or otherwise surface this mapping's
+    # values.
+    password_hash_by_row: dict[int, str | None] = {}
+    if state.get("soldiers"):
+        wb = openpyxl.load_workbook(io.BytesIO(import_session.raw_excel), data_only=True)
+        parser = get_parser(state["parser_id"])
+        password_hash_by_row = {
+            r.source_row: r.password_hash for r in parser.parse(wb).soldiers
+        }
+
     created = 0
     updated = 0
     skipped = 0
@@ -1553,11 +1567,12 @@ def confirm_session(
             continue
         try:
             if effective == "new":
+                row_password_hash = password_hash_by_row.get(row["row"])
                 new_soldier = Soldier(
                     personal_number=row["personal_number"],
                     full_name=row["full_name"],
-                    password_hash=hash_password(secrets.token_hex(16)),
-                    must_change_password=True,
+                    password_hash=row_password_hash or hash_password(secrets.token_hex(16)),
+                    must_change_password=row_password_hash is None,
                     rank=row.get("rank"),
                     rank_track=row.get("rank_track"),
                     gender=row.get("gender"),
@@ -1612,7 +1627,12 @@ def confirm_session(
                     old_node_id = s.hierarchy_node_id
                     s.personal_number = row["personal_number"]
                     s.full_name = row["full_name"]
+                    row_password_hash = password_hash_by_row.get(row["row"])
+                    if row_password_hash is not None:
+                        s.password_hash = row_password_hash
                     if row.get("rank") is not None:
+                        if row["rank"] != s.rank:
+                            s.rank_last_set_by = "manual"
                         s.rank = row["rank"]
                         from app.services.rank_advancement import resolve_track
                         s.rank_track = resolve_track(s.rank, s.rank_track)

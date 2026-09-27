@@ -161,6 +161,42 @@ def test_export_round_trips_soldiers_duty_shifts_and_assignments(client, admin_s
     assert a[3] == loc.name
 
 
+def test_export_reimport_roundtrip_preserves_password_hash_and_does_not_force_password_change(client, admin_session):
+    """Exporting soldiers, editing something unrelated, and re-importing must
+    preserve the existing soldier's real password_hash and must NOT flip
+    must_change_password -- a spreadsheet round trip is not a password reset.
+
+    Also asserts password_hash never ends up in `parsed_state`, since that
+    dict is persisted verbatim and handed back to the browser as-is by
+    GET /import/sessions/{id} and the upload response -- it must be re-read
+    from the raw workbook bytes at confirm time instead, never stored there.
+    """
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    original_hash = soldier.password_hash
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.commit()
+
+    token = auth_headers(admin)["Authorization"].split(" ", 1)[1]
+    resp = client.get("/api/import/export?sheets=soldiers", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+
+    import_session = create_session(
+        admin_session, filename="password-roundtrip.xlsx", content=resp.content,
+        actor=admin, parser_id="v1_standard",
+    )
+    parsed_soldier = next(
+        r for r in import_session.parsed_state["soldiers"]
+        if r["personal_number"] == soldier.personal_number
+    )
+    assert "password_hash" not in parsed_soldier
+    assert parsed_soldier["action"] == "update"
+
+    confirm_session(admin_session, session_id=import_session.id, actor=admin)
+    admin_session.refresh(soldier)
+    assert soldier.password_hash == original_hash
+    assert soldier.must_change_password is False
+
+
 def test_export_omits_assignments_without_linked_shift(client, admin_session):
     dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
     loc = DutyLocation(name=f"loc_{_uid()}")

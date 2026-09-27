@@ -7,7 +7,7 @@ from unittest.mock import patch
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import Soldier
+from app.db.models import Soldier, SoldierHrProfile
 from app.rank_advancement_worker import (
     _promote_due_soldiers,
     _promote_on_career_entry,
@@ -330,6 +330,30 @@ def test_promote_on_career_entry_ignores_soldiers_whose_rank_is_not_flagged(app_
     assert s.rank == "קאב"
 
 
+def test_promote_on_career_entry_skips_soldier_whose_resolved_track_does_not_match_flagged_pair(app_session) -> None:
+    """The query filters by rank alone (Soldier.rank.in_(flagged_ranks)); the
+    per-soldier (track, rank) check afterward is what actually enforces the
+    flagged pair, since a shared rank like סגן belongs to both the officer
+    and officer_academic ladders. A soldier already anchored to the regular
+    "officer" track by a persisted rank_track must not be promoted here even
+    though their rank matches a flag on the officer_academic track."""
+    upsert_interval(
+        app_session, track="officer_academic", rank="סגן", months_to_next=None,
+        advance_on_career_entry=True, actor_id=None,
+    )
+    s = create_soldier(app_session, personal_number="1000021")
+    s.rank = "סגן"
+    s.rank_track = "officer"  # resolves to "officer", not the flagged "officer_academic"
+    s.mandatory_end_date = date(2026, 6, 1)
+    app_session.flush()
+
+    with patch("app.rank_advancement_worker.session_scope") as mock_scope:
+        mock_scope.return_value.__enter__.return_value = app_session
+        _promote_on_career_entry(today=date(2026, 6, 2))
+
+    assert s.rank == "סגן"
+
+
 def test_promote_on_career_entry_commits_and_persists_after_session_close(app_session, app_engine) -> None:
     """Mirrors test_promote_due_soldiers_commits_and_persists_after_session_close:
     proves this new step also commits, not just mutates the in-memory session,
@@ -444,3 +468,93 @@ def test_promote_on_career_entry_remains_after_earlier_scheduled_promotion(app_s
         _promote_on_career_entry(today=date(2026, 6, 1))
 
     assert s.rank == "סמר"
+
+
+def test_promote_soldier_sets_rank_last_set_by_worker(app_session) -> None:
+    s = create_soldier(app_session, personal_number="1000009")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    app_session.flush()
+
+    _promote_soldier(app_session, s, today=date(2026, 1, 1))
+
+    assert s.rank_last_set_by == "worker"
+
+
+def test_warn_upcoming_soldiers_skips_soldier_at_top_of_ladder(app_session) -> None:
+    """A soldier already at the top of their ladder has no next rank to warn
+    about, even if next_rank_date happens to land exactly on the warning
+    window (e.g. a stale value from before they were promoted to the top)."""
+    from app.db.models import Notification, NotificationType
+
+    s = create_soldier(app_session, personal_number="1000022")
+    s.rank = "רנג"  # top of enlisted ladder -- get_next_rank returns None
+    s.next_rank_date = date(2026, 1, 8)  # today + 7 days
+    app_session.flush()
+
+    with patch("app.rank_advancement_worker.session_scope") as mock_scope, \
+         patch("app.rank_advancement_worker.date") as mock_date:
+        mock_scope.return_value.__enter__.return_value = app_session
+        mock_date.today.return_value = date(2026, 1, 1)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        _warn_upcoming_soldiers()
+
+    notif = app_session.query(Notification).filter(
+        Notification.soldier_id == s.id,
+        Notification.type == NotificationType.rank_advancement_soon,
+    ).one_or_none()
+    assert notif is None
+
+
+def test_worker_survives_exception_from_one_step_and_still_runs_next_cycle() -> None:
+    with patch("app.rank_advancement_worker._promote_on_career_entry") as mock_career_entry, \
+         patch(
+             "app.rank_advancement_worker._promote_due_soldiers", side_effect=RuntimeError("boom"),
+         ) as mock_promote, \
+         patch("app.rank_advancement_worker._warn_upcoming_soldiers") as mock_warn, \
+         patch(
+             "app.rank_advancement_worker.asyncio.sleep",
+             side_effect=[None, None, asyncio.CancelledError],
+         ):
+        try:
+            asyncio.run(run_rank_advancement_worker())
+        except asyncio.CancelledError:
+            pass
+    # Two wakes reached _promote_due_soldiers before the loop was cancelled on
+    # the third sleep -- proving the RuntimeError from the first call did not
+    # kill the loop. _warn_upcoming_soldiers is never reached on either cycle
+    # since the three steps run sequentially and _promote_due_soldiers always
+    # raises before it.
+    assert mock_career_entry.call_count == 2
+    assert mock_promote.call_count == 2
+    assert mock_warn.call_count == 0
+
+
+def test_promote_due_soldiers_skips_hr_linked_soldiers(app_session) -> None:
+    s = create_soldier(app_session, personal_number="1000010")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    app_session.add(SoldierHrProfile(personal_number="1000010", raw_dto={}, soldier_id=s.id, sync_status="synced"))
+    app_session.commit()
+
+    _promote_due_soldiers()
+
+    app_session.refresh(s)
+    assert s.rank == "טוראי"
+    assert s.rank_last_set_by is None
+
+
+def test_promote_due_soldiers_still_promotes_non_hr_linked_soldiers(app_session) -> None:
+    s = create_soldier(app_session, personal_number="1000011")
+    s.rank = "טוראי"
+    s.next_rank_date = date(2026, 1, 1)
+    upsert_interval(app_session, track="enlisted", rank="רבט", months_to_next=8, advance_on_career_entry=False, actor_id=None)
+    app_session.commit()
+
+    _promote_due_soldiers()
+
+    app_session.refresh(s)
+    assert s.rank == "רבט"
+    assert s.rank_last_set_by == "worker"

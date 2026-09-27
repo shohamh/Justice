@@ -24,6 +24,7 @@ from app.services import email_verification as ev_svc
 from app.services import password_reset as pwd_reset_svc
 from app.services import registration as reg_svc
 from app.services.file_validation import FileValidationError, validate_exemption_file
+from app.services.hr_activation import consume_activation_code
 from app.services.invite_codes import InviteCodeError, validate_code
 from app.services.registration import RegistrationError
 from app.services.soldiers import PasswordPolicyError, bump_token_version, validate_password
@@ -209,7 +210,12 @@ def login(
             headers={"Retry-After": str(int((locked - _now_utc).total_seconds()))},
         )
 
-    if not verify_password(body.password, soldier.password_hash):
+    password_ok = verify_password(body.password, soldier.password_hash)
+    activation_consumed = False
+    if not password_ok:
+        activation_consumed = consume_activation_code(session, soldier_id=soldier.id, code=body.password)
+
+    if not password_ok and not activation_consumed:
         new_count = soldier.failed_login_count + 1
         locked_now = new_count >= _LOCKOUT_THRESHOLD
         session.execute(
@@ -242,9 +248,20 @@ def login(
             detail={"detail": "invalid_credentials", "attempts": new_count, "max_attempts": _LOCKOUT_THRESHOLD},
         )
 
-    # Successful login — reset lockout state
+    # Successful login (real password or a valid activation code) — reset lockout state
     soldier.failed_login_count = 0
     soldier.locked_until = None
+
+    if activation_consumed:
+        # The activation code the soldier just typed becomes their real,
+        # temporary password (same shape as onboard_soldier's temp-password
+        # flow) so /auth/change-password's current_password check has
+        # something real to verify against next — without this, the soldier
+        # is stuck: must_change_password blocks every other route and they
+        # can never supply a working current_password. Also invalidate any
+        # other outstanding sessions, same as a real password change would.
+        soldier.password_hash = hash_password(body.password)
+        bump_token_version(soldier)
 
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
     refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
@@ -255,7 +272,7 @@ def login(
         action="auth.login.success",
         entity_type="soldier",
         entity_id=soldier.id,
-        context=_client_context(request),
+        context={**_client_context(request), **({"method": "activation_code"} if activation_consumed else {})},
     )
     session.commit()
 

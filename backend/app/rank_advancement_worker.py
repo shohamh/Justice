@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import date, timedelta
+from typing import Any
 
 from sqlalchemy import select
 
-from app.db.models import RankAdvancementInterval, Soldier
+from app.db.models import RankAdvancementInterval, Soldier, SoldierHrProfile
 from app.db.session import session_scope
 from app.services.notifications import notify_rank_advanced, notify_rank_advancement_soon
 from app.services.rank_advancement import (
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 _POLL_SECONDS = 86400
 
 
+def _not_hr_linked() -> Any:
+    from sqlalchemy import select as _select
+    return Soldier.id.not_in(
+        _select(SoldierHrProfile.soldier_id).where(SoldierHrProfile.soldier_id.is_not(None))
+    )
+
+
 def _promote_soldier(session, soldier: Soldier, *, today: date) -> None:
     track = resolve_track(soldier.rank, soldier.rank_track)
     soldier.rank_track = track
@@ -31,6 +39,7 @@ def _promote_soldier(session, soldier: Soldier, *, today: date) -> None:
         soldier.next_rank_date = None
         return
     soldier.rank = next_rank
+    soldier.rank_last_set_by = "worker"
     soldier.current_rank_since = today
     soldier.next_rank_date_overridden = False
     soldier.next_rank_date = compute_next_rank_date(
@@ -62,6 +71,7 @@ def _promote_on_career_entry(*, today: date | None = None) -> None:
                 Soldier.rank.in_(flagged_ranks),
                 Soldier.discharge_date.is_(None) | (Soldier.discharge_date > today),
                 Soldier.left_at.is_(None) | (Soldier.left_at > today),
+                _not_hr_linked(),
             )
         ).scalars().all()
         for s in soldiers:
@@ -90,6 +100,7 @@ def _promote_due_soldiers() -> None:
                 Soldier.next_rank_date <= today,
                 Soldier.discharge_date.is_(None) | (Soldier.discharge_date > today),
                 Soldier.left_at.is_(None) | (Soldier.left_at > today),
+                _not_hr_linked(),
             )
         ).scalars().all()
         for s in soldiers:
@@ -110,6 +121,7 @@ def _warn_upcoming_soldiers() -> None:
                 # soon" notification for a promotion that will never happen.
                 Soldier.discharge_date.is_(None) | (Soldier.discharge_date > today),
                 Soldier.left_at.is_(None) | (Soldier.left_at > today),
+                _not_hr_linked(),
             )
         ).scalars().all()
         for s in soldiers:

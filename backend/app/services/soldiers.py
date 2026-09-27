@@ -361,6 +361,8 @@ def update_soldier_profile(
     old_enlistment_date = soldier.enlistment_date
     for k, v in fields.items():
         if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
+            if k == "rank" and v != old_rank:
+                soldier.rank_last_set_by = "manual"
             setattr(soldier, k, v)
     rank_or_track_changed = (
         ("rank" in fields and fields["rank"] != old_rank)
@@ -609,6 +611,27 @@ def submit_field_update(
     return req
 
 
+def _mark_hr_field_overridden(
+    session: Session, *, soldier_id: uuid.UUID, field_name: str, actor_id: uuid.UUID,
+) -> None:
+    from app.db.models import SoldierHrProfile
+    from app.services.hr.mapping import HR_OWNED_FIELDS
+    if field_name not in HR_OWNED_FIELDS:
+        return
+    profile = session.execute(
+        select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier_id)
+    ).scalar_one_or_none()
+    if profile is None:
+        return
+    if field_name not in profile.overridden_fields:
+        profile.overridden_fields = [*profile.overridden_fields, field_name]
+        write_audit(
+            session, actor_id=actor_id, action="hr_sync.field_overridden",
+            entity_type="soldier_hr_profile", entity_id=profile.id,
+            context={"field_name": field_name, "soldier_id": str(soldier_id)},
+        )
+
+
 def approve_field_update(
     session: Session,
     *,
@@ -714,6 +737,7 @@ def approve_field_update(
         if rank_value is not None and rank_track_value is not None and resolved_track != rank_track_value:
             raise SoldierValidationError("rank_track_invalid")
         soldier.rank = rank_value
+        soldier.rank_last_set_by = "manual"
         soldier.rank_track = resolved_track
         _reset_rank_advancement(session, soldier, since=date.today())
     elif field == "rank_track":
@@ -752,6 +776,14 @@ def approve_field_update(
         entity_id=update.id,
         after={"field": field, "value": raw},
     )
+    _mark_hr_field_overridden(session, soldier_id=soldier.id, field_name=field, actor_id=actor_id)
+    if field == "rank":
+        # The `rank` branch above always (re)assigns soldier.rank_track as a
+        # side effect of resolving the rank/track pair, so a rank approval
+        # can silently change rank_track too — mark it overridden as well.
+        # _mark_hr_field_overridden is idempotent, so this is safe even when
+        # rank_track ends up unchanged from its prior value.
+        _mark_hr_field_overridden(session, soldier_id=soldier.id, field_name="rank_track", actor_id=actor_id)
     if field in {"last_mitvahim_date", "last_alal_date"}:
         from app.services.duty_eligibility_watch import recheck_soldier_assignments
         recheck_soldier_assignments(session, soldier.id)

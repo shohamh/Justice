@@ -1,0 +1,17 @@
+# Requires the Prometheus Operator's CRDs to be installed on the cluster
+# (standard on OpenShift via the cluster-monitoring-operator, or per-project
+# monitoring if enabled for user workloads).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: justice-backend
+  labels:
+    app: justice-backend
+spec:
+  selector:
+    matchLabels:
+      app: justice-backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

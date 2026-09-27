@@ -1,0 +1,60 @@
+# Illustrative starting point only — adjust image, env, and resource limits
+# for the real Kubernetes repo. Assumes Redis and Postgres are reachable via
+# REDIS_URL/DATABASE_URL, same as docker-compose.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: justice-backend
+  labels:
+    app: justice-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: justice-backend
+  template:
+    metadata:
+      labels:
+        app: justice-backend
+    spec:
+      containers:
+        - name: backend
+          image: justice-backend:latest  # replace with the Artifactory-pushed tag
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: justice-backend-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: justice-backend-secrets
+                  key: REDIS_URL
+            - name: LOKI_URL
+              value: "http://loki.observability.svc.cluster.local:3100"
+            - name: LOG_FORMAT
+              value: json
+            - name: ENVIRONMENT
+              value: production
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"

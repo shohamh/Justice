@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.password import hash_password
+from app.auth.password import hash_password, verify_password
 from app.db.models import Soldier
 
 
@@ -130,3 +131,180 @@ def test_warns_when_secure_cookie_set_over_plain_http(client, admin_session, cap
     finally:
         monkeypatch.delenv("COOKIE_SECURE", raising=False)
         get_settings.cache_clear()
+
+
+from datetime import datetime, timedelta, timezone
+
+from app.db.models import SoldierActivationCode, SoldierHrProfile
+
+
+def _hr_linked_soldier_with_code(session, *, personal_number: str, code: str = "ACTV1234"):
+    from app.auth.password import hash_password
+
+    soldier = Soldier(
+        personal_number=personal_number,
+        full_name=f"Test {personal_number}",
+        password_hash=hash_password("placeholder-nobody-knows-this"),
+        must_change_password=True,
+    )
+    session.add(soldier)
+    session.flush()
+    session.add(SoldierHrProfile(personal_number=personal_number, raw_dto={}, soldier_id=soldier.id))
+    session.add(SoldierActivationCode(
+        soldier_id=soldier.id, code=code,
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(days=7),
+    ))
+    session.commit()
+    session.refresh(soldier)
+    return soldier
+
+
+def test_login_with_valid_activation_code_succeeds(client: TestClient, admin_session: Session):
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100001")
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100001", "password": "ACTV1234"}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert "access_token" in body
+    assert body["must_change_password"] is True
+
+
+def test_activation_code_becomes_temporary_password_until_changed(client: TestClient, admin_session: Session):
+    """The SoldierActivationCode row itself is single-use (used_at gets set
+    on first use). Logging in again with the same string right afterward
+    still succeeds — but as an ordinary password login, not a fresh
+    activation, because (C1) the code became the soldier's real
+    password_hash on first use. That window is short-lived though: once the
+    soldier actually changes their password via /auth/change-password, the
+    original code stops being a valid credential at all — proving the
+    code-as-temporary-password state doesn't linger past the change."""
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100002")
+
+    first = client.post(
+        "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
+    )
+    assert first.status_code == 200
+
+    code = admin_session.execute(
+        select(SoldierActivationCode).where(SoldierActivationCode.soldier_id == soldier.id)
+    ).scalar_one()
+    assert code.used_at is not None
+
+    # Still works as an ordinary password login — the code is now password_hash.
+    second = client.post(
+        "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
+    )
+    assert second.status_code == 200
+    access_token = second.json()["access_token"]
+
+    change_resp = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "ACTV1234", "new_password": "Br4nd-New!Pass"},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert change_resp.status_code == 200
+
+    # Now that a real password has superseded it, the original code must no
+    # longer work as a credential at all.
+    third = client.post(
+        "/api/auth/login", json={"personal_number": "8100002", "password": "ACTV1234"}
+    )
+    assert third.status_code == 401
+
+
+def test_login_with_expired_activation_code_fails(client: TestClient, admin_session: Session):
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100003")
+    code = admin_session.execute(
+        select(SoldierActivationCode).where(SoldierActivationCode.soldier_id == soldier.id)
+    ).scalar_one()
+    code.expires_at = datetime.now(tz=timezone.utc) - timedelta(days=1)
+    admin_session.commit()
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100003", "password": "ACTV1234"}
+    )
+    assert r.status_code == 401
+
+
+def test_login_with_wrong_activation_code_fails_normally(client: TestClient, admin_session: Session):
+    _hr_linked_soldier_with_code(admin_session, personal_number="8100004")
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100004", "password": "WRONGCOD"}
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"]["detail"] == "invalid_credentials"
+
+
+def test_activation_code_login_then_change_password_then_protected_route_succeeds(
+    client: TestClient, admin_session: Session
+):
+    """C1 end-to-end: activation-code login is no longer a dead end. The code
+    becomes the soldier's real current_password, so change-password succeeds
+    with it, and a protected route (gated by require_password_changed) is
+    reachable right afterward."""
+    _hr_linked_soldier_with_code(admin_session, personal_number="8100005", code="ACTV5678")
+
+    login_resp = client.post(
+        "/api/auth/login", json={"personal_number": "8100005", "password": "ACTV5678"}
+    )
+    assert login_resp.status_code == 200
+    assert login_resp.json()["must_change_password"] is True
+    access_token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # The activation code itself must now verify as current_password.
+    change_resp = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "ACTV5678", "new_password": "Br4nd-New!Pass"},
+        headers=headers,
+    )
+    assert change_resp.status_code == 200
+
+    protected_resp = client.get(
+        "/api/calendar/holidays", params={"year": 2026}, headers=headers,
+    )
+    assert protected_resp.status_code == 200
+
+
+def test_activation_code_login_bumps_token_version_invalidating_old_sessions(
+    client: TestClient, admin_session: Session,
+):
+    soldier = _hr_linked_soldier_with_code(admin_session, personal_number="8100006", code="ACTV9999")
+    old_token_version = soldier.token_version
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100006", "password": "ACTV9999"}
+    )
+    assert r.status_code == 200
+
+    admin_session.refresh(soldier)
+    assert soldier.token_version == old_token_version + 1
+    # Positive check: the activation code itself now verifies as the
+    # soldier's real password_hash (a `!=` comparison against a freshly
+    # salted hash_password() call would be a tautology and prove nothing).
+    assert verify_password("ACTV9999", soldier.password_hash)
+
+
+def test_activation_code_login_writes_audit_context_marking_method(
+    client: TestClient, admin_session: Session,
+):
+    from sqlalchemy import text
+
+    _hr_linked_soldier_with_code(admin_session, personal_number="8100007", code="ACTV0007")
+
+    r = client.post(
+        "/api/auth/login", json={"personal_number": "8100007", "password": "ACTV0007"}
+    )
+    assert r.status_code == 200
+
+    rows = admin_session.execute(
+        text(
+            "SELECT context FROM audit_log WHERE action='auth.login.success' "
+            "ORDER BY created_at DESC LIMIT 1"
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].context.get("method") == "activation_code"

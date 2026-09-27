@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     login_account_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_ACCOUNT_RATE_LIMIT")
     invite_code_rate_limit: str = Field(default="20/hour", alias="INVITE_CODE_RATE_LIMIT")
     cookie_secure: bool = Field(default=True, alias="COOKIE_SECURE")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    loki_url: str = Field(default="", alias="LOKI_URL")
     error_log_rate_limit_max_per_window: int = Field(default=10, alias="ERROR_LOG_RATE_LIMIT_MAX_PER_WINDOW")
     error_log_rate_limit_window_seconds: float = Field(default=60.0, alias="ERROR_LOG_RATE_LIMIT_WINDOW_SECONDS")
 
@@ -44,6 +46,11 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
     smtp_from: str = Field(default="", alias="SMTP_FROM")
 
+    hr_api_base_url: str = Field(default="", alias="HR_API_BASE_URL")
+    hr_api_key: str = Field(default="", alias="HR_API_KEY")
+    hr_api_ca_bundle_path: str = Field(default="", alias="HR_API_CA_BUNDLE_PATH")
+    hr_api_page_size: int = Field(default=200, alias="HR_API_PAGE_SIZE")
+
     bootstrap_admin_personal_number: str | None = Field(
         default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"
     )
@@ -53,6 +60,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def hr_sync_enabled(self) -> bool:
+        return bool(self.hr_api_base_url and self.hr_api_key)
 
 
 @lru_cache(maxsize=1)

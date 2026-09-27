@@ -1,0 +1,12 @@
+{
+  "id": "g1",
+  "name": "Group One",
+  "kind": "unit",
+  "unit": "Unit 1",
+  "parentKind": null,
+  "parentId": null,
+  "parentName": null,
+  "subGroups": [
+    {"id": "g2", "name": "Group Two", "kind": "team", "unit": "Unit 1", "parentKind": "unit", "parentId": "g1", "parentName": "Group One"}
+  ]
+}

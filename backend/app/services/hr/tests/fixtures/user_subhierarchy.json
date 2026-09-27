@@ -1,0 +1,8 @@
+{
+  "personalNumber": "1",
+  "fullName": "Manager One",
+  "manages": [
+    {"personalNumber": "2", "fullName": "Report One"},
+    {"personalNumber": "3", "fullName": "Report Two"}
+  ]
+}

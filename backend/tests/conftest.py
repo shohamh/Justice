@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
 from tests.support import app as test_app_support
 from tests.support import database, profiling
@@ -114,19 +115,22 @@ def pytest_configure(config: pytest.Config) -> None:
     # workers, and hash_password memoizes argon2 seeding across tests.
     os.environ.setdefault("JUSTICE_TESTING", "1")
 
-    # app.main calls logging_config.setup_logging() at import time, which
-    # attaches real RotatingFileHandlers to the process-wide "backend.errors"
-    # / "frontend.errors" loggers pointed at LOG_DIR (the real dev/prod logs/
-    # directory by default). The very first test module that imports app.main
-    # (directly or transitively) triggers this, so every test run — including
-    # tests that deliberately log synthetic "boom" errors to exercise the
-    # rate limiter — would otherwise write real-looking entries into
-    # logs/backend-errors.log and logs/frontend-errors.log, indistinguishable
-    # downstream from a live incident. Redirect LOG_DIR to a throwaway
-    # directory before any test module gets a chance to import app.main, so
-    # test-run log output never lands where a real deployment's log
-    # collection watches. Runs once per process (each xdist worker gets its
-    # own isolated directory); an operator-provided LOG_DIR is respected.
+    # app.main calls logging_config.setup_logging() at import time, which —
+    # when LOKI_URL is set (dev.ps1 sets it for its shell) — attaches real
+    # Loki push handlers to the process-wide "backend.errors" /
+    # "frontend.errors" loggers. The very first test module that imports
+    # app.main (directly or transitively) triggers this, so every test run —
+    # including tests that deliberately log synthetic "boom" errors to
+    # exercise the rate limiter — would otherwise push real-looking entries
+    # into the dev Loki, indistinguishable in the admin errors inbox from a
+    # live incident. Blank LOKI_URL before any test module gets a chance to
+    # import app.main; tests that need it set it themselves.
+    os.environ["LOKI_URL"] = ""
+
+    # LOG_DIR still roots bug-report JSON mirrors (app/services/bug_reports.py);
+    # keep test runs from writing into the real logs/ directory. Runs once per
+    # process (each xdist worker gets its own isolated directory); an
+    # operator-provided LOG_DIR is respected.
     if "LOG_DIR" not in os.environ:
         test_log_dir = tempfile.mkdtemp(prefix="justice-test-logs-")
         os.environ["LOG_DIR"] = test_log_dir
@@ -331,10 +335,20 @@ _AREA_MARKERS: dict[str, str] = {
     "test_enrollment_routes": "auth",
     "test_security_hardening": "auth",
     "test_security_hardening_2": "auth",
+    "test_soldier_activation_code_model": "auth",
+    "test_hr_activation_service": "auth",
+    "test_hr_activation_route": "auth",
+    "test_require_hr_onboarding_complete": "auth",
+    "test_hr_onboarding_service": "auth",
+    "test_hr_onboarding_route": "auth",
+    "test_hr_review_routes": "auth",
     # hierarchy: hierarchy nodes and duty-manager scope
     "test_hierarchy_api": "hierarchy",
     "test_hierarchy_service": "hierarchy",
     "test_dm_scope_routes": "hierarchy",
+    "test_hr_hierarchy_sync_model": "hierarchy",
+    "test_hr_hierarchy_sync": "hierarchy",
+    "test_hr_sync_worker": "hierarchy",
     # duty: assignments, shifts, swaps, constraints, exemptions, gimelim, hakpaza, duty config
     "test_assignments_api": "duty",
     "test_assignments_service": "duty",
@@ -388,14 +402,31 @@ _AREA_MARKERS: dict[str, str] = {
     "test_soldiers_api": "soldiers",
     "test_import_excel": "soldiers",
     "test_import_lookup": "soldiers",
-    # misc: health check, audit log, settings loader
+    "test_soldier_hr_profile_model": "soldiers",
+    "test_hr_sync_divergence": "soldiers",
+    "test_soldiers_field_updates": "soldiers",
+    "test_hr_person_sync_model": "soldiers",
+    "test_hr_person_sync": "soldiers",
+    "test_hr_rank_conflict_model": "soldiers",
+    "test_update_soldier_profile_rank_provenance": "soldiers",
+    "test_rank_advancement_worker": "soldiers",
+    # misc: health check, audit log, settings loader, HR integration client
     "test_health": "misc",
     "test_audit_append_only": "misc",
     "test_settings_loader": "misc",
     "test_logging_config": "misc",
+    "test_error_logs": "misc",
+    "test_admin_errors_routes": "misc",
     "test_bug_reports_service": "misc",
     "test_bug_reports_api": "misc",
     "test_audit_logs_api": "misc",
+    "test_client": "misc",
+    "test_client_pagination": "misc",
+    "test_errors": "misc",
+    "test_schemas": "misc",
+    "test_mapping": "misc",
+    "test_hierarchy_sync_topo": "misc",
+    "test_review": "misc",
 }
 
 
@@ -444,6 +475,40 @@ def db_admin_url(request: pytest.FixtureRequest) -> Iterator[str]:
 
     pg = request.getfixturevalue("pg_container")
     yield database.render_psycopg_url(pg.get_connection_url())
+
+
+@pytest.fixture(scope="session")
+def redis_container() -> Iterator[RedisContainer]:
+    with RedisContainer("redis:7-alpine") as redis_c:
+        yield redis_c
+
+
+@pytest.fixture(scope="session")
+def monkeypatch_session() -> Iterator[pytest.MonkeyPatch]:
+    mp = pytest.MonkeyPatch()
+    yield mp
+    mp.undo()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_redis_settings(redis_container: RedisContainer, monkeypatch_session: pytest.MonkeyPatch) -> None:
+    """Point every test at the throwaway Redis container instead of whatever
+    REDIS_URL is set to in the developer's own environment."""
+    from app.settings import get_settings
+
+    host = redis_container.get_container_host_ip()
+    port = redis_container.get_exposed_port(6379)
+    monkeypatch_session.setenv("REDIS_URL", f"redis://{host}:{port}/0")
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _flush_redis() -> Iterator[None]:
+    """Test isolation: every test starts with an empty Redis DB."""
+    from app.redis_client import get_redis
+
+    get_redis().flushdb()
+    yield
 
 
 @pytest.fixture(scope="session")

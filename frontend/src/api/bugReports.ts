@@ -120,8 +120,9 @@ export async function markAllAdminErrorsRead(options: { source?: "backend" | "fr
   await api.post("/admin/errors/mark-all-read", undefined, { params: options });
 }
 
-export async function clearAdminErrors(through: string): Promise<number> {
-  return (await api.delete<{ removed: number }>("/admin/errors", { params: { through } })).data.removed;
+// Soft clear: hides this admin's errors at or before `through` (server responds {"status": "cleared"}).
+export async function clearAdminErrors(through: string): Promise<void> {
+  await api.delete<{ status: "cleared" }>("/admin/errors", { params: { through } });
 }
 
 export async function getAdminBugReportUnreadCount(): Promise<number> {

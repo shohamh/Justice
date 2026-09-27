@@ -61,6 +61,12 @@ class Soldier(Base):
         Boolean, server_default=text("false"), default=False
     )
     current_rank_since: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    # Who last wrote `rank`: "hr_sync" | "worker" | "manual" | None (unknown
+    # provenance, e.g. pre-existing rows). Used by person_sync's conflict
+    # detection (app/services/hr/person_sync.py) to tell "HR is confirming
+    # what the worker already decided" apart from "HR is silently overriding
+    # the worker's own decision".
+    rank_last_set_by: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     bahad1_graduate: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
@@ -81,6 +87,9 @@ class Soldier(Base):
     )
     food_constraints: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     profile_picture_url: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    hr_onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -106,6 +115,144 @@ class AuditLog(Base):
     before: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
     after: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
     context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class SoldierHrProfile(Base):
+    __tablename__ = "soldier_hr_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    personal_number: Mapped[str] = mapped_column(Text, unique=True)
+    raw_dto: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), unique=True, nullable=True, default=None
+    )
+    sync_status: Mapped[str] = mapped_column(
+        Text, server_default=text("'held_for_review'"), default="held_for_review"
+    )
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Snapshot of `review_reason`'s reasons list at the moment an admin last
+    # dismissed this held-for-review record, plus when. `_mark_held`
+    # (app/services/hr/person_sync.py) clears both whenever the new run's
+    # reasons differ from this snapshot, so the admin review UI's
+    # held-for-review list only re-surfaces a record when HR's underlying
+    # data actually changed, not on every sync run.
+    review_dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    review_dismissed_reasons: Mapped[list[str] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )
+    overridden_fields: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class HrHierarchySync(Base):
+    __tablename__ = "hr_hierarchy_syncs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    parsed_state: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
+    )
+    created_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    matched_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    held_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
+class HrHierarchyNodeMap(Base):
+    __tablename__ = "hr_hierarchy_node_map"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    hr_group_id: Mapped[str] = mapped_column(Text, unique=True)
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="CASCADE"), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class HrPersonSync(Base):
+    __tablename__ = "hr_person_syncs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"), default="running")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    total_fetched: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    created_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    held_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    vanished_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    error_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
+class HrPersonSyncError(Base):
+    __tablename__ = "hr_person_sync_errors"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    hr_person_sync_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hr_person_syncs.id", ondelete="CASCADE")
+    )
+    personal_number: Mapped[str] = mapped_column(Text)
+    error_message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class HrRankConflict(Base):
+    __tablename__ = "hr_rank_conflicts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    old_rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    new_rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    triggered_by_worker_decision: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    non_sequential_jump: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    hr_person_sync_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hr_person_syncs.id", ondelete="SET NULL"), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -1540,6 +1687,8 @@ class NotificationType(str, _enum.Enum):
     alal_expiring_soon = "alal_expiring_soon"
     alal_expired = "alal_expired"
     duty_instructions_updated = "duty_instructions_updated"
+    hr_sync_anomaly_aborted = "hr_sync_anomaly_aborted"
+    hr_rank_conflict = "hr_rank_conflict"
 
 
 class Notification(Base):
@@ -1779,6 +1928,26 @@ class PasswordResetToken(Base):
     )
 
 
+class SoldierActivationCode(Base):
+    __tablename__ = "soldier_activation_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    code: Mapped[str] = mapped_column(Text, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class ForcedCallup(Base):
     __tablename__ = "forced_callups"
 
@@ -1848,6 +2017,16 @@ class AdminErrorRead(Base):
     record_key: Mapped[str] = mapped_column(Text)
     read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), default=None)
     __table_args__ = (sa.UniqueConstraint("admin_id", "source", "record_key", name="uq_admin_error_reads_admin_source_record_key"),)
+
+
+class AdminErrorClear(Base):
+    """Per-admin soft-clear cursor for the admin error inbox: error log
+    entries at or before `cleared_before` are hidden for this admin only.
+    The log data itself (in Loki) is never deleted."""
+    __tablename__ = "admin_error_clears"
+
+    admin_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), primary_key=True)
+    cleared_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class BugReportComment(Base):

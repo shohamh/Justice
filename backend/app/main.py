@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -12,7 +13,8 @@ from starlette.responses import Response as StarletteResponse
 
 from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
-from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, request_data, request_id
+from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, redact, request_data, request_id
+from app.hr_sync_worker import run_hr_sync_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.qualification_expiry_worker import run_qualification_expiry_worker
@@ -44,6 +46,9 @@ from app.routes import hakpaza as hakpaza_routes
 from app.routes import health as health_routes
 from app.routes import hierarchy as hierarchy_routes
 from app.routes import hierarchy_transfers as hierarchy_transfer_routes
+from app.routes import hr_activation as hr_activation_routes
+from app.routes import hr_onboarding as hr_onboarding_routes
+from app.routes import hr_review as hr_review_routes
 from app.routes import import_excel as import_excel_routes
 from app.routes import import_lookup as import_lookup_routes
 from app.routes import import_sessions as import_sessions_routes
@@ -77,7 +82,7 @@ from app.services.import_parsers import v1_standard as _v1_standard_import_parse
 from app.settings import get_settings
 from app.swap_expiry_worker import run_swap_expiry_worker
 
-setup_logging("backend.log")
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -104,10 +109,31 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 headers={REQUEST_ID_HEADER: request.state.request_id},
             )
         if response.status_code >= 500 and not logged_exception:
+            # A route can return a >=500 response directly (rather than raising)
+            # after call_next() has already finished, e.g. the readiness probe's
+            # 503 — by that point the ASGI receive channel BaseHTTPMiddleware
+            # handed to the downstream app is no longer available, so re-reading
+            # the request body here raises RuntimeError. Fall back to logging
+            # without the body rather than losing the error report entirely.
+            try:
+                data = await request_data(request)
+            except RuntimeError:
+                headers = {
+                    key: request.headers[key]
+                    for key in ("content-type", "user-agent", "referer")
+                    if key in request.headers
+                }
+                data = {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "query": redact(dict(request.query_params)),
+                    "headers": redact(headers),
+                    "body": None,
+                }
             log_backend_exception(
                 request,
                 RuntimeError(f"HTTP {response.status_code} response"),
-                await request_data(request),
+                data,
             )
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return response
@@ -168,12 +194,13 @@ async def lifespan(app: FastAPI):
     range_attendance_task = asyncio.create_task(run_range_attendance_worker())
     duty_eligibility_task = asyncio.create_task(run_duty_eligibility_worker())
     rank_advancement_task = asyncio.create_task(run_rank_advancement_worker())
+    hr_sync_task = asyncio.create_task(run_hr_sync_worker())
     qualification_expiry_task = asyncio.create_task(run_qualification_expiry_worker())
     score_projection_revalidation_task = asyncio.create_task(run_score_projection_revalidation_worker())
     yield
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task, score_projection_revalidation_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
         task.cancel()
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, qualification_expiry_task, score_projection_revalidation_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
         try:
             await task
         except asyncio.CancelledError:
@@ -208,6 +235,9 @@ def create_app() -> FastAPI:
     app.include_router(my_request_routes.router, prefix="/api")
     app.include_router(hierarchy_routes.router, prefix="/api")
     app.include_router(hierarchy_transfer_routes.router, prefix="/api")
+    app.include_router(hr_activation_routes.router, prefix="/api")
+    app.include_router(hr_onboarding_routes.router, prefix="/api")
+    app.include_router(hr_review_routes.router, prefix="/api")
     # Registered before soldier_routes: soldier_routes has GET /soldiers/{soldier_id}
     # (a uuid-typed path param) which would otherwise shadow our literal
     # /soldiers/rank-ladder path and fail pydantic UUID validation (422) instead
@@ -253,6 +283,7 @@ def create_app() -> FastAPI:
     app.include_router(range_qualification_visibility_routes.soldiers_router, prefix="/api")
     app.include_router(ranges_routes.router, prefix="/api")
     app.include_router(range_locations_routes.router, prefix="/api")
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     return app
 
 

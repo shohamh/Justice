@@ -88,6 +88,24 @@ def require_password_changed(user: Soldier = Depends(get_current_user)) -> Soldi
     return user
 
 
+def require_hr_onboarding_complete(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> Soldier:
+    """Block a soldier who came through HR activation from using protected
+    endpoints until they've completed the first-login intake form. A soldier
+    with no linked SoldierHrProfile (self-registered, Excel-imported, etc.)
+    is never blocked here — the flag is simply irrelevant to them."""
+    from app.db.models import SoldierHrProfile
+
+    profile = session.execute(
+        select(SoldierHrProfile.id).where(SoldierHrProfile.soldier_id == user.id)
+    ).first()
+    if profile is not None and user.hr_onboarding_completed_at is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="hr_onboarding_incomplete")
+    return user
+
+
 def require_enrolled(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),

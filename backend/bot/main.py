@@ -37,7 +37,7 @@ async def _post_init(app: Application) -> None:
 
 
 def main() -> None:
-    setup_logging("bot.log")
+    setup_logging()
     settings = get_settings()
     if not settings.telegram_bot_token:
         logger.warning("TELEGRAM_BOT_TOKEN not set; bot not starting")

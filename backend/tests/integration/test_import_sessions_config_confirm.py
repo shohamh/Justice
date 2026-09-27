@@ -53,6 +53,198 @@ def _upload(client, token, xlsx: bytes):
     )
 
 
+def test_confirm_update_stamps_rank_last_set_by_manual(client, admin_session):
+    """A bulk Excel update session that changes an existing soldier's `rank`
+    is a deliberate human-controlled edit -- someone prepared the Excel file
+    and imported it -- same category as update_soldier_profile's manual
+    edit, so confirm_session's update path must stamp
+    rank_last_set_by="manual" too."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    existing.rank = "טוראי"
+    existing.rank_last_set_by = "hr_sync"
+    admin_session.commit()
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank"],
+            [existing.personal_number, existing.full_name, "רבט"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    admin_session.expire_all()
+    admin_session.refresh(existing)
+    assert existing.rank == "רבט"
+    assert existing.rank_last_set_by == "manual"
+
+
+def test_confirm_update_does_not_stamp_rank_last_set_by_when_rank_unchanged(client, admin_session):
+    """Re-importing a sheet that re-sends the same rank value (only an
+    unrelated field changed) must not overwrite existing "worker"/"hr_sync"
+    provenance -- only an actual rank change is a manual override."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    existing.rank = "טוראי"
+    existing.rank_last_set_by = "worker"
+    admin_session.commit()
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "rank", "phone"],
+            [existing.personal_number, existing.full_name, "טוראי", "050-9998877"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    admin_session.expire_all()
+    admin_session.refresh(existing)
+    assert existing.rank == "טוראי"
+    assert existing.rank_last_set_by == "worker"
+
+
+def test_confirm_new_soldier_with_password_hash_uses_it_and_does_not_force_change(client, admin_session):
+    """A brand-new soldier row that supplies a password_hash already has a
+    real, working password -- unlike the placeholder path for soldiers
+    created without one, it must not be forced to change it."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    pn = f"sol_{_uid()}"
+    fake_hash = "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$c29tZWhhc2g"
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "password_hash"],
+            [pn, "חייל חדש", fake_hash],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    created = admin_session.query(Soldier).filter_by(personal_number=pn).one()
+    assert created.password_hash == fake_hash
+    assert created.must_change_password is False
+
+
+def test_confirm_new_soldier_without_password_hash_gets_placeholder_and_forced_change(client, admin_session):
+    """A new soldier row with no password_hash column at all falls back to
+    the same random-placeholder-plus-forced-change pattern already used for
+    soldiers created without a password by HR sync
+    (person_sync._apply_new_person)."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    pn = f"sol_{_uid()}"
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name"],
+            [pn, "חייל חדש"],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    created = admin_session.query(Soldier).filter_by(personal_number=pn).one()
+    assert created.password_hash
+    assert created.must_change_password is True
+
+
+def test_confirm_update_with_blank_password_hash_cell_does_not_wipe_existing_password(client, admin_session):
+    """A spreadsheet edit unrelated to passwords (e.g. phone), with a blank
+    password_hash cell, must not wipe the soldier's real password back to a
+    random placeholder, nor flip must_change_password."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    original_hash = existing.password_hash
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "phone", "password_hash"],
+            [existing.personal_number, existing.full_name, "050-1112233", ""],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    admin_session.expire_all()
+    admin_session.refresh(existing)
+    assert existing.password_hash == original_hash
+    assert existing.must_change_password is False
+    assert existing.phone == "050-1112233"
+
+
+def test_confirm_update_with_password_hash_overwrites_existing_hash_without_forcing_change(client, admin_session):
+    """An update row that DOES supply a password_hash (e.g. a rotated hash on
+    re-import) must overwrite the existing soldier's hash, but must not
+    itself flip must_change_password -- only the no-hash creation path forces
+    a change."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    existing = create_soldier(admin_session, personal_number=f"sol_{_uid()}", must_change_password=True)
+    new_hash = "$argon2id$v=19$m=65536,t=3,p=4$YW5vdGhlcnNhbHQ$YW5vdGhlcmhhc2g"
+
+    xlsx = _wb({
+        "soldiers": [
+            ["personal_number", "full_name", "password_hash"],
+            [existing.personal_number, existing.full_name, new_hash],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["errors"] == []
+
+    admin_session.expire_all()
+    admin_session.refresh(existing)
+    assert existing.password_hash == new_hash
+    assert existing.must_change_password is True
+
+
 def test_confirm_creates_duty_location_and_duty_type(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     name = f"שמירה_{_uid()}"

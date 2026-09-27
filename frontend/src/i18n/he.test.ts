@@ -27,6 +27,7 @@ const NOTIFICATION_TYPES = [
   "range_absence_reported_to_commander", "range_attendance_corrected_to_present",
   "rank_advanced", "rank_advancement_soon", "mitvahim_expiring_soon", "mitvahim_expired", "alal_expiring_soon", "alal_expired",
   "personal_constraint_overridden",
+  "hr_sync_anomaly_aborted", "hr_rank_conflict",
 ];
 
 describe("he.json notification type coverage", () => {

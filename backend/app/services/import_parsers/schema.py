@@ -42,12 +42,13 @@ class ImportSoldierRow(BaseModel):
     last_mitvahim_date: str | None = None
     last_alal_date: str | None = None
     left_at: str | None = None
+    password_hash: str | None = None
 
 
 class ImportDutyShiftRow(BaseModel):
     source_row: int
     duty_type_name: str
-    duty_location_name: str
+    duty_location_name: str | None = None
     start_date: str
     end_date: str
     start_time: str | None = None

@@ -1,19 +1,55 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Start the full dev stack in one window (DB only in Docker).
+    Start the dev stack. Native app processes are the default; -Docker runs the full Compose stack.
     All services stream logs here with colored prefixes.
 
 .PARAMETER TelegramBot
     Include the Telegram bot.
 
+.PARAMETER Docker
+    Run the complete Docker Compose stack in the foreground.
+
 .EXAMPLE
-    .\dev.ps1                 # backend + frontend (default)
-    .\dev.ps1 -TelegramBot   # include the Telegram bot
+    .\dev.ps1                         # native backend + frontend (default)
+    .\dev.ps1 -TelegramBot            # native backend + frontend + bot
+    .\dev.ps1 -Docker                 # full Compose stack
+    .\dev.ps1 -Docker -TelegramBot    # include the bot in Compose
 #>
-param([switch]$TelegramBot)
+param([switch]$TelegramBot, [switch]$Docker)
 
 $root = $PSScriptRoot
+if ($Docker) {
+    # Keep the native default workflow available while allowing the complete
+    # app and observability stack to run together in Docker Compose.
+    $composeServices = @('db', 'redis', 'loki', 'prometheus', 'grafana', 'backend', 'frontend')
+    if ($TelegramBot) { $composeServices += 'telegram-bot' }
+
+    Write-Host '[dev] Starting the Docker Compose stack (Ctrl+C stops the attached services)...' -ForegroundColor Cyan
+    Write-Host '  Frontend : http://localhost:5173' -ForegroundColor White
+    Write-Host '  Backend  : http://localhost:8000/docs' -ForegroundColor White
+    $previousGrafanaPort = $env:GRAFANA_PORT
+    if (-not $env:GRAFANA_PORT -and (Test-Path (Join-Path $root '.env'))) {
+        $configuredPort = Get-Content (Join-Path $root '.env') | Where-Object { $_ -match '^GRAFANA_PORT=' } | Select-Object -Last 1
+        if ($configuredPort) { $env:GRAFANA_PORT = ($configuredPort -split '=', 2)[1] }
+    }
+    if (-not $env:GRAFANA_PORT) { $env:GRAFANA_PORT = '3000' }
+    if ($env:GRAFANA_PORT -eq '3000') {
+        try {
+            $portProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 3000)
+            $portProbe.Start()
+            $portProbe.Stop()
+        } catch {
+            $env:GRAFANA_PORT = '12080'
+            Write-Host '[dev] Host port 3000 is reserved; using Grafana port 12080.' -ForegroundColor Yellow
+        }
+    }
+    Write-Host ("  Grafana  : http://localhost:{0}" -f $env:GRAFANA_PORT) -ForegroundColor White
+    & docker compose --project-directory $root up --build $composeServices
+    $composeExitCode = $LASTEXITCODE
+    if ($null -eq $previousGrafanaPort) { Remove-Item Env:GRAFANA_PORT -ErrorAction SilentlyContinue } else { $env:GRAFANA_PORT = $previousGrafanaPort }
+    exit $composeExitCode
+}
 
 # ── Parse .env.defaults + .env (secrets/overrides win), replacing
 #    Docker-internal 'db' hostname with localhost ─────────────────────────────
@@ -27,6 +63,7 @@ foreach ($envFile in @("$root\.env.defaults", "$root\.env")) {
 }
 $localDbUrl    = $envVars['DATABASE_URL'] -replace '@db:', '@localhost:'
 $localAdminUrl = $envVars['DB_ADMIN_URL']  -replace '@db:', '@localhost:'
+$localRedisUrl = $envVars['REDIS_URL'] -replace '://redis:', '://localhost:'
 
 # ── PyPI mirror support ───────────────────────────────────────────────────────
 # pip reads PIP_INDEX_URL from the environment automatically.
@@ -103,8 +140,15 @@ foreach ($port in @(8000, 5173)) {
 }
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
-Write-Host "[dev] Starting DB container..." -ForegroundColor Cyan
-$dbOut = docker compose up db -d 2>&1
+Write-Host "[dev] Starting DB + Redis + observability containers..." -ForegroundColor Cyan
+# Prometheus uses the native-backend target while dev.ps1 runs Uvicorn on the host.
+$previousPrometheusConfig = $env:PROMETHEUS_CONFIG
+$env:PROMETHEUS_CONFIG = ($root -replace '\\', '/') + '/deploy/observability/prometheus.native.yml'
+#    --no-deps: prometheus's `depends_on: backend` would otherwise pull the
+#    dockerized backend container up too, fighting the natively-run backend
+#    for port 8000 (this script stops the dockerized backend above precisely
+#    so the native one can bind that port).
+$dbOut = docker compose up db redis loki prometheus grafana -d --no-deps 2>&1
 if ($LASTEXITCODE -ne 0) {
     if ($dbOut -match "ports are not available|access a socket") {
         # Windows reserved the port range that includes 5432 (Hyper-V/WinNAT).
@@ -112,13 +156,18 @@ if ($LASTEXITCODE -ne 0) {
         Write-Host "[dev] Port 5432 reserved by Windows — resetting WinNAT (UAC prompt may appear)..." -ForegroundColor Yellow
         Start-Process powershell -Verb RunAs -ArgumentList '-Command', 'net stop winnat; net start winnat' -Wait -WindowStyle Hidden
         Start-Sleep -Seconds 2
-        $dbOut = docker compose up db -d 2>&1
+        $dbOut = docker compose up db redis loki prometheus grafana -d --no-deps 2>&1
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "[dev] DB container failed to start: $dbOut"; exit 1
     }
 }
 
+if ($null -eq $previousPrometheusConfig) {
+    Remove-Item Env:PROMETHEUS_CONFIG -ErrorAction SilentlyContinue
+} else {
+    $env:PROMETHEUS_CONFIG = $previousPrometheusConfig
+}
 Write-Host "[dev] Waiting for DB to be healthy..." -ForegroundColor Cyan
 $dbContainer = docker compose ps -q db
 for ($i = 0; $i -lt 30; $i++) {
@@ -129,10 +178,23 @@ for ($i = 0; $i -lt 30; $i++) {
 if ($health -ne "healthy") { Write-Error "DB did not become healthy in time."; exit 1 }
 Write-Host "[dev] DB ready." -ForegroundColor Green
 
+Write-Host "[dev] Waiting for Redis to be healthy..." -ForegroundColor Cyan
+$redisContainer = docker compose ps -q redis
+for ($i = 0; $i -lt 30; $i++) {
+    $redisHealth = docker inspect --format '{{.State.Health.Status}}' $redisContainer 2>$null
+    if ($redisHealth -eq "healthy") { break }
+    Start-Sleep -Seconds 1
+}
+if ($redisHealth -ne "healthy") { Write-Error "Redis did not become healthy in time."; exit 1 }
+Write-Host "[dev] Redis ready." -ForegroundColor Green
+
 # ── Run migrations against localhost ─────────────────────────────────────────
 Write-Host "[dev] Running migrations..." -ForegroundColor Cyan
 $env:DATABASE_URL = $localDbUrl
 $env:DB_ADMIN_URL = $localAdminUrl
+$env:REDIS_URL = $localRedisUrl
+$env:LOKI_URL = "http://localhost:3100"
+$env:ENVIRONMENT = $envVars['ENVIRONMENT']
 Push-Location "$root\backend"
 & $venvPy -m alembic upgrade head
 $migrationExitCode = $LASTEXITCODE
@@ -156,7 +218,11 @@ $cmds.Add("cd /d `"$root\frontend`" && npm run dev")
 
 if ($TelegramBot) {
     $names.Add("bot");  $colors.Add("magenta")
-    $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
+    # LOKI_APP_LABEL distinguishes the bot's Loki stream (app="justice-bot")
+    # from the backend's (app="justice-backend", the default) so Grafana can
+    # filter one from the other. Set only for this command's cmd.exe shell —
+    # LOKI_URL itself is already inherited from the parent process env above.
+    $cmds.Add("set LOKI_APP_LABEL=justice-bot && cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
 }
 
 # ── Kill any stale bot processes ─────────────────────────────────────────────
