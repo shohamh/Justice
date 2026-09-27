@@ -54,3 +54,23 @@ Command from `backend/`: `python -m pytest app/storage/tests/test_migration.py -
 The migration now enumerates every DB object reference, checks that its key is valid and belongs to its declared managed prefix, compares HEAD key/hash/size against persisted metadata, and streams the body in bounded chunks to verify byte count and SHA-256. Verification failures use stable aggregate error codes and block `cutover_ready`.
 
 The same limits still apply: these checks used fake storage; no live PostgreSQL, MinIO, or provider S3 behavior was verified. Re-review is pending; Task 4 must not start until the coordinator records that review result.
+
+
+## Ownership-binding review fix
+
+The follow-up review found that a database row could reference another object with a valid key under the same managed class. Fix commit: `0481ad4432d074d4272fcac337c553dd0a3b9186` (`fix: bind storage keys to owning file records`).
+
+### RED evidence
+
+Command from `backend/`: `python -m pytest app/storage/tests/test_migration.py -q` before the fix. Result: **5 failed** because the reference iterator/verifier did not carry the owner UUID; it rejected the new five-field reference contract before evaluating row ownership. The new case used a valid `gimelim/` key with a UUID different from the owning row.
+
+### GREEN evidence
+
+- `python -m pytest app/storage/tests/test_migration.py -q` ? **6 passed**, including a valid same-prefix key bound to a different UUID and direct verification that DB enumeration yields the owning row UUID.
+- `python -m pytest app/storage/tests/test_backfill.py app/storage/tests/test_reconciliation.py -q` ? **14 passed**.
+- `python -m pytest app/storage/tests/test_s3.py -q` ? **9 passed**.
+- Scoped Ruff and `git diff --check` ? passed.
+
+The reference query now includes each model's primary key. Verification requires `object_key == make_object_key(file_class, row_id)` before any object-store read; a mismatch is aggregated as `object_key_record_mismatch` and blocks cutover readiness.
+
+Independent re-review is pending. Task 4 remains paused until that review passes. Live PostgreSQL and S3-compatible provider behavior remain unverified.
