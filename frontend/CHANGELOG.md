@@ -15,6 +15,7 @@
 - Fixed native development metrics scraping and observability labels.
 
 ### Chores
+- Updated frontend lint tooling to support the project's current TypeScript version.
 - Added production observability configuration, OpenShift examples, architecture documentation, and regression coverage for HR sync, Redis state, logging, and onboarding.
 
 ## 2026-09-17
