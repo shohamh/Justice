@@ -135,9 +135,17 @@ class _Attendees:
             self.problems.append(ProjectionProblem("missing_email", "An invited person has no usable email address."))
             return
         previous = self.by_email.get(email)
-        self.by_email[email] = ProjectedAttendee(
-            email, person.full_name, required or (previous.required if previous else False),
+        name_key = (person.full_name.casefold(), person.full_name)
+        previous_key = (
+            (previous.display_name.casefold(), previous.display_name)
+            if previous else None
         )
+        if (
+            previous is None
+            or (required and not previous.required)
+            or (required == previous.required and name_key < previous_key)
+        ):
+            self.by_email[email] = ProjectedAttendee(email, person.full_name, required)
 
     def commander_for(self, person: Soldier | None) -> None:
         if person is None or person.hierarchy_node_id is None:
@@ -151,13 +159,17 @@ class _Attendees:
 
 
 def _contact(session: Session, attendees: _Attendees, name: str | None, phone: str | None, body: list[str]) -> None:
-    if not name:
+    if not name and not phone:
         return
-    matches = [person for person in session.scalars(select(Soldier)).all() if _name(person.full_name) == _name(name) and _email(person.email)]
-    if len(matches) == 1:
+    matches = (
+        [person for person in session.scalars(select(Soldier)).all() if _name(person.full_name) == _name(name)]
+        if name else []
+    )
+    if len(matches) == 1 and _email(matches[0].email):
         attendees.add(matches[0], required=False)
     else:
-        body.append(f"Contact: {name.strip()}")
+        if name:
+            body.append(f"Contact: {name.strip()}")
         if phone:
             body.append(f"Contact phone: {phone.strip()}")
 
@@ -186,6 +198,8 @@ def _snapshot(
 def _duty(session: Session, source_type: SourceType, source: DutyShift | DutyAssignment, today: date) -> CalendarSnapshot | None:
     if _status(source.status) in {"cancelled", "deleted"}:
         return None
+    if source_type is SourceType.DUTY_ASSIGNMENT and _status(source.status) != "published":
+        return None
     if not _eligible(source.start_date, source.end_date, today):
         return None
     duty_type = session.get(DutyType, source.duty_type_id)
@@ -211,8 +225,6 @@ def _duty(session: Session, source_type: SourceType, source: DutyShift | DutyAss
         )
         attendees.add(person, required=not assignment.is_reserve or called_up)
         attendees.commander_for(person)
-        if called_up:
-            body.append(f"Reserve call-up: {person.full_name if person else 'assigned soldier'}: {assignment.called_up_from.isoformat()} - {assignment.called_up_to.isoformat()}")
     _contact(session, attendees, duty_type.contact_name, duty_type.contact_phone, body)
     start = israel_local_datetime(source.start_date, source.start_time)
     end = israel_local_datetime(source.end_date, source.end_time)

@@ -135,7 +135,7 @@ def test_called_up_reserve_is_required_only_for_overlapping_dates():
     row = assignment(db, shift, reserve, reserve=True, called_from=TODAY, called_to=TODAY)
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
     assert snap.attendees[0].required is True
-    assert TODAY.isoformat() in snap.body
+    assert TODAY.isoformat() not in snap.body
     row.called_up_from = TODAY + timedelta(days=1)
     row.called_up_to = TODAY + timedelta(days=2)
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
@@ -227,3 +227,95 @@ def test_content_hash_is_stable_until_visible_content_changes():
     assert first.content_hash == project_source(db, "duty_shift", shift.id, today=TODAY).content_hash
     shift.notes = "Changed"
     assert first.content_hash != project_source(db, "duty_shift", shift.id, today=TODAY).content_hash
+
+
+def test_call_up_details_are_not_shared_in_shift_body():
+    db, _, shift = shift_setup()
+    private_name = "Reserve Private Person"
+    reserve = soldier(db, private_name, "reserve@example.com")
+    assignment(db, shift, reserve, reserve=True, called_from=TODAY, called_to=TODAY)
+    snap = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert snap.attendees[0].required is True
+    assert private_name not in snap.body
+    assert "Reserve call-up" not in snap.body
+    assert TODAY.isoformat() not in snap.body
+
+
+def test_contact_name_uniqueness_includes_soldiers_without_email():
+    db, dtype, shift = shift_setup()
+    dtype.contact_name = "Contact Person"
+    dtype.contact_phone = "555"
+    soldier(db, "Contact Person", "contact@example.com")
+    soldier(db, " contact  person ", None)
+    snap = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert not any(a.email == "contact@example.com" for a in snap.attendees)
+    assert "Contact Person" in snap.body and "555" in snap.body
+
+
+def test_unknown_contact_and_phone_only_are_kept_in_shared_notes():
+    db, event = range_setup()
+    event.contact_name = "Unknown Person"
+    event.contact_phone = "123"
+    snap = project_source(db, "range_event", event.id, today=TODAY)
+    assert "Unknown Person" in snap.body and "123" in snap.body
+    event.contact_name = None
+    snap = project_source(db, "range_event", event.id, today=TODAY)
+    assert "123" in snap.body
+
+
+def test_standalone_draft_assignment_is_ineligible():
+    db, _, shift = shift_setup()
+    person = soldier(db, "Draft", "draft@example.com")
+    row = assignment(db, None, person)
+    row.duty_type_id = shift.duty_type_id
+    row.duty_location_id = shift.duty_location_id
+    row.status = "draft"
+    assert project_source(db, "duty_assignment", row.id, today=TODAY) is None
+
+
+def test_email_collision_role_and_identity_are_order_independent():
+    db, _, shift = shift_setup()
+    primary = soldier(db, "Primary", "SAME@example.com")
+    reserve = soldier(db, "Reserve", "same@example.com")
+    first = assignment(db, shift, primary)
+    second = assignment(db, shift, reserve, reserve=True)
+    before = project_source(db, "duty_shift", shift.id, today=TODAY)
+    db.assignments[:] = [second, first]
+    after = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert before.attendees == after.attendees
+    assert before.attendees[0].display_name == "Primary"
+    assert before.attendees[0].required
+    assert before.content_hash == after.content_hash
+
+
+def test_equal_role_email_collision_has_stable_tie_break():
+    db, _, shift = shift_setup()
+    zed = soldier(db, "Zed", "same@example.com")
+    amy = soldier(db, "Amy", "SAME@example.com")
+    first = assignment(db, shift, zed)
+    second = assignment(db, shift, amy)
+    before = project_source(db, "duty_shift", shift.id, today=TODAY)
+    db.assignments[:] = [second, first]
+    after = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert before.attendees == after.attendees
+    assert before.content_hash == after.content_hash
+
+
+def test_exchange_auth_dependency_imports_are_compatible():
+    import exchangelib
+    import spnego._ntlm_raw.crypto
+    from cryptography.hazmat.backends import default_backend
+
+    assert default_backend() is not None
+    assert exchangelib.EWSTimeZone.from_timezone(ZoneInfo("Asia/Jerusalem")).ms_id == "Israel Standard Time"
+    assert spnego is not None
+
+
+def test_single_contact_without_usable_email_is_notes_only():
+    db, dtype, shift = shift_setup()
+    dtype.contact_name = "Only Contact"
+    dtype.contact_phone = "777"
+    soldier(db, "Only Contact", None)
+    snap = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert snap.attendees == ()
+    assert "Only Contact" in snap.body and "777" in snap.body
