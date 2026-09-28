@@ -1,8 +1,10 @@
 """Official calendar writes stay in the caller's database transaction."""
 
-from datetime import UTC, date, datetime, timedelta
+from calendar import monthrange
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -25,10 +27,12 @@ from app.services.exchange_calendar.triggers import (
     enqueue_affected_by_soldier,
     enqueue_assignment_change,
     enqueue_source_change,
+    israel_today,
 )
 from app.services.shifts import create_shift, delete_shift, update_shift
 
-TODAY = date(2026, 9, 28)
+TODAY = israel_today()
+HORIZON = date(TODAY.year + 1, TODAY.month, min(TODAY.day, monthrange(TODAY.year + 1, TODAY.month)[1]))
 
 
 def _duty_labels(session: Session):
@@ -143,13 +147,13 @@ def test_soldier_email_and_commander_fanout_coalesces_official_sources(admin_ses
 
 def test_bootstrap_uses_israel_horizon_and_keeps_existing_old_items(admin_session: Session):
     active = _shift(admin_session, start=TODAY - timedelta(days=1), end=TODAY + timedelta(days=1))
-    edge = _shift(admin_session, start=date(2027, 9, 28))
-    future = _shift(admin_session, start=date(2027, 9, 29))
+    edge = _shift(admin_session, start=HORIZON)
+    future = _shift(admin_session, start=HORIZON + timedelta(days=1))
     past = _shift(admin_session, start=TODAY - timedelta(days=3), end=TODAY - timedelta(days=2))
-    admin_session.add(ExchangeCalendarSyncItem(source_type="duty_shift", source_id=past.id, status="synced"))
+    admin_session.add(ExchangeCalendarSyncItem(source_type="duty_shift", source_id=past.id, exchange_item_id="past-item", status="synced"))
     admin_session.flush()
     count = bootstrap_calendar_sources(
-        admin_session, now=datetime(2026, 9, 27, 22, 30, tzinfo=UTC), batch_size=2
+        admin_session, now=datetime.combine(TODAY, time(0, 30), ZoneInfo("Asia/Jerusalem")), batch_size=2
     )
     assert count == 2
     assert len(_jobs(admin_session, active.id)) == 1
@@ -306,7 +310,7 @@ def test_bootstrap_orders_nearest_across_source_types(admin_session: Session, mo
 
     monkeypatch.setattr(triggers, "enqueue_source", capture)
     triggers.bootstrap_calendar_sources(
-        admin_session, now=datetime(2026, 9, 27, 22, 30, tzinfo=UTC), batch_size=1,
+        admin_session, now=datetime.combine(TODAY, time(0, 30), ZoneInfo("Asia/Jerusalem")), batch_size=1,
     )
     assert calls == [("range_event", event.id), ("duty_shift", shift.id)]
 
@@ -322,3 +326,127 @@ def test_contact_name_rename_enqueues_old_and_new_matches(admin_session: Session
     update_soldier(admin_session, soldier=person, full_name="New Contact", phone=None)
     assert len(_jobs(admin_session, old_shift.id)) == 1
     assert len(_jobs(admin_session, new_shift.id)) == 1
+
+
+def test_duty_type_fanout_only_visits_window_or_tracked_sources(admin_session: Session, monkeypatch):
+    import app.services.exchange_calendar.triggers as triggers
+
+    kind, place = _duty_labels(admin_session)
+
+    def make_shift(start, end):
+        shift = DutyShift(
+            duty_type_id=kind.id, duty_location_id=place.id,
+            start_date=start, end_date=end,
+        )
+        admin_session.add(shift)
+        admin_session.flush()
+        return shift
+
+    old_unsynced = make_shift(TODAY - timedelta(days=30), TODAY - timedelta(days=29))
+    old_synced = make_shift(TODAY - timedelta(days=20), TODAY - timedelta(days=19))
+    ongoing = make_shift(TODAY - timedelta(days=1), TODAY + timedelta(days=1))
+    beyond_horizon = make_shift(TODAY + timedelta(days=370), TODAY + timedelta(days=371))
+    admin_session.add(ExchangeCalendarSyncItem(
+        source_type="duty_shift", source_id=old_unsynced.id, status="queued",
+    ))
+    admin_session.add(ExchangeCalendarSyncItem(
+        source_type="duty_shift", source_id=old_synced.id,
+        exchange_item_id="existing-exchange-item", status="synced",
+    ))
+    admin_session.flush()
+    visited = []
+    original = triggers.enqueue_source_change
+
+    def capture(session, source_type, source_id, **kwargs):
+        visited.append(source_id)
+        return original(session, source_type, source_id, **kwargs)
+
+    monkeypatch.setattr(triggers, "enqueue_source_change", capture)
+    assert triggers.enqueue_affected_by_duty_type(admin_session, kind.id, today=TODAY) == 2
+    assert set(visited) == {old_synced.id, ongoing.id}
+    assert _jobs(admin_session, old_unsynced.id) == []
+    assert _jobs(admin_session, beyond_horizon.id) == []
+    assert len(_jobs(admin_session, old_synced.id)) == 1
+    assert len(_jobs(admin_session, ongoing.id)) == 1
+
+
+def test_soldier_fanout_skips_old_untracked_assignments_and_ranges(admin_session: Session, monkeypatch):
+    import app.services.exchange_calendar.triggers as triggers
+
+    person = _soldier(admin_session)
+    old_shift = _shift(admin_session, start=TODAY - timedelta(days=30))
+    tracked_shift = _shift(admin_session, start=TODAY - timedelta(days=20))
+    upcoming_shift = _shift(admin_session, start=TODAY + timedelta(days=2))
+    for shift in (old_shift, tracked_shift, upcoming_shift):
+        admin_session.add(DutyAssignment(
+            soldier_id=person.id, duty_type_id=shift.duty_type_id,
+            duty_location_id=shift.duty_location_id,
+            start_date=shift.start_date, end_date=shift.end_date,
+            duty_shift_id=shift.id,
+        ))
+    node = HierarchyNode(level="team", name=f"Team {uuid4()}", path_ids=[])
+    place = RangeLocation(name=f"Range {uuid4()}")
+    admin_session.add_all([node, place])
+    admin_session.flush()
+    events = []
+    for event_date in (TODAY - timedelta(days=30), TODAY - timedelta(days=20), TODAY + timedelta(days=2)):
+        event = RangeEvent(
+            hierarchy_node_id=node.id, range_type="live", date=event_date,
+            range_location_id=place.id, required_count=1,
+            responsible_duty_manager_id=person.id,
+        )
+        admin_session.add(event)
+        admin_session.flush()
+        admin_session.add(RangeAssignment(range_event_id=event.id, soldier_id=person.id))
+        events.append(event)
+    admin_session.add_all([
+        ExchangeCalendarSyncItem(source_type="duty_shift", source_id=tracked_shift.id,
+                                 exchange_item_id="tracked-shift", status="synced"),
+        ExchangeCalendarSyncItem(source_type="range_event", source_id=events[1].id,
+                                 exchange_item_id="tracked-range", status="synced"),
+    ])
+    admin_session.flush()
+    visited = []
+    original = triggers.enqueue_source_change
+
+    def capture(session, source_type, source_id, **kwargs):
+        visited.append(source_id)
+        return original(session, source_type, source_id, **kwargs)
+
+    monkeypatch.setattr(triggers, "enqueue_source_change", capture)
+    assert triggers.enqueue_affected_by_soldier(admin_session, person.id, today=TODAY) == 4
+    assert set(visited) == {tracked_shift.id, upcoming_shift.id, events[1].id, events[2].id}
+    assert old_shift.id not in visited
+    assert events[0].id not in visited
+
+
+def test_location_fanout_keeps_old_tracked_standalone_assignment(admin_session: Session, monkeypatch):
+    import app.services.exchange_calendar.triggers as triggers
+
+    kind, place = _duty_labels(admin_session)
+    person = _soldier(admin_session)
+    assignments = []
+    for start in (TODAY - timedelta(days=30), TODAY - timedelta(days=20), TODAY + timedelta(days=2)):
+        assignment = DutyAssignment(
+            soldier_id=person.id, duty_type_id=kind.id, duty_location_id=place.id,
+            start_date=start, end_date=start + timedelta(days=1),
+        )
+        admin_session.add(assignment)
+        admin_session.flush()
+        assignments.append(assignment)
+    admin_session.add(ExchangeCalendarSyncItem(
+        source_type="duty_assignment", source_id=assignments[1].id,
+        exchange_item_id="tracked-assignment", status="synced",
+    ))
+    admin_session.flush()
+    visited = []
+    original = triggers.enqueue_source_change
+
+    def capture(session, source_type, source_id, **kwargs):
+        visited.append(source_id)
+        return original(session, source_type, source_id, **kwargs)
+
+    monkeypatch.setattr(triggers, "enqueue_source_change", capture)
+    assert triggers.enqueue_affected_by_location(admin_session, place, today=TODAY) == 2
+    assert set(visited) == {assignments[1].id, assignments[2].id}
+    assert assignments[0].id not in visited

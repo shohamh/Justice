@@ -7,7 +7,7 @@ from heapq import merge
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -53,6 +53,7 @@ def _already_tracked(session: Session, kind: str, source_id: UUID) -> bool:
         select(ExchangeCalendarSyncItem.id).where(
             ExchangeCalendarSyncItem.source_type == kind,
             ExchangeCalendarSyncItem.source_id == source_id,
+            ExchangeCalendarSyncItem.exchange_item_id.is_not(None),
         )
     ) is not None
 
@@ -98,6 +99,43 @@ def _unique_ids(values):
     return sorted(set(values), key=str)
 
 
+def _eligible_source(model, kind: str, today: date):
+    """Select sources in the creation window or already tracked by Exchange."""
+    start = model.date if model is RangeEvent else model.start_date
+    end = model.date if model is RangeEvent else model.end_date
+    tracked = select(ExchangeCalendarSyncItem.id).where(
+        ExchangeCalendarSyncItem.source_type == kind,
+        ExchangeCalendarSyncItem.source_id == model.id,
+        ExchangeCalendarSyncItem.exchange_item_id.is_not(None),
+    ).exists()
+    return or_(and_(end >= today, start <= _add_year(today)), tracked)
+
+
+def _assignment_source_keys(session: Session, today: date, *filters) -> set[tuple[str, UUID]]:
+    """Resolve published assignments to eligible shared or standalone events."""
+    shift_eligible = select(DutyShift.id).where(
+        DutyShift.id == DutyAssignment.duty_shift_id,
+        _eligible_source(DutyShift, "duty_shift", today),
+    ).exists()
+    rows = session.execute(
+        select(DutyAssignment.id, DutyAssignment.duty_shift_id).where(
+            DutyAssignment.status == "published",
+            *filters,
+            or_(
+                and_(
+                    DutyAssignment.duty_shift_id.is_(None),
+                    _eligible_source(DutyAssignment, "duty_assignment", today),
+                ),
+                and_(DutyAssignment.duty_shift_id.is_not(None), shift_eligible),
+            ),
+        )
+    )
+    return {
+        ("duty_shift", shift_id) if shift_id else ("duty_assignment", assignment_id)
+        for assignment_id, shift_id in rows
+    }
+
+
 def enqueue_affected_by_soldier(session: Session, soldier_id: UUID, *, today: date | None = None) -> int:
     """Reproject the soldier's invitations and direct-command subordinates."""
     local_today = today or israel_today()
@@ -107,21 +145,24 @@ def enqueue_affected_by_soldier(session: Session, soldier_id: UUID, *, today: da
         )
     ).all()
     people = _unique_ids([soldier_id, *subordinate_ids])
-    source_keys: set[tuple[str, UUID]] = set()
-    for assignment in session.scalars(
-        select(DutyAssignment).where(
-            DutyAssignment.soldier_id.in_(people), DutyAssignment.status == "published"
-        )
-    ):
-        source_keys.add(("duty_shift", assignment.duty_shift_id) if assignment.duty_shift_id else ("duty_assignment", assignment.id))
+    source_keys = _assignment_source_keys(
+        session, local_today, DutyAssignment.soldier_id.in_(people),
+    )
     range_ids = session.scalars(
-        select(RangeAssignment.range_event_id).where(
-            RangeAssignment.soldier_id.in_(people), RangeAssignment.is_draft.is_(False)
+        select(RangeAssignment.range_event_id)
+        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
+        .where(
+            RangeAssignment.soldier_id.in_(people),
+            RangeAssignment.is_draft.is_(False),
+            _eligible_source(RangeEvent, "range_event", local_today),
         )
     ).all()
     source_keys.update(("range_event", value) for value in range_ids)
     manager_ids = session.scalars(
-        select(RangeEvent.id).where(RangeEvent.responsible_duty_manager_id == soldier_id)
+        select(RangeEvent.id).where(
+            RangeEvent.responsible_duty_manager_id == soldier_id,
+            _eligible_source(RangeEvent, "range_event", local_today),
+        )
     ).all()
     source_keys.update(("range_event", value) for value in manager_ids)
     person = session.get(Soldier, soldier_id)
@@ -130,16 +171,20 @@ def enqueue_affected_by_soldier(session: Session, soldier_id: UUID, *, today: da
         for duty_type in session.scalars(select(DutyType).where(DutyType.contact_name.is_not(None))):
             if " ".join(duty_type.contact_name.split()).casefold() == normalized_name:
                 source_keys.update(("duty_shift", value) for value in session.scalars(
-                    select(DutyShift.id).where(DutyShift.duty_type_id == duty_type.id)
-                ))
-                source_keys.update(("duty_assignment", value) for value in session.scalars(
-                    select(DutyAssignment.id).where(
-                        DutyAssignment.duty_type_id == duty_type.id,
-                        DutyAssignment.duty_shift_id.is_(None),
-                        DutyAssignment.status == "published",
+                    select(DutyShift.id).where(
+                        DutyShift.duty_type_id == duty_type.id,
+                        _eligible_source(DutyShift, "duty_shift", local_today),
                     )
                 ))
-        for event in session.scalars(select(RangeEvent).where(RangeEvent.contact_name.is_not(None))):
+                source_keys.update(_assignment_source_keys(
+                    session, local_today,
+                    DutyAssignment.duty_type_id == duty_type.id,
+                    DutyAssignment.duty_shift_id.is_(None),
+                ))
+        for event in session.scalars(select(RangeEvent).where(
+            RangeEvent.contact_name.is_not(None),
+            _eligible_source(RangeEvent, "range_event", local_today),
+        )):
             if " ".join(event.contact_name.split()).casefold() == normalized_name:
                 source_keys.add(("range_event", event.id))
     return sum(
@@ -155,36 +200,49 @@ def enqueue_affected_by_hierarchy_node(session: Session, node_id: UUID, *, today
 
 
 def enqueue_affected_by_duty_type(session: Session, duty_type_id: UUID, *, today: date | None = None) -> int:
-    source_keys = [("duty_shift", value) for value in session.scalars(
-        select(DutyShift.id).where(DutyShift.duty_type_id == duty_type_id)
-    )]
-    source_keys += [("duty_assignment", value) for value in session.scalars(
-        select(DutyAssignment.id).where(
-            DutyAssignment.duty_type_id == duty_type_id,
-            DutyAssignment.duty_shift_id.is_(None),
-            DutyAssignment.status == "published",
+    local_today = today or israel_today()
+    source_keys = {("duty_shift", value) for value in session.scalars(
+        select(DutyShift.id).where(
+            DutyShift.duty_type_id == duty_type_id,
+            _eligible_source(DutyShift, "duty_shift", local_today),
         )
-    )]
-    return sum(enqueue_source_change(session, kind, value, today=today) for kind, value in source_keys)
+    )}
+    source_keys.update(_assignment_source_keys(
+        session, local_today,
+        DutyAssignment.duty_type_id == duty_type_id,
+        DutyAssignment.duty_shift_id.is_(None),
+    ))
+    return sum(
+        enqueue_source_change(session, kind, value, today=local_today)
+        for kind, value in sorted(source_keys, key=lambda pair: (pair[0], str(pair[1])))
+    )
 
 
 def enqueue_affected_by_location(session: Session, location: DutyLocation | RangeLocation, *, today: date | None = None) -> int:
+    local_today = today or israel_today()
     if isinstance(location, RangeLocation):
-        source_keys = [("range_event", value) for value in session.scalars(
-            select(RangeEvent.id).where(RangeEvent.range_location_id == location.id)
-        )]
-    else:
-        source_keys = [("duty_shift", value) for value in session.scalars(
-            select(DutyShift.id).where(DutyShift.duty_location_id == location.id)
-        )]
-        source_keys += [("duty_assignment", value) for value in session.scalars(
-            select(DutyAssignment.id).where(
-                DutyAssignment.duty_location_id == location.id,
-                DutyAssignment.duty_shift_id.is_(None),
-                DutyAssignment.status == "published",
+        source_keys = {("range_event", value) for value in session.scalars(
+            select(RangeEvent.id).where(
+                RangeEvent.range_location_id == location.id,
+                _eligible_source(RangeEvent, "range_event", local_today),
             )
-        )]
-    return sum(enqueue_source_change(session, kind, value, today=today) for kind, value in source_keys)
+        )}
+    else:
+        source_keys = {("duty_shift", value) for value in session.scalars(
+            select(DutyShift.id).where(
+                DutyShift.duty_location_id == location.id,
+                _eligible_source(DutyShift, "duty_shift", local_today),
+            )
+        )}
+        source_keys.update(_assignment_source_keys(
+            session, local_today,
+            DutyAssignment.duty_location_id == location.id,
+            DutyAssignment.duty_shift_id.is_(None),
+        ))
+    return sum(
+        enqueue_source_change(session, kind, value, today=local_today)
+        for kind, value in sorted(source_keys, key=lambda pair: (pair[0], str(pair[1])))
+    )
 
 
 def bootstrap_calendar_sources(
