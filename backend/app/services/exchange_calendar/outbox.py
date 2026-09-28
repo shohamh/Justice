@@ -8,7 +8,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.db.models import ExchangeCalendarOutbox, ExchangeCalendarSyncItem
 
@@ -96,8 +96,7 @@ def enqueue_source(
     session.execute(
         job_insert.on_conflict_do_update(
             index_elements=["source_type", "source_id"],
-            index_where=ExchangeCalendarOutbox.status
-            == ExchangeCalendarJobStatus.QUEUED.value,
+            index_where=ExchangeCalendarOutbox.status == ExchangeCalendarJobStatus.QUEUED.value,
             set_={
                 "priority": func.greatest(
                     ExchangeCalendarOutbox.priority,
@@ -126,7 +125,7 @@ def claim_next_job(
     worker_id: str,
     now: datetime,
 ) -> ExchangeCalendarOutbox | None:
-    """Lease the next due job without committing the caller's transaction."""
+    """Lease one due source while preserving caller-owned transaction boundaries."""
     if not worker_id.strip():
         raise ValueError("worker_id must be non-empty")
     if now.tzinfo is None or now.utcoffset() is None:
@@ -143,18 +142,51 @@ def claim_next_job(
             ExchangeCalendarOutbox.lease_expires_at <= now_utc,
         ),
     )
-    statement = (
+    leased_sibling = aliased(ExchangeCalendarOutbox)
+    has_leased_sibling = (
+        select(leased_sibling.id)
+        .where(
+            leased_sibling.source_type == ExchangeCalendarOutbox.source_type,
+            leased_sibling.source_id == ExchangeCalendarOutbox.source_id,
+            leased_sibling.status == ExchangeCalendarJobStatus.LEASED.value,
+            leased_sibling.id != ExchangeCalendarOutbox.id,
+        )
+        .exists()
+    )
+    # The sync item row is a stable per-source mutex across distinct outbox jobs.
+    candidate_statement = (
         select(ExchangeCalendarOutbox)
-        .where(due_job)
+        .join(
+            ExchangeCalendarSyncItem,
+            and_(
+                ExchangeCalendarSyncItem.source_type == ExchangeCalendarOutbox.source_type,
+                ExchangeCalendarSyncItem.source_id == ExchangeCalendarOutbox.source_id,
+            ),
+        )
+        .where(due_job, ~has_leased_sibling)
         .order_by(
             ExchangeCalendarOutbox.priority.desc(),
             ExchangeCalendarOutbox.queued_at.asc(),
             ExchangeCalendarOutbox.id.asc(),
         )
-        .with_for_update(skip_locked=True)
         .limit(1)
+        .with_for_update(skip_locked=True, of=ExchangeCalendarSyncItem)
     )
-    job = session.scalar(statement)
+    candidate = session.scalar(candidate_statement)
+    if candidate is None:
+        return None
+
+    # Recheck after locking the source row, then lease this exact job row.
+    job_statement = (
+        select(ExchangeCalendarOutbox)
+        .where(
+            ExchangeCalendarOutbox.id == candidate.id,
+            due_job,
+            ~has_leased_sibling,
+        )
+        .with_for_update(skip_locked=True)
+    )
+    job = session.scalar(job_statement)
     if job is None:
         return None
 

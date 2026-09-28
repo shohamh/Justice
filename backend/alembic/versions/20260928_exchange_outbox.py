@@ -36,8 +36,18 @@ def upgrade() -> None:
         sa.Column("last_success_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("current_error_category", sa.Text(), nullable=True),
         sa.Column("current_error", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.UniqueConstraint("source_type", "source_id", name="uq_exchange_calendar_sync_source"),
         sa.CheckConstraint(
             "source_type IN ('duty_shift', 'duty_assignment', 'range_event')",
@@ -49,7 +59,9 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_exchange_calendar_sync_status", "exchange_calendar_sync_items", ["status"])
-    op.create_index("ix_exchange_calendar_sync_source_date", "exchange_calendar_sync_items", ["source_date"])
+    op.create_index(
+        "ix_exchange_calendar_sync_source_date", "exchange_calendar_sync_items", ["source_date"]
+    )
 
     op.create_table(
         "exchange_calendar_outbox",
@@ -64,13 +76,30 @@ def upgrade() -> None:
         sa.Column("priority", sa.Integer(), server_default="0", nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("status", sa.Text(), server_default="queued", nullable=False),
-        sa.Column("queued_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("next_attempt_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "queued_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column(
+            "next_attempt_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("lease_owner", sa.Text(), nullable=True),
         sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("attempt_count", sa.Integer(), server_default="0", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             "source_type IN ('duty_shift', 'duty_assignment', 'range_event')",
             name="ck_exchange_calendar_outbox_source_type",
@@ -94,7 +123,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_exchange_calendar_outbox_due",
         "exchange_calendar_outbox",
-        ["status", "next_attempt_at", "priority", "queued_at"],
+        ["status", "next_attempt_at", sa.text("priority DESC"), "queued_at"],
     )
     op.create_index(
         "ix_exchange_calendar_outbox_lease",
@@ -115,16 +144,19 @@ def upgrade() -> None:
         sa.Column("outcome", sa.Text(), nullable=False),
         sa.Column("error_category", sa.Text(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("attempted_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "attempted_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("duration_ms", sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(
             ["sync_item_id"],
             ["exchange_calendar_sync_items.id"],
             ondelete="CASCADE",
         ),
-        sa.ForeignKeyConstraint(
-            ["job_id"], ["exchange_calendar_outbox.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["job_id"], ["exchange_calendar_outbox.id"], ondelete="SET NULL"),
         sa.CheckConstraint(
             "outcome IN ('created', 'updated', 'cancelled', 'unchanged', 'partial', 'failed', 'skipped')",
             name="ck_exchange_calendar_attempt_outcome",
@@ -152,19 +184,30 @@ def upgrade() -> None:
         sa.Column("latest_connection_error", sa.Text(), nullable=True),
         sa.Column("global_backoff_until", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_outbound_request_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint("id = 1", name="ck_exchange_calendar_worker_state_singleton"),
     )
 
 
 def downgrade() -> None:
     op.drop_table("exchange_calendar_worker_state")
-    op.drop_index("ix_exchange_calendar_attempt_history", table_name="exchange_calendar_sync_attempts")
+    op.drop_index(
+        "ix_exchange_calendar_attempt_history", table_name="exchange_calendar_sync_attempts"
+    )
     op.drop_table("exchange_calendar_sync_attempts")
     op.drop_index("ix_exchange_calendar_outbox_lease", table_name="exchange_calendar_outbox")
     op.drop_index("ix_exchange_calendar_outbox_due", table_name="exchange_calendar_outbox")
-    op.drop_index("uq_exchange_calendar_outbox_pending_source", table_name="exchange_calendar_outbox")
+    op.drop_index(
+        "uq_exchange_calendar_outbox_pending_source", table_name="exchange_calendar_outbox"
+    )
     op.drop_table("exchange_calendar_outbox")
-    op.drop_index("ix_exchange_calendar_sync_source_date", table_name="exchange_calendar_sync_items")
+    op.drop_index(
+        "ix_exchange_calendar_sync_source_date", table_name="exchange_calendar_sync_items"
+    )
     op.drop_index("ix_exchange_calendar_sync_status", table_name="exchange_calendar_sync_items")
     op.drop_table("exchange_calendar_sync_items")
