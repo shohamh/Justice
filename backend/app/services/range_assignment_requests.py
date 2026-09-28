@@ -10,13 +10,14 @@ from app.auth.authz import _node_in_scope, is_duty_manager, scope_root_ids
 from app.db.models import (
     HierarchyNode,
     NotificationType,
+    RangeAssignment,
     RangeAssignmentRequest,
     RangeAssignmentRequestStatus,
     RangeEvent,
     RangeEventStatus,
-    RangeAssignment,
     Soldier,
 )
+from app.services.exchange_calendar.triggers import enqueue_range_change
 from app.services.notifications import create_notification
 from app.services.ranges import _check_capacity, _validate_and_build_assignment
 
@@ -149,6 +150,7 @@ def approve_assignment_request(
         reference_id=request.id,
         actor_id=actor.id,
     )
+    enqueue_range_change(session, event.id)
     session.commit()
     session.refresh(assignment)
     return assignment

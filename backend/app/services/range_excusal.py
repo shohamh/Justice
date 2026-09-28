@@ -14,6 +14,7 @@ from app.db.models import (
     RangeExcusalRequest,
     RangeExcusalStatus,
 )
+from app.services.exchange_calendar.triggers import enqueue_range_change
 from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.range_reconciliation import reconcile_future_range_assignments
 from app.services.ranges import RangeValidationError, _notify_refilled_assignments
@@ -139,6 +140,7 @@ def request_reserve_excusal(
         title="חייל מילואים הסיר את עצמו", reference_type="range_excusal_request",
         reference_id=request.id, actor_id=requested_by,
     )
+    enqueue_range_change(session, assignment.range_event_id)
     session.commit()
     session.refresh(request)
     return request
@@ -252,6 +254,8 @@ def decide_primary_excusal(
                 title="אין מילואים זכאים לשיבוץ חלופי", reference_type="range_excusal_request",
                 reference_id=request.id, actor_id=decided_by,
             )
+    if approve:
+        enqueue_range_change(session, event.id)
     session.commit()
     session.refresh(request)
     return request

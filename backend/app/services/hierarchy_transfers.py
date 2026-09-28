@@ -122,6 +122,8 @@ def approve_request(
     soldier = session.get(Soldier, req.soldier_id)
     old_node_id = soldier.hierarchy_node_id
     soldier.hierarchy_node_id = req.to_node_id
+    from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+    enqueue_affected_by_soldier(session, soldier.id)
     req.status = "approved"
     req.decided_by = actor_id
     write_audit(

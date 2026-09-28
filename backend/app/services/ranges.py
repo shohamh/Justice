@@ -27,6 +27,7 @@ from app.db.models import (
 )
 from app.services.adjustments import create_adjustment
 from app.services.approval_scope import commander_chain_for_soldier
+from app.services.exchange_calendar.triggers import enqueue_range_change
 from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.range_exemption import is_range_exempt
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -196,6 +197,8 @@ def create_range_event(
         responsible_duty_manager_id=responsible_duty_manager_id,
     )
     session.add(event)
+    session.flush()
+    enqueue_range_change(session, event.id)
     session.commit()
     session.refresh(event)
     return event
@@ -306,6 +309,7 @@ def update_range_event(
         session, actor_id=actor_id, action="range_event.update", entity_type="range_event",
         entity_id=event.id, before=before, after=after,
     )
+    enqueue_range_change(session, event.id)
     session.commit()
     session.refresh(event)
     return event
@@ -338,6 +342,7 @@ def cancel_range_event(
         session, actor_id=actor_id, action="range_event.cancel", entity_type="range_event",
         entity_id=event.id, before={"status": previous_status}, after={"status": event.status},
     )
+    enqueue_range_change(session, event.id, reason="cancelled")
     session.commit()
     session.refresh(event)
     return event
@@ -407,6 +412,7 @@ def delete_range_event(session: Session, *, event: RangeEvent) -> None:
     ).first()
     if has_history is not None:
         raise RangeValidationError("event_has_history")
+    enqueue_range_change(session, event.id, reason="source_deleted")
     session.delete(event)
     session.commit()
 
@@ -557,6 +563,7 @@ def add_range_assignment(
         reference_id=event.id,
     )
     _notify_refilled_assignments(session, reconciliation)
+    enqueue_range_change(session, event.id)
     session.commit()
     session.refresh(assignment)
     return assignment
@@ -583,7 +590,10 @@ def assign_batch(
         new_reserve=len(reserve_soldier_ids),
     )
 
-    from app.services.range_auto_assign import _bulk_rank, _bulk_range_relevant_duty_start_by_soldier
+    from app.services.range_auto_assign import (
+        _bulk_range_relevant_duty_start_by_soldier,
+        _bulk_rank,
+    )
 
     rows_with_constraints = [
         _validate_and_build_assignment(
@@ -653,6 +663,7 @@ def assign_batch(
                 session, soldier_id=row.soldier_id, assignment_kind="range",
                 reason=override_reason.strip(), actor_id=user.id if user else None,
             )
+    enqueue_range_change(session, event.id)
     session.commit()
     rows = [row for row, _constraint in rows_with_constraints]
     for row in rows:
@@ -683,6 +694,8 @@ def _remove_range_assignment_in_transaction(
         },
         context={"reason": reason},
     )
+    if not assignment.is_draft:
+        enqueue_range_change(session, assignment.range_event_id)
     session.delete(assignment)
     session.flush()
     _notify_roster_change(
@@ -735,6 +748,8 @@ def clear_range_assignments(
         session.delete(assignment)
     session.flush()
     _notify_roster_change(session, event=event, soldier_ids=soldier_ids, actor_id=actor_id)
+    if any(not assignment.is_draft for assignment in assignments):
+        enqueue_range_change(session, event.id)
     session.commit()
     return len(assignments)
 

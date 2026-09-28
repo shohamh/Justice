@@ -22,6 +22,7 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
+from app.services.exchange_calendar.triggers import enqueue_assignment_change
 from app.services.notifications import create_notification
 from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
@@ -257,6 +258,7 @@ def create_assignment(
         from app.services.score_projection import refresh_projection_for_assignment_change
 
         refresh_projection_for_assignment_change(session, assignment=a)
+    enqueue_assignment_change(session, a)
     return a
 
 
@@ -285,6 +287,7 @@ def cancel_assignment(
     from app.services.score_projection import refresh_projection_for_assignment_change
 
     refresh_projection_for_assignment_change(session, assignment=assignment)
+    enqueue_assignment_change(session, assignment, reason="cancelled")
     return assignment
 
 
@@ -383,6 +386,7 @@ def replace_assignment(
         refresh_projection_for_assignment_change(
             session, assignment=assignment, extra_soldier_ids={before_soldier_id}
         )
+    enqueue_assignment_change(session, assignment)
     return assignment
 
 
@@ -505,6 +509,7 @@ def set_day_override(
                 - {None},
                 affected_dates={date},
             )
+        enqueue_assignment_change(session, assignment)
         return existing
     ov = DutyDayOverride(
         duty_assignment_id=assignment.id,
@@ -536,6 +541,7 @@ def set_day_override(
             soldier_ids={assignment.soldier_id, effective_soldier_id} - {None},
             affected_dates={date},
         )
+    enqueue_assignment_change(session, assignment)
     return ov
 
 
@@ -567,6 +573,7 @@ def clear_day_override(
         actor_id=actor_id,
     )
     old_effective_id = ov.effective_soldier_id
+    enqueue_assignment_change(session, assignment)
     session.delete(ov)
     session.flush()
     if assignment.status == "published":

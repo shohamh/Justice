@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
-
 from app.audit.writer import write_audit
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
@@ -31,6 +30,7 @@ from app.rate_limit import limiter
 from app.services.algorithm_bridge import HIGH_RANDOMNESS_RATIO_THRESHOLD, analyze_shift_availability, run_algorithm_job
 from app.services.authority import can_view_soldier_scope
 from app.services.duty_eligibility_watch import recheck_assignments
+from app.services.exchange_calendar.triggers import enqueue_assignment_change
 from app.services.score_projection import refresh_projection_for_assignment_change, refresh_projections_for_assignments_bulk
 
 _solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
@@ -914,6 +914,7 @@ def reset_published_assignments(
     # Bulk admin reset — direct mutation without per-soldier notifications (same pattern as reset-drafts).
     for a in assignments:
         a.status = "cancelled"
+        enqueue_assignment_change(session, a, reason="cancelled")
         write_audit(
             session,
             actor_id=user.id,
@@ -1002,6 +1003,7 @@ def accept_proposal(
     if a.status != "algorithm_draft":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
     a.status = "published"
+    enqueue_assignment_change(session, a, reason="assignment_accepted")
     write_audit(
         session,
         actor_id=user.id,
@@ -1066,6 +1068,8 @@ def bulk_accept_proposals(
         accepted_assignments = session.execute(
             select(DutyAssignment).where(DutyAssignment.id.in_(accepted_ids))
         ).scalars().all()
+        for assignment in accepted_assignments:
+            enqueue_assignment_change(session, assignment, reason="assignment_accepted")
         # One set-based rebuild per affected quarter instead of a per-assignment
         # refresh loop (publishing an algorithm run accepts hundreds at once).
         refresh_projections_for_assignments_bulk(
@@ -1159,6 +1163,7 @@ def accept_proposal_direct(
     if a.status != "algorithm_draft":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
     a.status = "published"
+    enqueue_assignment_change(session, a, reason="assignment_accepted")
     write_audit(
         session,
         actor_id=user.id,
