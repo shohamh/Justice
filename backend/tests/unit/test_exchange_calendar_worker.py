@@ -526,3 +526,66 @@ def test_concurrent_shared_backoff_updates_keep_longest_deadline(app_engine):
     assert failures == []
     with factory() as session:
         assert session.get(ExchangeCalendarWorkerState, 1).global_backoff_until == long
+
+
+@pytest.mark.database
+def test_unchanged_completion_cannot_clear_newer_shared_outage(app_engine):
+    from uuid import uuid4
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.models import (
+        ExchangeCalendarOutbox,
+        ExchangeCalendarSyncItem,
+        ExchangeCalendarWorkerState,
+    )
+    from app.services.exchange_calendar.worker import SqlCalendarRepository, WorkerOutcome
+
+    factory = sessionmaker(bind=app_engine, expire_on_commit=False)
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    source_id = uuid4()
+    repository_a = SqlCalendarRepository(factory, "worker-a")
+    repository_b = SqlCalendarRepository(factory, "worker-b")
+    repository_c = SqlCalendarRepository(factory, "worker-c")
+    repository_c.heartbeat(now)
+    with factory.begin() as session:
+        state = session.get(ExchangeCalendarWorkerState, 1)
+        state.exchange_reachable = None
+        state.global_backoff_until = None
+        state.last_connection_attempt_at = None
+
+    probes = []
+
+    class Client:
+        def probe(self):
+            probes.append("probe")
+
+    worker_c = ExchangeCalendarWorker(
+        repository_c, Client(), bootstrap=lambda at: None, clock=lambda: now,
+    )
+    assert worker_c.run_once(now) is False
+    assert probes == ["probe"]
+    with factory.begin() as session:
+        session.add(ExchangeCalendarSyncItem(
+            source_type="duty_shift", source_id=source_id, status="queued",
+        ))
+        pending = ExchangeCalendarOutbox(
+            source_type="duty_shift", source_id=source_id, reason="user_change",
+            priority=100, status="queued",
+        )
+        pending.next_attempt_at = now
+        session.add(pending)
+    claimed = repository_a.claim(now + timedelta(seconds=1))
+    assert claimed is not None
+
+    repository_b.probe_result(
+        now + timedelta(seconds=2), reachable=False,
+        backoff_until=now + timedelta(seconds=60),
+    )
+    assert repository_a.complete(
+        claimed, WorkerOutcome("unchanged"), now + timedelta(seconds=3),
+    )
+    with factory() as session:
+        assert session.get(ExchangeCalendarWorkerState, 1).exchange_reachable is False
+    assert worker_c.run_once(now + timedelta(seconds=61)) is False
+    assert probes == ["probe", "probe"]

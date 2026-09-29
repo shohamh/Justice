@@ -263,9 +263,10 @@ class SqlCalendarRepository:
                 state.exchange_reachable = False
                 state.last_connection_attempt_at = now
                 state.latest_connection_error = result.error_message
-            elif result.action in ("created", "updated", "cancelled", "unchanged"):
-                if state.last_connection_attempt_at is None or now >= state.last_connection_attempt_at:
-                    state.exchange_reachable = True
+            elif result.action in ("created", "updated", "cancelled"):
+                # Completion time is local DB time, not the time of EWS contact.
+                # Only a successful probe can release a newer outage latch.
+                if state.exchange_reachable is True:
                     state.last_successful_contact_at = now
             state.updated_at = now
             return True
