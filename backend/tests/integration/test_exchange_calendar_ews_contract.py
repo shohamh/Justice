@@ -259,3 +259,65 @@ def test_sdk_transient_soap_errors_enter_worker_retry_path(monkeypatch, response
     outcome = worker._failure(raised.value, SimpleNamespace(attempt_count=1), now)
     assert outcome.retry_at is not None and outcome.retry_at > now
     assert sum("<m:FindItem" in xml for xml in attempts) == 1
+
+
+def test_all_day_getitem_readback_matches_unchanged_snapshot(monkeypatch):
+    from datetime import date
+
+    from requests.adapters import HTTPAdapter
+
+    from app.services.exchange_calendar.ews_client import _ExchangeStore
+
+    source_id = uuid4()
+    source_key = f"range_event:{source_id}"
+    readback = soap(
+        '<m:GetItemResponse><m:ResponseMessages>'
+        '<m:GetItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>'
+        '<m:Items><t:CalendarItem><t:ItemId Id="ews-all-day" ChangeKey="ck-1"/>'
+        '<t:Subject>Range</t:Subject><t:Body BodyType="Text">Visible</t:Body>'
+        '<t:Start>2026-10-01T00:00:00+03:00</t:Start>'
+        '<t:End>2026-10-02T00:00:00+03:00</t:End>'
+        '<t:IsAllDayEvent>true</t:IsAllDayEvent><t:Location>Range</t:Location>'
+        '<t:ExtendedProperty><t:ExtendedFieldURI PropertySetId="5c6b2f3d-1bc4-4c52-95d3-43c3b1371291" '
+        'PropertyName="JusticeSourceKey" PropertyType="String"/>'
+        f'<t:Value>{source_key}</t:Value></t:ExtendedProperty>'
+        '</t:CalendarItem></m:Items></m:GetItemResponseMessage></m:ResponseMessages></m:GetItemResponse>'
+    )
+    attempts = []
+
+    def send(self, request, **kwargs):
+        xml = request.body.decode()
+        attempts.append(xml)
+        response = Response()
+        response.status_code = 200
+        response.url = request.url
+        response.request = request
+        response.headers["Content-Type"] = "text/xml"
+        if "<m:GetFolder" in xml:
+            response._content = GET_FOLDER
+        elif "<m:GetItem" in xml:
+            response._content = readback
+        else:
+            raise AssertionError("Unexpected EWS operation; sockets are prohibited")
+        return response
+
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    account = build_account(
+        endpoint="https://invalid.test/EWS/Exchange.asmx", mailbox="svc@example.test",
+        username="svc", password="dummy", auth_type="basic", permit=permit,
+    )
+    client = ExchangeCalendarClient(_ExchangeStore(account))
+    snapshot = CalendarSnapshot(
+        source_key=source_key, source_type=SourceType.RANGE_EVENT, source_id=source_id,
+        subject="Range",
+        start=datetime(2026, 10, 1, 0, tzinfo=ZoneInfo("Asia/Jerusalem")),
+        end=datetime(2026, 10, 2, 0, tzinfo=ZoneInfo("Asia/Jerusalem")),
+        all_day=True, location="Range", body="Visible",
+        attendees=(), problems=(), content_hash="same",
+    )
+    item = client.store.get("ews-all-day")
+    assert item.is_all_day is True
+    assert item.start == date(2026, 10, 1)
+    assert item.end == date(2026, 10, 1)
+    assert client.matches(snapshot, "ews-all-day") is True
+    assert len([xml for xml in attempts if "<m:GetItem" in xml]) == 2

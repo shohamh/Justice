@@ -28,7 +28,7 @@ def _exercise_meeting_lifecycle(client, snapshot):
         latest_id = ref.item_id
         assert client.matches(updated, latest_id)
         client.cancel(snapshot.source_key, latest_id)
-        assert not client.matches(updated, latest_id)
+        assert client.store.find(snapshot.source_key) is None
     finally:
         client.cancel(snapshot.source_key, latest_id)
 
@@ -101,6 +101,7 @@ def test_lifecycle_helper_creates_reads_updates_cancels_and_cleans_up():
         def __init__(self):
             self.remote = None
             self.calls = []
+            self.store = self
 
         def upsert(self, snapshot, item_id, change_key):
             self.calls.append("create" if item_id is None else "update")
@@ -111,13 +112,17 @@ def test_lifecycle_helper_creates_reads_updates_cancels_and_cleans_up():
             self.calls.append("read")
             return self.remote == snapshot
 
+        def find(self, source_key):
+            self.calls.append("find")
+            return self.remote
+
         def cancel(self, source_key, item_id):
             self.calls.append("cancel")
             self.remote = None
 
     client = FakeClient()
     _exercise_meeting_lifecycle(client, Snapshot())
-    assert client.calls == ["create", "read", "update", "read", "cancel", "read", "cancel"]
+    assert client.calls == ["create", "read", "update", "read", "cancel", "find", "cancel"]
     assert client.remote is None
 
 
@@ -153,3 +158,39 @@ def test_lifecycle_cleanup_runs_after_update_failure():
     with pytest.raises(RuntimeError, match="update failed"):
         _exercise_meeting_lifecycle(client, Snapshot())
     assert client.cancelled
+
+
+def test_lifecycle_rejects_lingering_source_key_after_cancel():
+    from dataclasses import dataclass
+    from types import SimpleNamespace
+
+    @dataclass(frozen=True)
+    class Snapshot:
+        source_key: str = "duty_shift:disposable"
+        subject: str = "Disposable"
+        body: str = "Initial"
+        content_hash: str = "one"
+
+    class FakeClient:
+        def __init__(self):
+            self.remote = None
+            self.store = self
+            self.cancel_calls = 0
+
+        def upsert(self, snapshot, item_id, change_key):
+            self.remote = snapshot
+            return SimpleNamespace(item_id="ews-1", change_key="ck-1")
+
+        def matches(self, snapshot, item_id):
+            return self.remote == snapshot and self.cancel_calls == 0
+
+        def find(self, source_key):
+            return self.remote
+
+        def cancel(self, source_key, item_id):
+            self.cancel_calls += 1
+            if self.cancel_calls > 1:
+                self.remote = None
+
+    with pytest.raises(AssertionError):
+        _exercise_meeting_lifecycle(FakeClient(), Snapshot())

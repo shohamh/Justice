@@ -423,3 +423,106 @@ def test_retry_merges_into_queued_edit_during_lease(app_engine):
         assert jobs[sibling_id].reason == "user_change"
         assert jobs[sibling_id].priority == 100
         assert jobs[sibling_id].next_attempt_at >= retry_at
+
+
+@pytest.mark.database
+def test_second_worker_reprobes_shared_outage_before_claim_after_deadline(app_engine):
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.models import ExchangeCalendarWorkerState
+    from app.services.exchange_calendar.worker import SqlCalendarRepository
+
+    factory = sessionmaker(bind=app_engine, expire_on_commit=False)
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    repository_a = SqlCalendarRepository(factory, "worker-a")
+    repository_b = SqlCalendarRepository(factory, "worker-b")
+    repository_a.heartbeat(now)
+    with factory.begin() as session:
+        state = session.get(ExchangeCalendarWorkerState, 1)
+        state.exchange_reachable = None
+        state.global_backoff_until = None
+        state.last_connection_attempt_at = None
+    probes = []
+
+    class Client:
+        def probe(self):
+            probes.append("probe")
+
+    worker_b = ExchangeCalendarWorker(
+        repository_b, Client(), bootstrap=lambda at: None, clock=lambda: now,
+    )
+    assert worker_b.run_once(now) is False
+    repository_a.probe_result(
+        now + timedelta(seconds=1), reachable=False,
+        backoff_until=now + timedelta(seconds=60),
+    )
+    assert worker_b.run_once(now + timedelta(seconds=30)) is False
+    assert probes == ["probe"]
+    assert worker_b.run_once(now + timedelta(seconds=61)) is False
+    assert probes == ["probe", "probe"]
+    with factory() as session:
+        assert session.get(ExchangeCalendarWorkerState, 1).exchange_reachable is True
+
+
+def test_transport_failure_renews_shared_outage_backoff():
+    from exchangelib.errors import ErrorTimeoutExpired
+
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    worker = ExchangeCalendarWorker(object(), object(), bootstrap=lambda at: None)
+    result = worker._failure(ErrorTimeoutExpired("private"), SimpleNamespace(attempt_count=1), now)
+    assert result.global_backoff_until is not None
+    assert result.global_backoff_until >= now + timedelta(seconds=60)
+
+
+@pytest.mark.database
+def test_concurrent_shared_backoff_updates_keep_longest_deadline(app_engine):
+    from threading import Event, Thread
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.models import ExchangeCalendarWorkerState
+    from app.services.exchange_calendar.worker import SqlCalendarRepository
+
+    factory = sessionmaker(bind=app_engine, expire_on_commit=False)
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    long = now + timedelta(minutes=5)
+    short = now + timedelta(minutes=2)
+    repository_a = SqlCalendarRepository(factory, "worker-a")
+    repository_b = SqlCalendarRepository(factory, "worker-b")
+    repository_a.heartbeat(now)
+    with factory.begin() as session:
+        session.get(ExchangeCalendarWorkerState, 1).global_backoff_until = None
+
+    state_read = Event()
+    proceed = Event()
+    failures = []
+    original_state = repository_b._state
+
+    def synchronized_state(session):
+        state = original_state(session)
+        state_read.set()
+        if not proceed.wait(5):
+            raise AssertionError("concurrent backoff test timed out")
+        return state
+
+    repository_b._state = synchronized_state
+
+    def shorter_update():
+        try:
+            repository_b.probe_result(now, reachable=False, backoff_until=short)
+        except Exception as exc:
+            failures.append(exc)
+
+    thread = Thread(target=shorter_update, daemon=True)
+    with factory.begin() as session:
+        state = repository_a._state(session)
+        thread.start()
+        state_read.wait(0.5)
+        state.global_backoff_until = long
+        session.flush()
+    proceed.set()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert failures == []
+    with factory() as session:
+        assert session.get(ExchangeCalendarWorkerState, 1).global_backoff_until == long

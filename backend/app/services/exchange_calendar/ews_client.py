@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from exchangelib import (
@@ -182,11 +182,25 @@ class ExchangeCalendarClient:
                 and remote.astimezone(UTC) == local.astimezone(UTC)
             )
 
+        if snapshot.all_day:
+            # exchangelib parses GetItem all-day boundaries as dates, with an
+            # inclusive end date. Our snapshots use an exclusive end midnight.
+            start_date = snapshot.start.astimezone(ISRAEL_EWS).date()
+            end_date = snapshot.end.astimezone(ISRAEL_EWS).date() - timedelta(days=1)
+            times_match = (
+                isinstance(item.start, date) and not isinstance(item.start, datetime)
+                and isinstance(item.end, date) and not isinstance(item.end, datetime)
+                and item.start == start_date and item.end == end_date
+            )
+        else:
+            times_match = same_time(item.start, snapshot.start) and same_time(
+                item.end, snapshot.end
+            )
+
         return (
             item.justice_source_key == snapshot.source_key
             and item.subject == snapshot.subject
-            and same_time(item.start, snapshot.start)
-            and same_time(item.end, snapshot.end)
+            and times_match
             and bool(item.is_all_day) == snapshot.all_day
             and (item.location or "") == snapshot.location
             and str(item.body or "") == snapshot.body

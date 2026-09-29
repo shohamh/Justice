@@ -68,7 +68,10 @@ class SqlCalendarRepository:
             .values(id=1)
             .on_conflict_do_nothing(index_elements=["id"])
         )
-        state = session.get(ExchangeCalendarWorkerState, 1)
+        state = session.scalar(
+            select(ExchangeCalendarWorkerState)
+            .where(ExchangeCalendarWorkerState.id == 1).with_for_update()
+        )
         if state is None:
             raise RuntimeError("Exchange calendar worker state is missing")
         return state
@@ -87,6 +90,13 @@ class SqlCalendarRepository:
         with self.session_factory.begin() as session:
             state = self._state(session)
             state.last_probe_at = now
+            if (
+                reachable and state.exchange_reachable is False
+                and state.last_connection_attempt_at is not None
+                and now < state.last_connection_attempt_at
+            ):
+                # A success recorded out of order cannot erase a newer outage.
+                return
             state.last_connection_attempt_at = now
             state.exchange_reachable = reachable
             state.latest_connection_error = error
@@ -100,6 +110,13 @@ class SqlCalendarRepository:
                     state.global_backoff_until = None
             state.updated_at = now
 
+    def outage_state(self) -> tuple[bool, datetime | None]:
+        with self.session_factory() as session:
+            state = session.get(ExchangeCalendarWorkerState, 1)
+            if state is None:
+                return False, None
+            return state.exchange_reachable is False, state.global_backoff_until
+
     def bootstrap(self, now: datetime) -> None:
         with self.session_factory.begin() as session:
             bootstrap_calendar_sources(session, now=now, batch_size=250)
@@ -111,6 +128,8 @@ class SqlCalendarRepository:
             state.worker_id = self.worker_id
             state.heartbeat_at = now
             state.updated_at = now
+            if state.exchange_reachable is False:
+                return None
             if state.global_backoff_until and state.global_backoff_until > now:
                 return None
             job = claim_next_job(session, worker_id=self.worker_id, now=now)
@@ -242,10 +261,12 @@ class SqlCalendarRepository:
                     result.global_backoff_until,
                 )
                 state.exchange_reachable = False
+                state.last_connection_attempt_at = now
                 state.latest_connection_error = result.error_message
             elif result.action in ("created", "updated", "cancelled", "unchanged"):
-                state.exchange_reachable = True
-                state.last_successful_contact_at = now
+                if state.last_connection_attempt_at is None or now >= state.last_connection_attempt_at:
+                    state.exchange_reachable = True
+                    state.last_successful_contact_at = now
             state.updated_at = now
             return True
 
@@ -278,7 +299,15 @@ class ExchangeCalendarWorker:
         return 60.0
 
     def _probe(self, now: datetime) -> bool:
-        if self.next_probe_at is not None and now < self.next_probe_at:
+        shared_outage = False
+        if hasattr(self.repository, "outage_state"):
+            shared_outage, shared_deadline = self.repository.outage_state()
+            if shared_outage and shared_deadline is not None and shared_deadline > now:
+                return False
+            if not shared_outage and self.last_probe_ok is False:
+                # Another worker may have confirmed recovery.
+                self.last_probe_ok = True
+        if not shared_outage and self.next_probe_at is not None and now < self.next_probe_at:
             return self.last_probe_ok is True
         self.last_probe = now
         try:
@@ -372,6 +401,13 @@ class ExchangeCalendarWorker:
                 "failed", error_category="exchange_unavailable",
                 error_message="Exchange request failed",
                 retry_at=now + timedelta(seconds=delay * (0.5 + self.jitter())),
+                global_backoff_until=(
+                    now + timedelta(seconds=60)
+                    if isinstance(exc, (
+                        RequestConnectionError, RequestTimeout, UnauthorizedError,
+                        ErrorTimeoutExpired, ErrorInternalServerTransientError,
+                    )) else None
+                ),
             )
         return WorkerOutcome(
             "failed", error_category="item_failure", error_message="Calendar item sync failed",
