@@ -108,6 +108,47 @@ def test_summary_counts_status_history_and_shared_outage(client: TestClient, adm
     assert "soap" not in str(body).lower()
 
 
+@pytest.mark.parametrize(
+    ("stored_error", "expected_category", "expected_message"),
+    [
+        ("Exchange probe failed", "exchange_unavailable", "Exchange probe failed."),
+        ("Exchange request failed", "exchange_unavailable", "Exchange is unavailable. The worker will retry."),
+        ("Exchange is busy", "exchange_busy", "Exchange is busy. The worker will retry after backoff."),
+    ],
+)
+def test_summary_preserves_only_allow_listed_exchange_diagnostics(
+    client: TestClient, admin_session: Session,
+    stored_error: str, expected_category: str, expected_message: str,
+):
+    admin_session.add(ExchangeCalendarWorkerState(
+        id=1, exchange_reachable=False, latest_connection_error=stored_error,
+    ))
+    admin_session.commit()
+    response = client.get(f"{BASE}/summary", headers=auth_headers(_admin(admin_session)))
+    assert response.status_code == 200, response.text
+    assert response.json()["latest_connection_error_category"] == expected_category
+    assert response.json()["latest_connection_error"] == expected_message
+
+
+def test_summary_does_not_echo_unrecognized_connection_error(
+    client: TestClient, admin_session: Session,
+):
+    raw_error = "Exchange probe failed: password=do-not-leak"
+    admin_session.add(ExchangeCalendarWorkerState(
+        id=1, exchange_reachable=False, latest_connection_error=raw_error,
+    ))
+    admin_session.commit()
+
+    response = client.get(f"{BASE}/summary", headers=auth_headers(_admin(admin_session)))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["latest_connection_error_category"] is None
+    assert body["latest_connection_error"] == "Calendar sync failed."
+    assert raw_error not in response.text
+    assert "do-not-leak" not in response.text
+
+
 def test_summary_counts_upcoming_queued_source_before_worker_sets_its_date(
     client: TestClient, admin_session: Session,
 ):
@@ -175,7 +216,9 @@ def test_events_derive_current_missing_optional_attendee_without_sharing_event_n
     event.notes = "private operational note"
     invited = create_soldier(admin_session, personal_number="exchange-invited")
     invited.email = "invited@example.test"
-    optional = create_soldier(admin_session, personal_number="exchange-optional")
+    optional = create_soldier(
+        admin_session, personal_number="exchange-optional", full_name="Optional attendee",
+    )
     event.responsible_duty_manager_id = optional.id
     create_range_assignment(admin_session, range_event=event, soldier=invited)
     admin_session.add(ExchangeCalendarSyncItem(
@@ -192,7 +235,9 @@ def test_events_derive_current_missing_optional_attendee_without_sharing_event_n
     assert item["last_success_at"] is not None
     assert item["current_projection_problems"] == [{
         "code": "missing_email", "message": "An invited person has no usable email address.",
+        "attendee_name": "Optional attendee", "attendee_role": "responsible_duty_manager",
     }]
+    assert "exchange-optional" not in response.text
     assert "private operational note" not in response.text
     assert "private-exchange-id" not in response.text
 

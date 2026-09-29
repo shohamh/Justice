@@ -14,6 +14,7 @@ const summary = {
   exchange_reachable: false, last_connection_attempt_at: "2026-09-29T08:50:00Z",
   last_successful_contact_at: "2026-09-29T08:00:00Z",
   latest_connection_error: "Exchange is unavailable. The worker will retry.",
+  latest_connection_error_category: "exchange_unavailable",
   global_backoff_until: "2026-09-29T09:10:00Z",
 };
 
@@ -22,7 +23,10 @@ const event = {
   status: "partial" as const, last_attempt_at: "2026-09-29T09:00:00Z",
   last_success_at: "2026-09-29T09:00:00Z", error_category: "missing_email",
   error: "An invited person has no usable email address.",
-  current_projection_problems: [{ code: "missing_email", message: "An invited person has no usable email address." }],
+  current_projection_problems: [{
+    code: "missing_email", message: "An invited person has no usable email address.",
+    attendee_name: "Optional attendee", attendee_role: "responsible_duty_manager",
+  }],
   recent_attempts: [{ outcome: "partial", attempted_at: "2026-09-29T09:00:00Z", error_category: "missing_email", error: "An invited person has no usable email address." }],
 };
 
@@ -50,6 +54,7 @@ describe("ExchangeCalendarSyncContent", () => {
     expect(screen.getByTestId("exchange-sync-recent-created")).toHaveTextContent("2");
     expect(screen.getByTestId("exchange-sync-worker")).toHaveTextContent("2026");
     expect(screen.getByTestId("exchange-sync-connection")).toHaveTextContent("Exchange");
+    expect(screen.getByTestId("exchange-sync-connection")).toHaveTextContent("exchange_unavailable");
     expect(screen.getByTestId("exchange-sync-backoff")).toHaveTextContent("2026");
   });
 
@@ -59,6 +64,8 @@ describe("ExchangeCalendarSyncContent", () => {
     expect(row).not.toBeNull();
     expect(row).toHaveTextContent("partial");
     expect(row).toHaveTextContent("An invited person has no usable email address.");
+    expect(row).toHaveTextContent("Optional attendee");
+    expect(row).toHaveTextContent("אחראי תורנות");
     fireEvent.click(screen.getByTestId("exchange-sync-history-source-1"));
     expect(await screen.findByTestId("exchange-sync-history-detail")).toHaveTextContent("partial");
   });

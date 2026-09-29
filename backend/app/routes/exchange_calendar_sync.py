@@ -41,6 +41,15 @@ _SAFE_ERRORS = {
     "auth_failure": "Exchange authentication failed.",
     "item_failure": "Calendar item sync failed.",
 }
+_SAFE_CONNECTION_ERRORS = {
+    "Exchange probe failed": ("exchange_unavailable", "Exchange probe failed."),
+    "Exchange request failed": (
+        "exchange_unavailable", "Exchange is unavailable. The worker will retry.",
+    ),
+    "Exchange is busy": (
+        "exchange_busy", "Exchange is busy. The worker will retry after backoff.",
+    ),
+}
 
 
 def _safe_category(category: str | None) -> str | None:
@@ -51,6 +60,13 @@ def _safe_error(category: str | None, raw: str | None) -> str | None:
     if category in _SAFE_ERRORS:
         return _SAFE_ERRORS[category]
     return "Calendar sync failed." if raw else None
+
+
+def _safe_connection_error(raw: str | None) -> tuple[str | None, str | None]:
+    if raw is None:
+        return None, None
+    recognized = _SAFE_CONNECTION_ERRORS.get(raw)
+    return recognized if recognized is not None else (None, "Calendar sync failed.")
 
 
 class CountsOut(BaseModel):
@@ -79,6 +95,7 @@ class SummaryOut(BaseModel):
     exchange_reachable: bool | None
     last_connection_attempt_at: datetime | None
     last_successful_contact_at: datetime | None
+    latest_connection_error_category: str | None
     latest_connection_error: str | None
     global_backoff_until: datetime | None
 
@@ -86,6 +103,8 @@ class SummaryOut(BaseModel):
 class ProblemOut(BaseModel):
     code: str
     message: str
+    attendee_name: str | None = None
+    attendee_role: str | None = None
 
 
 class AttemptOut(BaseModel):
@@ -153,6 +172,9 @@ def summary(
         .group_by(ExchangeCalendarSyncAttempt.outcome)
     ).all())
     state = session.get(ExchangeCalendarWorkerState, 1)
+    connection_error_category, connection_error = _safe_connection_error(
+        state.latest_connection_error if state else None,
+    )
     return SummaryOut(
         counts=CountsOut(**counts),
         recent=RecentOut(**{name: outcomes.get(name, 0) for name in _RECENT_OUTCOMES}),
@@ -161,7 +183,8 @@ def summary(
         exchange_reachable=state.exchange_reachable if state else None,
         last_connection_attempt_at=state.last_connection_attempt_at if state else None,
         last_successful_contact_at=state.last_successful_contact_at if state else None,
-        latest_connection_error=_safe_error(None, state.latest_connection_error) if state else None,
+        latest_connection_error_category=connection_error_category,
+        latest_connection_error=connection_error,
         global_backoff_until=state.global_backoff_until if state else None,
     )
 
@@ -199,7 +222,10 @@ def events(
             snapshot = project_source(session, row.source_type, row.source_id, today=projection_day)
             if snapshot:
                 source_date = snapshot.start.date()
-                problems = [ProblemOut(code=p.code, message=p.safe_message) for p in snapshot.problems]
+                problems = [ProblemOut(
+                    code=p.code, message=p.safe_message,
+                    attendee_name=p.attendee_name, attendee_role=p.attendee_role,
+                ) for p in snapshot.problems]
         except ProjectionError as exc:
             problems = [ProblemOut(code=exc.code, message=exc.safe_message)]
         attempts = session.scalars(

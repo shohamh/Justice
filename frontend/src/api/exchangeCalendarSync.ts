@@ -32,6 +32,7 @@ export interface ExchangeSyncSummary {
   exchange_reachable: boolean | null;
   last_connection_attempt_at: string | null;
   last_successful_contact_at: string | null;
+  latest_connection_error_category: string | null;
   latest_connection_error: string | null;
   global_backoff_until: string | null;
 }
@@ -39,6 +40,8 @@ export interface ExchangeSyncSummary {
 export interface ExchangeProjectionProblem {
   code: string;
   message: string;
+  attendee_name: string | null;
+  attendee_role: string | null;
 }
 
 export interface ExchangeSyncAttempt {

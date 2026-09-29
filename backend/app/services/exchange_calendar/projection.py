@@ -60,6 +60,8 @@ class ProjectedAttendee:
 class ProjectionProblem:
     code: str
     safe_message: str
+    attendee_name: str | None = None
+    attendee_role: str | None = None
 
 
 @dataclass(frozen=True)
@@ -126,13 +128,17 @@ class _Attendees:
         self.by_email: dict[str, ProjectedAttendee] = {}
         self.problems: list[ProjectionProblem] = []
 
-    def add(self, person: Soldier | None, *, required: bool) -> None:
+    def add(self, person: Soldier | None, *, required: bool, role: str) -> None:
         if person is None:
             self.problems.append(ProjectionProblem("missing_person", "An assigned person could not be found."))
             return
         email = _email(person.email)
         if email is None:
-            self.problems.append(ProjectionProblem("missing_email", "An invited person has no usable email address."))
+            display_name = " ".join(person.full_name.split())
+            self.problems.append(ProjectionProblem(
+                "missing_email", "An invited person has no usable email address.",
+                attendee_name=display_name or None, attendee_role=role,
+            ))
             return
         previous = self.by_email.get(email)
         name_key = (person.full_name.casefold(), person.full_name)
@@ -152,7 +158,7 @@ class _Attendees:
             return
         node = self.session.get(HierarchyNode, person.hierarchy_node_id)
         if node is not None and node.commander_id is not None and node.commander_id != person.id:
-            self.add(self.session.get(Soldier, node.commander_id), required=False)
+            self.add(self.session.get(Soldier, node.commander_id), required=False, role="direct_commander")
 
     def finish(self) -> tuple[ProjectedAttendee, ...]:
         return tuple(self.by_email[key] for key in sorted(self.by_email))
@@ -166,7 +172,7 @@ def _contact(session: Session, attendees: _Attendees, name: str | None, phone: s
         if name else []
     )
     if len(matches) == 1 and _email(matches[0].email):
-        attendees.add(matches[0], required=False)
+        attendees.add(matches[0], required=False, role="contact")
     else:
         if name:
             body.append(f"Contact: {name.strip()}")
@@ -223,7 +229,10 @@ def _duty(session: Session, source_type: SourceType, source: DutyShift | DutyAss
             assignment.is_reserve and assignment.called_up_from and assignment.called_up_to
             and assignment.called_up_from <= source.end_date and assignment.called_up_to >= source.start_date
         )
-        attendees.add(person, required=not assignment.is_reserve or called_up)
+        role = "called_up_reserve" if assignment.is_reserve and called_up else (
+            "reserve" if assignment.is_reserve else "assigned_soldier"
+        )
+        attendees.add(person, required=not assignment.is_reserve or called_up, role=role)
         attendees.commander_for(person)
     _contact(session, attendees, duty_type.contact_name, duty_type.contact_phone, body)
     start = israel_local_datetime(source.start_date, source.start_time)
@@ -250,10 +259,15 @@ def _range(session: Session, event: RangeEvent, today: date) -> CalendarSnapshot
     assignments = [a for a in session.scalars(select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)).all() if a.range_event_id == event.id and not a.is_draft]
     for assignment in assignments:
         person = session.get(Soldier, assignment.soldier_id)
-        attendees.add(person, required=not assignment.is_reserve)
+        role = "reserve" if assignment.is_reserve else "assigned_soldier"
+        attendees.add(person, required=not assignment.is_reserve, role=role)
         attendees.commander_for(person)
     if event.responsible_duty_manager_id:
-        attendees.add(session.get(Soldier, event.responsible_duty_manager_id), required=False)
+        attendees.add(
+            session.get(Soldier, event.responsible_duty_manager_id),
+            required=False,
+            role="responsible_duty_manager",
+        )
     body = [event.arrival_instructions or "", event.notes or ""]
     _contact(session, attendees, event.contact_name, event.contact_phone, body)
     range_type = _status(event.range_type)

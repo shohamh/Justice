@@ -13,6 +13,14 @@ const statusLabels: Record<string, string> = {
 const sourceLabels: Record<ExchangeSourceType, string> = {
   duty_shift: "משמרת", duty_assignment: "שיבוץ", range_event: "מטווח",
 };
+const attendeeRoleLabels: Record<string, string> = {
+  assigned_soldier: "חייל משובץ",
+  reserve: "חייל מילואים",
+  called_up_reserve: "חייל מילואים שהוקפץ",
+  direct_commander: "מפקד ישיר",
+  responsible_duty_manager: "אחראי תורנות",
+  contact: "איש קשר",
+};
 const countLabels = [
   ["eligible", "אירועים זכאים"], ["synced", "סונכרנו"], ["queued", "בתור"],
   ["in_progress", "בעבודה"], ["partial", "חלקי"], ["retry_wait", "ממתינים לניסיון חוזר"],
@@ -60,7 +68,14 @@ export default function ExchangeCalendarSyncContent() {
       <div className="space-y-1">
         {row.error && <div>{row.error}</div>}
         {row.current_projection_problems.length > 0 && (
-          <div><span className="font-medium">בעיות נוכחיות בנתוני המשתתפים:</span> {row.current_projection_problems.map((p) => p.message).join("; ")}</div>
+          <div>
+            <span className="font-medium">בעיות נוכחיות בנתוני המשתתפים:</span>{" "}
+            {row.current_projection_problems.map((problem, index) => <span key={`${problem.code}-${problem.attendee_name ?? "unknown"}-${index}`}>
+              {index > 0 && "; "}
+              {problem.attendee_name && <span className="font-medium">{problem.attendee_name} ({attendeeRoleLabels[problem.attendee_role ?? ""] ?? "משתתף"}): </span>}
+              {problem.message}
+            </span>)}
+          </div>
         )}
         {!row.error && row.current_projection_problems.length === 0 && "—"}
       </div>
@@ -98,7 +113,7 @@ export default function ExchangeCalendarSyncContent() {
             <div className="flex flex-wrap gap-3 text-sm">ניסיונות ב־24 השעות האחרונות: {recentLabels.map(([key, label]) => <span key={key} data-testid={`exchange-sync-recent-${key}`}>{label}: {summary.data.recent[key]}</span>)}</div>
             <div className="rounded border border-gray-200 dark:border-gray-700 p-3 text-sm space-y-1">
               <div data-testid="exchange-sync-worker">פעימות עובד הרקע: {formatTime(summary.data.worker_heartbeat_at)}</div>
-              <div data-testid="exchange-sync-connection">חיבור Exchange: {summary.data.exchange_reachable === true ? "זמין" : summary.data.exchange_reachable === false ? "לא זמין" : "טרם נבדק"}</div>
+              <div data-testid="exchange-sync-connection">חיבור Exchange: {summary.data.exchange_reachable === true ? "זמין" : summary.data.exchange_reachable === false ? "לא זמין" : "טרם נבדק"}{summary.data.latest_connection_error_category && <span className="text-xs text-gray-500"> ({summary.data.latest_connection_error_category})</span>}</div>
               <div>בדיקה אחרונה: {formatTime(summary.data.last_probe_at)}</div>
               <div>ניסיון חיבור אחרון: {formatTime(summary.data.last_connection_attempt_at)}</div>
               <div>קשר מוצלח אחרון: {formatTime(summary.data.last_successful_contact_at)}</div>
