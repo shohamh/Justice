@@ -209,3 +209,53 @@ def test_server_busy_response_is_raised_without_retry_or_socket(monkeypatch):
     with pytest.raises(ErrorServerBusy):
         ExchangeCalendarClient(_ExchangeStore(account)).probe()
     assert sum("FindItem" in xml for xml in attempts) == 1
+
+
+
+@pytest.mark.parametrize("response_code", ["ErrorTimeoutExpired", "ErrorInternalServerTransientError"])
+def test_sdk_transient_soap_errors_enter_worker_retry_path(monkeypatch, response_code):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from exchangelib import errors
+    from requests.adapters import HTTPAdapter
+
+    from app.services.exchange_calendar.ews_client import _ExchangeStore
+    from app.services.exchange_calendar.worker import ExchangeCalendarWorker
+
+    fault = soap(
+        '<m:FindItemResponse><m:ResponseMessages>'
+        f'<m:FindItemResponseMessage ResponseClass="Error"><m:MessageText>private</m:MessageText><m:ResponseCode>{response_code}</m:ResponseCode></m:FindItemResponseMessage>'
+        '</m:ResponseMessages></m:FindItemResponse>'
+    )
+    attempts = []
+
+    def send(self, request, **kwargs):
+        xml = request.body.decode()
+        attempts.append(xml)
+        response = Response()
+        response.status_code = 200
+        response.url = request.url
+        response.request = request
+        response.headers["Content-Type"] = "text/xml"
+        if "GetFolder" in xml:
+            response._content = GET_FOLDER
+        elif "FindItem" in xml:
+            response._content = fault
+        else:
+            raise AssertionError("Unexpected EWS operation; sockets are prohibited")
+        return response
+
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    account = build_account(
+        endpoint="https://invalid.test/EWS/Exchange.asmx", mailbox="svc@example.test",
+        username="svc", password="dummy", auth_type="basic", permit=permit,
+    )
+    expected = errors.ErrorServerBusy if response_code == "ErrorInternalServerTransientError" else getattr(errors, response_code)
+    with pytest.raises(expected) as raised:
+        ExchangeCalendarClient(_ExchangeStore(account)).probe()
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    worker = ExchangeCalendarWorker(object(), object(), bootstrap=lambda at: None)
+    outcome = worker._failure(raised.value, SimpleNamespace(attempt_count=1), now)
+    assert outcome.retry_at is not None and outcome.retry_at > now
+    assert sum("<m:FindItem" in xml for xml in attempts) == 1

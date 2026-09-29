@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from exchangelib.errors import ErrorServerBusy, UnauthorizedError
+from exchangelib.errors import (
+    ErrorInternalServerTransientError,
+    ErrorServerBusy,
+    ErrorTimeoutExpired,
+    UnauthorizedError,
+)
 from requests.exceptions import ConnectionError as RequestConnectionError
 from requests.exceptions import Timeout as RequestTimeout
 from sqlalchemy import select
@@ -16,10 +22,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
+    DutyAssignment,
+    DutyShift,
     ExchangeCalendarOutbox,
     ExchangeCalendarSyncAttempt,
     ExchangeCalendarSyncItem,
     ExchangeCalendarWorkerState,
+    RangeEvent,
 )
 from app.services.exchange_calendar.outbox import (
     ExchangeCalendarJobStatus,
@@ -82,7 +91,9 @@ class SqlCalendarRepository:
             state.exchange_reachable = reachable
             state.latest_connection_error = error
             if backoff_until is not None:
-                state.global_backoff_until = backoff_until
+                state.global_backoff_until = max(
+                    state.global_backoff_until or backoff_until, backoff_until
+                )
             if reachable:
                 state.last_successful_contact_at = now
                 if state.global_backoff_until and state.global_backoff_until <= now:
@@ -133,10 +144,26 @@ class SqlCalendarRepository:
 
     def project(self, job: ExchangeCalendarOutbox, now: datetime):
         with self.session_factory() as session:
-            return project_source(
-                session, job.source_type, job.source_id,
-                today=now.astimezone(ZoneInfo("Asia/Jerusalem")).date(),
+            today = now.astimezone(ZoneInfo("Asia/Jerusalem")).date()
+            sync_item = session.scalar(
+                select(ExchangeCalendarSyncItem).where(
+                    ExchangeCalendarSyncItem.source_type == job.source_type,
+                    ExchangeCalendarSyncItem.source_id == job.source_id,
+                )
             )
+            if sync_item is not None and sync_item.exchange_item_id:
+                model = {
+                    "duty_shift": DutyShift,
+                    "duty_assignment": DutyAssignment,
+                    "range_event": RangeEvent,
+                }[job.source_type]
+                source = session.get(model, job.source_id)
+                if source is not None:
+                    # Creation eligibility is a window around today. A meeting
+                    # already mirrored to Exchange must follow its source for
+                    # its full lifetime, including past and distant dates.
+                    today = source.date if job.source_type == "range_event" else source.start_date
+            return project_source(session, job.source_type, job.source_id, today=today)
 
     def complete(self, job: ExchangeCalendarOutbox, result: WorkerOutcome, now: datetime, **kwargs) -> bool:
         with self.session_factory.begin() as session:
@@ -165,8 +192,25 @@ class SqlCalendarRepository:
             if result.action == "failed":
                 if result.retry_at:
                     item.status = ExchangeCalendarSyncStatus.RETRY_WAIT.value
-                    locked.status = ExchangeCalendarJobStatus.QUEUED.value
-                    locked.next_attempt_at = result.retry_at
+                    queued_sibling = session.scalar(
+                        select(ExchangeCalendarOutbox).where(
+                            ExchangeCalendarOutbox.source_type == locked.source_type,
+                            ExchangeCalendarOutbox.source_id == locked.source_id,
+                            ExchangeCalendarOutbox.status == ExchangeCalendarJobStatus.QUEUED.value,
+                            ExchangeCalendarOutbox.id != locked.id,
+                        ).with_for_update()
+                    )
+                    if queued_sibling is None:
+                        locked.status = ExchangeCalendarJobStatus.QUEUED.value
+                        locked.next_attempt_at = result.retry_at
+                    else:
+                        # Preserve the newer user edit and its reason. The
+                        # queued-only unique index permits exactly one row.
+                        queued_sibling.priority = max(queued_sibling.priority, locked.priority)
+                        queued_sibling.next_attempt_at = max(
+                            queued_sibling.next_attempt_at, result.retry_at
+                        )
+                        locked.status = ExchangeCalendarJobStatus.COMPLETED.value
                 else:
                     item.status = ExchangeCalendarSyncStatus.FAILED.value
                     locked.status = ExchangeCalendarJobStatus.FAILED.value
@@ -193,7 +237,10 @@ class SqlCalendarRepository:
             ))
             state = self._state(session)
             if result.global_backoff_until:
-                state.global_backoff_until = result.global_backoff_until
+                state.global_backoff_until = max(
+                    state.global_backoff_until or result.global_backoff_until,
+                    result.global_backoff_until,
+                )
                 state.exchange_reachable = False
                 state.latest_connection_error = result.error_message
             elif result.action in ("created", "updated", "cancelled", "unchanged"):
@@ -219,24 +266,43 @@ class ExchangeCalendarWorker:
         self.clock = clock
         self.jitter = jitter
         self.last_probe: datetime | None = None
+        self.last_probe_ok: bool | None = None
+        self.next_probe_at: datetime | None = None
         self.last_bootstrap: datetime | None = None
 
+    @staticmethod
+    def _busy_seconds(exc: ErrorServerBusy) -> float:
+        requested = exc.back_off
+        if isinstance(requested, (int, float)) and math.isfinite(requested) and requested > 0:
+            return max(60.0, float(requested))
+        return 60.0
+
     def _probe(self, now: datetime) -> bool:
-        if self.last_probe is not None and now - self.last_probe < self.PROBE_INTERVAL:
-            return True
+        if self.next_probe_at is not None and now < self.next_probe_at:
+            return self.last_probe_ok is True
         self.last_probe = now
         try:
             self.client.probe()
         except Exception as exc:
-            backoff_until = now + timedelta(seconds=60) if isinstance(exc, ErrorServerBusy) else None
-            if backoff_until is not None or isinstance(exc, ExchangeBackoffActive):
-                self.last_probe = now - self.PROBE_INTERVAL + timedelta(seconds=60)
+            response_at = self.clock()
+            self.last_probe_ok = False
+            if isinstance(exc, ExchangeBackoffActive):
+                # The database already owns this deadline. Do not extend it
+                # each time a local worker checks the gate.
+                backoff_until = None
+                self.next_probe_at = response_at + timedelta(seconds=60)
+            else:
+                seconds = self._busy_seconds(exc) if isinstance(exc, ErrorServerBusy) else 60
+                backoff_until = response_at + timedelta(seconds=seconds)
+                self.next_probe_at = backoff_until
             if hasattr(self.repository, "probe_result"):
                 self.repository.probe_result(
-                    now, reachable=False, error="Exchange probe failed",
+                    response_at, reachable=False, error="Exchange probe failed",
                     backoff_until=backoff_until,
                 )
             return False
+        self.last_probe_ok = True
+        self.next_probe_at = now + self.PROBE_INTERVAL
         if hasattr(self.repository, "probe_result"):
             self.repository.probe_result(now, reachable=True)
         return True
@@ -258,10 +324,18 @@ class ExchangeCalendarWorker:
         try:
             snapshot = self.repository.project(job, now)
             if snapshot is None:
-                if current.exchange_item_id:
-                    self.client.cancel(f"{job.source_type}:{job.source_id}", current.exchange_item_id)
+                # Find by stable source key even if CreateItem succeeded before
+                # Justice could persist the returned EWS item ID.
+                self.client.cancel(f"{job.source_type}:{job.source_id}", current.exchange_item_id)
                 result = WorkerOutcome("cancelled")
-            elif current.exchange_item_id and current.content_hash == snapshot.content_hash:
+            elif (
+                current.exchange_item_id
+                and current.content_hash == snapshot.content_hash
+                and (
+                    getattr(job, "reason", "") not in {"backfill", "reconciliation", "reconcile"}
+                    or self.client.matches(snapshot, current.exchange_item_id)
+                )
+            ):
                 result = WorkerOutcome(
                     "unchanged", current.exchange_item_id, current.exchange_change_key,
                     snapshot.content_hash, snapshot.start.date(), bool(snapshot.problems),
@@ -275,7 +349,7 @@ class ExchangeCalendarWorker:
                     snapshot.start.date(), bool(snapshot.problems),
                 )
         except Exception as exc:
-            result = self._failure(exc, job, now)
+            result = self._failure(exc, job, self.clock())
         self.repository.complete(job, result, self.clock())
         return True
 
@@ -283,13 +357,16 @@ class ExchangeCalendarWorker:
         if isinstance(exc, ProjectionError):
             return WorkerOutcome("failed", error_category=exc.code, error_message=exc.safe_message)
         if isinstance(exc, ErrorServerBusy):
-            until = now + timedelta(seconds=60)
+            until = now + timedelta(seconds=self._busy_seconds(exc))
             return WorkerOutcome(
                 "failed", error_category="exchange_busy", error_message="Exchange is busy",
                 retry_at=until, global_backoff_until=until,
             )
-        if isinstance(exc, (RequestConnectionError, RequestTimeout, UnauthorizedError,
-                            ExchangeBackoffActive, ExchangeGateUnavailable)):
+        if isinstance(exc, (
+            RequestConnectionError, RequestTimeout, UnauthorizedError,
+            ErrorTimeoutExpired, ErrorInternalServerTransientError,
+            ExchangeBackoffActive, ExchangeGateUnavailable,
+        )):
             delay = min(3600, 30 * 2 ** min(job.attempt_count, 7))
             return WorkerOutcome(
                 "failed", error_category="exchange_unavailable",

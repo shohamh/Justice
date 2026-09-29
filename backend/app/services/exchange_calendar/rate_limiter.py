@@ -137,4 +137,12 @@ class RateLimitedHTTPAdapter(HTTPAdapter):
 
     def send(self, request, **kwargs):
         with self._permit():
-            return super().send(request, **kwargs)
+            response = super().send(request, **kwargs)
+            try:
+                # Requests normally consumes the body in Session.send(), after
+                # the adapter returns. Keep the cross-process permit until EWS
+                # has finished receiving the whole SOAP response.
+                _ = response.content
+            finally:
+                response.close()
+            return response

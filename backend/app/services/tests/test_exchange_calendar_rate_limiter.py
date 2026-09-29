@@ -212,3 +212,38 @@ def test_postgres_gate_serializes_process_connections(app_engine):
     assert not one.is_alive() and not two.is_alive()
     assert len(starts) == 2
     assert (starts[1] - starts[0]).total_seconds() >= 0.29
+
+
+
+def test_adapter_holds_gate_through_response_consumption(monkeypatch):
+    from contextlib import contextmanager
+
+    from requests.adapters import HTTPAdapter
+
+    from app.services.exchange_calendar.rate_limiter import RateLimitedHTTPAdapter
+
+    events = []
+
+    @contextmanager
+    def permit():
+        events.append("permit")
+        yield
+        events.append("release")
+
+    class SlowResponse:
+        @property
+        def content(self):
+            events.append("consume")
+            return b"<soap/>"
+
+        def close(self):
+            events.append("close")
+
+    def send(self, request, **kwargs):
+        events.append("http-send")
+        return SlowResponse()
+
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    response = RateLimitedHTTPAdapter(permit=permit).send(object())
+    assert response is not None
+    assert events == ["permit", "http-send", "consume", "close", "release"]

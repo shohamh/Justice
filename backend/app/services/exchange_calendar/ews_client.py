@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from exchangelib import (
@@ -21,6 +21,7 @@ from exchangelib import (
     Mailbox,
     Version,
 )
+from exchangelib.errors import ErrorItemNotFound
 from exchangelib.protocol import BaseProtocol
 
 from app.services.exchange_calendar.projection import CalendarSnapshot
@@ -144,7 +145,10 @@ class ExchangeCalendarClient:
         # even when persisting its new ID in Justice failed.
         item = self.store.find(snapshot.source_key)
         if item is None and existing_item_id:
-            item = self.store.get(existing_item_id)
+            try:
+                item = self.store.get(existing_item_id)
+            except ErrorItemNotFound:
+                item = None
         if item is None:
             item = CalendarItem()
             self._fill(item, snapshot)
@@ -156,12 +160,55 @@ class ExchangeCalendarClient:
             action = "updated"
         return ExchangeItemRef(item_id=item.id, change_key=item.changekey, action=action)
 
+    def matches(self, snapshot: CalendarSnapshot, item_id: str) -> bool:
+        """Read remote meeting fields during reconciliation, including deletions."""
+        try:
+            item = self.store.get(item_id)
+        except ErrorItemNotFound:
+            return False
+        if item is None:
+            return False
+
+        def emails(attendees):
+            return sorted(
+                attendee.mailbox.email_address.strip().lower()
+                for attendee in (attendees or ())
+            )
+
+        def same_time(remote: object, local: datetime) -> bool:
+            return (
+                isinstance(remote, datetime)
+                and remote.tzinfo is not None
+                and remote.astimezone(UTC) == local.astimezone(UTC)
+            )
+
+        return (
+            item.justice_source_key == snapshot.source_key
+            and item.subject == snapshot.subject
+            and same_time(item.start, snapshot.start)
+            and same_time(item.end, snapshot.end)
+            and bool(item.is_all_day) == snapshot.all_day
+            and (item.location or "") == snapshot.location
+            and str(item.body or "") == snapshot.body
+            and emails(item.required_attendees)
+            == sorted(a.email for a in snapshot.attendees if a.required)
+            and emails(item.optional_attendees)
+            == sorted(a.email for a in snapshot.attendees if not a.required)
+        )
+
     def cancel(self, source_key: str, item_id: str | None) -> None:
         item = self.store.find(source_key)
         if item is None and item_id:
-            item = self.store.get(item_id)
+            try:
+                item = self.store.get(item_id)
+            except ErrorItemNotFound:
+                return
         if item is not None:
-            self.store.delete(item)
+            try:
+                self.store.delete(item)
+            except ErrorItemNotFound:
+                # A successful prior DeleteItem may have lost its local commit.
+                return
 
     def probe(self) -> None:
         self.store.probe()
