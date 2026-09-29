@@ -23,7 +23,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services.exchange_calendar.outbox import ExchangeCalendarJobPriority, enqueue_source
-from app.services.exchange_calendar.projection import ProjectionError, project_source
+from app.services.exchange_calendar.projection import AttendeeRole, ProjectionError, project_source
 
 router = APIRouter(prefix="/admin/exchange-calendar-sync", tags=["exchange-calendar-sync"])
 _ISRAEL = ZoneInfo("Asia/Jerusalem")
@@ -100,11 +100,15 @@ class SummaryOut(BaseModel):
     global_backoff_until: datetime | None
 
 
+class MissingAttendeeOut(BaseModel):
+    name: str
+    role: AttendeeRole
+
+
 class ProblemOut(BaseModel):
     code: str
     message: str
-    attendee_name: str | None = None
-    attendee_role: str | None = None
+    attendee: MissingAttendeeOut | None = None
 
 
 class AttemptOut(BaseModel):
@@ -223,8 +227,10 @@ def events(
             if snapshot:
                 source_date = snapshot.start.date()
                 problems = [ProblemOut(
-                    code=p.code, message=p.safe_message,
-                    attendee_name=p.attendee_name, attendee_role=p.attendee_role,
+                    code=p.code,
+                    message=p.safe_message,
+                    attendee=MissingAttendeeOut(name=p.attendee.name, role=p.attendee.role)
+                    if p.attendee else None,
                 ) for p in snapshot.problems]
         except ProjectionError as exc:
             problems = [ProblemOut(code=exc.code, message=exc.safe_message)]

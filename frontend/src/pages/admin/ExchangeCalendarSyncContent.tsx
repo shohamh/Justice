@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DataTable, type ColDef } from "../../components/DataTable";
 import {
   getExchangeSyncSummary, listExchangeSyncEvents, retryExchangeSyncEvent,
+  type ExchangeAttendeeRole, type ExchangeConnectionErrorCategory,
   type ExchangeSyncEvent, type ExchangeSourceType,
 } from "../../api/exchangeCalendarSync";
 
@@ -13,7 +14,11 @@ const statusLabels: Record<string, string> = {
 const sourceLabels: Record<ExchangeSourceType, string> = {
   duty_shift: "משמרת", duty_assignment: "שיבוץ", range_event: "מטווח",
 };
-const attendeeRoleLabels: Record<string, string> = {
+const connectionErrorCategoryLabels: Record<ExchangeConnectionErrorCategory, string> = {
+  exchange_unavailable: "כשל בתקשורת עם Exchange",
+  exchange_busy: "Exchange עמוס",
+};
+const attendeeRoleLabels: Record<ExchangeAttendeeRole, string> = {
   assigned_soldier: "חייל משובץ",
   reserve: "חייל מילואים",
   called_up_reserve: "חייל מילואים שהוקפץ",
@@ -70,9 +75,9 @@ export default function ExchangeCalendarSyncContent() {
         {row.current_projection_problems.length > 0 && (
           <div>
             <span className="font-medium">בעיות נוכחיות בנתוני המשתתפים:</span>{" "}
-            {row.current_projection_problems.map((problem, index) => <span key={`${problem.code}-${problem.attendee_name ?? "unknown"}-${index}`}>
+            {row.current_projection_problems.map((problem, index) => <span key={`${problem.code}-${problem.attendee?.name ?? "unknown"}-${problem.attendee?.role ?? "unknown"}-${index}`}>
               {index > 0 && "; "}
-              {problem.attendee_name && <span className="font-medium">{problem.attendee_name} ({attendeeRoleLabels[problem.attendee_role ?? ""] ?? "משתתף"}): </span>}
+              {problem.attendee && <span className="font-medium">{problem.attendee.name} ({attendeeRoleLabels[problem.attendee.role]}): </span>}
               {problem.message}
             </span>)}
           </div>
@@ -113,7 +118,7 @@ export default function ExchangeCalendarSyncContent() {
             <div className="flex flex-wrap gap-3 text-sm">ניסיונות ב־24 השעות האחרונות: {recentLabels.map(([key, label]) => <span key={key} data-testid={`exchange-sync-recent-${key}`}>{label}: {summary.data.recent[key]}</span>)}</div>
             <div className="rounded border border-gray-200 dark:border-gray-700 p-3 text-sm space-y-1">
               <div data-testid="exchange-sync-worker">פעימות עובד הרקע: {formatTime(summary.data.worker_heartbeat_at)}</div>
-              <div data-testid="exchange-sync-connection">חיבור Exchange: {summary.data.exchange_reachable === true ? "זמין" : summary.data.exchange_reachable === false ? "לא זמין" : "טרם נבדק"}{summary.data.latest_connection_error_category && <span className="text-xs text-gray-500"> ({summary.data.latest_connection_error_category})</span>}</div>
+              <div data-testid="exchange-sync-connection">חיבור Exchange: {summary.data.exchange_reachable === true ? "זמין" : summary.data.exchange_reachable === false ? "לא זמין" : "טרם נבדק"}{summary.data.latest_connection_error_category && <span className="text-xs text-gray-500"> ({connectionErrorCategoryLabels[summary.data.latest_connection_error_category]})</span>}</div>
               <div>בדיקה אחרונה: {formatTime(summary.data.last_probe_at)}</div>
               <div>ניסיון חיבור אחרון: {formatTime(summary.data.last_connection_attempt_at)}</div>
               <div>קשר מוצלח אחרון: {formatTime(summary.data.last_successful_contact_at)}</div>

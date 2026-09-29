@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from hashlib import sha256
+from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -56,12 +57,27 @@ class ProjectedAttendee:
     required: bool
 
 
+AttendeeRole = Literal[
+    "assigned_soldier",
+    "reserve",
+    "called_up_reserve",
+    "direct_commander",
+    "responsible_duty_manager",
+    "contact",
+]
+
+
+@dataclass(frozen=True)
+class MissingAttendee:
+    name: str
+    role: AttendeeRole
+
+
 @dataclass(frozen=True)
 class ProjectionProblem:
     code: str
     safe_message: str
-    attendee_name: str | None = None
-    attendee_role: str | None = None
+    attendee: MissingAttendee | None = None
 
 
 @dataclass(frozen=True)
@@ -128,7 +144,7 @@ class _Attendees:
         self.by_email: dict[str, ProjectedAttendee] = {}
         self.problems: list[ProjectionProblem] = []
 
-    def add(self, person: Soldier | None, *, required: bool, role: str) -> None:
+    def add(self, person: Soldier | None, *, required: bool, role: AttendeeRole) -> None:
         if person is None:
             self.problems.append(ProjectionProblem("missing_person", "An assigned person could not be found."))
             return
@@ -137,7 +153,7 @@ class _Attendees:
             display_name = " ".join(person.full_name.split())
             self.problems.append(ProjectionProblem(
                 "missing_email", "An invited person has no usable email address.",
-                attendee_name=display_name or None, attendee_role=role,
+                attendee=MissingAttendee(name=display_name or "Unnamed attendee", role=role),
             ))
             return
         previous = self.by_email.get(email)
@@ -171,13 +187,14 @@ def _contact(session: Session, attendees: _Attendees, name: str | None, phone: s
         [person for person in session.scalars(select(Soldier)).all() if _name(person.full_name) == _name(name)]
         if name else []
     )
-    if len(matches) == 1 and _email(matches[0].email):
+    if len(matches) == 1:
         attendees.add(matches[0], required=False, role="contact")
-    else:
-        if name:
-            body.append(f"Contact: {name.strip()}")
-        if phone:
-            body.append(f"Contact phone: {phone.strip()}")
+        if _email(matches[0].email):
+            return
+    if name:
+        body.append(f"Contact: {name.strip()}")
+    if phone:
+        body.append(f"Contact phone: {phone.strip()}")
 
 
 def _snapshot(

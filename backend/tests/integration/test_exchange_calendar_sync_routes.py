@@ -235,11 +235,42 @@ def test_events_derive_current_missing_optional_attendee_without_sharing_event_n
     assert item["last_success_at"] is not None
     assert item["current_projection_problems"] == [{
         "code": "missing_email", "message": "An invited person has no usable email address.",
-        "attendee_name": "Optional attendee", "attendee_role": "responsible_duty_manager",
+        "attendee": {"name": "Optional attendee", "role": "responsible_duty_manager"},
     }]
     assert "exchange-optional" not in response.text
     assert "private operational note" not in response.text
     assert "private-exchange-id" not in response.text
+
+
+def test_events_report_resolved_contact_without_usable_email(client: TestClient, admin_session: Session):
+    admin = _admin(admin_session)
+    node = create_node(admin_session, level="team", name="Exchange contact test")
+    location = create_range_location(admin_session, name="Range 9")
+    event_date = datetime.now(UTC).date() + timedelta(days=1)
+    event = create_range_event(
+        admin_session, hierarchy_node=node, range_location=location,
+        event_date=event_date, required_count=1,
+    )
+    event.contact_name = "Range Contact"
+    event.contact_phone = "555-0101"
+    create_soldier(
+        admin_session, personal_number="exchange-contact", full_name="Range Contact",
+    )
+    admin_session.add(ExchangeCalendarSyncItem(
+        source_type="range_event", source_id=event.id, source_date=event_date,
+        status="partial",
+    ))
+    admin_session.commit()
+
+    response = client.get(f"{BASE}/events", headers=auth_headers(admin))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["current_projection_problems"] == [{
+        "code": "missing_email", "message": "An invited person has no usable email address.",
+        "attendee": {"name": "Range Contact", "role": "contact"},
+    }]
+    assert "exchange-contact" not in response.text
+    assert "555-0101" not in response.text
 
 
 def test_retry_only_queues_urgent_source_work(client: TestClient, admin_session: Session):

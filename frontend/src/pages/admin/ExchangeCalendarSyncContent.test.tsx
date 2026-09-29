@@ -25,7 +25,7 @@ const event = {
   error: "An invited person has no usable email address.",
   current_projection_problems: [{
     code: "missing_email", message: "An invited person has no usable email address.",
-    attendee_name: "Optional attendee", attendee_role: "responsible_duty_manager",
+    attendee: { name: "Optional attendee", role: "responsible_duty_manager" },
   }],
   recent_attempts: [{ outcome: "partial", attempted_at: "2026-09-29T09:00:00Z", error_category: "missing_email", error: "An invited person has no usable email address." }],
 };
@@ -54,7 +54,8 @@ describe("ExchangeCalendarSyncContent", () => {
     expect(screen.getByTestId("exchange-sync-recent-created")).toHaveTextContent("2");
     expect(screen.getByTestId("exchange-sync-worker")).toHaveTextContent("2026");
     expect(screen.getByTestId("exchange-sync-connection")).toHaveTextContent("Exchange");
-    expect(screen.getByTestId("exchange-sync-connection")).toHaveTextContent("exchange_unavailable");
+    expect(screen.getByTestId("exchange-sync-connection")).toHaveTextContent("כשל בתקשורת עם Exchange");
+    expect(screen.getByTestId("exchange-sync-connection")).not.toHaveTextContent("exchange_unavailable");
     expect(screen.getByTestId("exchange-sync-backoff")).toHaveTextContent("2026");
   });
 

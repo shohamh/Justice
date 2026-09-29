@@ -5,6 +5,14 @@ const base = "/admin/exchange-calendar-sync";
 
 export type ExchangeSyncStatus = "queued" | "in_progress" | "synced" | "partial" | "retry_wait" | "failed" | "cancelled";
 export type ExchangeSourceType = "duty_shift" | "duty_assignment" | "range_event";
+export type ExchangeConnectionErrorCategory = "exchange_unavailable" | "exchange_busy";
+export type ExchangeAttendeeRole =
+  | "assigned_soldier"
+  | "reserve"
+  | "called_up_reserve"
+  | "direct_commander"
+  | "responsible_duty_manager"
+  | "contact";
 
 export interface ExchangeSyncCounts {
   eligible: number;
@@ -32,7 +40,7 @@ export interface ExchangeSyncSummary {
   exchange_reachable: boolean | null;
   last_connection_attempt_at: string | null;
   last_successful_contact_at: string | null;
-  latest_connection_error_category: string | null;
+  latest_connection_error_category: ExchangeConnectionErrorCategory | null;
   latest_connection_error: string | null;
   global_backoff_until: string | null;
 }
@@ -40,8 +48,12 @@ export interface ExchangeSyncSummary {
 export interface ExchangeProjectionProblem {
   code: string;
   message: string;
-  attendee_name: string | null;
-  attendee_role: string | null;
+  attendee: ExchangeMissingAttendee | null;
+}
+
+export interface ExchangeMissingAttendee {
+  name: string;
+  role: ExchangeAttendeeRole;
 }
 
 export interface ExchangeSyncAttempt {
