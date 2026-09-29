@@ -46,6 +46,20 @@ services:
       timeout: 5s
       retries: 10
 
+  schema-migration:
+    build:
+      context: ../backend
+      target: production
+    restart: "no"
+    env_file: deploy/.env.production
+    environment:
+      ENVIRONMENT: production
+      TZ: Asia/Jerusalem
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     build:
       context: ../backend
@@ -67,6 +81,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
     volumes:
       - /opt/justice/logs:/app/logs
     # --forwarded-allow-ips=*: nginx is the only thing that can reach this
@@ -76,13 +92,38 @@ services:
     # Without this, every request's client IP and https-ness collapse to
     # nginx's own connection, breaking per-IP rate limiting for all users.
     command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --forwarded-allow-ips='*'"
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --forwarded-allow-ips='*'
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  exchange-calendar-worker:
+    build:
+      context: ../backend
+      target: production
+    restart: unless-stopped
+    env_file: deploy/.env.production
+    environment:
+      EXCHANGE_CALENDAR_ENABLED: ${EXCHANGE_CALENDAR_ENABLED:-true}
+      EXCHANGE_EWS_URL: ${EXCHANGE_EWS_URL:-}
+      EXCHANGE_MAILBOX: ${EXCHANGE_MAILBOX:-}
+      EXCHANGE_USERNAME: ${EXCHANGE_USERNAME:-}
+      EXCHANGE_AUTH_TYPE: ${EXCHANGE_AUTH_TYPE:-}
+      EXCHANGE_REQUESTS_PER_MINUTE: ${EXCHANGE_REQUESTS_PER_MINUTE:-200}
+      LOG_DIR: /app/logs
+      LOG_FORMAT: json
+      ENVIRONMENT: production
+      TZ: Asia/Jerusalem
+    command: python -m app.exchange_calendar_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
+    secrets:
+      - EXCHANGE_PASSWORD
 
   telegram-bot:
     build:
@@ -117,3 +158,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+secrets:
+  EXCHANGE_PASSWORD:
+    file: ${EXCHANGE_PASSWORD_FILE:?Set EXCHANGE_PASSWORD_FILE to a file containing the svc_justice Exchange password}

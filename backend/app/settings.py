@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Repo-root env files, resolved by absolute path so they're found regardless
@@ -12,11 +12,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULTS_FILE = _REPO_ROOT / ".env.defaults"
 _SECRETS_FILE = _REPO_ROOT / ".env"
+_RUNTIME_SECRETS_DIR = Path("/run/secrets")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore"
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE),
+        env_file_encoding="utf-8",
+        secrets_dir=(
+            str(_RUNTIME_SECRETS_DIR) if _RUNTIME_SECRETS_DIR.is_dir() else None
+        ),
+        extra="ignore",
     )
 
     database_url: str = Field(alias="DATABASE_URL")
@@ -51,6 +57,16 @@ class Settings(BaseSettings):
     hr_api_ca_bundle_path: str = Field(default="", alias="HR_API_CA_BUNDLE_PATH")
     hr_api_page_size: int = Field(default=200, alias="HR_API_PAGE_SIZE")
 
+    exchange_calendar_enabled: bool = Field(default=False, alias="EXCHANGE_CALENDAR_ENABLED")
+    exchange_ews_url: str = Field(default="", alias="EXCHANGE_EWS_URL")
+    exchange_mailbox: str = Field(default="", alias="EXCHANGE_MAILBOX")
+    exchange_username: str = Field(default="", alias="EXCHANGE_USERNAME")
+    exchange_password: SecretStr | None = Field(default=None, alias="EXCHANGE_PASSWORD")
+    exchange_auth_type: str = Field(default="", alias="EXCHANGE_AUTH_TYPE")
+    exchange_requests_per_minute: int = Field(
+        default=200, ge=1, le=200, alias="EXCHANGE_REQUESTS_PER_MINUTE"
+    )
+
     bootstrap_admin_personal_number: str | None = Field(
         default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"
     )
@@ -64,6 +80,32 @@ class Settings(BaseSettings):
     @property
     def hr_sync_enabled(self) -> bool:
         return bool(self.hr_api_base_url and self.hr_api_key)
+
+    def require_exchange_calendar_configuration(self) -> tuple[str, str, str, str]:
+        """Return worker credentials or report only which setting names are missing."""
+        password = (
+            self.exchange_password.get_secret_value()
+            if self.exchange_password is not None
+            else ""
+        )
+        required = {
+            "EXCHANGE_EWS_URL": self.exchange_ews_url,
+            "EXCHANGE_MAILBOX": self.exchange_mailbox,
+            "EXCHANGE_USERNAME": self.exchange_username,
+            "EXCHANGE_PASSWORD": password,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise ValueError(
+                "Exchange calendar is enabled but required settings are missing: "
+                + ", ".join(missing)
+            )
+        return (
+            self.exchange_ews_url,
+            self.exchange_mailbox,
+            self.exchange_username,
+            password,
+        )
 
 
 @lru_cache(maxsize=1)
