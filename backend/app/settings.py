@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(_DEFAULTS_FILE, _SECRETS_FILE),
         env_file_encoding="utf-8",
+        env_ignore_empty=True,
         secrets_dir=(
             str(_RUNTIME_SECRETS_DIR) if _RUNTIME_SECRETS_DIR.is_dir() else None
         ),

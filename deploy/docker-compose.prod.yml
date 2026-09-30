@@ -51,8 +51,9 @@ services:
       context: ../backend
       target: production
     restart: "no"
-    env_file: deploy/.env.production
+    env_file: .env.production
     environment:
+      EXCHANGE_PASSWORD: ""
       ENVIRONMENT: production
       TZ: Asia/Jerusalem
     command: alembic upgrade head
@@ -65,7 +66,7 @@ services:
       context: ../backend
       target: production
     restart: unless-stopped
-    env_file: deploy/.env.production
+    env_file: .env.production
     # No LOKI_URL is configured here (accepted, human-escalated decision — a
     # Loki instance is only provisioned for dev, see deploy/observability/).
     # Without it, the admin errors inbox has no log store to read from and
@@ -74,6 +75,7 @@ services:
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      EXCHANGE_PASSWORD: ""
       ENVIRONMENT: production
       TZ: Asia/Jerusalem  # see backend/Dockerfile — keeps date.today()/now() on Israel's calendar day
     depends_on:
@@ -104,7 +106,7 @@ services:
       context: ../backend
       target: production
     restart: unless-stopped
-    env_file: deploy/.env.production
+    env_file: .env.production
     environment:
       EXCHANGE_CALENDAR_ENABLED: ${EXCHANGE_CALENDAR_ENABLED:-true}
       EXCHANGE_EWS_URL: ${EXCHANGE_EWS_URL:-}
@@ -114,6 +116,7 @@ services:
       EXCHANGE_REQUESTS_PER_MINUTE: ${EXCHANGE_REQUESTS_PER_MINUTE:-200}
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      EXCHANGE_PASSWORD: ""
       ENVIRONMENT: production
       TZ: Asia/Jerusalem
     command: python -m app.exchange_calendar_worker
@@ -130,10 +133,11 @@ services:
       context: ../backend
       target: production
     restart: unless-stopped
-    env_file: deploy/.env.production
+    env_file: .env.production
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      EXCHANGE_PASSWORD: ""
       ENVIRONMENT: production
       TZ: Asia/Jerusalem
     volumes:

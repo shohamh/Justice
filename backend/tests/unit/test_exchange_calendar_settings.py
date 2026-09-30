@@ -99,6 +99,20 @@ def test_exchange_password_is_hidden_from_settings_representation(
     assert secret not in str(settings)
 
 
+def test_empty_password_environment_uses_deployment_secret_file(
+    settings_env: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    secret = "test-only-exchange-password"
+    (tmp_path / "EXCHANGE_PASSWORD").write_text(secret, encoding="utf-8")
+    settings_env.setenv("EXCHANGE_PASSWORD", "")
+
+    settings = Settings(_env_file=None, _secrets_dir=tmp_path)
+
+    assert settings.exchange_password is not None
+    assert settings.exchange_password.get_secret_value() == secret
+
+
 def test_exchange_password_can_be_loaded_from_a_deployment_secret_file(
     settings_env: pytest.MonkeyPatch,
     tmp_path,
