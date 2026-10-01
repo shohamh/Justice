@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.algorithm.types import node_in_scope
 from app.auth.authz import scope_root_ids
@@ -24,7 +24,12 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.constraint_override_settings import manual_override_allowed
-from app.services.range_coverage import RangeCoverage, get_range_coverage, get_range_coverages, relevant_duty_types
+from app.services.range_coverage import (
+    RangeCoverage,
+    get_range_coverage,
+    get_range_coverages,
+    relevant_duty_types,
+)
 from app.services.ranges import _validity_days
 
 
@@ -183,18 +188,27 @@ NEAR_DUTY_WINDOW_DAYS = 30
 
 def _soldiers_under_roots(session: Session, *, roots: list[uuid.UUID]) -> list[Soldier]:
     """Every soldier whose hierarchy node lies in the subtree of any of `roots`."""
-    subtree_node_ids = list(
+    return list(
         session.execute(
-            select(HierarchyNode.id).where(
-                or_(*(HierarchyNode.path_ids.any(root) for root in roots))  # type: ignore[arg-type]
+            _candidate_soldier_query().where(
+                Soldier.hierarchy_node_id.in_(
+                    select(HierarchyNode.id).where(
+                        or_(*(HierarchyNode.path_ids.any(root) for root in roots))  # type: ignore[arg-type]
+                    )
+                )
             )
         ).scalars().all()
     )
-    return list(
-        session.execute(
-            select(Soldier).where(Soldier.hierarchy_node_id.in_(subtree_node_ids))
-        ).scalars().all()
-    )
+
+
+def _candidate_soldier_query():
+    """Project only the Soldier fields used by candidate ranking and its callers."""
+    return select(Soldier).options(load_only(
+        Soldier.id,
+        Soldier.full_name,
+        Soldier.personal_number,
+        Soldier.hierarchy_node_id,
+    ))
 
 
 def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier | None = None) -> list[Soldier]:
@@ -210,7 +224,7 @@ def _soldier_pool(session: Session, *, event: RangeEvent, user: Soldier | None =
     if user is None:
         return _soldiers_under_roots(session, roots=[event.hierarchy_node_id])
     if user.role == "admin":
-        return list(session.execute(select(Soldier)).scalars().all())
+        return list(session.execute(_candidate_soldier_query()).scalars().all())
     roots = scope_root_ids(session, user)
     if not roots:
         return []
