@@ -167,6 +167,13 @@ def _transparency_page_revision(rows: list[dict]) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _number_transparency_rows_in_place(rows: list[dict]) -> list[dict]:
+    """Add display row numbers without copying every projected row dictionary."""
+    for index, row in enumerate(rows, start=1):
+        row["row_num"] = index
+    return rows
+
+
 def _transparency_page_binding(
     *,
     session: Session,
@@ -384,7 +391,7 @@ def transparency_page(
         ),
     )
 
-    numbered_rows = [dict(row, row_num=index + 1) for index, row in enumerate(filtered_rows)]
+    numbered_rows = _number_transparency_rows_in_place(filtered_rows)
     if rank_filter is not None:
         numbered_rows = [row for row in numbered_rows if row.get("rank") == rank_filter]
     query_text = search.casefold().strip()
