@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 import uuid
@@ -25,6 +26,7 @@ from app.file_gateway.response_headers import build_file_headers
 from app.storage.dependencies import get_object_storage
 from app.storage.keys import make_object_key, validate_managed_key
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 _OPEN_READ_TIMEOUT_SECONDS = 8.0
 _LIMITS = {
@@ -169,6 +171,9 @@ async def stream_authorized(request: Request, auth_request, *, inline: bool = Fa
         except PermissionError as exc:
             raise HTTPException(404, detail="file_not_found") from exc
         except Exception as exc:
+            logger.warning(
+                "File download authorization failed (%s)", type(exc).__name__
+            )
             raise HTTPException(503, detail="file_download_unavailable") from exc
         resource_id = getattr(auth_request, _RESOURCE_ID[auth_request.kind])
         expected_key = make_object_key(auth_request.kind, resource_id)
@@ -200,6 +205,7 @@ async def stream_authorized(request: Request, auth_request, *, inline: bool = Fa
             raise
         except Exception as exc:
             pending.abandon()
+            logger.warning("File object read failed (%s)", type(exc).__name__)
             raise HTTPException(503, detail="file_download_unavailable") from exc
         if actual_size != decision.size:
             raise HTTPException(503, detail="file_metadata_invalid")

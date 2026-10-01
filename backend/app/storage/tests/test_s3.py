@@ -7,7 +7,7 @@ import pytest
 from botocore.client import Config
 from botocore.stub import Stubber
 
-from app.settings import Settings
+from app.settings import Settings, StorageMaintenanceSettings, StorageSettings
 from app.storage.keys import make_object_key
 from app.storage.s3 import S3MaintenanceObjectStorage, S3ObjectStorage
 
@@ -23,6 +23,28 @@ def settings(**overrides):
                   STORAGE_SSE_ALGORITHM="aws:kms", STORAGE_SSE_KEY_ID="private-key-id")
     values.update(overrides)
     return Settings(_env_file=None, **values)
+
+
+def test_storage_settings_do_not_require_database_or_jwt_secrets():
+    storage_settings = StorageSettings(
+        _env_file=None,
+        STORAGE_BUCKET="private-files",
+        STORAGE_ENDPOINT_URL="https://storage.example.invalid",
+    )
+
+    assert storage_settings.storage_bucket == "private-files"
+    assert storage_settings.storage_endpoint_url == "https://storage.example.invalid"
+
+
+def test_storage_maintenance_settings_require_database_but_not_jwt_or_admin_url():
+    maintenance_settings = StorageMaintenanceSettings(
+        _env_file=None,
+        DATABASE_URL="postgresql+psycopg://migration-role@db/justice",
+        STORAGE_BUCKET="private-files",
+        STORAGE_ENDPOINT_URL="https://storage.example.invalid",
+    )
+
+    assert maintenance_settings.database_url == "postgresql+psycopg://migration-role@db/justice"
 
 
 def client():

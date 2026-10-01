@@ -92,6 +92,49 @@ def test_authorization_timeout_and_outage_fail_closed_without_storage(monkeypatc
     assert store.opened == []
 
 
+def test_authorization_outage_logs_only_sanitized_exception_class(caplog):
+    import app.file_gateway.routes as routes
+
+    secret_marker = "bearer-token-and-private-path-must-not-be-logged"
+    caplog.set_level("WARNING", logger=routes.__name__)
+    request = ExemptionRequestFileRequest(
+        kind="exemption_request", request_id=uuid.uuid4(), file_id=uuid.uuid4()
+    )
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            stream_authorized(
+                req(Client(error=RuntimeError(f"failed {secret_marker}"))), request
+            )
+        )
+
+    assert exc.value.status_code == 503
+    assert "File download authorization failed (RuntimeError)" in caplog.text
+    assert secret_marker not in caplog.text
+
+
+def test_storage_outage_logs_only_sanitized_exception_class(monkeypatch, caplog):
+    import app.file_gateway.routes as routes
+
+    secret_marker = "s3-key-and-private-path-must-not-be-logged"
+    caplog.set_level("WARNING", logger=routes.__name__)
+    file_id = uuid.uuid4()
+    monkeypatch.setattr(
+        routes,
+        "get_object_storage",
+        lambda: Store(b"", error=OSError(f"failed {secret_marker}")),
+    )
+    request = ExemptionRequestFileRequest(
+        kind="exemption_request", request_id=uuid.uuid4(), file_id=file_id
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(stream_authorized(req(Client(decision(file_id))), request))
+
+    assert exc.value.status_code == 503
+    assert "File object read failed (OSError)" in caplog.text
+    assert secret_marker not in caplog.text
+
+
 def test_oversized_and_invalid_metadata_fail_before_storage(monkeypatch):
     import app.file_gateway.routes as routes
 

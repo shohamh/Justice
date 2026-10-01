@@ -54,6 +54,8 @@ def upgrade() -> None:
         sa.Column("last_error_code", sa.Text(), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
     )
+    op.execute("REVOKE ALL ON TABLE storage_delete_outbox FROM app;")
+    op.execute("GRANT SELECT, INSERT, UPDATE ON TABLE storage_delete_outbox TO app;")
     op.create_index(
         "ix_storage_delete_outbox_pending",
         "storage_delete_outbox",
@@ -62,8 +64,53 @@ def upgrade() -> None:
     )
 
 
-def downgrade() -> None:
-    raise RuntimeError(
-        "Object storage metadata cannot be downgraded safely after any object-only write. "
-        "Restore a database backup from before this migration instead."
+def _has_rows(bind, table: str, predicate: str) -> bool:
+    # All identifiers and predicates are constants defined in this migration.
+    statement = sa.text(
+        f"SELECT EXISTS (SELECT 1 FROM {table} WHERE {predicate})"
     )
+    return bool(bind.execute(statement).scalar_one())
+
+
+def downgrade() -> None:
+    bind = op.get_bind()
+    object_references = [
+        (table, "storage_key IS NOT NULL")
+        for table in _FILE_TABLES
+    ]
+    object_references.append(("bug_reports", "json_mirror_storage_key IS NOT NULL"))
+    object_references.append(("storage_delete_outbox", "completed_at IS NULL"))
+    if any(_has_rows(bind, table, predicate) for table, predicate in object_references):
+        raise RuntimeError(
+            "Cannot downgrade while storage objects or pending deletions are referenced."
+        )
+
+    legacy_payload_columns = [
+        ("soldier_exemption_files", "data"),
+        ("exemption_request_files", "data"),
+        ("gimelim_attachments", "data"),
+        ("bug_report_comment_attachments", "data"),
+        ("import_sessions", "raw_excel"),
+    ]
+    if any(
+        _has_rows(bind, table, f"{column} IS NULL")
+        for table, column in legacy_payload_columns
+    ):
+        raise RuntimeError(
+            "Cannot downgrade while legacy file payload columns contain NULL values."
+        )
+
+    for table, column in legacy_payload_columns:
+        op.alter_column(table, column, nullable=False)
+
+    op.drop_index("ix_storage_delete_outbox_pending", table_name="storage_delete_outbox")
+    op.drop_table("storage_delete_outbox")
+
+    for table in _FILE_TABLES:
+        op.drop_column(table, "storage_key")
+        op.drop_column(table, "storage_sha256")
+        if table != "bug_reports":
+            op.drop_column(table, "storage_size")
+    op.drop_column("bug_reports", "storage_size")
+    op.drop_column("bug_reports", "json_mirror_storage_key")
+    op.drop_column("bug_reports", "json_mirror_sha256")

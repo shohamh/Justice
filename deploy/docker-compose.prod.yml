@@ -8,11 +8,13 @@
 
 services:
   db:
+    networks: [default, authz-db]
     build:
       context: ..
       dockerfile: deploy/postgres/Dockerfile
     image: justice-postgres:16-age1.2.1
     restart: unless-stopped
+    entrypoint: ["/usr/local/bin/prepare-postgres.sh"]
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -31,9 +33,9 @@ services:
         -c wal_keep_size=512
         -c timezone=Asia/Jerusalem
     volumes:
-      - /opt/justice/pgdata:/var/lib/postgresql/data
-      - /opt/justice/backups:/backups
-      - /opt/justice/wal-archive:/var/lib/postgresql/wal-archive
+      - ${PGDATA:-/opt/justice/pgdata}:/var/lib/postgresql/data
+      - ${BACKUP_DIR:-/opt/justice/backups}:/backups
+      - ${WAL_ARCHIVE_DIR:-/opt/justice/wal-archive}:/var/lib/postgresql/wal-archive
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d justice"]
       interval: 5s
@@ -109,6 +111,75 @@ services:
       redis:
         condition: service_healthy
 
+  file-authorization:
+    build:
+      context: ../backend
+      target: production
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      FILE_AUTHORIZATION_TLS_CERT: /run/tls/server.crt
+      FILE_AUTHORIZATION_TLS_KEY: /run/tls/server.key
+      FILE_AUTHORIZATION_GATEWAY_CA: /run/tls/ca.crt
+    networks: [file-authz, authz-db]
+    volumes:
+      - ${FILE_STORAGE_TLS_DIR:-/opt/justice/certs/storage}/file-authorization.crt:/run/tls/server.crt:ro
+      - ${FILE_STORAGE_TLS_DIR:-/opt/justice/certs/storage}/file-authorization.key:/run/tls/server.key:ro
+      - ${FILE_STORAGE_TLS_DIR:-/opt/justice/certs/storage}/ca.crt:/run/tls/ca.crt:ro
+    command: python -m app.file_authorization.main
+    depends_on:
+      db:
+        condition: service_healthy
+
+  file-gateway:
+    build:
+      context: ../backend
+      target: production
+    restart: unless-stopped
+    environment:
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-justice-files}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
+      STORAGE_PATH_STYLE: ${STORAGE_PATH_STYLE:-true}
+      STORAGE_CA_BUNDLE_PATH: ${STORAGE_CA_BUNDLE_PATH:-}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_GATEWAY_ACCESS_KEY_ID:-}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_GATEWAY_SECRET_ACCESS_KEY:-}
+      FILE_AUTHORIZATION_URL: https://file-authorization:8443
+      FILE_AUTHORIZATION_CA: /run/tls/ca.crt
+      FILE_GATEWAY_CLIENT_CERT: /run/tls/gateway.crt
+      FILE_GATEWAY_CLIENT_KEY: /run/tls/gateway.key
+    networks: [default, file-authz]
+    volumes:
+      - ${FILE_STORAGE_TLS_DIR:-/opt/justice/certs/storage}/gateway.crt:/run/tls/gateway.crt:ro
+      - ${FILE_STORAGE_TLS_DIR:-/opt/justice/certs/storage}/gateway.key:/run/tls/gateway.key:ro
+      - ${FILE_STORAGE_TLS_DIR:-/opt/justice/certs/storage}/ca.crt:/run/tls/ca.crt:ro
+    command: uvicorn app.file_gateway.main:app --host 0.0.0.0 --port 8080
+    depends_on:
+      file-authorization:
+        condition: service_started
+
+  file-storage-maintenance:
+    build:
+      context: ../backend
+      target: production
+    profiles: [storage-maintenance]
+    env_file:
+      - ${FILE_STORAGE_MAINTENANCE_ENV_FILE:-/opt/justice/secrets/storage-maintenance.env}
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-justice-files}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
+      STORAGE_PATH_STYLE: ${STORAGE_PATH_STYLE:-true}
+      STORAGE_CA_BUNDLE_PATH: ${STORAGE_CA_BUNDLE_PATH:-}
+    command: ["python", "-m", "app.storage.maintenance_cli"]
+    networks: [default]
+    depends_on:
+      db:
+        condition: service_healthy
+
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -122,3 +193,11 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      file-gateway:
+        condition: service_started
+
+networks:
+  file-authz:
+    internal: true
+  authz-db:
+    internal: true

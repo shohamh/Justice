@@ -307,6 +307,6 @@ test("keeps the attachment upload failure visible after the saved dismissal list
   fireEvent.click(screen.getByTestId("gimelim-commit-action"));
 
   await waitFor(() => expect(uploadGimelimAttachment).toHaveBeenCalledWith("dismissal-upload-failure", pdf));
-  expect(await screen.findByRole("alert")).toHaveTextContent("The report was saved, but the attachment upload failed.");
+  expect(await screen.findByRole("alert")).toHaveTextContent("dismiss_modal.attachment_upload_failed");
 });
 

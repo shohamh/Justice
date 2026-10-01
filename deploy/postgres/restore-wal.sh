@@ -11,9 +11,10 @@ DESTINATION_PATH="$2"
 ARCHIVE_DIR="${WAL_ARCHIVE_DIR:-/var/lib/postgresql/wal-archive}"
 IDENTITY_FILE="${AGE_IDENTITY_FILE:-/run/secrets/age-identity}"
 SOURCE_PATH="$ARCHIVE_DIR/$WAL_NAME.age"
+WAL_ARCHIVE_NAME_RE='^([A-Fa-f0-9]{24}|[A-Fa-f0-9]{8}\.history|[A-Fa-f0-9]{24}\.[A-Fa-f0-9]{8}\.backup)$'
 
-if [[ ! "$WAL_NAME" =~ ^[A-Fa-f0-9]{24}$ ]]; then
-    echo "Invalid WAL segment name" >&2
+if [[ ! "$WAL_NAME" =~ $WAL_ARCHIVE_NAME_RE ]]; then
+    echo "Invalid WAL archive filename" >&2
     exit 64
 fi
 if [[ ! -r "$IDENTITY_FILE" ]]; then
@@ -27,7 +28,7 @@ fi
 
 DEST_DIR="$(dirname "$DESTINATION_PATH")"
 mkdir -p "$DEST_DIR"
-TEMP_FILE="$(mktemp "$DEST_DIR/.${WAL_NAME}.restore.XXXXXX")"
+TEMP_FILE="$(mktemp "$DEST_DIR/.$(basename "$WAL_NAME").restore.XXXXXX")"
 cleanup() { rm -f "$TEMP_FILE"; }
 trap cleanup EXIT
 

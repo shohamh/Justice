@@ -75,7 +75,7 @@
 
   Commit `backend/app/storage/`, settings, dependency lock/source files, and the focused tests as `feat: add private s3 storage adapter`.
 
-### Task 2: Add local MinIO, TLS certificates, and least-privilege identities
+### Task 2: Add local SeaweedFS, TLS certificates, and least-privilege identities
 
 **Files:**
 - Modify: docker-compose.yml
@@ -92,7 +92,7 @@
 - API identity has put/get only; gateway has get only; maintenance/migration has scoped list/get/put/delete. No runtime identity has bucket administration.
 - Local certificates cover gateway, authorization service, MinIO, and proxy Compose DNS names. Keep generated private keys and credentials ignored by Git. The bucket name is validated and substituted into each IAM policy before policy creation; policy creation is reapplied on every initializer run so source policy files replace existing same-name policies.
 
-- [ ] **Step 1: Add failing tests for MinIO TLS, bucket initialization, and least-privilege policies**
+- [ ] **Step 1: Add failing tests for SeaweedFS TLS, bucket initialization, and least-privilege policies**
 
   Cover API put/get, gateway get-only, and maintenance scoped list/get/put/delete permissions; assert denied actions fail.
 
@@ -100,7 +100,7 @@
 
   Verify Compose services, TLS configuration, and policy wiring.
 
-- [ ] **Step 3: Implement MinIO and its Compose topology**
+- [ ] **Step 3: Implement SeaweedFS and its Compose topology**
 
   Add MinIO with TLS server certificates, persistent data, private bucket initialization, and the least-privilege policies above. Keep it on the internal storage network and do not publish its port. The MinIO server and one-shot initializer receive the same generated root credential pair because the server requires root environment variables to avoid its `minioadmin` fallback; only the initializer uses root credentials as an admin client and creates the private bucket and service users. The API, gateway, and maintenance containers never receive that root pair. The initializer validates the configured bucket name, renders bucket-scoped policy templates, and reapplies the named policies on every run. Add generated certificates and secrets to .gitignore.
 
@@ -382,11 +382,43 @@
 
 ## Cutover checklist
 
-- [ ] `docker compose config --quiet` succeeds; production publishes only Nginx, and the developer stack publishes no gateway/authz/MinIO ports.
-- [ ] MinIO bucket is private; API, gateway, and maintenance policies pass positive and negative IAM checks.
-- [ ] Gateway-to-authorization mTLS and gateway-to-MinIO TLS hostname/CA checks succeed; invalid certificates fail.
+- [ ] `docker compose config --quiet` succeeds; production publishes only Nginx, and the developer stack publishes no gateway/authz/SeaweedFS S3 ports.
+- [x] SeaweedFS bucket is private; API, gateway, and maintenance policies pass positive and negative IAM checks in the isolated local Compose E2E.
+- [x] Gateway-to-authorization mTLS and gateway-to-SeaweedFS TLS hostname/CA checks succeed; invalid certificates fail in the isolated local Compose E2E.
 - [ ] Backfill inventories all seven durable payload classes, validates supported format metadata and structure, verifies size/SHA-256, resumes cleanly, and reports zero unresolved source paths.
 - [ ] The authorization matrix passes for all allowed/denied/stale/mismatched identities before the first live route cutover.
-- [ ] Compose E2E verifies all download surfaces, Excel reparse, restart persistence, and MinIO outage behavior.
+- [x] Isolated Compose E2E verifies all download surfaces, Excel reparse, object persistence across restart, and SeaweedFS outage/recovery behavior.
 - [ ] Production remains on legacy storage until provider object encryption and object-backup restore, encrypted PostgreSQL volumes, age-encrypted backup/WAL restore, key recovery, TLS, IAM, and exact S3 operations pass the deployment gates.
 - [ ] Legacy data remains for at least 30 days and two successful encrypted backups; removal requires a separate reviewed migration.
+
+## Provider pivot amendment - SeaweedFS (2026-09-29)
+
+SeaweedFS 4.40 supersedes MinIO for the implemented local Compose stack. The earlier MinIO-specific task instructions are historical and must be interpreted using this amendment and the current implementation-status note below.
+
+### Implementation status (2026-10-01)
+
+The isolated local implementation is exercised end to end. Task 8's local storage, mTLS/TLS, least-privilege IAM, restart/outage recovery, private download authorization, and Excel upload/reparse/download checks passed; the evidence is recorded in the SDD progress ledger. The checked cutover items above apply only to the disposable local stack.
+
+Production cutover is still blocked by real-data and deployment evidence: a non-empty seven-class inventory/backfill and resume rehearsal, the complete stale/mismatched authorization matrix, production object encryption and object-backup restore, encrypted database/WAL backup restore and key recovery, encrypted PostgreSQL volumes, and the 30-day/two-backup retention period. Keep legacy reads/data and production storage configuration in place until these gates pass. No production environment file was inspected or changed.
+
+### Verification continuation (2026-10-01)
+
+- Disposable Task 8 Compose run applied Alembic migrations and ran the read-only `file-storage-maintenance preflight` against its isolated database. All seven inventories reported zero legacy rows and zero pending bytes; S3 put/get/metadata/checksum/delete/encryption checks passed. `cutover_ready` remained false; this empty fixture is not evidence that production legacy data has been migrated.
+- Re-ran `seaweedfs-init`; it reported the private bucket ready, confirming initialization is idempotent.
+- Wrote a managed object, forcibly recreated SeaweedFS and its TLS proxy, and verified the exact object bytes after restart. Stopping SeaweedFS caused the storage adapter to report a connection failure; after restoring both services, the object remained readable.
+- Verified TLS rejects both an untrusted CA and a hostname mismatch. The live mTLS preflight verified the gateway certificate path and rejected an invalid bearer.
+- Verified live least privilege: the application identity can use its managed object but cannot list or delete; the gateway identity can read but cannot put, list, or delete; the distinct maintenance identity can list and delete. The maintenance CLI now uses `StorageMaintenanceSettings` and does not require the backend JWT signing secret.
+- Full isolated browser suite passed 8/8: six anonymous denial cases, owner scoped downloads with cross-user denials, and Excel upload/reparse/download with a cross-user denial. The isolated harness removed its containers, volumes, and networks after the run.
+- Local live IAM, TLS, initializer, migration-preflight, restart/outage, and browser gates are verified. Production key recovery, encrypted backup/restore against the production provider, a non-empty legacy-data backfill rehearsal, full stale/mismatched authorization matrix, and the 30-day/two-backup retention window remain deployment gates. No production cutover was performed.
+
+The user selected SeaweedFS after the original MinIO image could not be pulled. Preserve all completed application/storage work and replace the local object-store implementation and verification with SeaweedFS 4.40 (or a newer approved release only after re-verification). Do not access or modify deploy/.env.production.
+
+Amend the remaining work:
+
+1. Validate the pinned upstream image behavior before composing it: fail-closed static S3 auth, exact least-privilege actions (including delete/list/admin denials), S3 HTTPS with HTTP disabled, and SSE-S3. Record commands and results; do not infer compatibility from generic S3 claims.
+2. Replace the local MinIO services, bootstrap, credentials, certificates, health checks, storage volume, and scripts with a persistent SeaweedFS topology. Persist filer metadata and volume data, keep internal management ports unpublished, require verified TLS for S3, and retain separate API/gateway/maintenance identities.
+3. Keep production SSE-KMS and encryption/recovery acceptance gates unchanged. Local SSE-S3 is development-only; do not claim it meets production key-management requirements.
+4. Update operational documentation, examples, tests, and the progress ledger to identify SeaweedFS and state the verified limits. Preserve prior task history and existing user-owned changes.
+5. Run focused storage tests, Compose configuration validation, certificate/secret setup checks, and a live Compose S3 permission/encryption/restart check. Only mark the provider pivot complete after the exact image and end-to-end results are recorded.
+
+No commit, merge, or push is part of this provider pivot unless separately requested.

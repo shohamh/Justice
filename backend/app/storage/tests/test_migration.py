@@ -163,3 +163,40 @@ def test_database_reference_enumerator_includes_owning_row_uuid() -> None:
     reference = next(_existing_storage_references(QuerySession()))
 
     assert reference == ("soldier_exemption", OWNER_ID, KEY, DIGEST, len(GOOD))
+def test_storage_metadata_migration_is_reversible_only_without_s3_references(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[3] / "alembic/versions/4858092e72e7_add_object_storage_metadata.py"
+    spec = importlib.util.spec_from_file_location("storage_revision", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    class Result:
+        def __init__(self, value): self.value = value
+        def scalar_one(self): return self.value
+    class Connection:
+        def __init__(self, existing): self.existing = existing
+        def execute(self, statement): return Result(bool(self.existing) and self.existing in str(statement))
+    class Operations:
+        def __init__(self, existing): self.connection = Connection(existing); self.calls = []
+        def get_bind(self): return self.connection
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: self.calls.append((name, args, kwargs))
+    for reference in ("storage_key", "storage_delete_outbox"):
+        operations = Operations(reference)
+        monkeypatch.setattr(migration, "op", operations)
+        with pytest.raises(RuntimeError, match="Cannot downgrade while storage objects"):
+            migration.downgrade()
+        assert operations.calls == []
+    operations = Operations("")
+    monkeypatch.setattr(migration, "op", operations)
+    migration.downgrade()
+    assert any(call[0] == "drop_table" and call[1][0] == "storage_delete_outbox" for call in operations.calls)
+    assert any(call[0] == "alter_column" and call[2].get("nullable") is False for call in operations.calls)
+
+
+def test_storage_outbox_grant_is_least_privilege():
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[3] / "alembic/versions/4858092e72e7_add_object_storage_metadata.py"
+    source = path.read_text(encoding="utf-8")
+    assert "REVOKE ALL ON TABLE storage_delete_outbox FROM app" in source
+    assert "GRANT SELECT, INSERT, UPDATE ON TABLE storage_delete_outbox TO app" in source

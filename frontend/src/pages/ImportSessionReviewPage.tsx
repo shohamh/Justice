@@ -223,7 +223,7 @@ export default function ImportSessionReviewPage() {
       const blob = await downloadImportWorkbook(id ?? "");
       downloadBlob(blob, detail?.filename ?? "import-session.xlsx");
     } catch {
-      setWorkbookDownloadError("לא ניתן להוריד את קובץ המקור.");
+      setWorkbookDownloadError(t("import_sessions.download_source_failed"));
     }
   }
   const queryClient = useQueryClient();
@@ -567,7 +567,7 @@ export default function ImportSessionReviewPage() {
       <div className="w-full space-y-4 p-4" dir="rtl">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold">{detail.filename}</h1>
-          <button type="button" onClick={() => void downloadOriginalWorkbook()} className="text-sm text-blue-600 hover:underline">הורדת קובץ המקור</button>
+          <button type="button" onClick={() => void downloadOriginalWorkbook()} className="text-sm text-blue-600 hover:underline">{t("import_sessions.download_source")}</button>
         </div>
         {workbookDownloadError && <p role="alert" className="text-sm text-red-600">{workbookDownloadError}</p>}
 

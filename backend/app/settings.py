@@ -16,27 +16,10 @@ _DEFAULTS_FILE = _REPO_ROOT / ".env.defaults"
 _SECRETS_FILE = _REPO_ROOT / ".env"
 
 
-class Settings(BaseSettings):
+class StorageSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
     )
-
-    database_url: str = Field(alias="DATABASE_URL")
-    db_admin_url: str = Field(alias="DB_ADMIN_URL")
-    jwt_secret: str = Field(alias="JWT_SECRET", min_length=32)
-    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    access_token_minutes: int = Field(default=15, alias="ACCESS_TOKEN_MINUTES")
-    refresh_token_days: int = Field(default=30, alias="REFRESH_TOKEN_DAYS")
-    allowed_origins: str = Field(default="http://localhost:5173", alias="ALLOWED_ORIGINS")
-    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    login_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_RATE_LIMIT")
-    login_account_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_ACCOUNT_RATE_LIMIT")
-    invite_code_rate_limit: str = Field(default="20/hour", alias="INVITE_CODE_RATE_LIMIT")
-    cookie_secure: bool = Field(default=True, alias="COOKIE_SECURE")
-    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
-    loki_url: str = Field(default="", alias="LOKI_URL")
-    error_log_rate_limit_max_per_window: int = Field(default=10, alias="ERROR_LOG_RATE_LIMIT_MAX_PER_WINDOW")
-    error_log_rate_limit_window_seconds: float = Field(default=60.0, alias="ERROR_LOG_RATE_LIMIT_WINDOW_SECONDS")
 
     storage_bucket: str = Field(default="", alias="STORAGE_BUCKET")
     storage_region: str = Field(default="us-east-1", alias="STORAGE_REGION")
@@ -45,6 +28,8 @@ class Settings(BaseSettings):
     storage_path_style: bool = Field(default=True, alias="STORAGE_PATH_STYLE")
     storage_ca_bundle_path: str = Field(default="", alias="STORAGE_CA_BUNDLE_PATH")
     storage_access_key_id: SecretStr = Field(default=SecretStr(""), alias="STORAGE_ACCESS_KEY_ID")
+    storage_maintenance_access_key_id: SecretStr = Field(default=SecretStr(""), alias="STORAGE_MAINTENANCE_ACCESS_KEY_ID")
+    storage_maintenance_secret_access_key: SecretStr = Field(default=SecretStr(""), alias="STORAGE_MAINTENANCE_SECRET_ACCESS_KEY")
     storage_secret_access_key: SecretStr = Field(default=SecretStr(""), alias="STORAGE_SECRET_ACCESS_KEY")
     storage_session_token: SecretStr = Field(default=SecretStr(""), alias="STORAGE_SESSION_TOKEN")
     storage_sse_algorithm: str = Field(default="", alias="STORAGE_SSE_ALGORITHM")
@@ -66,6 +51,42 @@ class Settings(BaseSettings):
                 and not parsed.username and not parsed.password):
             return value
         raise ValueError("Storage endpoint must use HTTPS without embedded credentials")
+
+
+class StorageMaintenanceSettings(StorageSettings):
+    """Narrow settings for storage migration and reconciliation operations."""
+
+    model_config = SettingsConfigDict(
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        hide_input_in_errors=True,
+    )
+
+    database_url: str = Field(alias="DATABASE_URL")
+
+
+class Settings(StorageSettings):
+    model_config = SettingsConfigDict(
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
+    )
+
+    database_url: str = Field(alias="DATABASE_URL")
+    db_admin_url: str = Field(alias="DB_ADMIN_URL")
+    jwt_secret: str = Field(alias="JWT_SECRET", min_length=32)
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    access_token_minutes: int = Field(default=15, alias="ACCESS_TOKEN_MINUTES")
+    refresh_token_days: int = Field(default=30, alias="REFRESH_TOKEN_DAYS")
+    allowed_origins: str = Field(default="http://localhost:5173", alias="ALLOWED_ORIGINS")
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    login_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_RATE_LIMIT")
+    login_account_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_ACCOUNT_RATE_LIMIT")
+    invite_code_rate_limit: str = Field(default="20/hour", alias="INVITE_CODE_RATE_LIMIT")
+    cookie_secure: bool = Field(default=True, alias="COOKIE_SECURE")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    loki_url: str = Field(default="", alias="LOKI_URL")
+    error_log_rate_limit_max_per_window: int = Field(default=10, alias="ERROR_LOG_RATE_LIMIT_MAX_PER_WINDOW")
+    error_log_rate_limit_window_seconds: float = Field(default=60.0, alias="ERROR_LOG_RATE_LIMIT_WINDOW_SECONDS")
 
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_bot_username: str = Field(default="", alias="TELEGRAM_BOT_USERNAME")
@@ -100,3 +121,13 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+@lru_cache(maxsize=1)
+def get_storage_settings() -> StorageSettings:
+    return StorageSettings()
+
+
+@lru_cache(maxsize=1)
+def get_storage_maintenance_settings() -> StorageMaintenanceSettings:
+    return StorageMaintenanceSettings()

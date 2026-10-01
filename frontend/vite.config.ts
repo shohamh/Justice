@@ -15,6 +15,11 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: [".trycloudflare.com", ".ts.net"],
     proxy: {
+      "/api/file-download/": {
+        target: process.env.VITE_FILE_GATEWAY_URL ?? "http://localhost:8080",
+        changeOrigin: true,
+        xfwd: true,
+      },
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
         changeOrigin: true,
@@ -29,6 +34,11 @@ export default defineConfig({
     port: 5173,
     host: "0.0.0.0",
     proxy: {
+      "/api/file-download/": {
+        target: process.env.VITE_FILE_GATEWAY_URL ?? "http://localhost:8080",
+        changeOrigin: true,
+        xfwd: true,
+      },
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
         changeOrigin: true,

@@ -1,160 +1,91 @@
-﻿"""Local object-store topology and IAM contract tests."""
-
-import json
+"""Local object-store topology and IAM contract tests."""
+import re
 from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[4]
-POLICY_DIR = ROOT / "deploy" / "minio" / "policies"
-PREFIXES = {
-    "soldier_exemption/",
-    "exemption_request/",
-    "gimelim/",
-    "bug_report_screenshot/",
-    "bug_report_comment/",
-    "import_workbook/",
-    "bug_report_json_mirror/",
-}
-
 
 def _compose():
     return yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
 
-
-def _policy(name):
-    return json.loads((POLICY_DIR / name).read_text(encoding="utf-8"))
-
-
-def _statements(policy):
-    return policy["Statement"]
-
-
-def _allowed_actions(policy):
-    return {
-        action
-        for statement in _statements(policy)
-        if statement["Effect"] == "Allow"
-        for action in (statement["Action"] if isinstance(statement["Action"], list) else [statement["Action"]])
-    }
-
-
-def test_minio_server_is_private_tls_enabled_persistent_and_receives_generated_root_credentials():
+def test_seaweedfs_private_loopback_tls_and_persistent():
     compose = _compose()
-    minio = compose["services"]["minio"]
-    assert "ports" not in minio
-    assert "--certs-dir" in minio["command"]
-    assert any("minio-data" in volume for volume in minio["volumes"])
-    assert "storage" in minio["networks"]
+    seaweed = compose["services"]["seaweedfs"]
+    proxy = compose["services"]["seaweedfs-s3-proxy"]
+    assert "ports" not in seaweed and "ports" not in proxy
+    assert "-ip.bind=0.0.0.0" in seaweed["command"]
+    assert "-s3.ip.bind=127.0.0.1" in seaweed["command"]
+    assert "-s3.port=8333" in seaweed["command"]
+    assert "-s3.port.https=8334" in seaweed["command"]
+    assert "-s3.config=/etc/seaweedfs/s3.json" in seaweed["command"]
+    assert "seaweedfs-data:/data" in seaweed["volumes"]
     assert compose["networks"]["storage"]["internal"] is True
-    assert minio["env_file"] == ["./deploy/minio/secrets/minio-root.env"]
-    cert_script = (ROOT / "scripts/dev-certs.ps1").read_text(encoding="utf-8")
-    assert '$minioRootEnv = Join-Path $secretsDirectory "minio-root.env"' in cert_script
-    assert 'Set-Content -Path $minioRootEnv' in cert_script
+    assert proxy["network_mode"] == "service:seaweedfs"
+    nginx = (ROOT / "deploy/seaweedfs/nginx-s3.conf").read_text(encoding="utf-8")
+    assert "listen 9443 ssl" in nginx and "proxy_ssl_verify on" in nginx
 
-
-def test_initializer_is_the_only_root_admin_client_and_creates_private_bucket():
+def test_initializer_is_one_shot_and_uses_bootstrap_identity():
     compose = _compose()
-    initializer = compose["services"]["minio-init"]
-    assert "minio" in initializer["depends_on"]
-    assert initializer["restart"] == "no"
-    assert "storage" in initializer["networks"]
-    assert initializer["env_file"] == ["./deploy/minio/secrets/initializer.env"]
-    cert_script = (ROOT / "scripts/dev-certs.ps1").read_text(encoding="utf-8")
-    assert cert_script.count('"MINIO_ROOT_USER=$rootUser", "MINIO_ROOT_PASSWORD=$rootPassword"') == 2
-    script = (ROOT / "deploy/minio/init-bucket.sh").read_text(encoding="utf-8")
-    assert "mc mb --ignore-existing" in script
-    assert "mc anonymous set none" in script
-    assert "maintenance" in script and "gateway-get" in script and "api-put-get" in script
-    assert 'case "$MINIO_BUCKET" in' in script
-    assert "*[!a-z0-9-]*" in script
-    assert 'sed "s/__BUCKET__/$MINIO_BUCKET/g"' in script
-    assert 'mc admin policy create local "$policy"' in script
-    assert "mc admin policy info local" not in script
+    init = compose["services"]["seaweedfs-init"]
+    assert init["command"] == ["python", "-m", "app.storage.initialize_bucket"]
+    assert init["restart"] == "no"
+    assert init["env_file"] == ["./deploy/seaweedfs/secrets/initializer.env"]
+    assert "seaweedfs-s3-proxy" in init["depends_on"]
+    server = compose["services"]["seaweedfs"]
+    assert "STORAGE_BOOTSTRAP_ACCESS_KEY_ID" not in server.get("environment", {})
+    assert "./deploy/seaweedfs/secrets/encryption.env" in server["env_file"]
+    script = (ROOT / "scripts/dev-certs.ps1").read_text(encoding="utf-8")
+    assert 'actions = @("Admin")' in script
+    assert "policyNames" in script
+    assert "STORAGE_BOOTSTRAP_SECRET_ACCESS_KEY" in script
 
+def test_static_identities_are_scoped_to_required_s3_actions():
+    script = (ROOT / "scripts/dev-certs.ps1").read_text(encoding="utf-8")
+    assert 'Action = @("s3:GetObject", "s3:PutObject")' in script
+    assert 'Action = @("s3:GetObject")' in script
+    assert 'Action = @("s3:ListBucket")' in script
+    assert "s3:DeleteObject" in script
+    assert '"$($_)/*"' in script
 
-def test_minio_and_initializer_receive_root_credentials_but_app_services_do_not():
+def test_secret_paths_and_endpoints_use_seaweedfs():
+    defaults = (ROOT / ".env.defaults").read_text(encoding="utf-8")
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "STORAGE_ENDPOINT_URL=https://seaweedfs:9443" in defaults
+    assert "MINIO_" not in defaults
+    assert "deploy/seaweedfs/secrets/" in ignored
+    assert "deploy/seaweedfs/certs/" in ignored
+    services = _compose()["services"]
+    assert services["file-gateway"]["env_file"] == ["./deploy/seaweedfs/secrets/gateway.env"]
+    assert services["backend"]["env_file"][-1] == "./deploy/seaweedfs/secrets/api.env"
+    assert services["file-storage-maintenance"]["env_file"] == ["./deploy/seaweedfs/secrets/maintenance.env"]
+    endpoint = "$" + "{STORAGE_ENDPOINT_URL:-https://seaweedfs:9443}"
+    assert services["file-gateway"]["environment"]["STORAGE_ENDPOINT_URL"] == endpoint
+    assert services["file-storage-maintenance"]["environment"]["STORAGE_ENDPOINT_URL"] == endpoint
+
+def test_file_gateway_mtls_and_production_storage_are_provider_agnostic():
     compose = _compose()
-    initializer = compose["services"]["minio-init"]
-    assert initializer["env_file"] == ["./deploy/minio/secrets/initializer.env"]
-    for name, service in compose["services"].items():
-        if name in {"minio", "minio-init"}:
-            continue
-        assert "MINIO_ROOT_USER" not in service.get("environment", {})
-        assert "MINIO_ROOT_PASSWORD" not in service.get("environment", {})
-        assert "minio-root.env" not in str(service.get("env_file", []))
-        assert "initializer.env" not in str(service.get("env_file", []))
-    env_defaults = (ROOT / ".env.defaults").read_text(encoding="utf-8")
-    assert "MINIO_ROOT_PASSWORD=" not in env_defaults
-    assert "STORAGE_SECRET_ACCESS_KEY=" not in env_defaults
-    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    assert "deploy/minio/secrets/" in ignored
-    cert_script = (ROOT / "scripts/dev-certs.ps1").read_text(encoding="utf-8")
-    for identity in ("MINIO_ROOT_PASSWORD", "STORAGE_SECRET_ACCESS_KEY", "STORAGE_GATEWAY_SECRET_ACCESS_KEY",
-                     "STORAGE_MAINTENANCE_SECRET_ACCESS_KEY"):
-        assert identity in cert_script
+    services = compose["services"]
+    assert services["file-authorization"]["networks"] == ["file-authz", "authz-db"]
+    assert "DB_ADMIN_URL" in services["file-authorization"]["environment"]
+    assert services["file-gateway"]["networks"] == ["default", "storage", "file-authz"]
+    assert services["db"]["networks"] == ["default", "authz-db"]
+    assert compose["networks"]["file-authz"]["internal"] is True
+    assert "FILE_GATEWAY_CLIENT_CERT" in services["file-gateway"]["environment"]
+    assert "FILE_AUTHORIZATION_GATEWAY_CA" in services["file-authorization"]["environment"]
+    prod = yaml.safe_load((ROOT / "deploy/docker-compose.prod.yml").read_text(encoding="utf-8"))["services"]
+    assert "STORAGE_ACCESS_KEY_ID" not in prod["file-storage-maintenance"]["environment"]
 
 
-def test_policy_templates_render_to_a_configured_bucket():
-    configured_bucket = "justice-storage-test"
-    for name in ("api-put-get.json", "gateway-get.json", "maintenance.json"):
-        template = (POLICY_DIR / name).read_text(encoding="utf-8")
-        assert "__BUCKET__" in template
-        rendered = json.loads(template.replace("__BUCKET__", configured_bucket))
-        resources = [statement["Resource"] for statement in _statements(rendered)]
-        resources = [resource for item in resources for resource in (item if isinstance(item, list) else [item])]
-        assert resources
-        assert all(configured_bucket in resource and "__BUCKET__" not in resource for resource in resources)
+def test_docker_dev_launcher_starts_seaweedfs_storage_services():
+    script = (ROOT / "dev.ps1").read_text(encoding="utf-8")
+    match = re.search(r"\$composeServices\s*=\s*@\((.*?)\)", script, re.DOTALL)
+    assert match is not None
+    services = set(re.findall(r"'([^']+)'", match.group(1)))
+    assert {"seaweedfs", "seaweedfs-s3-proxy", "seaweedfs-init"} <= services
+    assert not {"minio", "minio-init"} & services
 
 
-def test_initializer_rerenders_changed_policy_source_on_every_run():
-    script = (ROOT / "deploy/minio/init-bucket.sh").read_text(encoding="utf-8")
-    assert "for policy in api-put-get gateway-get maintenance; do" in script
-    assert 'sed "s/__BUCKET__/$MINIO_BUCKET/g" "/policies/$policy.json"' in script
-    assert 'mc admin policy create local "$policy" "$rendered_policy"' in script
-    assert "mc admin policy info local" not in script
-
-    source = (POLICY_DIR / "api-put-get.json").read_text(encoding="utf-8")
-    first_render = json.loads(source.replace("__BUCKET__", "justice-storage-test"))
-    changed_source = source.replace('"s3:GetObject"', '"s3:GetObject", "s3:DeleteObject"')
-    second_render = json.loads(changed_source.replace("__BUCKET__", "justice-storage-test"))
-    assert _allowed_actions(first_render) == {"s3:GetObject", "s3:PutObject"}
-    assert _allowed_actions(second_render) == {"s3:GetObject", "s3:PutObject", "s3:DeleteObject"}
-
-
-def test_api_identity_has_only_object_put_get_and_no_bucket_or_delete_access():
-    policy = _policy("api-put-get.json")
-    actions = _allowed_actions(policy)
-    assert actions == {"s3:GetObject", "s3:PutObject"}
-    assert {statement["Resource"] for statement in _statements(policy)} == {"arn:aws:s3:::__BUCKET__/*"}
-    assert not actions & {"s3:ListBucket", "s3:DeleteObject", "s3:CreateBucket", "s3:PutBucketPolicy"}
-
-
-def test_gateway_identity_is_get_only():
-    policy = _policy("gateway-get.json")
-    actions = _allowed_actions(policy)
-    assert actions == {"s3:GetObject"}
-    assert all(statement["Resource"] == "arn:aws:s3:::__BUCKET__/*" for statement in _statements(policy))
-    assert not actions & {"s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:PutBucketPolicy"}
-
-
-def test_maintenance_identity_can_manage_managed_object_prefixes_only():
-    policy = _policy("maintenance.json")
-    actions = _allowed_actions(policy)
-    assert actions == {"s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"}
-    bucket_statement = next(s for s in _statements(policy) if "s3:ListBucket" in s["Action"])
-    assert bucket_statement["Resource"] == "arn:aws:s3:::__BUCKET__"
-    assert set(bucket_statement["Condition"]["StringLike"]["s3:prefix"]) == {f"{p}*" for p in PREFIXES}
-    object_statement = next(s for s in _statements(policy) if "s3:GetObject" in s["Action"])
-    assert set(object_statement["Resource"]) == {f"arn:aws:s3:::__BUCKET__/{prefix}*" for prefix in PREFIXES}
-    assert not actions & {"s3:CreateBucket", "s3:PutBucketPolicy", "s3:PutUserPolicy", "s3:DeleteBucket"}
-
-
-def test_generated_certificate_and_secret_paths_are_ignored():
-    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    for pattern in ("deploy/minio/certs/", "deploy/minio/secrets/", "*.key", "*.pem"):
-        assert pattern in ignored
-    cert_script = (ROOT / "scripts/dev-certs.ps1").read_text(encoding="utf-8")
-    for service_name in ("gateway", "file-authorization", "minio", "proxy"):
-        assert service_name in cert_script
+def test_compose_login_limit_keeps_default_and_allows_local_override():
+    backend_environment = _compose()["services"]["backend"]["environment"]
+    assert "LOGIN_RATE_LIMIT=${LOGIN_RATE_LIMIT:-10/5minutes}" in backend_environment

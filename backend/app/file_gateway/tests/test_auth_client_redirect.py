@@ -1,13 +1,20 @@
 import asyncio
+import ssl
 
 import httpx
 import pytest
 
+import app.file_gateway.authorization_client as authorization_client
 from app.file_authorization.schemas import ExemptionRequestFileRequest
 from app.file_gateway.authorization_client import AuthorizationClient
 
 
-def test_bearer_is_only_sent_to_fixed_auth_service_and_redirect_is_not_followed():
+def test_bearer_is_only_sent_to_fixed_auth_service_and_redirect_is_not_followed(monkeypatch):
+    monkeypatch.setattr(
+        authorization_client,
+        "_create_authorization_tls_context",
+        lambda *_: ssl.create_default_context(),
+    )
     seen = []
 
     def handler(request):

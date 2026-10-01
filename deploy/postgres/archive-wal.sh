@@ -11,9 +11,10 @@ WAL_NAME="$2"
 ARCHIVE_DIR="${WAL_ARCHIVE_DIR:-/var/lib/postgresql/wal-archive}"
 DESTINATION="$ARCHIVE_DIR/$WAL_NAME.age"
 RECIPIENTS="${AGE_BACKUP_RECIPIENTS:-} ${AGE_BACKUP_RECIPIENTS_NEXT:-}"
+WAL_ARCHIVE_NAME_RE='^([A-Fa-f0-9]{24}|[A-Fa-f0-9]{8}\.history|[A-Fa-f0-9]{24}\.[A-Fa-f0-9]{8}\.backup)$'
 
-if [[ ! -f "$SOURCE_PATH" || ! "$WAL_NAME" =~ ^[A-Fa-f0-9]{24}$ ]]; then
-    echo "Invalid WAL source or segment name" >&2
+if [[ ! -f "$SOURCE_PATH" || ! "$WAL_NAME" =~ $WAL_ARCHIVE_NAME_RE ]]; then
+    echo "Invalid WAL archive source or filename" >&2
     exit 64
 fi
 if [[ -z "${RECIPIENTS//[[:space:]]/}" ]]; then
@@ -28,7 +29,7 @@ if [[ -f "$DESTINATION" ]]; then
     exit 0
 fi
 
-TEMP_FILE="$(mktemp "$ARCHIVE_DIR/.${WAL_NAME}.tmp.XXXXXX")"
+TEMP_FILE="$(mktemp "$ARCHIVE_DIR/.$(basename "$WAL_NAME").tmp.XXXXXX")"
 cleanup() { rm -f "$TEMP_FILE"; }
 trap cleanup EXIT
 

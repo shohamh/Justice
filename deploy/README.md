@@ -34,7 +34,7 @@ openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
 
 # 2. Configure environment
 cp deploy/.env.production.example deploy/.env.production
-# Edit .env.production — fill in DB_PASSWORD, JWT_SECRET, TELEGRAM_BOT_TOKEN, ALLOWED_ORIGINS
+# Edit .env.production â€” fill in DB_PASSWORD, JWT_SECRET, TELEGRAM_BOT_TOKEN, ALLOWED_ORIGINS
 
 # 3. Build frontend
 cd frontend && npm ci && npm run build && cd ..
@@ -109,3 +109,24 @@ to the restored data directory. A missing or corrupt WAL segment makes
 PostgreSQL report a restore-command failure; check docker compose logs db and
 the host backup logs, then alert the operator before promoting the recovery
 instance.
+
+## Backup failure notifications
+
+`backup.sh` checks PostgreSQL's last archive-failure and success timestamps and alerts when WAL archiving has an unrecovered failure. It posts one fixed, generic message to `BACKUP_ALERT_WEBHOOK`; it never includes SQL text, WAL names, database contents, or credentials in the payload or its own output. Webhook errors are redacted and remain a nonzero backup result.
+
+Configure the HTTPS webhook only in the host scheduler environment. Do not add it to `deploy/.env.production`: Compose passes that file to application services. For a systemd backup service, create a root-owned mode-0600 `/etc/justice/backup-alert.env` containing:
+
+```sh
+BACKUP_ALERT_WEBHOOK=https://your-alert-receiver.example/webhook/your-secret-token
+```
+
+Then add `EnvironmentFile=/etc/justice/backup-alert.env` to the host-only service that runs `deploy/backup.sh`. The receiver must accept a JSON `text` field and return a 2xx status. Missing configuration, curl errors, timeouts, and non-2xx responses are visible in the backup log, and the backup command exits nonzero. Test a webhook rotation with a non-production receiver before deploying it.
+
+## Recovery startup sequence
+
+`deploy/restore-pitr.sh` extracts and configures the selected encrypted base backup, atomically writes `.recovery-ready` last, starts the isolated recovery database, and waits until PostgreSQL finishes WAL replay. The recovery entrypoint refuses to start Postgres unless the base directory, `recovery.signal`, restore command, and ready marker all exist. If preparation fails, no PostgreSQL server starts. Keep the recovery project isolated and inspect the restored data before routing services to it.
+
+
+## S3 file storage maintenance
+
+See [file storage maintenance](../docs/operations/file-storage-maintenance.md) for the isolated maintenance credentials, preflight and migration commands, and the 15-minute reconciliation schedule.

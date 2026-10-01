@@ -47,11 +47,11 @@ Plan workspace: .superpowers/sdd/2026-09-27-s3-compatible-file-storage
 
 - [x] Task 1: Build the shared S3 storage package
 - [ ] Task 2: Add local MinIO, TLS certificates, and least-privilege identities
-- [ ] Task 3: Add file metadata, transactional delete outbox, and restartable backfill
+- [x] Task 3: Add file metadata, transactional delete outbox, and restartable backfill
 - [x] Task 4: Move upload, parse, and bug-report recovery flows to object storage
 - [x] Task 5: Add the private authorization service and streaming download gateway
-- [ ] Task 6: Route all browser downloads through the gateway
-- [ ] Task 7: Encrypt PostgreSQL base backups and WAL archives
+- [x] Task 6: Route all browser downloads through the gateway
+- [x] Task 7: Encrypt PostgreSQL base backups and WAL archives
 - [ ] Task 8: Wire Compose, dev launcher, and production proxy; finish migration operations and E2E checks
 
 Task 1: dispatched /root/storage_task_1; BASE 57417f8d4077e9218c4bebd4389c9daf514d16bf; brief and report paths are plan-scoped.
@@ -108,3 +108,76 @@ Task 6: dispatched to fresh implementer; initial dispatch base 4921e52e, actual 
 Task 6 fix round: added attachment listing/download for existing primary.dismissals rows marked is_gimelim, preserving dismissal IDs per attachment; query-item effects now revoke screenshot Blob URLs for disappeared IDs in MyReports and admin. Regression RED: existing dismissal test failed when no list call occurred; GREEN: focused suite 11 files, 162 passed. Frontend typecheck and lint passed. Gimelim metadata route/test previously passed 2/2 including unrelated-soldier 403. Actual Task 6 implementation base: c806ee6c. Commit pending.
 
 Task 6 review fix round 1: independent review found a medium load-bearing Gimelim UI defect: on failed attachment upload the modal sets the failure message, then setting completedDismissalId triggers the attachment-list effect, whose setAttachmentError(null) clears the message before the user can see it. Regression RED: DismissalModal suite 1 failed/6 passed with the upload failure alert absent after list refresh. Fixed by preserving attachmentError across list refresh; GREEN: DismissalModal suite 7/7, npm run typecheck passed, npm run lint passed. Fix commit pending.
+
+Task 6: complete (implementation 845d9f9d, review fix 02b47dab; scoped review PASS). Frontend tests: 11 files, 162 passed; typecheck and lint passed. Gimelim attachment listing/download is permission checked and the upload failure alert remains visible across list refresh. Blob URLs are revoked on resource changes and unmount.
+
+
+Task 7: complete. Shell syntax passed for all deployment and backup scripts; recovery acceptance passed 3/3. The source deploy/restore-pitr.sh completed a live PostgreSQL PITR run in an isolated recovery project. The restored marker table contained before_base and keep with no post-target marker. Recovery database containers were stopped after verification; volumes preserved.
+
+Task 8: partial. Added isolated authz/gateway Compose wiring, mTLS certificate generation, public download proxy routes, production service wiring, migration operations docs, and anonymous-denial browser test definitions. docker compose config --quiet, 11 Compose configuration tests, frontend typecheck/lint, PowerShell AST parsing, git diff --check, and Playwright discovery (12 desktop/mobile cases) passed. Full Compose E2E is blocked: official quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z pull returned 401 UNAUTHORIZED. A reduced app build also failed because the Docker build cannot reach PyPI for setuptools>=68; no Compose services started. Browser runtime had no connected browser sessions, so no visual/browser execution is claimed. Re-run Task 8 E2E and complete final review after registry/PyPI access is available.Task 7 follow-up review: added a failure-exit notification so base backup and later WAL checks alert through the redacted HTTPS notifier. Regression test deploy/tests/test_backup_alert.sh passed using local docker/curl shims; recovery acceptance passed 3/3 again; bash -n and git diff --check passed.
+
+
+Task 8 continuation (2026-09-28): Rechecked registry/cache/mirror availability without printing credentials. No local MinIO image, no Docker credential-helper registry entries, no PIP_INDEX_URL/proxy environment setting, and no cached setuptools wheel. Retried `docker pull quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`; registry manifest HEAD returns HTTP 401 Unauthorized. `docker compose config --quiet` exits 0. The previous backend PyPI build failure is no longer reproducible: `docker compose build backend` succeeded and produced `s3-object-storage-resume-backend:latest` after downloading requirements. The production backend image does not include pytest; a no-deps one-off run ended with `No module named pytest`, and no application services started. Coordinating agent reports the local focused backend suite and frontend all 208 files / 1,573 tests, typecheck, and lint pass. The live Compose/browser journey remains blocked by the unavailable official Quay MinIO image; Task 8 stays partial. See task-8-report.md. User-local deploy/.env.production untouched.
+
+Task 8 source-build investigation: independently pulled `minio` and `minio-init`; both official Quay images return 401 (server `quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`, client `quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z`). Upstream MinIO's signed-artifact Dockerfile.release verifies MinIO and mc binaries with minisign and uses UBI micro, but official `dl.min.io` probes for MinIO binary, MinIO signature, and mc binary return HTTP 410; UBI registry manifest returned 200. Upstream `make docker` depends on `FROM minio/minio:latest`, and upstream mc Dockerfile installs `@latest`, so neither upstream path works reproducibly here. A local build needs pinned upstream Go source for both components plus verified tag authenticity and Go base/module access; not yet established. No Compose edit made. A short-lived no-deps backend run exited because the production image intentionally lacks pytest; no application services were started.
+
+### Task 8 continuation   pinned source provenance (2026-09-28)
+
+- GitHub API verified mc tag RELEASE.2025-04-16T18-13-26Z as a signed annotated tag (Minio Trusted, valid), targeting verified commit b00526b153a31b36767991a4f5ce2cced435ee8e.
+- MinIO tag RELEASE.2025-10-15T17-29-55Z is lightweight and resolves to unsigned commit 9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a; GitHub API reason: unsigned.
+- Official Go builder pull succeeded (Docker Hub golang:1.24.8-alpine; digest recorded in task-8-report.md). Root scratch build using Go 1.24.13 failed during proxy.golang.org downloads with TLS handshake timeouts and unexpected EOF. Host lacks Go and GPG; direct Go checksum database probes returned HTTP 400.
+- No Compose edits were made. Task 8 remains partial pending official MinIO availability or an approved, verified source path.
+
+
+Task 8 continuation (2026-09-28): Fixed final spec-review gaps in the working tree. The authz service now reaches Postgres on a separate internal authz-db network; only authz and the download gateway share file-authz in development and production. Added deployment instructions for a distinct, bucket-scoped maintenance identity, preflight/migration commands, and 15-minute reconciliation. Added deploy/reconcile-file-storage.sh for a flock-serialized host cron schedule. Regression checks: `python -m pytest app/storage/tests app/file_authorization/tests app/file_gateway/tests -q` passed (93 tests; pytest showed 77% then 100%); `docker compose config --quiet`, `git diff --check`, and `bash -n deploy/reconcile-file-storage.sh` passed. Compose end-to-end, browser runtime, real MinIO TLS, and IAM allow/deny remain blocked/unverified: the official Quay images return 401 and MinIO Community Edition is now source-only upstream. Task 8 remains partial. Fresh standards review still flags the pre-existing UI i18n/file-size issues in DismissalModal and inline text in related UI files; these were not changed in this storage continuation. Local `deploy/.env.production` was not opened or modified.
+
+
+Task 8 continuation (2026-09-28): Resolved the standards review finding for hard-coded file-transfer UI messages by moving download/upload strings into `frontend/src/i18n/he.json` and wiring DismissalModal, ExemptionsPanel, and ImportSessionReviewPage through `t()`. Updated the dismissal upload-failure assertion for the i18n key. Verification: `npm run lint` passed; focused DismissalModal suite 7/7; full frontend suite 208 files / 1,573 tests passed; `git diff --check` passed (only CRLF normalization warnings). The separate low-priority component-size observation remains. Task 8 stays partial because MinIO cannot be obtained here, so no live Compose or browser-to-S3 verification is claimed.
+
+Task 8 provider acquisition check (2026-09-28): Tried Docker Hub alias `minio/minio:RELEASE.2025-04-22T22-12-26Z`; registry returned `pull access denied` / repository does not exist. Thus the recorded Quay 401 is not bypassed by Docker Hub. Current upstream README marks the repository unmaintained/archived; AIStor Free is license-gated and its docs prohibit encryption at rest, so it is not an approved drop-in for this security spec. No provider change or service start made.
+
+
+SeaweedFS continuation (2026-09-29): pinned SeaweedFS 4.40; local Compose S3 is loopback-bound behind the HTTPS Nginx proxy with scoped static identities and a local SSE-S3 key. TLS/bootstrap initializer is in place. Focused Compose/storage tests pass (7); Ruff passes. Docker runtime remains unverified: earlier `docker compose up`, `docker compose ps`, and `docker version` calls hung; no teardown or volume commands were issued. Generated certs/secrets remain ignored. Production env remains untouched. Live S3 allow/deny, SSE, and restart checks remain outstanding.
+
+
+SeaweedFS live-start attempt (2026-09-29): Docker 29.8.0 and `docker compose config --quiet` work. `docker compose up -d` built all images, but the S3 proxy health check failed with 502; SeaweedFS logs identify a UTF-8 BOM at byte 1 of the mounted static IAM JSON as invalid input, and S3 ports do not listen. Fixed `scripts/dev-certs.ps1` to emit BOM-free JSON for newly created configs and made its default output path robust; the existing ignored local config is still unchanged pending approval for an encoding-only repair. App services depending on the proxy have not started. No production env or old MinIO secret files were accessed.
+
+### Task 8 continuation (2026-09-29): SeaweedFS runtime and validation
+- Recreated only `seaweedfs` and `seaweedfs-s3-proxy`; persistent volumes were retained. Live process args confirm `-ip.bind=0.0.0.0` and `-s3.ip.bind=127.0.0.1`; both services report healthy. SeaweedFS logs report `Loaded KEK from s3.sse.kek config`.
+- With SeaweedFS stopped, the backend S3 adapter raised `EndpointConnectionError` for a valid managed key; it did not return an empty-object result. After `docker compose up -d --force-recreate seaweedfs seaweedfs-s3-proxy`, both services were healthy and a missing-key lookup returned `None`.
+- Focused backend storage/authz/gateway/file-route suite passed; one import parser test was skipped because its bounded parser execution requires the Linux container path. Ruff passed after import-order fixes in the initializer and two storage test files.
+- Frontend unit suite passed: 208 files / 1,573 tests. `npm run typecheck` and `npm run lint` passed. `docker compose config --quiet` and `git diff --check` passed; Git printed only line-ending normalization warnings.
+- Browser denial suite passed all six anonymous download endpoint checks using the discovery config. The standard authenticated global setup still fails at its seeded-role login redirect and has also hit the shared 10-per-5-minute login limit after repeated attempts. A single admin login probe reached `/` and retained only a `refresh_token` cookie; the temporary probe was removed.
+- Still unverified: authenticated browser downloads for all six classes, second-user denial on a real resource, Excel upload/reparse/download, and the full restart/outage browser journey. Task 8 remains partial. Existing ignored `deploy/.env.production` was not inspected or changed; no volumes were removed.
+
+### Task 8 follow-up: dev.ps1 provider pivot fix (2026-09-29)
+- Found `dev.ps1 -Docker` still selecting removed `minio` and `minio-init` services. Added a regression test, observed it fail against the old list, then changed the launcher to select `seaweedfs`, `seaweedfs-s3-proxy`, and `seaweedfs-init`.
+- The regression test passes; targeted Ruff passes; PowerShell parser validation and `docker compose config --quiet` pass. The Docker launcher itself was not started because it attaches/restarts the local app stack.
+
+### Authenticated browser setup result (2026-09-29)
+- A standard Playwright run was attempted after the limiter window cleared. The shared setup logs nine seeded login requests as HTTP 200, then rejects the next at `10 per 5 minutes`; setup aborts before the file-download tests. No auth rate limit was weakened. The isolated six-case anonymous denial suite remains green.
+
+### Browser setup recovery and final verification (2026-09-29)
+- Compose now passes through the existing `LOGIN_RATE_LIMIT` setting with its unchanged default `10/5minutes`; the regression test verified that fallback and override syntax.
+- With a temporary process-only `LOGIN_RATE_LIMIT=30/5minutes`, the standard desktop Playwright global setup authenticated its seeded roles and the six file-download anonymous-denial tests passed. The process variable was removed and only the backend container was recreated; in-container settings read back `10/5minutes`.
+- Final focused backend suite passed; its one platform-specific parser test remains skipped on Windows. Ruff, frontend unit tests/typecheck/lint, Compose config, PowerShell AST parse, and diff check pass.
+- Remaining E2E coverage gap: the browser spec validates anonymous denial for six routes, but does not yet create permitted file records to prove positive downloads, cross-user denial on a real record, or Excel upload/reparse/download end to end.
+
+### Task 8 completion evidence (2026-10-01)
+
+- Fixed HTTPX mTLS setup by supplying an explicitly verified SSL context with the client certificate chain; the live authorization preflight confirms mTLS and rejects an invalid bearer.
+- Split `StorageSettings` from database/JWT application settings for the gateway. Added `StorageMaintenanceSettings` for migration/reconciliation so the dedicated maintenance service needs its database URL and storage credentials without receiving the backend JWT signing secret.
+- The isolated Compose run applied Alembic migrations and ran maintenance `preflight` against a disposable database. Seven file-class inventories had zero legacy rows/bytes and zero pending rows; S3 put/get/metadata/checksum/delete/encryption checks all passed. `cutover_ready` remained false, and no non-empty legacy dataset was present.
+- Re-running `seaweedfs-init` reported the private bucket ready. A managed object retained its exact bytes across SeaweedFS and TLS-proxy recreation; stopping SeaweedFS surfaced a connection failure, and both services recovered with the object still readable.
+- Live S3 TLS negative checks rejected an untrusted CA and a mismatched hostname. The live mTLS preflight verified the gateway certificate path and rejected an invalid bearer.
+- Live least-privilege checks passed: runtime identity denied list/delete, gateway identity allowed get and denied put/list/delete, and maintenance identity allowed list/delete.
+- The full browser journey passed 8/8: anonymous requests denied for all six download classes; owner scoped bug-report screenshot/comment and exemption/gimelim files downloaded while other users were denied; Excel uploaded, reparsed, downloaded, and denied to another user.
+- The harness checked ownership labels before cleanup and removed only the `justice-task8-e2e` project resources. The frontend listener skips Chromium's blocked local port 10080.
+- Production cutover remains pending: no non-empty legacy backfill/resume rehearsal, complete stale/mismatched authorization matrix, production encryption/key recovery and backup restore, or 30-day/two-backup retention evidence is claimed. The production environment file was not inspected or modified. No commit, merge, or push was made.
+
+### Final continuation validation (2026-10-01)
+
+- Re-ran focused storage/settings/migration/Compose/mTLS authorization tests: 28 passed.
+- Ruff passed for the changed storage settings, adapter, maintenance, lifecycle preflight, and authorization client/test modules. Compose config with the maintenance profile and isolated E2E overlay passed; the PowerShell harness parsed successfully; `git diff --check` passed (Git only reported LF/CRLF normalization warnings).
+- Backup failure notification test passed. Recovery acceptance test passed in the repository's age-enabled PostgreSQL image, including premature-start rejection, prepared-start argument forwarding, encryption/decryption of WAL `.history` and `.backup` files with age, no plaintext archive output, and webhook log redaction for success/failure cases.
+- The age-enabled acceptance script does not constitute a PostgreSQL point-in-time restore rehearsal. Production database/object restore, key recovery, non-empty migration, stale/mismatched identity matrix, and retention gates remain open. No production environment file or credential was read or changed; no commit, merge, or push was made.

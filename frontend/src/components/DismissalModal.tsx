@@ -88,7 +88,7 @@ export default function DismissalModal({
       const blob = await downloadGimelimAttachment(dismissalId, attachment.id);
       downloadBlob(blob, attachment.file_name);
     } catch {
-      setAttachmentError("לא ניתן להוריד את הקובץ.");
+      setAttachmentError(t("common.download_failed"));
     }
   }
 
@@ -234,7 +234,7 @@ export default function DismissalModal({
         try {
           await uploadGimelimAttachment(result.dismissal_id, selectedFile);
         } catch {
-          setAttachmentError("The report was saved, but the attachment upload failed.");
+          setAttachmentError(t("dismiss_modal.attachment_upload_failed"));
         }
       }
       setCompletedDismissalId(result.dismissal_id);

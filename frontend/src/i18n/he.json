@@ -38,7 +38,8 @@
     "error": "שגיאה",
     "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש.",
     "no_permission": "אין הרשאה להציג מידע זה",
-    "whole_org": "כלל המסגרת"
+    "whole_org": "כלל המסגרת",
+    "download_failed": "לא ניתן להוריד את הקובץ."
   },
   "change_password": {
     "title": "שינוי סיסמה",
@@ -1297,7 +1298,8 @@
     "submitting": "שולח...",
     "confirm": "אשר שחרור",
     "mode_regular": "רגיל",
-    "mode_gimelim": "גימלים"
+    "mode_gimelim": "גימלים",
+    "attachment_upload_failed": "הדיווח נשמר, אך העלאת הקובץ המצורף נכשלה."
   },
   "primary_soldiers": "חיילים ראשיים",
   "reserve_soldiers": "רזרבה",
@@ -1962,5 +1964,9 @@
       "hr_data": "פרטים מכא\"מ",
       "raw_payload": "מידע גולמי (JSON)"
     }
+  },
+  "import_sessions": {
+    "download_source": "הורדת קובץ המקור",
+    "download_source_failed": "לא ניתן להוריד את קובץ המקור."
   }
 }

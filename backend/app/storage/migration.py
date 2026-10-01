@@ -22,7 +22,7 @@ from app.db.models import (
     ImportSession,
     SoldierExemptionFile,
 )
-from app.settings import Settings
+from app.settings import StorageMaintenanceSettings
 from app.storage.backfill import (
     MAX_LEGACY_BYTES,
     BackfillError,
@@ -78,7 +78,9 @@ def _inventory(session: Session) -> dict[str, dict[str, int]]:
     return result
 
 
-def _preflight_object(storage: MaintenanceObjectStorage, settings: Settings) -> dict[str, bool]:
+def _preflight_object(
+    storage: MaintenanceObjectStorage, settings: StorageMaintenanceSettings
+) -> dict[str, bool]:
     data = b"justice-storage-preflight"
     digest = sha256(data).hexdigest()
     key = make_object_key("import_workbook", uuid4())
@@ -304,7 +306,7 @@ def _verify_existing_objects(
 def run_migration(
     session: Session,
     storage: MaintenanceObjectStorage,
-    settings: Settings,
+    settings: StorageMaintenanceSettings,
     *,
     dry_run: bool = False,
     batch_size: int = 100,

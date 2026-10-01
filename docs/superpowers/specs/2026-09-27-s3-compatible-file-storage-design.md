@@ -1,4 +1,4 @@
-# S3-Compatible Durable File Storage and Authorized Downloads — Design
+# S3-Compatible Durable File Storage and Authorized Downloads ΓÇö Design
 
 Date: 2026-09-27
 Branch/worktree: `feature/s3-object-storage`
@@ -220,3 +220,13 @@ Rollback keeps legacy data until the stability window ends. Before that point, c
 - The production S3 vendor and endpoint are not selected. Production cutover requires a documented capability check and restore rehearsal for TLS, managed-key at-rest encryption of objects, encrypted object backups, IAM prefix/action policies, and all required S3 operations. PostgreSQL volumes must be encrypted and base/WAL backups age-encrypted with a tested operator recovery identity. Until these checks pass, production storage cutover is not enabled.
 - Keep legacy byte columns and JSON mirrors for at least 30 days after verified cutover and two successful encrypted backups. This project does not drop those sources; a separate reviewed migration must authorize cleanup after the retention period.
 - Use a transactional outbox plus a restricted maintenance job for object deletion and orphan reconciliation. Run it every 15 minutes through the deployment scheduler; it is not part of the always-on API or gateway runtime.
+
+## Local provider amendment: SeaweedFS (2026-09-29)
+
+SeaweedFS 4.40 replaces MinIO for the local Compose object store because the selected MinIO image could not be acquired. The original application architecture, private-download authorization model, migration lifecycle, and production acceptance gates remain in force.
+
+The local SeaweedFS static S3 config must be fail-closed. It defines separate API (GetObject/PutObject on managed object prefixes), download gateway (GetObject only), maintenance (scoped ListBucket and managed-prefix Get/Put/Delete), and one-shot bootstrap (Admin) identities. Do not grant ACL actions. SeaweedFS's built-in S3 HTTP listener is loopback-bound within its container network namespace; clients use the TLS-terminating Nginx proxy with certificate verification enabled. No storage management ports are published.
+
+Local development uses SeaweedFS SSE-S3 only. This does not satisfy production SSE-KMS, external key custody/recovery, encrypted backups, and restore acceptance gates. Production remains on legacy storage until all original gates pass. The pinned SeaweedFS image and actual S3 allow/deny, encryption, and restart checks must be recorded before this provider amendment is complete.
+
+The local development certificate/identity generator writes ignored credentials and static policies under deploy/seaweedfs. It preserves an existing complete set and fails on a partial set; do not print or commit those secrets.

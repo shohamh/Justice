@@ -295,7 +295,7 @@ export default function ExemptionsPanel({
       const blob = await downloadExemptionRequestFile(requestId, fileId);
       downloadBlob(blob, fileName);
     } catch {
-      setFileDownloadError("לא ניתן להוריד את הקובץ.");
+      setFileDownloadError(t("common.download_failed"));
     }
   }
 

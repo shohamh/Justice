@@ -8,13 +8,24 @@ KEEP_DAYS="${KEEP_DAYS:-7}"
 DB_CONTAINER="${DB_CONTAINER:-$(docker compose -f "$(dirname "$0")/docker-compose.prod.yml" ps -q db 2>/dev/null | head -1)}"
 TIMESTAMP="${TIMESTAMP:-$(date +%Y%m%d_%H%M%S)}"
 FINAL_FILE="$BACKUP_DIR/base_$TIMESTAMP.tar.gz.age"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 log() { echo "[$(date -Iseconds)] $*"; }
+cleanup() { [[ -z "${TEMP_FILE:-}" ]] || rm -f "$TEMP_FILE"; }
+on_exit() {
+    local status=$?
+    trap - EXIT
+    cleanup
+    if [[ "$status" -ne 0 ]]; then
+        log "ERROR: Backup or WAL archiving failed (exit code $status); notifying operator."
+        "$SCRIPT_DIR/notify-backup-failure.sh" || true
+    fi
+    exit "$status"
+}
+trap on_exit EXIT
 if [[ -z "$DB_CONTAINER" ]]; then echo "No PostgreSQL container found; set DB_CONTAINER explicitly" >&2; exit 1; fi
 if [[ -e "$FINAL_FILE" ]]; then echo "Backup already exists: $FINAL_FILE" >&2; exit 1; fi
 mkdir -p "$BACKUP_DIR" "$WAL_ARCHIVE_DIR"
 TEMP_FILE="$(mktemp "$BACKUP_DIR/.base_$TIMESTAMP.tmp.XXXXXX")"
-cleanup() { rm -f "$TEMP_FILE"; }
-trap cleanup EXIT
 log "Streaming encrypted base backup to $FINAL_FILE"
 docker exec "$DB_CONTAINER" bash -o pipefail -c '
     set -euo pipefail
@@ -29,12 +40,14 @@ docker exec "$DB_CONTAINER" bash -o pipefail -c '
 ' >"$TEMP_FILE"
 if [[ ! -s "$TEMP_FILE" ]]; then echo "Encrypted base backup is empty" >&2; exit 1; fi
 mv -f "$TEMP_FILE" "$FINAL_FILE"
-trap - EXIT
 log "Encrypted base backup complete ($(du -h "$FINAL_FILE" | cut -f1))"
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'base_*.tar.gz.age' -mtime "+$KEEP_DAYS" -delete
 find "$WAL_ARCHIVE_DIR" -maxdepth 1 -type f -name '*.age' -mtime "+$KEEP_DAYS" -delete
 ARCHIVE_FAILURES="$(docker exec "$DB_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc 'SELECT CASE WHEN last_failed_time IS NOT NULL AND (last_archived_time IS NULL OR last_failed_time > last_archived_time) THEN 1 ELSE 0 END FROM pg_stat_archiver')"
 if [[ ! "$ARCHIVE_FAILURES" =~ ^[0-9]+$ ]]; then log "ERROR: Could not read pg_stat_archiver; inspect PostgreSQL logs."; exit 1; fi
-if [[ "$ARCHIVE_FAILURES" -ne 0 ]]; then log "ERROR: PostgreSQL has an unrecovered WAL archive failure; operator alert required."; exit 1; fi
+if [[ "$ARCHIVE_FAILURES" -ne 0 ]]; then
+    log "ERROR: PostgreSQL has an unrecovered WAL archive failure; operator alert required."
+    exit 1
+fi
 WAL_COUNT="$(find "$WAL_ARCHIVE_DIR" -maxdepth 1 -type f -name '*.age' -mmin -120 | wc -l)"
 if [[ "$WAL_COUNT" -eq 0 ]]; then log "WARNING: No encrypted WAL segments in the last 2 hours; check PostgreSQL archive_command and logs."; else log "Encrypted WAL archive healthy: $WAL_COUNT segment(s) in the last 2 hours"; fi

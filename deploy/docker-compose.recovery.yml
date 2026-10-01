@@ -1,8 +1,11 @@
 # Recovery-only overlay. Set PGDATA_RESTORE and AGE_IDENTITY_PATH in the
-# protected environment file before use. Do not start this with the production
-# project name: it changes only the isolated recovery project's database mounts.
+# protected environment file before use. It uses a private Compose project and
+# refuses to start Postgres until restore-pitr.sh writes the ready marker.
 services:
   db:
+    entrypoint: ["/usr/local/bin/recovery-startup.sh"]
+    command: ["postgres", "-c", "archive_mode=off"]
+    restart: "no"
     volumes:
       - ${PGDATA_RESTORE:-/opt/justice/pgdata-restore}:/var/lib/postgresql/data
       - ${BACKUP_DIR:-/opt/justice/backups}:/backups:ro
@@ -11,7 +14,3 @@ services:
     environment:
       AGE_IDENTITY_FILE: /run/secrets/age-identity
       PGDATA: /var/lib/postgresql/data
-    # The restore script runs short-lived commands against this service with
-    # docker compose run; this keeps ordinary recovery compose up from starting
-    # Postgres before the backup has been extracted.
-    command: ["sleep", "infinity"]

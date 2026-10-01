@@ -9,7 +9,7 @@ import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-from app.settings import Settings
+from app.settings import StorageSettings
 
 from .keys import MANAGED_PREFIXES, validate_managed_key
 from .protocol import StoredObject
@@ -22,7 +22,7 @@ def _checked_key(key: str) -> str:
 
 
 class S3ObjectStorage:
-    def __init__(self, settings: Settings, *, client: Any | None = None) -> None:
+    def __init__(self, settings: StorageSettings, *, client: Any | None = None) -> None:
         self._bucket = settings.storage_bucket
         self._encryption_algorithm = settings.storage_sse_algorithm
         self._encryption_key_id = settings.storage_sse_key_id
@@ -78,6 +78,13 @@ class S3ObjectStorage:
 
 class S3MaintenanceObjectStorage(S3ObjectStorage):
     """Restricted maintenance identity for recovery enumeration and cleanup."""
+
+    def __init__(self, settings: StorageSettings, *, client: Any | None = None) -> None:
+        maintenance_settings = settings.model_copy(update={
+            "storage_access_key_id": settings.storage_maintenance_access_key_id,
+            "storage_secret_access_key": settings.storage_maintenance_secret_access_key,
+        })
+        super().__init__(maintenance_settings, client=client)
 
     def delete(self, *, key: str) -> None:
         self._client.delete_object(Bucket=self._bucket, Key=_checked_key(key))

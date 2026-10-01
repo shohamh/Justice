@@ -1,0 +1,45 @@
+# Disposable Compose overlay for the storage download browser journey.
+# Keep every persistent service volume project scoped and publish only the UI.
+services:
+  seaweedfs:
+    volumes:
+      - task8-seaweedfs-data:/data
+  db:
+    ports: !reset []
+    volumes:
+      - task8-postgres-data:/var/lib/postgresql/data
+  redis:
+    ports: !reset []
+    volumes:
+      - task8-redis-data:/data
+  loki:
+    ports: !reset []
+    volumes:
+      - ./deploy/observability/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - task8-loki-data:/loki
+  prometheus:
+    ports: !reset []
+  grafana:
+    ports: !reset []
+  file-authorization:
+    ports: !reset []
+  file-gateway:
+    ports: !reset []
+  backend:
+    ports: !reset []
+    environment:
+      LOGIN_RATE_LIMIT: 30/5minutes
+    volumes:
+      - ./backend:/app
+      - task8-backend-logs:/app/logs
+      - ./deploy/seaweedfs/certs/ca.crt:/app/certs/ca.crt:ro
+  frontend:
+    ports: !override
+      - "127.0.0.1:${TASK8_E2E_FRONTEND_PORT:-15173}:5173"
+
+volumes:
+  task8-seaweedfs-data:
+  task8-postgres-data:
+  task8-redis-data:
+  task8-loki-data:
+  task8-backend-logs:
