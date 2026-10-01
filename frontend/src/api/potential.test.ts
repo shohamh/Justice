@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./client";
-import { getBurdenShareGap, getPotential, listModifiers } from "./potential";
+import { getBurdenShareGap, getPotential, getPotentialSummary, listModifiers } from "./potential";
 
 vi.mock("./client");
 
@@ -29,6 +29,24 @@ describe("getPotential", () => {
 
     expect(result.modifiers).toEqual([]);
     expect(result.soldiers).toEqual([]);
+  });
+});
+
+describe("getPotentialSummary", () => {
+  it("requests only Home aggregate fields for the requested node and date", async () => {
+    const summary = {
+      node_id: "node-1",
+      as_of: "2026-09-15",
+      raw_eligible_count: 3,
+      modifier_total: 2,
+      final_potential: 5,
+    };
+    vi.mocked(api.get).mockResolvedValue({ data: summary });
+
+    await expect(getPotentialSummary("node-1", "2026-09-15")).resolves.toEqual(summary);
+    expect(api.get).toHaveBeenCalledWith("/potential/summary", {
+      params: { node_id: "node-1", reference_date: "2026-09-15" },
+    });
   });
 });
 

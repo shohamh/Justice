@@ -11,6 +11,35 @@ export interface RangeEvent { id:string; hierarchy_node_id:string; range_type:Ra
 export interface CreateRangeEventBody { hierarchy_node_id:string; range_type:RangeType; date:string; range_location_id:string; required_count:number; reserve_count?:number; start_time?:string|null; end_time?:string|null; arrival_instructions?:string|null; contact_name?:string|null; contact_phone?:string|null; notes?:string|null; responsible_duty_manager_id?:string|null; }
 export interface UpdateRangeEventBody { hierarchy_node_id?:string; range_type?:RangeType; date?:string; start_time?:string|null; end_time?:string|null; range_location_id?:string; required_count?:number; reserve_count?:number; arrival_instructions?:string|null; contact_name?:string|null; contact_phone?:string|null; notes?:string|null; responsible_duty_manager_id?:string|null; force_schedule_change?:boolean; cancel?:boolean; cancellation_reason?:string; }
 export function getRanges(nodeId:string,dateFrom?:string,dateTo?:string):Promise<RangeEvent[]>{const params=new URLSearchParams({node_id:nodeId});if(dateFrom)params.set("date_from",dateFrom);if(dateTo)params.set("date_to",dateTo);return api.get<unknown>(`/ranges?${params.toString()}`).then(r=>optionalArrayResponse<RangeEvent>(r.data));}
+export interface RangePageFilters {
+  nodeId: string;
+  dateFrom?: string;
+  dateTo?: string;
+  rangeType?: RangeType;
+  status?: string;
+  fill?: "open" | "full";
+  assignedToMe?: boolean;
+  descending?: boolean;
+  pageSize?: number;
+}
+export interface RangePage {
+  items: RangeEvent[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+export function getRangePage(filters: RangePageFilters, cursor?: string): Promise<RangePage> {
+  const params = new URLSearchParams({ node_id: filters.nodeId });
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.rangeType) params.set("range_type", filters.rangeType);
+  if (filters.status) params.set("event_status", filters.status);
+  if (filters.fill) params.set("fill", filters.fill);
+  if (filters.assignedToMe) params.set("assigned_to_me", "true");
+  if (filters.descending) params.set("descending", "true");
+  params.set("page_size", String(filters.pageSize ?? 100));
+  if (cursor) params.set("cursor", cursor);
+  return api.get<RangePage>(`/ranges/page?${params.toString()}`).then(r => r.data);
+}
 export function getMyRanges(soldierId:string,dateFrom?:string,dateTo?:string):Promise<RangeEvent[]>{const params=new URLSearchParams({soldier_id:soldierId});if(dateFrom)params.set("date_from",dateFrom);if(dateTo)params.set("date_to",dateTo);return api.get<unknown>(`/ranges?${params.toString()}`).then(r=>optionalArrayResponse<RangeEvent>(r.data));}
 export function getRangeEvent(id:string):Promise<RangeEvent>{return api.get<unknown>(`/ranges/${id}`).then(r=>{const data=requiredObjectResponse(r.data,"Invalid range response");if(typeof data.id!=="string")throw new Error("Invalid range response");return {...(data as unknown as RangeEvent), assignments: optionalArrayResponse<RangeAssignment>(data.assignments)};});}
 export function createRangeEvent(body:CreateRangeEventBody):Promise<RangeEvent>{return api.post("/ranges",body).then(r=>r.data);}

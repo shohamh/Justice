@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import Layout from "../../components/Layout";
 import { queryKeys } from "../../queryKeys";
+import { useAuth } from "../../auth/AuthContext";
+import { getTransparencyAuthorizationScope } from "../../api/auth";
 import { TransparencyRow, getTransparency } from "../../api/scoring";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { getAccessToken } from "../../api/client";
@@ -93,9 +95,15 @@ const ALL_KEYS = [
 
 export default function ExportPage() {
   const { t } = useTranslation();
+  const { user, authScopeReady } = useAuth();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
-  const transparencyQuery = useQuery({ queryKey: queryKeys.transparency(), queryFn: getTransparency });
+  const transparencyScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
+  const transparencyQuery = useQuery({
+    queryKey: queryKeys.transparencyForScope(transparencyScope),
+    queryFn: getTransparency,
+    enabled: !!transparencyScope,
+  });
   const rows = useMemo<TransparencyRow[]>(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
 
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });

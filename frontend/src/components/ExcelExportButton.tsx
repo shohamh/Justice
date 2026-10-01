@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ColDef } from "./DataTable";
@@ -6,6 +7,8 @@ interface ExcelExportButtonProps<T> {
   columns: ColDef<T>[];
   rows: T[];
   filename: string;
+  onBeforeExport?: () => Promise<T[]>;
+  onExportError?: (error: unknown) => void;
 }
 
 export function exportValueOf<T>(col: ColDef<T>, row: T): string | number | boolean {
@@ -19,25 +22,36 @@ export function exportValueOf<T>(col: ColDef<T>, row: T): string | number | bool
   return value ?? "";
 }
 
-export function ExcelExportButton<T>({ columns, rows, filename }: ExcelExportButtonProps<T>) {
-  function handleExport() {
+export function ExcelExportButton<T>({ columns, rows, filename, onBeforeExport, onExportError }: ExcelExportButtonProps<T>) {
+  const [loading, setLoading] = useState(false);
+
+  async function handleExport() {
+    setLoading(true);
+    try {
+    const exportRows = onBeforeExport ? await onBeforeExport() : rows;
     const header = columns.map((c) => c.header);
-    const body = rows.map((row) => columns.map((c) => exportValueOf(c, row)));
+    const body = exportRows.map((row) => columns.map((c) => exportValueOf(c, row)));
     const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
     XLSX.writeFile(wb, filename);
+    } catch (error) {
+      onExportError?.(error);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <button
       type="button"
-      disabled={rows.length === 0}
+      disabled={loading || (!onBeforeExport && rows.length === 0)}
       onClick={handleExport}
+      aria-busy={loading}
       className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
       <FileSpreadsheet className="w-4 h-4" />
-      ייצוא לאקסל
+      {loading ? "מכין ייצוא..." : "ייצוא לאקסל"}
     </button>
   );
 }

@@ -4,11 +4,12 @@ import logging
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, func, or_, select, text, tuple_, update
 from sqlalchemy.orm import Session
 
 from app.algorithm.duration import calendar_days_touched, combine_date_time, score_days
@@ -134,18 +135,62 @@ def _effective_duty_spans_impl(
     unchanged. Degrades to the original block when there are no overrides;
     cancelled days (NULL effective) break runs and are dropped. Optionally
     filtered to soldier_ids and to spans overlapping [date_from, date_to]."""
-    assignments = (
-        session.execute(select(DutyAssignment).where(DutyAssignment.status.in_(statuses)))
-        .scalars()
-        .all()
-    )
-    overrides = {
-        (o.duty_assignment_id, o.date): o
-        for o in session.execute(select(DutyDayOverride)).scalars().all()
-    }
+    assignments_query = select(DutyAssignment).where(DutyAssignment.status.in_(statuses))
+    if date_from is not None:
+        assignments_query = assignments_query.where(DutyAssignment.end_date > date_from)
+    if date_to is not None:
+        assignments_query = assignments_query.where(DutyAssignment.start_date <= date_to)
+    if soldier_ids is not None:
+        if not soldier_ids:
+            return []
+        replacement_query = select(DutyDayOverride.id).where(
+            DutyDayOverride.duty_assignment_id == DutyAssignment.id,
+            DutyDayOverride.date >= DutyAssignment.start_date,
+            DutyDayOverride.date < DutyAssignment.end_date,
+            uuid_any("duty_day_overrides.effective_soldier_id", soldier_ids),
+        )
+        if date_from is not None:
+            replacement_query = replacement_query.where(DutyDayOverride.date >= date_from)
+        if date_to is not None:
+            replacement_query = replacement_query.where(DutyDayOverride.date <= date_to)
+        assignments_query = assignments_query.where(
+            or_(
+                uuid_any("duty_assignments.soldier_id", soldier_ids),
+                replacement_query.exists(),
+            )
+        )
+    assignments = session.execute(assignments_query).scalars().all()
+    if not assignments:
+        return []
+
+    # Spans overlapping the requested window retain their full original bounds.
+    # Load the selected assignments' full dates so overrides and dismissals just
+    # outside that window can still split those spans correctly.
+    first_day = min(a.start_date for a in assignments)
+    last_end_date = max(a.end_date for a in assignments)
+    overrides: dict[tuple[uuid.UUID, date], DutyDayOverride] = {}
     dismissal_ranges: dict[uuid.UUID, list[tuple[date, date]]] = {}
-    for d in session.execute(select(DutyDismissal)).scalars().all():
-        dismissal_ranges.setdefault(d.duty_assignment_id, []).append((d.dismissed_from, d.dismissed_to))
+    scoped_ids = sorted(a.id for a in assignments)
+    # Batch large selected sets while binding each batch as one UUID array.
+    for offset in range(0, len(scoped_ids), 30_000):
+        id_chunk = scoped_ids[offset : offset + 30_000]
+        override_rows = session.execute(
+            select(DutyDayOverride).where(
+                uuid_any("duty_day_overrides.duty_assignment_id", id_chunk),
+                DutyDayOverride.date >= first_day,
+                DutyDayOverride.date < last_end_date,
+            )
+        ).scalars()
+        overrides.update(((o.duty_assignment_id, o.date), o) for o in override_rows)
+        dismissal_rows = session.execute(
+            select(DutyDismissal).where(
+                uuid_any("duty_dismissals.duty_assignment_id", id_chunk),
+                DutyDismissal.dismissed_to >= first_day,
+                DutyDismissal.dismissed_from < last_end_date,
+            )
+        ).scalars()
+        for d in dismissal_rows:
+            dismissal_ranges.setdefault(d.duty_assignment_id, []).append((d.dismissed_from, d.dismissed_to))
 
     def _is_dismissed(assignment_id: uuid.UUID, day: date) -> bool:
         return any(df <= day <= dt for df, dt in dismissal_ranges.get(assignment_id, []))
@@ -895,6 +940,44 @@ def _projection_data_keys_for_soldiers(
     return _projection_keys_for_soldiers(session, soldier_ids)
 
 
+@dataclass(frozen=True)
+class _TransparencyProjectionReadiness:
+    """Projection scope already checked during one transparency request."""
+
+    soldier_ids: frozenset[uuid.UUID]
+    keys: frozenset[tuple[uuid.UUID, date]]
+    validated_quarter_starts: frozenset[date]
+    effort_quarter_starts: frozenset[date]
+    total_soldier_ids: frozenset[uuid.UUID]
+
+    def effort_keys_if_exact_scope(
+        self,
+        *,
+        soldier_ids: set[uuid.UUID],
+        quarter_starts: set[date],
+    ) -> set[tuple[uuid.UUID, date]] | None:
+        requested_soldiers = frozenset(soldier_ids)
+        requested_quarters = frozenset(quarter_starts)
+        if (
+            requested_soldiers != self.soldier_ids
+            or requested_soldiers != self.total_soldier_ids
+            or requested_quarters != self.effort_quarter_starts
+            or not requested_quarters.issubset(self.validated_quarter_starts)
+        ):
+            return None
+
+        effort_keys = {
+            key for key in self.keys if key[0] in requested_soldiers and key[1] in requested_quarters
+        }
+        # The input keys come from the exact key set checked earlier in this
+        # request. If that set does not describe this soldier scope, retain the
+        # normal enumeration and readiness path instead of trusting a partial
+        # match.
+        if any(soldier_id not in requested_soldiers for soldier_id, _ in effort_keys):
+            return None
+        return effort_keys
+
+
 def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjection]) -> bool:
     from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
 
@@ -1012,23 +1095,33 @@ def _projection_bucket_matches_canonical(
     return persisted == canonical
 
 
-def _mark_projection_key_current(
-    session: Session, *, soldier_id: uuid.UUID, quarter_start_value: date
+def _mark_projection_keys_current(
+    session: Session, *, keys: set[tuple[uuid.UUID, date]]
 ) -> None:
-    dirty = session.execute(
-        select(ScoreProjectionDirtyBucket).where(
-            ScoreProjectionDirtyBucket.soldier_id == soldier_id,
-            ScoreProjectionDirtyBucket.quarter_start == quarter_start_value,
-        )
-    ).scalar_one_or_none()
-    if dirty is None:
+    """Clear repaired bucket markers in bounded, paired-key updates."""
+    if not keys:
         return
+
+    ordered_keys = sorted(keys, key=lambda item: (str(item[0]), item[1]))
     now = _score_projection_now()
-    dirty.status = "current"
-    dirty.divergence = None
-    dirty.refreshed_at = now
-    dirty.updated_at = now
-    session.flush()
+    for start in range(0, len(ordered_keys), 300):
+        key_chunk = ordered_keys[start : start + 300]
+        session.execute(
+            update(ScoreProjectionDirtyBucket)
+            .where(
+                tuple_(
+                    ScoreProjectionDirtyBucket.soldier_id,
+                    ScoreProjectionDirtyBucket.quarter_start,
+                ).in_(key_chunk)
+            )
+            .values(
+                status="current",
+                divergence=None,
+                refreshed_at=now,
+                updated_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
 
 
 def _quarter_totals_are_current(session: Session, quarter_starts: set[date]) -> bool:
@@ -1431,21 +1524,23 @@ def _ensure_projection_ready(
     )
 
     repaired_quarters: set[date] = set()
+    repaired_keys: set[tuple[uuid.UUID, date]] = set()
     for soldier_id, quarter_start_value in sorted(rebuild_keys, key=lambda item: (str(item[0]), item[1])):
         try:
             rebuild_projection_bucket(
                 session, soldier_id, quarter_start_value, refresh_quarter_total=False
             )
-            _mark_projection_key_current(
-                session, soldier_id=soldier_id, quarter_start_value=quarter_start_value
-            )
+            repaired_keys.add((soldier_id, quarter_start_value))
             repaired_quarters.add(quarter_start_value)
         except Exception:
+            _mark_projection_keys_current(session, keys=repaired_keys)
             logger.exception(
                 "score projection bucket rebuild failed during read",
                 extra={"soldier_id": str(soldier_id), "quarter_start": str(quarter_start_value)},
             )
             return False
+
+    _mark_projection_keys_current(session, keys=repaired_keys)
 
     if repaired_quarters:
         from app.services.score_projection import _upsert_quarter_total
@@ -1500,6 +1595,7 @@ def _projection_burden_share_inputs(
     reset_date: date,
     planning_start: date,
     planning_end: date,
+    prevalidated_readiness: _TransparencyProjectionReadiness | None = None,
 ) -> tuple[
     list[tuple[date, date, date]],
     dict[date, Decimal],
@@ -1521,12 +1617,32 @@ def _projection_burden_share_inputs(
 
     soldier_ids = {soldier.id for soldier in soldiers}
     quarter_starts = {calendar_qs for _q_start, _q_end, calendar_qs in windows}
-    keys = {
-        key
-        for key in _projection_data_keys_for_soldiers(session, soldier_ids)
-        if key[1] in quarter_starts
-    }
-    if not _ensure_projection_ready(session, keys=keys, quarter_starts=quarter_starts):
+    keys = (
+        prevalidated_readiness.effort_keys_if_exact_scope(
+            soldier_ids=soldier_ids,
+            quarter_starts=quarter_starts,
+        )
+        if prevalidated_readiness is not None
+        else None
+    )
+    if keys is None:
+        keys = {
+            key
+            for key in _projection_data_keys_for_soldiers(session, soldier_ids)
+            if key[1] in quarter_starts
+        }
+        if not _ensure_projection_ready(session, keys=keys, quarter_starts=quarter_starts):
+            return None
+    elif not _ensure_projection_ready(
+        session,
+        keys=keys,
+        quarter_starts=quarter_starts,
+        total_soldier_ids=soldier_ids,
+    ):
+        # The first check validated this request-local key set, but READ
+        # COMMITTED permits a dirty marker to commit between the two reads.
+        # Recheck the narrowed effort scope while including the full active
+        # population so newly committed marker changes remain visible.
         return None
 
     totals = {
@@ -1538,22 +1654,33 @@ def _projection_burden_share_inputs(
         ).scalars().all()
     }
     soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = defaultdict(dict)
-    projection_rows = session.execute(
-        select(SoldierQuarterScoreProjection).where(
+    for soldier_id, quarter_start_value, duty_score, adjustment_score in session.execute(
+        select(
+            SoldierQuarterScoreProjection.soldier_id,
+            SoldierQuarterScoreProjection.quarter_start,
+            func.sum(SoldierQuarterScoreProjection.duty_score),
+            func.sum(SoldierQuarterScoreProjection.adjustment_score),
+        )
+        .where(
             SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
             SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
         )
-    ).scalars().all()
-    grouped: dict[tuple[uuid.UUID, date], Decimal] = defaultdict(lambda: Decimal("0"))
-    for row in projection_rows:
-        grouped[(row.soldier_id, row.quarter_start)] += _q6(row.duty_score) + _q6(row.adjustment_score)
-    for (soldier_id, quarter_start_value), score in grouped.items():
-        soldier_scores[quarter_start_value][soldier_id] = _q6(score)
+        .group_by(
+            SoldierQuarterScoreProjection.soldier_id,
+            SoldierQuarterScoreProjection.quarter_start,
+        )
+    ).all():
+        soldier_scores[quarter_start_value][soldier_id] = _q6(
+            _q6(duty_score) + _q6(adjustment_score)
+        )
     return windows, totals, dict(soldier_scores)
 
 
 def _try_projected_effort_data(
-    session: Session, soldiers: list[Soldier]
+    session: Session,
+    soldiers: list[Soldier],
+    *,
+    prevalidated_readiness: _TransparencyProjectionReadiness | None = None,
 ) -> dict[uuid.UUID, Any] | None:
     from app.services.effort_score import _compute_effort_data
 
@@ -1570,6 +1697,7 @@ def _try_projected_effort_data(
         reset_date=reset_date,
         planning_start=planning_start,
         planning_end=planning_start,
+        prevalidated_readiness=prevalidated_readiness,
     )
     if projection_inputs is None:
         return None
@@ -1815,7 +1943,18 @@ def _try_projected_transparency_rows(
     )
     # Computed once and reused per soldier below — see SoldierScopeVisibility.
     viewer_visibility = build_soldier_scope_visibility(session, viewer) if viewer is not None else None
-    effort_map = _try_projected_effort_data(session, list(soldiers))
+    prevalidated_readiness = _TransparencyProjectionReadiness(
+        soldier_ids=frozenset(soldier_ids),
+        keys=frozenset(keys),
+        validated_quarter_starts=frozenset(score_quarters | effort_quarters),
+        effort_quarter_starts=frozenset(effort_quarters),
+        total_soldier_ids=frozenset(soldier_ids),
+    )
+    effort_map = _try_projected_effort_data(
+        session,
+        list(soldiers),
+        prevalidated_readiness=prevalidated_readiness,
+    )
     if effort_map is None:
         return None
 

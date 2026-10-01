@@ -33,6 +33,44 @@ export interface TransparencyOut {
   can_see_exemption_aggregates: boolean;
 }
 
+export interface TransparencyPageSummary {
+  row_count: number;
+  average_cumulative: number;
+  average_active_days: number;
+  average_score_per_day: number;
+  average_normalised: number;
+  burden_share_mean: number | null;
+  burden_share_stddev: number | null;
+  burden_share_cv: number | null;
+  burden_share_min: number | null;
+  burden_share_max: number | null;
+  burden_share_offset_min: number | null;
+  burden_share_offset_max: number | null;
+}
+
+export interface TransparencyPageOut {
+  items: (TransparencyRow & { row_num: number })[];
+  next_cursor: string | null;
+  has_more: boolean;
+  summary: TransparencyPageSummary;
+  can_see_exemption_aggregates: boolean;
+}
+
+export interface TransparencyPageRequest {
+  cursor?: string;
+  search: string;
+  sort: string;
+  descending: boolean;
+  rankOrder?: string[];
+  pageSize: number;
+  signal?: AbortSignal;
+  nodeId?: string | null;
+  officerFilter?: "all" | "officer" | "enlisted";
+  serviceType?: string | null;
+  groupKeys?: string[];
+  rankFilter?: string | null;
+}
+
 export interface Breakdown {
   per_type: {
     duty_type_id: string;
@@ -82,6 +120,39 @@ export async function getTransparency(): Promise<TransparencyOut> {
   const data = requiredObjectResponse(r.data, "Invalid transparency response");
   return {
     rows: optionalArrayResponse<TransparencyRow>(data.rows),
+    can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
+  };
+}
+
+export async function getTransparencyPage(
+  request: TransparencyPageRequest,
+): Promise<TransparencyPageOut> {
+  const params = new URLSearchParams();
+  if (request.cursor) params.set("cursor", request.cursor);
+  if (request.search) params.set("search", request.search);
+  params.set("sort", request.sort);
+  params.set("descending", String(request.descending));
+  params.set("page_size", String(request.pageSize));
+  if (request.nodeId) params.set("node_id", request.nodeId);
+  if (request.officerFilter && request.officerFilter !== "all") {
+    params.set("officer_filter", request.officerFilter);
+  }
+  if (request.serviceType) params.set("service_type", request.serviceType);
+  if (request.rankFilter) params.set("rank_filter", request.rankFilter);
+  for (const key of request.groupKeys ?? []) params.append("group_key", key);
+  for (const rank of request.rankOrder ?? []) params.append("rank_order", rank);
+  const r = await api.get<unknown>(`/scoring/transparency/page?${params.toString()}`, {
+    signal: request.signal,
+  });
+  const data = requiredObjectResponse(r.data, "Invalid transparency page response");
+  if (!isRecord(data.summary) || typeof data.has_more !== "boolean") {
+    throw new Error("Invalid transparency page response");
+  }
+  return {
+    items: optionalArrayResponse<TransparencyPageOut["items"][number]>(data.items),
+    next_cursor: typeof data.next_cursor === "string" ? data.next_cursor : null,
+    has_more: data.has_more,
+    summary: data.summary as TransparencyPageSummary,
     can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
   };
 }

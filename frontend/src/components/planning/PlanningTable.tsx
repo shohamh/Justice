@@ -33,6 +33,17 @@ export interface PlanningTableProps<T> {
   filterPlaceholder?: string;
   rowClassName?: (row: T) => string;
   defaultSort?: SortingState;
+  virtualRows?: {
+    height: number;
+    rowHeight: number;
+    overscan: number;
+    hasMore: boolean;
+    onNearEnd?: () => void;
+    ariaLabel: string;
+    loadMoreLabel: string;
+    loadingLabel: string;
+  };
+  showControlsWhenEmpty?: boolean;
 }
 
 export function PlanningTable<T>({
@@ -53,6 +64,8 @@ export function PlanningTable<T>({
   filterPlaceholder,
   rowClassName,
   defaultSort,
+  virtualRows,
+  showControlsWhenEmpty = false,
 }: PlanningTableProps<T>) {
   const dataColumns: ColDef<T>[] = columns.map(column => ({
     id: column.key,
@@ -69,7 +82,10 @@ export function PlanningTable<T>({
 
   if (loading) return <div className="space-y-3" dir="rtl"><div role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-500">{loadingMessage}</div></div>;
   if (error) return <div className="space-y-3" dir="rtl"><div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">{error}</div></div>;
-  if (rows.length === 0) return <div className="space-y-3" dir="rtl"><div role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-500">{emptyMessage}</div></div>;
+  if (rows.length === 0) return <div className="space-y-3" dir="rtl">
+    {showControlsWhenEmpty && (filters || sort) && <div className="flex flex-wrap items-center justify-between gap-3">{filters}{sort}</div>}
+    <div role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-500">{emptyMessage}</div>
+  </div>;
 
   return (
     <div className="space-y-3" dir="rtl">
@@ -84,6 +100,7 @@ export function PlanningTable<T>({
         filterPlaceholder={filterPlaceholder}
         rowClassName={rowClassName}
         defaultSort={defaultSort}
+        virtualRows={virtualRows}
       />
       {pagination}
     </div>

@@ -1,5 +1,12 @@
+import axios from "axios";
+
 import { api } from "./client";
-import { optionalArrayResponse } from "./responseGuards";
+import {
+  isRecord,
+  optionalArrayResponse,
+  requiredArrayResponse,
+  requiredObjectResponse,
+} from "./responseGuards";
 
 export interface DutyManagerEntry {
   scope_id: string;
@@ -18,7 +25,78 @@ export interface NodeDTO {
   duty_managers: DutyManagerEntry[];
   dm_manageable: boolean;
   can_edit: boolean;
+  has_children?: boolean;
+  has_soldiers?: boolean;
   children?: NodeDTO[];
+}
+
+export interface NodeBranchPageDTO {
+  items: NodeDTO[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface HierarchySearchMatchDTO {
+  node: NodeDTO;
+  path: NodeDTO[];
+}
+
+export interface HierarchySearchDTO {
+  matches: HierarchySearchMatchDTO[];
+  has_more: boolean;
+}
+
+export async function fetchHierarchyBranchPage(request: {
+  parentId: string | null;
+  cursor?: string;
+  signal?: AbortSignal;
+}): Promise<NodeBranchPageDTO> {
+  const params: Record<string, string> = {};
+  if (request.parentId) params.parent_id = request.parentId;
+  if (request.cursor) params.cursor = request.cursor;
+  const payload = requiredObjectResponse(
+    (await api.get<unknown>("/hierarchy/branches", { params, signal: request.signal })).data,
+    "Invalid hierarchy branch response",
+  );
+  const items = requiredArrayResponse<NodeDTO>(payload.items, "Invalid hierarchy branch items");
+  if (typeof payload.has_more !== "boolean") {
+    throw new Error("Invalid hierarchy paging state");
+  }
+  if (payload.next_cursor !== null && typeof payload.next_cursor !== "string") {
+    throw new Error("Invalid hierarchy cursor");
+  }
+  return { items, has_more: payload.has_more, next_cursor: payload.next_cursor };
+}
+
+export async function searchHierarchyNodes(
+  query: string,
+  signal?: AbortSignal,
+): Promise<HierarchySearchDTO> {
+  const payload = requiredObjectResponse(
+    (await api.get<unknown>("/hierarchy/search", { params: { q: query }, signal })).data,
+    "Invalid hierarchy search response",
+  );
+  if (typeof payload.has_more !== "boolean") {
+    throw new Error("Invalid hierarchy search state");
+  }
+  const rawMatches = requiredArrayResponse<unknown>(payload.matches, "Invalid hierarchy search matches");
+  const matches = rawMatches.map((value) => {
+    const match = requiredObjectResponse(value, "Invalid hierarchy search match");
+    return {
+      node: requiredObjectResponse<NodeDTO>(match.node, "Invalid hierarchy search node"),
+      path: requiredArrayResponse<NodeDTO>(match.path, "Invalid hierarchy search path"),
+    };
+  });
+  return { matches, has_more: payload.has_more };
+}
+
+export function isStaleHierarchyCursorError(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    error.response?.status === 409 &&
+    isRecord(error.response.data) &&
+    error.response.data.detail === "stale_cursor"
+  );
 }
 
 export async function fetchTree(): Promise<NodeDTO[]> {

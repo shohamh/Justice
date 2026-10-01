@@ -67,6 +67,14 @@ class PotentialOut(BaseModel):
     partial_exemption_count: int
 
 
+class PotentialSummaryOut(BaseModel):
+    node_id: uuid.UUID
+    as_of: str
+    raw_eligible_count: int
+    modifier_total: int
+    final_potential: int
+
+
 def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
     return PotentialOut(
         node_id=r.node_id,
@@ -124,6 +132,28 @@ def get_potential(
     ref = date.fromisoformat(reference_date) if reference_date else date.today()
     result = svc.compute_potential(session, node_id=node_id, reference_date=ref)
     return _out(result, can_view_exemptions=_can_view_exemptions(session, user, node))
+
+
+@router.get("/summary", response_model=PotentialSummaryOut)
+def get_potential_summary(
+    node_id: uuid.UUID,
+    reference_date: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> PotentialSummaryOut:
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    authorize(session, user, Action.POTENTIAL_READ, target_node=node)
+    ref = date.fromisoformat(reference_date) if reference_date else date.today()
+    result = svc.compute_potential_summary(session, node_id=node_id, reference_date=ref)
+    return PotentialSummaryOut(
+        node_id=result.node_id,
+        as_of=result.as_of.isoformat(),
+        raw_eligible_count=result.raw_eligible_count,
+        modifier_total=result.modifier_total,
+        final_potential=result.final_potential,
+    )
 
 
 class NodeBurdenSharePotentialOut(BaseModel):

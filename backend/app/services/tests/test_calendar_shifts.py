@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import delete, text
+from sqlalchemy import delete, event, text
+from sqlalchemy.orm import Session
 
-from app.db.models import DutyLocation, DutyType
+from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType
 from app.services import calendar_shifts
 from app.services.assignments import create_assignment
 from app.services.duty_config import create_duty_type
@@ -111,3 +112,66 @@ def test_calendar_shifts_hides_shift_filled_entirely_outside_subtree(admin_sessi
         admin_session, node_id=node_a.id, date_from=date(2026, 6, 1), date_to=date(2026, 6, 2),
     )
     assert shift.id not in {r["id"] for r in rows_a}
+
+
+def test_calendar_shift_list_queries_stay_bounded_as_shift_count_grows(admin_session):
+    node = create_node(admin_session, level="division", name="calendar-query-shape")
+    soldier = create_soldier(
+        admin_session, personal_number="calendar-query-shape", hierarchy_node_id=node.id
+    )
+    location = DutyLocation(name="calendar-query-shape")
+    admin_session.add(location)
+    admin_session.flush()
+    first_day = date.today() + timedelta(days=10)
+    shift_ids = []
+    for offset in range(6):
+        duty_type = DutyType(
+            name=f"calendar-query-shape-{offset}", score_per_day=Decimal("1.00"),
+            reserve_ratio=Decimal("0.500"), reserve_minimum=2,
+        )
+        admin_session.add(duty_type)
+        admin_session.flush()
+        day = first_day + timedelta(days=offset)
+        shift = DutyShift(
+            duty_type_id=duty_type.id, duty_location_id=location.id,
+            start_date=day, end_date=day + timedelta(days=1),
+            required_count=3, status="active",
+            reserve_count_override=4 if offset == 2 else None,
+        )
+        admin_session.add(shift)
+        admin_session.flush()
+        shift_ids.append(shift.id)
+        admin_session.add(DutyAssignment(
+            soldier_id=soldier.id, duty_type_id=duty_type.id,
+            duty_location_id=location.id, duty_shift_id=shift.id,
+            start_date=day, end_date=day + timedelta(days=1), status="published",
+        ))
+    admin_session.commit()
+
+    def load_and_count(last_day):
+        statements = []
+
+        def record(_connection, _cursor, statement, _parameters, _context, _many):
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        engine = admin_session.get_bind()
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            with Session(bind=engine) as read_session:
+                rows = calendar_shifts.get_calendar_shifts(
+                    read_session, node_id=node.id, date_from=first_day, date_to=last_day,
+                )
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+        return rows, len(statements)
+
+    one_row, one_query_count = load_and_count(first_day)
+    all_rows, all_query_count = load_and_count(first_day + timedelta(days=5))
+
+    assert {row["id"] for row in one_row} == {shift_ids[0]}
+    assert {row["id"] for row in all_rows} == set(shift_ids)
+    assert {row["id"]: row["reserve_required_count"] for row in all_rows} == {
+        shift_id: (4 if index == 2 else 2) for index, shift_id in enumerate(shift_ids)
+    }
+    assert all_query_count <= one_query_count + 2

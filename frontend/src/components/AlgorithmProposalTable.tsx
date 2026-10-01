@@ -3,7 +3,7 @@ import axios from "axios";
 import { useTranslation } from "react-i18next";
 import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, pollJob } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
-import { SoldierDTO } from "../api/soldiers";
+import { SoldierNameDTO } from "../api/soldiers";
 import { DutyShift } from "../api/shifts";
 import Combobox from "./Combobox";
 import { DataTable, type ColDef } from "./DataTable";
@@ -15,7 +15,7 @@ import ConfirmDialog from "./ConfirmDialog";
 interface Props {
   job: AlgorithmJob;
   jobId: string;
-  soldiers: SoldierDTO[];
+  soldiers: SoldierNameDTO[];
   dutyTypes: DutyType[];
   shiftsById?: Record<string, DutyShift>;
   onProposalUpdate: (updated: AlgorithmJob) => void;
@@ -51,11 +51,12 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     return "שגיאה בטעינת תוצאות האלגוריתם";
   }
 
-  const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
+  const namesById = useMemo(() => new Map(soldiers.map(s => [s.id, s.full_name] as const)), [soldiers]);
+  const soldierName = (id: string) => namesById.get(id) ?? id.slice(0, 8);
   const soldierLink = (id: string): React.ReactNode => {
-    const s = soldiers.find(s => s.id === id);
-    if (!s) return id.slice(0, 8);
-    return <SoldierLink id={s.id} name={s.full_name} />;
+    const name = namesById.get(id);
+    if (!name) return id.slice(0, 8);
+    return <SoldierLink id={id} name={name} />;
   };
   const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
 

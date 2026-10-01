@@ -1,12 +1,18 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
-import { SoldierDTO, listSoldiers, getSoldier } from "../api/soldiers";
+import {
+  HakpazaSoldierRosterItemDTO,
+  SoldierDTO,
+  getSoldier,
+  isStaleHakpazaSoldierRosterCursorError,
+  listHakpazaSoldierRosterPage,
+} from "../api/soldiers";
 import { Assignment, listAssignments } from "../api/assignments";
 import { Candidate, createHakpaza, findCandidates } from "../api/hakpaza";
-import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { formatDate, formatDutyRange, lastDutyDay, todayIso } from "../utils/formatDate";
 import DateInput from "../components/DateInput";
 
@@ -18,11 +24,16 @@ const DISTANCE_LABEL: Record<number, string> = {
   2: "ענף אחר",
 };
 
+const PICKER_ROW_HEIGHT = 56;
+const PICKER_VIEWPORT_HEIGHT = 240;
+const PICKER_OVERSCAN = 6;
+
 export default function HakpazaPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>(1);
-  const [pulledSoldier, setPulledSoldier] = useState<SoldierDTO | null>(null);
+  const [pulledSoldier, setPulledSoldier] = useState<Pick<SoldierDTO, "id" | "full_name" | "rank"> | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [pullDate, setPullDate] = useState("");
@@ -32,44 +43,96 @@ export default function HakpazaPage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [soldierSearch, setSoldierSearch] = useState("");
+  const [debouncedSoldierSearch, setDebouncedSoldierSearch] = useState("");
+  const [rosterScrollTop, setRosterScrollTop] = useState(0);
+  const rosterListRef = useRef<HTMLDivElement>(null);
+  const restartingStaleRosterRef = useRef(false);
 
   const today = todayIso();
 
-  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
-  const scopedSoldiers = useMemo(() => soldiersQuery.data ?? [], [soldiersQuery.data]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSoldierSearch(soldierSearch), 250);
+    return () => window.clearTimeout(timeout);
+  }, [soldierSearch]);
 
-  const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
-  const dutyTypeNameById = useMemo(
-    () => Object.fromEntries((dutyTypesQuery.data ?? []).map((d: DutyType) => [d.id, d.name])),
-    [dutyTypesQuery.data],
-  );
-
-  // One upcoming-assignments query per visible soldier — a dynamic-by-id list
-  // that doesn't collapse into a single query key.
-  const upcomingAssignmentsQueries = useQueries({
-    queries: scopedSoldiers.map((s) => ({
-      queryKey: queryKeys.assignments(s.id, { date_from: today }),
-      queryFn: () => listAssignments(s.id, { date_from: today }),
-    })),
+  const rosterQuery = useInfiniteQuery({
+    queryKey: queryKeys.hakpazaSoldierRoster(today, debouncedSoldierSearch),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) => listHakpazaSoldierRosterPage({
+      as_of_date: today,
+      search: debouncedSoldierSearch,
+      page_size: 100,
+      cursor: pageParam ?? undefined,
+      signal,
+    }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
+  const rosterItems = rosterQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const staleRosterContinuationError =
+    rosterQuery.isFetchNextPageError &&
+    isStaleHakpazaSoldierRosterCursorError(rosterQuery.error);
+  const retryableRosterContinuationError =
+    rosterQuery.isFetchNextPageError && !staleRosterContinuationError;
+  const searchIsPending = soldierSearch !== debouncedSoldierSearch;
+  const pickerItems = searchIsPending ? [] : rosterItems;
+  const rosterWindowStart = Math.max(
+    0,
+    Math.floor(rosterScrollTop / PICKER_ROW_HEIGHT) - PICKER_OVERSCAN,
+  );
+  const rosterWindowEnd = Math.min(
+    pickerItems.length,
+    Math.ceil((rosterScrollTop + PICKER_VIEWPORT_HEIGHT) / PICKER_ROW_HEIGHT) + PICKER_OVERSCAN,
+  );
+  const visibleRosterItems = pickerItems.slice(rosterWindowStart, rosterWindowEnd);
 
-  const shiftsLoading =
-    scopedSoldiers.length > 0 &&
-    (dutyTypesQuery.isPending || upcomingAssignmentsQueries.some((q) => q.isPending));
+  useEffect(() => {
+    setRosterScrollTop(0);
+    if (rosterListRef.current) rosterListRef.current.scrollTop = 0;
+  }, [debouncedSoldierSearch]);
 
-  const nextShiftBySoldier = useMemo(() => {
-    const map: Record<string, { date: string; typeName: string } | null> = {};
-    scopedSoldiers.forEach((s, i) => {
-      const asgns = upcomingAssignmentsQueries[i]?.data ?? [];
-      const upcoming = asgns
-        .filter((a) => a.status === "published")
-        .sort((a, b) => a.start_date.localeCompare(b.start_date));
-      map[s.id] = upcoming.length > 0
-        ? { date: upcoming[0].start_date, typeName: dutyTypeNameById[upcoming[0].duty_type_id] ?? "תורנות" }
-        : null;
+  useEffect(() => {
+    if (
+      step === 1 &&
+      rosterWindowEnd >= pickerItems.length - 12 &&
+      rosterQuery.hasNextPage &&
+      !rosterQuery.isFetchingNextPage &&
+      !rosterQuery.isFetchNextPageError
+    ) {
+      void rosterQuery.fetchNextPage();
+    }
+  }, [
+    step,
+    rosterWindowEnd,
+    pickerItems.length,
+    rosterQuery.hasNextPage,
+    rosterQuery.isFetchingNextPage,
+    rosterQuery.isFetchNextPageError,
+    rosterQuery.fetchNextPage,
+  ]);
+
+  useEffect(() => {
+    if (!rosterQuery.isFetchNextPageError) {
+      restartingStaleRosterRef.current = false;
+      return;
+    }
+    if (
+      restartingStaleRosterRef.current ||
+      !isStaleHakpazaSoldierRosterCursorError(rosterQuery.error)
+    ) {
+      return;
+    }
+    restartingStaleRosterRef.current = true;
+    void queryClient.resetQueries({
+      queryKey: queryKeys.hakpazaSoldierRoster(today, debouncedSoldierSearch),
+      exact: true,
     });
-    return map;
-  }, [scopedSoldiers, upcomingAssignmentsQueries, dutyTypeNameById]);
+  }, [
+    queryClient,
+    today,
+    debouncedSoldierSearch,
+    rosterQuery.isFetchNextPageError,
+    rosterQuery.error,
+  ]);
 
   // Pre-fill from ?soldierId=&assignmentId= (deep link, e.g. a "הקפץ" button
   // elsewhere in the app). Applied once, on mount — a soldier picked manually
@@ -122,7 +185,9 @@ export default function HakpazaPage() {
     prefillAssignmentsQuery.data,
   ]);
 
-  async function handleSoldierSelect(soldier: SoldierDTO | null) {
+  async function handleSoldierSelect(
+    soldier: Pick<SoldierDTO, "id" | "full_name" | "rank"> | null,
+  ) {
     if (!soldier) {
       setPulledSoldier(null);
       setStep(1);
@@ -229,45 +294,69 @@ export default function HakpazaPage() {
                 className="w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 dir="rtl"
               />
-              {shiftsLoading && (
-                <p className="text-xs text-gray-400 px-3 py-1">טוען תורנויות...</p>
+              {(rosterQuery.isPending || searchIsPending) && (
+                <p className="text-xs text-gray-400 px-3 py-1">
+                  {searchIsPending ? "מחפש חיילים..." : "טוען תורנויות..."}
+                </p>
               )}
-              <div className="max-h-60 overflow-y-auto border rounded dark:border-gray-700 divide-y dark:divide-gray-700">
-                {[...scopedSoldiers]
-                  .sort((a, b) => {
-                    const na = nextShiftBySoldier[a.id];
-                    const nb = nextShiftBySoldier[b.id];
-                    if (na && nb) return na.date.localeCompare(nb.date);
-                    if (na) return -1;
-                    if (nb) return 1;
-                    return a.full_name.localeCompare(b.full_name);
-                  })
-                  .filter((s) => !soldierSearch || s.full_name.includes(soldierSearch))
-                  .map((s) => (
-                    <button
-                      data-testid={`hakpaza-soldier-${s.id}`}
-                      key={s.id}
-                      type="button"
-                      className="w-full text-right px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center justify-between gap-2"
-                      onClick={() => { void handleSoldierSelect(s); }}
-                    >
-                      <div className="text-right">
-                        <span className="font-medium">{s.full_name}</span>
-                        {s.rank && <span className="text-xs text-gray-400 mr-1">{s.rank}</span>}
-                        {nextShiftBySoldier[s.id] ? (
-                          <p className="text-xs text-indigo-600 dark:text-indigo-300 mt-0.5">
-                            {nextShiftBySoldier[s.id]!.typeName} — {formatDate(nextShiftBySoldier[s.id]!.date)}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-gray-400 mt-0.5">אין תורנות קרובה</p>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                {scopedSoldiers.filter((s) => !soldierSearch || s.full_name.includes(soldierSearch)).length === 0 && (
+              {rosterQuery.isError && !rosterQuery.isFetchNextPageError && (
+                <p className="text-sm text-red-600 p-2 text-right">שגיאה בטעינת החיילים</p>
+              )}
+              <div
+                ref={rosterListRef}
+                className="h-60 overflow-y-auto border rounded dark:border-gray-700"
+                onScroll={(event) => setRosterScrollTop(event.currentTarget.scrollTop)}
+                aria-busy={rosterQuery.isFetchingNextPage || searchIsPending}
+              >
+                {pickerItems.length === 0 &&
+                !rosterQuery.isPending &&
+                !searchIsPending &&
+                !rosterQuery.isError ? (
                   <p className="text-sm text-gray-500 p-3 text-right">לא נמצאו חיילים</p>
+                ) : (
+                  <div>
+                    <div style={{ height: rosterWindowStart * PICKER_ROW_HEIGHT }} aria-hidden="true" />
+                    {visibleRosterItems.map((soldier: HakpazaSoldierRosterItemDTO) => (
+                      <button
+                        data-testid={`hakpaza-soldier-${soldier.id}`}
+                        key={soldier.id}
+                        type="button"
+                        style={{ height: PICKER_ROW_HEIGHT }}
+                        className="w-full shrink-0 border-b border-gray-100 px-3 py-2 text-right text-sm hover:bg-indigo-50 dark:border-gray-700 dark:hover:bg-indigo-950 flex items-center justify-between gap-2"
+                        onClick={() => { void handleSoldierSelect(soldier); }}
+                      >
+                        <div className="text-right">
+                          <span className="font-medium">{soldier.full_name}</span>
+                          {soldier.rank && <span className="text-xs text-gray-400 mr-1">{soldier.rank}</span>}
+                          {soldier.next_shift_date ? (
+                            <p className="text-xs text-indigo-600 dark:text-indigo-300 mt-0.5">
+                              {soldier.next_shift_type_name ?? "תורנות"} — {formatDate(soldier.next_shift_date)}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-400 mt-0.5">אין תורנות קרובה</p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                    <div
+                      style={{ height: (pickerItems.length - rosterWindowEnd) * PICKER_ROW_HEIGHT }}
+                      aria-hidden="true"
+                    />
+                  </div>
                 )}
               </div>
+              {rosterQuery.isFetchingNextPage && (
+                <p className="text-xs text-gray-400 px-3 py-1">טוען עוד חיילים...</p>
+              )}
+              {retryableRosterContinuationError && (
+                <button
+                  type="button"
+                  className="text-xs text-indigo-600 hover:underline px-3 py-1"
+                  onClick={() => { void rosterQuery.fetchNextPage(); }}
+                >
+                  {t("common.retry")}
+                </button>
+              )}
             </div>
           ) : (
             pulledSoldier && (

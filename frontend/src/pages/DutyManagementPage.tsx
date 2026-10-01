@@ -1,20 +1,617 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
-import Combobox from "../components/Combobox";
 import ExplanationModal from "../components/ExplanationModal";
 import { Assignment, cancelAssignment, listAssignments, setOverride } from "../api/assignments";
 import { createAdjustment } from "../api/scoreAdjustments";
-import { listSoldiers } from "../api/soldiers";
+import { getTransparencyAuthorizationScope } from "../api/auth";
+import { useAuth } from "../auth/AuthContext";
+import {
+  isStaleSoldierRosterCursorError,
+  listSoldierRosterPage,
+  SoldierRosterItemDTO,
+} from "../api/soldiers";
 import { getDraftsPreview, resetDrafts, resetPublished } from "../api/algorithm";
 import { lastDutyDay } from "../utils/formatDate";
 import ConfirmDialog from "../components/ConfirmDialog";
 import InputDialog from "../components/InputDialog";
 import Tooltip from "../components/Tooltip";
 import { translateApiError } from "../utils/translateApiError";
+
+const DUTY_ROSTER_PAGE_SIZE = 10;
+const DUTY_PICKER_ROW_HEIGHT = 40;
+const DUTY_PICKER_VIEWPORT_HEIGHT = 192;
+const DUTY_PICKER_OVERSCAN = 3;
+
+interface DutyRosterPageState {
+  authorizationIdentity: string;
+  search: string;
+  items: SoldierRosterItemDTO[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+interface DutyRosterPageResult {
+  page: Awaited<ReturnType<typeof listSoldierRosterPage>>;
+  restartedFromFirstPage: boolean;
+}
+
+async function requestDutyRosterPage(
+  search: string,
+  cursor: string | undefined,
+  signal: AbortSignal,
+): Promise<DutyRosterPageResult> {
+  const request = {
+    ...(cursor ? { cursor } : {}),
+    search,
+    sort: "full_name" as const,
+    descending: false,
+    page_size: DUTY_ROSTER_PAGE_SIZE,
+    active_only: false,
+    signal,
+  };
+
+  try {
+    return {
+      page: await listSoldierRosterPage(request),
+      restartedFromFirstPage: false,
+    };
+  } catch (error) {
+    if (signal.aborted || !isStaleSoldierRosterCursorError(error) || !cursor) {
+      throw error;
+    }
+
+    return {
+      page: await listSoldierRosterPage({
+        search,
+        sort: "full_name",
+        descending: false,
+        page_size: DUTY_ROSTER_PAGE_SIZE,
+        active_only: false,
+        signal,
+      }),
+      restartedFromFirstPage: true,
+    };
+  }
+}
+
+function DutyManagementSoldierPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const { user, authScopeReady } = useAuth();
+  const authorizationIdentity = authScopeReady
+    ? getTransparencyAuthorizationScope(user)
+    : null;
+  const [inputText, setInputText] = useState("");
+  const [inputShowsSelection, setInputShowsSelection] = useState(true);
+  const [searchText, setSearchText] = useState("");
+  const [open, setOpen] = useState(false);
+  const [rosterPage, setRosterPage] = useState<DutyRosterPageState | null>(null);
+  const [selectedOption, setSelectedOption] = useState<{
+    id: string;
+    name: string;
+    authorizationIdentity: string;
+  } | null>(null);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [continueKey, setContinueKey] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const requestGeneration = useRef(0);
+  const continuationRequest = useRef<{
+    key: string;
+    cursor: string;
+    controller: AbortController;
+  } | null>(null);
+  const rosterNamesById = useRef<{
+    queryKey: string;
+    names: Map<string, string>;
+  } | null>(null);
+  const listboxRef = useRef<HTMLUListElement | null>(null);
+  const keyboardScrollTop = useRef<number | null>(null);
+  const [listScrollTop, setListScrollTop] = useState(0);
+  const listboxId = useId();
+  const normalizedSearch = searchText.trim();
+  const queryKey = authorizationIdentity
+    ? JSON.stringify([authorizationIdentity, normalizedSearch])
+    : null;
+  const matchingRosterPage =
+    authorizationIdentity &&
+    rosterPage?.authorizationIdentity === authorizationIdentity &&
+    rosterPage.search === normalizedSearch
+      ? rosterPage
+      : null;
+  const visibleRosterPage = open ? matchingRosterPage : null;
+  const visibleItems = visibleRosterPage?.items ?? [];
+  const cachedRosterNames = rosterNamesById.current;
+  const selectedPageName =
+    authorizationIdentity &&
+    value &&
+    cachedRosterNames?.queryKey === queryKey
+      ? cachedRosterNames.names.get(value)
+      : undefined;
+  const currentSelection =
+    authorizationIdentity &&
+    selectedOption?.id === value &&
+    selectedOption.authorizationIdentity === authorizationIdentity
+      ? selectedOption
+      : authorizationIdentity && value && selectedPageName
+        ? {
+            id: value,
+            name: selectedPageName,
+            authorizationIdentity,
+          }
+        : null;
+  const displayedSelectionName = currentSelection?.name ?? "";
+
+  useEffect(() => {
+    const identity = authorizationIdentity;
+    const search = normalizedSearch;
+    const key = queryKey;
+    const generation = ++requestGeneration.current;
+    const controller = new AbortController();
+    setHighlightedIndex(-1);
+    setListScrollTop(0);
+    keyboardScrollTop.current = null;
+    if (listboxRef.current) listboxRef.current.scrollTop = 0;
+    rosterNamesById.current = null;
+    continuationRequest.current?.controller.abort();
+    continuationRequest.current = null;
+    setRosterPage(null);
+    setLoadingKey(null);
+    setContinueKey(null);
+    setErrorKey(null);
+
+    if (!identity || !key) {
+      return () => {
+        controller.abort();
+        if (requestGeneration.current === generation) {
+          requestGeneration.current += 1;
+        }
+      };
+    }
+
+    const timeout = window.setTimeout(() => {
+      setLoadingKey(key);
+      void listSoldierRosterPage({
+        search,
+        sort: "full_name",
+        descending: false,
+        page_size: DUTY_ROSTER_PAGE_SIZE,
+        active_only: false,
+        signal: controller.signal,
+      })
+        .then((page) => {
+          if (
+            controller.signal.aborted ||
+            requestGeneration.current !== generation
+          ) {
+            return;
+          }
+
+          const names = new Map<string, string>();
+          page.items.forEach((item) => names.set(item.id, item.full_name));
+          rosterNamesById.current = { queryKey: key, names };
+          setRosterPage({
+            authorizationIdentity: identity,
+            search,
+            items: page.items,
+            nextCursor: page.next_cursor,
+            hasMore: page.has_more,
+          });
+          setContinueKey(
+            page.items.length < DUTY_ROSTER_PAGE_SIZE && page.has_more
+              ? key
+              : null,
+          );
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setErrorKey(key);
+        })
+        .finally(() => {
+          if (requestGeneration.current === generation) {
+            setLoadingKey((current) => (current === key ? null : current));
+          }
+        });
+    }, normalizedSearch ? 200 : 0);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+      continuationRequest.current?.controller.abort();
+      continuationRequest.current = null;
+      if (requestGeneration.current === generation) {
+        requestGeneration.current += 1;
+      }
+    };
+  }, [authorizationIdentity, normalizedSearch, queryKey, retryCount]);
+
+  useEffect(() => {
+    if (
+      !authorizationIdentity ||
+      rosterPage?.authorizationIdentity !== authorizationIdentity ||
+      rosterPage.search !== "" ||
+      rosterPage.items.length === 0
+    ) {
+      return;
+    }
+
+    const defaultItem = rosterPage.items[0];
+    const cachedNames = rosterNamesById.current;
+    const selectedName = value
+      ? cachedNames?.queryKey === queryKey
+        ? cachedNames.names.get(value)
+        : undefined
+      : defaultItem?.full_name;
+    const selectedId = value || defaultItem?.id;
+    if (selectedName && selectedId) {
+      setSelectedOption((current) =>
+        current?.id === selectedId &&
+        current.name === selectedName &&
+        current.authorizationIdentity === authorizationIdentity
+          ? current
+          : {
+              id: selectedId,
+              name: selectedName,
+              authorizationIdentity,
+            },
+      );
+    }
+    if (!value) {
+      const first = defaultItem;
+      if (!first) return;
+      setInputShowsSelection(true);
+      onChange(first.id);
+    }
+  }, [authorizationIdentity, onChange, queryKey, rosterPage, value]);
+
+  async function loadMore() {
+    const page = visibleRosterPage;
+    const key = queryKey;
+    if (
+      !page ||
+      !page.hasMore ||
+      !page.nextCursor ||
+      !key ||
+      loadingKey === key ||
+      continuationRequest.current?.key === key
+    ) {
+      return;
+    }
+
+    const generation = requestGeneration.current;
+    const cursor = page.nextCursor;
+    const controller = new AbortController();
+    continuationRequest.current?.controller.abort();
+    continuationRequest.current = { key, cursor, controller };
+    setLoadingKey(key);
+    setContinueKey(null);
+    setErrorKey(null);
+
+    try {
+      const result = await requestDutyRosterPage(
+        page.search,
+        cursor,
+        controller.signal,
+      );
+      if (
+        controller.signal.aborted ||
+        requestGeneration.current !== generation ||
+        continuationRequest.current?.key !== key ||
+        continuationRequest.current.controller !== controller
+      ) {
+        return;
+      }
+
+      const cachedNames = rosterNamesById.current;
+      const names =
+        result.restartedFromFirstPage ||
+        cachedNames?.queryKey !== key
+          ? new Map<string, string>()
+          : cachedNames.names;
+      result.page.items.forEach((item) => names.set(item.id, item.full_name));
+      rosterNamesById.current = { queryKey: key, names };
+
+      setRosterPage((current) => {
+        if (
+          requestGeneration.current !== generation ||
+          controller.signal.aborted ||
+          continuationRequest.current?.key !== key ||
+          continuationRequest.current.controller !== controller ||
+          !current ||
+          current.authorizationIdentity !== page.authorizationIdentity ||
+          current.search !== page.search ||
+          current.nextCursor !== cursor
+        ) {
+          return current;
+        }
+
+        // The roster cursor is keyset-bound to the sort key and soldier ID,
+        // and a roster revision change restarts at page one above.
+        const items = result.restartedFromFirstPage
+          ? result.page.items
+          : [...current.items, ...result.page.items];
+        return {
+          ...current,
+          items,
+          nextCursor: result.page.next_cursor,
+          hasMore: result.page.has_more,
+        };
+      });
+      setContinueKey(
+        result.page.items.length < DUTY_ROSTER_PAGE_SIZE && result.page.has_more
+          ? key
+          : null,
+      );
+    } catch {
+      if (!controller.signal.aborted) {
+        setErrorKey(key);
+        setContinueKey(key);
+      }
+    } finally {
+      if (continuationRequest.current?.controller === controller) {
+        continuationRequest.current = null;
+        setLoadingKey((current) => (current === key ? null : current));
+      }
+    }
+  }
+
+  function chooseSoldier(item: SoldierRosterItemDTO) {
+    if (!authorizationIdentity || !authScopeReady) return;
+    onChange(item.id);
+    setSelectedOption({
+      id: item.id,
+      name: item.full_name,
+      authorizationIdentity,
+    });
+    setInputText("");
+    setInputShowsSelection(true);
+    setSearchText("");
+    setOpen(false);
+    setHighlightedIndex(-1);
+  }
+
+  function highlightOption(index: number) {
+    setHighlightedIndex(index);
+    const listbox = listboxRef.current;
+    if (!listbox || index < 0) return;
+
+    const itemTop = index * DUTY_PICKER_ROW_HEIGHT;
+    const itemBottom = itemTop + DUTY_PICKER_ROW_HEIGHT;
+    let nextScrollTop = listbox.scrollTop;
+    if (itemTop < nextScrollTop) {
+      nextScrollTop = itemTop;
+    } else if (itemBottom > nextScrollTop + listbox.clientHeight) {
+      nextScrollTop = itemBottom - listbox.clientHeight;
+    }
+    if (nextScrollTop !== listbox.scrollTop) {
+      keyboardScrollTop.current = nextScrollTop;
+      listbox.scrollTop = nextScrollTop;
+      setListScrollTop(nextScrollTop);
+    }
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setListScrollTop(0);
+        keyboardScrollTop.current = null;
+        if (listboxRef.current) listboxRef.current.scrollTop = 0;
+        setHighlightedIndex(matchingRosterPage?.items.length ? 0 : -1);
+      } else {
+        highlightOption(
+          Math.min(highlightedIndex + 1, visibleItems.length - 1),
+        );
+      }
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      highlightOption(
+        Math.min(Math.max(highlightedIndex - 1, 0), visibleItems.length - 1),
+      );
+    } else if (event.key === "Enter" && open) {
+      if (highlightedIndex >= 0 && highlightedIndex < visibleItems.length) {
+        event.preventDefault();
+        chooseSoldier(visibleItems[highlightedIndex]);
+      } else {
+        const exact = visibleItems.find(
+          (item) => item.full_name === inputText.trim(),
+        );
+        if (exact) {
+          event.preventDefault();
+          chooseSoldier(exact);
+        }
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+    }
+  }
+
+  const activeOptionId =
+    highlightedIndex >= 0 && highlightedIndex < visibleItems.length
+      ? `${listboxId}-option-${visibleItems[highlightedIndex].id}`
+      : undefined;
+  const virtualStartIndex = Math.max(
+    0,
+    Math.floor(listScrollTop / DUTY_PICKER_ROW_HEIGHT) - DUTY_PICKER_OVERSCAN,
+  );
+  const virtualEndIndex = Math.min(
+    visibleItems.length,
+    Math.ceil(
+      (listScrollTop + DUTY_PICKER_VIEWPORT_HEIGHT) / DUTY_PICKER_ROW_HEIGHT,
+    ) +
+      DUTY_PICKER_OVERSCAN,
+  );
+  const virtualItems = visibleItems.slice(virtualStartIndex, virtualEndIndex);
+
+  return (
+    <div className="relative" data-testid="dm-soldier-picker">
+      <input
+        type="text"
+        value={inputShowsSelection ? displayedSelectionName : inputText}
+        autoComplete="off"
+        data-testid="dm-soldier"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-activedescendant={activeOptionId}
+        onChange={(event) => {
+          setInputText(event.target.value);
+          setInputShowsSelection(false);
+          setSearchText(event.target.value);
+          setOpen(true);
+          setHighlightedIndex(-1);
+          setListScrollTop(0);
+          keyboardScrollTop.current = null;
+          if (listboxRef.current) listboxRef.current.scrollTop = 0;
+        }}
+        onFocus={() => {
+          setSearchText("");
+          setOpen(true);
+          setHighlightedIndex(-1);
+          setListScrollTop(0);
+          keyboardScrollTop.current = null;
+          if (listboxRef.current) listboxRef.current.scrollTop = 0;
+        }}
+        onBlur={() => {
+          window.setTimeout(() => {
+            const exact = visibleItems.find(
+              (item) => item.full_name === inputText.trim(),
+            );
+            if (exact) {
+              chooseSoldier(exact);
+            } else {
+              setOpen(false);
+            }
+          }, 150);
+        }}
+        onKeyDown={handleKeyDown}
+        className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+      />
+      {open && queryKey && (visibleRosterPage || loadingKey === queryKey || errorKey === queryKey) && (
+        <ul
+          ref={listboxRef}
+          id={listboxId}
+          role="listbox"
+          className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            const nextScrollTop = element.scrollTop;
+            setListScrollTop(nextScrollTop);
+            const windowStart = Math.max(
+              0,
+              Math.floor(nextScrollTop / DUTY_PICKER_ROW_HEIGHT) -
+                DUTY_PICKER_OVERSCAN,
+            );
+            const windowEnd = Math.min(
+              visibleItems.length,
+              Math.ceil((nextScrollTop + element.clientHeight) / DUTY_PICKER_ROW_HEIGHT) +
+                DUTY_PICKER_OVERSCAN,
+            );
+            const fromKeyboard =
+              keyboardScrollTop.current !== null &&
+              Math.abs(nextScrollTop - keyboardScrollTop.current) < 1;
+            keyboardScrollTop.current = null;
+            if (
+              !fromKeyboard &&
+              highlightedIndex >= 0 &&
+              (highlightedIndex < windowStart || highlightedIndex >= windowEnd)
+            ) {
+              setHighlightedIndex(-1);
+            }
+            if (element.scrollHeight - element.scrollTop - element.clientHeight <= 48) {
+              void loadMore();
+            }
+          }}
+        >
+          <li
+            role="presentation"
+            aria-hidden="true"
+            className="pointer-events-none"
+            style={{ height: visibleItems.length * DUTY_PICKER_ROW_HEIGHT }}
+          />
+          {virtualItems.map((item, offset) => {
+            const index = virtualStartIndex + offset;
+            return (
+              <li
+                key={item.id}
+                id={`${listboxId}-option-${item.id}`}
+                role="option"
+                aria-selected={value === item.id}
+                aria-posinset={index + 1}
+                aria-setsize={visibleRosterPage?.hasMore ? -1 : visibleItems.length}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => chooseSoldier(item)}
+                className={`flex h-full w-full cursor-pointer items-center px-3 text-right text-sm dark:text-gray-100 ${
+                  index === highlightedIndex
+                    ? "bg-gray-100 dark:bg-gray-700"
+                    : "hover:bg-gray-50 dark:hover:bg-gray-700"
+                } ${value === item.id ? "font-semibold text-indigo-600 dark:text-indigo-300" : ""}`}
+                style={{
+                  position: "absolute",
+                  top: index * DUTY_PICKER_ROW_HEIGHT,
+                  left: 0,
+                  right: 0,
+                  height: DUTY_PICKER_ROW_HEIGHT,
+                }}
+              >
+                {item.full_name}
+              </li>
+            );
+          })}
+          {loadingKey === queryKey && (
+            <li role="status" aria-live="polite" className="px-3 py-2 text-center text-xs text-gray-500 dark:text-gray-400">
+              {t("team.roster_loading_more", "Loading more soldiers...")}
+            </li>
+          )}
+          {visibleRosterPage?.hasMore &&
+            continueKey === queryKey &&
+            loadingKey !== queryKey && (
+              <li className="p-1">
+                <button
+                  type="button"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => void loadMore()}
+                  className="w-full rounded border px-2 py-1 text-xs dark:border-gray-600 dark:text-gray-100"
+                >
+                  {t("team.roster_load_more", "Load more")}
+                </button>
+              </li>
+            )}
+          {errorKey === queryKey && (
+            <li role="alert" className="px-3 py-2 text-center text-xs text-red-600 dark:text-red-400">
+              {t("common.error", "Unable to load soldiers")}
+            </li>
+          )}
+        </ul>
+      )}
+      {open &&
+        queryKey &&
+        errorKey === queryKey &&
+        !visibleRosterPage && (
+          <button
+            type="button"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => setRetryCount((current) => current + 1)}
+            className="absolute z-20 mt-1 w-full rounded border bg-white px-3 py-2 text-sm shadow dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          >
+            {t("common.retry", "Retry")}
+          </button>
+        )}
+    </div>
+  );
+}
 
 export function DutyManagementContent() {
   const { t } = useTranslation();
@@ -39,13 +636,6 @@ export function DutyManagementContent() {
   const [actionError, setActionError] = useState<string | null>(null);
   const draftsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
-  const soldiers = soldiersQuery.data ?? [];
-
-  useEffect(() => {
-    if (!soldierId && soldiersQuery.data?.[0]) setSoldierId(soldiersQuery.data[0].id);
-  }, [soldiersQuery.data, soldierId]);
 
   const assignmentsQuery = useQuery({
     queryKey: queryKeys.assignments(soldierId),
@@ -146,12 +736,7 @@ export function DutyManagementContent() {
 
       <div className="block text-sm">
         <span className="block mb-0.5">{t("duty_management.soldier")}</span>
-        <Combobox
-          items={soldiers.map(s => ({ id: s.id, name: s.full_name }))}
-          value={soldierId}
-          onChange={setSoldierId}
-          testId="dm-soldier"
-        />
+        <DutyManagementSoldierPicker value={soldierId} onChange={setSoldierId} />
       </div>
 
       <ul className="text-sm space-y-1" data-testid="assignment-list">

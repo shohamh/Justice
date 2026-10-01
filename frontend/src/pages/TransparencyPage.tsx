@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 
 import { queryKeys } from "../queryKeys";
@@ -9,8 +9,11 @@ import Layout from "../components/Layout";
 import HelpModal from "../components/HelpModal";
 import Combobox from "../components/Combobox";
 import { useAuth } from "../auth/AuthContext";
-import { TransparencyRow, getBurdenShareBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
+import { fetchMe, getTransparencyAuthorizationScope } from "../api/auth";
+import type { Me } from "../api/auth";
+import { TransparencyRow, getBurdenShareBreakdown, getFairnessComponents, getTransparency, getTransparencyPage, type FairnessComponents, type TransparencyOut, type TransparencyPageOut, type TransparencyPageRequest } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
+import CursorPagedTable, { type CursorPageCriteria } from "../components/CursorPagedTable";
 import { ExcelExportButton } from "../components/ExcelExportButton";
 import SoldierLink from "../components/SoldierLink";
 import { useSoldierModal } from "../contexts/SoldierModalContext";
@@ -120,6 +123,52 @@ interface SoldierGroupInfo {
   dutyTypeNames: string[];
 }
 
+function buildSoldierGroupMap(
+  fairnessComponents: FairnessComponents | null | undefined,
+): Map<string, SoldierGroupInfo> {
+  const map = new Map<string, SoldierGroupInfo>();
+  if (!fairnessComponents) return map;
+  fairnessComponents.components.forEach((comp, compIndex) => {
+    const sorted = [...comp.soldiers].sort((a, b) => a.burden_share - b.burden_share);
+    sorted.forEach((soldier, index) => {
+      map.set(soldier.soldier_id, {
+        compIndex,
+        rank: index + 1,
+        groupSize: comp.soldier_count,
+        groupMean: comp.burden_share?.mean ?? null,
+        groupCV: comp.burden_share?.cv ?? null,
+        dutyTypeNames: comp.duty_type_names,
+      });
+    });
+  });
+  fairnessComponents.exempt_from_all.soldiers.forEach((soldier) => {
+    map.set(soldier.soldier_id, {
+      compIndex: -1,
+      rank: 0,
+      groupSize: fairnessComponents.exempt_from_all.count,
+      groupMean: null,
+      groupCV: null,
+      dutyTypeNames: [],
+    });
+  });
+  return map;
+}
+
+function buildGroupSoldierIds(
+  fairnessComponents: FairnessComponents,
+): Map<GroupKey, string[]> {
+  const map = new Map<GroupKey, string[]>();
+  fairnessComponents.components.forEach((component, index) => {
+    const key: GroupKey = `comp_${index}`;
+    map.set(key, component.soldiers.map((soldier) => soldier.soldier_id));
+  });
+  map.set(
+    "exempt",
+    fairnessComponents.exempt_from_all.soldiers.map((soldier) => soldier.soldier_id),
+  );
+  return map;
+}
+
 // ─── sub-hierarchy row type ───────────────────────────────────────────────────
 
 interface SubRow {
@@ -147,7 +196,8 @@ interface SubRow {
 
 export default function TransparencyPage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, refreshMe, authScopeReady } = useAuth();
+  const queryClient = useQueryClient();
   const { openSoldierModal } = useSoldierModal();
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -162,24 +212,38 @@ export default function TransparencyPage() {
     setSearchParams((prev) => { prev.set("tab", TAB_KEYS[next] ?? "soldiers"); return prev; }, { replace: true });
   }
   const [showDebug, setShowDebug] = useState(false);
+  const [fairnessOpen, setFairnessOpen] = useState(false);
+  const [rankFilter, setRankFilter] = useState<string | null>(null);
+  const [pageMetaState, setPageMetaState] = useState<{
+    generationKey: string;
+    summary: TransparencyPageOut["summary"] | null;
+    canSeeExemptionAggregates: boolean;
+  } | null>(null);
+  const [pageMetaGeneration, setPageMetaGeneration] = useState(0);
+  const [tableCriteria, setTableCriteria] = useState<CursorPageCriteria>({
+    search: "", sort: "burden_share", descending: true, pageSize: 100,
+  });
   const [officerFilter, setOfficerFilter] = useState<OfficerFilter>("all");
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
   const [activeGroupKeys, setActiveGroupKeys] = useState<Set<GroupKey>>(new Set());
   const [groupSoldiersMap, setGroupSoldiersMap] = useState<Map<GroupKey, string[]>>(new Map());
   const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
+  const [exportError, setExportError] = useState(false);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
   const [burdenShareBreakdownFor, setBurdenShareBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
   const [showFairnessHelp, setShowFairnessHelp] = useState(false);
   const [showActiveDaysHelp, setShowActiveDaysHelp] = useState(false);
 
   const canViewTransparency = user?.can_view_transparency ?? true; // true until /me loads, avoids a flash-then-hide for allowed users
+  const transparencyAuthorizationScope = authScopeReady
+    ? getTransparencyAuthorizationScope(user)
+    : null;
   const transparencyQuery = useQuery({
-    queryKey: queryKeys.transparency(),
+    queryKey: queryKeys.transparencyForScope(transparencyAuthorizationScope),
     queryFn: getTransparency,
-    enabled: canViewTransparency,
+    enabled: !!user && !!transparencyAuthorizationScope && canViewTransparency && tab === 1,
   });
   const rows = useMemo(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
-  const canSeeExemptionAggregates = transparencyQuery.data?.can_see_exemption_aggregates ?? false;
   const transparencyForbidden =
     user?.can_view_transparency === false ||
     (isAxiosError(transparencyQuery.error) && transparencyQuery.error.response?.status === 403);
@@ -192,13 +256,25 @@ export default function TransparencyPage() {
   const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
 
   const fairnessComponentsQuery = useQuery({
-    queryKey: queryKeys.fairnessComponents(),
-    queryFn: () => getFairnessComponents(),
-    enabled: canViewTransparency,
+    queryKey: queryKeys.fairnessComponents(selectedNodeId, transparencyAuthorizationScope),
+    queryFn: () => getFairnessComponents(selectedNodeId),
+    enabled: !!user && !!transparencyAuthorizationScope && canViewTransparency && fairnessOpen,
   });
-  const fairnessComponents = fairnessComponentsQuery.data ?? null;
+  const fairnessComponents = user && transparencyAuthorizationScope && canViewTransparency
+    ? fairnessComponentsQuery.data ?? null
+    : null;
 
-  const burdenShareGapQuery = useQuery({ queryKey: queryKeys.burdenShareGapNodes(), queryFn: () => getBurdenShareGap() });
+  useEffect(() => {
+    setFairnessOpen(false);
+    setActiveGroupKeys(new Set());
+    setGroupSoldiersMap(new Map());
+  }, [transparencyAuthorizationScope]);
+
+  const burdenShareGapQuery = useQuery({
+    queryKey: [...queryKeys.burdenShareGapNodes(), transparencyAuthorizationScope],
+    queryFn: () => getBurdenShareGap(),
+    enabled: !!user && !!transparencyAuthorizationScope && canViewTransparency && tab === 1,
+  });
   const burdenShareGapByNode = useMemo(
     () => new Map((burdenShareGapQuery.data ?? []).map((r) => [r.node_id, r])),
     [burdenShareGapQuery.data],
@@ -241,34 +317,102 @@ export default function TransparencyPage() {
     return new Set(flatNodes.filter((n) => n.path_ids.includes(selectedNodeId)).map((n) => n.id));
   }, [selectedNodeId, flatNodes]);
 
-  const soldierGroupMap = useMemo((): Map<string, SoldierGroupInfo> => {
-    const map = new Map<string, SoldierGroupInfo>();
-    if (!fairnessComponents) return map;
-    fairnessComponents.components.forEach((comp, compIndex) => {
-      const sorted = [...comp.soldiers].sort((a, b) => a.burden_share - b.burden_share);
-      sorted.forEach((s, i) => {
-        map.set(s.soldier_id, {
-          compIndex,
-          rank: i + 1,
-          groupSize: comp.soldier_count,
-          groupMean: comp.burden_share?.mean ?? null,
-          groupCV: comp.burden_share?.cv ?? null,
-          dutyTypeNames: comp.duty_type_names,
-        });
-      });
+  const soldierGroupMap = useMemo(
+    () => buildSoldierGroupMap(fairnessComponents),
+    [fairnessComponents],
+  );
+
+  const transparencyFilterKey = useMemo(() => ({
+    nodeId: selectedNodeId,
+    officerFilter,
+    serviceFilter,
+    groupKeys: [...activeGroupKeys].sort(),
+    rankFilter,
+  }), [selectedNodeId, officerFilter, serviceFilter, activeGroupKeys, rankFilter]);
+
+  const pageMetaInputKey = JSON.stringify([
+    authScopeReady,
+    transparencyAuthorizationScope,
+    transparencyFilterKey,
+  ]);
+  const currentPageMetaKey = JSON.stringify([pageMetaInputKey, pageMetaGeneration]);
+  const pageMetaInputRef = useRef(pageMetaInputKey);
+  const pageMetaGenerationRef = useRef(pageMetaGeneration);
+  const pageMetaCurrentKeyRef = useRef(currentPageMetaKey);
+  const pageMetaInputReady = authScopeReady && !!transparencyAuthorizationScope &&
+    canViewTransparency &&
+    pageMetaInputRef.current === pageMetaInputKey &&
+    pageMetaGenerationRef.current === pageMetaGeneration;
+
+  useLayoutEffect(() => {
+    if (pageMetaInputRef.current === pageMetaInputKey) return;
+
+    pageMetaInputRef.current = pageMetaInputKey;
+    const nextGeneration = pageMetaGenerationRef.current + 1;
+    pageMetaGenerationRef.current = nextGeneration;
+    pageMetaCurrentKeyRef.current = JSON.stringify([pageMetaInputKey, nextGeneration]);
+    setPageMetaGeneration(nextGeneration);
+    setPageMetaState(null);
+  }, [pageMetaInputKey]);
+
+  const pageMetaReady = authScopeReady && !!transparencyAuthorizationScope &&
+    pageMetaState?.generationKey === currentPageMetaKey;
+  const pageSummary = pageMetaReady ? pageMetaState?.summary ?? null : null;
+  const pageCanSeeExemptionAggregates = pageMetaReady &&
+    (pageMetaState?.canSeeExemptionAggregates ?? false);
+  const canSeeExemptionAggregates = tab === 0
+    ? pageCanSeeExemptionAggregates
+    : transparencyQuery.data?.can_see_exemption_aggregates ?? false;
+
+  const fetchTransparencyPage = useCallback(async (request: {
+    cursor?: string;
+    search: string;
+    sort: string;
+    descending: boolean;
+    roleOrder?: string[];
+    pageSize: number;
+    signal: AbortSignal;
+  }) => {
+    const page = await getTransparencyPage({
+      ...request,
+      rankOrder: request.roleOrder,
+      nodeId: selectedNodeId,
+      officerFilter,
+      serviceType: serviceFilter === "all" ? null : serviceFilter,
+      groupKeys: [...activeGroupKeys],
+      rankFilter,
     });
-    fairnessComponents.exempt_from_all.soldiers.forEach((s) => {
-      map.set(s.soldier_id, {
-        compIndex: -1,
-        rank: 0,
-        groupSize: fairnessComponents.exempt_from_all.count,
-        groupMean: null,
-        groupCV: null,
-        dutyTypeNames: [],
-      });
+    return {
+      items: page.items.map((row) => ({
+        ...row,
+        _row_num: row.row_num,
+        _rank_order: row.rank ? RANK_ORDER[row.rank] ?? 999 : 999,
+        _group: soldierGroupMap.get(row.soldier_id),
+      })),
+      next_cursor: page.next_cursor,
+      has_more: page.has_more,
+      meta: {
+        summary: page.summary,
+        can_see_exemption_aggregates: page.can_see_exemption_aggregates,
+        metadata_generation_key: currentPageMetaKey,
+      },
+    };
+  }, [selectedNodeId, officerFilter, serviceFilter, activeGroupKeys, rankFilter, soldierGroupMap, currentPageMetaKey]);
+
+  const handleTransparencyPageMeta = useCallback((meta: unknown) => {
+    if (!meta || typeof meta !== "object") return;
+    const value = meta as {
+      summary?: TransparencyPageOut["summary"];
+      can_see_exemption_aggregates?: boolean;
+      metadata_generation_key?: string;
+    };
+    if (!value.metadata_generation_key || value.metadata_generation_key !== pageMetaCurrentKeyRef.current) return;
+    setPageMetaState({
+      generationKey: value.metadata_generation_key,
+      summary: value.summary ?? null,
+      canSeeExemptionAggregates: value.can_see_exemption_aggregates === true,
     });
-    return map;
-  }, [fairnessComponents]);
+  }, []);
 
   const visibleRows = useMemo(() => {
     let filtered = subtreeIds
@@ -293,14 +437,17 @@ export default function TransparencyPage() {
 
   // ── auto-range bounds (approximated from all rows — real run also adds per-milli headroom) ──
   const burdenShareRange = useMemo(() => {
-    const offsets = rows.map((r) => r.burden_share_offset_raw).filter((v) => v > 0);
+    const offsets = tab === 0
+      ? [pageSummary?.burden_share_offset_min, pageSummary?.burden_share_offset_max]
+          .filter((value): value is number => value != null && value > 0)
+      : rows.map((r) => r.burden_share_offset_raw).filter((v) => v > 0);
     if (offsets.length === 0) return null;
     const min = Math.min(...offsets);
     const max = Math.max(...offsets);
     const size = Math.max(1, max - min);
     const precisionPct = (size / 1_000_000_000 / 1000) * 100; // range / EFFORT_SCALE / resolution × 100
     return { min, max, size, precisionPct };
-  }, [rows]);
+  }, [rows, tab, pageSummary]);
 
   // ── sub-hierarchy tab: build children map from parent_id (API returns flat list) ──
   const subRows = useMemo((): SubRow[] => {
@@ -378,26 +525,38 @@ export default function TransparencyPage() {
   }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates, t, burdenShareGapByNode]);
 
   // ── summary stats (reflect current tab's visible data) ──
-  const statsRows = tab === 0 ? visibleRows : null;
-  const avgCumulative = statsRows
-    ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.cumulative_score), 0) / statsRows.length
+  const avgCumulative = tab === 0
+    ? pageSummary?.average_cumulative ?? 0
     : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.avg_cumulative, 0) / subRows.length;
-  const avgActiveDays = statsRows
-    ? statsRows.length === 0 ? 0 : Math.round(statsRows.reduce((s, r) => s + r.active_days, 0) / statsRows.length)
+  const avgActiveDays = tab === 0
+    ? pageSummary?.average_active_days ?? 0
     : subRows.length === 0 ? 0 : Math.round(subRows.reduce((s, r) => s + r.avg_active_days, 0) / subRows.length);
-  const avgScorePerDay = statsRows
-    ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.score_per_day), 0) / statsRows.length
+  const avgScorePerDay = tab === 0
+    ? pageSummary?.average_score_per_day ?? 0
     : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.total_score_per_day, 0) / subRows.length;
-  const avgNormalised = statsRows
-    ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.normalised_score), 0) / statsRows.length
+  const avgNormalised = tab === 0
+    ? pageSummary?.average_normalised ?? 0
     : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.avg_normalised, 0) / subRows.length;
 
-  const burdenShareStats: BurdenShareStats | null = tab === 0
-    ? computeBurdenShareStats(visibleRows.map((r) => r.burden_share).filter((v) => !isNaN(v)))
+  const burdenShareStats: BurdenShareStats | null = tab === 0 &&
+    pageSummary?.burden_share_mean != null &&
+    pageSummary.burden_share_stddev != null &&
+    pageSummary.burden_share_cv != null &&
+    pageSummary.burden_share_min != null &&
+    pageSummary.burden_share_max != null
+    ? {
+        mean: pageSummary.burden_share_mean,
+        stddev: pageSummary.burden_share_stddev,
+        cv: pageSummary.burden_share_cv,
+        min: pageSummary.burden_share_min,
+        max: pageSummary.burden_share_max,
+      }
     : null;
 
   function handleSelectNode(id: string) {
     setSelectedNodeId((prev) => (prev === id ? null : id));
+    setActiveGroupKeys(new Set());
+    setGroupSoldiersMap(new Map());
     setTreeOpen(false);
   }
 
@@ -648,6 +807,87 @@ export default function TransparencyPage() {
     ] as ColDef<NumberedRow>[] : []),
   ];
 
+  async function loadCompleteSoldierExport(): Promise<NumberedRow[]> {
+    setExportError(false);
+    if (!user || !transparencyAuthorizationScope || !canViewTransparency) {
+      setExportError(true);
+      throw new Error("Transparency authorization scope is unavailable.");
+    }
+
+    let freshUser: Me;
+    try {
+      freshUser = await fetchMe();
+    } catch (error) {
+      setExportError(true);
+      throw error;
+    }
+    const freshScope = getTransparencyAuthorizationScope(freshUser);
+    if (!freshScope || freshScope !== transparencyAuthorizationScope || !freshUser.can_view_transparency) {
+      setExportError(true);
+      await refreshMe();
+      throw new Error("Transparency authorization changed. Refresh the page data and retry export.");
+    }
+
+    let full: TransparencyOut;
+    let exportFairness: FairnessComponents;
+    try {
+      full = await queryClient.fetchQuery({
+        queryKey: queryKeys.transparencyForScope(freshScope),
+        queryFn: getTransparency,
+        staleTime: 0,
+      });
+      exportFairness = await queryClient.fetchQuery({
+        queryKey: queryKeys.fairnessComponents(selectedNodeId, freshScope),
+        queryFn: () => getFairnessComponents(selectedNodeId),
+        staleTime: 0,
+      });
+    } catch (error) {
+      setExportError(true);
+      throw error;
+    }
+    const exportSoldierGroupMap = buildSoldierGroupMap(exportFairness);
+    const exportGroupSoldierIds = buildGroupSoldierIds(exportFairness);
+    let filtered = full.rows.filter((row) => {
+      if (subtreeIds && (row.node_id == null || !subtreeIds.has(row.node_id))) return false;
+      if (officerFilter === "officer" && !row.is_officer) return false;
+      if (officerFilter === "enlisted" && row.is_officer) return false;
+      if (serviceFilter !== "all" && row.service_type !== serviceFilter) return false;
+      if (rankFilter && row.rank !== rankFilter) return false;
+      if (activeGroupKeys.size > 0) {
+        const ids = new Set([...activeGroupKeys].flatMap((key) => exportGroupSoldierIds.get(key) ?? []));
+        if (!ids.has(row.soldier_id)) return false;
+      }
+      return true;
+    });
+    const numbered = filtered.map((row, index) => ({
+      ...row,
+      _row_num: index + 1,
+      _rank_order: row.rank ? RANK_ORDER[row.rank] ?? 999 : 999,
+      _group: exportSoldierGroupMap.get(row.soldier_id),
+    }));
+    const searchText = tableCriteria.search.toLocaleLowerCase().trim();
+    if (searchText) {
+      filtered = numbered.filter((row) =>
+        [row.full_name, row.node_name, row.exemptions_display, row.rank]
+          .some((value) => String(value ?? "").toLocaleLowerCase().includes(searchText)),
+      );
+    } else {
+      filtered = numbered;
+    }
+    const column = soldierCols.find((item) => item.id === tableCriteria.sort);
+    if (column?.sortValue) {
+      filtered.sort((left, right) => {
+        const leftValue = column.sortValue?.(left) ?? "";
+        const rightValue = column.sortValue?.(right) ?? "";
+        const compared = typeof leftValue === "number" && typeof rightValue === "number"
+          ? leftValue - rightValue
+          : String(leftValue).localeCompare(String(rightValue), "he");
+        return (tableCriteria.descending ? -compared : compared) || left.soldier_id.localeCompare(right.soldier_id);
+      });
+    }
+    return filtered;
+  }
+
   // ── sub-hierarchy columns ──
   const subCols: ColDef<SubRow>[] = [
     {
@@ -879,12 +1119,30 @@ export default function TransparencyPage() {
         </div>
 
         {tab === 0 && (
-          <FairnessComponentsCard
-            activeGroupKeys={activeGroupKeys}
-            onGroupToggle={handleGroupToggle}
-            onClearGroups={clearGroupFilter}
-            nodeId={selectedNodeId}
-          />
+          <div>
+            <button
+              type="button"
+              className="text-sm text-indigo-700 dark:text-indigo-300 underline"
+              aria-expanded={fairnessOpen}
+              onClick={() => setFairnessOpen((open) => !open)}
+            >
+              {fairnessOpen ? "הסתר נתוני פיזור הוגנות" : "הצג נתוני פיזור הוגנות"}
+            </button>
+            {fairnessOpen && (
+              <div className="mt-3">
+                <FairnessComponentsCard
+                  activeGroupKeys={activeGroupKeys}
+                  onGroupToggle={handleGroupToggle}
+                  onClearGroups={clearGroupFilter}
+                  nodeId={selectedNodeId}
+                  data={fairnessComponents}
+                  loading={fairnessComponentsQuery.isPending}
+                  loadError={fairnessComponentsQuery.isError}
+                  onRetry={() => void fairnessComponentsQuery.refetch()}
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {showDebug && tab === 0 && (
@@ -942,6 +1200,19 @@ export default function TransparencyPage() {
                 { value: "קבע", label: "קבע" },
               ]}
             />
+            <label className="flex items-center gap-2 text-sm">
+              <span>סינון דרגה</span>
+              <select
+                value={rankFilter ?? ""}
+                onChange={(event) => setRankFilter(event.target.value || null)}
+                className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1"
+              >
+                <option value="">כל הדרגות</option>
+                {Object.entries(RANK_ORDER)
+                  .sort((left, right) => left[1] - right[1])
+                  .map(([rank]) => <option key={rank} value={rank}>{rank}</option>)}
+              </select>
+            </label>
           </div>
         )}
 
@@ -949,13 +1220,45 @@ export default function TransparencyPage() {
         {tab === 0 && (
           <>
             <div className="flex justify-start" dir="ltr">
-              <ExcelExportButton columns={soldierCols} rows={exportSoldierRows} filename="transparency.xlsx" />
+              <ExcelExportButton
+                columns={soldierCols}
+                rows={exportSoldierRows}
+                filename="transparency.xlsx"
+                onBeforeExport={loadCompleteSoldierExport}
+                onExportError={() => setExportError(true)}
+              />
             </div>
-            <DataTable
+            {exportError && <p role="alert" className="text-sm text-red-600" dir="rtl">טעינת הנתונים המלאים לייצוא נכשלה. נסה שוב.</p>}
+            <CursorPagedTable
               columns={soldierCols}
-              data={visibleRows}
-              filterPlaceholder={t("table.filter_placeholder")}
-              defaultSort={[{ id: "burden_share", desc: true }]}
+              queryKey={queryKeys.transparencyPage()}
+              scopeKey={transparencyAuthorizationScope ?? "scope-unavailable"}
+              enabled={pageMetaInputReady}
+              filterKey={transparencyFilterKey}
+              roleOrder={Object.entries(RANK_ORDER).sort((left, right) => left[1] - right[1]).map(([rank]) => rank)}
+              fetchPage={fetchTransparencyPage}
+              getRowId={(row) => row.soldier_id}
+              isCursorStaleError={(error) => isAxiosError(error) && error.response?.status === 409}
+              labels={{
+                searchLabel: "חיפוש חיילים",
+                searchPlaceholder: t("table.filter_placeholder"),
+                loading: "טוען חיילים...",
+                loadingMore: "טוען חיילים נוספים...",
+                loadMore: "טען עוד",
+                retry: "נסה שוב",
+                loadFailed: "טעינת החיילים נכשלה",
+                emptyMessage: "לא נמצאו חיילים",
+                loaded: (count) => `${count} חיילים נטענו`,
+                allLoaded: (count) => `${count} חיילים`,
+                keyboardHint: "השתמש בחיצים למעבר בין שורות",
+              }}
+              initialSort="burden_share"
+              initialSortDescending
+              onCriteriaChange={setTableCriteria}
+              onPageMeta={handleTransparencyPageMeta}
+              tableLabel="שקיפות חיילים"
+              testId="transparency-table"
+              rowTestId={(row) => `transparency-row-${row.soldier_id}`}
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
               rowStyle={(r) => {
                 const g = r._group;
@@ -963,8 +1266,6 @@ export default function TransparencyPage() {
                 const color = COMPONENT_COLORS[g.compIndex % COMPONENT_COLORS.length];
                 return { borderRight: `3px solid ${color}` };
               }}
-              testId="transparency-table"
-              onVisibleRowsChange={setExportSoldierRows}
             />
           </>
         )}

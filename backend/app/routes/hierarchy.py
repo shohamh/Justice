@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, exists, func, or_, select, text as sql_text
+from sqlalchemy.orm import Session, aliased
 
 import uuid as _uuid_mod
 
@@ -13,6 +17,7 @@ from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager
 from app.auth.deps import require_password_changed
 from app.db.models import DutyManagerScope, HierarchyLevelType, HierarchyNode, Soldier, SystemSetting
 from app.db.session import get_session
+from app.settings import get_settings
 from app.services import hierarchy as svc
 
 
@@ -40,6 +45,24 @@ class NodeOut(BaseModel):
     duty_managers: list[DutyManagerEntryOut] = []
     dm_manageable: bool = False
     can_edit: bool = False
+    has_children: bool = False
+    has_soldiers: bool = False
+
+
+class NodeBranchPageOut(BaseModel):
+    items: list[NodeOut]
+    next_cursor: str | None
+    has_more: bool
+
+
+class NodeSearchMatchOut(BaseModel):
+    node: NodeOut
+    path: list[NodeOut]
+
+
+class NodeSearchOut(BaseModel):
+    matches: list[NodeSearchMatchOut]
+    has_more: bool
 
 
 class CreateNodeRequest(BaseModel):
@@ -88,6 +111,8 @@ def _out(
     user_is_duty_manager: bool,
     duty_managers: list[DutyManagerEntryOut] | None = None,
     commander: Soldier | None = None,
+    has_children: bool = False,
+    has_soldiers: bool = False,
 ) -> NodeOut:
     commander_name = None
     if n.commander_id:
@@ -139,7 +164,254 @@ def _out(
         duty_managers=duty_managers,
         dm_manageable=dm_manageable,
         can_edit=can_edit,
+        has_children=has_children,
+        has_soldiers=has_soldiers,
     )
+
+
+def _tree_revision(session: Session) -> int:
+    # The roster revision has statement-level invalidation triggers for hierarchy
+    # node changes. Reuse it so a child cursor cannot cross a hierarchy mutation.
+    return session.execute(
+        sql_text("SELECT revision FROM soldier_roster_revision WHERE singleton = TRUE")
+    ).scalar_one()
+
+
+def _tree_cursor_binding(
+    session: Session,
+    *,
+    user: Soldier,
+    parent: HierarchyNode | None,
+) -> str:
+    roots = scope_root_ids(session, user)
+    payload = {
+        "actor_id": str(user.id),
+        "actor_role": user.role,
+        "actor_node_id": str(user.hierarchy_node_id) if user.hierarchy_node_id else None,
+        "scope_roots": sorted(str(root) for root in roots),
+        "is_commander": is_commander(session, user.id),
+        "is_duty_manager": is_duty_manager(session, user.id),
+        "parent_id": str(parent.id) if parent else None,
+        "parent_path": [str(part) for part in parent.path_ids] if parent else None,
+        "page_size": 100,
+        "order": "lower_name_uuid_asc",
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _decode_tree_cursor(cursor: str, binding: str, revision: int) -> tuple[str, uuid.UUID]:
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            cursor, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+        )
+        if (
+            payload.get("purpose") != "hierarchy_branch"
+            or payload.get("version") != 1
+            or payload.get("binding") != binding
+            or not isinstance(payload.get("key"), str)
+            or not isinstance(payload.get("id"), str)
+            or type(payload.get("revision")) is not int
+        ):
+            raise ValueError("cursor_mismatch")
+        if payload["revision"] != revision:
+            raise HTTPException(status_code=409, detail="stale_cursor")
+        return payload["key"], uuid.UUID(payload["id"])
+    except (jwt.InvalidTokenError, ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+
+
+def _out_many(
+    nodes: list[HierarchyNode],
+    session: Session,
+    *,
+    user: Soldier,
+    child_ids: set[uuid.UUID],
+    soldier_node_ids: set[uuid.UUID],
+) -> list[NodeOut]:
+    if not nodes:
+        return []
+    user_roots = scope_root_ids(session, user)
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
+    node_ids = [node.id for node in nodes]
+    dm_by_node: dict[uuid.UUID, list[DutyManagerEntryOut]] = {node_id: [] for node_id in node_ids}
+    dm_rows = session.execute(
+        select(DutyManagerScope, Soldier.full_name)
+        .join(Soldier, Soldier.id == DutyManagerScope.duty_manager_id)
+        .where(DutyManagerScope.hierarchy_node_id.in_(node_ids))
+    ).all()
+    for entry, name in dm_rows:
+        dm_by_node[entry.hierarchy_node_id].append(
+            DutyManagerEntryOut(scope_id=entry.id, soldier_id=entry.duty_manager_id, name=name)
+        )
+
+    commander_ids = {node.commander_id for node in nodes if node.commander_id}
+    commanders_by_id = (
+        {
+            commander.id: commander
+            for commander in session.execute(
+                select(Soldier).where(Soldier.id.in_(commander_ids))
+            ).scalars().all()
+        }
+        if commander_ids
+        else {}
+    )
+    return [
+        _out(
+            node,
+            session,
+            user=user,
+            user_roots=user_roots,
+            user_is_commander=user_is_commander,
+            user_is_duty_manager=user_is_duty_manager,
+            duty_managers=dm_by_node[node.id],
+            commander=commanders_by_id.get(node.commander_id) if node.commander_id else None,
+            has_children=node.id in child_ids,
+            has_soldiers=node.id in soldier_node_ids,
+        )
+        for node in nodes
+    ]
+
+
+def _node_presence(session: Session, nodes: list[HierarchyNode]) -> tuple[set[uuid.UUID], set[uuid.UUID]]:
+    if not nodes:
+        return set(), set()
+    node_ids = [node.id for node in nodes]
+    child_ids = set(
+        session.execute(
+            select(HierarchyNode.parent_id)
+            .where(HierarchyNode.parent_id.in_(node_ids))
+            .distinct()
+        ).scalars()
+    )
+    soldier_node_ids = set(
+        session.execute(
+            select(Soldier.hierarchy_node_id)
+            .where(Soldier.hierarchy_node_id.in_(node_ids))
+            .distinct()
+        ).scalars()
+    )
+    return child_ids, soldier_node_ids
+
+
+@router.get("/branches", response_model=NodeBranchPageOut)
+def get_hierarchy_branch_page(
+    parent_id: uuid.UUID | None = None,
+    cursor: str | None = Query(default=None, max_length=4096),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> NodeBranchPageOut:
+    """Read one bounded, stable page of roots or direct children."""
+    parent = session.get(HierarchyNode, parent_id) if parent_id else None
+    if parent_id and parent is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    binding = _tree_cursor_binding(session, user=user, parent=parent)
+    revision = _tree_revision(session)
+    last_key, last_id = _decode_tree_cursor(cursor, binding, revision) if cursor else (None, None)
+
+    child = aliased(HierarchyNode)
+    has_children = exists(
+        select(child.id).where(child.parent_id == HierarchyNode.id)
+    ).label("has_children")
+    has_soldiers = exists(
+        select(Soldier.id).where(Soldier.hierarchy_node_id == HierarchyNode.id)
+    ).label("has_soldiers")
+    sort_key = func.lower(HierarchyNode.name)
+    statement = select(HierarchyNode, sort_key.label("sort_key"), has_children, has_soldiers)
+    statement = statement.where(
+        HierarchyNode.parent_id == parent_id
+        if parent_id is not None
+        else HierarchyNode.parent_id.is_(None)
+    )
+    if last_key is not None and last_id is not None:
+        statement = statement.where(
+            or_(sort_key > last_key, and_(sort_key == last_key, HierarchyNode.id > last_id))
+        )
+    rows = session.execute(
+        statement.order_by(sort_key.asc(), HierarchyNode.id.asc()).limit(101)
+    ).all()
+    has_more = len(rows) > 100
+    rows = rows[:100]
+    nodes = [row[0] for row in rows]
+    child_ids = {row[0].id for row in rows if row[2]}
+    soldier_node_ids = {row[0].id for row in rows if row[3]}
+    items = _out_many(
+        nodes,
+        session,
+        user=user,
+        child_ids=child_ids,
+        soldier_node_ids=soldier_node_ids,
+    )
+    if _tree_revision(session) != revision:
+        raise HTTPException(status_code=409, detail="stale_cursor")
+    next_cursor = None
+    if has_more:
+        settings = get_settings()
+        last = rows[-1]
+        next_cursor = jwt.encode(
+            {
+                "purpose": "hierarchy_branch",
+                "version": 1,
+                "binding": binding,
+                "key": last.sort_key,
+                "id": str(last[0].id),
+                "revision": revision,
+                "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+            },
+            settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+        )
+    return NodeBranchPageOut(items=items, next_cursor=next_cursor, has_more=has_more)
+
+
+@router.get("/search", response_model=NodeSearchOut)
+def search_hierarchy_nodes(
+    q: str = Query(default="", max_length=200),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> NodeSearchOut:
+    """Return a small authorized search result set with each match's full path."""
+    normalized = q.strip()
+    if not normalized:
+        return NodeSearchOut(matches=[], has_more=False)
+    escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    sort_key = func.lower(HierarchyNode.name)
+    rows = session.execute(
+        select(HierarchyNode)
+        .where(HierarchyNode.name.ilike(pattern, escape="\\"))
+        .order_by(sort_key.asc(), HierarchyNode.id.asc())
+        .limit(21)
+    ).scalars().all()
+    has_more = len(rows) > 20
+    matches = rows[:20]
+    path_ids = {node_id for node in matches for node_id in (node.path_ids or [node.id])}
+    path_nodes = (
+        list(session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(path_ids))).scalars())
+        if path_ids
+        else []
+    )
+    child_ids, soldier_node_ids = _node_presence(session, path_nodes)
+    enriched = _out_many(
+        path_nodes,
+        session,
+        user=user,
+        child_ids=child_ids,
+        soldier_node_ids=soldier_node_ids,
+    )
+    by_id = {node.id: node for node in enriched}
+    results = [
+        NodeSearchMatchOut(
+            node=by_id[match.id],
+            path=[by_id[node_id] for node_id in (match.path_ids or [match.id]) if node_id in by_id],
+        )
+        for match in matches
+        if match.id in by_id
+    ]
+    return NodeSearchOut(matches=results, has_more=has_more)
 
 
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
@@ -267,43 +539,14 @@ def get_tree(
         if root_node:
             nodes = [root_node, *nodes]
 
-    user_roots = scope_root_ids(session, user)
-    user_is_commander = is_commander(session, user.id)
-    user_is_duty_manager = is_duty_manager(session, user.id)
-
-    dm_by_node: dict[uuid.UUID, list[DutyManagerEntryOut]] = {n.id: [] for n in nodes}
-    if nodes:
-        dm_rows = session.execute(
-            select(DutyManagerScope, Soldier.full_name)
-            .join(Soldier, Soldier.id == DutyManagerScope.duty_manager_id)
-            .where(DutyManagerScope.hierarchy_node_id.in_([n.id for n in nodes]))
-        ).all()
-        for entry, name in dm_rows:
-            dm_by_node[entry.hierarchy_node_id].append(
-                DutyManagerEntryOut(scope_id=entry.id, soldier_id=entry.duty_manager_id, name=name)
-            )
-
-    # Bulk-load commanders
-    commander_ids = {n.commander_id for n in nodes if n.commander_id}
-    commanders_by_id: dict[uuid.UUID, Soldier] = {}
-    if commander_ids:
-        commanders_by_id = {
-            s.id: s for s in session.execute(
-                select(Soldier).where(Soldier.id.in_(commander_ids))
-            ).scalars().all()
-        }
-
-    return [
-        _out(
-            n, session, user=user,
-            user_roots=user_roots,
-            user_is_commander=user_is_commander,
-            user_is_duty_manager=user_is_duty_manager,
-            duty_managers=dm_by_node[n.id],
-            commander=commanders_by_id.get(n.commander_id) if n.commander_id else None,
-        )
-        for n in nodes
-    ]
+    child_ids, soldier_node_ids = _node_presence(session, nodes)
+    return _out_many(
+        nodes,
+        session,
+        user=user,
+        child_ids=child_ids,
+        soldier_node_ids=soldier_node_ids,
+    )
 
 
 @router.get("/level-types", response_model=list[LevelTypeOut])

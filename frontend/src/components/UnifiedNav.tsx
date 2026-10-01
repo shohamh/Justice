@@ -7,6 +7,7 @@ import {
   Calendar, BarChart2,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { getTransparencyAuthorizationScope } from "../api/auth";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
@@ -75,18 +76,42 @@ export default function UnifiedNav() {
   const canViewTransparency = user?.can_view_transparency !== false;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
-  const [approvalsPendingCount, setApprovalsPendingCount] = useState(0);
-  const [hakpazaPendingCount, setHakpazaPendingCount] = useState(0);
-  const [swapIncomingCount, setSwapIncomingCount] = useState(0);
+  const navScopeKey = JSON.stringify({
+    normalizedScope: getTransparencyAuthorizationScope(user),
+    actorId: user?.id ?? null,
+    canApprove,
+    canPlan,
+  });
+  const navRequestKey = JSON.stringify({
+    pathname: location.pathname,
+    scope: navScopeKey,
+    mitvachimEnabled,
+    hakpazaEnabled,
+  });
+  const [settledNavRequestKey, setSettledNavRequestKey] = useState("");
+  const navReadsEnabled = settledNavRequestKey === navRequestKey;
+  const [approvalBadgeData, setApprovalBadgeData] = useState({
+    scopeKey: "",
+    approvals: 0,
+    hakpaza: 0,
+  });
+  const [incomingSwapBadgeData, setIncomingSwapBadgeData] = useState({ scopeKey: "", count: 0 });
   const { seenIds, seedSeenIds } = useSeenJobs();
   const ineligibleCountQuery = useQuery({
-    queryKey: queryKeys.ineligibleSoldierCount(),
-    queryFn: getIneligibleSoldierCount,
-    enabled: canPlan && mitvachimEnabled,
+    queryKey: [...queryKeys.ineligibleSoldierCount(), navScopeKey],
+    queryFn: () => getIneligibleSoldierCount(),
+    enabled: navReadsEnabled && canPlan && mitvachimEnabled,
     retry: false,
   });
   const ineligibleCount = ineligibleCountQuery.data?.count ?? 0;
-  const [algorithmJobs, setAlgorithmJobs] = useState<RunBadgeJob[]>([]);
+  const [algorithmBadgeData, setAlgorithmBadgeData] = useState({
+    scopeKey: "",
+    jobs: [] as RunBadgeJob[],
+  });
+  const algorithmJobs = algorithmBadgeData.scopeKey === navScopeKey ? algorithmBadgeData.jobs : [];
+  const approvalsPendingCount = approvalBadgeData.scopeKey === navScopeKey ? approvalBadgeData.approvals : 0;
+  const hakpazaPendingCount = approvalBadgeData.scopeKey === navScopeKey ? approvalBadgeData.hakpaza : 0;
+  const swapIncomingCount = incomingSwapBadgeData.scopeKey === navScopeKey ? incomingSwapBadgeData.count : 0;
   const algorithmCounts = useMemo(
     () => computeRunBadgeCounts(algorithmJobs, seenIds),
     [algorithmJobs, seenIds]
@@ -101,8 +126,17 @@ export default function UnifiedNav() {
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
   const previousPathname = useRef(location.pathname);
 
+  // Let route content paint and start its primary reads before loading shared
+  // navigation counters. A short route-settle gate avoids adding secondary
+  // requests to each page's initial request burst.
   useEffect(() => {
-    if (!canApprove) return;
+    const timer = window.setTimeout(() => setSettledNavRequestKey(navRequestKey), 400);
+    return () => window.clearTimeout(timer);
+  }, [navRequestKey]);
+
+  useEffect(() => {
+    if (!canApprove || !navReadsEnabled) return;
+    let active = true;
     void (async () => {
       const [c, e, f, enroll, hk, swaps, transfers] = await Promise.all([
         getPendingCount().catch(() => 0),
@@ -116,26 +150,36 @@ export default function UnifiedNav() {
       // Hakpaza lives on its own page (/commander/hakpaza), not one of the
       // ApprovalsPage tabs, so it must stay out of the "אישור בקשות" badge —
       // otherwise that badge would count items the page itself never shows.
-      setApprovalsPendingCount(c + e + f + enroll + swaps + transfers);
-      setHakpazaPendingCount(hk);
+      if (!active) return;
+      setApprovalBadgeData({
+        scopeKey: navScopeKey,
+        approvals: c + e + f + enroll + swaps + transfers,
+        hakpaza: hk,
+      });
     })();
-  }, [canApprove, location.pathname, user?.id, user?.role]);
+    return () => { active = false; };
+  }, [canApprove, navReadsEnabled, navScopeKey, location.pathname]);
 
   useEffect(() => {
+    if (!navReadsEnabled) return;
+    let active = true;
     void (async () => {
       const count = await getIncomingSwapCount().catch(() => 0);
-      setSwapIncomingCount(count);
+      if (active) setIncomingSwapBadgeData({ scopeKey: navScopeKey, count });
     })();
-  }, [location.pathname]);
+    return () => { active = false; };
+  }, [navReadsEnabled, navScopeKey, location.pathname]);
 
   useEffect(() => {
-    if (!canPlan) return;
+    if (!canPlan || !navReadsEnabled) return;
+    let active = true;
 
     async function fetchAlgorithmBadge() {
       try {
         const result = await listJobs(50);
         const items = Array.isArray(result?.items) ? result.items : [];
-        setAlgorithmJobs(items);
+        if (!active) return;
+        setAlgorithmBadgeData({ scopeKey: navScopeKey, jobs: items });
         seedSeenIds(items);
       } catch {
         // ignore
@@ -145,8 +189,11 @@ export default function UnifiedNav() {
     void fetchAlgorithmBadge();
 
     const interval = setInterval(() => void fetchAlgorithmBadge(), 30_000);
-    return () => clearInterval(interval);
-  }, [canPlan, location.pathname, seedSeenIds]);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [canPlan, navReadsEnabled, navScopeKey, location.pathname, seedSeenIds]);
 
   useEffect(() => {
     if (!canPlan || !mitvachimEnabled) return;

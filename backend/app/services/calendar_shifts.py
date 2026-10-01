@@ -235,8 +235,11 @@ def get_calendar_shifts(
             return []
         return [str(pid) for pid in (leaf.path_ids or [])]
 
+    # Keep the loaded rows alive: reserve_count_for_shift uses Session.get() for
+    # each shift, and SQLAlchemy's identity map holds only weak references.
+    duty_types = session.execute(select(DutyType)).scalars().all()
     dt_map: dict[uuid.UUID, tuple[str, str, str | None]] = {}
-    for dt in session.execute(select(DutyType)).scalars().all():
+    for dt in duty_types:
         dt_map[dt.id] = (dt.name, _duty_color_for(dt.id), dt.required_range_type)
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}

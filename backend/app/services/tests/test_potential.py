@@ -6,7 +6,16 @@ from decimal import Decimal
 
 from app.db.models import DutyType, ExemptionDutyTypeMap, ExemptionType, Soldier, SoldierExemption, PotentialModifier
 from app.services.hierarchy import create_node
-from app.services.potential import PotentialModifierError, _rank_as_of, compute_potential, create_modifier, delete_modifier, list_modifiers
+from app.services.eligibility import DutyTypeRequirements
+from app.services.potential import (
+    PotentialModifierError,
+    _rank_as_of,
+    compute_potential,
+    compute_potential_summary,
+    create_modifier,
+    delete_modifier,
+    list_modifiers,
+)
 
 
 def _make_soldier(session, *, node_id, rank="טוראי", left_at=None, gender="m"):
@@ -40,6 +49,69 @@ def test_compute_potential_counts_eligible_soldiers(app_session):
     assert result.raw_eligible_count == 2
     assert result.final_potential == 2
     assert result.total_soldiers == 2
+
+
+def test_potential_summary_validates_each_active_duty_type_once_for_many_soldiers(
+    app_session, monkeypatch
+):
+    node = create_node(app_session, level="team", name="Potential Requirements Cache", parent_id=None)
+    app_session.flush()
+    gendered = DutyType(
+        name="Potential Requirements Gendered",
+        score_per_day=Decimal("1.0"),
+        requirements={"allowed_genders": ["m"]},
+    )
+    malformed = DutyType(
+        name="Potential Requirements Malformed",
+        score_per_day=Decimal("1.0"),
+        requirements=["invalid requirement shape"],
+    )
+    app_session.add_all([gendered, malformed])
+    app_session.flush()
+    for _ in range(2):
+        _make_soldier(app_session, node_id=node.id, rank=None, gender="m")
+    _make_soldier(app_session, node_id=node.id, rank=None, gender="f")
+    excluded_fallback_soldier = _make_soldier(app_session, node_id=node.id, rank=None, gender="f")
+    fallback_exemption = ExemptionType(
+        name="Potential Requirements Fallback Exemption",
+        is_global=False,
+        is_commander_exemption=False,
+    )
+    app_session.add(fallback_exemption)
+    app_session.flush()
+    app_session.add_all([
+        ExemptionDutyTypeMap(
+            exemption_type_id=fallback_exemption.id,
+            duty_type_id=malformed.id,
+        ),
+        SoldierExemption(
+            soldier_id=excluded_fallback_soldier.id,
+            exemption_type_id=fallback_exemption.id,
+            start_date=date(2026, 1, 1),
+            end_date=None,
+        ),
+    ])
+    app_session.commit()
+
+    original_validate = DutyTypeRequirements.model_validate
+    validation_count = 0
+
+    def count_validation(cls, value, **kwargs):
+        nonlocal validation_count
+        validation_count += 1
+        return original_validate(value, **kwargs)
+
+    monkeypatch.setattr(DutyTypeRequirements, "model_validate", classmethod(count_validation))
+
+    result = compute_potential_summary(
+        app_session,
+        node_id=node.id,
+        reference_date=date(2026, 7, 3),
+    )
+
+    assert validation_count == 2
+    assert result.raw_eligible_count == 3
+    assert result.final_potential == 3
 
 
 def test_total_soldiers_excludes_soldiers_discharged_before_reference_date(app_session):

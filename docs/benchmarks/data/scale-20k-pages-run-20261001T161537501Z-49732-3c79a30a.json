@@ -1,0 +1,4097 @@
+{
+  "schemaVersion": 2,
+  "runId": "20261001T161537501Z-49732-3c79a30a",
+  "generatedAtUtc": "2026-10-01T16:15:37.500Z",
+  "startedAtUtc": "2026-10-01T16:15:37.500Z",
+  "updatedAtUtc": "2026-10-01T16:16:30.248Z",
+  "browser": {
+    "engine": "chromium",
+    "version": "148.0.7778.96"
+  },
+  "runsPerScenario": 5,
+  "batchesPerScenario": 5,
+  "concurrency": 1,
+  "clientsPerBatch": 1,
+  "startBarrier": "all clients begin each cold/warm measurement together",
+  "authenticationSetup": "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
+  "summaryCoverage": "per-run response-byte and database totals require values for every tracked API request",
+  "timeoutMs": 600000,
+  "scenarios": [
+    {
+      "id": "hr-sync-review",
+      "route": "/admin/settings",
+      "workload": "navigation"
+    },
+    {
+      "id": "transparency-whole-organization",
+      "route": "/transparency",
+      "workload": "navigation"
+    },
+    {
+      "id": "hierarchy-whole-organization",
+      "route": "/team",
+      "workload": "navigation"
+    },
+    {
+      "id": "soldier-detail",
+      "route": "/team",
+      "workload": "soldier-detail"
+    },
+    {
+      "id": "calendar-whole-organization",
+      "route": "/unit-calendar",
+      "workload": "navigation"
+    },
+    {
+      "id": "calendar-synthetic-team",
+      "route": "/unit-calendar",
+      "workload": "calendar-team"
+    },
+    {
+      "id": "home-dashboard",
+      "route": "/",
+      "workload": "navigation"
+    }
+  ],
+  "hrProviderSync": "not-invoked",
+  "measurements": [
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 1,
+      "run": 1,
+      "batch": "hr-sync-review-c1-b01",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 5207.56,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 41.33,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.63
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 42.67,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 43.81,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 22.7,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 5.79
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 21.21,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 5.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 67.34,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 41.55
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 367.22,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 10.33
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 370.34,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 8.47
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 372.35,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 12.73
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 392.05,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 15.56
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 392.47,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 19.13
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 392.67,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 17.79
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 707.25,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 5.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 707.98,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 5.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 708.54,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 4.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 709.05,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 5.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 352.31,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 15.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1913.75,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 196.09
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1914.72,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 422.8
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1915.78,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 449.18
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1935.45,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 446.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1938.28,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 437.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1398.39,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 236.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2641.06,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 239.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2651.4,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 269.95
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2666.23,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 250.26
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2827.26,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 959.79
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 1,
+        "totalMs": 95,
+        "maxMs": 95
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 1,
+      "run": 1,
+      "batch": "hr-sync-review-c1-b01",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 4554.2,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 101.92,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 102.69,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.37
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 104.35,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.53
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 11.69,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.66
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 13.71,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.9
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 34.93,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 19.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 373.91,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 9.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 374.45,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 12.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 388.62,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 14.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 388.77,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 13.35
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 388.96,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 13.96
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 389.45,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 18.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 728.86,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.05
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 736.91,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 11.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 738.73,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 12.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 738.77,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 9.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 388.83,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 31.6
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1736.6,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 394.66
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1737.48,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 121.91
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1737.2,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 76.06
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1756.69,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 399.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1757.2,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 384.16
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2538.4,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 66.3
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1228.39,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 5.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2546.97,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 51.36
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2553.78,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 56.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2709.42,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 947.58
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 2,
+      "run": 2,
+      "batch": "hr-sync-review-c1-b02",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 4916.13,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 16.51,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 25.63,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 5.61
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 27.47,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 6.76
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 22.68,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 5.17
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 18.14,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 3.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 44.01,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 22.95
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 346.66,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 10.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 374.17,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 11.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 389.13,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 18.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 390.81,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 12.58
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 391.95,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 12.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 392.05,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 18.35
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 683.71,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 9.3
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 744.94,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 10.15
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 745.6,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 8.2
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 746.08,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 361.39,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 30.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1642.14,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 117.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1643,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 126.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1644.39,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 75.88
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1665.36,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 321.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1667.43,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 292.89
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1202.29,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 132.95
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2505.99,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 59.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2510.88,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 109.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2514.56,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 124.15
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2691.46,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 505.37
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 1,
+        "totalMs": 92,
+        "maxMs": 92
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 2,
+      "run": 2,
+      "batch": "hr-sync-review-c1-b02",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 4574.68,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 94.3,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 94.88,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.36
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 95.82,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.79
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 13.51,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 12.82,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 33.27,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 18.32
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 328.52,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 360.08,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 365.42,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 11.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 371.86,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 11.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 391.78,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 19.51
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 392.2,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 21.06
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 662.49,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 7.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 702.97,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 3.48
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 707.79,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 2.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 708.08,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 4.64
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 334.96,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 12.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1663.58,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 139.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1663.99,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 160.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1700.97,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 374.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1723.71,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 414.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1724.75,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 492.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2459.41,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1197.79,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 6.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2469.33,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 13.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2478.31,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 20.84
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2631.58,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 923.58
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 3,
+      "run": 3,
+      "batch": "hr-sync-review-c1-b03",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 4942.83,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 12.12,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 19.89,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.81
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 20.73,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.38
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 13.7,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 15.29,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 3.64
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 42.85,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 367.5,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 11.48
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 379.19,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 17.14
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 382.68,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 14.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 383.09,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 9.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 383.44,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 14.92
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 384.11,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 16.45
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 722.51,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 8.7
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 723.13,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 7.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 723.65,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 8.04
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 724.09,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 7.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 369.86,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 45.35
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1824.82,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 381.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1828.27,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 95.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1831,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 67.29
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1848.24,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 479.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1848.52,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 388.91
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2544.45,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 58.53
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1272.07,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2551.84,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 307.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2559.81,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 72.37
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2741.86,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 926.81
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 1,
+        "totalMs": 90,
+        "maxMs": 90
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 3,
+      "run": 3,
+      "batch": "hr-sync-review-c1-b03",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 4496.18,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 90.77,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 91.43,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 3.14
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 92.8,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.73
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 13.36,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 13.43,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 36.42,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 21.47
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 376.55,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 11.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 384.82,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 14.73
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 389.37,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 15.47
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 389.69,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 12.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 389.77,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 17.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 389.92,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 18.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 702.18,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 4.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 705.53,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 7.32
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 757.43,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 3.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 758.17,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 4.51
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 373.54,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 44.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1545.4,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 14.94
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1549.31,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.91
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1550.13,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 18.32
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1576.46,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 41.64
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1578.99,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 35.04
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1141.99,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 120.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2397.16,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 50.29
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2402,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 127.68
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2409.79,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 91.52
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2637.83,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 498.49
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 4,
+      "run": 4,
+      "batch": "hr-sync-review-c1-b04",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 4994.61,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 12.57,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 19.09,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.24
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 19.25,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.41
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 36.66,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 7.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 13.87,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 3.17
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 53.17,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 26.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 373.93,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 8.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 375.28,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.63
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 385.63,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 12.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 399.18,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 15.33
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 399.37,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 22.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 399.59,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 24.58
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 706.32,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 10.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 707.54,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 6.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 749.46,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.63
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 751.57,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 5.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 345.87,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 11.86
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1780.69,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 144.36
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1781.96,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 111.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1787.35,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 146.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1805.31,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 389.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1806.09,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 392.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2485.45,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 64.15
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1238.32,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 5.76
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2494.96,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 42.35
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2502.47,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 329.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2789.29,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 1021.64
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 1,
+        "totalMs": 90,
+        "maxMs": 90
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 4,
+      "run": 4,
+      "batch": "hr-sync-review-c1-b04",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 4613.69,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 94.06,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 95.06,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.48
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 96.18,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.13
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 14.1,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.91
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 13.59,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.9
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 33.26,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 17.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 350.95,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 7.14
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 351.64,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 361.42,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 365.35,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 16.25
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 365.39,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 14.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 365.42,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 10.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 699.75,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 9.16
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 737.73,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 8.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 738.46,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 13.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 738.9,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 8.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 360.07,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 13.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1731.97,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 398.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1737.17,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 397.8
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1737.55,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 96.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1756.51,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 103.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1756.98,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 397.55
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1242.79,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 372.15
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2572.24,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 377.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2574.85,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 89.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2580.93,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 371.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2759.33,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 996.26
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 5,
+      "run": 5,
+      "batch": "hr-sync-review-c1-b05",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 4719.55,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 13.89,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 17.13,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.99
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 18.32,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.27
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 11.52,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.95
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 12.07,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 30.84,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 17.16
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 367.99,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 368.84,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 9.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 369.27,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 15.48
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 384.37,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 15.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 384.67,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 16.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 385.03,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 19.59
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 712.13,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 9.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 718.78,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 13.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 719.28,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 13.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 719.59,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 12.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 362.61,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 22.82
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1672.09,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 103.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1673.84,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 132.26
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1676.7,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 152.2
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1698.21,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 139.18
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1698.9,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 135.32
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2434.52,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 101.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1158.88,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 82.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2442.26,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 104.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2451.31,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 102.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2658.85,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 514.2
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 1,
+        "totalMs": 87,
+        "maxMs": 87
+      }
+    },
+    {
+      "scenario": "hr-sync-review",
+      "attempt": 5,
+      "run": 5,
+      "batch": "hr-sync-review-c1-b05",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 4347.23,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 27,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 88.91,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 89.54,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.21
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 91.26,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.91
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 12.56,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 13.12,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.89
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 31.98,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 18
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 365.44,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 5.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "status": 200,
+          "durationMs": 366.93,
+          "responseBytes": 5111,
+          "dbQueryCount": 2,
+          "dbMs": 9.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 367.06,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 10.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "status": 200,
+          "durationMs": 367.74,
+          "responseBytes": 17861,
+          "dbQueryCount": 2,
+          "dbMs": 9.89
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "status": 200,
+          "durationMs": 367.99,
+          "responseBytes": 12,
+          "dbQueryCount": 2,
+          "dbMs": 7.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "status": 200,
+          "durationMs": 369.96,
+          "responseBytes": 24511,
+          "dbQueryCount": 2,
+          "dbMs": 10.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 716.28,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 6.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 717.43,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.3
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 717.72,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 10.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "status": 200,
+          "durationMs": 718.36,
+          "responseBytes": 40,
+          "dbQueryCount": 3,
+          "dbMs": 11.66
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 355.47,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 13
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 1692.29,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 392.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 1692.33,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 327.81
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 1692.94,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 367.2
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 1723.42,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 112.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 1725.38,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 384.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 2420.4,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 332.97
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1110.19,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 307.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 2432.8,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 354.64
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 2441.01,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 91.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2597.1,
+          "responseBytes": 11,
+          "dbQueryCount": 31,
+          "dbMs": 913.9
+        }
+      ],
+      "consoleErrors": {
+        "count": 4,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      }
+    }
+  ],
+  "summaries": [
+    {
+      "scenario": "hr-sync-review",
+      "mode": "cold",
+      "concurrency": 1,
+      "sampleCount": 5,
+      "readyCount": 5,
+      "failedCount": 0,
+      "metrics": {
+        "pageReadyMs": {
+          "sampleCount": 5,
+          "p50": 4942.83,
+          "p95": 5207.56
+        },
+        "apiRequestCount": {
+          "sampleCount": 5,
+          "p50": 27,
+          "p95": 27
+        },
+        "totalApiDurationMs": {
+          "sampleCount": 5,
+          "p50": 26220.24,
+          "p95": 27513.61
+        },
+        "totalResponseBytes": {
+          "sampleCount": 5,
+          "p50": 51570,
+          "p95": 51570
+        },
+        "totalDbQueryCount": {
+          "sampleCount": 5,
+          "p50": 139,
+          "p95": 139
+        },
+        "totalDbMs": {
+          "sampleCount": 5,
+          "p50": 2824.31,
+          "p95": 4082.88
+        },
+        "longTaskCount": {
+          "sampleCount": 5,
+          "p50": 1,
+          "p95": 1
+        },
+        "longTaskTotalMs": {
+          "sampleCount": 5,
+          "p50": 90,
+          "p95": 95
+        },
+        "longTaskMaxMs": {
+          "sampleCount": 5,
+          "p50": 90,
+          "p95": 95
+        },
+        "phaseTimingsMs": {}
+      },
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 723.65,
+            "p95": 751.57
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 3,
+            "p95": 3
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 8.04,
+            "p95": 13.74
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "statusCounts": {
+            "503": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 745.6,
+            "p95": 1398.39
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 78,
+            "p95": 78
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 7.31,
+            "p95": 236.08
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 383.09,
+            "p95": 392.47
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 12,
+            "p95": 12
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 11.41,
+            "p95": 19.13
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 392.05,
+            "p95": 399.18
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 24511,
+            "p95": 24511
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 16.45,
+            "p95": 19.59
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 390.81,
+            "p95": 399.37
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 17861,
+            "p95": 17861
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 16.38,
+            "p95": 22.99
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 709.05,
+            "p95": 723.13
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 40,
+            "p95": 40
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 3,
+            "p95": 3
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 9.3,
+            "p95": 13.67
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 384.37,
+            "p95": 399.59
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 5111,
+            "p95": 5111
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 15.4,
+            "p95": 24.58
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2514.56,
+            "p95": 2666.23
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 22,
+            "p95": 22
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 124.15,
+            "p95": 329.75
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 361.39,
+            "p95": 369.86
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 8,
+            "p95": 8
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 22.82,
+            "p95": 45.35
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1806.09,
+            "p95": 1935.45
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 1770,
+            "p95": 1770
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 15,
+            "p95": 15
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 392.77,
+            "p95": 479.85
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1805.31,
+            "p95": 1938.28
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 13,
+            "p95": 13
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 388.91,
+            "p95": 437.24
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "statusCounts": {
+            "403": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1781.96,
+            "p95": 1915.78
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 29,
+            "p95": 29
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 111.4,
+            "p95": 449.18
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2510.88,
+            "p95": 2651.4
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 6,
+            "p95": 6
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 109.08,
+            "p95": 307.72
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 44.01,
+            "p95": 67.34
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 1059,
+            "p95": 1059
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 23,
+            "p95": 41.55
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 367.5,
+            "p95": 373.93
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 10.24,
+            "p95": 11.48
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 391.95,
+            "p95": 749.46
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 8.7,
+            "p95": 17.14
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2741.86,
+            "p95": 2827.26
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 31,
+            "p95": 31
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 926.81,
+            "p95": 1021.64
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "statusCounts": {
+            "200": 5,
+            "401": 5
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 13.89,
+            "p95": 43.81
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 26,
+            "p95": 39
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 5.12
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1787.35,
+            "p95": 1913.75
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 146.23,
+            "p95": 196.09
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2505.99,
+            "p95": 2641.06
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 64.15,
+            "p95": 239.38
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1780.69,
+            "p95": 1914.72
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 144.36,
+            "p95": 422.8
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "statusCounts": {
+            "200": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 20.73,
+            "p95": 42.67
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 277,
+            "p95": 277
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 2.41,
+            "p95": 7.98
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "hr-sync-review",
+      "mode": "warm",
+      "concurrency": 1,
+      "sampleCount": 5,
+      "readyCount": 5,
+      "failedCount": 0,
+      "metrics": {
+        "pageReadyMs": {
+          "sampleCount": 5,
+          "p50": 4554.2,
+          "p95": 4613.69
+        },
+        "apiRequestCount": {
+          "sampleCount": 5,
+          "p50": 27,
+          "p95": 27
+        },
+        "totalApiDurationMs": {
+          "sampleCount": 5,
+          "p50": 25384.17,
+          "p95": 26307.68
+        },
+        "totalResponseBytes": {
+          "sampleCount": 5,
+          "p50": 51570,
+          "p95": 51570
+        },
+        "totalDbQueryCount": {
+          "sampleCount": 5,
+          "p50": 139,
+          "p95": 139
+        },
+        "totalDbMs": {
+          "sampleCount": 5,
+          "p50": 2692.21,
+          "p95": 3742.2
+        },
+        "longTaskCount": {
+          "sampleCount": 5,
+          "p50": 0,
+          "p95": 0
+        },
+        "longTaskTotalMs": {
+          "sampleCount": 5,
+          "p50": 0,
+          "p95": 0
+        },
+        "longTaskMaxMs": {
+          "sampleCount": 5,
+          "p50": 0,
+          "p95": 0
+        },
+        "phaseTimingsMs": {}
+      },
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 738.46,
+            "p95": 758.17
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 3,
+            "p95": 3
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 9.44,
+            "p95": 13.57
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "statusCounts": {
+            "503": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 737.73,
+            "p95": 1242.79
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 78,
+            "p95": 78
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 6.44,
+            "p95": 372.15
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/divergences",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 367.99,
+            "p95": 388.77
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 12,
+            "p95": 12
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 11.38,
+            "p95": 14.73
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/held-for-review",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 389.45,
+            "p95": 392.2
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 24511,
+            "p95": 24511
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 16.25,
+            "p95": 21.06
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/rank-conflicts",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 388.96,
+            "p95": 391.78
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 17861,
+            "p95": 17861
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 13.96,
+            "p95": 19.51
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/runs",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 705.53,
+            "p95": 738.73
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 40,
+            "p95": 40
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 3,
+            "p95": 3
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 9.16,
+            "p95": 12.19
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/hr-sync/vanished",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 371.86,
+            "p95": 389.77
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 5111,
+            "p95": 5111
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 11.99,
+            "p95": 17.21
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2478.31,
+            "p95": 2580.93
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 22,
+            "p95": 22
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 91.52,
+            "p95": 371.11
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 360.07,
+            "p95": 388.83
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 8,
+            "p95": 8
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 13.69,
+            "p95": 44.61
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1723.71,
+            "p95": 1757.2
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 1770,
+            "p95": 1770
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 15,
+            "p95": 15
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 384.16,
+            "p95": 414.85
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1725.38,
+            "p95": 1756.69
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 13,
+            "p95": 13
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 384.5,
+            "p95": 492.38
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "statusCounts": {
+            "403": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1700.97,
+            "p95": 1737.55
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 29,
+            "p95": 29
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 96.4,
+            "p95": 374.98
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2469.33,
+            "p95": 2574.85
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 6,
+            "p95": 6
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 89.08,
+            "p95": 354.64
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 33.27,
+            "p95": 36.42
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 1059,
+            "p95": 1059
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 18.32,
+            "p95": 21.47
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 365.44,
+            "p95": 376.55
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 7.99,
+            "p95": 12.99
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 389.37,
+            "p95": 757.43
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 8.62,
+            "p95": 15.47
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2637.83,
+            "p95": 2759.33
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 31,
+            "p95": 31
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 923.58,
+            "p95": 996.26
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "statusCounts": {
+            "200": 5,
+            "401": 5
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 13.71,
+            "p95": 101.92
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 26,
+            "p95": 39
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 2.9
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1692.29,
+            "p95": 1737.48
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 160.01,
+            "p95": 397.8
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2459.41,
+            "p95": 2572.24
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 66.3,
+            "p95": 377.83
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1692.33,
+            "p95": 1736.6
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 327.81,
+            "p95": 398.02
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "statusCounts": {
+            "200": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 91.43,
+            "p95": 104.35
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 277,
+            "p95": 277
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 2.13,
+            "p95": 3.14
+          }
+        }
+      ]
+    }
+  ]
+}

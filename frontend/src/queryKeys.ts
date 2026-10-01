@@ -18,6 +18,9 @@ export const queryKeys = {
   pendingHierarchyTransfers: () => ["hierarchyTransfers", "pending"] as const,
   systemSettings: () => ["systemSettings"] as const,
   transparency: () => ["scoring", "transparency"] as const,
+  transparencyForScope: (authorizationScope: string | null) =>
+    ["scoring", "transparency", "scope", authorizationScope] as const,
+  transparencyPage: () => ["scoring", "transparency", "page"] as const,
   breakdown: (soldierId: string) => ["scoring", "breakdown", soldierId] as const,
   burdenShare: (soldierId: string) => ["scoring", "burdenShare", soldierId] as const,
   reserveStats: () => ["soldiers", "reserveStats"] as const,
@@ -35,6 +38,14 @@ export const queryKeys = {
   pendingExemptionRequests: () => ["exemptionRequests", "pending"] as const,
   pendingFieldUpdates: () => ["soldiers", "pendingFieldUpdates"] as const,
   hierarchyTree: () => ["hierarchy", "tree"] as const,
+  hierarchyBranches: (scopeKey?: unknown) =>
+    scopeKey === undefined ? (["hierarchy", "branches"] as const) : (["hierarchy", "branches", scopeKey] as const),
+  hierarchyBranch: (scopeKey: unknown, parentId: string | null) =>
+    ["hierarchy", "branches", scopeKey, parentId] as const,
+  hierarchySearches: (scopeKey?: unknown) =>
+    scopeKey === undefined ? (["hierarchy", "search"] as const) : (["hierarchy", "search", scopeKey] as const),
+  hierarchySearch: (scopeKey: unknown, query: string) =>
+    ["hierarchy", "search", scopeKey, query] as const,
   publicExemptionTypes: () => ["exemptionTypes", "public"] as const,
   swapConfig: () => ["swaps", "config"] as const,
   swapCoverEligibility: (ids: string[]) => ["swaps", "coverEligibility", ids] as const,
@@ -54,6 +65,10 @@ export const queryKeys = {
   announcementsList: (offset: number) => ["notifications", "announcements", offset] as const,
   announcementRecipients: (id: string) => ["notifications", "announcements", id, "recipients"] as const,
   soldiers: () => ["soldiers", "list"] as const,
+  soldierNames: (ids: string[], authorizationScope: string | null) => ["soldiers", "list", "names", authorizationScope, ids] as const,
+  soldierRoster: () => ["soldiers", "list", "roster"] as const,
+  hakpazaSoldierRoster: (asOfDate: string, search: string) =>
+    ["soldiers", "list", "roster", "hakpaza", asOfDate, search] as const,
   commandDashboardSoldiers: () => ["commandDashboard", "soldiers"] as const,
   commandDashboardFairnessInternal: () => ["commandDashboard", "fairnessInternal"] as const,
   commandDashboardFairnessExternal: () => ["commandDashboard", "fairnessExternal"] as const,
@@ -72,7 +87,8 @@ export const queryKeys = {
   algorithmJobs: (limit: number, offset: number) => ["algorithm", "jobs", limit, offset] as const,
   algorithmJob: (jobId: string) => ["algorithm", "job", jobId] as const,
   soldierDetail: (soldierId: string) => ["soldiers", "detail", soldierId] as const,
-  fairnessComponents: () => ["scoring", "fairnessComponents"] as const,
+  fairnessComponents: (nodeId: string | null | undefined, authorizationScope: string | null) =>
+    ["scoring", "fairnessComponents", nodeId ?? null, authorizationScope] as const,
   eligibilityGroups: () => ["eligibilityGroups"] as const,
   burdenShareGapNodes: (referenceDate?: string) => ["potential", "burdenShareGap", referenceDate ?? null] as const,
   burdenShareBreakdown: (soldierId: string) => ["scoring", "burdenShareBreakdown", soldierId] as const,

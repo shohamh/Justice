@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -46,21 +46,26 @@ vi.mock("../api/hierarchyTransfers");
 vi.mock("../api/publicSettings");
 vi.mock("../api/commanderDashboard");
 vi.mock("../api/hierarchy");
-vi.mock("../api/potential");
+vi.mock("../api/potential", () => ({
+  getPotential: vi.fn(),
+  getPotentialSummary: vi.fn(),
+}));
 vi.mock("../api/ineligibleSoldiers");
 vi.mock("../api/levelTypes");
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-const mockUser: PermissionUser = {
+const mockUser = {
   id: "soldier-1",
   full_name: "חייל בדיקה",
   role: "soldier",
   hierarchy_node_id: null,
   is_commander: false,
   is_duty_manager: false,
-};
+  scope_root_ids: ["node-1"],
+  active_deputy_grants: [],
+} as PermissionUser & { id: string; full_name: string; hierarchy_node_id: string | null; scope_root_ids: string[]; active_deputy_grants: [] };
 
 vi.mock("../components/UnitCalendar", () => ({
   default: ({ nodeIds, soldierId, scope, highlightSoldierId }: { nodeIds?: string[]; soldierId?: string; scope?: string; highlightSoldierId?: string }) => (
@@ -76,7 +81,7 @@ vi.mock("../components/UnitCalendar", () => ({
 }));
 
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: mockUser }),
+  useAuth: () => ({ user: mockUser, authScopeReady: true }),
 }));
 
 beforeEach(() => {
@@ -88,6 +93,8 @@ beforeEach(() => {
     hierarchy_node_id: null,
     is_commander: false,
     is_duty_manager: false,
+    scope_root_ids: ["node-1"],
+    active_deputy_grants: [],
   });
   vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([]);
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
@@ -136,11 +143,19 @@ beforeEach(() => {
     soldiers: [],
     partial_exemption_count: 0,
   });
+  vi.mocked(potentialApi.getPotentialSummary).mockResolvedValue({
+    node_id: "node-1",
+    as_of: "2026-08-31",
+    raw_eligible_count: 3,
+    modifier_total: 0,
+    final_potential: 3,
+  });
   vi.mocked(ineligibleSoldiersApi.getIneligibleSoldiers).mockResolvedValue({
     count: 0,
     nodes: [],
     soldiers: [],
   });
+  vi.mocked(ineligibleSoldiersApi.getIneligibleSoldierCount).mockResolvedValue({ count: 0 });
   vi.mocked(levelTypesApi.listLevelTypes).mockResolvedValue([]);
 });
 
@@ -314,14 +329,84 @@ describe("HomePage - required scoring data load errors", () => {
     expect(commandDashboardApi.getPotential).toHaveBeenCalledTimes(1);
     expect(commandDashboardApi.getUpcoming).toHaveBeenCalledTimes(1);
     expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
-    expect(potentialApi.getPotential).toHaveBeenCalledWith("node-1");
-    expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledWith("commander");
+    expect(potentialApi.getPotentialSummary).toHaveBeenCalledWith("node-1");
+    expect(potentialApi.getPotential).not.toHaveBeenCalled();
+    expect(ineligibleSoldiersApi.getIneligibleSoldierCount).toHaveBeenCalledWith("commander");
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).not.toHaveBeenCalled();
     expect(enrollmentApi.listPendingEnrollments).toHaveBeenCalledTimes(1);
     expect(swapsApi.listPendingSwaps).toHaveBeenCalledTimes(1);
     expect(constraintsApi.getPendingCount).toHaveBeenCalledTimes(1);
     expect(exemptionsApi.getPendingExemptionCount).toHaveBeenCalledTimes(1);
     expect(soldiersApi.getPendingFieldUpdateCount).toHaveBeenCalledTimes(1);
     expect(hierarchyTransfersApi.listPendingTransferRequests).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the potential summary for the Home table without changing its values", async () => {
+    Object.assign(mockUser, {
+      role: "commander",
+      hierarchy_node_id: "node-1",
+      is_commander: true,
+      is_duty_manager: false,
+    });
+    vi.mocked(potentialApi.getPotentialSummary).mockResolvedValue({
+      node_id: "node-1",
+      as_of: "2026-09-15",
+      raw_eligible_count: 3,
+      modifier_total: 2,
+      final_potential: 5,
+    });
+
+    renderHome();
+
+    const table = await screen.findByTestId("own-potential-table");
+    await waitFor(() => expect(potentialApi.getPotentialSummary).toHaveBeenCalledWith("node-1"));
+    expect(potentialApi.getPotential).not.toHaveBeenCalled();
+    expect(table.querySelector("tbody tr")).toHaveTextContent("3");
+    expect(table.querySelector("tbody tr")).toHaveTextContent("2");
+    expect(table.querySelector("tbody tr")).toHaveTextContent("5");
+  });
+
+  it("loads commander ineligible details only after opening the collapsed panel", async () => {
+    Object.assign(mockUser, {
+      role: "commander",
+      hierarchy_node_id: "node-1",
+      is_commander: true,
+      is_duty_manager: false,
+    });
+    vi.mocked(ineligibleSoldiersApi.getIneligibleSoldierCount).mockResolvedValue({ count: 1 });
+    vi.mocked(ineligibleSoldiersApi.getIneligibleSoldiers).mockResolvedValue({
+      count: 1,
+      nodes: [{ id: "node-1", name: "Company A", level: "unit", parent_id: null, path_ids: ["node-1"] }],
+      soldiers: [{
+        soldier_id: "soldier-2",
+        soldier_name: "Test Soldier",
+        personal_number: "1234567",
+        hierarchy_node_id: "node-1",
+        hierarchy_node_name: "Company A",
+        hierarchy_path_ids: ["node-1"],
+        valid_qualifications: [],
+        has_upcoming_weapon_duty: false,
+        has_upcoming_matching_range: false,
+        upcoming_weapon_duties: [],
+        upcoming_matching_ranges: [],
+      }],
+    });
+
+    renderHome();
+
+    const panel = await screen.findByTestId("panel-ineligible-soldiers");
+    expect(await screen.findByTestId("ineligible-range-badge")).toHaveTextContent("1");
+    expect(ineligibleSoldiersApi.getIneligibleSoldierCount).toHaveBeenCalledWith("commander");
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).not.toHaveBeenCalled();
+
+    const summary = panel.querySelector("summary");
+    expect(summary).not.toBeNull();
+    fireEvent.click(summary!);
+
+    const row = await screen.findByTestId("ineligible-node-node-1");
+    expect(row).toHaveTextContent("Company A");
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledTimes(1);
+    expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledWith("commander");
   });
 
   it.each([

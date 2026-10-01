@@ -1,8 +1,7 @@
-import Fuse from "fuse.js";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, updateNode } from "../api/hierarchy";
-import { SoldierDTO, listSoldiers } from "../api/soldiers";
+import { listSoldierRosterPage, SoldierRosterItemDTO } from "../api/soldiers";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
@@ -14,15 +13,39 @@ interface Props {
 export default function AssignCommanderDialog({ node, onClose, onAssigned }: Props) {
   useModalBackClose(onClose);
   const { t } = useTranslation();
-  const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
+  const [soldiers, setSoldiers] = useState<SoldierRosterItemDTO[]>([]);
   const [selectedId, setSelectedId] = useState(node.commander_id ?? "");
   const [inputText, setInputText] = useState(node.commander_name ?? "");
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void listSoldiers().then(setSoldiers);
-  }, []);
+    if (!open) return;
+    const controller = new AbortController();
+    setSoldiers([]);
+    const timeout = window.setTimeout(() => {
+      setLoading(true);
+      void listSoldierRosterPage({
+        search: inputText.trim() || undefined,
+        page_size: 20,
+        sort: "full_name",
+        descending: false,
+        signal: controller.signal,
+      })
+        .then((page) => setSoldiers(page.items))
+        .catch(() => {
+          if (!controller.signal.aborted) setSoldiers([]);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    }, 200);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [inputText, open]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -35,16 +58,9 @@ export default function AssignCommanderDialog({ node, onClose, onAssigned }: Pro
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const fuse = useMemo(
-    () => new Fuse(soldiers, { keys: ["full_name", "personal_number"], threshold: 0.4 }),
-    [soldiers]
-  );
+  const filtered = soldiers.slice(0, 20);
 
-  const filtered = inputText
-    ? fuse.search(inputText).map(r => r.item).slice(0, 20)
-    : soldiers.slice(0, 20);
-
-  function selectSoldier(s: SoldierDTO) {
+  function selectSoldier(s: SoldierRosterItemDTO) {
     setSelectedId(s.id);
     setInputText(`${s.full_name} (${s.personal_number})`);
     setOpen(false);
@@ -100,7 +116,8 @@ export default function AssignCommanderDialog({ node, onClose, onAssigned }: Pro
                 </button>
               )}
             </div>
-            {open && filtered.length > 0 && (
+            {open && loading && <p role="status" className="px-3 py-2 text-xs text-gray-500">{t("team.roster_loading")}</p>}
+            {open && !loading && filtered.length > 0 && (
               <ul className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border dark:border-gray-600 rounded shadow-lg max-h-48 overflow-y-auto">
                 {filtered.map((s) => (
                   <li

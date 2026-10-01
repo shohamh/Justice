@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -63,6 +63,14 @@ class IneligibleSoldierRecord:
     duty_eligibility: dict[uuid.UUID, DutyEligibilityFact]
 
 
+@dataclass(frozen=True)
+class _IneligibleCandidates:
+    soldiers: list[tuple[Soldier, HierarchyNode]]
+    valid_qualifications: dict[uuid.UUID, tuple[QualificationSummary, ...]]
+    upcoming_weapon_duties: dict[uuid.UUID, tuple[UpcomingWeaponDuty, ...]]
+    duty_eligibility: dict[tuple[uuid.UUID, uuid.UUID], DutyEligibilityFact]
+
+
 def _scope_clause(roots: set[uuid.UUID] | None):
     if roots is None:
         return None
@@ -74,39 +82,37 @@ def _scope_clause(roots: set[uuid.UUID] | None):
 def _valid_qualifications_by_soldier(
     session: Session,
     *,
-    soldier_ids: set[uuid.UUID],
+    soldiers: list[Soldier],
     as_of: date,
 ) -> dict[uuid.UUID, tuple[QualificationSummary, ...]]:
     """Match the existing qualification boundary: valid_until covers as_of inclusively."""
-    if not soldier_ids:
+    if not soldiers:
         return {}
+    profile_rows = {
+        soldier.id: (soldier.last_mitvahim_date, soldier.last_alal_date)
+        for soldier in soldiers
+    }
     qualifications_by_soldier: defaultdict[uuid.UUID, list[QualificationSummary]] = defaultdict(
         list
     )
     rows = session.execute(
-        select(Soldier, SoldierRangeQualification)
-        .outerjoin(
-            SoldierRangeQualification,
-            and_(
-                SoldierRangeQualification.soldier_id == Soldier.id,
-                SoldierRangeQualification.valid_until >= as_of,
-            ),
+        select(
+            SoldierRangeQualification.soldier_id,
+            SoldierRangeQualification.range_type,
+            SoldierRangeQualification.valid_until,
         )
-        .where(Soldier.id.in_(soldier_ids))
+        .where(
+            SoldierRangeQualification.soldier_id.in_(profile_rows),
+            SoldierRangeQualification.valid_until >= as_of,
+        )
         .order_by(SoldierRangeQualification.range_type, SoldierRangeQualification.valid_until)
     ).all()
-    for soldier, qualification in rows:
-        if qualification is not None:
-            qualifications_by_soldier[qualification.soldier_id].append(
-                QualificationSummary(
-                    range_type=qualification.range_type, valid_until=qualification.valid_until
-                )
+    for soldier_id, range_type, valid_until in rows:
+        qualifications_by_soldier[soldier_id].append(
+            QualificationSummary(
+                range_type=range_type, valid_until=valid_until
             )
-
-    profile_rows = {
-        soldier.id: (soldier.last_mitvahim_date, soldier.last_alal_date)
-        for soldier, _qualification in rows
-    }
+        )
     profile_validity_days = {
         range_type: _validity_days(session, range_type)
         for range_type, field_index in ((RangeType.live, 0), (RangeType.alal, 1))
@@ -251,13 +257,12 @@ def _weapon_eligible_soldier_ids(
     return eligible_soldier_ids
 
 
-def list_ineligible_soldiers(
+def _ineligible_candidates(
     session: Session,
     *,
     roots: set[uuid.UUID] | None,
     as_of: date,
-) -> list[IneligibleSoldierRecord]:
-    """Return scoped soldiers lacking a current qualification or future duty eligibility."""
+) -> _IneligibleCandidates:
     statement = select(Soldier, HierarchyNode).join(
         HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id
     )
@@ -273,7 +278,7 @@ def list_ineligible_soldiers(
     )
     valid_qualifications_by_soldier = _valid_qualifications_by_soldier(
         session,
-        soldier_ids={soldier.id for soldier, _node in scoped_soldiers},
+        soldiers=[soldier for soldier, _node in scoped_soldiers],
         as_of=as_of,
     )
     upcoming_weapon_duties_by_soldier = _upcoming_weapon_duties_by_soldier(
@@ -301,6 +306,36 @@ def list_ineligible_soldiers(
             for duty in upcoming_weapon_duties_by_soldier.get(soldier.id, ())
         )
     ]
+    return _IneligibleCandidates(
+        soldiers=ineligible_soldiers,
+        valid_qualifications=valid_qualifications_by_soldier,
+        upcoming_weapon_duties=upcoming_weapon_duties_by_soldier,
+        duty_eligibility=duty_eligibility,
+    )
+
+
+def count_ineligible_soldiers(
+    session: Session,
+    *,
+    roots: set[uuid.UUID] | None,
+    as_of: date,
+) -> int:
+    """Count the same scoped eligibility results without loading list-only range details."""
+    return len(_ineligible_candidates(session, roots=roots, as_of=as_of).soldiers)
+
+
+def list_ineligible_soldiers(
+    session: Session,
+    *,
+    roots: set[uuid.UUID] | None,
+    as_of: date,
+) -> list[IneligibleSoldierRecord]:
+    """Return scoped soldiers lacking a current qualification or future duty eligibility."""
+    candidates = _ineligible_candidates(session, roots=roots, as_of=as_of)
+    ineligible_soldiers = candidates.soldiers
+    valid_qualifications_by_soldier = candidates.valid_qualifications
+    upcoming_weapon_duties_by_soldier = candidates.upcoming_weapon_duties
+    duty_eligibility = candidates.duty_eligibility
     upcoming_matching_ranges_by_soldier = _upcoming_matching_ranges_by_soldier(
         session,
         required_range_types_by_soldier={

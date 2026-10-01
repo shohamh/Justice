@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { MouseEvent, ReactNode } from "react";
 import { PlanningTable, PlanningColumn } from "../planning";
 import { RangeEvent } from "../../api/ranges";
@@ -17,6 +18,8 @@ interface Props {
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   soldierName?: (id: string) => string;
+  hasMore?: boolean;
+  onNearEnd?: () => void;
 }
 
 function filled(event: RangeEvent, reserve: boolean) {
@@ -56,7 +59,8 @@ function toggleRows(rows: RangeEvent[], selectedIds: Set<string>, onToggle: (id:
   });
 }
 
-export default function RangePlanningTable({ rows, onRowClick, rowActions, filters, sort, loading, error, selectedIds, onToggleSelect, soldierName }: Props) {
+export default function RangePlanningTable({ rows, onRowClick, rowActions, filters, sort, loading, error, selectedIds, onToggleSelect, soldierName, hasMore = false, onNearEnd }: Props) {
+  const { t } = useTranslation();
   const columns: PlanningColumn<RangeEvent>[] = [
     ...(onToggleSelect ? [{
       key: "select",
@@ -75,7 +79,7 @@ export default function RangePlanningTable({ rows, onRowClick, rowActions, filte
         onClick={(clickEvent: MouseEvent) => clickEvent.stopPropagation()}
       />,
     } as PlanningColumn<RangeEvent>] : []),
-    { key: "date", label: "תאריך", sortValue: event => event.date, render: event => <span>{formatDate(event.date)}</span> },
+    { key: "date", label: "תאריך", render: event => <span>{formatDate(event.date)}</span> },
     { key: "type", label: "סוג", render: event => RANGE_TYPE_LABELS[event.range_type] ?? event.range_type },
     { key: "location", label: "מיקום", render: event => <span>{event.location}</span> },
     { key: "responsible", label: "אחראי", render: event => event.responsible_duty_manager_id
@@ -96,6 +100,8 @@ export default function RangePlanningTable({ rows, onRowClick, rowActions, filte
     actionsLabel="פעולות"
     filters={filters}
     sort={sort}
+    virtualRows={{ height: 600, rowHeight: 40, overscan: 6, hasMore, onNearEnd, ariaLabel: t("ranges.paging_region"), loadMoreLabel: t("ranges.load_more"), loadingLabel: t("ranges.loading_more") }}
+    showControlsWhenEmpty
     filterPlaceholder="סנן..."
     emptyMessage="אין מטווחים"
     loading={loading}

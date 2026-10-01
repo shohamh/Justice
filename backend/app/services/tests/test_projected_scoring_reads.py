@@ -125,6 +125,53 @@ def test_transparency_rows_match_legacy_from_projection_without_expanding_duty_d
     assert primary["cumulative_score"] == Decimal("8.700000")
 
 
+def test_projected_transparency_reuses_projection_readiness_within_request(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    _scenario, admin = _build_projected_scenario(admin_session)
+    legacy = scoring.transparency_rows(admin_session, viewer=admin)
+    _completed_backfill(admin_session)
+    admin_session.flush()
+    _forbid_normal_projection_expansion(monkeypatch)
+
+    enumerate_keys = scoring._projection_data_keys_for_soldiers
+    enumerations = []
+
+    def record_key_enumeration(session, soldier_ids):
+        keys = enumerate_keys(session, soldier_ids)
+        enumerations.append((frozenset(soldier_ids), frozenset(keys)))
+        return keys
+
+    ensure_ready = scoring._ensure_projection_ready
+    readiness_calls = []
+
+    def record_readiness(session, **kwargs):
+        readiness_calls.append(
+            (
+                frozenset(kwargs["keys"]),
+                frozenset(kwargs["quarter_starts"] or set()),
+                frozenset(kwargs.get("total_soldier_ids") or set()),
+            )
+        )
+        return ensure_ready(session, **kwargs)
+
+    monkeypatch.setattr(scoring, "_projection_data_keys_for_soldiers", record_key_enumeration)
+    monkeypatch.setattr(scoring, "_ensure_projection_ready", record_readiness)
+
+    projected = scoring.transparency_rows(admin_session, viewer=admin)
+
+    assert _canonical(projected) == _canonical(legacy)
+    assert len(enumerations) == 1
+    assert len(readiness_calls) == 2
+    assert readiness_calls[0][0] == enumerations[0][1]
+    assert readiness_calls[0][2] == enumerations[0][0]
+    assert readiness_calls[1][0] == {
+        key for key in readiness_calls[0][0] if key[1] in readiness_calls[1][1]
+    }
+    assert readiness_calls[1][1].issubset(readiness_calls[0][1])
+    assert readiness_calls[1][2] == enumerations[0][0]
+
+
 def test_fairness_components_use_projected_burden_share_without_calling_transparency_rows(
     admin_session, monkeypatch: pytest.MonkeyPatch
 ):
