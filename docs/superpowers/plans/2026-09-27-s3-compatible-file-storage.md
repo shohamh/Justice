@@ -431,3 +431,8 @@ No commit, merge, or push is part of this provider pivot unless separately reque
 - The Windows Git Bash test wrapper preserves container paths passed to `age` while converting its Compose file path explicitly. `bash -n` and the complete rotation/PITR rehearsal pass.
 
 The production cutover gates above remain open. These rehearsals used synthetic data and local SeaweedFS; they do not establish the selected production provider's object encryption/backup restore, production PostgreSQL volume encryption, an inventory or migration of real legacy files, deployment TLS/IAM, key custody/recovery, or 30 days and two successful retained backup cycles. Keep production on legacy reads until those gates are completed and reviewed.
+
+### Recovery acceptance (2026-10-02)
+
+- Ran `deploy/tests/test_recovery_acceptance.sh` inside a disposable image built from `deploy/postgres/Dockerfile`, with the checkout mounted read-only. The recovery startup gate, actual age-encrypted `.history` and `.backup` archive round trips, and redacted webhook success/failure checks all passed. The test-only image artifacts were removed by their ownership label.
+- The temporary test container needs an executable `/tmp` because this script chmods and invokes a fake entrypoint there; the disposable run used an exec-enabled tmpfs. This was test-container setup only.
