@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+import json
+import struct
+import zlib
 from hashlib import sha256
 from io import BytesIO
 from uuid import UUID
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
+from sqlalchemy.orm import configure_mappers
 
-from app.settings import Settings
+from app.db.models import (
+    BugReport,
+    BugReportCommentAttachment,
+    ExemptionRequestFile,
+    GimelimAttachment,
+    ImportSession,
+    SoldierExemptionFile,
+)
+from app.settings import Settings, StorageMaintenanceSettings
+from app.storage import backfill
 from app.storage.migration import _existing_storage_references, run_migration
 from app.storage.protocol import StoredObject
 
@@ -177,7 +191,9 @@ def test_storage_metadata_migration_is_reversible_only_without_s3_references(mon
         def __init__(self, existing): self.existing = existing
         def execute(self, statement): return Result(bool(self.existing) and self.existing in str(statement))
     class Operations:
-        def __init__(self, existing): self.connection = Connection(existing); self.calls = []
+        def __init__(self, existing):
+            self.connection = Connection(existing)
+            self.calls = []
         def get_bind(self): return self.connection
         def __getattr__(self, name):
             return lambda *args, **kwargs: self.calls.append((name, args, kwargs))
@@ -200,3 +216,270 @@ def test_storage_outbox_grant_is_least_privilege():
     source = path.read_text(encoding="utf-8")
     assert "REVOKE ALL ON TABLE storage_delete_outbox FROM app" in source
     assert "GRANT SELECT, INSERT, UPDATE ON TABLE storage_delete_outbox TO app" in source
+
+
+def _png_chunk(kind: bytes, value: bytes) -> bytes:
+    return (
+        struct.pack(">I", len(value))
+        + kind
+        + value
+        + struct.pack(">I", zlib.crc32(kind + value) & 0xFFFFFFFF)
+    )
+
+
+def _synthetic_png() -> bytes:
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(b"\x00\x10\x20\x30"))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+class SyntheticMigrationSession:
+    def __init__(self, records):
+        self.records = records
+        self.commits = 0
+        self.rollbacks = 0
+        self.expirations = 0
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def expire_all(self):
+        self.expirations += 1
+
+    def storage_references(self):
+        references = []
+        for record in self.records:
+            if record.storage_key:
+                file_class = {
+                    SoldierExemptionFile: "soldier_exemption",
+                    ExemptionRequestFile: "exemption_request",
+                    GimelimAttachment: "gimelim",
+                    BugReportCommentAttachment: "bug_report_comment",
+                    BugReport: "bug_report_screenshot",
+                    ImportSession: "import_workbook",
+                }[type(record)]
+                references.append(
+                    (
+                        file_class,
+                        record.id,
+                        record.storage_key,
+                        record.storage_sha256,
+                        record.storage_size,
+                    )
+                )
+            if isinstance(record, BugReport) and record.json_mirror_storage_key:
+                references.append(
+                    (
+                        "bug_report_json_mirror",
+                        record.id,
+                        record.json_mirror_storage_key,
+                        record.json_mirror_sha256,
+                        None,
+                    )
+                )
+        return references
+
+
+class SyntheticMigrationStorage:
+    def __init__(self, *, fail_once_key: str):
+        self.objects = {}
+        self.fail_once_key = fail_once_key
+        self.failed_keys = set()
+        self.put_attempts = {}
+
+    def put_bytes(self, *, key, data, content_type, sha256):
+        self.put_attempts[key] = self.put_attempts.get(key, 0) + 1
+        if key == self.fail_once_key and key not in self.failed_keys:
+            self.failed_keys.add(key)
+            raise OSError("synthetic one-time storage interruption")
+        stored = StoredObject(key, len(data), sha256, "aws:kms", "synthetic-key")
+        self.objects[key] = (data, stored)
+        return stored
+
+    def open_read(self, *, key):
+        data, _ = self.objects[key]
+        return BytesIO(data), len(data)
+
+    def head(self, *, key):
+        item = self.objects.get(key)
+        return item[1] if item else None
+
+    def delete(self, *, key):
+        self.objects.pop(key, None)
+
+    def iter_keys(self, *, prefix):
+        return iter(key for key in self.objects if key.startswith(prefix))
+
+
+def _synthetic_record(model, **attributes):
+    configure_mappers()
+    record = model._sa_class_manager.new_instance()
+    for name, value in attributes.items():
+        setattr(record, name, value)
+    return record
+
+
+def test_synthetic_seven_class_migration_resumes_after_transient_storage_failure(
+    monkeypatch, tmp_path
+) -> None:
+    """Exercise every legacy payload class and retry only the failed object."""
+    import app.storage.migration as migration
+
+    report_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    records = [
+        _synthetic_record(
+            SoldierExemptionFile,
+            id=UUID("10000000-0000-4000-8000-000000000001"),
+            data=b"%PDF-1.4\nsynthetic exemption\n%%EOF",
+            content_type="application/pdf",
+            storage_key=None,
+            storage_sha256=None,
+            storage_size=None,
+        ),
+        _synthetic_record(
+            ExemptionRequestFile,
+            id=UUID("10000000-0000-4000-8000-000000000002"),
+            data=b"%PDF-1.4\nsynthetic request\n%%EOF",
+            content_type="application/pdf",
+            storage_key=None,
+            storage_sha256=None,
+            storage_size=None,
+        ),
+        _synthetic_record(
+            GimelimAttachment,
+            id=UUID("10000000-0000-4000-8000-000000000003"),
+            data=b"%PDF-1.4\nsynthetic gimelim\n%%EOF",
+            content_type="application/pdf",
+            storage_key=None,
+            storage_sha256=None,
+            storage_size=None,
+        ),
+        _synthetic_record(
+            BugReportCommentAttachment,
+            id=UUID("10000000-0000-4000-8000-000000000004"),
+            data=b"%PDF-1.4\nsynthetic comment\n%%EOF",
+            content_type="application/pdf",
+            storage_key=None,
+            storage_sha256=None,
+            storage_size=None,
+        ),
+        _synthetic_record(
+            BugReport,
+            id=report_id,
+            screenshot=_synthetic_png(),
+            json_file_path=None,
+            storage_key=None,
+            storage_sha256=None,
+            storage_size=None,
+            json_mirror_storage_key=None,
+            json_mirror_sha256=None,
+        ),
+        _synthetic_record(
+            ImportSession,
+            id=UUID("10000000-0000-4000-8000-000000000006"),
+            raw_excel=_synthetic_workbook(),
+            storage_key=None,
+            storage_sha256=None,
+            storage_size=None,
+        ),
+    ]
+    mirror = tmp_path / "bug_reports" / "synthetic.json"
+    mirror.parent.mkdir()
+    mirror.write_text(json.dumps({"kind": "synthetic", "id": str(report_id)}))
+    records[4].json_file_path = str(mirror)
+    monkeypatch.setattr(backfill, "LOG_DIR", tmp_path)
+
+    session = SyntheticMigrationSession(records)
+    failed_record = records[2]
+    fail_key = "gimelim/" + str(failed_record.id)
+    storage = SyntheticMigrationStorage(fail_once_key=fail_key)
+
+    def inventory(_session):
+        counts = {}
+        classes = (
+            ("soldier_exemption", SoldierExemptionFile, "data"),
+            ("exemption_request", ExemptionRequestFile, "data"),
+            ("gimelim", GimelimAttachment, "data"),
+            ("bug_report_comment", BugReportCommentAttachment, "data"),
+            ("bug_report_screenshot", BugReport, "screenshot"),
+            ("import_workbook", ImportSession, "raw_excel"),
+        )
+        for label, model, payload_attr in classes:
+            selected = [record for record in records if isinstance(record, model)]
+            counts[label] = {
+                "rows": len(selected),
+                "legacy_bytes": sum(len(getattr(row, payload_attr) or b"") for row in selected),
+                "pending": sum(row.storage_key is None for row in selected),
+            }
+        report = records[4]
+        counts["bug_report_json_mirror"] = {
+            "rows": 1,
+            "legacy_bytes": mirror.stat().st_size,
+            "pending": int(report.json_mirror_storage_key is None),
+            "reachable": 1,
+            "unreachable": 0,
+        }
+        return counts
+
+    def record_payloads(_session, _batch_size):
+        for record in records:
+            if record.storage_key is None and getattr(
+                record,
+                "data",
+                getattr(record, "screenshot", getattr(record, "raw_excel", None)),
+            ) is not None:
+                yield record, "main"
+        if records[4].json_mirror_storage_key is None:
+            yield records[4], "json_mirror"
+
+    monkeypatch.setattr(migration, "_inventory", inventory)
+    monkeypatch.setattr(migration, "_record_payloads", record_payloads)
+    monkeypatch.setattr(
+        migration,
+        "_preflight_object",
+        lambda *_: {name: True for name in ("put", "get", "metadata", "checksum", "delete", "encryption")},
+    )
+    monkeypatch.setattr(backfill, "object_session", lambda _record: session)
+    settings = StorageMaintenanceSettings(
+        _env_file=None,
+        DATABASE_URL="postgresql://synthetic.invalid/storage-test",
+        STORAGE_BUCKET="synthetic-private-files",
+    )
+
+    first = run_migration(session, storage, settings, batch_size=2)
+
+    assert sum(item["pending"] for item in first["inventory"].values()) == 7
+    assert first["migrated"] == 6
+    assert first["failed"] == 1
+    assert first["cutover_ready"] is False
+    assert failed_record.storage_key is None
+    assert session.commits == 6
+    assert all(record.storage_key for record in records if record is not failed_record)
+    assert records[4].json_mirror_storage_key is not None
+
+    resumed = run_migration(session, storage, settings, batch_size=2)
+
+    assert resumed["migrated"] == 1
+    assert resumed["existing_verified"] == 7
+    assert resumed["failed"] == 0
+    assert all(item["pending"] == 0 for item in resumed["remaining"].values())
+    assert resumed["cutover_ready"] is True
+    assert session.commits == 7
+    assert session.expirations >= 3
+    assert storage.put_attempts[fail_key] == 2
+    assert len(storage.objects) == 7
+
+
+def _synthetic_workbook() -> bytes:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "<Types></Types>")
+        archive.writestr("xl/workbook.xml", "<workbook></workbook>")
+    return buffer.getvalue()

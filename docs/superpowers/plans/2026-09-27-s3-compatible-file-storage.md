@@ -422,3 +422,12 @@ Amend the remaining work:
 5. Run focused storage tests, Compose configuration validation, certificate/secret setup checks, and a live Compose S3 permission/encryption/restart check. Only mark the provider pivot complete after the exact image and end-to-end results are recorded.
 
 No commit, merge, or push is part of this provider pivot unless separately requested.
+
+### Follow-up verification (2026-10-01)
+
+- Added route-level authorization coverage for an allowed owner, a different active user, a departed user, and an expired token. The denied cases reveal no object metadata; audit context remains limited to file class and request ID. The focused storage, authorization, and gateway run passed 49 tests.
+- Added both a synthetic retry test and a disposable Postgres/SeaweedFS rehearsal across all seven durable payload classes, including the bug-report JSON mirror. The first live pass migrated six files and held cutover on one intentionally invalid Gimelim payload. After repair, resume migrated the last file, verified all seven references, and reported zero pending files. This is synthetic rehearsal evidence only.
+- Added `deploy/tests/test_pitr_restore.sh`, which calls the real encrypted backup and WAL scripts in a disposable local Compose project. It verified dual-recipient backup decryption, rotation to a new-only recipient, rejection by the old identity, recipient behavior across pre- and post-rotation WAL, and point-in-time restore with the pre-target row present and post-target row absent. The script cleaned only its labeled containers, volumes, network, image, and temporary directory.
+- The Windows Git Bash test wrapper preserves container paths passed to `age` while converting its Compose file path explicitly. `bash -n` and the complete rotation/PITR rehearsal pass.
+
+The production cutover gates above remain open. These rehearsals used synthetic data and local SeaweedFS; they do not establish the selected production provider's object encryption/backup restore, production PostgreSQL volume encryption, an inventory or migration of real legacy files, deployment TLS/IAM, key custody/recovery, or 30 days and two successful retained backup cycles. Keep production on legacy reads until those gates are completed and reviewed.

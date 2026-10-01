@@ -1,0 +1,18 @@
+services:
+  db:
+    ports: !reset []
+  backend:
+    ports: !reset []
+  seaweedfs:
+    ports: !reset []
+  seaweedfs-s3-proxy:
+    ports: !reset []
+  file-storage-maintenance:
+    environment:
+      LOG_DIR: /app/logs
+    volumes:
+      - storage-migration-legacy-files:/app/logs
+    ports: !reset []
+
+volumes:
+  storage-migration-legacy-files:
