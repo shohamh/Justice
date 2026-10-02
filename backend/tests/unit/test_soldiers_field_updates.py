@@ -419,3 +419,34 @@ def test_approving_rank_field_update_also_marks_rank_track_overridden(admin_sess
         select(SoldierHrProfile).where(SoldierHrProfile.soldier_id == soldier.id)
     ).scalar_one()
     assert set(profile.overridden_fields) == {"rank", "rank_track"}
+
+
+def test_reject_of_a_field_update_deleted_mid_request_returns_404(client, admin_session, monkeypatch):
+    """The route reads the row, then reject_field_update re-reads it FOR UPDATE.
+    If it was deleted in between, the answer is 404 (gone), not 400."""
+    from app.db.models import SoldierFieldUpdate
+    from app.routes import soldiers as soldier_routes
+    from app.services import soldiers as soldier_service
+    from tests.helpers import auth_headers, create_soldier
+
+    admin = create_soldier(admin_session, personal_number="fu_gone_admin", role="admin")
+    soldier = create_soldier(admin_session, personal_number="fu_gone_soldier")
+    update = SoldierFieldUpdate(soldier_id=soldier.id, field_name="phone", new_value="0501234567", status="pending")
+    admin_session.add(update)
+    admin_session.commit()
+    update_id = update.id
+
+    def delete_then_reject(session, **kwargs):
+        admin_session.delete(admin_session.get(SoldierFieldUpdate, update_id))
+        admin_session.commit()
+        return soldier_service.reject_field_update(session, **kwargs)
+
+    monkeypatch.setattr(soldier_routes, "reject_field_update", delete_then_reject)
+
+    response = client.post(
+        f"/api/soldiers/{soldier.id}/field-updates/{update_id}/reject",
+        json={"decision_note": "gone"}, headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"] == "not_found"
