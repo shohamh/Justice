@@ -47,6 +47,10 @@ def redeem_token(session: Session, *, token: str, chat_id: int) -> TelegramActio
             TelegramActionToken.used_at.is_(None),
             TelegramActionToken.expires_at > now,
         )
+        # Claim the row: a concurrent redeemer blocks here and, once the first
+        # commits, re-checks used_at IS NULL and gets no row (one-time use).
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if t is None:
         return None
@@ -76,6 +80,10 @@ def redeem_token_from_link(
             TelegramActionToken.used_at.is_(None),
             TelegramActionToken.expires_at > now,
         )
+        # Claim the row: a concurrent redeemer blocks here and, once the first
+        # commits, re-checks used_at IS NULL and gets no row (one-time use).
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if t is None:
         return None

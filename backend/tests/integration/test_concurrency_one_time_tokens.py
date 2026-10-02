@@ -12,20 +12,21 @@ callbacks / two reset form submits):
   2. both mark it used and commit.
 Each request then dispatches the token's action (or resets the password), so
 the one-time action runs twice.
+
+Fixed (Task 4): the three redeem functions SELECT the token ``FOR UPDATE``.
+The second redeemer blocks, the first's rendezvous times out and it commits,
+and the second then re-checks ``used_at IS NULL`` and finds no token.
 """
 from __future__ import annotations
 
 import secrets
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from app.db.models import PasswordResetToken, TelegramActionToken, TelegramLink
 from app.services import action_tokens, password_reset
 from tests.helpers import create_soldier
 
 _CHAT_ID = 777001
-_C12 = pytest.mark.xfail(strict=True, raises=AssertionError, reason="C12: token SELECT is unlocked; both redeemers mark it used")
 
 
 def _action_token(session, soldier_id) -> str:
@@ -59,7 +60,6 @@ def _assert_redeemed_once(outcomes, succeeded):
     assert len(wins) == 1, f"token redeemed {len(wins)} times; outcomes={outcomes}"
 
 
-@_C12
 def test_email_link_action_token_is_redeemed_once(race, admin_session):
     soldier = create_soldier(admin_session, personal_number="race-tok-link")
     token = _action_token(admin_session, soldier.id)
@@ -72,7 +72,6 @@ def test_email_link_action_token_is_redeemed_once(race, admin_session):
     _assert_redeemed_once(outcomes, bool)
 
 
-@_C12
 def test_telegram_action_token_is_redeemed_once(race, admin_session):
     soldier = create_soldier(admin_session, personal_number="race-tok-bot")
     admin_session.add(TelegramLink(soldier_id=soldier.id, telegram_chat_id=_CHAT_ID, is_verified=True))
@@ -86,7 +85,6 @@ def test_telegram_action_token_is_redeemed_once(race, admin_session):
     _assert_redeemed_once(outcomes, bool)
 
 
-@_C12
 def test_password_reset_token_is_redeemed_once(race, admin_session):
     soldier = create_soldier(admin_session, personal_number="race-tok-reset")
     admin_session.add(PasswordResetToken(
