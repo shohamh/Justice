@@ -10,13 +10,17 @@ Schedule reproduced here (two independent sessions = two worker processes):
   2. both meet at a rendezvous right after that SELECT returns;
   3. both create the reminders, set reminder_sent_at and commit (B's UPDATE of
      the event row waits for A's commit, then overwrites it).
+
+Fixed (Task 3): each worker claims the event with a conditional
+``UPDATE ... SET reminder_sent_at WHERE reminder_sent_at IS NULL`` before
+creating any notification. B's claim waits for A's commit, matches no row,
+and B skips the event (returns 0).
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -65,10 +69,6 @@ def _reminder_count(session, soldier_id) -> int:
     ).scalar_one()
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C2: concurrent send_due_range_reminders runs each send the same event's reminders",
-)
 def test_concurrent_reminder_workers_notify_each_recipient_once(race, admin_session):
     event, soldier, manager = _seed_due_event(admin_session)
     after_event_read = race.rendezvous(2, "both workers read the due event")
@@ -93,3 +93,4 @@ def test_concurrent_reminder_workers_notify_each_recipient_once(race, admin_sess
         f"worker results={[o.value for o in outcomes]}; soldier got {soldier_reminders} reminders, "
         f"manager got {manager_reminders}"
     )
+    assert sorted(o.value for o in outcomes) == [0, 1]
