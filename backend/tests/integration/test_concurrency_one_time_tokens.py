@@ -20,7 +20,7 @@ and the second then re-checks ``used_at IS NULL`` and finds no token.
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.db.models import PasswordResetToken, TelegramActionToken, TelegramLink
 from app.services import action_tokens, password_reset
@@ -33,7 +33,7 @@ def _action_token(session, soldier_id) -> str:
     token = secrets.token_hex(8)
     session.add(TelegramActionToken(
         token=token, soldier_id=soldier_id, action="constraint:approve",
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
     ))
     session.commit()
     return token
@@ -89,7 +89,7 @@ def test_password_reset_token_is_redeemed_once(race, admin_session):
     soldier = create_soldier(admin_session, personal_number="race-tok-reset")
     admin_session.add(PasswordResetToken(
         soldier_id=soldier.id, token="race-reset-token", channel="email",
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
     ))
     admin_session.commit()
 

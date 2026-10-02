@@ -21,7 +21,7 @@ partial unique index could fail to build on existing duplicate data, and
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import event, func, inspect, select
 
@@ -59,7 +59,7 @@ def test_two_accounts_cannot_both_verify_one_email(race, admin_session):
         token = f"race-email-token-{n}"
         admin_session.add(EmailVerificationToken(
             soldier_id=soldier.id, email=_EMAIL, token=token,
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         ))
         tokens.append(token)
     admin_session.commit()
