@@ -1,4 +1,4 @@
-"""Serve Justice locally with request-scoped SQL timing headers for profiling.
+"""Serve Justice locally with request-scoped SQL and ASGI wall timing headers.
 
 Run with ``python -m app.scripts.profile_scale_server --port 18000`` from
 ``backend``. The wrapper binds only to loopback and does not modify the normal
@@ -101,6 +101,7 @@ class ScaleProfileMiddleware:
             await self.app(scope, receive, send)
             return
 
+        request_started = perf_counter()
         stats = QueryStats()
         token = _request_stats.set(stats)
 
@@ -114,6 +115,10 @@ class ScaleProfileMiddleware:
                     [
                         (b"x-scale-db-queries", str(count).encode("ascii")),
                         (b"x-scale-db-ms", f"{elapsed_ms:.3f}".encode("ascii")),
+                        (
+                            b"x-scale-server-ms",
+                            f"{(perf_counter() - request_started) * 1000:.3f}".encode("ascii"),
+                        ),
                     ]
                 )
                 message = {**message, "headers": headers}

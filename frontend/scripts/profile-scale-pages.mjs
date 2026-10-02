@@ -132,6 +132,7 @@ function buildOutput() {
     startBarrier: "all clients begin each cold/warm measurement together",
     authenticationSetup: "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
     summaryCoverage: "per-run response-byte and database totals require values for every tracked API request",
+    serverTiming: "x-scale-server-ms measures ASGI time through response-start; serverMinusDbMs is the signed wall-minus-accumulated-SQL residual, not CPU-only time",
     timeoutMs: TIMEOUT_MS,
     scenarios: selectedScenarios.map(({ id, path, mode }) => ({
       id,
@@ -382,6 +383,7 @@ function attachPageObservers(page, collector) {
     const contentLength = parseOptionalByteCount(headers["content-length"]);
     const dbQueryCount = parseOptionalByteCount(headers["x-scale-db-queries"]);
     const dbMs = parseOptionalNumber(headers["x-scale-db-ms"]);
+    const serverMs = parseOptionalNumber(headers["x-scale-server-ms"]);
     measurement.apiResponses.push({
       method: request.method().toUpperCase(),
       endpoint: safeEndpoint(request.method(), request.url()),
@@ -390,6 +392,8 @@ function attachPageObservers(page, collector) {
       responseBytes: contentLength,
       dbQueryCount,
       dbMs,
+      serverMs,
+      serverMinusDbMs: Number.isFinite(serverMs) && Number.isFinite(dbMs) ? roundMillis(serverMs - dbMs) : null,
     });
     measurement.apiRequestCount = measurement.apiResponses.length;
   });
@@ -411,6 +415,8 @@ function attachPageObservers(page, collector) {
       responseBytes: null,
       dbQueryCount: null,
       dbMs: null,
+      serverMs: null,
+      serverMinusDbMs: null,
       failed: true,
     });
     measurement.apiRequestCount = measurement.apiResponses.length;
@@ -513,6 +519,8 @@ function summarizeMeasurements(rows) {
         totalResponseBytes: percentileSummary(perMeasurement((measurement) => sumIfComplete(measurement.apiResponses, "responseBytes"))),
         totalDbQueryCount: percentileSummary(perMeasurement((measurement) => sumIfComplete(measurement.apiResponses, "dbQueryCount"))),
         totalDbMs: percentileSummary(perMeasurement((measurement) => sumIfComplete(measurement.apiResponses, "dbMs"))),
+        totalServerMs: percentileSummary(perMeasurement((measurement) => sumIfComplete(measurement.apiResponses, "serverMs"))),
+        totalServerMinusDbMs: percentileSummary(perMeasurement((measurement) => sumIfComplete(measurement.apiResponses, "serverMinusDbMs"))),
         longTaskCount: percentileSummary(perMeasurement((measurement) => measurement.longTasksOver50Ms.count)),
         longTaskTotalMs: percentileSummary(perMeasurement((measurement) => measurement.longTasksOver50Ms.totalMs)),
         longTaskMaxMs: percentileSummary(perMeasurement((measurement) => measurement.longTasksOver50Ms.maxMs)),
@@ -535,6 +543,8 @@ function summarizeMeasurements(rows) {
           responseBytes: percentileSummary(responses.map((response) => response.responseBytes)),
           dbQueryCount: percentileSummary(responses.map((response) => response.dbQueryCount)),
           dbMs: percentileSummary(responses.map((response) => response.dbMs)),
+          serverMs: percentileSummary(responses.map((response) => response.serverMs)),
+          serverMinusDbMs: percentileSummary(responses.map((response) => response.serverMinusDbMs)),
         };
       }).sort((left, right) => left.endpoint.localeCompare(right.endpoint) || left.method.localeCompare(right.method)),
     };
