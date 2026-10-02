@@ -125,7 +125,6 @@ def test_concurrent_take_free_of_one_duty_yields_already_pending(race, admin_ses
     assert sorted(str(o.error) for o in outcomes if not o.ok) == ["already_pending"]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C17: mark_no_show select-then-insert")
 def test_concurrent_no_show_marks_yield_already_marked(race, admin_session):
     soldier = create_soldier(admin_session, personal_number="race-dup-ns")
     manager = create_soldier(admin_session, personal_number="race-dup-ns-dm", role="admin")
