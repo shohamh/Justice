@@ -22,9 +22,16 @@ def lock_request(session: Session, request_id: uuid.UUID) -> SoldierEnrollmentRe
     ``status == 'pending'`` check, so two decisions on one request serialize
     and the later one sees the committed outcome (already_decided) instead of
     overwriting it. Routes call it before authorizing, so the requested node
-    they authorize is the one the decision applies. Lock order: enrollment
-    request, then the soldier row (try_activate) -- the same order the
-    exemption-request path uses (exemption request -> enrollment -> soldier).
+    they authorize is the one the decision applies.
+
+    Lock order on approve: this explicit enrollment-request lock first; the
+    soldier row is only locked implicitly afterwards, by try_activate's UPDATE
+    of ``soldiers.hierarchy_node_id`` at flush (try_activate takes no explicit
+    lock). The exemption-request decisions also call try_activate, but without
+    this lock: they read the enrollment request unlocked and only write it
+    when it is still ``commander_approved``, a state approve_enrollment no
+    longer leaves behind (it activates in the same transaction), so on current
+    data that call is a no-op.
     """
     return session.execute(
         select(SoldierEnrollmentRequest)
