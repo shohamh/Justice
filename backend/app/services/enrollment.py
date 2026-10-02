@@ -15,6 +15,25 @@ class EnrollmentError(Exception):
     pass
 
 
+def lock_request(session: Session, request_id: uuid.UUID) -> SoldierEnrollmentRequest | None:
+    """Fetch an enrollment request with SELECT ... FOR UPDATE (fresh read).
+
+    approve_enrollment and reject_enrollment take this lock before their
+    ``status == 'pending'`` check, so two decisions on one request serialize
+    and the later one sees the committed outcome (already_decided) instead of
+    overwriting it. Routes call it before authorizing, so the requested node
+    they authorize is the one the decision applies. Lock order: enrollment
+    request, then the soldier row (try_activate) -- the same order the
+    exemption-request path uses (exemption request -> enrollment -> soldier).
+    """
+    return session.execute(
+        select(SoldierEnrollmentRequest)
+        .where(SoldierEnrollmentRequest.id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def try_activate(
     session: Session,
     enrollment_request_id: uuid.UUID,
@@ -53,7 +72,7 @@ def approve_enrollment(
     decider_id: uuid.UUID,
     decision_note: str | None,
 ) -> SoldierEnrollmentRequest:
-    req = session.get(SoldierEnrollmentRequest, request_id)
+    req = lock_request(session, request_id)
     if req is None:
         raise EnrollmentError("enrollment_request_not_found")
     if req.status != "pending":
@@ -77,7 +96,7 @@ def reject_enrollment(
     decider_id: uuid.UUID,
     decision_note: str,
 ) -> SoldierEnrollmentRequest:
-    req = session.get(SoldierEnrollmentRequest, request_id)
+    req = lock_request(session, request_id)
     if req is None:
         raise EnrollmentError("enrollment_request_not_found")
     if req.status != "pending":

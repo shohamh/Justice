@@ -9,20 +9,18 @@ Schedule reproduced here (two independent sessions = two commanders' requests):
   1. the rejecting request reads the enrollment request (status=pending);
   2. the approving request moves the soldier, sets approved and commits;
   3. the rejecting request resumes, sets rejected and commits.
+
+Fixed (Task 3): both decisions lock the request with ``lock_request``
+(``FOR UPDATE`` + fresh read) before the pending check. The late reject sees
+``approved`` and fails with ``already_decided``.
 """
 from __future__ import annotations
-
-import pytest
 
 from app.db.models import Soldier, SoldierEnrollmentRequest
 from app.services import enrollment as enrollment_service
 from tests.helpers import create_node, create_soldier
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C8/X1: approve and reject of one enrollment request both succeed (no lock on the request)",
-)
 def test_approve_and_reject_of_one_enrollment_cannot_both_succeed(race, admin_session):
     node = create_node(admin_session, level="branch", name="race-enroll-node")
     commander = create_soldier(admin_session, personal_number="race-enroll-cmd", role="commander")
@@ -52,3 +50,4 @@ def test_approve_and_reject_of_one_enrollment_cannot_both_succeed(race, admin_se
         f"approve={early!r}, reject={late!r}; final status={final_status!r}, soldier placed in node={placed}"
     )
     assert (final_status, placed) == ("approved", True)
+    assert str(late.error) == "already_decided"
