@@ -255,6 +255,10 @@ class HrPersonSync(Base):
     vanished_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     error_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Identity conflicts (duplicate personal number in the feed, email / AD
+    # username collisions) detected or re-detected during this run. Warnings,
+    # not failures: the run still completes.
+    conflict_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
 
 
 class HrPersonSyncError(Base):
@@ -2211,4 +2215,105 @@ class IdentityConflictCandidate(Base):
     __table_args__ = (
         sa.UniqueConstraint("conflict_id", "soldier_id", name="uq_identity_conflict_candidate"),
         sa.Index("ix_identity_conflict_candidates_soldier_id", "soldier_id"),
+    )
+
+
+class HrIdentityConflict(Base):
+    """An HR sync identity conflict, shown to admins as a warning.
+
+    ``kind`` is ``duplicate_personal_number`` (the same personal number twice
+    in the feed), ``email_collision`` / ``ad_username_collision`` (the HR email
+    belongs to a different soldier) or ``email_invalid`` (the HR email cannot
+    be used). ``candidates`` holds every HR record involved (index, key type /
+    value, raw payload); ``applied_index`` is the one the sync applied (None
+    when nothing was). At most one active (open or acknowledged) row exists per
+    (personal_number, kind); an acknowledged row stays quiet until its
+    ``fingerprint`` changes, which reopens it.
+    """
+
+    __tablename__ = "hr_identity_conflicts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    personal_number: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    fingerprint: Mapped[str] = mapped_column(Text)
+    applied_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    colliding_soldier_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
+    hr_person_sync_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hr_person_syncs.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    chosen_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "kind IN ('duplicate_personal_number', 'email_collision', "
+            "'ad_username_collision', 'email_invalid')",
+            name="ck_hr_identity_conflicts_kind",
+        ),
+        sa.CheckConstraint(
+            "status IN ('open', 'acknowledged', 'resolved')", name="ck_hr_identity_conflicts_status"
+        ),
+        sa.Index(
+            "uq_hr_identity_conflicts_active",
+            "personal_number", "kind",
+            unique=True,
+            postgresql_where=text("status IN ('open', 'acknowledged')"),
+        ),
+    )
+
+
+class HrPreferredRecord(Base):
+    """An admin's remembered choice among duplicate HR records.
+
+    Used by every later sync in which ``personal_number`` appears more than
+    once in the feed. ``key_type`` is the most stable identifier the chosen
+    record offered (``t_person_id``, ``username`` or ``mail``, in that order);
+    ``key_value`` is its value (mail normalized).
+    """
+
+    __tablename__ = "hr_preferred_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    personal_number: Mapped[str] = mapped_column(Text, unique=True)
+    key_type: Mapped[str] = mapped_column(Text)
+    key_value: Mapped[str] = mapped_column(Text)
+    chosen_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    chosen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "key_type IN ('t_person_id', 'username', 'mail')", name="ck_hr_preferred_records_key_type"
+        ),
     )
