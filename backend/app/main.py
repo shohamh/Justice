@@ -13,7 +13,7 @@ from starlette.responses import Response as StarletteResponse
 
 from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
-from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, redact, request_data, request_id
+from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, redact, redact_query, request_data, request_id
 from app.hr_sync_worker import run_hr_sync_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -128,7 +128,7 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 data = {
                     "method": request.method,
                     "path": request.url.path,
-                    "query": redact(dict(request.query_params)),
+                    "query": redact_query(request.query_params),
                     "headers": redact(headers),
                     "body": None,
                 }
