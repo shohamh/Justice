@@ -10,7 +10,7 @@ from decimal import Decimal
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
@@ -161,9 +161,27 @@ def transparency(
     )
 
 
-def _transparency_page_revision(rows: list[dict]) -> str:
-    """Stable fingerprint of the caller-visible projection used by page cursors."""
-    content = json.dumps(rows, default=str, sort_keys=True, separators=(",", ":"))
+def _transparency_fairness_revision(session: Session) -> int:
+    """O(1) generation for fairness inputs not represented in transparency rows."""
+    return session.execute(
+        text("SELECT revision FROM transparency_fairness_revision WHERE singleton = TRUE")
+    ).scalar_one()
+
+
+def _transparency_page_revision(
+    rows: list[dict], *, fairness_revision: int, as_of: date
+) -> str:
+    """Fingerprint row values plus mutation-aware fairness grouping inputs."""
+    content = json.dumps(
+        {
+            "rows": rows,
+            "fairness_revision": fairness_revision,
+            "as_of": as_of.isoformat(),
+        },
+        default=str,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
@@ -251,9 +269,16 @@ def transparency_page(
     if not has_any_visibility(session, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
 
+    fairness_revision_before = _transparency_fairness_revision(session)
     result = svc.transparency_rows(session, viewer=user)
     source_rows: list[dict] = result["rows"]
-    revision = _transparency_page_revision(source_rows)
+    fairness_revision = _transparency_fairness_revision(session)
+    if fairness_revision != fairness_revision_before:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="data_changed")
+    revision_as_of = date.today()
+    revision = _transparency_page_revision(
+        source_rows, fairness_revision=fairness_revision, as_of=revision_as_of
+    )
     if officer_filter not in {"all", "officer", "enlisted"}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_officer_filter")
 
@@ -460,6 +485,14 @@ def transparency_page(
         if has_more
         else None
     )
+    if (
+        _transparency_fairness_revision(session) != fairness_revision
+        or date.today() != revision_as_of
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="stale_cursor" if cursor else "data_changed",
+        )
     return TransparencyPageOut(
         items=[TransparencyPageItem(**row) for row in page_rows],
         next_cursor=next_cursor,
