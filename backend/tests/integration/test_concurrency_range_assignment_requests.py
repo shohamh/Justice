@@ -127,3 +127,27 @@ def test_request_approval_and_manual_add_within_capacity_both_succeed(race, admi
     assert _primary_count(admin_session, event_id) == 2
     admin_session.expire_all()
     assert admin_session.get(RangeAssignmentRequest, request_id).status == "approved"
+
+
+def test_concurrent_double_approval_of_one_request_approves_once(race, admin_session):
+    """C17/R3: before Task 3 the second approval of one request inserted a
+    duplicate range assignment and died on uq_range_assignment_event_soldier
+    (500). The C4 fix (per-date lock, then FOR UPDATE + pending re-check) now
+    serializes them; the loser gets request_not_pending (400 at the route)."""
+    event_id, request_id, admin_id, _manual_id = _seed(admin_session, required_count=2)
+    both_loaded = race.rendezvous(2, "both approvers loaded the pending request")
+
+    def approve():
+        s = race.session()
+        req = s.get(RangeAssignmentRequest, request_id)
+        actor = s.get(Soldier, admin_id)
+        both_loaded.wait()
+        return request_service.approve_assignment_request(s, request=req, actor=actor, is_reserve=False).id
+
+    outcomes = race.run(approve, approve)
+
+    for outcome in outcomes:
+        if not outcome.ok and not isinstance(outcome.error, request_service.RangeAssignmentRequestError):
+            raise RuntimeError(f"approval crashed: {outcome.error!r}") from outcome.error
+    assert sorted(str(o.error) for o in outcomes if not o.ok) == ["request_not_pending"], outcomes
+    assert _primary_count(admin_session, event_id) == 1
