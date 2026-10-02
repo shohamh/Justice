@@ -260,10 +260,9 @@ def _duty(session: Session, source_type: SourceType, source: DutyShift | DutyAss
     for assignment in assignments:
         people: dict[UUID, bool] = {}
         day = max(source.start_date, assignment.start_date)
-        last_day = min(source.end_date, assignment.end_date)
-        # Midnight is an exclusive endpoint, so it contributes no roster day.
-        if str(assignment.end_time) in {"00:00", "00:00:00"}:
-            last_day = min(last_day, assignment.end_date - timedelta(days=1))
+        # Duty ranges use [start_date, end_date), independent of the event's
+        # wall-clock end time. The endpoint date never adds an attendee day.
+        last_day = min(source.end_date, assignment.end_date) - timedelta(days=1)
         while day <= last_day:
             person_id = overrides.get((assignment.id, day), assignment.soldier_id)
             dismissed = any(

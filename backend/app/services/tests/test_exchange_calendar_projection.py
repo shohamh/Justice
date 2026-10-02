@@ -84,7 +84,8 @@ def shift_setup():
     location = db.add(DutyLocation, name="Gate", base="Base")
     shift = db.add(
         DutyShift, duty_type_id=dtype.id, duty_location_id=location.id,
-        start_date=TODAY, end_date=TODAY, start_time="08:00", end_time="16:00",
+        start_date=TODAY, end_date=TODAY + timedelta(days=1),
+        start_time="08:00", end_time="16:00",
         notes="Bring ID", status="active",
     )
     return db, dtype, shift
@@ -95,7 +96,8 @@ def assignment(db, shift, person, *, reserve=False, called_from=None, called_to=
         DutyAssignment, duty_shift_id=shift.id if shift else None,
         soldier_id=person.id, duty_type_id=shift.duty_type_id if shift else None,
         duty_location_id=shift.duty_location_id if shift else None,
-        start_date=TODAY, end_date=TODAY, start_time="08:00", end_time="16:00",
+        start_date=TODAY, end_date=TODAY + timedelta(days=1),
+        start_time="08:00", end_time="16:00",
         is_reserve=reserve, called_up_from=called_from, called_up_to=called_to,
         notes=notes, status="published",
     )
@@ -365,7 +367,7 @@ def test_overrides_replace_attendees_and_their_commanders():
 
 def test_partial_override_keeps_both_people_and_dismissed_days_remove_original():
     db, _, shift = shift_setup()
-    shift.end_date = TODAY + timedelta(days=1)
+    shift.end_date = TODAY + timedelta(days=2)
     original = soldier(db, "Original", "original@example.com")
     replacement = soldier(db, "Replacement", "replacement@example.com")
     row = assignment(db, shift, original)
@@ -375,11 +377,32 @@ def test_partial_override_keeps_both_people_and_dismissed_days_remove_original()
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
     assert {a.email for a in snap.attendees} == {"original@example.com", "replacement@example.com"}
     db.dismissals.append(Row(duty_assignment_id=row.id,
-                             dismissed_from=shift.end_date, dismissed_to=shift.end_date,
+                             dismissed_from=TODAY + timedelta(days=1),
+                             dismissed_to=TODAY + timedelta(days=1),
                              reason="MEDICAL_REASON"))
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
     assert {a.email for a in snap.attendees} == {"replacement@example.com"}
     assert "MEDICAL_REASON" not in snap.body
+
+
+def test_full_override_does_not_restore_original_on_exclusive_end_date():
+    db, _, shift = shift_setup()
+    shift.end_date = TODAY + timedelta(days=2)
+    shift.end_time = "08:00"
+    original = soldier(db, "Original", "original@example.com")
+    replacement = soldier(db, "Replacement", "replacement@example.com")
+    row = assignment(db, shift, original)
+    row.end_date = shift.end_date
+    row.end_time = "08:00"
+    for override_date in (TODAY, TODAY + timedelta(days=1)):
+        db.overrides.append(Row(
+            duty_assignment_id=row.id, date=override_date,
+            effective_soldier_id=replacement.id, reason="replacement",
+        ))
+
+    snapshot = project_source(db, "duty_shift", shift.id, today=TODAY)
+
+    assert {attendee.email for attendee in snapshot.attendees} == {"replacement@example.com"}
 
 
 def test_call_up_date_edit_changes_hash_even_when_required_role_stays_same():

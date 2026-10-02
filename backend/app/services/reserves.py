@@ -129,6 +129,7 @@ def dismiss_primary(
         from app.services.score_projection import refresh_projection_for_assignment_change
 
         refresh_projection_for_assignment_change(session, assignment=assignment)
+    enqueue_assignment_change(session, assignment, reason="dismissal")
     return dismissal
 
 
@@ -303,6 +304,7 @@ def dismiss_reserve(
             called_up_to=to_date,
             actor_id=actor_id,
         )
+    enqueue_assignment_change(session, assignment, reason="dismissal")
     return dismissal, reallocations
 
 
@@ -331,6 +333,8 @@ def delete_dismissal(
         from app.services.score_projection import refresh_projection_for_assignment_change
 
         refresh_projection_for_assignment_change(session, assignment=assignment)
+    if assignment is not None:
+        enqueue_assignment_change(session, assignment, reason="dismissal_deleted")
 
 
 def get_shift_reserve_detail(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]:
