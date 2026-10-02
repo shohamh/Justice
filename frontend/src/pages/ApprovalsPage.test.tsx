@@ -1079,10 +1079,18 @@ describe("ApprovalsPage hierarchy reads", () => {
     expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
   });
 
-  it("loads the full tree when the enrollment tab is selected", async () => {
+  it("defers the full tree until an enrollment request is opened", async () => {
+    vi.mocked(enrollmentApi.listPendingEnrollments).mockResolvedValue([{
+      id: "enroll-1", soldier_id: "soldier-1", soldier_name: "Test Soldier",
+      soldier_personal_number: "1234567", requested_node_id: "node-1",
+      requested_node_name: "Requested Unit", status: "pending", exemption_requests: [],
+      nearest_commander: null, nearest_duty_manager: null,
+    } as enrollmentApi.EnrollmentRequestDTO]);
     renderApprovals();
     fireEvent.click(await screen.findByTestId("approvals-tab-enrollment"));
-
+    await screen.findByText("Requested Unit");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("enrollment-view-enroll-1"));
     await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
   });
 

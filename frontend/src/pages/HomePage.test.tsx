@@ -444,6 +444,20 @@ describe("HomePage - required scoring data load errors", () => {
     expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledWith("commander");
   });
 
+  it("uses the shared admin ineligible count query", async () => {
+    Object.assign(mockUser, {
+      role: "admin",
+      scope_root_ids: [],
+      active_deputy_grants: [],
+    });
+    vi.mocked(ineligibleSoldiersApi.getIneligibleSoldierCount).mockResolvedValue({ count: 4 });
+
+    renderHome();
+
+    await waitFor(() => expect(screen.getByLabelText(/^חיילים ללא מטווחים בתוקף/)).toHaveTextContent("4"));
+    expect(ineligibleSoldiersApi.getIneligibleSoldierCount).toHaveBeenCalledWith("commander");
+  });
+
   it.each([
     { role: "duty_manager" as const, flags: { is_commander: false, is_duty_manager: true } },
     { role: "admin" as const, flags: { is_commander: false, is_duty_manager: false } },

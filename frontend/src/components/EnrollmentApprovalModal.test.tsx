@@ -63,6 +63,30 @@ describe("EnrollmentApprovalModal", () => {
     vi.clearAllMocks();
   });
 
+  it("blocks unit selection and approval while the hierarchy loads but can close", () => {
+    const onClose = vi.fn();
+    renderWithProviders(<EnrollmentApprovalModal req={request} nodes={[]} exemptionTypes={[]}
+      treeLoading={true} treeError={false} onRetryTree={vi.fn()} onClose={onClose} onDone={vi.fn()} />);
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox")[0]).toBeDisabled();
+    expect(screen.getByRole("button", { name: "שמור ואשר" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "✕" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a hierarchy error and retries without allowing approval", () => {
+    const onRetryTree = vi.fn();
+    renderWithProviders(<EnrollmentApprovalModal req={request} nodes={[]} exemptionTypes={[]}
+      treeLoading={false} treeError={true} onRetryTree={onRetryTree} onClose={vi.fn()} onDone={vi.fn()} />);
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox")[0]).toBeDisabled();
+    expect(screen.getByRole("button", { name: "שמור ואשר" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "נסה שוב" }));
+    expect(onRetryTree).toHaveBeenCalledTimes(1);
+  });
+
   it("stays open when selecting a requested unit", () => {
     const onClose = vi.fn();
     renderWithProviders(

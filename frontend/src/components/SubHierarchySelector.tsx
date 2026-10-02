@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 
@@ -53,8 +53,22 @@ function TreeNode({
 export default function SubHierarchySelector({ value, onChange }: Props) {
   const { t } = useTranslation();
   const [nodes, setNodes] = useState<NodeDTO[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => { void fetchTree().then(setNodes); }, []);
+  const loadTree = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(false);
+    try {
+      setNodes(await fetchTree());
+    } catch {
+      setLoadError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadTree(); }, [loadTree]);
 
   function toggleNode(nodeId: string) {
     if (value.includes(nodeId)) {
@@ -67,6 +81,15 @@ export default function SubHierarchySelector({ value, onChange }: Props) {
   return (
     <div className="border rounded p-2 max-h-60 overflow-y-auto dark:border-gray-600 dark:bg-gray-800" data-testid="sub-hierarchy-selector">
       <p className="text-xs text-gray-500 mb-2">{t("algorithm.select_eligible_nodes")}</p>
+      {isLoading && <p role="status" className="text-xs text-gray-500">{t("team.hierarchy_loading")}</p>}
+      {loadError && (
+        <div role="alert" className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+          <span>{t("team.hierarchy_load_failed")}</span>
+          <button type="button" onClick={() => void loadTree()} className="underline">
+            {t("team.hierarchy_retry")}
+          </button>
+        </div>
+      )}
       {nodes.map((n) => (
         <TreeNode key={n.id} node={n} depth={0} value={value} onToggle={toggleNode} />
       ))}

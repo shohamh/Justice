@@ -332,7 +332,7 @@ export default function ApprovalsPage() {
   const treeQuery = useQuery({
     queryKey: queryKeys.hierarchyTree(),
     queryFn: fetchFullTree,
-    enabled: tab === "enrollment" || tab === "transfers",
+    enabled: tab === "transfers" || selectedEnrollment !== null,
   });
   const nodes = useMemo(() => {
     const flatNodes: { id: string; name: string }[] = [];
@@ -1128,6 +1128,9 @@ export default function ApprovalsPage() {
           req={selectedEnrollment}
           nodes={nodes}
           exemptionTypes={exemptionTypes}
+          treeLoading={treeQuery.isPending}
+          treeError={treeQuery.isError}
+          onRetryTree={() => { void treeQuery.refetch(); }}
           onClose={() => setSelectedEnrollment(null)}
           onDone={async () => {
             setSelectedEnrollment(null);

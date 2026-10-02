@@ -16,6 +16,7 @@ import { listJobs } from "../api/algorithm";
 import { computeRunBadgeCounts, RunBadgeCounts, RunBadgeJob } from "../utils/algorithmRunBadges";
 import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
 import NavSheet, { BadgeColor } from "./NavSheet";
+import { useAdminIneligibleSoldierCount } from "../hooks/useAdminIneligibleSoldierCount";
 
 interface NavTab {
   label: string;
@@ -91,12 +92,20 @@ export default function UnifiedNav() {
     enabled: navReadsEnabled && Boolean(user),
     retry: false,
   });
-  const ineligibleCountQuery = useQuery({
-    queryKey: [...queryKeys.ineligibleSoldierCount(), navScopeKey],
+  const adminIneligibleCountQuery = useAdminIneligibleSoldierCount({
+    actorId: user?.role === "admin" ? user.id : null,
+    authorizationScope: user?.role === "admin" ? getTransparencyAuthorizationScope(user) : null,
+    enabled: Boolean(navReadsEnabled && canPlan && mitvachimEnabled),
+  });
+  const planningIneligibleCountQuery = useQuery({
+    queryKey: [...queryKeys.ineligibleSoldierCount(), "planning", navScopeKey],
     queryFn: () => getIneligibleSoldierCount(),
-    enabled: navReadsEnabled && canPlan && mitvachimEnabled,
+    enabled: user?.role !== "admin" && navReadsEnabled && canPlan && mitvachimEnabled,
     retry: false,
   });
+  const ineligibleCountQuery = user?.role === "admin"
+    ? adminIneligibleCountQuery
+    : planningIneligibleCountQuery;
   const ineligibleCount = ineligibleCountQuery.data?.count ?? 0;
   const [algorithmBadgeData, setAlgorithmBadgeData] = useState({
     scopeKey: "",

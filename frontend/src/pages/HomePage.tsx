@@ -48,6 +48,7 @@ import {
 } from "../api/commanderDashboard";
 import { getPotentialSummary as getNodePotentialSummary, type PotentialSummary } from "../api/potential";
 import { useLevelTypes } from "../hooks/useLevelTypes";
+import { useAdminIneligibleSoldierCount } from "../hooks/useAdminIneligibleSoldierCount";
 
 // Hebrew-style "X, Y and Z" join: comma-separates all but the last item,
 // then attaches the last with "ו" (no comma) — e.g. "המדור, הפלוגה והמרכז".
@@ -128,12 +129,20 @@ export default function HomePage() {
 
   const commandScopeAvailable = isCommandScopeAvailable(user);
   const authorizationScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
-  const ineligibleSoldierCountQuery = useQuery({
+  const adminIneligibleSoldierCountQuery = useAdminIneligibleSoldierCount({
+    actorId: user?.role === "admin" ? user.id : null,
+    authorizationScope,
+    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope,
+  });
+  const commanderIneligibleSoldierCountQuery = useQuery({
     queryKey: [...queryKeys.ineligibleSoldierCount(), "commander", authorizationScope],
     queryFn: () => getIneligibleSoldierCount("commander"),
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: user?.role !== "admin" && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
     retry: false,
   });
+  const ineligibleSoldierCountQuery = user?.role === "admin"
+    ? adminIneligibleSoldierCountQuery
+    : commanderIneligibleSoldierCountQuery;
 
   const commandScopeQuery = useQuery({
     queryKey: queryKeys.myCommandScope(user?.id ?? null, authorizationScope),

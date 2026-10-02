@@ -20,11 +20,23 @@ interface Props {
   req: EnrollmentRequestDTO;
   nodes: NodeItem[];
   exemptionTypes: ExemptionTypeItem[];
+  treeLoading?: boolean;
+  treeError?: boolean;
+  onRetryTree?: () => void;
   onClose: () => void;
   onDone: () => void;
 }
 
-export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, onClose, onDone }: Props) {
+export default function EnrollmentApprovalModal({
+  req,
+  nodes,
+  exemptionTypes,
+  treeLoading = false,
+  treeError = false,
+  onRetryTree,
+  onClose,
+  onDone,
+}: Props) {
   const { t } = useTranslation();
   useModalBackClose(onClose);
 
@@ -67,7 +79,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
 
   async function handleSaveAndApprove(e: FormEvent) {
     e.preventDefault();
-    if (unitJoinDateError) {
+    if (treeLoading || treeError || unitJoinDateError) {
       return;
     }
     setSaving(true);
@@ -134,6 +146,15 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
         {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
 
         <form onSubmit={handleSaveAndApprove} className="space-y-3 text-sm">
+          {treeLoading && <p className="text-gray-500" role="status">{t("unit_calendar.hierarchy_loading")}</p>}
+          {treeError && (
+            <p className="text-red-600" role="alert">
+              {t("transparency.tree_load_error")} {" "}
+              <button type="button" className="underline" onClick={onRetryTree}>
+                {t("common.retry")}
+              </button>
+            </p>
+          )}
           <label className="block">
             <span className="text-xs text-gray-500">שם מלא</span>
             <input
@@ -159,6 +180,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
               value={requestedNodeId}
               onChange={setRequestedNodeId}
               placeholder="—"
+              disabled={treeLoading || treeError}
             />
           </div>
           <div className="block">
@@ -276,7 +298,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
           <div className="flex gap-2 pt-2 border-t dark:border-gray-600">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || treeLoading || treeError}
               className="bg-green-600 text-white px-4 py-1.5 rounded text-sm disabled:opacity-50 hover:bg-green-700"
             >
               {saving ? "שומר..." : "שמור ואשר"}

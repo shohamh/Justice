@@ -438,7 +438,7 @@ describe("UnifiedNav — ranges (mitvachim) gating", () => {
   });
 
   test("shows the ineligible count badge for an admin", async () => {
-    mockUseAuth.mockReturnValue({ user: { role: "admin" } });
+    mockUseAuth.mockReturnValue({ user: { id: "admin-1", role: "admin", scope_root_ids: [], active_deputy_grants: [] } });
     mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
     mockGetIneligibleSoldierCount.mockResolvedValue({ count: 2 });
     render(<UnifiedNav />);
