@@ -101,9 +101,25 @@ async def request_data(request: Request) -> dict[str, Any]:
 
 
 def _user_json(user: Any) -> dict[str, str] | None:
-    if user is None or not getattr(user, "id", None):
+    if user is None:
         return None
-    return {"id": str(user.id), "name": str(getattr(user, "full_name", user.id))}
+    try:
+        user_id = getattr(user, "id", None)
+        if not user_id:
+            return None
+        return {"id": str(user_id), "name": str(getattr(user, "full_name", user_id))}
+    except Exception:
+        # Request dependencies may close their ORM session before the outer
+        # error middleware logs an exception. Keep logging the primary error
+        # instead of triggering a second lazy-load failure while formatting it.
+        try:
+            from sqlalchemy import inspect as sa_inspect
+
+            state = sa_inspect(user, raiseerr=False)
+            identity = state.identity if state is not None else None
+            return {"id": str(identity[0])} if identity else None
+        except Exception:
+            return None
 
 
 def log_backend_exception(request: Request, exc: BaseException, data: dict[str, Any]) -> None:

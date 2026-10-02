@@ -1,5 +1,9 @@
 [CmdletBinding()]
-param()
+param(
+    [switch]$FullBrowserSuite,
+    [switch]$AdminFlowOnly,
+    [string]$Grep
+)
 
 $ErrorActionPreference = "Stop"
 $projectName = "justice-task8-e2e"
@@ -9,10 +13,12 @@ $composeFiles = @(
     "-f", (Join-Path $projectDirectory "docker-compose.yml"),
     "-f", (Join-Path $projectDirectory "docker-compose.task8-e2e.yml")
 )
-$composeArgs = @("compose", "--profile", "storage-maintenance", "-p", $projectName) + $composeFiles
+$composeArgs = @("compose", "--profile", "storage-maintenance", "--profile", "observability", "-p", $projectName) + $composeFiles
 $startedByThisScript = $false
 $hadFrontendPort = $null
 $previousFrontendPort = $null
+$hadDatabasePort = $null
+$previousDatabasePort = $null
 $hadGimelimFixture = $null
 $previousGimelimFixture = $null
 
@@ -89,14 +95,21 @@ try {
         $frontendPort = $listener.LocalEndpoint.Port
         $listener.Stop()
     } while ($frontendPort -eq 10080) # Chromium rejects this otherwise-free local test port.
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    $databasePort = $listener.LocalEndpoint.Port
+    $listener.Stop()
     $hadFrontendPort = $null -ne [Environment]::GetEnvironmentVariable("TASK8_E2E_FRONTEND_PORT", "Process")
     $previousFrontendPort = $env:TASK8_E2E_FRONTEND_PORT
     $env:TASK8_E2E_FRONTEND_PORT = [string]$frontendPort
+    $hadDatabasePort = $null -ne [Environment]::GetEnvironmentVariable("TASK8_E2E_DB_PORT", "Process")
+    $previousDatabasePort = $env:TASK8_E2E_DB_PORT
+    $env:TASK8_E2E_DB_PORT = [string]$databasePort
 
     # The name was verified empty above, so any partial resources from a failed
     # `up` are owned by this invocation and can be removed after label checks.
     $startedByThisScript = $true
-    Invoke-Compose @("up", "--build", "--detach", "frontend")
+    Invoke-Compose @("up", "--build", "--detach", "frontend", "loki")
 
     $ready = $false
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
@@ -158,13 +171,50 @@ try {
     $previousBaseUrl = $env:E2E_BASE_URL
     $hadIsolatedFlag = $null -ne [Environment]::GetEnvironmentVariable("STORAGE_E2E_ISOLATED", "Process")
     $previousIsolatedFlag = $env:STORAGE_E2E_ISOLATED
+    $hadDatabaseUrl = $null -ne [Environment]::GetEnvironmentVariable("DATABASE_URL", "Process")
+    $previousDatabaseUrl = $env:DATABASE_URL
+    $hadDbAdminUrl = $null -ne [Environment]::GetEnvironmentVariable("DB_ADMIN_URL", "Process")
+    $previousDbAdminUrl = $env:DB_ADMIN_URL
+    $hadE2ePython = $null -ne [Environment]::GetEnvironmentVariable("E2E_PYTHON", "Process")
+    $previousE2ePython = $env:E2E_PYTHON
+    $hadPythonIoEncoding = $null -ne [Environment]::GetEnvironmentVariable("PYTHONIOENCODING", "Process")
+    $previousPythonIoEncoding = $env:PYTHONIOENCODING
     try {
         $env:E2E_BASE_URL = "http://localhost:$frontendPort"
         $env:STORAGE_E2E_ISOLATED = "1"
         $env:STORAGE_E2E_GIMELIM_DISMISSAL_ID = $gimelimDismissalId
-        & npx playwright test --project=desktop tests/e2e/file-downloads.spec.ts
-        $testExitCode = $LASTEXITCODE
+        $mainCheckout = Split-Path -Parent (& git -C $projectDirectory rev-parse --path-format=absolute --git-common-dir)
+        $pythonExe = Join-Path $mainCheckout "backend\.venv\Scripts\python.exe"
+        if (-not (Test-Path -LiteralPath $pythonExe)) {
+            throw "Host Python for browser worker/admin E2E was not found at '$pythonExe'."
+        }
+        $env:E2E_PYTHON = $pythonExe
+        $env:PYTHONIOENCODING = "utf-8"
+        $env:DATABASE_URL = "postgresql+psycopg://app:app_pw@127.0.0.1:$databasePort/justice"
+        $env:DB_ADMIN_URL = "postgresql+psycopg://db_admin:db_admin_pw@127.0.0.1:$databasePort/justice"
+        if ($FullBrowserSuite) {
+            & npx playwright test
+            $testExitCode = $LASTEXITCODE
+            if ($testExitCode -eq 0) {
+                & npx playwright test --config=playwright.admin-flow.config.ts
+                $testExitCode = $LASTEXITCODE
+            }
+        } elseif ($AdminFlowOnly) {
+            & npx playwright test --config=playwright.admin-flow.config.ts
+            $testExitCode = $LASTEXITCODE
+        } elseif ($Grep) {
+            & npx playwright test --grep $Grep
+            $testExitCode = $LASTEXITCODE
+        }
+        else {
+            & npx playwright test --project=desktop tests/e2e/file-downloads.spec.ts
+            $testExitCode = $LASTEXITCODE
+        }
         if ($testExitCode -ne 0) {
+            $backendDiagnostics = & docker @composeArgs logs --since=2m backend 2>&1
+            $backendDiagnostics |
+                Select-String -Pattern 'POST /api/auth/login|Too Many Requests|Traceback|ERROR backend' |
+                ForEach-Object { Write-Host "[Task 8 backend diagnostic] $($_.Line)" }
             $gatewayDiagnostics = & docker @composeArgs logs --since=2m file-gateway 2>&1
             $gatewayDiagnostics |
                 Select-String -Pattern "File download authorization failed|File object read failed" |
@@ -181,6 +231,14 @@ try {
         else { Remove-Item Env:E2E_BASE_URL -ErrorAction SilentlyContinue }
         if ($hadIsolatedFlag) { $env:STORAGE_E2E_ISOLATED = $previousIsolatedFlag }
         else { Remove-Item Env:STORAGE_E2E_ISOLATED -ErrorAction SilentlyContinue }
+        if ($hadDatabaseUrl) { $env:DATABASE_URL = $previousDatabaseUrl }
+        else { Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue }
+        if ($hadDbAdminUrl) { $env:DB_ADMIN_URL = $previousDbAdminUrl }
+        else { Remove-Item Env:DB_ADMIN_URL -ErrorAction SilentlyContinue }
+        if ($hadE2ePython) { $env:E2E_PYTHON = $previousE2ePython }
+        else { Remove-Item Env:E2E_PYTHON -ErrorAction SilentlyContinue }
+        if ($hadPythonIoEncoding) { $env:PYTHONIOENCODING = $previousPythonIoEncoding }
+        else { Remove-Item Env:PYTHONIOENCODING -ErrorAction SilentlyContinue }
         Pop-Location
     }
 }
@@ -188,6 +246,10 @@ finally {
     if ($null -ne $hadFrontendPort) {
         if ($hadFrontendPort) { $env:TASK8_E2E_FRONTEND_PORT = $previousFrontendPort }
         else { Remove-Item Env:TASK8_E2E_FRONTEND_PORT -ErrorAction SilentlyContinue }
+    }
+    if ($null -ne $hadDatabasePort) {
+        if ($hadDatabasePort) { $env:TASK8_E2E_DB_PORT = $previousDatabasePort }
+        else { Remove-Item Env:TASK8_E2E_DB_PORT -ErrorAction SilentlyContinue }
     }
     if ($null -ne $hadGimelimFixture) {
         if ($hadGimelimFixture) { $env:STORAGE_E2E_GIMELIM_DISMISSAL_ID = $previousGimelimFixture }

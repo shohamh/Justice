@@ -5,7 +5,8 @@ services:
     volumes:
       - task8-seaweedfs-data:/data
   db:
-    ports: !reset []
+    ports: !override
+      - "127.0.0.1:${TASK8_E2E_DB_PORT:-15432}:5432"
     volumes:
       - task8-postgres-data:/var/lib/postgresql/data
   redis:

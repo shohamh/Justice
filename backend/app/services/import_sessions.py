@@ -147,7 +147,12 @@ def _parse_workbook(content: bytes, parser_id: str | None, *, bounded: bool):
         validate_xlsx(content)
     except FileValidationError as exc:
         raise ImportSessionError(str(exc)) from exc
-    if not bounded:
+    # Windows has no `resource.RLIMIT_AS`; production keeps the parser fail-closed
+    # there and directs uploads to the container runtime. In the test harness,
+    # parse in-process so API/import behavior remains covered on Windows. The
+    # browser E2E suite exercises the bounded parser in its Linux backend container.
+    windows_test_parser = os.name == "nt" and os.environ.get("JUSTICE_TESTING") == "1"
+    if not bounded or windows_test_parser:
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
         parser = get_parser(parser_id) if parser_id else auto_detect_parser(wb)
         return parser.id, parser.parse(wb)

@@ -151,6 +151,54 @@ test.describe("file download gateway", () => {
       expect(report).toBeDefined();
       const reportId = report.id as string;
 
+      const ownerPage = await owner.newPage();
+      try {
+        await ownerPage.goto("/");
+        await expect(ownerPage.getByTestId("bug-report-trigger")).toBeVisible();
+        await ownerPage.getByTestId("bug-report-trigger").click();
+        await ownerPage.getByTestId("bug-report-tab-mine").click();
+
+        const reportRow = ownerPage.getByTestId(`my-bug-report-expand-${reportId}`);
+        await expect(reportRow).toBeVisible();
+        const screenshotResponse = ownerPage.waitForResponse(
+          (response) =>
+            response.url().includes(`/api/file-download/bug-reports/${reportId}/screenshot`) &&
+            response.status() === 200,
+        );
+        await reportRow.click();
+        expect((await screenshotResponse).status()).toBe(200);
+
+        const screenshotPreview = ownerPage.getByTestId(`my-bug-report-screenshot-${reportId}`);
+        await expect(screenshotPreview).toBeVisible();
+        await expect
+          .poll(() => screenshotPreview.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0))
+          .toBe(true);
+        await screenshotPreview.click();
+
+        const previewFilename = `bug-report-${reportId}.png`;
+        const previewImage = ownerPage.locator(`img[alt="${previewFilename}"]`);
+        await expect(previewImage).toBeVisible();
+        await expect
+          .poll(() => previewImage.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0))
+          .toBe(true);
+
+        const previewDownload = ownerPage.locator(`a[download="${previewFilename}"]`);
+        await expect(previewDownload).toHaveAttribute("href", /^blob:/);
+        const [download] = await Promise.all([
+          ownerPage.waitForEvent("download"),
+          previewDownload.click(),
+        ]);
+        expect(download.suggestedFilename()).toBe(previewFilename);
+        const downloadPath = await download.path();
+        expect(downloadPath).not.toBeNull();
+        const downloadedScreenshot = await readFile(downloadPath!);
+        expect(downloadedScreenshot.subarray(0, 8)).toEqual(
+          Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        );
+      } finally {
+        await ownerPage.close();
+      }
+
       const commentResponse = await owner.request.post(`/api/bug-reports/${reportId}/comments`, {
         data: { body: "Storage download E2E attachment." },
         headers: ownerHeaders,

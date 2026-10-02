@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 import uuid
@@ -389,10 +390,32 @@ def export_bug_reports(
 def get_bug_report_json(
     report_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     _admin: Soldier = Depends(require_roles("admin")),
 ) -> Response:
     report = session.get(BugReport, report_id)
-    if report is None or not report.json_file_path:
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_json_not_found")
+    if report.json_mirror_storage_key:
+        expected_key = f"bug_report_json_mirror/{report.id}"
+        if report.json_mirror_storage_key != expected_key:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="storage_integrity_failed")
+        try:
+            body, reported_size = storage.open_read(key=expected_key)
+            try:
+                content = body.read(2 * 1024 * 1024 + 1)
+            finally:
+                body.close()
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="storage_unavailable") from exc
+        if (
+            len(content) > 2 * 1024 * 1024
+            or len(content) != reported_size
+            or hashlib.sha256(content).hexdigest() != report.json_mirror_sha256
+        ):
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="storage_integrity_failed")
+        return Response(content=content, media_type="application/json")
+    if not report.json_file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_json_not_found")
     path = Path(report.json_file_path)
     if not path.is_file():

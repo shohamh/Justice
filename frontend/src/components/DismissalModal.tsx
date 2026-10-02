@@ -285,7 +285,7 @@ export default function DismissalModal({
               );
             })}
             {attachmentError && <p role="alert" className="text-sm text-red-600">{attachmentError}</p>}
-            {completedDismissalId && <button type="button" className="mt-2 rounded bg-blue-600 px-3 py-1 text-white" onClick={onDone}>סיום</button>}
+            {completedDismissalId && <button type="button" data-testid="gimelim-dismissal-done" className="mt-2 rounded bg-blue-600 px-3 py-1 text-white" onClick={onDone}>סיום</button>}
           </section>
         )}
 

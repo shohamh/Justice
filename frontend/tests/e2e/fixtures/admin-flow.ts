@@ -8,6 +8,8 @@ const ADMIN_PERSONAL_NUMBER = "1000001";
 const ADMIN_BOOTSTRAP_PASSWORD = "ChangeMeOnFirstLogin!";
 
 async function findPython(backendDirectory: string): Promise<string> {
+  if (process.env.E2E_PYTHON) return process.env.E2E_PYTHON;
+
   const venvPythons = [
     resolve(backendDirectory, ".venv", "Scripts", "python.exe"),
     resolve(backendDirectory, ".venv", "bin", "python"),
