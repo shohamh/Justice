@@ -1,0 +1,81 @@
+{
+  "measurement": "in-process TestClient route timing plus one direct-handler cProfile diagnostic",
+  "captured_utc": "2026-10-02T22:12:04Z",
+  "database": {
+    "active_soldiers": 20121,
+    "duty_assignments": 1000008
+  },
+  "route": {
+    "path": "/api/scoring/transparency/page?sort=burden_share&descending=true&page_size=100",
+    "warmups": 2,
+    "samples": [
+      {
+        "wall_ms": 10318.132,
+        "db_ms": 3976.914,
+        "sql_count": 52,
+        "response_bytes": 73874,
+        "rows": 100,
+        "has_more": true,
+        "response_sha256": "49e175885119515f866fcd82be8b72eb3b1987e4e7f7cf7f901da992cf3dfd95",
+        "status": 200
+      },
+      {
+        "wall_ms": 10616.244,
+        "db_ms": 3923.44,
+        "sql_count": 52,
+        "response_bytes": 73874,
+        "rows": 100,
+        "has_more": true,
+        "response_sha256": "b86cb2789b60275e47f717e4aa5ab3252d2470875c90d7ec967c61fb79cbf62a",
+        "status": 200
+      },
+      {
+        "wall_ms": 10810.662,
+        "db_ms": 4054.703,
+        "sql_count": 52,
+        "response_bytes": 73874,
+        "rows": 100,
+        "has_more": true,
+        "response_sha256": "20feae3331afda335fbd5f2acb893db0f38b397e9de32e6d3a3c91116c5bb8c2",
+        "status": 200
+      },
+      {
+        "wall_ms": 10404.521,
+        "db_ms": 3983.18,
+        "sql_count": 52,
+        "response_bytes": 73874,
+        "rows": 100,
+        "has_more": true,
+        "response_sha256": "586f26dd437d5226f7d7c4d3c00881de7aad0fa00188b2a0fb0a5ebf694a962f",
+        "status": 200
+      },
+      {
+        "wall_ms": 10969.983,
+        "db_ms": 4052.527,
+        "sql_count": 52,
+        "response_bytes": 73874,
+        "rows": 100,
+        "has_more": true,
+        "response_sha256": "d9260946c8a47515d1f9c98110e1a0045511fe1ff6b4ad5f258beb15d160e889",
+        "status": 200
+      }
+    ],
+    "wall_ms_p50": 10616.244,
+    "wall_ms_p95": 10969.983,
+    "db_ms_p50": 3983.18,
+    "sql_count": 52
+  },
+  "direct_handler_cprofile": {
+    "wall_ms": 16107.526,
+    "rows": 100,
+    "sql_count": 51,
+    "db_ms": 5207.038,
+    "top_cumulative": "         9529665 function calls (9529303 primitive calls) in 16.108 seconds\n\n   Ordered by: cumulative time\n   List reduced from 853 to 18 due to restriction <18>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.027    0.027   16.108   16.108 scoring.py:247(transparency_page)\n        1    0.210    0.210   15.053   15.053 scoring.py:2197(transparency_rows)\n        1    0.784    0.784   14.652   14.652 scoring.py:2053(_try_projected_transparency_rows)\n        1    0.022    0.022    5.697    5.697 scoring.py:1721(_try_projected_effort_data)\n       51    0.000    0.000    5.242    0.103 base.py:1404(execute)\n       51    0.000    0.000    5.242    0.103 elements.py:524(_execute_on_connection)\n       51    0.002    0.000    5.241    0.103 base.py:1618(_execute_clauseelement)\n       51    0.001    0.000    5.231    0.103 base.py:1767(_execute_context)\n       51    0.000    0.000    5.204    0.102 default.py:1179(do_execute)\n       51    0.000    0.000    5.204    0.102 cursor.py:100(execute)\n       51    0.000    0.000    5.204    0.102 connection.py:479(wait)\n       51    0.011    0.000    5.204    0.102 waiting.py:329(wait_select)\n       48    0.000    0.000    5.192    0.108 session.py:2406(execute)\n       48    0.001    0.000    5.192    0.108 session.py:2201(_execute_internal)\n       50    0.002    0.000    5.163    0.103 base.py:1826(_exec_single_context)\n        2    0.562    0.281    4.309    2.154 scoring.py:1512(_ensure_projection_ready)\n     2554    2.839    0.001    2.839    0.001 {built-in method select.select}\n     2605    0.003    0.000    2.348    0.001 _cursor_base.py:195(_execute_gen)\n\n\n"
+  },
+  "limitations": [
+    "local diagnostic against the existing disposable isolated database; no account or service setup",
+    "five warmed sequential route samples are not a stable percentile or browser page-ready result",
+    "cProfile covers a direct handler call and includes profiler overhead",
+    "each route/direct-handler session was rolled back to avoid persisting read-repair writes"
+  ]
+}

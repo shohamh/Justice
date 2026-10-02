@@ -566,3 +566,16 @@ The same current-code in-process profiler measured `GET /api/scoring/transparenc
 The temporary test Redis used by focused suites was separate from the scale database. No provider synchronization was invoked. A later attempt to repeat the browser matrix with a temporary admin profile was blocked by the execution policy before it ran; the tool gave no more specific reason and no database or process changes from that attempt occurred. Until an allowed profile login is available, the 2026-10-02 page-ready table remains the latest full page comparison, while the 2026-10-03 measurements above cover only the potential and transparency backend routes.
 
 A second browser-profile setup attempt used an existing admin identity, a short-lived local token, and dedicated ports instead of creating an account. The execution policy again rejected the command before launch with `blocked by policy`; no token was generated, no services started, and no database, account, or process changed. The runner experiment was reverted. No further browser-profile setup attempt was made. Current page-ready comparisons therefore remain the 2026-10-02 matrix above; the post-follow-up evidence is limited to the two in-process backend route diagnostics and the matched potential-count service A/B.
+
+### Transparency readiness follow-up (2026-10-03)
+
+Commit `0384c89d` removes exact soldier/quarter dirty-marker requirements when `_ensure_projection_ready` already checks the entire same quarter. Exact checks remain for keys outside the quarter set. The focused readiness and dirty-marker tests passed 19/19, and independent review approved the change. This does not change the population-wide transparency calculation or make continuation work bounded.
+
+The [raw follow-up capture](data/scale-20k-transparency-after-readiness-followup-20261003.json) used the same isolated database (20,121 active soldiers and 1,000,008 assignments) and the same first-page route as the earlier in-process diagnostic. Requests ran in rollback-only sessions because the normal read path can repair aggregate projection rows; a read-only transaction forced the legacy fallback and was discarded. Two warmups preceded five measured HTTP 200 requests.
+
+| Capture | Warmups / samples | Wall p50/p95 | Accumulated DB p50 | SQL statements | Response |
+|---|---:|---:|---:|---:|---:|
+| Before covered-key change | 1 / 3 | 10.69 / 10.89 s | 5.23 s | 54 | Not recorded |
+| After covered-key change | 2 / 5 | 10.616 / 10.970 s | 3.983 s | 52 | 73,874 bytes; 100 rows |
+
+These are small in-process samples with different warmup/sample counts, not a controlled before/after page benchmark. The route wall time stayed in the same roughly 10.6-second range and p95 did not improve; the accumulated DB time and SQL count were lower in the later run. One direct-handler cProfile sample after the change measured 16.108 s total, 5.207 s accumulated DB, and 4.309 s cumulative across two `_ensure_projection_ready` calls. The previous single cProfile diagnostic reported 16.36 s total and 8.90 s in those readiness calls. cProfile overhead and run-to-run DB variance limit that comparison. Keep the result as evidence that redundant readiness work fell, not as a page-speed claim. The browser page-ready matrix remains the 2026-10-02 capture, and transparency still exceeds the proposed target by a wide margin.
