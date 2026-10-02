@@ -73,6 +73,7 @@ RESET_TABLES = (
     "system_settings",
     "identity_conflict_candidates",
     "identity_conflicts",
+    "oidc_transactions",
     "soldiers",
     "hierarchy_level_types",
     "hr_hierarchy_syncs",
@@ -168,7 +169,7 @@ def run_migrations(database_url: str, rootpath: Path) -> None:
 
     cfg = Config(str(rootpath / "alembic.ini"))
     cfg.set_main_option("script_location", str(rootpath / "alembic"))
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "heads")
 
     # alembic's env.py runs in-process and disables pre-existing loggers through
     # logging.config.fileConfig; restore them for later caplog assertions.

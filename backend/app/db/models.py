@@ -2218,6 +2218,33 @@ class IdentityConflictCandidate(Base):
     )
 
 
+class OidcTransaction(Base):
+    """One in-flight OIDC login: the server-side secrets of an authorization request.
+
+    ``state_hash`` is the lookup key (the state itself only travels through the
+    browser); ``browser_hash`` binds the transaction to the browser that
+    started it (hash of a random HttpOnly cookie). The nonce and PKCE verifier
+    stay server-side. Consumed at most once, atomically, and short-lived.
+    """
+
+    __tablename__ = "oidc_transactions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    state_hash: Mapped[str] = mapped_column(Text, unique=True)
+    browser_hash: Mapped[str] = mapped_column(Text)
+    nonce: Mapped[str] = mapped_column(Text)
+    code_verifier: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+
 class HrIdentityConflict(Base):
     """An HR sync identity conflict, shown to admins as a warning.
 
