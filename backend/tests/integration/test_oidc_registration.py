@@ -155,12 +155,16 @@ def test_registration_without_invite_code_through_context(client, provider, admi
     assert client.post("/api/auth/refresh").status_code == 200
 
 
-def test_sso_registered_soldier_waits_in_holding_until_a_commander_approves(
+def test_sso_registered_soldier_waits_in_holding_until_a_mador_commander_approves(
     client, provider, admin_session, world
 ):
-    holding, node = world
-    commander = create_soldier(admin_session, personal_number="7770001", role="commander")
-    node.commander_id = commander.id
+    holding, _unit = world
+    group = create_node(admin_session, level="group", name="sso-group", parent=holding)
+    node = create_node(admin_session, level="team", name="sso-team", parent=group)
+    unit_commander = create_soldier(admin_session, personal_number="7770001", role="commander")
+    node.commander_id = unit_commander.id
+    group_commander = create_soldier(admin_session, personal_number="7770003", role="commander")
+    group.commander_id = group_commander.id
     admin_session.commit()
     callback(client, provider)
     assert register(client, node).status_code == 200
@@ -173,10 +177,13 @@ def test_sso_registered_soldier_waits_in_holding_until_a_commander_approves(
     assert client.post(approve, headers=auth_headers(soldier), json={}).status_code == 403
     bystander = create_soldier(admin_session, personal_number="7770002")
     assert client.post(approve, headers=auth_headers(bystander), json={}).status_code == 403
+    # A commander below mador level (team) may approve ordinary enrollments but not SSO sign-ups.
+    denied = client.post(approve, headers=auth_headers(unit_commander), json={})
+    assert denied.status_code == 403 and denied.json()["detail"] == "sso_approval_requires_mador"
     admin_session.refresh(soldier)
     assert soldier.hierarchy_node_id == holding.id
 
-    assert client.post(approve, headers=auth_headers(commander), json={}).status_code == 200
+    assert client.post(approve, headers=auth_headers(group_commander), json={}).status_code == 200
     admin_session.refresh(soldier)
     assert soldier.hierarchy_node_id == node.id
 

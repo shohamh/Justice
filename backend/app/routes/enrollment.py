@@ -10,7 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import ExemptionRequest, HierarchyNode, NotificationType, Soldier, SoldierEnrollmentRequest
+from app.db.models import (
+    ExemptionRequest,
+    HierarchyNode,
+    NotificationType,
+    OidcIdentity,
+    Soldier,
+    SoldierEnrollmentRequest,
+)
 from app.db.session import get_session
 from app.services import enrollment as svc
 from app.routes.identity_errors import identity_http_exception
@@ -447,6 +454,20 @@ def patch_enrollment(
     )
 
 
+def _require_mador_for_sso_signup(
+    session: Session, *, user: Soldier, req: SoldierEnrollmentRequest, target_node: HierarchyNode | None,
+) -> None:
+    """Soldiers who self-registered through SSO skip the invite code, so their
+    approval needs a commander at "מדור" level or above (or an admin)."""
+    linked = session.execute(
+        select(OidcIdentity.id).where(OidcIdentity.soldier_id == req.soldier_id)
+    ).first()
+    if linked is not None and not rank_advancement_edit_authorized(
+        session, user=user, target_node=target_node,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="sso_approval_requires_mador")
+
+
 @router.post("/{request_id}/approve")
 def approve(
     request_id: uuid.UUID,
@@ -459,6 +480,7 @@ def approve(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     target_node = session.get(HierarchyNode, req.requested_node_id)
     authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=target_node)
+    _require_mador_for_sso_signup(session, user=user, req=req, target_node=target_node)
     try:
         svc.approve_enrollment(
             session, request_id=request_id, decider_id=user.id, decision_note=body.decision_note
