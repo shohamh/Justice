@@ -25,6 +25,7 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
   const [showDeterministicHelp, setShowDeterministicHelp] = useState(false);
   const [settings, setSettings] = useState<SolverSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
+  const [hasOpenedSubHierarchy, setHasOpenedSubHierarchy] = useState(false);
   const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -175,8 +176,8 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
       )}
 
       <details className="border dark:border-gray-600 rounded p-2">
-        <summary className="cursor-pointer text-xs">הגבלת תת-עץ</summary>
-        <SubHierarchySelector value={eligibleNodeIds} onChange={setEligibleNodeIds} />
+        <summary className="cursor-pointer text-xs" onClick={() => setHasOpenedSubHierarchy(true)}>הגבלת תת-עץ</summary>
+        {hasOpenedSubHierarchy && <SubHierarchySelector value={eligibleNodeIds} onChange={setEligibleNodeIds} />}
       </details>
 
       {error && <p className="text-red-500 text-xs">{error}</p>}
