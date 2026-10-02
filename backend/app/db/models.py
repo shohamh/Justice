@@ -2218,6 +2218,41 @@ class IdentityConflictCandidate(Base):
     )
 
 
+class OidcIdentity(Base):
+    """The stable link between an external OIDC identity and one soldier.
+
+    The identity key is ``(issuer, subject)`` exactly as validated from the
+    ID token, never an email or ``preferred_username``. A subject can belong to
+    one soldier and a soldier has at most one external identity. Holds no email
+    or other claims.
+    """
+
+    __tablename__ = "oidc_identities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), unique=True
+    )
+    issuer: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("issuer", "subject", name="uq_oidc_identities_issuer_subject"),
+        sa.CheckConstraint(
+            "length(btrim(issuer)) > 0 AND length(btrim(subject)) > 0",
+            name="ck_oidc_identities_non_blank",
+        ),
+    )
+
+
 class OidcTransaction(Base):
     """One in-flight OIDC login: the server-side secrets of an authorization request.
 

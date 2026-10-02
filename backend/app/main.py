@@ -27,6 +27,7 @@ from app.routes import approvals_export as approvals_export_routes
 from app.routes import assignments as assignment_routes
 from app.routes import audit_logs as audit_log_routes
 from app.routes import auth as auth_routes
+from app.routes import oidc as oidc_routes
 from app.routes import bug_reports as bug_report_routes
 from app.routes import calendar as calendar_routes
 from app.routes import calendar_holidays as calendar_holidays_routes
@@ -232,6 +233,7 @@ def create_app() -> FastAPI:
     app.include_router(client_error_routes.router, prefix="/api")
     app.include_router(admin_error_routes.router, prefix="/api")
     app.include_router(auth_routes.router, prefix="/api")
+    app.include_router(oidc_routes.router, prefix="/api")
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(my_request_routes.router, prefix="/api")
     app.include_router(hierarchy_routes.router, prefix="/api")
