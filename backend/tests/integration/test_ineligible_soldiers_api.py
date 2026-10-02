@@ -324,6 +324,9 @@ def test_count_reuses_scoped_soldiers_and_skips_list_only_range_details(
     assert response.status_code == 200, response.text
     assert response.json() == {"count": 1}
     assert not any(
+        "from duty_assignments join duty_types" in sql for sql in statements
+    ), "soldiers already lacking a valid qualification need no future-duty scan"
+    assert not any(
         "from soldiers" in sql and "join soldier_range_qualifications" in sql
         for sql in statements
     ), "the count must reuse the scoped soldier rows for profile dates"
@@ -395,6 +398,11 @@ def test_includes_currently_qualified_soldier_when_qualification_expires_before_
         personal_number=f"expiry-soldier-{_uid()}",
         hierarchy_node_id=node.id,
     )
+    qualified_soldier = create_soldier(
+        admin_session,
+        personal_number=f"current-soldier-{_uid()}",
+        hierarchy_node_id=node.id,
+    )
     duty_location = create_duty_location(admin_session, name=f"expiry-duty-location-{_uid()}")
     duty_type = DutyType(
         name=f"expiry-duty-{_uid()}",
@@ -409,6 +417,11 @@ def test_includes_currently_qualified_soldier_when_qualification_expires_before_
                 soldier_id=soldier.id,
                 range_type=RangeType.laser,
                 valid_until=date.today() + timedelta(days=1),
+            ),
+            SoldierRangeQualification(
+                soldier_id=qualified_soldier.id,
+                range_type=RangeType.laser,
+                valid_until=date.today() + timedelta(days=30),
             ),
         ]
     )
@@ -426,8 +439,13 @@ def test_includes_currently_qualified_soldier_when_qualification_expires_before_
     admin_session.commit()
 
     response = _list(client, admin, "planning")
+    count_response = client.get(
+        "/api/ranges/ineligible-soldiers/count", headers=auth_headers(admin)
+    )
 
     assert response.status_code == 200, response.text
+    assert count_response.status_code == 200, count_response.text
+    assert count_response.json() == {"count": response.json()["count"]} == {"count": 1}
     row = next(row for row in response.json()["soldiers"] if row["soldier_id"] == str(soldier.id))
     assert row["valid_qualifications"] == [
         {"range_type": "laser", "valid_until": (date.today() + timedelta(days=1)).isoformat()}

@@ -1362,36 +1362,10 @@ def _soldier_totals_by_id(
     return {row.soldier_id: row for row in rows}
 
 
-def _projected_soldier_total_from_rows(
-    session: Session, *, soldier_id: uuid.UUID
-) -> dict[str, Decimal | int]:
-    from app.services.score_projection import _expected_soldier_totals_by_id
-
-    want = _expected_soldier_totals_by_id(session, {soldier_id})[soldier_id]
-    duty_score = _q6(want["duty_score"])
-    adjustment_score = _q6(want["adjustment_score"])
-    return {
-        "duty_score": duty_score,
-        "adjustment_score": adjustment_score,
-        "cumulative_score": _q6(duty_score + adjustment_score),
-        "shift_count": want["shift_count"],
-    }
-
-
-def _soldier_total_matches_projection_rows(session: Session, *, soldier_id: uuid.UUID) -> bool:
-    from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
-
-    totals = _soldier_totals_by_id(session, {soldier_id})
-    row = totals.get(soldier_id)
-    if row is None or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION:
-        return False
-    expected = _projected_soldier_total_from_rows(session, soldier_id=soldier_id)
-    return (
-        _q6(row.duty_score) == expected["duty_score"]
-        and _q6(row.adjustment_score) == expected["adjustment_score"]
-        and _q6(row.cumulative_score) == expected["cumulative_score"]
-        and row.shift_count == expected["shift_count"]
-    )
+class _SoldierTotalRepairVerificationFailed(Exception):
+    def __init__(self, soldier_id: uuid.UUID) -> None:
+        super().__init__(str(soldier_id))
+        self.soldier_id = soldier_id
 
 
 def _refresh_required_soldier_totals(
@@ -1400,7 +1374,6 @@ def _refresh_required_soldier_totals(
     from app.services.score_projection import (
         SCORE_PROJECTION_CANONICAL_VERSION,
         _expected_soldier_totals_by_id,
-        _upsert_soldier_total,
     )
 
     if not soldier_ids:
@@ -1429,41 +1402,89 @@ def _refresh_required_soldier_totals(
             )
         ).all()
     }
-    if not implicated:
-        stale = missing_or_stale
-    else:
-        expected = _expected_soldier_totals_by_id(session, implicated)
-        stale = list(missing_or_stale)
-        for soldier_id in sorted(implicated, key=str):
-            row = stored.get(soldier_id)
-            want = expected[soldier_id]
-            cumulative_want = _q6(want["duty_score"] + want["adjustment_score"])
-            if (
-                row is None
-                or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION
-                or _q6(row.duty_score) != _q6(want["duty_score"])
-                or _q6(row.adjustment_score) != _q6(want["adjustment_score"])
-                or _q6(row.cumulative_score) != cumulative_want
-                or row.shift_count != want["shift_count"]
-            ):
-                if soldier_id not in missing_or_stale:
-                    stale.append(soldier_id)
+    expected_ids = implicated | set(missing_or_stale)
+    if not expected_ids:
+        return True
 
-    for soldier_id in sorted(set(stale), key=str):
-        try:
-            _upsert_soldier_total(session, soldier_id=soldier_id)
-        except Exception:
-            logger.exception(
-                "score projection soldier total rebuild failed during read",
-                extra={"soldier_id": str(soldier_id)},
-            )
-            return False
-        if not _soldier_total_matches_projection_rows(session, soldier_id=soldier_id):
-            logger.warning(
-                "score projection read fell back because a soldier total is incomplete",
-                extra={"soldier_id": str(soldier_id)},
-            )
-            return False
+    try:
+        with session.begin_nested():
+            expected = _expected_soldier_totals_by_id(session, expected_ids)
+
+            stale = list(missing_or_stale)
+            if implicated:
+                for soldier_id in sorted(implicated, key=str):
+                    row = stored.get(soldier_id)
+                    want = expected[soldier_id]
+                    cumulative_want = _q6(want["duty_score"] + want["adjustment_score"])
+                    if (
+                        (
+                            row is None
+                            or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION
+                            or _q6(row.duty_score) != _q6(want["duty_score"])
+                            or _q6(row.adjustment_score) != _q6(want["adjustment_score"])
+                            or _q6(row.cumulative_score) != cumulative_want
+                            or row.shift_count != want["shift_count"]
+                        )
+                        and soldier_id not in missing_or_stale
+                    ):
+                        stale.append(soldier_id)
+
+            stale_ids = sorted(set(stale), key=str)
+            for soldier_id in stale_ids:
+                want = expected[soldier_id]
+                duty_score = _q6(want["duty_score"])
+                adjustment_score = _q6(want["adjustment_score"])
+                cumulative_score = _q6(duty_score + adjustment_score)
+                shift_count = int(want["shift_count"])
+                row = stored.get(soldier_id)
+                if row is None:
+                    row = SoldierScoreProjection(
+                        soldier_id=soldier_id,
+                        projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                        duty_score=duty_score,
+                        adjustment_score=adjustment_score,
+                        cumulative_score=cumulative_score,
+                        shift_count=shift_count,
+                    )
+                    stored[soldier_id] = row
+                    session.add(row)
+                else:
+                    row.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
+                    row.duty_score = duty_score
+                    row.adjustment_score = adjustment_score
+                    row.cumulative_score = cumulative_score
+                    row.shift_count = shift_count
+                    row.updated_at = _score_projection_now()
+            if stale_ids:
+                session.flush()
+                verified = _soldier_totals_by_id(session, set(stale_ids))
+                for soldier_id in stale_ids:
+                    row = verified.get(soldier_id)
+                    want = expected[soldier_id]
+                    duty_score = _q6(want["duty_score"])
+                    adjustment_score = _q6(want["adjustment_score"])
+                    cumulative_score = _q6(duty_score + adjustment_score)
+                    if (
+                        row is None
+                        or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION
+                        or _q6(row.duty_score) != duty_score
+                        or _q6(row.adjustment_score) != adjustment_score
+                        or _q6(row.cumulative_score) != cumulative_score
+                        or row.shift_count != int(want["shift_count"])
+                    ):
+                        raise _SoldierTotalRepairVerificationFailed(soldier_id)
+    except _SoldierTotalRepairVerificationFailed as exc:
+        logger.warning(
+            "score projection read fell back because a soldier total is incomplete",
+            extra={"soldier_id": str(exc.soldier_id)},
+        )
+        return False
+    except Exception:
+        logger.exception(
+            "score projection soldier total rebuild failed during read",
+            extra={"soldier_ids": sorted(str(soldier_id) for soldier_id in expected_ids)},
+        )
+        return False
     return True
 
 
@@ -1681,6 +1702,7 @@ def _try_projected_effort_data(
     soldiers: list[Soldier],
     *,
     prevalidated_readiness: _TransparencyProjectionReadiness | None = None,
+    planning_start: date | None = None,
 ) -> dict[uuid.UUID, Any] | None:
     from app.services.effort_score import _compute_effort_data
 
@@ -1690,7 +1712,8 @@ def _try_projected_effort_data(
         return None  # a hierarchy override applies to at least one soldier; the
                       # cache's precomputed windows assume one global date — defer
                       # to compute_effort_data's live, override-aware recompute.
-    planning_start = _burden_share_planning_start(session)
+    if planning_start is None:
+        planning_start = _burden_share_planning_start(session)
     projection_inputs = _projection_burden_share_inputs(
         session,
         soldiers=soldiers,
@@ -1954,6 +1977,7 @@ def _try_projected_transparency_rows(
         session,
         list(soldiers),
         prevalidated_readiness=prevalidated_readiness,
+        planning_start=planning_start,
     )
     if effort_map is None:
         return None

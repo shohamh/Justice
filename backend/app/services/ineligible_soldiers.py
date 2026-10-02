@@ -321,7 +321,40 @@ def count_ineligible_soldiers(
     as_of: date,
 ) -> int:
     """Count the same scoped eligibility results without loading list-only range details."""
-    return len(_ineligible_candidates(session, roots=roots, as_of=as_of).soldiers)
+    statement = select(Soldier).join(
+        HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id
+    )
+    scope_clause = _scope_clause(roots)
+    if scope_clause is not None:
+        statement = statement.where(scope_clause)
+    scoped_soldiers = session.execute(statement).scalars().all()
+    weapon_eligible_ids = _weapon_eligible_soldier_ids(
+        session, soldiers=scoped_soldiers, as_of=as_of
+    )
+    eligible_soldiers = [
+        soldier for soldier in scoped_soldiers if soldier.id in weapon_eligible_ids
+    ]
+    valid_qualifications = _valid_qualifications_by_soldier(
+        session, soldiers=eligible_soldiers, as_of=as_of
+    )
+    without_current_qualification = len(eligible_soldiers) - sum(
+        soldier.id in valid_qualifications for soldier in eligible_soldiers
+    )
+    qualified_ids = {soldier.id for soldier in eligible_soldiers if soldier.id in valid_qualifications}
+    if not qualified_ids:
+        return without_current_qualification
+
+    future_duties = _upcoming_weapon_duties_by_soldier(
+        session, soldier_ids=qualified_ids, as_of=as_of
+    )
+    duty_ids = [duty.assignment_id for duties in future_duties.values() for duty in duties]
+    duty_eligibility = project_duty_eligibility(
+        session, soldier_ids=list(qualified_ids), duty_ids=duty_ids, as_of=as_of
+    )
+    return without_current_qualification + sum(
+        any(not duty_eligibility[soldier_id, duty.assignment_id].eligible for duty in duties)
+        for soldier_id, duties in future_duties.items()
+    )
 
 
 def list_ineligible_soldiers(

@@ -506,6 +506,11 @@ class DutyAssignment(Base):
             "id",
             postgresql_where=sa.text("status = 'published'"),
         ),
+        sa.Index(
+            "ix_duty_assignments_status_end_date",
+            "status",
+            sa.text("end_date DESC"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

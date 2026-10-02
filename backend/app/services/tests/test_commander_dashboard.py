@@ -41,6 +41,49 @@ def _count_selects(session, fn):
     return result, count
 
 
+def _capture_selects(session, fn):
+    statements = []
+
+    def _capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement.lower())
+
+    event.listen(session.bind, "before_cursor_execute", _capture)
+    try:
+        result = fn()
+    finally:
+        event.remove(session.bind, "before_cursor_execute", _capture)
+    return result, statements
+
+
+def test_upcoming_reads_only_soldiers_attached_to_matching_assignments(admin_session):
+    node = create_node(admin_session, level="unit", name="upcoming_narrow_read_test")
+    create_soldier(admin_session, personal_number="7949001", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    result, statements = _capture_selects(
+        admin_session, lambda: upcoming_duties(admin_session, subtree_ids=[node.id], days=7)
+    )
+
+    assert result == []
+    assert len(statements) == 1
+    assert not any("select soldiers." in statement for statement in statements)
+
+
+def test_alerts_reads_only_score_and_display_soldier_columns(admin_session):
+    node = create_node(admin_session, level="unit", name="alerts_narrow_read_test")
+    create_soldier(admin_session, personal_number="7949002", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    _, statements = _capture_selects(
+        admin_session, lambda: alerts(admin_session, subtree_ids=[node.id])
+    )
+
+    soldier_reads = [statement for statement in statements if "from soldiers" in statement]
+    assert soldier_reads
+    assert all("soldiers.password_hash" not in statement for statement in soldier_reads)
+
+
 def test_summary_cards_counts_pending_approval_swaps(admin_session):
     node = create_node(admin_session, level="unit", name="pending_swap_test")
     soldier = create_soldier(admin_session, personal_number="7930001", hierarchy_node_id=node.id)
