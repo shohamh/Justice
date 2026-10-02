@@ -30,6 +30,13 @@ export interface NodeDTO {
   children?: NodeDTO[];
 }
 
+export type HierarchyNodeSummaryDTO = Pick<NodeDTO, "id" | "level" | "name">;
+
+export interface MyCommandScopeDTO {
+  commanded_nodes: HierarchyNodeSummaryDTO[];
+  assigned_node: HierarchyNodeSummaryDTO | null;
+}
+
 export interface NodeBranchPageDTO {
   items: NodeDTO[];
   next_cursor: string | null;
@@ -107,6 +114,34 @@ export async function fetchTree(): Promise<NodeDTO[]> {
 export async function fetchFullTree(): Promise<NodeDTO[]> {
   const data = (await api.get<unknown>("/hierarchy/tree", { params: { all: true } })).data;
   return optionalArrayResponse<NodeDTO>(data);
+}
+
+function parseHierarchyNodeSummary(value: unknown): HierarchyNodeSummaryDTO {
+  const summary = requiredObjectResponse(value, "Invalid hierarchy node summary");
+  if (
+    typeof summary.id !== "string" ||
+    typeof summary.level !== "string" ||
+    typeof summary.name !== "string"
+  ) {
+    throw new Error("Invalid hierarchy node summary");
+  }
+  return { id: summary.id, level: summary.level as NodeDTO["level"], name: summary.name };
+}
+
+export async function fetchMyCommandScope(): Promise<MyCommandScopeDTO> {
+  const payload = requiredObjectResponse(
+    (await api.get<unknown>("/hierarchy/my-command-scope")).data,
+    "Invalid hierarchy command scope response",
+  );
+  const commandedNodes = requiredArrayResponse<unknown>(
+    payload.commanded_nodes,
+    "Invalid hierarchy commanded nodes",
+  ).map(parseHierarchyNodeSummary);
+  const assignedNode =
+    payload.assigned_node === null
+      ? null
+      : parseHierarchyNodeSummary(payload.assigned_node);
+  return { commanded_nodes: commandedNodes, assigned_node: assignedNode };
 }
 
 export async function createNode(input: {

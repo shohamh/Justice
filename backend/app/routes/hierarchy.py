@@ -3,22 +3,28 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+import uuid as _uuid_mod
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, exists, func, or_, select, text as sql_text
+from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session, aliased
-
-import uuid as _uuid_mod
 
 from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import DutyManagerScope, HierarchyLevelType, HierarchyNode, Soldier, SystemSetting
+from app.db.models import (
+    DutyManagerScope,
+    HierarchyLevelType,
+    HierarchyNode,
+    Soldier,
+    SystemSetting,
+)
 from app.db.session import get_session
-from app.settings import get_settings
 from app.services import hierarchy as svc
+from app.settings import get_settings
 
 
 def _get_root_node_id(session: Session) -> uuid.UUID | None:
@@ -47,6 +53,17 @@ class NodeOut(BaseModel):
     can_edit: bool = False
     has_children: bool = False
     has_soldiers: bool = False
+
+
+class HierarchyNodeSummaryOut(BaseModel):
+    id: uuid.UUID
+    level: str
+    name: str
+
+
+class MyCommandScopeOut(BaseModel):
+    commanded_nodes: list[HierarchyNodeSummaryOut]
+    assigned_node: HierarchyNodeSummaryOut | None
 
 
 class NodeBranchPageOut(BaseModel):
@@ -359,7 +376,7 @@ def get_hierarchy_branch_page(
                 "key": last.sort_key,
                 "id": str(last[0].id),
                 "revision": revision,
-                "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+                "exp": datetime.now(UTC) + timedelta(hours=24),
             },
             settings.jwt_secret,
             algorithm=settings.jwt_algorithm,
@@ -546,6 +563,39 @@ def get_tree(
         user=user,
         child_ids=child_ids,
         soldier_node_ids=soldier_node_ids,
+    )
+
+
+@router.get("/my-command-scope", response_model=MyCommandScopeOut)
+def get_my_command_scope(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> MyCommandScopeOut:
+    scope_rows = session.execute(
+        select(
+            HierarchyNode.id,
+            HierarchyNode.level,
+            HierarchyNode.name,
+            HierarchyNode.commander_id,
+        ).where(
+            or_(
+                HierarchyNode.commander_id == user.id,
+                HierarchyNode.id == user.hierarchy_node_id,
+            )
+        )
+    ).all()
+    commanded_nodes: list[HierarchyNodeSummaryOut] = []
+    assigned_node = None
+    for row in scope_rows:
+        summary = HierarchyNodeSummaryOut(id=row.id, level=row.level, name=row.name)
+        if row.commander_id == user.id:
+            commanded_nodes.append(summary)
+        if row.id == user.hierarchy_node_id:
+            assigned_node = summary
+
+    return MyCommandScopeOut(
+        commanded_nodes=commanded_nodes,
+        assigned_node=assigned_node,
     )
 
 

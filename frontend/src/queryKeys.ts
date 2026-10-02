@@ -38,6 +38,8 @@ export const queryKeys = {
   pendingExemptionRequests: () => ["exemptionRequests", "pending"] as const,
   pendingFieldUpdates: () => ["soldiers", "pendingFieldUpdates"] as const,
   hierarchyTree: () => ["hierarchy", "tree"] as const,
+  myCommandScope: (soldierId: string | null, authorizationScope: string | null) =>
+    ["hierarchy", "myCommandScope", soldierId, authorizationScope] as const,
   hierarchyBranches: (scopeKey?: unknown) =>
     scopeKey === undefined ? (["hierarchy", "branches"] as const) : (["hierarchy", "branches", scopeKey] as const),
   hierarchyBranch: (scopeKey: unknown, parentId: string | null) =>

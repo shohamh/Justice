@@ -40,7 +40,7 @@ import { getRangePage } from "../api/ranges";
 import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
 import { listPendingTransferRequests } from "../api/hierarchyTransfers";
 import { lastDutyDay } from "../utils/formatDate";
-import { fetchFullTree } from "../api/hierarchy";
+import { fetchMyCommandScope } from "../api/hierarchy";
 import {
   getAlerts as getCommandAlerts,
   getPotential as getCommandPotential,
@@ -135,40 +135,50 @@ export default function HomePage() {
     retry: false,
   });
 
-  const commandNodesQuery = useQuery({
-    queryKey: [...queryKeys.hierarchyTree(), authorizationScope],
-    queryFn: fetchFullTree,
+  const commandScopeQuery = useQuery({
+    queryKey: queryKeys.myCommandScope(user?.id ?? null, authorizationScope),
+    queryFn: fetchMyCommandScope,
     enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
-  const commandNodes = useMemo(() => commandNodesQuery.data ?? [], [commandNodesQuery.data]);
   const commandNodesOwnedByUser = useMemo(
-    () => commandNodes.filter((node) => node.commander_id === user?.id),
-    [commandNodes, user],
+    () => commandScopeQuery.data?.commanded_nodes ?? [],
+    [commandScopeQuery.data],
   );
+  const assignedNodeFallbackActive =
+    commandNodesOwnedByUser.length === 0 &&
+    commandScopeAvailable &&
+    !!user?.hierarchy_node_id &&
+    (user.role === "admin" || user.role === "duty_manager" || user.is_duty_manager);
+  const assignedNodeFallback =
+    assignedNodeFallbackActive &&
+    commandScopeQuery.data?.assigned_node?.id === user?.hierarchy_node_id
+      ? commandScopeQuery.data.assigned_node
+      : null;
   const commandCalendarNodeIds = useMemo(() => {
     if (commandNodesOwnedByUser.length > 0) {
       return commandNodesOwnedByUser.map((node) => node.id);
     }
-    if (
-      commandScopeAvailable &&
-      user?.hierarchy_node_id &&
-      (user.role === "admin" || user.role === "duty_manager" || user.is_duty_manager)
-    ) {
+    if (assignedNodeFallbackActive && user?.hierarchy_node_id) {
       return [user.hierarchy_node_id];
     }
     return [];
-  }, [commandNodesOwnedByUser, commandScopeAvailable, user]);
+  }, [commandNodesOwnedByUser, assignedNodeFallbackActive, user]);
 
   const { levelTypes } = useLevelTypes();
   const commandScopeLabel = useMemo(() => {
-    const scopeNodes = commandNodes.filter((node) => commandCalendarNodeIds.includes(node.id));
+    const scopeNodes =
+      commandNodesOwnedByUser.length > 0
+        ? commandNodesOwnedByUser
+        : assignedNodeFallback
+          ? [assignedNodeFallback]
+          : [];
     if (scopeNodes.length === 0) return undefined;
     const labelByKey = new Map(levelTypes.map((lt) => [lt.key, lt.label]));
     const uniqueLabels = Array.from(
       new Set(scopeNodes.map((node) => labelByKey.get(node.level) ?? node.level)),
     );
     return `${joinHebrewList(uniqueLabels.map((label) => `ה${label}`))} שבאחריותך`;
-  }, [commandNodes, commandCalendarNodeIds, levelTypes]);
+  }, [commandNodesOwnedByUser, assignedNodeFallback, levelTypes]);
 
   const commandAlertsQuery = useQuery({
     queryKey: [...queryKeys.commandDashboardAlerts(), authorizationScope],
@@ -424,7 +434,7 @@ export default function HomePage() {
       id: "calendar",
       title: t("command_dashboard.calendar"),
       content: (
-        <QueryState label={t("command_dashboard.calendar")} isPending={commandNodesQuery.isPending} isError={commandNodesQuery.isError} onRetry={() => commandNodesQuery.refetch()}>
+        <QueryState label={t("command_dashboard.calendar")} isPending={commandScopeQuery.isPending} isError={commandScopeQuery.isError} onRetry={() => commandScopeQuery.refetch()}>
           {commandCalendarNodeIds.length > 0 ? (
             <UnitCalendar nodeIds={commandCalendarNodeIds} scope="command" highlightSoldierId={user?.id} />
           ) : null}
@@ -491,17 +501,17 @@ export default function HomePage() {
           <QueryState
             label={t("command_dashboard.own_potential")}
             isPending={
-              commandNodesQuery.isPending ||
-              commandNodesQuery.isFetching ||
-              (!commandNodesQuery.isSuccess && !commandNodesQuery.isError) ||
+              commandScopeQuery.isPending ||
+              commandScopeQuery.isFetching ||
+              (!commandScopeQuery.isSuccess && !commandScopeQuery.isError) ||
               ownPotentialQueries.some((query) => query.isPending || query.isFetching)
             }
             isError={
-              commandNodesQuery.isError || ownPotentialQueries.some((query) => query.isError)
+              commandScopeQuery.isError || ownPotentialQueries.some((query) => query.isError)
             }
             onRetry={() =>
               Promise.all([
-                commandNodesQuery.refetch(),
+                commandScopeQuery.refetch(),
                 ...ownPotentialQueries.map((query) => query.refetch()),
               ])
             }
