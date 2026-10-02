@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import and_, func, null, or_, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from app.services.sql_arrays import uuid_any
 
@@ -216,28 +217,29 @@ def _mark_dirty_bucket(
     old_node_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] | set[uuid.UUID] = (),
     new_node_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] | set[uuid.UUID] = (),
 ) -> ScoreProjectionDirtyBucket:
+    # Create-if-missing without a select-then-insert race (two first writers
+    # for one bucket used to both INSERT and one died on
+    # uq_score_projection_dirty_bucket), then lock the row so concurrent
+    # rebuilds of one bucket are serialized.
+    session.execute(
+        pg_insert(ScoreProjectionDirtyBucket)
+        .values(soldier_id=soldier_id, quarter_start=quarter_start_value, status="dirty")
+        .on_conflict_do_nothing(index_elements=["soldier_id", "quarter_start"])
+    )
     dirty = session.execute(
-        select(ScoreProjectionDirtyBucket).where(
+        select(ScoreProjectionDirtyBucket)
+        .where(
             ScoreProjectionDirtyBucket.soldier_id == soldier_id,
             ScoreProjectionDirtyBucket.quarter_start == quarter_start_value,
         )
-    ).scalar_one_or_none()
-    if dirty is None:
-        dirty = ScoreProjectionDirtyBucket(
-            soldier_id=soldier_id,
-            quarter_start=quarter_start_value,
-            status="dirty",
-            old_node_ids=[str(node_id) for node_id in old_node_ids],
-            new_node_ids=[str(node_id) for node_id in new_node_ids],
-            divergence=null(),
-        )
-        session.add(dirty)
-    else:
-        dirty.status = "dirty"
-        dirty.old_node_ids = _merge_node_ids(dirty.old_node_ids, old_node_ids)
-        dirty.new_node_ids = _merge_node_ids(dirty.new_node_ids, new_node_ids)
-        dirty.divergence = null()
-        dirty.updated_at = _utcnow()
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+    dirty.status = "dirty"
+    dirty.old_node_ids = _merge_node_ids(dirty.old_node_ids, old_node_ids)
+    dirty.new_node_ids = _merge_node_ids(dirty.new_node_ids, new_node_ids)
+    dirty.divergence = null()
+    dirty.updated_at = _utcnow()
     session.flush()
     return dirty
 
@@ -722,30 +724,49 @@ def _rows_for_quarter(
     )
 
 
+def _lock_or_create_row(session: Session, model, key_column, key_value, defaults: dict[str, Any]):
+    """INSERT the row if missing (ON CONFLICT DO NOTHING), then lock it.
+
+    Replaces select-then-insert: two first writers no longer both INSERT and
+    fail on the primary key, and taking the lock *before* the caller computes
+    the new values means a concurrent writer recomputes after this one commits
+    instead of overwriting it with values computed from a stale read.
+    """
+    session.execute(
+        pg_insert(model)
+        .values({key_column.key: key_value, **defaults})
+        .on_conflict_do_nothing(index_elements=[key_column.key])
+    )
+    return session.execute(
+        select(model)
+        .where(key_column == key_value)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+
+
+def _zero_totals() -> dict[str, Any]:
+    return {
+        "projection_version": SCORE_PROJECTION_CANONICAL_VERSION,
+        "duty_score": Decimal("0"),
+        "adjustment_score": Decimal("0"),
+    }
+
+
 def _upsert_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> SoldierScoreProjection:
+    projection = _lock_or_create_row(
+        session, SoldierScoreProjection, SoldierScoreProjection.soldier_id, soldier_id,
+        {**_zero_totals(), "cumulative_score": Decimal("0"), "shift_count": 0},
+    )
     want = _expected_soldier_totals_by_id(session, {soldier_id})[soldier_id]
     duty_score = _q6(want["duty_score"])
     adjustment_score = _q6(want["adjustment_score"])
-    cumulative_score = _q6(duty_score + adjustment_score)
-    shift_count = int(want["shift_count"])
-    projection = session.get(SoldierScoreProjection, soldier_id)
-    if projection is None:
-        projection = SoldierScoreProjection(
-            soldier_id=soldier_id,
-            projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
-            duty_score=duty_score,
-            adjustment_score=adjustment_score,
-            cumulative_score=cumulative_score,
-            shift_count=shift_count,
-        )
-        session.add(projection)
-    else:
-        projection.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
-        projection.duty_score = duty_score
-        projection.adjustment_score = adjustment_score
-        projection.cumulative_score = cumulative_score
-        projection.shift_count = shift_count
-        projection.updated_at = _utcnow()
+    projection.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
+    projection.duty_score = duty_score
+    projection.adjustment_score = adjustment_score
+    projection.cumulative_score = _q6(duty_score + adjustment_score)
+    projection.shift_count = int(want["shift_count"])
+    projection.updated_at = _utcnow()
     session.flush()
     return projection
 
@@ -766,30 +787,23 @@ def _quarter_sums(session: Session, *, quarter_start_value: date) -> tuple[int, 
 def _upsert_quarter_total(
     session: Session, *, quarter_start_value: date
 ) -> ScoreProjectionQuarterTotal:
+    # Lock (creating if needed) before summing: the sums must include every
+    # concurrent writer's committed partition rows, or the total drifts.
+    projection = _lock_or_create_row(
+        session, ScoreProjectionQuarterTotal, ScoreProjectionQuarterTotal.quarter_start, quarter_start_value,
+        {**_zero_totals(), "raw_day_count": 0, "effective_weighted_days": Decimal("0"), "total_score": Decimal("0")},
+    )
     raw_day_count, effective_weighted_days, duty_score, adjustment_score = _quarter_sums(
         session, quarter_start_value=quarter_start_value
     )
     total_score = Decimal(duty_score) + Decimal(adjustment_score)
-    projection = session.get(ScoreProjectionQuarterTotal, quarter_start_value)
-    if projection is None:
-        projection = ScoreProjectionQuarterTotal(
-            quarter_start=quarter_start_value,
-            projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
-            raw_day_count=raw_day_count,
-            effective_weighted_days=_q6(effective_weighted_days),
-            duty_score=_q6(duty_score),
-            adjustment_score=_q6(adjustment_score),
-            total_score=_q6(total_score),
-        )
-        session.add(projection)
-    else:
-        projection.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
-        projection.raw_day_count = raw_day_count
-        projection.effective_weighted_days = _q6(effective_weighted_days)
-        projection.duty_score = _q6(duty_score)
-        projection.adjustment_score = _q6(adjustment_score)
-        projection.total_score = _q6(total_score)
-        projection.updated_at = _utcnow()
+    projection.projection_version = SCORE_PROJECTION_CANONICAL_VERSION
+    projection.raw_day_count = raw_day_count
+    projection.effective_weighted_days = _q6(effective_weighted_days)
+    projection.duty_score = _q6(duty_score)
+    projection.adjustment_score = _q6(adjustment_score)
+    projection.total_score = _q6(total_score)
+    projection.updated_at = _utcnow()
     session.flush()
     return projection
 

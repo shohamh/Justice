@@ -17,13 +17,18 @@ or read-compute-write without a lock:
 
 Schedules (two independent sessions = two requests), each meeting right after
 the contested read.
+
+Fixed (Task 4): the three helpers create the row with ``INSERT ... ON CONFLICT
+DO NOTHING`` and then lock it ``FOR UPDATE`` *before* computing the new values
+(``_lock_or_create_row``). The second writer waits for the first to commit,
+so the first's rendezvous times out, and the second then recomputes from the
+committed rows.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -76,7 +81,6 @@ def _race_two_assignments(race, s1_id, s2_id, dt_id, loc_id):
     return race.run(create(s1_id), create(s2_id))
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="O1: first quarter-total insert is select-then-insert")
 def test_first_two_writes_in_a_quarter_both_succeed(race, admin_session):
     s1 = create_soldier(admin_session, personal_number="race-proj-q1")
     s2 = create_soldier(admin_session, personal_number="race-proj-q2")
@@ -88,7 +92,6 @@ def test_first_two_writes_in_a_quarter_both_succeed(race, admin_session):
     assert all(o.ok for o in outcomes), outcomes
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="O1: quarter total is computed before the row is locked")
 def test_concurrent_refreshes_keep_the_quarter_total_equal_to_its_rows(race, admin_session):
     s1 = create_soldier(admin_session, personal_number="race-proj-l1")
     s2 = create_soldier(admin_session, personal_number="race-proj-l2")
@@ -113,7 +116,6 @@ def test_concurrent_refreshes_keep_the_quarter_total_equal_to_its_rows(race, adm
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="O1: first dirty-bucket insert is select-then-insert")
 def test_first_two_refreshes_of_one_soldier_bucket_both_succeed(race, admin_session):
     soldier = create_soldier(admin_session, personal_number="race-proj-b")
     admin = create_soldier(admin_session, personal_number="race-proj-b-admin", role="admin")
