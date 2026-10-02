@@ -55,6 +55,7 @@ from app.routes import import_sessions as import_sessions_routes
 from app.routes import invite_codes as invite_code_routes
 from app.routes import me as me_routes
 from app.routes import my_requests as my_request_routes
+from app.routes import nav_counts as nav_count_routes
 from app.routes import no_show as no_show_routes
 from app.routes import notifications as notification_routes
 from app.routes import potential as potential_routes
@@ -233,6 +234,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router, prefix="/api")
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(my_request_routes.router, prefix="/api")
+    app.include_router(nav_count_routes.router, prefix="/api")
     app.include_router(hierarchy_routes.router, prefix="/api")
     app.include_router(hierarchy_transfer_routes.router, prefix="/api")
     app.include_router(hr_activation_routes.router, prefix="/api")

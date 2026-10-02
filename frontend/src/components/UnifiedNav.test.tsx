@@ -2,14 +2,17 @@ import { render as testingLibraryRender, screen, fireEvent, waitFor } from "@tes
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import UnifiedNav, { aggregateBadgeCounts } from "./UnifiedNav";
 
+const mockLocation = vi.hoisted(() => ({ pathname: "/" }));
+
 function render(ui: React.ReactElement) {
-  return testingLibraryRender(
-    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
-  );
+  const queryClient = new QueryClient();
+  return testingLibraryRender(ui, {
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 }
 
 vi.mock("react-router-dom", () => ({
-  useLocation: () => ({ pathname: "/" }),
+  useLocation: () => mockLocation,
   Link: ({ to, children, className, ...props }: { to: string; children: React.ReactNode; className?: string; [key: string]: unknown }) => (
     <a href={to} className={className} {...props}>{children}</a>
   ),
@@ -27,6 +30,11 @@ vi.mock("../auth/AuthContext", () => ({
 const mockUsePublicSettings = vi.fn(() => ({} as Record<string, unknown> | null));
 vi.mock("../hooks/usePublicSettings", () => ({
   usePublicSettings: () => mockUsePublicSettings(),
+}));
+
+const mockGetNavCounts = vi.fn(() => Promise.resolve({ approvals: 0, hakpaza: 0, incoming_swaps: 0 }));
+vi.mock("../api/navCounts", () => ({
+  getNavCounts: (...args: unknown[]) => mockGetNavCounts(...args),
 }));
 
 vi.mock("../api/constraints", () => ({
@@ -113,8 +121,11 @@ function job(status: string, mode: string, error_message: string | null = null, 
 }
 
 beforeEach(() => {
+  mockLocation.pathname = "/";
   mockGetIneligibleSoldierCount.mockReset();
   mockGetIneligibleSoldierCount.mockResolvedValue({ count: 0 });
+  mockGetNavCounts.mockReset();
+  mockGetNavCounts.mockResolvedValue({ approvals: 0, hakpaza: 0, incoming_swaps: 0 });
   mockListJobs.mockReset();
   mockListJobs.mockResolvedValue({ items: [], total: 0 });
   mockUsePublicSettings.mockReset();
@@ -187,12 +198,52 @@ describe("UnifiedNav — commander role", () => {
   });
 
   test("shows pending badge on commander tab when approvals pending", async () => {
-    const { getPendingCount } = await import("../api/constraints");
-    vi.mocked(getPendingCount).mockResolvedValueOnce(3);
+    mockGetNavCounts.mockResolvedValueOnce({ approvals: 3, hakpaza: 0, incoming_swaps: 0 });
     render(<UnifiedNav />);
     await waitFor(() => {
-      expect(screen.getAllByTestId("pending-badge").length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId("pending-badge").some((badge) => badge.textContent === "3")).toBe(true);
     });
+  });
+
+  test("uses one count-only response for approvals, Hakpaza, and incoming swaps", async () => {
+    mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": true });
+    mockGetNavCounts.mockResolvedValueOnce({ approvals: 5, hakpaza: 2, incoming_swaps: 4 });
+    render(<UnifiedNav />);
+
+    await waitFor(() => expect(mockGetNavCounts).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByTestId("pending-badge").some((badge) => badge.textContent === "7")).toBe(true);
+    expect(screen.getAllByTestId("pending-badge").some((badge) => badge.textContent === "4")).toBe(true);
+
+    fireEvent.click(screen.getAllByTestId("nav-commander")[0]);
+    expect(screen.getByTestId("nav-approvals-badge")).toHaveTextContent("5");
+    expect(screen.getByTestId("nav-hakpaza-badge")).toHaveTextContent("2");
+
+    const [constraints, exemptions, soldiers, swaps, enrollment, hakpaza] = await Promise.all([
+      import("../api/constraints"),
+      import("../api/exemptions"),
+      import("../api/soldiers"),
+      import("../api/swaps"),
+      import("../api/enrollment"),
+      import("../api/hakpaza"),
+    ]);
+    expect(constraints.getPendingCount).not.toHaveBeenCalled();
+    expect(exemptions.getPendingExemptionCount).not.toHaveBeenCalled();
+    expect(soldiers.getPendingFieldUpdateCount).not.toHaveBeenCalled();
+    expect(swaps.getIncomingSwapCount).not.toHaveBeenCalled();
+    expect(swaps.listPendingSwaps).not.toHaveBeenCalled();
+    expect(enrollment.listPendingEnrollments).not.toHaveBeenCalled();
+    expect(mockListPendingTransferRequests).not.toHaveBeenCalled();
+    expect(hakpaza.getPendingHakpazaCount).not.toHaveBeenCalled();
+  });
+
+  test("refreshes aggregate counts after the route-settle gate on pathname changes", async () => {
+    const view = render(<UnifiedNav />);
+    await waitFor(() => expect(mockGetNavCounts).toHaveBeenCalledTimes(1));
+
+    mockLocation.pathname = "/approvals";
+    view.rerender(<UnifiedNav />);
+
+    await waitFor(() => expect(mockGetNavCounts).toHaveBeenCalledTimes(2));
   });
 });
 
@@ -299,10 +350,7 @@ describe("UnifiedNav — algorithm badge color", () => {
   });
 
   test("includes pending hierarchy transfers in the commander badge", async () => {
-    mockListPendingTransferRequests.mockResolvedValue([
-      { id: "tr-1", soldier_id: "s-1", soldier_name: "Soldier 1", from_node_id: "n-1", to_node_id: "n-2", status: "pending", reason: null },
-      { id: "tr-2", soldier_id: "s-2", soldier_name: "Soldier 2", from_node_id: "n-1", to_node_id: "n-3", status: "pending", reason: "needed" },
-    ]);
+    mockGetNavCounts.mockResolvedValueOnce({ approvals: 2, hakpaza: 0, incoming_swaps: 0 });
     render(<UnifiedNav />);
     await waitFor(() => {
       expect(screen.getAllByTestId("pending-badge").some((badge) => badge.textContent === "2")).toBe(true);

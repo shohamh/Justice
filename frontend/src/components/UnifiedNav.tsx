@@ -9,13 +9,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { getTransparencyAuthorizationScope } from "../api/auth";
 import { usePublicSettings } from "../hooks/usePublicSettings";
-import { getPendingCount } from "../api/constraints";
-import { getPendingExemptionCount } from "../api/exemptions";
-import { getPendingFieldUpdateCount } from "../api/soldiers";
-import { getIncomingSwapCount, isSwapActionableForUser, listPendingSwaps } from "../api/swaps";
-import { listPendingEnrollments } from "../api/enrollment";
-import { listPendingTransferRequests } from "../api/hierarchyTransfers";
-import { getPendingHakpazaCount } from "../api/hakpaza";
+import { getNavCounts } from "../api/navCounts";
 import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
 import { queryKeys } from "../queryKeys";
 import { listJobs } from "../api/algorithm";
@@ -90,13 +84,13 @@ export default function UnifiedNav() {
   });
   const [settledNavRequestKey, setSettledNavRequestKey] = useState("");
   const navReadsEnabled = settledNavRequestKey === navRequestKey;
-  const [approvalBadgeData, setApprovalBadgeData] = useState({
-    scopeKey: "",
-    approvals: 0,
-    hakpaza: 0,
-  });
-  const [incomingSwapBadgeData, setIncomingSwapBadgeData] = useState({ scopeKey: "", count: 0 });
   const { seenIds, seedSeenIds } = useSeenJobs();
+  const navCountsQuery = useQuery({
+    queryKey: queryKeys.navCounts(navScopeKey, hakpazaEnabled, location.pathname),
+    queryFn: getNavCounts,
+    enabled: navReadsEnabled && Boolean(user),
+    retry: false,
+  });
   const ineligibleCountQuery = useQuery({
     queryKey: [...queryKeys.ineligibleSoldierCount(), navScopeKey],
     queryFn: () => getIneligibleSoldierCount(),
@@ -108,13 +102,15 @@ export default function UnifiedNav() {
     scopeKey: "",
     jobs: [] as RunBadgeJob[],
   });
-  const algorithmJobs = algorithmBadgeData.scopeKey === navScopeKey ? algorithmBadgeData.jobs : [];
-  const approvalsPendingCount = approvalBadgeData.scopeKey === navScopeKey ? approvalBadgeData.approvals : 0;
-  const hakpazaPendingCount = approvalBadgeData.scopeKey === navScopeKey ? approvalBadgeData.hakpaza : 0;
-  const swapIncomingCount = incomingSwapBadgeData.scopeKey === navScopeKey ? incomingSwapBadgeData.count : 0;
+  const approvalsPendingCount = navCountsQuery.data?.approvals ?? 0;
+  const hakpazaPendingCount = navCountsQuery.data?.hakpaza ?? 0;
+  const swapIncomingCount = navCountsQuery.data?.incoming_swaps ?? 0;
   const algorithmCounts = useMemo(
-    () => computeRunBadgeCounts(algorithmJobs, seenIds),
-    [algorithmJobs, seenIds]
+    () => computeRunBadgeCounts(
+      algorithmBadgeData.scopeKey === navScopeKey ? algorithmBadgeData.jobs : [],
+      seenIds
+    ),
+    [algorithmBadgeData, navScopeKey, seenIds]
   );
   const algorithmBadgeCount = algorithmCounts.running + algorithmCounts.draft + algorithmCounts.done + algorithmCounts.failed;
   const algorithmBadgeColor = pickBadgeColor(algorithmCounts);
@@ -134,41 +130,6 @@ export default function UnifiedNav() {
     return () => window.clearTimeout(timer);
   }, [navRequestKey]);
 
-  useEffect(() => {
-    if (!canApprove || !navReadsEnabled) return;
-    let active = true;
-    void (async () => {
-      const [c, e, f, enroll, hk, swaps, transfers] = await Promise.all([
-        getPendingCount().catch(() => 0),
-        getPendingExemptionCount().catch(() => 0),
-        getPendingFieldUpdateCount().catch(() => 0),
-        listPendingEnrollments().then((r) => r.length).catch(() => 0),
-        getPendingHakpazaCount().catch(() => 0),
-        listPendingSwaps().then((rows) => rows.filter((swap) => isSwapActionableForUser(swap, user?.id, user?.role === "admin")).length).catch(() => 0),
-        listPendingTransferRequests().then((rows) => rows.length).catch(() => 0),
-      ]);
-      // Hakpaza lives on its own page (/commander/hakpaza), not one of the
-      // ApprovalsPage tabs, so it must stay out of the "אישור בקשות" badge —
-      // otherwise that badge would count items the page itself never shows.
-      if (!active) return;
-      setApprovalBadgeData({
-        scopeKey: navScopeKey,
-        approvals: c + e + f + enroll + swaps + transfers,
-        hakpaza: hk,
-      });
-    })();
-    return () => { active = false; };
-  }, [canApprove, navReadsEnabled, navScopeKey, location.pathname]);
-
-  useEffect(() => {
-    if (!navReadsEnabled) return;
-    let active = true;
-    void (async () => {
-      const count = await getIncomingSwapCount().catch(() => 0);
-      if (active) setIncomingSwapBadgeData({ scopeKey: navScopeKey, count });
-    })();
-    return () => { active = false; };
-  }, [navReadsEnabled, navScopeKey, location.pathname]);
 
   useEffect(() => {
     if (!canPlan || !navReadsEnabled) return;
