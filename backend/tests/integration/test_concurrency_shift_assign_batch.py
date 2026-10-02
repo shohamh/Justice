@@ -26,7 +26,6 @@ from app.db.models import (
     ScoreProjectionQuarterTotal,
     Soldier,
 )
-from app.routes import shifts as shifts_routes
 from app.services import assignments as assignments_service
 from tests.helpers import create_node, create_soldier
 
@@ -59,6 +58,10 @@ def _seed(session, *, required_count: int):
 
 
 def _race_two_batches(race, monkeypatch, shift_id, admin_id, s1_id, s2_id):
+    # Imported lazily so route-module import side effects (shared rate limiter
+    # bound to the Redis URL) run after the Redis test-container fixture.
+    from app.routes import shifts as shifts_routes
+
     after_capacity_check = race.rendezvous(2, "both requests passed the capacity check")
     real_create = assignments_service.create_assignment
 
