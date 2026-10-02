@@ -370,6 +370,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_shift_generation": "duty",
     "test_shifts_routes": "duty",
     "test_shifts_service": "duty",
+    "test_concurrency_shift_batch_lock_order": "duty",
     "test_swap_eligibility": "duty",
     "test_swap_targets": "duty",
     "test_swaps": "duty",
