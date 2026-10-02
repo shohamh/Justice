@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from exchangelib import (
@@ -24,8 +25,8 @@ from exchangelib import (
 from exchangelib.errors import ErrorItemNotFound
 from exchangelib.protocol import BaseProtocol
 
-from app.services.exchange_calendar.projection import CalendarSnapshot
 from app.services.exchange_calendar.lease import assert_lease_owned
+from app.services.exchange_calendar.projection import CalendarSnapshot
 from app.services.exchange_calendar.rate_limiter import RateLimitedHTTPAdapter
 
 
@@ -94,8 +95,25 @@ class _ExchangeStore:
         item.save(send_meeting_invitations="SendToAllAndSaveCopy")
         return item
 
-    def update(self, item: CalendarItem):
-        item.save(send_meeting_invitations="SendToAllAndSaveCopy")
+    def update(self, item: CalendarItem, update_fields: list[str]):
+        attendee_fields = [
+            field for field in update_fields
+            if field in {"required_attendees", "optional_attendees"}
+        ]
+        meeting_fields = [field for field in update_fields if field not in attendee_fields]
+        if meeting_fields and attendee_fields:
+            # Save attendee changes without notifications first, then send one
+            # meeting update with the complete current event to all attendees.
+            item.save(update_fields=attendee_fields, send_meeting_invitations="SendToNone")
+            item.save(
+                update_fields=meeting_fields,
+                send_meeting_invitations="SendToAllAndSaveCopy",
+            )
+        else:
+            item.save(
+                update_fields=update_fields,
+                send_meeting_invitations="SendToAllAndSaveCopy",
+            )
         return item
 
     def delete(self, item: CalendarItem):
@@ -121,35 +139,92 @@ class ExchangeCalendarClient:
         return EWSDateTime.from_datetime(value).astimezone(ISRAEL_EWS)
 
     @staticmethod
-    def _fill(item: CalendarItem, snapshot: CalendarSnapshot) -> None:
-        item.subject = snapshot.subject
-        item.start = ExchangeCalendarClient._time(snapshot.start)
-        item.end = ExchangeCalendarClient._time(snapshot.end)
-        item.is_all_day = snapshot.all_day
-        item.location = snapshot.location
-        item.body = snapshot.body
-        item.required_attendees = [
+    def _same_time(remote: object, local: datetime) -> bool:
+        if not isinstance(remote, datetime) or remote.tzinfo is None:
+            return False
+        # EWS readbacks may drop subsecond precision.
+        remote_time = remote.astimezone(ISRAEL_EWS).replace(microsecond=0)
+        local_time = ExchangeCalendarClient._time(local).replace(microsecond=0)
+        return remote_time == local_time
+
+    @staticmethod
+    def _attendee_emails(attendees) -> list[str]:
+        return sorted(
+            attendee.mailbox.email_address.strip().lower()
+            for attendee in (attendees or ())
+        )
+
+    @staticmethod
+    def _fill(item: CalendarItem, snapshot: CalendarSnapshot) -> list[str]:
+        changed_fields = []
+        if item.subject != snapshot.subject:
+            item.subject = snapshot.subject
+            changed_fields.append("subject")
+
+        if snapshot.all_day:
+            start_date = snapshot.start.astimezone(ISRAEL_EWS).date()
+            end_date = snapshot.end.astimezone(ISRAEL_EWS).date() - timedelta(days=1)
+            start_matches = (
+                isinstance(item.start, date) and not isinstance(item.start, datetime)
+                and item.start == start_date
+            )
+            end_matches = (
+                isinstance(item.end, date) and not isinstance(item.end, datetime)
+                and item.end == end_date
+            )
+        else:
+            start_matches = ExchangeCalendarClient._same_time(item.start, snapshot.start)
+            end_matches = ExchangeCalendarClient._same_time(item.end, snapshot.end)
+
+        if not start_matches:
+            item.start = ExchangeCalendarClient._time(snapshot.start)
+            changed_fields.append("start")
+        if not end_matches:
+            item.end = ExchangeCalendarClient._time(snapshot.end)
+            changed_fields.append("end")
+        if bool(item.is_all_day) != snapshot.all_day:
+            item.is_all_day = snapshot.all_day
+            changed_fields.append("is_all_day")
+        if (item.location or "") != snapshot.location:
+            item.location = snapshot.location
+            changed_fields.append("location")
+        if str(item.body or "") != snapshot.body:
+            item.body = snapshot.body
+            changed_fields.append("body")
+
+        required_attendees = [
             Attendee(mailbox=Mailbox(name=a.display_name, email_address=a.email))
             for a in snapshot.attendees if a.required
         ]
-        item.optional_attendees = [
+        optional_attendees = [
             Attendee(mailbox=Mailbox(name=a.display_name, email_address=a.email))
             for a in snapshot.attendees if not a.required
         ]
-        item.justice_source_key = snapshot.source_key
+        expected_required = sorted(a.email.strip().lower() for a in snapshot.attendees if a.required)
+        expected_optional = sorted(a.email.strip().lower() for a in snapshot.attendees if not a.required)
+        if ExchangeCalendarClient._attendee_emails(item.required_attendees) != expected_required:
+            item.required_attendees = required_attendees
+            changed_fields.append("required_attendees")
+        if ExchangeCalendarClient._attendee_emails(item.optional_attendees) != expected_optional:
+            item.optional_attendees = optional_attendees
+            changed_fields.append("optional_attendees")
+        if item.justice_source_key != snapshot.source_key:
+            item.justice_source_key = snapshot.source_key
+            changed_fields.append("justice_source_key")
+        return changed_fields
 
     def upsert(
         self, snapshot: CalendarSnapshot, existing_item_id: str | None,
         existing_change_key: str | None,
     ) -> ExchangeItemRef:
-        # Always search before create. A previous CreateItem may have succeeded
-        # even when persisting its new ID in Justice failed.
-        item = self.store.find(snapshot.source_key)
-        if item is None and existing_item_id:
-            try:
+        # Prefer a fresh read by the persisted ID. The stable-key search is
+        # still needed to recover a CreateItem whose ID was never committed.
+        item = None
+        if existing_item_id:
+            with suppress(ErrorItemNotFound):
                 item = self.store.get(existing_item_id)
-            except ErrorItemNotFound:
-                item = None
+        if item is None:
+            item = self.store.find(snapshot.source_key)
         if item is None:
             assert_lease_owned()
             item = CalendarItem()
@@ -158,9 +233,12 @@ class ExchangeCalendarClient:
             action = "created"
         else:
             assert_lease_owned()
-            self._fill(item, snapshot)
-            item = self.store.update(item)
-            action = "updated"
+            update_fields = self._fill(item, snapshot)
+            if update_fields:
+                item = self.store.update(item, update_fields)
+                action = "updated"
+            else:
+                action = "unchanged"
         return ExchangeItemRef(item_id=item.id, change_key=item.changekey, action=action)
 
     def matches(self, snapshot: CalendarSnapshot, item_id: str) -> bool:
@@ -171,19 +249,6 @@ class ExchangeCalendarClient:
             return False
         if item is None:
             return False
-
-        def emails(attendees):
-            return sorted(
-                attendee.mailbox.email_address.strip().lower()
-                for attendee in (attendees or ())
-            )
-
-        def same_time(remote: object, local: datetime) -> bool:
-            return (
-                isinstance(remote, datetime)
-                and remote.tzinfo is not None
-                and remote.astimezone(UTC) == local.astimezone(UTC)
-            )
 
         if snapshot.all_day:
             # exchangelib parses GetItem all-day boundaries as dates, with an
@@ -196,8 +261,9 @@ class ExchangeCalendarClient:
                 and item.start == start_date and item.end == end_date
             )
         else:
-            times_match = same_time(item.start, snapshot.start) and same_time(
-                item.end, snapshot.end
+            times_match = (
+                ExchangeCalendarClient._same_time(item.start, snapshot.start)
+                and ExchangeCalendarClient._same_time(item.end, snapshot.end)
             )
 
         return (
@@ -207,19 +273,19 @@ class ExchangeCalendarClient:
             and bool(item.is_all_day) == snapshot.all_day
             and (item.location or "") == snapshot.location
             and str(item.body or "") == snapshot.body
-            and emails(item.required_attendees)
-            == sorted(a.email for a in snapshot.attendees if a.required)
-            and emails(item.optional_attendees)
-            == sorted(a.email for a in snapshot.attendees if not a.required)
+            and ExchangeCalendarClient._attendee_emails(item.required_attendees)
+            == sorted(a.email.strip().lower() for a in snapshot.attendees if a.required)
+            and ExchangeCalendarClient._attendee_emails(item.optional_attendees)
+            == sorted(a.email.strip().lower() for a in snapshot.attendees if not a.required)
         )
 
     def cancel(self, source_key: str, item_id: str | None) -> None:
-        item = self.store.find(source_key)
-        if item is None and item_id:
-            try:
+        item = None
+        if item_id:
+            with suppress(ErrorItemNotFound):
                 item = self.store.get(item_id)
-            except ErrorItemNotFound:
-                return
+        if item is None:
+            item = self.store.find(source_key)
         if item is not None:
             try:
                 assert_lease_owned()

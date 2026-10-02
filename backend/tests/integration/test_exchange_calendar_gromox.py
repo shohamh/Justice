@@ -18,12 +18,16 @@ def _exercise_meeting_lifecycle(client, snapshot):
         created = client.upsert(snapshot, None, None)
         latest_id = created.item_id
         assert client.matches(snapshot, latest_id)
-        updated = replace(
-            snapshot,
-            subject=snapshot.subject + " updated",
-            body=snapshot.body + " updated",
-            content_hash=snapshot.content_hash + "-updated",
-        )
+        update_values = {
+            "subject": snapshot.subject + " updated",
+            "body": snapshot.body + " updated",
+            "content_hash": snapshot.content_hash + "-updated",
+        }
+        if hasattr(snapshot, "attendees"):
+            update_values["attendees"] = tuple(
+                replace(attendee, required=False) for attendee in snapshot.attendees
+            )
+        updated = replace(snapshot, **update_values)
         ref = client.upsert(updated, latest_id, created.change_key)
         latest_id = ref.item_id
         assert client.matches(updated, latest_id)

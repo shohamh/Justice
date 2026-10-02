@@ -122,7 +122,10 @@ def test_update_and_cancel_soap_flags(monkeypatch):
 
     monkeypatch.setattr(HTTPAdapter, "send", send)
     account = build_account(endpoint="https://invalid.test/EWS/Exchange.asmx", mailbox="svc@example.test", username="svc", password="dummy", auth_type="basic", permit=permit)
-    item = CalendarItem(folder=account.calendar, id="ews-1", changekey="ck-1")
+    item = CalendarItem(
+        folder=account.calendar, id="ews-1", changekey="ck-1",
+        required_attendees=[], optional_attendees=[],
+    )
     source_id = uuid4()
     snapshot = CalendarSnapshot(
         source_key=f"duty_shift:{source_id}", source_type=SourceType.DUTY_SHIFT, source_id=source_id,
@@ -131,7 +134,8 @@ def test_update_and_cancel_soap_flags(monkeypatch):
         all_day=False, location="HQ", body="Visible note", attendees=(), problems=(), content_hash="new",
     )
     store = _ExchangeStore(account)
-    store.find = lambda key: item
+    store.get = lambda item_id: item
+    store.find = lambda key: pytest.fail("Known EWS item IDs should be read directly")
     ref = ExchangeCalendarClient(store).upsert(snapshot, "ews-1", "ck-1")
     assert ref.change_key == "ck-2"
     ExchangeCalendarClient(store).cancel(snapshot.source_key, "ews-1")
@@ -140,6 +144,36 @@ def test_update_and_cancel_soap_flags(monkeypatch):
     assert 'SendMeetingInvitationsOrCancellations="SendToAllAndSaveCopy"' in update
     assert 'SendMeetingCancellations="SendToAllAndSaveCopy"' in deleted
     assert snapshot.source_key in update
+    assert "FieldURI=\"calendar:RequiredAttendees\"" not in update
+    assert "FieldURI=\"calendar:OptionalAttendees\"" not in update
+
+
+def test_mixed_attendee_and_meeting_changes_send_one_final_invite():
+    from types import SimpleNamespace
+
+    from app.services.exchange_calendar.ews_client import _ExchangeStore
+
+    class RecordingItem:
+        def __init__(self):
+            self.saves = []
+
+        def save(self, **kwargs):
+            self.saves.append(kwargs)
+
+    item = RecordingItem()
+    _ExchangeStore(SimpleNamespace()).update(
+        item,
+        ["subject", "required_attendees", "body", "optional_attendees"],
+    )
+
+    assert [save["update_fields"] for save in item.saves] == [
+        ["required_attendees", "optional_attendees"],
+        ["subject", "body"],
+    ]
+    assert [save["send_meeting_invitations"] for save in item.saves] == [
+        "SendToNone",
+        "SendToAllAndSaveCopy",
+    ]
 
 
 def test_probe_is_read_only_and_unauthorized_is_reported(monkeypatch):
@@ -321,3 +355,43 @@ def test_all_day_getitem_readback_matches_unchanged_snapshot(monkeypatch):
     assert item.end == date(2026, 10, 1)
     assert client.matches(snapshot, "ews-all-day") is True
     assert len([xml for xml in attempts if "<m:GetItem" in xml]) == 2
+
+
+def test_timed_getitem_readback_matches_after_server_drops_subsecond_precision():
+    from types import SimpleNamespace
+
+    from exchangelib import CalendarItem, EWSDateTime
+
+    source_id = uuid4()
+    source_key = f"duty_shift:{source_id}"
+    start = datetime(2026, 10, 3, 8, 0, 0, 777_000, tzinfo=ZoneInfo("Asia/Jerusalem"))
+    end = datetime(2026, 10, 3, 9, 0, 0, 777_000, tzinfo=ZoneInfo("Asia/Jerusalem"))
+    snapshot = CalendarSnapshot(
+        source_key=source_key,
+        source_type=SourceType.DUTY_SHIFT,
+        source_id=source_id,
+        subject="Duty",
+        start=start,
+        end=end,
+        all_day=False,
+        location="HQ",
+        body="Visible note",
+        attendees=(),
+        problems=(),
+        content_hash="same",
+    )
+    item = CalendarItem(
+        id="ews-timed",
+        subject="Duty",
+        start=EWSDateTime.from_datetime(start).replace(microsecond=0),
+        end=EWSDateTime.from_datetime(end).replace(microsecond=0),
+        is_all_day=False,
+        location="HQ",
+        body="Visible note",
+        justice_source_key=source_key,
+        required_attendees=[],
+        optional_attendees=[],
+    )
+    client = ExchangeCalendarClient(SimpleNamespace(get=lambda item_id: item))
+
+    assert client.matches(snapshot, "ews-timed") is True
