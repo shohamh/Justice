@@ -27,6 +27,20 @@ Kubernetes executor with `privileged = true`). Ryuk is disabled because the
 dind daemon is discarded with the job. `pytest --slow` and Playwright E2E are
 not yet wired in.
 
+## Build and mock publish
+
+| Job | Checks |
+| --- | --- |
+| `backend-image` | Builds the backend `production` image. Needs both test jobs and `compose-validate`. |
+| `frontend-image` | Builds the frontend `runtime` image. Same needs. |
+| `publish-mock` | Rebuilds both images, pushes them to a job-scoped `registry:2` service, then removes and pulls them back to prove the round trip. |
+
+Images are tagged with `$CI_COMMIT_SHORT_SHA` and are never pushed outside the
+job. The build jobs need the same privileged Docker-in-Docker capability as
+`backend-test`. `publish-mock` rebuilds rather than reusing the build jobs'
+images because each job gets its own throwaway daemon; sharing would require
+an artifact tarball, which is deliberately avoided.
+
 The frontend cache contains only npm's download cache at `frontend/.npm/`,
 keyed by `frontend/package-lock.json`. The job still runs `npm ci` each time;
 `node_modules` is neither cached nor transferred as an artifact. This

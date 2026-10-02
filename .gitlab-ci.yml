@@ -96,3 +96,55 @@ frontend-test:
     - cd frontend
     - npm ci
     - npm test
+
+.docker-build:
+  image: docker:27.5.1-cli
+  services:
+    - name: docker:27.5.1-dind
+      alias: docker
+      command: ["--tls=false", "--insecure-registry=registry:5000"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+
+backend-image:
+  extends: .docker-build
+  stage: build
+  needs: [backend-test, frontend-test, compose-validate]
+  script:
+    - docker build --target production -t "justice-backend:$CI_COMMIT_SHORT_SHA" backend
+    - docker image inspect "justice-backend:$CI_COMMIT_SHORT_SHA" --format '{{.Id}}'
+
+frontend-image:
+  extends: .docker-build
+  stage: build
+  needs: [backend-test, frontend-test, compose-validate]
+  script:
+    - docker build --target runtime -t "justice-frontend:$CI_COMMIT_SHORT_SHA" frontend
+    - docker image inspect "justice-frontend:$CI_COMMIT_SHORT_SHA" --format '{{.Id}}'
+
+# Rebuilds the images and pushes them to a registry that exists only for this
+# job (a registry:2 service). Proves the push/pull path without touching any
+# real registry; nothing is retained after the job.
+publish-mock:
+  extends: .docker-build
+  stage: publish-mock
+  needs: [backend-image, frontend-image]
+  services:
+    - name: docker:27.5.1-dind
+      alias: docker
+      command: ["--tls=false", "--insecure-registry=registry:5000"]
+    - name: registry:2.8.3
+      alias: registry
+  variables:
+    MOCK_REGISTRY: registry:5000
+  script:
+    - |
+      for spec in "backend:production" "frontend:runtime"; do
+        name="${spec%%:*}"; target="${spec##*:}"
+        ref="$MOCK_REGISTRY/justice-$name:$CI_COMMIT_SHORT_SHA"
+        docker build --target "$target" -t "$ref" "$name"
+        docker push "$ref"
+        docker rmi "$ref"
+        docker pull "$ref"
+      done
