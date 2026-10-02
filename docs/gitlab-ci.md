@@ -3,8 +3,7 @@
 The pipeline runs for merge requests and branch commits. When a branch has an
 open merge request, the merge request pipeline takes precedence over the
 duplicate push pipeline. Other pipeline sources are excluded. The reserved
-stages are `validate`, `test`, `build`, and `publish-mock`; this first step only
-adds validation jobs. Later stages must depend on successful validation and
+stages are `validate`, `test`, `build`, and `publish-mock`; validation and test jobs exist so far. Later stages must depend on successful validation and
 tests before any disposable registry publication. There are no deployment or
 release jobs, production variables, or registry pushes in this pipeline.
 
@@ -15,6 +14,18 @@ release jobs, production variables, or registry pushes in this pipeline.
 | `backend-validate` | Installs the locked backend development dependencies, then runs Ruff lint, Ruff format check, and mypy. |
 | `frontend-validate` | Runs `npm ci`, lint, and typecheck from `frontend/`. |
 | `compose-validate` | Parses the base app Compose file and the base file merged with the Task 8 E2E overlay. It does not start containers. |
+
+## Test jobs
+
+| Job | Checks |
+| --- | --- |
+| `backend-test` | Runs `uv run pytest -q` (the primary suite; slow CP-SAT scenarios stay deselected) against a job-scoped `docker:dind` service that testcontainers uses for Postgres and Redis. Needs `backend-validate`. |
+| `frontend-test` | Runs `npm ci` and `npm test` (Vitest). Needs `frontend-validate`. |
+
+`backend-test` requires a runner that allows privileged services (Docker or
+Kubernetes executor with `privileged = true`). Ryuk is disabled because the
+dind daemon is discarded with the job. `pytest --slow` and Playwright E2E are
+not yet wired in.
 
 The frontend cache contains only npm's download cache at `frontend/.npm/`,
 keyed by `frontend/package-lock.json`. The job still runs `npm ci` each time;
@@ -65,9 +76,7 @@ npm run typecheck
 
 The primary backend test suite is `uv run pytest -q`; it requires Docker for
 testcontainers. The full release gate is `uv run pytest --slow -q`, which
-includes the large CP-SAT scenarios and is substantially slower. Neither test
-suite is part of this validation-only step; the `test` stage is reserved for
-the next implementation tasks.
+includes the large CP-SAT scenarios and is substantially slower. The `test` stage runs the primary suite only.
 
 GitLab's [CI Lint](https://docs.gitlab.com/ci/yaml/lint/) should be run against the pipeline configuration in the
 target GitLab project before enabling runners. YAML parsing alone cannot
