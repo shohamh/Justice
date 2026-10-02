@@ -22,12 +22,11 @@ release jobs, production variables, or real registry pushes in this pipeline (on
 | `backend-test` | Runs `uv run pytest -q` (the primary suite; slow CP-SAT scenarios stay deselected) against a job-scoped `docker:dind` service that testcontainers uses for Postgres and Redis. Needs `backend-validate`. |
 | `frontend-test` | Runs `npm ci` and `npm test` (Vitest). Needs `frontend-validate`. |
 
-| `backend-test-slow` | Runs `uv run pytest --slow -q` (large CP-SAT scenarios, up to 1h). On schedules it runs automatically; otherwise it is a manual, non-blocking job. Run it before a release. |
 | `e2e` | Starts Postgres (service), migrates, seeds, serves backend and a built frontend, then runs Playwright on Chrome: smoke on merge requests, full suite otherwise. Needs both test jobs; the report is kept for a week on failure and contains only seeded synthetic data. |
 
 `backend-test` runs the same paths as the GitHub workflow (`tests`,
 `app/services/hr/tests`, `app/tests`, excluding `test_candidate_rank.py`).
-Image build jobs also need `e2e`. `backend-test` requires a runner that allows privileged services (Docker or
+Image build jobs also need `e2e`. `backend-test` and `backend-test-slow` require a runner that allows privileged services (Docker or
 Kubernetes executor with `privileged = true`). Ryuk is disabled because the
 dind daemon is discarded with the job.
 
@@ -35,7 +34,7 @@ dind daemon is discarded with the job.
 
 | Job | Checks |
 | --- | --- |
-| `backend-image` | Builds the backend `production` image. Needs both test jobs and `compose-validate`. |
+| `backend-image` | Builds the backend `production` image. Needs both test jobs, `e2e` and `compose-validate`. |
 | `frontend-image` | Builds the frontend `runtime` image. Same needs. |
 | `publish-mock` | Rebuilds both images, pushes them to a job-scoped `registry:2` service, then removes and pulls them back to prove the round trip. |
 
