@@ -751,6 +751,39 @@ class RaceKit:
 
         event.listen(session, "do_orm_execute", _after)
 
+    def stale_write(self, *, read, write, decide) -> tuple[Outcome, Outcome]:
+        """Lost-update schedule between two independent sessions:
+
+        1. the *late* request runs ``read(session)`` (its contested read) and parks;
+        2. the *early* request runs ``decide(session)`` and commits;
+        3. the late request resumes, runs ``write(session, read_result)`` and commits.
+
+        Returns ``(late_outcome, early_outcome)``."""
+        late_read = self.signal("late request read the row")
+        early_done = self.signal("early decision committed")
+
+        def late():
+            s = self.session()
+            state = read(s)
+            late_read.set()
+            early_done.wait()
+            result = write(s, state)
+            s.commit()
+            return result
+
+        def early():
+            late_read.wait()
+            s = self.session()
+            try:
+                result = decide(s)
+                s.commit()
+                return result
+            finally:
+                early_done.set()
+
+        late_outcome, early_outcome = self.run(late, early)
+        return late_outcome, early_outcome
+
     def run(self, *fns) -> list[Outcome]:
         """Run each callable in its own thread; return outcomes in order.
         A racer that never returns is a hard failure (deadlock/livelock)."""
