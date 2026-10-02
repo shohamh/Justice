@@ -310,6 +310,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_algorithm_bridge": "algorithm",
     "test_algorithm_bridge_shifts": "algorithm",
     "test_algorithm_proposals": "algorithm",
+    "test_concurrency_algorithm_jobs": "algorithm",
     "test_model": "algorithm",
     "test_model_effort": "algorithm",
     "test_fairness": "algorithm",
