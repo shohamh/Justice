@@ -579,3 +579,20 @@ The [raw follow-up capture](data/scale-20k-transparency-after-readiness-followup
 | After covered-key change | 2 / 5 | 10.616 / 10.970 s | 3.983 s | 52 | 73,874 bytes; 100 rows |
 
 These are small in-process samples with different warmup/sample counts, not a controlled before/after page benchmark. The route wall time stayed in the same roughly 10.6-second range and p95 did not improve; the accumulated DB time and SQL count were lower in the later run. One direct-handler cProfile sample after the change measured 16.108 s total, 5.207 s accumulated DB, and 4.309 s cumulative across two `_ensure_projection_ready` calls. The previous single cProfile diagnostic reported 16.36 s total and 8.90 s in those readiness calls. cProfile overhead and run-to-run DB variance limit that comparison. Keep the result as evidence that redundant readiness work fell, not as a page-speed claim. The browser page-ready matrix remains the 2026-10-02 capture, and transparency still exceeds the proposed target by a wide margin.
+
+### Whole-calendar service phase diagnostic (2026-10-03)
+
+One in-process read-only transaction on the confirmed scale database (20,121 active soldiers, 1,000,008 duty assignments) profiled the whole-organization `GET /api/calendar/shifts` work for the FullCalendar visible range 2026-09-27 through 2026-10-31, inclusive. It used the existing active admin and system root, with no soldier filter. The service returned 135 shifts and 4 assignment rows. The [raw phase artifact](data/scale-20k-calendar-service-phases-20261003.json) records 1,142.275 ms of profiled wall time, 33 measured SQL cursor statements, 249.685 ms of cursor execution, and 76,877 bytes after JSON-mode model serialization and `JSONResponse` body encoding.
+
+| In-process phase | Wall ms | SQL cursor statements | SQL cursor ms |
+|---|---:|---:|---:|
+| Root-node and authorization scope setup | 17.540 | 7 | 12.474 |
+| `get_calendar_shifts` including eligibility facts | 729.769 | 25 | 233.667 |
+| Swap-request counts | 5.374 | 1 | 3.544 |
+| Holidays, Pydantic construction, redaction, replacement capability | 386.552 | 0 | 0 |
+| Pydantic JSON-mode serialization | 2.129 | 0 | 0 |
+| `JSONResponse` body encoding | 0.813 | 0 | 0 |
+
+The phases sum to 1,142.177 ms; 0.098 ms is between-phase orchestration. About 496.102 ms of `get_calendar_shifts` wall time was outside SQL cursor execution and includes ORM hydration and Python work. The 386.552 ms model/holiday/redaction/capability phase is combined, so it does not isolate those operations individually. SQL cursor timers exclude row fetching and ORM hydration. Dataset-count and actor/root fixture queries preceded the phase timer. The transaction was read-only from its first statement and rolled back; there were no writes or service launches.
+
+This is one diagnostic sample, not a p50/p95 series. Its JSON boundary uses `CalendarShiftsResponse.model_dump(mode="json")` then `JSONResponse`; it omits FastAPI's route serialization machinery, authentication dependency, middleware, transfer, and browser rendering. The earlier browser route reference was warm 1.94/2.14 s p50/p95, 34 SQL statements, and 94,570 bytes. The 76,877-byte modeled body is therefore labeled separately; its difference from the earlier HTTP body has not been attributed. Neither this service profile nor the earlier route wall timer measures page-ready time. Task 7 still needs a matched route/browser capture and finer attribution inside the combined model/holiday phase before a calendar optimization claim.
