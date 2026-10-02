@@ -1286,12 +1286,23 @@ def expire_started_swaps(session: Session, *, now: datetime | None = None) -> in
         select(SwapRequest, DutyAssignment)
         .join(DutyAssignment, DutyAssignment.id == SwapRequest.duty_assignment_id)
         .where(SwapRequest.status == "open", DutyAssignment.start_date <= now.date())
+        .order_by(SwapRequest.id)
     ).all()
-    requests = [
-        req for req, assignment in candidates
+    due_ids = [
+        req.id for req, assignment in candidates
         if datetime.combine(assignment.start_date, _parse_hhmm(assignment.start_time)) <= now
     ]
-    for req in requests:
+    requests: list[SwapRequest] = []
+    for request_id in due_ids:
+        # The SELECT above is unlocked: a decision may have finalized this
+        # request since. Take the same row lock every decision path takes
+        # (_lock_request) and re-check that it is still open, so the worker
+        # never overwrites an applied/rejected request with 'cancelled'.
+        # Locks are taken in id order so concurrent workers cannot deadlock.
+        req = _lock_request(session, request_id)
+        if req is None or req.status != "open":
+            continue
+        requests.append(req)
         before = {"status": req.status}
         req.status = "cancelled"
         live_candidates = session.execute(

@@ -11,13 +11,18 @@ Schedule reproduced here (two independent sessions = worker process + HTTP reque
   1. the worker SELECTs the open request and parks right after the SELECT;
   2. the decision request locks the request (FOR UPDATE), applies it, commits;
   3. the worker resumes, writes the expired/cancelled status and commits.
+
+Fixed (Task 3): after the unlocked candidate SELECT, both workers lock each
+request with the decision paths' ``_lock_request`` (``FOR UPDATE``, fresh
+read) and skip it unless it is still open/pending. In this schedule the worker
+locks after the decision committed, sees ``applied``/``approved`` and leaves
+it alone (returns 0).
 """
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -91,10 +96,6 @@ def _seed_swap(session):
     return req.id, assignment.id, start, target.id
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C7/S4: expire_started_swaps overwrites a concurrently applied swap with 'cancelled'",
-)
 def test_swap_expiry_does_not_cancel_a_swap_applied_after_its_read(race, admin_session):
     request_id, assignment_id, start, target_id = _seed_swap(admin_session)
     # The worker runs "after the duty started"; the decision is a normal request.
@@ -118,6 +119,7 @@ def test_swap_expiry_does_not_cancel_a_swap_applied_after_its_read(race, admin_s
         f"worker cancelled {outcomes[0].value} request(s), decision returned {outcomes[1].value!r}; "
         f"final swap status={status!r} but {overrides} cover override(s) are committed"
     )
+    assert (status, outcomes[0].value) == ("applied", 0)
 
 
 def _seed_exemption(session):
@@ -136,10 +138,6 @@ def _seed_exemption(session):
     return req.id, soldier.id, dm.id, req.end_date
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C7/E2: expire_stale_exemption_requests overwrites a concurrently approved request with 'expired'",
-)
 def test_exemption_expiry_does_not_expire_a_request_approved_after_its_read(race, admin_session):
     request_id, soldier_id, dm_id, end_date = _seed_exemption(admin_session)
     worker_today = end_date + timedelta(days=1)
@@ -160,3 +158,4 @@ def test_exemption_expiry_does_not_expire_a_request_approved_after_its_read(race
         f"worker expired {outcomes[0].value} request(s), decision returned {outcomes[1].value!r}; "
         f"final request status={status!r} but {granted} soldier_exemptions row(s) are committed"
     )
+    assert (status, outcomes[0].value) == ("approved", 0)
