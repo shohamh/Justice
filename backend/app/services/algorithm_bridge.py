@@ -110,7 +110,11 @@ def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_sec
         "[job %s] watchdog firing cancel_event: no activity within max_seconds=%.1f", job_id, max_seconds,
     )
     with session_scope() as session:
-        job = session.get(AlgorithmJob, job_id)
+        # Locked re-read, like the cancel route: never overwrite a 'done'
+        # the runner commits concurrently.
+        job = session.execute(
+            select(AlgorithmJob).where(AlgorithmJob.id == job_id).with_for_update()
+        ).scalar_one_or_none()
         if job is not None and job.status == "running":
             job.status = "failed"
             job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "timed_out"})

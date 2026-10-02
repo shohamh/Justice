@@ -132,7 +132,6 @@ def test_cancel_committed_before_the_runner_starts_is_not_overwritten(race, admi
     assert _status(admin_session, job_id) == ("failed", "cancelled_by_user")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C13: cancel overwrites a job that finished after its read")
 def test_cancel_cannot_overwrite_a_job_that_finished_after_its_read(race, admin_session):
     from fastapi import HTTPException
 

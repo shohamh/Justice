@@ -833,8 +833,17 @@ def cancel_job(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     from datetime import datetime, timezone
-    job = _load_job(session, job_id)
+    _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    # Re-read under a row lock: the runner may commit 'done' (drafts and the
+    # done notification included) after the read above, and an unlocked check
+    # would then overwrite the finished job with a cancel.
+    job = session.execute(
+        select(AlgorithmJob)
+        .where(AlgorithmJob.id == job_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
     if job.status not in ("pending", "running"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_cancellable")
     job.status = "failed"
