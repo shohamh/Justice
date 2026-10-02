@@ -797,7 +797,21 @@ def reject_field_update(
     actor_id: uuid.UUID,
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
-    if update.status not in {"pending", "pending_commander", "pending_duty_manager"}:
+    # Same lock as approve_field_update: re-read the row under FOR UPDATE and
+    # reject only if it is still in the stage the caller saw, so a reject that
+    # read 'pending' cannot overwrite an approval committed in between.
+    requested_status = update.status
+    update = session.execute(
+        select(SoldierFieldUpdate)
+        .where(SoldierFieldUpdate.id == update.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if update is None:
+        raise SoldierError("not_found")
+    if requested_status not in {"pending", "pending_commander", "pending_duty_manager"}:
+        raise SoldierError("not_pending")
+    if update.status != requested_status:
         raise SoldierError("not_pending")
     if update.field_name == "unit_join_date":
         actor = session.get(Soldier, actor_id)

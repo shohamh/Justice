@@ -9,10 +9,12 @@ Schedule reproduced here (two independent sessions = two approvers' requests):
   2. the approving request locks it, applies the new value to the soldier,
      sets approved and commits;
   3. the rejecting request resumes, sets rejected and commits.
+
+Fixed (Task 3): ``reject_field_update`` takes the same ``FOR UPDATE`` +
+``populate_existing`` re-read as approve and requires the status the caller
+saw. The late reject sees ``approved`` and fails with ``not_pending``.
 """
 from __future__ import annotations
-
-import pytest
 
 from app.db.models import Soldier, SoldierFieldUpdate
 from app.services import soldiers as soldier_service
@@ -21,10 +23,6 @@ from tests.helpers import create_soldier
 _NEW_PHONE = "0501112233"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C8/P3: reject_field_update overwrites an approval committed after the route read the row",
-)
 def test_reject_cannot_overwrite_a_committed_approval(race, admin_session):
     admin = create_soldier(admin_session, personal_number="race-sfu-admin", role="admin")
     soldier = create_soldier(admin_session, personal_number="race-sfu-soldier")
@@ -51,3 +49,4 @@ def test_reject_cannot_overwrite_a_committed_approval(race, admin_session):
         f"approve={early!r}, reject={late!r}; final status={final_status!r}, soldier.phone={phone!r}"
     )
     assert (final_status, phone) == ("approved", _NEW_PHONE)
+    assert str(late.error) == "not_pending"
