@@ -83,6 +83,8 @@ def register(
     food_type: str | None = None,
     food_constraints: str | None = None,
     unit_join_date: date | None = None,
+    require_invite_code: bool = True,
+    email_verified: bool = False,
 ) -> tuple[Soldier, list[ExemptionRequest]]:
     try:
         validate_full_name(full_name)
@@ -99,7 +101,10 @@ def register(
     except ValueError as exc:  # unsupported address, or IdentityCollisionError
         raise RegistrationError(str(exc)) from exc
 
-    consume_invite_code(session, code=invite_code)
+    # Only a caller holding a live OIDC registration context (locked, and consumed
+    # in this same transaction) may pass require_invite_code=False / email_verified=True.
+    if require_invite_code:
+        consume_invite_code(session, code=invite_code)
 
     if session.execute(
         select(Soldier.id).where(Soldier.personal_number == personal_number)
@@ -157,6 +162,7 @@ def register(
         phone=phone,
         email=canonical_email,
         ad_username=ad_username,
+        email_verified=email_verified,
         must_change_password=False,
         gender=gender,
         is_officer=is_officer,

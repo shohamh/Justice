@@ -2253,6 +2253,43 @@ class OidcIdentity(Base):
     )
 
 
+class OidcRegistrationContext(Base):
+    """A verified OIDC identity waiting to finish registration (replaces the invite code).
+
+    Created by the OIDC callback when no soldier matches; the browser holds a
+    random HttpOnly cookie whose hash is ``token_hash`` (that is the browser
+    binding). Short-lived and consumed exactly once, in the same database
+    transaction that creates the soldier and links ``(issuer, subject)``.
+    """
+
+    __tablename__ = "oidc_registration_contexts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    issuer: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    email: Mapped[str] = mapped_column(Text)
+    ad_username: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    __table_args__ = (
+        sa.Index(
+            "uq_oidc_registration_contexts_live_subject",
+            "issuer", "subject",
+            unique=True,
+            postgresql_where=text("consumed_at IS NULL"),
+        ),
+    )
+
+
 class OidcTransaction(Base):
     """One in-flight OIDC login: the server-side secrets of an authorization request.
 

@@ -74,6 +74,7 @@ RESET_TABLES = (
     "identity_conflict_candidates",
     "identity_conflicts",
     "oidc_transactions",
+    "oidc_registration_contexts",
     "oidc_identities",
     "soldiers",
     "hierarchy_level_types",

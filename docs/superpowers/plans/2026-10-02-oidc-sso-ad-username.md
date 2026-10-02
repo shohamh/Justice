@@ -107,6 +107,21 @@
 - `POST /identity-conflicts/{id}/choose` body `{candidate_index: int}` -> the conflict item (status `resolved`). Applies that record immediately and stores the preference. 400 with any `invalid_reason` code above, or `candidate_not_found`, `not_a_duplicate_conflict`; 404 / 409 as above.
 - `GET /preferred-records` -> `{items: [{personal_number, key_type, key_value, chosen_by, chosen_by_name, chosen_at}]}`; `DELETE /preferred-records/{personal_number}` -> 204 (404 `preference_not_found`). Audit actions: `hr_sync.identity_conflict.acknowledge|choose`, `hr_sync.preferred_record.clear`.
 
+### Tasks 5-7: OIDC login and registration (for Tasks 9-10)
+
+- Library: Authlib 1.8.0 (pinned, plus `joserfc>=1.7.5,<2`; `uv.lock` updated). Authlib's `authlib.jose` and httpx client integration are deprecated in 1.8, so only its non-deprecated pieces are used: `prepare_grant_uri`, `create_s256_code_challenge`, `CodeIDToken` claim rules; signatures and JWKS go through joserfc (Authlib's own dependency). The HTTP calls (discovery, JWKS, token) use httpx with timeouts and no redirects.
+- Config (`app/settings.py`): `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (optional: none = public client), `OIDC_REDIRECT_URI` (exact, e.g. `https://host/api/auth/oidc/callback`), `OIDC_TRANSACTION_TTL_SECONDS` (default 300, max 900), `OIDC_REGISTRATION_TTL_SECONDS` (default 900, max 3600), `OIDC_ALLOW_INSECURE_LOCAL` (permits http only for loopback hosts), `OIDC_RATE_LIMIT` (default `20/minute`). `app.services.oidc.load_oidc_config` returns `None` (SSO disabled, no failure) when absent or invalid. Provider must advertise S256 PKCE, `email_verified` must be `true`, signature algs are an asymmetric allowlist.
+- `app/services/oidc.py` (`OidcClient.start()/complete()`, `OidcError.code`), `oidc_transactions.py` (hashed state, browser cookie hash, atomic consume; wrong-browser use burns the transaction), `oidc_login.py` (`authenticate` -> `SsoResult.kind` login|denied|no_match), `oidc_registration.py` (context create/lock/consume, `still_unmatched`, `bind_and_consume`). Tests use `tests/support/mock_oidc.py` (in-process provider via `httpx.MockTransport`; `asgi_app()` serves it over HTTP for Playwright, `POST /__identity {subject,email,email_verified}` selects who the next login is).
+- Migrations (single chain, parent `20261002_identity_conflicts`; head `20261003_oidc_registration`): `oidc_transactions`, `oidc_identities` (unique `(issuer, subject)`, unique `soldier_id`), `oidc_registration_contexts` (unique token hash, partial unique `(issuer, subject)` while unconsumed). `tests/support/database.py` now upgrades to `heads` because the HR migration shares the parent until the lead merges the heads.
+- Frontend contract (all under `/api`):
+  - `GET /auth/oidc/status` -> `{"enabled": bool}`.
+  - SSO button: top-level navigation to `GET /api/auth/oidc/start` (302 to the provider; never fetch it).
+  - Callback is browser-only and always redirects to the frontend origin (`FRONTEND_URL`): `/` signed in (the SPA then calls `POST /api/auth/refresh`, which uses the refresh cookie, to get its access token), `/register?sso=1` unmatched (continue registration), `/login?sso_error=1` any failure (one generic error; nothing else is ever in the URL).
+  - `GET /auth/oidc/registration-context` -> 200 `{"email","ad_username"}` (read-only prefill; `Cache-Control: no-store`) or 404 `{"detail":"no_registration_context"}`; needs the HttpOnly `oidc_reg` cookie (sent automatically).
+  - `GET /auth/register/nodes` works without `invite_code` when that cookie is live (otherwise 422 without the param, 403 for a wrong code, as before).
+  - `POST /auth/register` (multipart `payload` JSON as before): `invite_code` may be omitted/empty only when the context cookie is live; the server then ignores the `email` in the payload, stores the context email as verified and links the identity. Response is the usual `LoginResponse`. Errors: 400 `invalid invite code` (no code, no live context), 400 `registration_unavailable` (email/username/personal number taken, subject already linked, or identity no longer unmatched; a conflict is recorded; deliberately identical for all), other validation errors unchanged. A failed attempt leaves the context usable until it expires.
+- Deviation to note: the plan says enrollment approval needs a commander at or above mador. In `enrollment.py` it does not: `authorize(ENROLLMENT_APPROVE)` admits any commander of the requested node (and DMs/admins in scope); only editing rank advancement needs mador (`test_below_mador_commander_can_approve_without_editing_rank`). Authority was left unchanged; `test_oidc_registration.py` asserts pending-in-holding, self/bystander denied, node commander approves.
+
 ### Task 2: Preflight existing data and enforce database uniqueness
 
 **Files:** Create Alembic migration under `backend/alembic/versions/`; add migration test under `backend/tests/unit/test_migration_soldier_identity.py`; update model/tests.
@@ -144,38 +159,38 @@
 
 **Files:** `backend/app/settings.py`, create `backend/app/services/oidc.py` (or `backend/app/auth/oidc.py`), `backend/pyproject.toml`, OIDC unit tests.
 
-- [ ] Select a maintained OIDC library compatible with supported Python version; add its pinned dependency and verify it validates discovery, JWKS signatures, and ID-token claims.
-- [ ] Add optional server settings for issuer, client ID/secret, exact redirect URI, and transaction TTL; default disabled and validate HTTPS outside local development.
-- [ ] Write unit tests for code flow configuration, PKCE S256, random state/nonce, exact redirect URI, allowed signing algorithms, and verified-email requirements using a local mock OIDC provider.
-- [ ] Implement discovery only from the configured HTTPS issuer; validate exact issuer, audience/authorized party, expiry, issued-at, nonce, signature, and key rotation using the library.
-- [ ] Add one-time transaction persistence bound to the initiating browser session; store PKCE verifier server-side, expire quickly, and consume atomically.
-- [ ] Ensure provider tokens, authorization codes, state, nonce, email, and claims are redacted from logs and never returned to the frontend.
-- [ ] Run protocol unit tests against a local mock issuer and verify discovery/JWKS failure denies login without passwordless fallback.
+- [x] Select a maintained OIDC library compatible with supported Python version; add its pinned dependency and verify it validates discovery, JWKS signatures, and ID-token claims.
+- [x] Add optional server settings for issuer, client ID/secret, exact redirect URI, and transaction TTL; default disabled and validate HTTPS outside local development.
+- [x] Write unit tests for code flow configuration, PKCE S256, random state/nonce, exact redirect URI, allowed signing algorithms, and verified-email requirements using a local mock OIDC provider.
+- [x] Implement discovery only from the configured HTTPS issuer; validate exact issuer, audience/authorized party, expiry, issued-at, nonce, signature, and key rotation using the library.
+- [x] Add one-time transaction persistence bound to the initiating browser session; store PKCE verifier server-side, expire quickly, and consume atomically.
+- [x] Ensure provider tokens, authorization codes, state, nonce, email, and claims are redacted from logs and never returned to the frontend.
+- [x] Run protocol unit tests against a local mock issuer and verify discovery/JWKS failure denies login without passwordless fallback.
 
 ### Task 6: Persist stable OIDC identities and complete existing-account login
 
 **Files:** Create OIDC identity model/migration, `backend/app/routes/auth.py` or dedicated OIDC router, session issuance helpers, backend integration tests.
 
-- [ ] Write migration/model tests enforcing unique `(issuer, subject)` and one identity row per Soldier according to the accepted schema.
-- [ ] Implement start and callback endpoints with rate limits; callback consumes state transaction, validates OIDC response, requires verified email, and queries stable issuer/subject first.
-- [ ] For an existing linked identity, deny inactive soldiers and otherwise call the same session issuance/cookie logic as password login.
-- [ ] For a first link, call `resolve_soldier_identity` with the verified email and derived AD username. `Match` -> bind subject in a transaction and reject inactive or already-bound candidates generically. `Ambiguous` -> record an `IdentityConflict` (source `sso`), deny with the generic account-linking error, and create no session. `NoMatch` -> hand over to the registration continuation (Task 7).
-- [ ] Add PostgreSQL integration tests for linked login, first link, concurrent first-link attempts, inactive account, email mismatch, existing binding elsewhere, uniqueness race, and session/cookie compatibility.
-- [ ] Verify all existing role/permission checks remain unchanged and provider claims do not populate authorization fields.
+- [x] Write migration/model tests enforcing unique `(issuer, subject)` and one identity row per Soldier according to the accepted schema.
+- [x] Implement start and callback endpoints with rate limits; callback consumes state transaction, validates OIDC response, requires verified email, and queries stable issuer/subject first.
+- [x] For an existing linked identity, deny inactive soldiers and otherwise call the same session issuance/cookie logic as password login.
+- [x] For a first link, call `resolve_soldier_identity` with the verified email and derived AD username. `Match` -> bind subject in a transaction and reject inactive or already-bound candidates generically. `Ambiguous` -> record an `IdentityConflict` (source `sso`), deny with the generic account-linking error, and create no session. `NoMatch` -> hand over to the registration continuation (Task 7).
+- [x] Add PostgreSQL integration tests for linked login, first link, concurrent first-link attempts, inactive account, email mismatch, existing binding elsewhere, uniqueness race, and session/cookie compatibility.
+- [x] Verify all existing role/permission checks remain unchanged and provider claims do not populate authorization fields.
 
 ### Task 7: Continue unmatched identities into registration without an activation code
 
 **Files:** `backend/app/services/oidc_registration.py`, `backend/app/routes/auth.py` or registration router, `RegisterRequest` and registration service, backend integration tests.
 
-- [ ] Write failing tests proving an unmatched verified subject creates no Soldier and instead creates a short-lived, single-use, browser-bound registration context.
-- [ ] Implement generic callback routing to `/register` with no email, token, state, or reusable credential in query parameters; supply prefilled values through the same-origin authenticated/session context.
-- [ ] Mark email and derived username read-only in the registration context. The invite/activation code is **not** required when registering from a live OIDC context (`NoMatch` result); personal number, profile eligibility, and the current password field remain required, and registration without such a context still requires the invite code. The server decides this from the stored context, never from a client flag.
-- [ ] Re-run `resolve_soldier_identity` at the final registration step (not only at callback time) and refuse with a generic error plus a recorded conflict if the result is no longer `NoMatch`; enforce personal-number uniqueness there too.
-- [ ] Update final registration to consume context atomically with Soldier creation and issuer/subject binding; failed validation or DB error must leave neither a Soldier nor a link.
-- [ ] Confirm SSO registration uses the existing holding-node placement and enrollment approval (a commander at or above mador via `backend/app/routes/enrollment.py`), and add a test that the new soldier is in the holding node, pending, with no extra access until approved.
-- [ ] Test that the invite code is skippable only with a valid context, and still enforced for plain registration and for forged, expired, or replayed contexts.
-- [ ] Test replay, expiry, browser mismatch, already-owned email, already-owned personal number, concurrent consume, collision, invalid invite/personal number, successful create, and login session issuance.
-- [ ] Verify error responses do not reveal whether a Soldier/email/subject exists.
+- [x] Write failing tests proving an unmatched verified subject creates no Soldier and instead creates a short-lived, single-use, browser-bound registration context.
+- [x] Implement generic callback routing to `/register` with no email, token, state, or reusable credential in query parameters; supply prefilled values through the same-origin authenticated/session context.
+- [x] Mark email and derived username read-only in the registration context. The invite/activation code is **not** required when registering from a live OIDC context (`NoMatch` result); personal number, profile eligibility, and the current password field remain required, and registration without such a context still requires the invite code. The server decides this from the stored context, never from a client flag.
+- [x] Re-run `resolve_soldier_identity` at the final registration step (not only at callback time) and refuse with a generic error plus a recorded conflict if the result is no longer `NoMatch`; enforce personal-number uniqueness there too.
+- [x] Update final registration to consume context atomically with Soldier creation and issuer/subject binding; failed validation or DB error must leave neither a Soldier nor a link.
+- [x] Confirm SSO registration uses the existing holding-node placement and enrollment approval (a commander at or above mador via `backend/app/routes/enrollment.py`), and add a test that the new soldier is in the holding node, pending, with no extra access until approved.
+- [x] Test that the invite code is skippable only with a valid context, and still enforced for plain registration and for forged, expired, or replayed contexts.
+- [x] Test replay, expiry, browser mismatch, already-owned email, already-owned personal number, concurrent consume, collision, invalid invite/personal number, successful create, and login session issuance.
+- [x] Verify error responses do not reveal whether a Soldier/email/subject exists.
 
 ### Task 8: Detect, warn about, and resolve HR sync identity conflicts
 

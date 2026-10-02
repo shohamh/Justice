@@ -21,7 +21,7 @@ from app.auth.jwt_tokens import issue_access_token, issue_refresh_token  # noqa:
 from app.db.session import get_session
 from app.rate_limit import limiter
 from app.routes.auth import _client_context
-from app.services import oidc_login
+from app.services import oidc_login, oidc_registration
 from app.services.oidc import OidcClient, OidcError, get_oidc_client
 from app.services.oidc_transactions import begin_transaction, consume_transaction
 from app.settings import get_settings
@@ -126,6 +126,24 @@ def oidc_callback(
         return _denied()
 
     result = oidc_login.authenticate(session, verified)
+    if result.kind == "no_match" and result.email and result.ad_username:
+        token = oidc_registration.create_context(
+            session, issuer=verified.issuer, subject=verified.subject, email=result.email,
+            ad_username=result.ad_username, ttl_seconds=client.config.registration_ttl_seconds,
+        )
+        write_audit(
+            session, actor_id=None, action="auth.sso.registration_started",
+            entity_type="soldier", entity_id=None, context=_client_context(request),
+        )
+        session.commit()
+        redirect = _redirect(_frontend(REGISTER_PATH))
+        redirect.delete_cookie(TRANSACTION_COOKIE, path=COOKIE_PATH)
+        redirect.set_cookie(
+            key=oidc_registration.REGISTRATION_COOKIE, value=token,
+            max_age=client.config.registration_ttl_seconds, httponly=True,
+            secure=settings.cookie_secure, samesite="strict", path="/api/auth",
+        )
+        return redirect
     if result.kind != "login" or result.soldier is None:
         reason = result.reason or "no_match"
         _audit_failure(session, request, reason)
@@ -147,3 +165,17 @@ def oidc_callback(
         samesite="strict", path="/api/auth",
     )
     return redirect
+
+
+@router.get("/registration-context")
+def registration_context(
+    request: Request, session: Session = Depends(get_session)
+) -> JSONResponse:
+    """The verified identity to prefill (read-only) in the registration form."""
+    context = oidc_registration.get_active_context(
+        session, request.cookies.get(oidc_registration.REGISTRATION_COOKIE)
+    )
+    headers = {"Cache-Control": "no-store"}
+    if context is None:
+        return JSONResponse({"detail": "no_registration_context"}, status_code=404, headers=headers)
+    return JSONResponse({"email": context.email, "ad_username": context.ad_username}, headers=headers)
