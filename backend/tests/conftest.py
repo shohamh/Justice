@@ -386,6 +386,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_range_authorization": "duty",
     "test_ranges_service": "duty",
     "test_range_attendance": "duty",
+    "test_concurrency_range_attendance": "duty",
     "test_ranges_api": "duty",
     "test_public_settings_ranges": "duty",
     "test_range_reminders": "duty",
