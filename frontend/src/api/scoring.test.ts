@@ -41,6 +41,21 @@ describe("getTransparency", () => {
 });
 
 describe("getTransparencyForExport", () => {
+  const validRow = {
+    soldier_id: "s1",
+    full_name: "Soldier",
+    node_id: null,
+    node_name: null,
+    enrolled_at: "2026-01-01",
+    active_days: 10,
+    shift_count: 2,
+    rank: null,
+    cumulative_score: "10.5",
+    score_per_day: "1.5",
+    normalised_score: "2",
+    is_globally_exempted: false,
+  };
+
   it("rejects malformed rows but accepts a valid empty array", async () => {
     vi.mocked(api.get).mockResolvedValueOnce({
       data: { rows: { detail: "unexpected response" }, can_see_exemption_aggregates: true },
@@ -53,6 +68,30 @@ describe("getTransparencyForExport", () => {
     await expect(getTransparencyForExport()).resolves.toEqual({
       rows: [],
       can_see_exemption_aggregates: false,
+    });
+  });
+
+  it("rejects a malformed row inside an otherwise valid transparency array", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { rows: [{ soldier_id: "s1", full_name: "Soldier", active_days: "ten" }], can_see_exemption_aggregates: false },
+    });
+    await expect(getTransparencyForExport()).rejects.toThrow("Invalid transparency row response");
+  });
+
+  it.each([
+    ["non-object entry", null],
+    ["missing name", { ...validRow, full_name: null }],
+    ["invalid aggregate", { ...validRow, normalised_score: "NaN" }],
+    ["invalid day count", { ...validRow, active_days: "10" }],
+  ])("rejects %s in transparency rows", async (_case, row) => {
+    vi.mocked(api.get).mockResolvedValue({ data: { rows: [row], can_see_exemption_aggregates: false } });
+    await expect(getTransparencyForExport()).rejects.toThrow("Invalid transparency row response");
+  });
+
+  it("preserves a valid export row", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { rows: [validRow], can_see_exemption_aggregates: false } });
+    await expect(getTransparencyForExport()).resolves.toEqual({
+      rows: [validRow], can_see_exemption_aggregates: false,
     });
   });
 });

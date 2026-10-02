@@ -101,7 +101,7 @@ export default function ExportPage() {
   const needsHierarchyData = !!(checked.transparency || checked.sub_units);
   const transparencyScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
   const transparencyQuery = useQuery({
-    queryKey: queryKeys.transparencyForScope(transparencyScope),
+    queryKey: queryKeys.transparencyExportForScope(transparencyScope),
     queryFn: getTransparencyForExport,
     enabled: needsHierarchyData && !!transparencyScope,
     staleTime: 0,
@@ -109,9 +109,9 @@ export default function ExportPage() {
   const rows = useMemo<TransparencyRow[]>(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
 
   const treeQuery = useQuery({
-    queryKey: queryKeys.hierarchyTree(),
+    queryKey: queryKeys.hierarchyTreeForExport(transparencyScope),
     queryFn: fetchFullTreeForExport,
-    enabled: needsHierarchyData,
+    enabled: needsHierarchyData && !!transparencyScope,
     staleTime: 0,
   });
   const hierarchyDataReady = !needsHierarchyData || (

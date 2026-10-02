@@ -115,12 +115,36 @@ export interface BurdenShareBreakdown {
   W_i: string;  // Σ(active_frac_q) — historical weight
 }
 
+function parseTransparencyRowForExport(value: unknown): TransparencyRow {
+  const row = requiredObjectResponse(value, "Invalid transparency row response");
+  const nullableString = (field: unknown) => field === null || typeof field === "string";
+  const numericString = (field: unknown) =>
+    typeof field === "string" && field.trim() !== "" && Number.isFinite(Number(field));
+  if (
+    typeof row.soldier_id !== "string" ||
+    typeof row.full_name !== "string" ||
+    !nullableString(row.node_id) ||
+    !nullableString(row.node_name) ||
+    typeof row.enrolled_at !== "string" ||
+    !Number.isInteger(row.active_days) ||
+    !Number.isInteger(row.shift_count) ||
+    !nullableString(row.rank) ||
+    !numericString(row.cumulative_score) ||
+    !numericString(row.score_per_day) ||
+    !numericString(row.normalised_score) ||
+    typeof row.is_globally_exempted !== "boolean"
+  ) {
+    throw new Error("Invalid transparency row response");
+  }
+  return row as unknown as TransparencyRow;
+}
+
 async function fetchTransparency(requireRows: boolean): Promise<TransparencyOut> {
   const r = await api.get<unknown>(`/scoring/transparency`);
   const data = requiredObjectResponse(r.data, "Invalid transparency response");
   return {
     rows: requireRows
-      ? requiredArrayResponse<TransparencyRow>(data.rows, "Invalid transparency rows response")
+      ? requiredArrayResponse<unknown>(data.rows, "Invalid transparency rows response").map(parseTransparencyRowForExport)
       : optionalArrayResponse<TransparencyRow>(data.rows),
     can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
   };

@@ -35,11 +35,11 @@ function renderWithCachedEmptyHierarchyData() {
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   const scope = getTransparencyAuthorizationScope(cachedUser);
-  queryClient.setQueryData(queryKeys.transparencyForScope(scope), {
+  queryClient.setQueryData(queryKeys.transparencyExportForScope(scope), {
     rows: [],
     can_see_exemption_aggregates: false,
   });
-  queryClient.setQueryData(queryKeys.hierarchyTree(), []);
+  queryClient.setQueryData(queryKeys.hierarchyTreeForExport(scope), []);
   return renderWithProviders(<ExportPage />, queryClient);
 }
 
@@ -305,6 +305,43 @@ describe("ExportPage", () => {
       expect(scoringApi.getTransparencyForExport).toHaveBeenCalledTimes(1);
       expect(hierarchyApi.fetchFullTreeForExport).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("does not reuse in-flight lenient transparency and tree reads for an export", async () => {
+    let resolveLenientRows!: (value: { rows: TransparencyRow[] }) => void;
+    let resolveLenientTree!: (value: NodeDTO[]) => void;
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const scope = getTransparencyAuthorizationScope({
+      id: "viewer-1",
+      role: "admin",
+      scope_root_ids: [],
+      active_deputy_grants: [],
+      hierarchy_node_id: null,
+      is_commander: false,
+      is_duty_manager: false,
+    } as Parameters<typeof getTransparencyAuthorizationScope>[0]);
+    const lenientRows = queryClient.fetchQuery({
+      queryKey: queryKeys.transparencyForScope(scope),
+      queryFn: () => new Promise<{ rows: TransparencyRow[] }>((resolve) => { resolveLenientRows = resolve; }),
+    });
+    const lenientTree = queryClient.fetchQuery({
+      queryKey: queryKeys.hierarchyTree(),
+      queryFn: () => new Promise<NodeDTO[]>((resolve) => { resolveLenientTree = resolve; }),
+    });
+    vi.mocked(scoringApi.getTransparencyForExport).mockResolvedValue({ rows: [], can_see_exemption_aggregates: false });
+    vi.mocked(hierarchyApi.fetchFullTreeForExport).mockResolvedValue([]);
+
+    renderWithProviders(<ExportPage />, queryClient);
+    fireEvent.click(checkboxAt(1));
+
+    await waitFor(() => {
+      expect(scoringApi.getTransparencyForExport).toHaveBeenCalledTimes(1);
+      expect(hierarchyApi.fetchFullTreeForExport).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button")).toBeEnabled();
+    });
+    resolveLenientRows({ rows: [] });
+    resolveLenientTree([]);
+    await Promise.all([lenientRows, lenientTree]);
   });
 
   it("disables export until the selected transparency rows and hierarchy finish loading", async () => {

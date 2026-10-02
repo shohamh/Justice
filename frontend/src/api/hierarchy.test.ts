@@ -22,6 +22,38 @@ describe("hierarchy tree APIs", () => {
     await expect(fetchFullTreeForExport()).resolves.toEqual([]);
   });
 
+  it("rejects malformed nested hierarchy nodes used by export", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [{
+        id: "root",
+        name: "Root",
+        parent_id: null,
+        path_ids: ["root"],
+        children: [{ id: "child", name: "Child", parent_id: "root", path_ids: { detail: "invalid" } }],
+      }],
+    });
+    await expect(fetchFullTreeForExport()).rejects.toThrow("Invalid hierarchy tree node response");
+  });
+
+  it("rejects malformed grandchildren and child collections", async () => {
+    const root = { id: "root", name: "Root", parent_id: null, path_ids: ["root"] };
+    const child = { id: "child", name: "Child", parent_id: "root", path_ids: ["root", "child"] };
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: [{ ...root, children: [{ ...child, children: [{ ...child, id: 7 }] }] }],
+    });
+    await expect(fetchFullTreeForExport()).rejects.toThrow("Invalid hierarchy tree node response");
+
+    vi.mocked(api.get).mockResolvedValueOnce({ data: [{ ...root, children: { detail: "invalid" } }] });
+    await expect(fetchFullTreeForExport()).rejects.toThrow("Invalid hierarchy tree node response");
+  });
+
+  it("preserves a valid tree with nested nodes", async () => {
+    const child = { id: "child", name: "Child", parent_id: "root", path_ids: ["root", "child"] };
+    const root = { id: "root", name: "Root", parent_id: null, path_ids: ["root"], children: [child] };
+    vi.mocked(api.get).mockResolvedValue({ data: [root] });
+    await expect(fetchFullTreeForExport()).resolves.toEqual([root]);
+  });
+
   it("reads the compact current-user command scope and exposes only summary fields", async () => {
     vi.mocked(api.get).mockResolvedValue({
       data: {

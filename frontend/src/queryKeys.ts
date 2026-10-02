@@ -20,6 +20,8 @@ export const queryKeys = {
   transparency: () => ["scoring", "transparency"] as const,
   transparencyForScope: (authorizationScope: string | null) =>
     ["scoring", "transparency", "scope", authorizationScope] as const,
+  transparencyExportForScope: (authorizationScope: string | null) =>
+    ["scoring", "transparency", "export", authorizationScope] as const,
   transparencyPage: () => ["scoring", "transparency", "page"] as const,
   breakdown: (soldierId: string) => ["scoring", "breakdown", soldierId] as const,
   burdenShare: (soldierId: string) => ["scoring", "burdenShare", soldierId] as const,
@@ -42,6 +44,8 @@ export const queryKeys = {
   hierarchyTree: () => ["hierarchy", "tree"] as const,
   hierarchyTreeForPotentialScope: (authorizationScope: string | null) =>
     ["hierarchy", "tree", "potential", authorizationScope] as const,
+  hierarchyTreeForExport: (authorizationScope: string | null) =>
+    ["hierarchy", "tree", "export", authorizationScope] as const,
   myCommandScope: (soldierId: string | null, authorizationScope: string | null) =>
     ["hierarchy", "myCommandScope", soldierId, authorizationScope] as const,
   hierarchyBranches: (scopeKey?: unknown) =>
