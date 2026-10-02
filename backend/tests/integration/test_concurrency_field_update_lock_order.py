@@ -12,10 +12,13 @@ Schedule reproduced here (two independent sessions = two HTTP requests):
   3. A writes the soldier (waits on B) and B supersedes U (waits on A).
 PostgreSQL detects the cycle and aborts one request with ``DeadlockDetected``,
 which nothing maps, so the user sees a 500.
+
+Fixed (Task 4): ``approve_field_update`` locks the soldier (``FOR NO KEY
+UPDATE``) before the field-update row, the same soldier -> update order as
+submit. The submitter blocks on the soldier lock, so the approver's wait for it
+times out, the approval commits, and the submit then files a new pending row.
 """
 from __future__ import annotations
-
-import pytest
 
 from app.db.models import Soldier, SoldierFieldUpdate
 from app.services import soldiers as soldier_service
@@ -25,7 +28,6 @@ _APPROVED_PHONE = "0501112233"
 _RESUBMITTED_PHONE = "0504445566"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C9: submit and approve lock soldier/update rows in opposite order")
 def test_concurrent_submit_and_approve_of_one_field_do_not_deadlock(race, admin_session):
     admin = create_soldier(admin_session, personal_number="race-lo-admin", role="admin")
     soldier = create_soldier(admin_session, personal_number="race-lo-soldier")

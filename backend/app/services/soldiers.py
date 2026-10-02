@@ -641,6 +641,16 @@ def approve_field_update(
 ) -> SoldierFieldUpdate:
     from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
     requested_status = update.status
+    # Lock order soldier -> field update, the same as submit_field_update
+    # (which locks the soldier and then supersedes older update rows). Taking
+    # the update row first and the soldier at flush would deadlock against a
+    # concurrent submit for the same field.
+    session.execute(
+        select(Soldier)
+        .where(Soldier.id == update.soldier_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
     update = session.execute(
         select(SoldierFieldUpdate)
         .where(SoldierFieldUpdate.id == update.id)
