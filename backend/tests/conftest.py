@@ -636,3 +636,162 @@ def app_session(app_engine) -> Iterator[Session]:
 def client() -> Iterator["TestClient"]:  # noqa: F821
     with test_app_support.test_client() as c:
         yield c
+
+
+# ── Deterministic PostgreSQL race helpers ────────────────────────────────────
+# Shared by backend/tests/integration/test_concurrency_*.py. Each race test
+# opens independent sessions (one per simulated request/worker process), parks
+# them at explicit rendezvous points between the contested read and the write,
+# and asserts the invariant on the committed database state afterwards.
+#
+# Waits are bounded and *tolerant*: when a fixed implementation serializes the
+# racers with a lock, one side can never reach the rendezvous while the other
+# holds it, so the wait times out, is recorded on ``RaceKit.timeouts``, and the
+# waiting side carries on. On today's unlocked code every rendezvous is met
+# immediately, so the schedule is exact and no wall-clock sleep is involved.
+
+_RACE_WAIT_SECONDS = 10.0
+_RACE_JOIN_SECONDS = 60.0
+
+
+class Rendezvous:
+    """A tolerant ``threading.Barrier``: all parties meet, or each waiter
+    gives up after the timeout (meaning the schedule was serialized)."""
+
+    def __init__(self, kit: "RaceKit", parties: int, name: str) -> None:
+        import threading
+
+        self._kit = kit
+        self._barrier = threading.Barrier(parties)
+        self.name = name
+
+    def wait(self) -> bool:
+        import threading
+
+        try:
+            self._barrier.wait(timeout=self._kit.wait_seconds)
+            return True
+        except threading.BrokenBarrierError:
+            self._kit.timeouts.append(self.name)
+            return False
+
+
+class Signal:
+    """A named ``threading.Event`` whose ``wait`` is bounded and recorded."""
+
+    def __init__(self, kit: "RaceKit", name: str) -> None:
+        import threading
+
+        self._kit = kit
+        self._event = threading.Event()
+        self.name = name
+
+    def set(self) -> None:
+        self._event.set()
+
+    def wait(self) -> bool:
+        if self._event.wait(timeout=self._kit.wait_seconds):
+            return True
+        self._kit.timeouts.append(self.name)
+        return False
+
+
+class Outcome:
+    """What one racer returned or raised."""
+
+    def __init__(self, value=None, error: BaseException | None = None) -> None:
+        self.value = value
+        self.error = error
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+    def __repr__(self) -> str:
+        return f"Outcome(ok={self.ok}, value={self.value!r}, error={self.error!r})"
+
+
+class RaceKit:
+    """Independent sessions + rendezvous points + a thread runner."""
+
+    def __init__(self, engine) -> None:
+        self._factory = sessionmaker(bind=engine, expire_on_commit=False)
+        self._sessions: list[Session] = []
+        self.timeouts: list[str] = []
+        self.wait_seconds = _RACE_WAIT_SECONDS
+
+    def session(self) -> Session:
+        s = self._factory()
+        self._sessions.append(s)
+        return s
+
+    def rendezvous(self, parties: int = 2, name: str = "rendezvous") -> Rendezvous:
+        return Rendezvous(self, parties, name)
+
+    def signal(self, name: str) -> Signal:
+        return Signal(self, name)
+
+    def pause_after_select(self, session: Session, entity, hook) -> None:
+        """Run ``hook()`` right after the first ORM SELECT on ``entity`` in
+        ``session`` has returned its rows, i.e. after the contested read and
+        before anything is written."""
+        from sqlalchemy import event, inspect
+
+        mapper = inspect(entity)
+        fired = False
+
+        def _after(orm_execute_state):
+            nonlocal fired
+            if fired or not orm_execute_state.is_select or mapper not in orm_execute_state.all_mappers:
+                return None
+            fired = True
+            result = orm_execute_state.invoke_statement().freeze()
+            hook()
+            return result()
+
+        event.listen(session, "do_orm_execute", _after)
+
+    def run(self, *fns) -> list[Outcome]:
+        """Run each callable in its own thread; return outcomes in order.
+        A racer that never returns is a hard failure (deadlock/livelock)."""
+        import threading
+
+        outcomes: list[Outcome | None] = [None] * len(fns)
+
+        def _runner(i, fn):
+            try:
+                outcomes[i] = Outcome(value=fn())
+            except BaseException as exc:  # noqa: BLE001 - surfaced via Outcome
+                outcomes[i] = Outcome(error=exc)
+
+        threads = [threading.Thread(target=_runner, args=(i, fn), daemon=True) for i, fn in enumerate(fns)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=_RACE_JOIN_SECONDS)
+        if any(t.is_alive() for t in threads):
+            raise RuntimeError("a racer never returned (deadlock or lost wake-up)")
+        return outcomes  # type: ignore[return-value]
+
+    def close(self) -> None:
+        for s in self._sessions:
+            try:
+                s.rollback()
+            finally:
+                s.close()
+
+
+@pytest.fixture()
+def race(admin_engine) -> Iterator[RaceKit]:
+    # Restore the singleton row migration 6a7b8c9d0e1f seeds and the per-test
+    # TRUNCATE removes. Without it, the first two concurrent writers both try
+    # to lazily INSERT it (_get_or_create_state) and one dies on its primary
+    # key, a cold-start artefact that production databases never hit.
+    with admin_engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO score_projection_state (projection_key, canonical_version, backfill_complete) "
+            "VALUES ('score_projection', '1', false) ON CONFLICT (projection_key) DO NOTHING"
+        ))
+    kit = RaceKit(admin_engine)
+    yield kit
+    kit.close()
