@@ -11,13 +11,17 @@ Schedule reproduced here (two independent sessions = two duty managers' requests
   2. both meet at a rendezvous right after that SELECT;
   3. both promote R and record it as their backfill, then commit (B's UPDATE
      of R waits for A's commit, then re-applies the same change).
+
+Fixed (Task 3): ``decide_primary_excusal`` takes the per-date advisory lock
+the other range roster writers use, then locks the request row, before reading
+the eligible reserves. B blocks until A commits, A's rendezvous times out, and
+B then finds no eligible reserve and takes the no-backfill path.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import select
 
 from app.db.models import (
@@ -33,10 +37,6 @@ from app.services import range_excusal as excusal_service
 from tests.helpers import create_node, create_range_location, create_soldier
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C8/R5: two concurrent excusal approvals both promote the same reserve (one slot silently unfilled)",
-)
 def test_concurrent_excusal_approvals_promote_a_reserve_at_most_once(race, admin_session, monkeypatch):
     admin_session.add(SystemSetting(key="mitvachim.enabled", value=True))
     admin_session.commit()
@@ -103,3 +103,4 @@ def test_concurrent_excusal_approvals_promote_a_reserve_at_most_once(race, admin
         f"both approvals recorded reserve {reserve_assignment_id} as their backfill; "
         f"event now has {len(primaries)} primary assignment(s) for required_count=2"
     )
+    assert sorted(promoted, key=lambda v: v is None) == [reserve_assignment_id, None]
