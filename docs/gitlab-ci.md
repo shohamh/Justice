@@ -5,7 +5,7 @@ open merge request, the merge request pipeline takes precedence over the
 duplicate push pipeline. Other pipeline sources are excluded. The reserved
 stages are `validate`, `test`, `build`, and `publish-mock`; validation and test jobs exist so far. Later stages must depend on successful validation and
 tests before any disposable registry publication. There are no deployment or
-release jobs, production variables, or registry pushes in this pipeline.
+release jobs, production variables, or real registry pushes in this pipeline (only the job-scoped mock registry).
 
 ## Validation jobs
 
