@@ -538,29 +538,47 @@ class SoldierNamesRequest(BaseModel):
 class SoldierNameOut(BaseModel):
     id: uuid.UUID
     full_name: str
+    personal_number: str | None = None
 
 
-@router.post("/lookup/names", response_model=list[SoldierNameOut])
+@router.post("/lookup/names", response_model=list[SoldierNameOut], response_model_exclude_none=True)
 def lookup_soldier_names(
     body: SoldierNamesRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SoldierNameOut]:
-    # Match list_soldiers: a caller with scope sees public names globally;
-    # a caller without scope only sees their own row.
+    # A scoped caller may resolve public names globally, but personal numbers
+    # follow the private visibility boundary used by the soldier list.
     ids = list(dict.fromkeys(body.ids))
+    roots = scope_root_ids(session, user)
     if not ids:
         return []
-    if user.role != "admin" and not scope_root_ids(session, user):
+    if user.role != "admin" and not roots:
         ids = [soldier_id for soldier_id in ids if soldier_id == user.id]
     if not ids:
         return []
     rows = session.execute(
-        select(Soldier.id, Soldier.full_name).where(Soldier.id.in_(ids))
+        select(Soldier.id, Soldier.full_name, Soldier.personal_number, Soldier.hierarchy_node_id)
+        .where(Soldier.id.in_(ids))
     ).all()
-    names = {soldier_id: name for soldier_id, name in rows}
+    node_ids = {node_id for _, _, _, node_id in rows if node_id is not None}
+    nodes = {
+        node.id: node for node in session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+        ).scalars().all()
+    } if node_ids else {}
+    names = {
+        soldier_id: (
+            name,
+            personal_number if soldier_id == user.id or (
+                (node := nodes.get(node_id)) is not None
+                and any(root in node.path_ids for root in roots)
+            ) else None,
+        )
+        for soldier_id, name, personal_number, node_id in rows
+    }
     return [
-        SoldierNameOut(id=soldier_id, full_name=names[soldier_id])
+        SoldierNameOut(id=soldier_id, full_name=names[soldier_id][0], personal_number=names[soldier_id][1])
         for soldier_id in ids
         if soldier_id in names
     ]

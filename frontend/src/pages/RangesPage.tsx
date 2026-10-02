@@ -20,7 +20,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import InputDialog from "../components/InputDialog";
 import { IneligibleSoldiersTable } from "../components/ranges/IneligibleSoldiersTable";
 import RangeLocationsContent from "../components/ranges/RangeLocationsContent";
-import { listSoldiers } from "../api/soldiers";
+import { lookupSoldierNames } from "../api/soldiers";
 import { createRangeLocation, deleteRangeLocation, listRangeLocations, updateRangeLocation } from "../api/rangeLocations";
 import { getIneligibleSoldiers } from "../api/ineligibleSoldiers";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
@@ -83,10 +83,21 @@ export default function RangesPage() {
   const ineligibleSoldiers = useQuery({ queryKey: queryKeys.ineligibleSoldiers("planning"), queryFn: () => getIneligibleSoldiers("planning"), enabled: showIneligible });
   const event = useQuery({ queryKey: queryKeys.rangeEvent(selected as string), queryFn: () => getRangeEvent(selected as string), enabled: !!selected });
   const excusal = useQuery({ queryKey: queryKeys.rangeExcusalRequests(selected as string), queryFn: () => getRangeExcusalRequests(selected as string), enabled: !!selected && !!user?.is_duty_manager });
-  const soldiers = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
   const rangeLocations = useQuery({ queryKey: queryKeys.rangeLocations(), queryFn: listRangeLocations });
   const hierarchyTree = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
-  const names = (id: string) => (Array.isArray(soldiers.data) ? soldiers.data : []).find(s => s.id === id)?.full_name ?? id;
+  const displayEvent = editAssignments ?? event.data;
+  const soldierIds = useMemo(() => {
+    if (!displayEvent) return [];
+    const ids = new Set(displayEvent.assignments.map(assignment => assignment.soldier_id));
+    if (displayEvent.responsible_duty_manager_id) ids.add(displayEvent.responsible_duty_manager_id);
+    return [...ids];
+  }, [displayEvent]);
+  const soldiers = useQuery({
+    queryKey: queryKeys.soldierNames(soldierIds, authorizationScope),
+    queryFn: () => lookupSoldierNames(soldierIds),
+    enabled: authorizationScope !== null && soldierIds.length > 0,
+  });
+  const names = (id: string) => soldiers.data?.find(s => s.id === id)?.full_name ?? id;
   const dutyManagers = useMemo(() => {
     const flatten = (nodes: NodeDTO[] | undefined): { id: string; name: string }[] =>
       Array.isArray(nodes) ? nodes.flatMap(node => [
@@ -95,11 +106,11 @@ export default function RangesPage() {
       ]) : [];
     const list = flatten(hierarchyTree.data);
     if (user && !list.some(dm => dm.id === user.id)) {
-      const currentUserName = (Array.isArray(soldiers.data) ? soldiers.data : []).find(s => s.id === user.id)?.full_name ?? user.id;
+      const currentUserName = user.full_name ?? user.id;
       list.push({ id: user.id, name: currentUserName });
     }
     return Array.from(new Map(list.map(dm => [dm.id, dm])).values());
-  }, [hierarchyTree.data, user, soldiers.data]);
+  }, [hierarchyTree.data, user]);
   const count = (e: RangeEvent, reserve: boolean) => {
     const summary = reserve ? e.reserve_filled : e.primary_filled;
     if (e.assignments.length > 0) return e.assignments.filter(a => a.is_reserve === reserve && !a.is_draft).length;
@@ -225,7 +236,7 @@ export default function RangesPage() {
     {ranges.isFetchNextPageError && <button type="button" onClick={() => void ranges.fetchNextPage()} className="text-sm text-blue-600 dark:text-blue-400">{t("common.retry")}</button>}
     </div>
     {!editAssignments && formEvent === undefined && !cancelId && event.data && <EventDetailModal open title={event.data.location} subtitle={`${RANGE_TYPE_LABELS[event.data.range_type] ?? event.data.range_type} · ${event.data.date}`} onClose={() => { setSelected(null); setEditAssignments(null); }} metadata={[{ label: t("ranges.metadata_status"), value: RANGE_EVENT_STATUS_LABELS[event.data.status] ?? event.data.status }, { label: t("ranges.metadata_hours"), value: `${event.data.start_time ?? "—"}–${event.data.end_time ?? "—"}` }]}><RangeDetailContent event={event.data} canManage={manage} isDutyManager={user?.role === "admin" || !!user?.is_duty_manager} canEditAttendance={event.data.can_edit_attendance} userId={user?.id} soldierName={names} excusalRequests={excusal.data} onExcuse={async (id, reason) => { await excuseRangeAssignment(event.data!.id, id, reason); await invalidate(event.data!.id); await qc.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(event.data!.id) }); }} onDecide={async (id, approve) => { await decideRangeExcusal(event.data!.id, id, approve); await invalidate(event.data!.id); await qc.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(event.data!.id) }); }} onAttendance={attendance} /></EventDetailModal>}
-    {editAssignments && <RangeEditAssignmentsModal open event={editAssignments} soldiers={Array.isArray(soldiers.data) ? soldiers.data : []} canManage={manage} onClose={() => setEditAssignments(null)} onChanged={async () => { await invalidate(editAssignments.id); }} />}
+    {editAssignments && <RangeEditAssignmentsModal open event={editAssignments} soldiers={soldiers.data ?? []} canManage={manage} onClose={() => setEditAssignments(null)} onChanged={async () => { await invalidate(editAssignments.id); }} />}
     <RangeFormModal open={formEvent !== undefined} event={formEvent} hierarchyNodeId={nodeId ?? ""} locations={Array.isArray(rangeLocations.data) ? rangeLocations.data : []} dutyManagers={dutyManagers} currentUserId={user?.id ?? ""} onClose={() => setFormEvent(undefined)} onSubmit={save} /><RangeCancelDialog open={!!cancelId} onClose={() => setCancelId(null)} onConfirm={async reason => { if (cancelId) { await cancelRangeEvent(cancelId, reason); await invalidate(cancelId); } }} />
     <RangeBulkCancelDialog open={bulkCancelOpen} count={plannedSelectedEvents.length} onClose={() => setBulkCancelOpen(false)} onConfirm={bulkCancel} />
     <RangeBulkAutoAssignModal open={bulkAutoAssignOpen} events={manageablePlannedSelectedEvents} canManage={manage} onClose={() => setBulkAutoAssignOpen(false)} onChanged={invalidate} />

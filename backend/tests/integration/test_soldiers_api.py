@@ -19,6 +19,41 @@ from app.routes.soldiers import _PUBLIC_EVENT_TYPES
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
+def test_bounded_display_lookup_deduplicates_and_respects_list_visibility(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="department", name="unit")
+    viewer = create_soldier(admin_session, personal_number="4900101", full_name="Viewer", role="duty_manager", hierarchy_node_id=node.id)
+    assigned = create_soldier(admin_session, personal_number="4900102", full_name="Assigned", hierarchy_node_id=node.id)
+    other_node = create_node(admin_session, level="department", name="other")
+    unrelated = create_soldier(admin_session, personal_number="4900103", full_name="Unrelated", hierarchy_node_id=other_node.id)
+    admin_session.commit()
+
+    response = client.post(
+        "/api/soldiers/lookup/names", headers=auth_headers(viewer),
+        json={"ids": [str(assigned.id), str(assigned.id)]},
+    )
+    assert response.status_code == 200
+    assert response.json() == [{
+        "id": str(assigned.id), "full_name": "Assigned", "personal_number": "4900102",
+    }]
+    assert str(unrelated.id) not in response.text
+
+    response = client.post(
+        "/api/soldiers/lookup/names", headers=auth_headers(viewer),
+        json={"ids": [str(unrelated.id)]},
+    )
+    assert response.status_code == 200
+    assert response.json() == [{"id": str(unrelated.id), "full_name": "Unrelated"}]
+
+    outsider = create_soldier(admin_session, personal_number="4900104", full_name="Outsider")
+    admin_session.commit()
+    response = client.post(
+        "/api/soldiers/lookup/names", headers=auth_headers(outsider),
+        json={"ids": [str(assigned.id), str(outsider.id)]},
+    )
+    assert response.status_code == 200
+    assert response.json() == [{"id": str(outsider.id), "full_name": "Outsider", "personal_number": "4900104"}]
+
+
 def test_admin_onboards_without_password_gets_temp(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="4000001", role="admin")
     d = create_node(admin_session, level="department", name="d")

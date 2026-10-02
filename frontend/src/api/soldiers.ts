@@ -150,6 +150,7 @@ export async function listSoldiers(): Promise<SoldierDTO[]> {
 export interface SoldierNameDTO {
   id: string;
   full_name: string;
+  personal_number?: string;
 }
 
 export async function lookupSoldierNames(ids: string[]): Promise<SoldierNameDTO[]> {
