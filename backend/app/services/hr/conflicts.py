@@ -259,7 +259,7 @@ def record_hr_conflict(
             HrIdentityConflict.personal_number == error.personal_number,
             HrIdentityConflict.kind == error.kind,
             HrIdentityConflict.status.in_(ACTIVE_STATUSES),
-        )
+        ).execution_options(populate_existing=True)  # an admin may have acknowledged it meanwhile
     ).scalar_one_or_none()
 
     if row is not None and row.fingerprint == fingerprint:
