@@ -1,98 +1,91 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { fetchHierarchyBranchPage, isStaleHierarchyCursorError, type NodeDTO } from "../api/hierarchy";
+import { getTransparencyAuthorizationScope } from "../api/auth";
+import { useAuth } from "../auth/AuthContext";
+import { queryKeys } from "../queryKeys";
 
-interface Props {
-  value: string[];
-  onChange: (selected: string[]) => void;
-}
+interface Props { value: string[]; onChange: (selected: string[]) => void; }
 
-function TreeNode({
-  node,
-  depth,
-  value,
-  onToggle,
-}: {
-  node: NodeDTO;
-  depth: number;
-  value: string[];
-  onToggle: (id: string) => void;
+function Branch({ node, depth, value, onToggle, scopeKey }: {
+  node: NodeDTO; depth: number; value: string[]; onToggle: (id: string) => void; scopeKey: string | null;
 }) {
-  const hasChildren = !!node.children?.length;
-  const [expanded, setExpanded] = useState(true);
-  const checked = value.includes(node.id);
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const queryKey = queryKeys.hierarchyBranch(scopeKey, node.id);
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam, signal }) => fetchHierarchyBranchPage({ parentId: node.id, cursor: pageParam, signal }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.has_more ? page.next_cursor ?? undefined : undefined,
+    enabled: expanded && node.has_children === true,
+    retry: false,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
+  });
+  const children = [...new Map((query.data?.pages.flatMap((page) => page.items) ?? []).map((child) => [child.id, child])).values()];
+  const retry = () => {
+    if (query.isFetchNextPageError && isStaleHierarchyCursorError(query.error)) void queryClient.resetQueries({ queryKey, exact: true });
+    else if (query.hasNextPage) void query.fetchNextPage();
+    else void query.refetch();
+  };
 
   return (
-    <div>
-      <div className="flex items-center gap-1 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded" style={{ paddingRight: `${depth * 16 + 4}px` }}>
-        <button
-          type="button"
-          onClick={() => setExpanded((e) => !e)}
-          className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-[10px] shrink-0"
-          aria-label={expanded ? "כווץ" : "הרחב"}
-        >
-          {hasChildren ? (expanded ? "▾" : "▸") : ""}
-        </button>
-        <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={() => onToggle(node.id)}
-            className="rounded shrink-0"
-          />
-          <span className="text-sm truncate">{node.name}</span>
+    <li role="treeitem" aria-expanded={node.has_children ? expanded : undefined}>
+      <div className="flex items-center gap-1 rounded py-1 hover:bg-gray-50 dark:hover:bg-gray-700" style={{ paddingRight: `${depth * 16 + 4}px` }}>
+        {node.has_children ? <button type="button" onClick={() => setExpanded((current) => !current)} className="flex h-5 w-5 shrink-0 items-center justify-center text-gray-500" aria-label={`${expanded ? t("team.hierarchy_collapse") : t("team.hierarchy_expand")} ${node.name}`} aria-expanded={expanded} aria-controls={`sub-hierarchy-children-${node.id}`}>{expanded ? "▾" : "▸"}</button> : <span aria-hidden="true" className="h-5 w-5 shrink-0" />}
+        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+          <input type="checkbox" checked={value.includes(node.id)} onChange={() => onToggle(node.id)} className="shrink-0 rounded" />
+          <span className="truncate text-sm">{node.name}</span>
         </label>
       </div>
-      {expanded && hasChildren && node.children!.map((child) => (
-        <TreeNode key={child.id} node={child} depth={depth + 1} value={value} onToggle={onToggle} />
-      ))}
-    </div>
+      {expanded && node.has_children && <ul id={`sub-hierarchy-children-${node.id}`} role="group">
+        {query.isPending && children.length === 0 && <li role="status" className="py-1 text-xs text-gray-500">{t("team.hierarchy_loading")}</li>}
+        {query.isError && children.length === 0 && <li role="alert" className="py-1 text-xs text-red-600">{t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={retry}>{t("team.hierarchy_retry")}</button></li>}
+        {children.map((child) => <Branch key={child.id} node={child} depth={depth + 1} value={value} onToggle={onToggle} scopeKey={scopeKey} />)}
+        {query.isFetchNextPageError && children.length > 0 && <li role="alert" className="py-1 text-xs text-red-600">{t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={retry}>{t("team.hierarchy_retry")}</button></li>}
+        {query.isFetchingNextPage && <li role="status" className="py-1 text-xs text-gray-500">{t("team.hierarchy_loading")}</li>}
+        {query.hasNextPage && !query.isFetchingNextPage && !query.isFetchNextPageError && <li><button type="button" className="py-1 text-xs text-indigo-600 underline" onClick={retry}>{t("team.hierarchy_load_more")}</button></li>}
+      </ul>}
+    </li>
   );
 }
 
 export default function SubHierarchySelector({ value, onChange }: Props) {
   const { t } = useTranslation();
-  const [nodes, setNodes] = useState<NodeDTO[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
+  const { user, authScopeReady } = useAuth();
+  const scopeKey = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
+  const queryClient = useQueryClient();
+  const rootKey = queryKeys.hierarchyBranch(scopeKey, null);
+  const rootsQuery = useInfiniteQuery({
+    queryKey: rootKey,
+    queryFn: ({ pageParam, signal }) => fetchHierarchyBranchPage({ parentId: null, cursor: pageParam, signal }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.has_more ? page.next_cursor ?? undefined : undefined,
+    enabled: authScopeReady,
+    retry: false,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
+  });
+  const roots = [...new Map((rootsQuery.data?.pages.flatMap((page) => page.items) ?? []).map((node) => [node.id, node])).values()];
+  const toggleNode = (nodeId: string) => onChange(value.includes(nodeId) ? value.filter((id) => id !== nodeId) : [...value, nodeId]);
+  const retryRoots = () => {
+    if (rootsQuery.isFetchNextPageError && isStaleHierarchyCursorError(rootsQuery.error)) void queryClient.resetQueries({ queryKey: rootKey, exact: true });
+    else if (rootsQuery.hasNextPage) void rootsQuery.fetchNextPage();
+    else void rootsQuery.refetch();
+  };
 
-  const loadTree = useCallback(async () => {
-    setIsLoading(true);
-    setLoadError(false);
-    try {
-      setNodes(await fetchTree());
-    } catch {
-      setLoadError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void loadTree(); }, [loadTree]);
-
-  function toggleNode(nodeId: string) {
-    if (value.includes(nodeId)) {
-      onChange(value.filter((id) => id !== nodeId));
-    } else {
-      onChange([...value, nodeId]);
-    }
-  }
-
-  return (
-    <div className="border rounded p-2 max-h-60 overflow-y-auto dark:border-gray-600 dark:bg-gray-800" data-testid="sub-hierarchy-selector">
-      <p className="text-xs text-gray-500 mb-2">{t("algorithm.select_eligible_nodes")}</p>
-      {isLoading && <p role="status" className="text-xs text-gray-500">{t("team.hierarchy_loading")}</p>}
-      {loadError && (
-        <div role="alert" className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
-          <span>{t("team.hierarchy_load_failed")}</span>
-          <button type="button" onClick={() => void loadTree()} className="underline">
-            {t("team.hierarchy_retry")}
-          </button>
-        </div>
-      )}
-      {nodes.map((n) => (
-        <TreeNode key={n.id} node={n} depth={0} value={value} onToggle={toggleNode} />
-      ))}
-    </div>
-  );
+  return <div className="max-h-60 overflow-y-auto rounded border p-2 dark:border-gray-600 dark:bg-gray-800" data-testid="sub-hierarchy-selector">
+    <p className="mb-2 text-xs text-gray-500">{t("algorithm.select_eligible_nodes")}</p>
+    <ul role="tree" aria-label={t("algorithm.select_eligible_nodes")}>
+      {rootsQuery.isPending && roots.length === 0 && <li role="status" className="text-xs text-gray-500">{t("team.hierarchy_loading")}</li>}
+      {rootsQuery.isError && roots.length === 0 && <li role="alert" className="text-xs text-red-600">{t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={retryRoots}>{t("team.hierarchy_retry")}</button></li>}
+      {roots.map((node) => <Branch key={node.id} node={node} depth={0} value={value} onToggle={toggleNode} scopeKey={scopeKey} />)}
+      {rootsQuery.isFetchNextPageError && roots.length > 0 && <li role="alert" className="text-xs text-red-600">{t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={retryRoots}>{t("team.hierarchy_retry")}</button></li>}
+      {rootsQuery.isFetchingNextPage && <li role="status" className="text-xs text-gray-500">{t("team.hierarchy_loading")}</li>}
+      {rootsQuery.hasNextPage && !rootsQuery.isFetchingNextPage && !rootsQuery.isFetchNextPageError && <li><button type="button" className="py-1 text-xs text-indigo-600 underline" onClick={retryRoots}>{t("team.hierarchy_load_more")}</button></li>}
+    </ul>
+  </div>;
 }

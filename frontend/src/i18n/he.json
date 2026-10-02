@@ -433,6 +433,8 @@
     "hierarchy_loading": "טוען היררכיה...",
     "hierarchy_load_failed": "טעינת הענף נכשלה.",
     "hierarchy_retry": "נסה שוב",
+    "hierarchy_expand": "הרחב",
+    "hierarchy_collapse": "כווץ",
     "hierarchy_load_more": "טען עוד",
     "details": "פרטים",
     "constraints": "אילוצים אישיים",

@@ -11,6 +11,8 @@
     "hierarchy_loading": "Loading hierarchy...",
     "hierarchy_load_failed": "Could not load this branch.",
     "hierarchy_retry": "Retry",
+    "hierarchy_expand": "Expand",
+    "hierarchy_collapse": "Collapse",
     "hierarchy_load_more": "Load more"
   },
   "unit_calendar": {
