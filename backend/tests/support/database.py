@@ -71,6 +71,8 @@ RESET_TABLES = (
     "duty_types",
     "duty_locations",
     "system_settings",
+    "identity_conflict_candidates",
+    "identity_conflicts",
     "soldiers",
     "hierarchy_level_types",
     "hr_hierarchy_syncs",

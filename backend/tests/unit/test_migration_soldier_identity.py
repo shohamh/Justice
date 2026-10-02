@@ -248,3 +248,56 @@ def test_pair_migration_requires_email_and_ad_username_together():
             insert("3000004", None, "orphan")
         with pytest.raises(IntegrityError):  # ad_username not derived from the email
             insert("3000005", "one@example.com", "two")
+
+
+_CONFLICT_REVISION = "20261002_identity_conflicts"
+_CONFLICT_TEMPLATE = None
+
+
+def test_identity_conflict_tables_enforce_one_open_conflict_per_source_and_username():
+    global _CONFLICT_TEMPLATE
+    if _CONFLICT_TEMPLATE is None:
+        _CONFLICT_TEMPLATE = db_support.get_migrated_template(_PAIR_REVISION, _ROOT)
+    with db_support.cloned_migration_database(
+        _CONFLICT_TEMPLATE, upgrade_to_revision=_CONFLICT_REVISION, rootpath=_ROOT
+    ) as (engine, run_migration):
+        run_migration()
+
+        def add_conflict(source, status="open", ad="dude"):
+            with engine.begin() as conn:
+                return conn.execute(
+                    text(
+                        "INSERT INTO identity_conflicts (source, ad_username, status) "
+                        "VALUES (:s, :a, :st) RETURNING id"
+                    ),
+                    {"s": source, "a": ad, "st": status},
+                ).scalar_one()
+
+        first = add_conflict("sso")
+        add_conflict("registration")  # other source: allowed
+        add_conflict("sso", status="dismissed")  # settled rows do not block a new open one
+        with pytest.raises(IntegrityError):
+            add_conflict("sso")  # second open row for the same source and username
+        with pytest.raises(IntegrityError):
+            add_conflict("nope", ad="other")
+        with pytest.raises(IntegrityError):
+            add_conflict("sso", status="weird", ad="other")
+
+        with engine.begin() as conn:
+            sid = _add(conn, "4000001")
+            conn.execute(
+                text(
+                    "INSERT INTO identity_conflict_candidates (conflict_id, soldier_id, matched_fields) "
+                    "VALUES (:c, :s, ARRAY['email'])"
+                ),
+                {"c": first, "s": sid},
+            )
+        with pytest.raises(IntegrityError):  # one candidate row per soldier per conflict
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO identity_conflict_candidates (conflict_id, soldier_id) "
+                        "VALUES (:c, :s)"
+                    ),
+                    {"c": first, "s": sid},
+                )

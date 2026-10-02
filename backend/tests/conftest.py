@@ -414,6 +414,8 @@ _AREA_MARKERS: dict[str, str] = {
     "test_identity_write": "soldiers",
     "test_identity_email_write_paths": "soldiers",
     "test_identity_hr_import_paths": "soldiers",
+    "test_identity_resolution": "auth",
+    "test_identity_conflicts_routes": "auth",
     "test_migration_soldier_identity": "soldiers",
     # misc: health check, audit log, settings loader, HR integration client
     "test_health": "misc",

@@ -2140,3 +2140,75 @@ class StorageDeleteOutbox(Base):
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+
+
+class IdentityConflict(Base):
+    """An identity that could not be tied to exactly one soldier.
+
+    Recorded by app.services.identity_resolution.record_identity_conflict
+    (source ``sso``, ``registration`` or ``hr_sync``) and settled by an admin
+    (``resolved`` with a chosen soldier, or ``dismissed`` with a reason). At
+    most one *open* row exists per (source, ad_username). Holds no email or
+    claim data, only the derived AD username and soldier references.
+    """
+
+    __tablename__ = "identity_conflicts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    source: Mapped[str] = mapped_column(Text)
+    ad_username: Mapped[str] = mapped_column(Text)
+    personal_number: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    chosen_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "source IN ('sso', 'hr_sync', 'registration')", name="ck_identity_conflicts_source"
+        ),
+        sa.CheckConstraint(
+            "status IN ('open', 'resolved', 'dismissed')", name="ck_identity_conflicts_status"
+        ),
+        sa.Index(
+            "uq_identity_conflicts_open_source_ad_username",
+            "source", "ad_username",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+    )
+
+
+class IdentityConflictCandidate(Base):
+    __tablename__ = "identity_conflict_candidates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    conflict_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("identity_conflicts.id", ondelete="CASCADE")
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    # Subset of {"email", "ad_username"} that equalled the claim.
+    matched_fields: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default=text("'{}'"), default_factory=list
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("conflict_id", "soldier_id", name="uq_identity_conflict_candidate"),
+        sa.Index("ix_identity_conflict_candidates_soldier_id", "soldier_id"),
+    )

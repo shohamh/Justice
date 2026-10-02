@@ -49,6 +49,7 @@ from app.routes import hierarchy_transfers as hierarchy_transfer_routes
 from app.routes import hr_activation as hr_activation_routes
 from app.routes import hr_onboarding as hr_onboarding_routes
 from app.routes import hr_review as hr_review_routes
+from app.routes import identity_conflicts as identity_conflict_routes
 from app.routes import import_excel as import_excel_routes
 from app.routes import import_lookup as import_lookup_routes
 from app.routes import import_sessions as import_sessions_routes
@@ -238,6 +239,7 @@ def create_app() -> FastAPI:
     app.include_router(hr_activation_routes.router, prefix="/api")
     app.include_router(hr_onboarding_routes.router, prefix="/api")
     app.include_router(hr_review_routes.router, prefix="/api")
+    app.include_router(identity_conflict_routes.router, prefix="/api")
     # Registered before soldier_routes: soldier_routes has GET /soldiers/{soldier_id}
     # (a uuid-typed path param) which would otherwise shadow our literal
     # /soldiers/rank-ladder path and fail pydantic UUID validation (422) instead

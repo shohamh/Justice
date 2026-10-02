@@ -89,6 +89,14 @@
 - Imports (Excel apply, import sessions) check emails at preview time (row becomes `error`) and again at apply time; a rejected row is reported in `errors` and leaves the soldier untouched.
 - Direct `.email` writes were removed everywhere (`grep -rn "\.email\s*=" app` is clean).
 
+### Task 4: identity resolution and admin conflicts (for Tasks 6-8)
+
+- Tables `identity_conflicts` (partial unique index on `(source, ad_username)` where `status='open'`) and `identity_conflict_candidates` (unique `(conflict_id, soldier_id)`, `matched_fields text[]`), revision `20261002_identity_conflicts`. Models `IdentityConflict`, `IdentityConflictCandidate`. Task 8 can reuse them with `source='hr_sync'` and add its own columns.
+- `app/services/identity_resolution.py`: `resolve_soldier_identity(session, email, ad_username) -> Match | NoMatch | Ambiguous` (both inputs normalized; blank raises `ValueError("identity_claim_incomplete")`; never raises on ambiguity; `Match` may hold an inactive soldier, the caller rejects it). A single soldier matching only one field is `Ambiguous` (e.g. same AD username on another mail domain). After an admin resolves a conflict, the same AD username resolves to the chosen soldier as a `Match` while that soldier is still a candidate. `record_identity_conflict(session, source=, ad_username=, candidates=, personal_number=None)` accepts `Ambiguous.candidates` directly, reuses the open row, adds new candidates, logs soldier ids at ERROR level only; it does not commit. `resolve_identity_conflict` / `dismiss_identity_conflict` raise `ValueError` codes `conflict_not_open`, `not_a_candidate`, `reason_required`.
+- Endpoints (admin only): `GET /api/admin/identity-conflicts?status=open|resolved|dismissed`, `POST /api/admin/identity-conflicts/{id}/resolve {soldier_id}`, `POST .../dismiss {reason}`; candidates expose name, personal number, masked email, matched fields, active flag. Audit actions `identity_conflict.resolve|dismiss`.
+- The generic user-facing response for an ambiguous login belongs to the Task 6 callback; nothing user-facing exists yet.
+- Known pre-existing failures on 2026-10-02, unrelated: `tests/unit/test_algorithm_bridge_shifts.py::test_block_ids_are_unique` and `tests/test_effort_score.py::test_breakdown_contributions_reconstruct_scores` (hard-coded dates now in the past).
+
 ### Task 2: Preflight existing data and enforce database uniqueness
 
 **Files:** Create Alembic migration under `backend/alembic/versions/`; add migration test under `backend/tests/unit/test_migration_soldier_identity.py`; update model/tests.
@@ -116,11 +124,11 @@
 
 **Files:** Create `backend/app/services/identity_resolution.py`; model + Alembic migration for `identity_conflicts` (id, source `sso|hr_sync|registration`, derived AD username, personal number nullable, status `open|resolved|dismissed`, created/resolved timestamps and resolver) and `identity_conflict_candidates` (conflict id, soldier id, which fields matched); create `backend/app/routes/identity_conflicts.py`; tests under `backend/tests/unit/` and `backend/tests/integration/`.
 
-- [ ] Write failing tests for `resolve_soldier_identity(session, email, ad_username)` returning `Match`, `NoMatch`, or `Ambiguous`, covering: exactly one soldier matching both fields; none; email matches A and AD username matches B; multiple matches in data that predates the constraints; match on only one field; inactive soldier.
-- [ ] Implement the resolver as the only code that decides "who is this person"; it queries email and AD username candidates, de-duplicates by Soldier id, and never raises on ambiguity (it returns it).
-- [ ] Add `record_identity_conflict(...)` that stores the conflict plus candidate soldier ids idempotently (same AD username + source reuses the open row) and emits an error-level log with soldier ids only, no email or claims.
-- [ ] Add admin-only endpoints (reuse the existing admin role dependency): list open conflicts with candidates (soldier id, name, personal number, masked email), resolve with an explicit chosen soldier id (the next SSO attempt then links to it), and dismiss with a reason. Resolution is audited and never edits the other candidates implicitly.
-- [ ] Test endpoint authorization (non-admin denied), idempotent recording, resolve/dismiss transitions, and that user-facing responses for an ambiguous login stay generic.
+- [x] Write failing tests for `resolve_soldier_identity(session, email, ad_username)` returning `Match`, `NoMatch`, or `Ambiguous`, covering: exactly one soldier matching both fields; none; email matches A and AD username matches B; multiple matches in data that predates the constraints; match on only one field; inactive soldier.
+- [x] Implement the resolver as the only code that decides "who is this person"; it queries email and AD username candidates, de-duplicates by Soldier id, and never raises on ambiguity (it returns it).
+- [x] Add `record_identity_conflict(...)` that stores the conflict plus candidate soldier ids idempotently (same AD username + source reuses the open row) and emits an error-level log with soldier ids only, no email or claims.
+- [x] Add admin-only endpoints (reuse the existing admin role dependency): list open conflicts with candidates (soldier id, name, personal number, masked email), resolve with an explicit chosen soldier id (the next SSO attempt then links to it), and dismiss with a reason. Resolution is audited and never edits the other candidates implicitly.
+- [x] Test endpoint authorization (non-admin denied), idempotent recording, resolve/dismiss transitions, and that user-facing responses for an ambiguous login stay generic.
 
 ### Task 5: Add OIDC provider configuration and protocol service
 
