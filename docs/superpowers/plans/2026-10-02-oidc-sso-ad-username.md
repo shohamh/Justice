@@ -227,12 +227,19 @@ Task 9 notes: browser (Playwright) specs for the ambiguous-SSO-to-admin journey,
 
 **Files:** OIDC/email tests, migration, auth routes/services, frontend files, docs.
 
-- [ ] Test the cross-check matrix end to end: SSO match, no match (registration without invite code), ambiguous (conflict recorded, no session), and HR duplicate personal numbers (validation error raised and caught, warning recorded, latest record applied, other people still synced).
-- [ ] Test state, nonce, PKCE verifier, signature, `iss`, `aud`, `azp`, `exp`, `iat`, missing/unverified email, discovery outage, JWKS outage, key rotation, replay, and open redirect rejection.
-- [ ] Search application logs, audit events, URLs, responses, browser storage, and test artifacts for tokens, authorization codes, state, nonce, email claims, or secrets; remove any leak.
-- [ ] Run email and OIDC migrations against PostgreSQL with conflict and clean fixtures; run backend auth/registration/email suites and frontend auth tests.
+- [x] Test the cross-check matrix end to end: SSO match, no match (registration without invite code), ambiguous (conflict recorded, no session), and HR duplicate personal numbers (validation error raised and caught, warning recorded, latest record applied, other people still synced).
+- [x] Test state, nonce, PKCE verifier, signature, `iss`, `aud`, `azp`, `exp`, `iat`, missing/unverified email, discovery outage, JWKS outage, key rotation, replay, and open redirect rejection.
+- [x] Search application logs, audit events, URLs, responses, browser storage, and test artifacts for tokens, authorization codes, state, nonce, email claims, or secrets; remove any leak.
+- [x] Run email and OIDC migrations against PostgreSQL with conflict and clean fixtures; run backend auth/registration/email suites and frontend auth tests.
 - [ ] Run existing login and registration browser journeys plus new mock-provider OIDC journey; verify the legacy password flow still produces the existing session.
-- [ ] Document provider configuration and local mock-provider setup without embedding production issuer URLs or credentials; explicitly state provider-specific AD syntax assumptions.
+- [x] Document provider configuration and local mock-provider setup without embedding production issuer URLs or credentials; explicitly state provider-specific AD syntax assumptions.
+
+Task 10 notes (independent review, 2026-10-02):
+
+- Fixed: the OIDC callback URL carries the one-time authorization code and state; both reached the backend error log/admin error inbox (`redact` did not know `code`/`state`) and the uvicorn access log. `error_logging.redact_query` and `logging_config.OidcQueryRedactionFilter` now redact them (tests in `tests/test_error_logging.py`).
+- Added tests (`tests/unit/test_oidc_security_review.py`): HS256 algorithm confusion, signature algorithm outside the provider-advertised list, non-matching `azp` with one audience, expiry leeway edges, expired discovery/JWKS caches fail closed during an outage, discovery redirects are not followed. No other defects found in the protocol, transaction, linking or registration code.
+- Verification run: alembic upgrade head, full downgrade to `4858092e72e7` and upgrade head on a disposable PostgreSQL 16 container (the merge head makes `downgrade -1` an "Ambiguous walk"; documented in `docs/operations/oidc-sso.md`); slow migration tests; OIDC/identity/HR-conflict suites; `-m "auth or soldiers or hierarchy"`; `app/services/hr`; focused Vitest; `npm run lint`; `npm run typecheck`.
+- NOT run: the Playwright journeys (the existing login/registration journeys and `frontend/tests/e2e/oidc_sso.spec.ts` against the mock provider), so that checkbox stays open, as do the three Task 9 browser items. They need a dedicated backend and frontend stack that this resource-constrained review did not start.
 
 ## Execution Handoff
 
