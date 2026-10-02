@@ -210,16 +210,18 @@ Note: `soldiers.personal_number` and `soldier_hr_profiles.personal_number` are a
 
 **Files:** `frontend/src/api/auth.ts`, `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/RegisterPage.tsx`, corresponding unit tests, E2E spec.
 
-- [ ] Add failing tests that the SSO button appears only when the server reports OIDC availability and leaves the personal-number/password login usable.
-- [ ] Implement a top-level navigation to the backend OIDC start route; do not store provider tokens or callback parameters in web storage.
-- [ ] Add read-only prefilled email and AD username fields when registration resumes from OIDC context; preserve ordinary local registration fields and validation unchanged.
-- [ ] Hide the invite-code field when registration resumes from an OIDC context; keep it for ordinary registration. After SSO registration, show the existing pending-approval state for holding-node soldiers.
+- [x] Add failing tests that the SSO button appears only when the server reports OIDC availability and leaves the personal-number/password login usable.
+- [x] Implement a top-level navigation to the backend OIDC start route; do not store provider tokens or callback parameters in web storage.
+- [x] Add read-only prefilled email and AD username fields when registration resumes from OIDC context; preserve ordinary local registration fields and validation unchanged.
+- [x] Hide the invite-code field when registration resumes from an OIDC context; keep it for ordinary registration. After SSO registration, show the existing pending-approval state for holding-node soldiers.
 - [ ] Add a browser test that an SSO-registered soldier is in the holding node, has no access beyond what holding-node soldiers have, and gains it only after a commander at or above mador approves.
-- [ ] Add an admin identity-conflicts view listing open SSO/registration conflicts with their candidate soldiers and resolve/dismiss actions, and an HR sync conflicts tab in `HrSyncReviewContent` showing a warning for each conflict with the duplicate HR records side by side, the one applied by default (latest) marked, an "acknowledge" action, a "use this one from now on" action that remembers the choice (enabled only for candidates with a valid email and AD username), a visible "remembered choice" marker with a "clear" action, and the validation reason when a pick is invalid. Add Hebrew strings in `he.json` (grep call sites first; duplicate keys are a known hazard).
-- [ ] Add safe loading/error display for cancelled/failed SSO without echoing callback data or identity details.
-- [ ] Add component tests for both conflict screens (empty, list, resolve, error) and a browser test that an ambiguous SSO login shows the generic error to the user and the conflict in the admin screen.
+- [x] Add an admin identity-conflicts view listing open SSO/registration conflicts with their candidate soldiers and resolve/dismiss actions, and an HR sync conflicts tab in `HrSyncReviewContent` showing a warning for each conflict with the duplicate HR records side by side, the one applied by default (latest) marked, an "acknowledge" action, a "use this one from now on" action that remembers the choice (enabled only for candidates with a valid email and AD username), a visible "remembered choice" marker with a "clear" action, and the validation reason when a pick is invalid. Add Hebrew strings in `he.json` (grep call sites first; duplicate keys are a known hazard).
+- [x] Add safe loading/error display for cancelled/failed SSO without echoing callback data or identity details.
+- [x] Add component tests for both conflict screens (empty, list, resolve, error) and a browser test that an ambiguous SSO login shows the generic error to the user and the conflict in the admin screen.
 - [ ] Add browser tests for configured/unconfigured login UI, SSO-to-registration prefill, manual registration compatibility, and no sensitive values in browser URL/storage.
 - [ ] Run focused Vitest and Playwright flows against the local mock OIDC provider.
+
+Task 9 notes: browser (Playwright) specs for the ambiguous-SSO-to-admin journey, the holding-node approval journey and the mock-provider runs are written only as `frontend/tests/e2e/oidc_sso.spec.ts` (login UI, failed-callback banner, registration prefill, no sensitive URL/storage values; env-gated on `E2E_OIDC_MOCK_URL` / `E2E_OIDC_DISABLED`) and were NOT run: they need a dedicated backend configured against the mock provider. Those three plan items stay unchecked. The HR conflicts UI is a section (not a tab) inside `HrSyncReviewContent`, since that page has no tab structure.
 
 ### Task 10: Security review and complete verification
 
