@@ -1,6 +1,6 @@
 import { api } from "./client";
 import { ExemptionSummaryItem } from "./exemptions";
-import { isRecord, optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
+import { isRecord, optionalArrayResponse, requiredArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface TransparencyRow {
   soldier_id: string;
@@ -115,13 +115,24 @@ export interface BurdenShareBreakdown {
   W_i: string;  // Σ(active_frac_q) — historical weight
 }
 
-export async function getTransparency(): Promise<TransparencyOut> {
+async function fetchTransparency(requireRows: boolean): Promise<TransparencyOut> {
   const r = await api.get<unknown>(`/scoring/transparency`);
   const data = requiredObjectResponse(r.data, "Invalid transparency response");
   return {
-    rows: optionalArrayResponse<TransparencyRow>(data.rows),
+    rows: requireRows
+      ? requiredArrayResponse<TransparencyRow>(data.rows, "Invalid transparency rows response")
+      : optionalArrayResponse<TransparencyRow>(data.rows),
     can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
   };
+}
+
+export function getTransparency(): Promise<TransparencyOut> {
+  return fetchTransparency(false);
+}
+
+/** Rejects malformed rows so a complete workbook cannot look like an empty export. */
+export function getTransparencyForExport(): Promise<TransparencyOut> {
+  return fetchTransparency(true);
 }
 
 export async function getTransparencyPage(

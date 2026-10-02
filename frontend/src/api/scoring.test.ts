@@ -3,6 +3,7 @@ import { api } from "./client";
 import {
   listEligibilityGroups,
   getTransparency,
+  getTransparencyForExport,
   getFairnessComponents,
   getBreakdown,
   getBurdenShareBreakdown,
@@ -36,6 +37,23 @@ describe("getTransparency", () => {
   it("keeps a legitimately empty rows array as empty, not an error", async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { rows: [], can_see_exemption_aggregates: false } });
     await expect(getTransparency()).resolves.toEqual({ rows: [], can_see_exemption_aggregates: false });
+  });
+});
+
+describe("getTransparencyForExport", () => {
+  it("rejects malformed rows but accepts a valid empty array", async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: { rows: { detail: "unexpected response" }, can_see_exemption_aggregates: true },
+    });
+    await expect(getTransparencyForExport()).rejects.toThrow("Invalid transparency rows response");
+
+    vi.mocked(api.get).mockResolvedValueOnce({
+      data: { rows: [], can_see_exemption_aggregates: false },
+    });
+    await expect(getTransparencyForExport()).resolves.toEqual({
+      rows: [],
+      can_see_exemption_aggregates: false,
+    });
   });
 });
 

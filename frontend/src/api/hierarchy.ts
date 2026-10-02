@@ -116,6 +116,12 @@ export async function fetchFullTree(): Promise<NodeDTO[]> {
   return optionalArrayResponse<NodeDTO>(data);
 }
 
+/** Rejects malformed hierarchy payloads so a complete export cannot look empty. */
+export async function fetchFullTreeForExport(): Promise<NodeDTO[]> {
+  const data = (await api.get<unknown>("/hierarchy/tree", { params: { all: true } })).data;
+  return requiredArrayResponse<NodeDTO>(data, "Invalid hierarchy tree response");
+}
+
 function parseHierarchyNodeSummary(value: unknown): HierarchyNodeSummaryDTO {
   const summary = requiredObjectResponse(value, "Invalid hierarchy node summary");
   if (

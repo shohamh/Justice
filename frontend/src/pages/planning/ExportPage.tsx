@@ -6,8 +6,8 @@ import Layout from "../../components/Layout";
 import { queryKeys } from "../../queryKeys";
 import { useAuth } from "../../auth/AuthContext";
 import { getTransparencyAuthorizationScope } from "../../api/auth";
-import { TransparencyRow, getTransparency } from "../../api/scoring";
-import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
+import { TransparencyRow, getTransparencyForExport } from "../../api/scoring";
+import { fetchFullTreeForExport, NodeDTO } from "../../api/hierarchy";
 import { getAccessToken } from "../../api/client";
 import { exportValueOf } from "../../components/ExcelExportButton";
 import type { ColDef } from "../../components/DataTable";
@@ -102,15 +102,17 @@ export default function ExportPage() {
   const transparencyScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparencyForScope(transparencyScope),
-    queryFn: getTransparency,
+    queryFn: getTransparencyForExport,
     enabled: needsHierarchyData && !!transparencyScope,
+    staleTime: 0,
   });
   const rows = useMemo<TransparencyRow[]>(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
 
   const treeQuery = useQuery({
     queryKey: queryKeys.hierarchyTree(),
-    queryFn: fetchFullTree,
+    queryFn: fetchFullTreeForExport,
     enabled: needsHierarchyData,
+    staleTime: 0,
   });
   const hierarchyDataReady = !needsHierarchyData || (
     !!transparencyScope &&

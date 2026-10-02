@@ -9,12 +9,38 @@ import type { NodeDTO } from "../../api/hierarchy";
 import * as hierarchyApi from "../../api/hierarchy";
 import * as scoringApi from "../../api/scoring";
 import type { TransparencyRow } from "../../api/scoring";
+import { getTransparencyAuthorizationScope } from "../../api/auth";
+import { queryKeys } from "../../queryKeys";
 
-function renderWithProviders(ui: React.ReactElement) {
-  const queryClient = new QueryClient({
+function renderWithProviders(
+  ui: React.ReactElement,
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  }),
+) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
+function renderWithCachedEmptyHierarchyData() {
+  const cachedUser = {
+    id: "viewer-1",
+    role: "admin",
+    scope_root_ids: [],
+    active_deputy_grants: [],
+    hierarchy_node_id: null,
+    is_commander: false,
+    is_duty_manager: false,
+  } as Parameters<typeof getTransparencyAuthorizationScope>[0];
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const scope = getTransparencyAuthorizationScope(cachedUser);
+  queryClient.setQueryData(queryKeys.transparencyForScope(scope), {
+    rows: [],
+    can_see_exemption_aggregates: false,
+  });
+  queryClient.setQueryData(queryKeys.hierarchyTree(), []);
+  return renderWithProviders(<ExportPage />, queryClient);
 }
 
 function mockNode(id: string, name: string, parent_id: string | null): NodeDTO {
@@ -48,8 +74,8 @@ test("dfsOrder groups children under their parent, not globally alphabetically",
   // parent, e.g. interleaving "b-child-1" (Delta) between root-a's children.
 });
 
-vi.mock("../../api/scoring", () => ({ getTransparency: vi.fn().mockResolvedValue({ rows: [] }) }));
-vi.mock("../../api/hierarchy", () => ({ fetchFullTree: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../api/scoring", () => ({ getTransparencyForExport: vi.fn().mockResolvedValue({ rows: [] }) }));
+vi.mock("../../api/hierarchy", () => ({ fetchFullTreeForExport: vi.fn().mockResolvedValue([]) }));
 vi.mock("../../api/client", () => ({ getAccessToken: vi.fn().mockReturnValue("test-token") }));
 vi.mock("xlsx", async () => {
   const actual = await vi.importActual<typeof import("xlsx")>("xlsx");
@@ -261,8 +287,8 @@ describe("ExportPage", () => {
       expect.stringContaining("/config/export?sheets=duty_types"),
       expect.anything(),
     ));
-    expect(scoringApi.getTransparency).not.toHaveBeenCalled();
-    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+    expect(scoringApi.getTransparencyForExport).not.toHaveBeenCalled();
+    expect(hierarchyApi.fetchFullTreeForExport).not.toHaveBeenCalled();
     expect(writeFile).toHaveBeenCalledTimes(1);
   });
 
@@ -270,26 +296,26 @@ describe("ExportPage", () => {
     ["transparency", 1],
     ["sub-units", 2],
   ] as const)("loads both required payloads when %s is selected", async (_sheet, checkboxIndex) => {
-    vi.mocked(scoringApi.getTransparency).mockResolvedValue({ rows: [], can_see_exemption_aggregates: false });
-    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
+    vi.mocked(scoringApi.getTransparencyForExport).mockResolvedValue({ rows: [], can_see_exemption_aggregates: false });
+    vi.mocked(hierarchyApi.fetchFullTreeForExport).mockResolvedValue([]);
     renderWithProviders(<ExportPage />);
     fireEvent.click(checkboxAt(checkboxIndex));
 
     await waitFor(() => {
-      expect(scoringApi.getTransparency).toHaveBeenCalledTimes(1);
-      expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
+      expect(scoringApi.getTransparencyForExport).toHaveBeenCalledTimes(1);
+      expect(hierarchyApi.fetchFullTreeForExport).toHaveBeenCalledTimes(1);
     });
   });
 
   it("disables export until the selected transparency rows and hierarchy finish loading", async () => {
     let resolveRows!: (value: { rows: TransparencyRow[]; can_see_exemption_aggregates: boolean }) => void;
-    vi.mocked(scoringApi.getTransparency).mockReturnValue(new Promise((resolve) => { resolveRows = resolve; }));
-    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
+    vi.mocked(scoringApi.getTransparencyForExport).mockReturnValue(new Promise((resolve) => { resolveRows = resolve; }));
+    vi.mocked(hierarchyApi.fetchFullTreeForExport).mockResolvedValue([]);
     const writeFile = vi.mocked(XLSX.writeFile);
     renderWithProviders(<ExportPage />);
     fireEvent.click(checkboxAt(1));
 
-    await waitFor(() => expect(scoringApi.getTransparency).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(scoringApi.getTransparencyForExport).toHaveBeenCalledTimes(1));
     const exportButton = screen.getByRole("button");
     expect(exportButton).toBeDisabled();
     fireEvent.click(exportButton);
@@ -299,20 +325,20 @@ describe("ExportPage", () => {
     await waitFor(() => expect(exportButton).toBeEnabled());
   });
 
-  it.each(["transparency", "tree"] as const)("blocks incomplete exports and retries a failed %s request", async (failedSource) => {
-    if (failedSource === "transparency") {
-      vi.mocked(scoringApi.getTransparency)
-        .mockRejectedValueOnce(new Error("transparency unavailable"))
+  it.each(["rows", "tree"] as const)("blocks incomplete exports and retries a malformed %s response", async (failedSource) => {
+    if (failedSource === "rows") {
+      vi.mocked(scoringApi.getTransparencyForExport)
+        .mockRejectedValueOnce(new Error("Invalid transparency rows response"))
         .mockResolvedValueOnce({ rows: [], can_see_exemption_aggregates: false });
-      vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
+      vi.mocked(hierarchyApi.fetchFullTreeForExport).mockResolvedValue([]);
     } else {
-      vi.mocked(scoringApi.getTransparency).mockResolvedValue({ rows: [], can_see_exemption_aggregates: false });
-      vi.mocked(hierarchyApi.fetchFullTree)
-        .mockRejectedValueOnce(new Error("hierarchy unavailable"))
+      vi.mocked(scoringApi.getTransparencyForExport).mockResolvedValue({ rows: [], can_see_exemption_aggregates: false });
+      vi.mocked(hierarchyApi.fetchFullTreeForExport)
+        .mockRejectedValueOnce(new Error("Invalid hierarchy tree response"))
         .mockResolvedValueOnce([]);
     }
     const writeFile = vi.mocked(XLSX.writeFile);
-    renderWithProviders(<ExportPage />);
+    renderWithCachedEmptyHierarchyData();
     fireEvent.click(checkboxAt(1));
 
     const alert = await screen.findByRole("alert");
@@ -324,8 +350,8 @@ describe("ExportPage", () => {
 
     fireEvent.click(within(alert).getByRole("button"));
     await waitFor(() => {
-      expect(scoringApi.getTransparency).toHaveBeenCalledTimes(failedSource === "transparency" ? 2 : 1);
-      expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(failedSource === "tree" ? 2 : 1);
+      expect(scoringApi.getTransparencyForExport).toHaveBeenCalledTimes(failedSource === "rows" ? 2 : 1);
+      expect(hierarchyApi.fetchFullTreeForExport).toHaveBeenCalledTimes(failedSource === "tree" ? 2 : 1);
       expect(screen.getAllByRole("button").slice(-1)[0]).toBeEnabled();
     });
 
@@ -359,7 +385,7 @@ describe("ExportPage", () => {
       name: "Beta",
       path_ids: ["beta"],
     };
-    vi.mocked(scoringApi.getTransparency).mockResolvedValue({
+    vi.mocked(scoringApi.getTransparencyForExport).mockResolvedValue({
       rows: [
         transparencyRow("s-beta", "C. Beta", "beta", "Beta", { active_days: 30, cumulative_score: "30", score_per_day: "3.5", normalised_score: "6" }),
         transparencyRow("s-child", "B. Child", "alpha-child", "Alpha Child", { active_days: 20, cumulative_score: "20", score_per_day: "2.5", normalised_score: "4" }),
@@ -368,15 +394,15 @@ describe("ExportPage", () => {
       ],
       can_see_exemption_aggregates: false,
     });
-    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([rootAlpha, childAlpha, rootBeta]);
+    vi.mocked(hierarchyApi.fetchFullTreeForExport).mockResolvedValue([rootAlpha, childAlpha, rootBeta]);
     const writeFile = vi.mocked(XLSX.writeFile);
 
     renderWithProviders(<ExportPage />);
     fireEvent.click(checkboxAt(1));
     fireEvent.click(checkboxAt(2));
     await waitFor(() => {
-      expect(scoringApi.getTransparency).toHaveBeenCalledTimes(1);
-      expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
+      expect(scoringApi.getTransparencyForExport).toHaveBeenCalledTimes(1);
+      expect(hierarchyApi.fetchFullTreeForExport).toHaveBeenCalledTimes(1);
       expect(screen.getByRole("button")).toBeEnabled();
     });
     fireEvent.click(screen.getByRole("button"));
