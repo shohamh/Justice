@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from statistics import mean, median, stdev
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, load_only
 
 from app.db.models import (
@@ -283,17 +283,25 @@ def fairness_stats(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
 
 
 def potential_counts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
-    soldiers = _soldiers_in_nodes(session, subtree_ids)
-    total_soldiers = len(soldiers)
+    chova = keva = bahad1 = officers = total_soldiers = 0
+    if subtree_ids:
+        chova, keva, bahad1, officers, total_soldiers = session.execute(
+            select(
+                func.sum(case((Soldier.mandatory_end_date > date.today(), 1), else_=0)),
+                func.sum(case((Soldier.rank.in_(("sgan_aluf", "rav_saren", "saren")), 1), else_=0)),
+                func.sum(case((Soldier.bahad1_graduate.is_(True), 1), else_=0)),
+                func.sum(case((Soldier.is_officer.is_(True), 1), else_=0)),
+                func.count(Soldier.id),
+            ).where(Soldier.hierarchy_node_id.in_(subtree_ids), Soldier.left_at.is_(None))
+        ).one()
+        chova, keva, bahad1, officers = (
+            chova or 0, keva or 0, bahad1 or 0, officers or 0
+        )
 
     counts: list[dict] = []
-    chova = sum(1 for s in soldiers if s.mandatory_end_date and s.mandatory_end_date > date.today())
     counts.append({"label": "חובה", "count": chova, "unit_total": None})
-    keva = sum(1 for s in soldiers if s.rank and s.rank in ("sgan_aluf", "rav_saren", "saren"))
     counts.append({"label": "קבע", "count": keva, "unit_total": None})
-    bahad1 = sum(1 for s in soldiers if s.bahad1_graduate)
     counts.append({"label": 'בוגרי בה"ד 1', "count": bahad1, "unit_total": None})
-    officers = sum(1 for s in soldiers if s.is_officer)
     counts.append({"label": "קצינים", "count": officers, "unit_total": None})
     counts.append({"label": 'סה"כ חיילים', "count": total_soldiers, "unit_total": None})
     return counts

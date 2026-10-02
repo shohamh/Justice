@@ -1389,18 +1389,44 @@ def projection_is_current(session: Session, required_quarters: set[Any] | list[A
     if not bucket_keys and not quarter_only:
         return True
 
-    dirty_query = select(ScoreProjectionDirtyBucket).where(
-        ScoreProjectionDirtyBucket.status == "dirty"
-    )
     if bucket_keys:
-        dirty_rows = session.execute(dirty_query).scalars().all()
-        if any((row.soldier_id, row.quarter_start) in bucket_keys for row in dirty_rows):
+        ordered_keys = sorted(bucket_keys, key=lambda item: (str(item[0]), item[1]))
+        matching_dirty_key = session.execute(
+            text(
+                """
+                SELECT score_projection_dirty_buckets.soldier_id,
+                       score_projection_dirty_buckets.quarter_start
+                FROM score_projection_dirty_buckets
+                JOIN UNNEST(
+                    CAST(:soldier_ids AS uuid[]),
+                    CAST(:quarter_starts AS date[])
+                ) AS required(soldier_id, quarter_start)
+                  ON score_projection_dirty_buckets.soldier_id = required.soldier_id
+                 AND score_projection_dirty_buckets.quarter_start = required.quarter_start
+                WHERE score_projection_dirty_buckets.status = 'dirty'
+                LIMIT 1
+                """
+            ),
+            {
+                "soldier_ids": [str(soldier_id) for soldier_id, _quarter in ordered_keys],
+                "quarter_starts": [quarter for _soldier_id, quarter in ordered_keys],
+            },
+        ).first()
+        if matching_dirty_key is not None:
             return False
     if quarter_only:
-        dirty_rows = session.execute(
-            dirty_query.where(ScoreProjectionDirtyBucket.quarter_start.in_(quarter_only))
-        ).scalars().all()
-        if dirty_rows:
+        matching_dirty_quarter = session.execute(
+            select(
+                ScoreProjectionDirtyBucket.soldier_id,
+                ScoreProjectionDirtyBucket.quarter_start,
+            )
+            .where(
+                ScoreProjectionDirtyBucket.status == "dirty",
+                ScoreProjectionDirtyBucket.quarter_start.in_(quarter_only),
+            )
+            .limit(1)
+        ).first()
+        if matching_dirty_quarter is not None:
             return False
     return True
 

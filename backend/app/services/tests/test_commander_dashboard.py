@@ -17,6 +17,7 @@ from app.services import assignments as assignments_svc
 from app.services.commander_dashboard import (
     _score_data,
     alerts,
+    potential_counts,
     soldiers_in_subtree,
     summary_cards,
     upcoming_duties,
@@ -428,3 +429,65 @@ def test_summary_cards_batches_shift_assignment_counts(admin_session):
 
     assert result["unfilled_gaps"] == 8
     assert select_count < 20
+
+
+def test_potential_counts_aggregates_active_soldiers_across_scoped_roots(admin_session):
+    first = create_node(admin_session, level="unit", name="potential_counts_first")
+    second = create_node(admin_session, level="unit", name="potential_counts_second")
+    outside = create_node(admin_session, level="unit", name="potential_counts_outside")
+    today = date.today()
+
+    future = create_soldier(admin_session, personal_number="7957001", hierarchy_node_id=first.id)
+    future.mandatory_end_date = today + timedelta(days=1)
+    future.rank = "sgan_aluf"
+    future.bahad1_graduate = True
+    future.is_officer = True
+
+    boundary = create_soldier(admin_session, personal_number="7957002", hierarchy_node_id=first.id)
+    boundary.mandatory_end_date = today
+    boundary.rank = "rav_saren"
+    boundary.is_officer = None
+
+    second_root = create_soldier(admin_session, personal_number="7957003", hierarchy_node_id=second.id)
+    second_root.mandatory_end_date = None
+    second_root.rank = "saren"
+    second_root.bahad1_graduate = True
+    second_root.is_officer = False
+
+    plain = create_soldier(admin_session, personal_number="7957004", hierarchy_node_id=second.id)
+    plain.mandatory_end_date = today - timedelta(days=1)
+    plain.rank = "seren"  # Outside the fixed career rank set.
+    plain.bahad1_graduate = False
+    plain.is_officer = None
+
+    departed = create_soldier(admin_session, personal_number="7957005", hierarchy_node_id=first.id)
+    departed.mandatory_end_date = today + timedelta(days=1)
+    departed.rank = "saren"
+    departed.bahad1_graduate = True
+    departed.is_officer = True
+    departed.left_at = today
+
+    unscoped = create_soldier(admin_session, personal_number="7957006", hierarchy_node_id=outside.id)
+    unscoped.mandatory_end_date = today + timedelta(days=1)
+    unscoped.rank = "saren"
+    unscoped.bahad1_graduate = True
+    unscoped.is_officer = True
+    admin_session.commit()
+
+    result, statements = _capture_selects(
+        admin_session,
+        lambda: potential_counts(admin_session, subtree_ids=[first.id, second.id]),
+    )
+
+    assert [item["count"] for item in result] == [1, 3, 2, 1, 4]
+    assert all(item["unit_total"] is None for item in result)
+    assert len(statements) == 1
+    assert "sum(" in statements[0] and "case" in statements[0]
+
+
+def test_potential_counts_no_scope_has_zero_counts_without_query(admin_session):
+    result, statements = _capture_selects(
+        admin_session, lambda: potential_counts(admin_session, subtree_ids=[])
+    )
+    assert [item["count"] for item in result] == [0, 0, 0, 0, 0]
+    assert statements == []
