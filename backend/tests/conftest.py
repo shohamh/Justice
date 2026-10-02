@@ -404,6 +404,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_email_render": "notifications",
     "test_telegram_notifications": "notifications",
     "test_bot_actions": "notifications",
+    "test_concurrency_qualification_expiry": "notifications",
     # soldiers: soldier profile, soldier listing, Excel import
     "test_soldier_profile": "soldiers",
     "test_soldiers_api": "soldiers",
