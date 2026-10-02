@@ -384,6 +384,31 @@ def test_cancel_once_fully_approved_requires_a_reason(admin_session):
         cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
 
 
+def test_cancel_approved_constraint_with_reason_marks_it_cancelled(admin_session):
+    s = create_soldier(admin_session, personal_number="7400015")
+    c = submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=date.today() + timedelta(days=5),
+        end_date=date.today() + timedelta(days=10),
+        reason="חופשה",
+        actor_id=None,
+    )
+    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)  # -> pending_duty_manager
+    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id, actor_role="admin")  # -> approved
+    admin_session.commit()
+
+    cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id, reason="  שינוי תוכניות  ")
+    admin_session.commit()
+
+    admin_session.expire_all()
+    cancelled = admin_session.get(PersonalConstraint, c.id)
+    assert cancelled.status == "cancelled"
+    assert cancelled.decision_note == "שינוי תוכניות"
+    assert cancelled.decided_by == s.id
+    assert cancelled.decided_at is not None and cancelled.decided_at.tzinfo is not None
+
+
 def test_cancel_not_pending_once_rejected(admin_session):
     s = create_soldier(admin_session, personal_number=_pn(13))
     c = submit_constraint(
