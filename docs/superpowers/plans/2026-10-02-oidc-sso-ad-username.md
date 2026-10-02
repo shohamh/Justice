@@ -71,17 +71,25 @@
 - Verification: `backend/app/services/email_verification.py:request_verification` snapshots `soldier.email` in `EmailVerificationToken.email`; `verify_token` compares it to the current Soldier email and sets `soldier.email_verified = True`. Its conflict lookup currently checks only other **verified** rows, so Task 3 must align it with uniqueness across verified and unverified addresses.
 - Other Soldier constructors in `backend/app/services/soldiers.py:onboard_soldier` and `backend/app/scripts/{bootstrap,seed,seed_polaris,storage_migration_rehearsal_fixture}.py` do not currently set email; retain the invariant if they gain email input.
 
+### Task 2: migration and preflight (for Tasks 3-8)
+
+- Revision `20261002_soldier_identity` (down `4858092e72e7`). Adds `soldiers.ad_username`, CHECKs `ck_soldiers_personal_number_trimmed`, `ck_soldiers_email_canonical`, `ck_soldiers_ad_username_canonical`, and partial unique indexes `uq_soldiers_email`, `uq_soldiers_ad_username` (mirrored on the `Soldier` model). The CHECKs reject non-canonical (untrimmed/uppercase) values, so every write path must store `normalize_email(...)`/`derive_ad_username(...)` output. There is deliberately no DB CHECK tying `ad_username` to `email` yet (it would break existing paths mid-refactor); Task 3 adds that consistency CHECK in a follow-up migration once all write paths set both.
+- `app/services/identity_preflight.py`: `collect_identity_conflicts(connection) -> IdentityPreflightReport` (read-only; conflict kinds `invalid_email`, `ad_username_too_long`, `ad_username_invalid`, `duplicate_email`, `duplicate_ad_username`, `blank_personal_number`, `untrimmed_personal_number`, `duplicate_personal_number`), `IdentityPreflightError`. The migration calls it first and aborts before any DDL. Operator CLI: `python -m app.scripts.identity_preflight` (exit 1 on conflicts). Reports contain soldier ids only, never addresses.
+- Untrimmed but non-colliding personal numbers are reported as conflicts (not auto-trimmed), since trimming would be a silent rename. Personal-number whitespace set is ` 	
+` in both Python and the CHECK.
+- Migration tests are `slow`-marked (run with `pytest --slow tests/unit/test_migration_soldier_identity.py -n0`), using a disposable testcontainers Postgres.
+
 ### Task 2: Preflight existing data and enforce database uniqueness
 
 **Files:** Create Alembic migration under `backend/alembic/versions/`; add migration test under `backend/tests/unit/test_migration_soldier_identity.py`; update model/tests.
 
-- [ ] Write migration tests with duplicate normalized emails, duplicate derived usernames from different email domains, blank values, malformed addresses, and valid rows; assert diagnostics identify conflicting soldier IDs without changing or merging data.
-- [ ] Add `Soldier.ad_username` and normalized email expression/index design to the SQLAlchemy model using PostgreSQL-compatible constraints matching the chosen canonical stored values.
-- [ ] Implement a preflight command/migration step that raises a clear actionable conflict report before any backfill or constraint DDL; ensure it prints addresses only where needed for operator resolution and does not run in production implicitly.
-- [ ] Backfill canonical email and derived username only after preflight reports no conflicts; keep blank email as `NULL` and retain `email_verified` without using it to determine uniqueness.
-- [ ] Add unique partial indexes for non-null email and AD username; test case-insensitive duplicate prevention under PostgreSQL and migration downgrade behavior.
-- [ ] Extend preflight to personal numbers: report soldiers whose trimmed personal numbers collide or are blank (the raw column is already unique, so only normalized collisions are new), and add a CHECK that `personal_number` equals its trimmed form and is non-blank. Test that personal number, email, and AD username each reject a duplicate at the PostgreSQL level.
-- [ ] Run migration tests and verify Alembic upgrade/downgrade on the disposable database.
+- [x] Write migration tests with duplicate normalized emails, duplicate derived usernames from different email domains, blank values, malformed addresses, and valid rows; assert diagnostics identify conflicting soldier IDs without changing or merging data.
+- [x] Add `Soldier.ad_username` and normalized email expression/index design to the SQLAlchemy model using PostgreSQL-compatible constraints matching the chosen canonical stored values.
+- [x] Implement a preflight command/migration step that raises a clear actionable conflict report before any backfill or constraint DDL; ensure it prints addresses only where needed for operator resolution and does not run in production implicitly.
+- [x] Backfill canonical email and derived username only after preflight reports no conflicts; keep blank email as `NULL` and retain `email_verified` without using it to determine uniqueness.
+- [x] Add unique partial indexes for non-null email and AD username; test case-insensitive duplicate prevention under PostgreSQL and migration downgrade behavior.
+- [x] Extend preflight to personal numbers: report soldiers whose trimmed personal numbers collide or are blank (the raw column is already unique, so only normalized collisions are new), and add a CHECK that `personal_number` equals its trimmed form and is non-blank. Test that personal number, email, and AD username each reject a duplicate at the PostgreSQL level.
+- [x] Run migration tests and verify Alembic upgrade/downgrade on the disposable database.
 
 ### Task 3: Route every Soldier email mutation through the shared invariant
 

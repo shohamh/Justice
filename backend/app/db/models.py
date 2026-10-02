@@ -52,7 +52,10 @@ class Soldier(Base):
     unit_join_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     left_at: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     phone: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Canonical (trimmed, lowercase) email; written only via app.services.identity.
     email: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Derived from the email local part (legacy AD sAMAccountName); never set independently.
+    ad_username: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     email_verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     theme_preference: Mapped[str] = mapped_column(
         Text, server_default=text("'system'"), default="system"
@@ -107,6 +110,26 @@ class Soldier(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "personal_number <> '' AND personal_number = btrim(personal_number, E' \\t\\r\\n\\f\\v')",
+            name="ck_soldiers_personal_number_trimmed",
+        ),
+        sa.CheckConstraint(
+            "email IS NULL OR (email <> '' AND email = lower(btrim(email, E' \\t\\r\\n\\f\\v')))",
+            name="ck_soldiers_email_canonical",
+        ),
+        sa.CheckConstraint(
+            "ad_username IS NULL OR (ad_username <> '' AND ad_username = lower(btrim(ad_username, E' \\t\\r\\n\\f\\v')))",
+            name="ck_soldiers_ad_username_canonical",
+        ),
+        sa.Index("uq_soldiers_email", "email", unique=True, postgresql_where=text("email IS NOT NULL")),
+        sa.Index(
+            "uq_soldiers_ad_username", "ad_username", unique=True,
+            postgresql_where=text("ad_username IS NOT NULL"),
+        ),
     )
 
 
