@@ -1,6 +1,6 @@
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
-import { optionalArrayResponse } from "./responseGuards";
+import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface LoginResponse {
   access_token: string;
@@ -74,7 +74,8 @@ export interface RegisterExemptionRow {
 }
 
 export interface RegisterPayload {
-  invite_code: string;
+  /** Omitted for SSO registration: the server decides from the live OIDC context cookie. */
+  invite_code?: string;
   personal_number: string;
   full_name: string;
   password: string;
@@ -132,9 +133,47 @@ export async function register(payload: RegisterPayload, exemptionFiles: File[][
   return r.data;
 }
 
-export async function fetchRegisterNodes(inviteCode: string): Promise<NodeOut[]> {
-  const r = await api.get<NodeOut[]>(`/auth/register/nodes?invite_code=${encodeURIComponent(inviteCode)}`);
+export async function fetchRegisterNodes(inviteCode?: string): Promise<NodeOut[]> {
+  const url = inviteCode === undefined
+    ? "/auth/register/nodes"
+    : `/auth/register/nodes?invite_code=${encodeURIComponent(inviteCode)}`;
+  const r = await api.get<NodeOut[]>(url);
   return r.data;
+}
+
+const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
+
+/** Backend route that 302s to the identity provider. Navigated to, never fetched. */
+export const OIDC_START_PATH = `${API_BASE}/auth/oidc/start`;
+
+/** Whether the server has SSO configured. Any failure means "not available". */
+export async function fetchOidcStatus(): Promise<boolean> {
+  try {
+    const r = await api.get<unknown>("/auth/oidc/status");
+    return r.data !== null && typeof r.data === "object" && (r.data as { enabled?: unknown }).enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Top-level browser navigation (the provider flow needs cookies and redirects, not XHR). */
+export function startSsoLogin(): void {
+  window.location.assign(OIDC_START_PATH);
+}
+
+export interface OidcRegistrationContext {
+  email: string;
+  ad_username: string;
+}
+
+/** Read-only prefill for an SSO registration; needs the HttpOnly oidc_reg cookie. */
+export async function fetchOidcRegistrationContext(): Promise<OidcRegistrationContext> {
+  const r = await api.get<unknown>("/auth/oidc/registration-context");
+  const data = requiredObjectResponse(r.data, "Invalid registration context response");
+  if (typeof data.email !== "string" || typeof data.ad_username !== "string") {
+    throw new Error("Invalid registration context response");
+  }
+  return { email: data.email, ad_username: data.ad_username };
 }
 
 export async function validateInviteCode(code: string): Promise<boolean> {

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./client";
-import { fetchMe, listPublicExemptionTypes } from "./auth";
+import {
+  fetchMe, listPublicExemptionTypes, fetchOidcStatus, fetchOidcRegistrationContext,
+  fetchRegisterNodes, startSsoLogin, OIDC_START_PATH,
+} from "./auth";
 
 vi.mock("./client");
 
@@ -54,5 +57,55 @@ describe("listPublicExemptionTypes", () => {
     const result = await listPublicExemptionTypes();
 
     expect(result).toEqual(types);
+  });
+});
+
+describe("OIDC helpers", () => {
+  it("fetchOidcStatus returns enabled only when the server says exactly true", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { enabled: true } });
+    expect(await fetchOidcStatus()).toBe(true);
+    expect(api.get).toHaveBeenCalledWith("/auth/oidc/status");
+    vi.mocked(api.get).mockResolvedValue({ data: { enabled: "yes" } });
+    expect(await fetchOidcStatus()).toBe(false);
+    vi.mocked(api.get).mockResolvedValue({ data: null });
+    expect(await fetchOidcStatus()).toBe(false);
+  });
+
+  it("fetchOidcStatus treats a request failure as disabled", async () => {
+    vi.mocked(api.get).mockRejectedValue(new Error("boom"));
+    expect(await fetchOidcStatus()).toBe(false);
+  });
+
+  it("fetchOidcRegistrationContext returns email and ad_username", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { email: "a@b.co", ad_username: "a" } });
+    expect(await fetchOidcRegistrationContext()).toEqual({ email: "a@b.co", ad_username: "a" });
+    expect(api.get).toHaveBeenCalledWith("/auth/oidc/registration-context");
+  });
+
+  it("fetchOidcRegistrationContext rejects a malformed body", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { email: 5 } });
+    await expect(fetchOidcRegistrationContext()).rejects.toThrow();
+  });
+
+  it("fetchRegisterNodes omits invite_code when none is given", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    await fetchRegisterNodes();
+    expect(api.get).toHaveBeenLastCalledWith("/auth/register/nodes");
+    await fetchRegisterNodes("a b");
+    expect(api.get).toHaveBeenLastCalledWith("/auth/register/nodes?invite_code=a%20b");
+  });
+
+  it("startSsoLogin does a top-level navigation and never calls the API client", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", { location: { assign } });
+    try {
+      vi.mocked(api.get).mockClear();
+      startSsoLogin();
+      expect(assign).toHaveBeenCalledWith(OIDC_START_PATH);
+      expect(OIDC_START_PATH).toMatch(/\/auth\/oidc\/start$/);
+      expect(api.get).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
