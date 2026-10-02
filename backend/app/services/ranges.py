@@ -986,7 +986,7 @@ def mark_attendance(
         )
     ).scalars().all()
     if affected_ids:
-        recheck_assignments(session, affected_ids)
+        recheck_assignments(session, affected_ids, commit=False)  # committed with the mark below
 
     write_audit(
         session, actor_id=marked_by, action="range_attendance_marked", entity_type="range_assignment",

@@ -1040,7 +1040,7 @@ def accept_proposal(
         context={"job_id": str(job_id)},
     )
     session.flush()
-    recheck_assignments(session, [a.id])
+    recheck_assignments(session, [a.id], commit=False)  # the route commits once, below
     refresh_projection_for_assignment_change(session, assignment=a)
     _maybe_publish_job(session, job_id)
     session.commit()
@@ -1089,7 +1089,7 @@ def bulk_accept_proposals(
                 for aid in accepted_ids
             ])
         )
-        recheck_assignments(session, accepted_ids)
+        recheck_assignments(session, accepted_ids, commit=False)  # the route commits once, below
         accepted_assignments = session.execute(
             select(DutyAssignment).where(DutyAssignment.id.in_(accepted_ids))
         ).scalars().all()

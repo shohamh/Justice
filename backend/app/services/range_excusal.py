@@ -70,7 +70,9 @@ def _recheck_soldier_assignments(session: Session, soldier_id: uuid.UUID) -> Non
         )
     ).scalars().all()
     if affected_ids:
-        recheck_assignments(session, affected_ids)
+        # The caller commits once at the end; a commit here would publish half
+        # the decision and release its advisory/request locks early.
+        recheck_assignments(session, affected_ids, commit=False)
 
 
 

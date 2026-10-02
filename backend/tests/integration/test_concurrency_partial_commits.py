@@ -15,6 +15,12 @@ work therefore commit half of it:
 
 Failure-injection schedule: make the step right after the recheck raise, roll
 back as the request handler would, and check that nothing was committed.
+
+Fixed (Task 4): these callers pass ``commit=False`` and commit once at the end
+of their own unit of work (as ``recheck_soldier_assignments`` already did). The
+same change was applied to ``ranges.mark_attendance``. Callers whose recheck is
+the last step after their own commit (the duty-config and settings routes, the
+eligibility worker) keep the default.
 """
 from __future__ import annotations
 
@@ -75,7 +81,6 @@ def _status_after_failure(admin_session, session, call, assignment_id):
     return admin_session.get(DutyAssignment, assignment_id).status
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C18: recheck_assignments commits mid-route")
 def test_failed_proposal_accept_leaves_the_draft_unpublished(admin_session, app_session, monkeypatch):
     from app.routes import algorithm as algorithm_routes
 
@@ -89,7 +94,6 @@ def test_failed_proposal_accept_leaves_the_draft_unpublished(admin_session, app_
     assert status == "algorithm_draft", f"the failed accept left the proposal {status!r}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C18: recheck_assignments commits mid-route")
 def test_failed_bulk_accept_leaves_the_drafts_unpublished(admin_session, app_session, monkeypatch):
     from app.routes import algorithm as algorithm_routes
 
@@ -104,7 +108,6 @@ def test_failed_bulk_accept_leaves_the_drafts_unpublished(admin_session, app_ses
     assert status == "algorithm_draft", f"the failed bulk accept left the proposal {status!r}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C18: recheck_assignments commits mid-decision")
 def test_failed_excusal_approval_rolls_back_completely(admin_session, app_session, monkeypatch):
     from app.services import range_excusal as excusal_service
 
