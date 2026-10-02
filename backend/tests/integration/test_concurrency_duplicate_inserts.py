@@ -86,7 +86,6 @@ def _count(session, model, **where):
     ).scalar_one()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C17: set_day_override select-then-insert")
 def test_concurrent_day_overrides_for_one_day_both_succeed(race, admin_session):
     soldier = create_soldier(admin_session, personal_number="race-dup-ov")
     a = _assignment(admin_session, soldier.id, start=date.today() + timedelta(days=20), tag="ov")

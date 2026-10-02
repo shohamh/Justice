@@ -30,6 +30,19 @@ from app.services.weapon_eligibility import compute_eligibility
 _OVERRIDE_REASONS = {"replacement", "no_show_covered", "cancelled", "manual_edit"}
 
 
+def lock_assignment_row(session: Session, assignment_id: uuid.UUID) -> None:
+    """FOR NO KEY UPDATE on one duty_assignments row.
+
+    Serializes check-then-insert writers of rows that hang off one assignment
+    (day overrides, no-shows, reserve links) so the existence check sees what
+    a concurrent writer committed instead of both inserting and one dying on
+    the unique constraint. NO KEY UPDATE does not block the KEY SHARE lock
+    that child-row inserts take on the assignment."""
+    session.execute(
+        select(DutyAssignment.id).where(DutyAssignment.id == assignment_id).with_for_update(key_share=True)
+    )
+
+
 class AssignmentError(Exception):
     """Raised on an invalid assignment operation."""
 
@@ -465,10 +478,12 @@ def set_day_override(
             end_date=date,
         ):
             raise AssignmentError("exempted")
+    # Lock order: (swap request, when called from a swap) -> assignment.
+    lock_assignment_row(session, assignment.id)
     existing = session.execute(
         select(DutyDayOverride).where(
             DutyDayOverride.duty_assignment_id == assignment.id, DutyDayOverride.date == date
-        )
+        ).execution_options(populate_existing=True)
     ).scalar_one_or_none()
     after = {
         "effective_soldier_id": str(effective_soldier_id) if effective_soldier_id else None,
