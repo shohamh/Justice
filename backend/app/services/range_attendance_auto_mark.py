@@ -7,7 +7,13 @@ from sqlalchemy import DateTime, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import RangeAssignment, RangeAttendanceStatus, RangeEvent, RangeEventStatus
-from app.services.ranges import RangeValidationError, _israel_now_naive, _mitvachim_enabled, mark_attendance
+from app.services.ranges import (
+    RangeValidationError,
+    _israel_now_naive,
+    _mitvachim_enabled,
+    lock_assignment_for_attendance,
+    mark_attendance,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +57,15 @@ def auto_mark_present_for_elapsed_events(session: Session, *, now: datetime | No
     ).scalars().all()
     marked = 0
     for assignment in assignments:
+        # Re-check under lock: another worker process or a manual mark may have
+        # decided this assignment after the SELECT above. Skip it then, so a
+        # manual no-show is never overwritten and nothing is recorded twice.
+        locked = lock_assignment_for_attendance(session, assignment.id)
+        if locked is None or locked.attendance_status != RangeAttendanceStatus.pending:
+            session.commit()  # release the locks taken for the re-check
+            continue
         try:
-            mark_attendance(session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=None)
+            mark_attendance(session, assignment=locked, status=RangeAttendanceStatus.present, marked_by=None)
         except RangeValidationError:
             logger.warning(
                 "range attendance auto-mark: skipping assignment %s after validation error",

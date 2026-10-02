@@ -12,13 +12,17 @@ row object it was handed (``previous_status``) and takes no lock, so:
 
 Schedules (two independent sessions), each meeting right after the worker's
 SELECT of pending assignments.
+
+Fixed (Task 4): ``mark_attendance`` starts with
+``lock_assignment_for_attendance`` (soldier, then assignment, fresh read), and
+the auto-mark worker re-checks ``pending`` on that locked row, skipping an
+assignment someone else already decided.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -69,7 +73,6 @@ def _qualifications(session, soldier_id):
     ).scalar_one()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C16/R8: auto-mark decides from an unlocked, stale row")
 def test_concurrent_auto_mark_workers_record_one_qualification(race, admin_session):
     assignment_id, soldier_id, _manager_id = _seed(admin_session, "dup")
     after_select = race.rendezvous(2, "both workers loaded the pending assignment")
@@ -85,7 +88,6 @@ def test_concurrent_auto_mark_workers_record_one_qualification(race, admin_sessi
     assert sorted(o.value for o in outcomes) == [0, 1]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C16/R8: auto-mark overwrites a manual no-show")
 def test_auto_mark_does_not_overwrite_a_manual_no_show(race, admin_session):
     assignment_id, soldier_id, manager_id = _seed(admin_session, "noshow")
 

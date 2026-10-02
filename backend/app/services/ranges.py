@@ -843,10 +843,36 @@ def _resync_profile_date_on_reversal(
         setattr(soldier, field, latest)
 
 
+def lock_assignment_for_attendance(session: Session, assignment_id: uuid.UUID) -> RangeAssignment | None:
+    """Lock the soldier, then the range assignment, and return a fresh row.
+
+    mark_attendance decides from the assignment's current attendance_status,
+    and its writes (qualification rows, no-show penalty, soldier profile date)
+    depend on that decision, so it must not act on a row another request or
+    worker process changed after it was loaded. Lock order: soldier, then
+    assignment — the order the flush already takes them (soldier profile
+    UPDATE before the assignment UPDATE)."""
+    soldier_id = session.execute(
+        select(RangeAssignment.soldier_id).where(RangeAssignment.id == assignment_id)
+    ).scalar_one_or_none()
+    if soldier_id is None:
+        return None
+    session.execute(select(Soldier.id).where(Soldier.id == soldier_id).with_for_update(key_share=True))
+    return session.execute(
+        select(RangeAssignment)
+        .where(RangeAssignment.id == assignment_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def mark_attendance(
     session: Session, *, assignment: RangeAssignment, status: RangeAttendanceStatus,
     marked_by: uuid.UUID | None = None, note: str | None = None,
 ) -> RangeAssignment:
+    assignment = lock_assignment_for_attendance(session, assignment.id)
+    if assignment is None:
+        raise RangeValidationError("assignment_not_found")
     if assignment.is_draft:
         raise RangeValidationError("assignment_not_confirmed")
     event = session.get(RangeEvent, assignment.range_event_id)
