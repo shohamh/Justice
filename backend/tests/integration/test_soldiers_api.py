@@ -42,7 +42,7 @@ def test_bounded_display_lookup_deduplicates_and_respects_list_visibility(client
         json={"ids": [str(unrelated.id)]},
     )
     assert response.status_code == 200
-    assert response.json() == [{"id": str(unrelated.id), "full_name": "Unrelated"}]
+    assert response.json() == [{"id": str(unrelated.id), "full_name": "Unrelated", "personal_number": "4900103"}]
 
     outsider = create_soldier(admin_session, personal_number="4900104", full_name="Outsider")
     admin_session.commit()
@@ -52,6 +52,27 @@ def test_bounded_display_lookup_deduplicates_and_respects_list_visibility(client
     )
     assert response.status_code == 200
     assert response.json() == [{"id": str(outsider.id), "full_name": "Outsider", "personal_number": "4900104"}]
+
+
+def test_bounded_display_lookup_admin_without_roots_gets_requested_personal_numbers(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="4900110", full_name="Admin", role="admin")
+    target = create_soldier(admin_session, personal_number="4900111", full_name="Target")
+    unrelated = create_soldier(admin_session, personal_number="4900112", full_name="Unrelated")
+    admin_session.commit()
+
+    response = client.post(
+        "/api/soldiers/lookup/names", headers=auth_headers(admin),
+        json={"ids": [str(target.id), str(target.id)]},
+    )
+    assert response.status_code == 200
+    assert response.json() == [{"id": str(target.id), "full_name": "Target", "personal_number": "4900111"}]
+    assert str(unrelated.id) not in response.text
+
+    too_many = client.post(
+        "/api/soldiers/lookup/names", headers=auth_headers(admin),
+        json={"ids": [str(target.id)] * 201},
+    )
+    assert too_many.status_code == 422
 
 
 def test_admin_onboards_without_password_gets_temp(client: TestClient, admin_session: Session):

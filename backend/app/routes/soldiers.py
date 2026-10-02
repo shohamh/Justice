@@ -547,8 +547,8 @@ def lookup_soldier_names(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SoldierNameOut]:
-    # A scoped caller may resolve public names globally, but personal numbers
-    # follow the private visibility boundary used by the soldier list.
+    # Match the legacy soldier list: scoped callers see public rows globally,
+    # including personal numbers; unscoped callers see only themselves.
     ids = list(dict.fromkeys(body.ids))
     roots = scope_root_ids(session, user)
     if not ids:
@@ -558,25 +558,10 @@ def lookup_soldier_names(
     if not ids:
         return []
     rows = session.execute(
-        select(Soldier.id, Soldier.full_name, Soldier.personal_number, Soldier.hierarchy_node_id)
+        select(Soldier.id, Soldier.full_name, Soldier.personal_number)
         .where(Soldier.id.in_(ids))
     ).all()
-    node_ids = {node_id for _, _, _, node_id in rows if node_id is not None}
-    nodes = {
-        node.id: node for node in session.execute(
-            select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
-        ).scalars().all()
-    } if node_ids else {}
-    names = {
-        soldier_id: (
-            name,
-            personal_number if soldier_id == user.id or (
-                (node := nodes.get(node_id)) is not None
-                and any(root in node.path_ids for root in roots)
-            ) else None,
-        )
-        for soldier_id, name, personal_number, node_id in rows
-    }
+    names = {soldier_id: (name, personal_number) for soldier_id, name, personal_number in rows}
     return [
         SoldierNameOut(id=soldier_id, full_name=names[soldier_id][0], personal_number=names[soldier_id][1])
         for soldier_id in ids

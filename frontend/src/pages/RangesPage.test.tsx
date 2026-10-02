@@ -104,7 +104,7 @@ describe("RangesPage", () => {
     expect(await screen.findByText("Lookup range")).toBeInTheDocument();
     expect(soldiersApi.listSoldiers).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("view-assignments-other-event"));
-    await waitFor(() => expect(soldiersApi.lookupSoldierNames).toHaveBeenCalledWith(["assigned-1", "dm-1"]));
+    await waitFor(() => expect(soldiersApi.lookupSoldierNames).toHaveBeenCalledWith(["other-manager", "assigned-1", "dm-1"]));
     expect(await screen.findByText("Assigned One")).toBeInTheDocument();
     const search = screen.getAllByRole("textbox", { name: /חיפוש/ })[0];
     fireEvent.change(search, { target: { value: "4900201" } });
@@ -961,6 +961,43 @@ describe("RangesPage assignment editor integration", () => {
     expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("1 נבחרו");
     expect(screen.queryByText(/לא ניתן לנקות מטווחים שכבר התקיימו/)).not.toBeInTheDocument();
     expect(screen.getByTestId("bulk-clear-button")).not.toBeDisabled();
+  });
+
+  it("resolves loaded table managers and keeps the ID fallback for missing names", async () => {
+    vi.mocked(rangesApi.getRangePage).mockResolvedValue({
+      items: [
+        { id: "range-a", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+          location: "Range A", required_count: 1, reserve_count: 0, status: "planned", assignments: [], responsible_duty_manager_id: "dm-a" },
+        { id: "range-b", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02",
+          location: "Range B", required_count: 1, reserve_count: 0, status: "planned", assignments: [], responsible_duty_manager_id: "dm-b" },
+      ], next_cursor: null, has_more: false,
+    });
+    vi.mocked(soldiersApi.lookupSoldierNames).mockResolvedValue([{ id: "dm-a", full_name: "Manager A", personal_number: "4900301" }]);
+
+    renderWithQuery(<RangesPage />);
+    expect(await screen.findByText("Manager A")).toBeInTheDocument();
+    expect(screen.getByText("dm-b")).toBeInTheDocument();
+    expect(soldiersApi.lookupSoldierNames).toHaveBeenCalledWith(["dm-a", "dm-b"]);
+    expect(soldiersApi.listSoldiers).not.toHaveBeenCalled();
+  });
+
+  it("keeps loaded-row manager lookup requests within the 200-ID API cap", async () => {
+    vi.mocked(rangesApi.getRangePage).mockResolvedValue({
+      items: Array.from({ length: 201 }, (_, index) => ({
+        id: `range-${index}`, hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: `Range ${index}`, required_count: 1, reserve_count: 0, status: "planned", assignments: [],
+        responsible_duty_manager_id: `dm-${index}`,
+      })), next_cursor: null, has_more: false,
+    });
+    vi.mocked(soldiersApi.lookupSoldierNames).mockImplementation(async ids => ids.map(id => ({ id, full_name: `Name ${id}` })));
+
+    renderWithQuery(<RangesPage />);
+    expect(await screen.findByText("Name dm-0")).toBeInTheDocument();
+    const requested = vi.mocked(soldiersApi.lookupSoldierNames).mock.calls.flatMap(([ids]) => ids);
+    expect(requested).toHaveLength(201);
+    expect(new Set(requested).size).toBe(201);
+    expect(vi.mocked(soldiersApi.lookupSoldierNames).mock.calls.every(([ids]) => ids.length <= 200)).toBe(true);
+    expect(soldiersApi.listSoldiers).not.toHaveBeenCalled();
   });
 
   it("uses the ID fallback for table rows without loading the full soldier roster", async () => {

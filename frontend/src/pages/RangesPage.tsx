@@ -85,16 +85,22 @@ export default function RangesPage() {
   const excusal = useQuery({ queryKey: queryKeys.rangeExcusalRequests(selected as string), queryFn: () => getRangeExcusalRequests(selected as string), enabled: !!selected && !!user?.is_duty_manager });
   const rangeLocations = useQuery({ queryKey: queryKeys.rangeLocations(), queryFn: listRangeLocations });
   const hierarchyTree = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
-  const displayEvent = editAssignments ?? event.data;
+  const rows = useMemo(() => ranges.data?.pages.flatMap(page => page.items) ?? [], [ranges.data]);
+  const displayEvent = editAssignments ?? formEvent ?? event.data;
   const soldierIds = useMemo(() => {
-    if (!displayEvent) return [];
-    const ids = new Set(displayEvent.assignments.map(assignment => assignment.soldier_id));
-    if (displayEvent.responsible_duty_manager_id) ids.add(displayEvent.responsible_duty_manager_id);
+    const ids = new Set(rows.map(row => row.responsible_duty_manager_id).filter((id): id is string => !!id));
+    if (displayEvent) {
+      displayEvent.assignments.forEach(assignment => ids.add(assignment.soldier_id));
+      if (displayEvent.responsible_duty_manager_id) ids.add(displayEvent.responsible_duty_manager_id);
+    }
     return [...ids];
-  }, [displayEvent]);
+  }, [rows, displayEvent]);
   const soldiers = useQuery({
     queryKey: queryKeys.soldierNames(soldierIds, authorizationScope),
-    queryFn: () => lookupSoldierNames(soldierIds),
+    queryFn: async () => (await Promise.all(Array.from(
+      { length: Math.ceil(soldierIds.length / 200) },
+      (_, index) => lookupSoldierNames(soldierIds.slice(index * 200, (index + 1) * 200)),
+    ))).flat(),
     enabled: authorizationScope !== null && soldierIds.length > 0,
   });
   const names = (id: string) => soldiers.data?.find(s => s.id === id)?.full_name ?? id;
@@ -116,7 +122,6 @@ export default function RangesPage() {
     if (e.assignments.length > 0) return e.assignments.filter(a => a.is_reserve === reserve && !a.is_draft).length;
     return summary ?? e.assignments.filter(a => a.is_reserve === reserve && !a.is_draft).length;
   };
-  const rows = useMemo(() => ranges.data?.pages.flatMap(page => page.items) ?? [], [ranges.data]);
   const selectedEvents = useMemo(() => rows.filter(r => selectedIds.has(r.id)), [rows, selectedIds]);
   const invalidate = async (id?: string) => {
     await qc.invalidateQueries({ queryKey: queryKeys.ranges() });
