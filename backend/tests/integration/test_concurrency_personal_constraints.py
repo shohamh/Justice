@@ -9,12 +9,16 @@ Schedule reproduced here (two independent sessions = two HTTP requests):
   1. request A and request B each read used=0 for the period (cap 3 days);
   2. both meet at a rendezvous right after ``remaining_days`` returns;
   3. both insert a 2-day constraint and commit (4 days > cap 3).
+
+Fixed (Task 3): ``submit_constraint`` locks the soldier row
+(``FOR NO KEY UPDATE``) before ``remaining_days``. B blocks until A commits,
+A's rendezvous times out, and B then counts A's days and fails with
+``cap_exceeded``.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-import pytest
 from sqlalchemy import select
 
 from app.db.models import PersonalConstraint, SystemSetting
@@ -72,10 +76,6 @@ def _active_days(session, soldier_id) -> int:
     return sum((r.end_date - r.start_date).days + 1 for r in rows)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C5: concurrent submit_constraint calls both pass the unlocked cap check",
-)
 def test_concurrent_submissions_cannot_exceed_cap(race, admin_session, monkeypatch):
     soldier_id, base = _seed(admin_session)
     windows = [(base, base + timedelta(days=1)), (base + timedelta(days=2), base + timedelta(days=3))]
@@ -88,6 +88,8 @@ def test_concurrent_submissions_cannot_exceed_cap(race, admin_session, monkeypat
     assert any(o.ok for o in outcomes), outcomes
     days = _active_days(admin_session, soldier_id)
     assert days <= _CAP_DAYS, f"cap is {_CAP_DAYS} days but {days} days were committed; outcomes={outcomes}"
+    loser = next(o for o in outcomes if not o.ok)
+    assert str(loser.error) == "cap_exceeded"
 
 
 def test_concurrent_submissions_within_cap_both_succeed(race, admin_session, monkeypatch):

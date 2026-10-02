@@ -50,7 +50,15 @@ def submit_constraint(
     reason: str,
     actor_id: uuid.UUID | None = None,
 ) -> PersonalConstraint:
-    if session.get(Soldier, soldier_id) is None:
+    # Serialize cap-checked submissions per soldier: the used-days total read
+    # by remaining_days below must not change before this row is inserted, or
+    # two concurrent submissions both see the other's days as unused. FOR NO
+    # KEY UPDATE conflicts with itself (and with the FOR UPDATE other soldier
+    # workflows take) but not with child-row inserts that reference the soldier.
+    soldier = session.execute(
+        select(Soldier).where(Soldier.id == soldier_id).with_for_update(key_share=True)
+    ).scalar_one_or_none()
+    if soldier is None:
         raise ConstraintError("soldier_not_found")
     if end_date < start_date:
         raise ConstraintError("bad_date_range")
