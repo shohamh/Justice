@@ -1038,6 +1038,19 @@ def assign_batch(
     if not body.primaries and not body.reserves:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_soldiers")
 
+    # Serialize capacity-checked writers of this shift: two concurrent batches
+    # for different soldiers would otherwise both count the same free slots and
+    # both insert. FOR NO KEY UPDATE conflicts with itself but not with the
+    # FOR KEY SHARE that any assignment INSERT takes on the shift row, so
+    # writers that do not check capacity are not blocked by it. Lock order:
+    # shift row first, then soldiers (inside create_assignment).
+    shift = session.execute(
+        select(DutyShift)
+        .where(DutyShift.id == shift_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+
     existing_primary_count = session.execute(
         select(func.count()).select_from(DutyAssignment).where(
             DutyAssignment.duty_shift_id == shift_id,

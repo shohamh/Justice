@@ -9,13 +9,17 @@ Schedule reproduced here (two independent sessions = two HTTP requests):
   1. request A and request B each count 0 primaries on a required_count=1 shift;
   2. both meet at a rendezvous before their first ``create_assignment``;
   3. both insert a primary and commit.
+
+Fixed (Task 3): ``assign_batch`` locks the ``duty_shifts`` row
+(``FOR NO KEY UPDATE``) before counting. B blocks on the lock, so A's
+rendezvous times out and A commits alone; B then counts A's primary and gets
+409 ``primary_capacity_exceeded``.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -93,10 +97,6 @@ def _active_primaries(session, shift_id) -> int:
     ).scalar_one()
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C3: two concurrent assign-batch requests both pass the unlocked primary-capacity count",
-)
 def test_concurrent_batches_cannot_exceed_required_count(race, admin_session, monkeypatch):
     shift_id, admin_id, s1_id, s2_id = _seed(admin_session, required_count=1)
 
@@ -109,6 +109,8 @@ def test_concurrent_batches_cannot_exceed_required_count(race, admin_session, mo
     primaries = _active_primaries(admin_session, shift_id)
     assert primaries <= 1, f"required_count=1 but {primaries} primaries were committed; outcomes={outcomes}"
     assert sum(o.ok for o in outcomes) == 1
+    loser = next(o for o in outcomes if not o.ok)
+    assert (loser.error.status_code, loser.error.detail) == (409, "primary_capacity_exceeded")
 
 
 def test_concurrent_batches_within_capacity_both_succeed(race, admin_session, monkeypatch):
