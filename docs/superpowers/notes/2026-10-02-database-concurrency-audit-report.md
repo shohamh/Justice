@@ -3,10 +3,12 @@
 Date: 2026-10-02
 Spec: `docs/superpowers/specs/2026-10-02-database-concurrency-audit-design.md`
 Plan: `docs/superpowers/plans/2026-10-02-database-concurrency-audit.md`
-Status: **Task 1 (baseline + inventory) complete.** Tasks 2–5 have not started.
-No finding in this report has been reproduced yet. Every risk below is a
-**candidate** from reading the code. Task 2 has to reproduce a candidate before
-it counts as a confirmed finding.
+Status: **Task 1 (baseline + inventory) and Task 2 (race reproduction for
+C1–C8) complete.** Tasks 3–5 have not started.
+All eight Critical/High candidates C1–C8 (including every C8 sub-workflow)
+were reproduced against PostgreSQL on unmodified application code and are now
+**confirmed findings** (see §4.1). C9–C18 are still unreproduced candidates
+(Task 4). Nothing has been fixed yet.
 
 > Reading rule for this document: "no defect identified" means only that
 > reading the code did not show one. It is **not** a safety claim. The audit
@@ -312,6 +314,106 @@ barriers, or drop it from the confirmed list.
 | 17 | C18 | Proposal accept commits mid-route (partial commit) | J6 | Medium | Failure injection: make the projection refresh raise after `recheck_assignments`. Assert the assignment status rolled back (expected to fail today). |
 | 18 | C17 | Error mapping only (IntegrityError → 500): concurrent `set_day_override` insert, `take_free`, `mark_no_show`, reserve links, range request double approval | A6, S3, D3, D2, R3 | Low | Assert a stable 409 instead of a 500 if fixing is accepted. |
 
+### 4.1 Task 2 — confirmed findings (C1–C8)
+
+Scope ruling for Task 2: reproduce C1–C8 only. C9–C18 (including C14) belong
+to Task 4.
+
+**Method.** Each test is in `backend/tests/integration/test_concurrency_<workflow>.py`
+and runs on the Testcontainers PostgreSQL 16 fixture at the default READ
+COMMITTED isolation.
+- Every simulated request or worker process gets its own SQLAlchemy session
+  on its own connection, in its own thread.
+- The schedule is forced with explicit rendezvous points. No sleeps, no SQLite.
+  The helpers are `race` / `RaceKit` in `backend/tests/conftest.py`:
+  - `rendezvous` is a tolerant `threading.Barrier`;
+  - `signal` is a bounded `threading.Event`;
+  - `pause_after_select` parks a session right after its first ORM SELECT on
+    an entity returns rows;
+  - `stale_write` runs the lost-update schedule: read, then the other side
+    decides and commits, then write.
+- Waits are bounded (10 s). A fixed implementation that serializes the racers
+  will time one wait out and carry on; it will not hang. On today's code every
+  rendezvous is met at once.
+- Each confirmed-bug test is
+  `@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C#: ...")`.
+  The suite stays green, a racer crash (any non-assertion error) still fails
+  the test, and Task 3's fix turns each one into XPASS → failure until the
+  marker is removed.
+- Multi-process candidates (C1, C2, C7) are reproduced at function/DB level:
+  two sessions in two threads of one process. The race is only on database
+  state, so this matches the 4-process deployment for the invariant under
+  test. No deployment or infrastructure change was made.
+- C3 and C8/J3 call the FastAPI route functions directly (not over HTTP).
+  The other tests call the service functions plus `commit()`, which is what
+  the route does.
+- In the lost-update schedules (C8/H2, P3, X1, J3), the late request's first
+  `session.get` stands in for the route/service read. The service then reuses
+  that identity-mapped row, which is how the code behaves within one request.
+
+**Commands.**
+- Green, normal mode: `pytest tests/integration/test_concurrency_*.py -p no:cacheprovider -rxXfE`
+  → `4 passed, 14 xfailed`.
+- The defects themselves: `pytest tests/integration/test_concurrency_*.py -p no:cacheprovider --runxfail`
+  → the 14 confirmed-bug tests fail with the messages quoted below. The
+  4 controls pass. This was repeated 3 times with `-n 4`, and the outcome was
+  identical every time.
+- Full fast suite after the change: only the two baseline failures
+  (`test_block_ids_are_unique`, `test_breakdown_contributions_reconstruct_scores`).
+
+| ID | Test (file :: test) | Reproduced schedule | Observed DB state on unmodified code | Severity |
+|---|---|---|---|---|
+| C1 (N1) | `test_concurrency_email_outbox.py::test_concurrent_drainers_send_each_outbox_row_once` | Two `_drain_email_outbox` calls (each in its own `session_scope`) both SELECT the one unsent row. Both enter the stubbed `send_email` and meet there. Both set `sent_at` and commit. | `send_email` called **2 times** for 1 outbox row. The row ends up `sent_at IS NOT NULL` (no error, so nothing reveals the duplicate). | Critical: duplicate irreversible SMTP send |
+| C2 (R7) | `test_concurrency_range_reminders.py::test_concurrent_reminder_workers_notify_each_recipient_once` | Two `send_due_range_reminders` sessions both SELECT the due event (`reminder_sent_at IS NULL`) and meet right after that SELECT. Both create notifications. B's UPDATE of `range_events.reminder_sent_at` waits for A's commit, then overwrites it. | Both workers return `1`. The soldier has **2** `range_reminder` notifications and the duty manager has **2** (each with its outbox rows). | High: duplicate user-visible messages |
+| C3 (A2) | `test_concurrency_shift_assign_batch.py::test_concurrent_batches_cannot_exceed_required_count` | Two `assign_batch` route calls (different soldiers, `required_count=1`) both count 0 active primaries and meet before `create_assignment`. Each locks only its own soldier, inserts, and commits. | **2** published primaries on a `required_count=1` shift. Both requests returned 201. Control `..._within_capacity_both_succeed` (required_count=2) passes. | High: capacity invariant broken |
+| C4 (R3) | `test_concurrency_range_assignment_requests.py::test_request_approval_and_manual_add_cannot_exceed_capacity` | `add_range_assignment` (holds the per-date advisory lock) and `approve_assignment_request` (takes no lock) both run `_check_capacity` → 0 primaries and meet right after it. Both insert for different soldiers and commit. | **2** primary `range_assignments` on a `required_count=1` event. Both calls succeeded. The request is `approved`. Control with two free slots passes. | High: capacity invariant broken |
+| C5 (K1) | `test_concurrency_personal_constraints.py::test_concurrent_submissions_cannot_exceed_cap` | Two `submit_constraint` calls (2 days each, cap 3, same quarter) both read used=0 in `remaining_days` and meet right after it. Both insert and commit. | **4** pending constraint days against a 3-day cap. Both submissions succeeded. Control (1+1 days) passes. | High: quota invariant broken |
+| C6 (I1) | `test_concurrency_import_sessions.py::test_concurrent_confirms_apply_the_import_once` | Two `confirm_session` calls both read the import session (`draft`) and meet right after that SELECT. Both apply the one `duty_shifts` row and set `confirmed`. | **2** `duty_shifts` from a one-row import. Both calls returned `created: 1`. | High: import applied twice |
+| C6 (I1) | `test_concurrency_import_sessions.py::test_cancel_committed_during_confirm_stops_the_import` | The confirm reads `draft` and parks. `cancel_session` reads `draft`, sets `cancelled`, and commits. The confirm resumes, applies the rows, and sets `confirmed`. | Both calls succeed. Final status is **`confirmed`** with 1 shift created **after a successful cancel**. The cancel is silently lost. | High |
+| C7 (S4) | `test_concurrency_expiry_workers.py::test_swap_expiry_does_not_cancel_a_swap_applied_after_its_read` | The worker's `expire_started_swaps` SELECTs the open request and parks. `approve_soldier_side` locks the request, finalizes it (`applied`, writes cover overrides), and commits. The worker resumes and writes `cancelled`. | Worker cancelled 1. The decision returned `applied`. Final `swap_requests.status='cancelled'` while **1 `duty_day_overrides` cover row is committed**. The covering soldier is on duty for a swap the system reports as cancelled. | High: state contradicts applied effect |
+| C7 (E2) | `test_concurrency_expiry_workers.py::test_exemption_expiry_does_not_expire_a_request_approved_after_its_read` | The worker's `expire_stale_exemption_requests` SELECTs the pending request and parks. `approve_duty_manager_step` locks it, sets `approved`, inserts a `soldier_exemptions` row, and commits. The worker resumes and writes `expired`. | Final `exemption_requests.status='expired'` while **1 `soldier_exemptions` row is committed** (an active exemption from a request shown as expired). | High |
+| C8 (H2) | `test_concurrency_hierarchy_transfers.py::test_approve_and_reject_of_one_transfer_cannot_both_succeed` | The reject request reads the transfer request (`pending`). `approve_request` moves the soldier, sets `approved`, and commits. The reject resumes, sets `rejected`, and commits. | Both decisions returned success. Final status **`rejected`** but the soldier **was moved** to the destination node. | High |
+| C8 (P3) | `test_concurrency_soldier_field_updates.py::test_reject_cannot_overwrite_a_committed_approval` | The reject loads the field update (`pending`). `approve_field_update` (FOR UPDATE) applies the phone change and commits. `reject_field_update` writes `rejected` unconditionally. | Both succeed. Final status **`rejected`** but `soldiers.phone` holds the **new value**. | High |
+| C8 (X1) | `test_concurrency_enrollment.py::test_approve_and_reject_of_one_enrollment_cannot_both_succeed` | The reject reads the enrollment request (`pending`). `approve_enrollment` → `try_activate` places the soldier and commits. The reject resumes and writes `rejected`. | Both succeed. Final status **`rejected`** but the soldier **is placed** in the requested node. | High |
+| C8 (J3) | `test_concurrency_algorithm_proposals.py::test_accept_and_reject_of_one_draft_cannot_both_succeed` | The reject route loads the draft (`algorithm_draft`). The accept route publishes it (score projection refreshed) and commits. The reject resumes and writes `algorithm_rejected`. | Accept returned `published`, reject returned `algorithm_rejected`. Final status **`algorithm_rejected`**. The soldier was told it was published, and the projection reflects the publish. | High |
+| C8 (R5) | `test_concurrency_range_excusal.py::test_concurrent_excusal_approvals_promote_a_reserve_at_most_once` | Two `decide_primary_excusal(approve=True)` calls (different primaries, same event, one reserve) each delete their primary, read `_eligible_assigned_reserves` → [R], and meet right after that read. Both promote R; B's UPDATE waits for A's commit, then re-applies. | **Both** requests record `promoted_assignment_id = R`. The event has **1** primary for `required_count=2`. Neither approval took the no-backfill path, so the missing slot is never reported. | High |
+
+**Dropped candidates.** None. Every C1–C8 candidate and every C8
+sub-workflow listed in §4 (H2, P3, X1, R5, J3) was demonstrated, so none
+was removed from the confirmed list. C9–C18 are not dropped either: they
+are out of Task 2's scope and stay unreproduced candidates for Task 4.
+
+**Controls (passing).** These guard Task 3 against over-serializing:
+- `test_single_drainer_sends_each_row_once` (C1)
+- `test_concurrent_batches_within_capacity_both_succeed` (C3)
+- `test_request_approval_and_manual_add_within_capacity_both_succeed` (C4)
+- `test_concurrent_submissions_within_cap_both_succeed` (C5)
+
+Every non-conflicting concurrent request must keep succeeding after a fix.
+
+**New observations from Task 2 (not in the §4 list; not reproduced as
+dedicated tests)**
+- **O1: score projection quarter total, first insert and lost update.**
+  - What happened: in the C3 control, two concurrent first-ever assignments in
+    a quarter both called `_upsert_quarter_total`
+    (`services/score_projection.py`). Both found no
+    `score_projection_quarter_total` row, both INSERTed it, and one request
+    failed with `UniqueViolation` on `score_projection_quarter_total_pkey`
+    (an HTTP 500 for that request).
+  - Why it matters beyond the cold start: the function recomputes the total
+    from `_quarter_sums` and writes it back without a lock, so two concurrent
+    projection refreshes for the same quarter can also store a total that
+    leaves out the other transaction's rows. This was inferred from reading
+    the code and was not asserted.
+  - Test workaround: the C3 tests pre-create the quarter-total row so the
+    capacity race is measured on its own.
+  - Status: candidate for Task 4/5.
+- **Test-harness note, not a production defect.** The per-test TRUNCATE
+  removes the singleton `score_projection_state` row that migration
+  `6a7b8c9d0e1f` seeds. On an empty table, two concurrent writers both
+  lazily INSERT it and one fails. The `race` fixture restores the seeded row
+  so race tests match a migrated production database.
+
 ### Items that are not concurrency defects but were found during the inventory
 
 - `constraints.cancel_constraint`: undefined `timezone` on the approved →
@@ -331,7 +433,8 @@ barriers, or drop it from the confirmed list.
 
 ## 5. Remaining untested concurrency boundaries (so far)
 
-- All candidates in §4 are unreproduced.
+- C1–C8 are reproduced and confirmed (§4.1) but not fixed yet (Task 3).
+  C9–C18 in §4 and O1 in §4.1 are still unreproduced.
 - Modules listed under "Not reviewed in this task" in §2.
 - No PostgreSQL race test exists for the `create_assignment` soldier lock (A1),
   even though the code comment relies on it.
