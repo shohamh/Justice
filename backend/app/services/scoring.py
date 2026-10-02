@@ -1704,7 +1704,7 @@ def _try_projected_effort_data(
     prevalidated_readiness: _TransparencyProjectionReadiness | None = None,
     planning_start: date | None = None,
 ) -> dict[uuid.UUID, Any] | None:
-    from app.services.effort_score import _compute_effort_data
+    from app.services.effort_score import quarter_start
 
     reset_date = _burden_share_reset_date(session)
     soldier_reset_dates = resolve_reset_dates_for_soldiers(session, soldiers)
@@ -1714,31 +1714,132 @@ def _try_projected_effort_data(
                       # to compute_effort_data's live, override-aware recompute.
     if planning_start is None:
         planning_start = _burden_share_planning_start(session)
-    projection_inputs = _projection_burden_share_inputs(
+    if reset_date != quarter_start(reset_date):
+        logger.warning("score projection read fell back because reset_date is not quarter-aligned")
+        return None
+    windows = _burden_share_quarter_windows(
         session,
-        soldiers=soldiers,
         reset_date=reset_date,
         planning_start=planning_start,
         planning_end=planning_start,
-        prevalidated_readiness=prevalidated_readiness,
     )
-    if projection_inputs is None:
+    if not windows:
+        return _projected_effort_data_sql(session, soldiers=soldiers, windows=[])
+
+    soldier_ids = {soldier.id for soldier in soldiers}
+    quarter_starts = {calendar_qs for _start, _end, calendar_qs in windows}
+    keys = (
+        prevalidated_readiness.effort_keys_if_exact_scope(
+            soldier_ids=soldier_ids,
+            quarter_starts=quarter_starts,
+        )
+        if prevalidated_readiness is not None
+        else None
+    )
+    if keys is None:
+        keys = {
+            key
+            for key in _projection_data_keys_for_soldiers(session, soldier_ids)
+            if key[1] in quarter_starts
+        }
+        if not _ensure_projection_ready(session, keys=keys, quarter_starts=quarter_starts):
+            return None
+    elif not _ensure_projection_ready(
+        session,
+        keys=keys,
+        quarter_starts=quarter_starts,
+        total_soldier_ids=soldier_ids,
+    ):
+        # READ COMMITTED permits dirty markers to commit after the first check.
         return None
-    windows, q_unit_scores, q_soldier_scores = projection_inputs
-    data = _compute_effort_data(
-        soldiers=soldiers,
-        quarters=[(q_start, q_end) for q_start, q_end, _calendar_qs in windows],
-        quarter_unit_scores={
-            q_start: q_unit_scores.get(calendar_qs, Decimal("0"))
-            for q_start, _q_end, calendar_qs in windows
+    return _projected_effort_data_sql(session, soldiers=soldiers, windows=windows)
+
+
+def _projected_effort_data_sql(
+    session: Session,
+    *,
+    soldiers: list[Soldier],
+    windows: list[tuple[date, date, date]],
+) -> dict[uuid.UUID, Any]:
+    """Aggregate projected effort across quarter windows, returning one pair per soldier."""
+    from app.services.effort_score import EFFORT_SCALE, EffortData
+
+    if not soldiers:
+        return {}
+    if not windows:
+        return {
+            soldier.id: EffortData(
+                effort_score=Decimal("0"),
+                C_over_D=Decimal("0.001"),
+                effort_offset=0,
+            )
+            for soldier in soldiers
+        }
+
+    # The quarter-score CTE reduces all duty-type buckets to the same q6 score
+    # that the previous Python map held. The final SELECT returns one row per
+    # active soldier, including soldiers with no score history.
+    aggregates = session.execute(
+        text(
+            """
+            WITH windows AS (
+                SELECT * FROM unnest(
+                    CAST(:starts AS date[]), CAST(:ends AS date[]), CAST(:quarters AS date[])
+                ) AS w(start_date, end_date, quarter_start)
+            ), quarter_scores AS (
+                SELECT soldier_id, quarter_start,
+                       sum(duty_score) + sum(adjustment_score) AS score
+                FROM soldier_quarter_score_projection
+                WHERE soldier_id = ANY(CAST(:soldier_ids AS uuid[]))
+                  AND quarter_start = ANY(CAST(:quarters AS date[]))
+                GROUP BY soldier_id, quarter_start
+            ), contributions AS (
+                SELECT s.id AS soldier_id,
+                       CASE WHEN t.total_score > 0 AND
+                                     COALESCE(s.unit_join_date, s.enrolled_at) <= w.end_date
+                            THEN COALESCE(q.score, 0) *
+                                 (w.end_date - GREATEST(w.start_date,
+                                     COALESCE(s.unit_join_date, s.enrolled_at)) + 1)::numeric(60,30) /
+                                 (w.end_date - w.start_date + 1)::numeric(60,30)
+                            ELSE 0 END AS personal,
+                       CASE WHEN t.total_score > 0 AND
+                                     COALESCE(s.unit_join_date, s.enrolled_at) <= w.end_date
+                            THEN t.total_score *
+                                 (w.end_date - GREATEST(w.start_date,
+                                     COALESCE(s.unit_join_date, s.enrolled_at)) + 1)::numeric(60,30) /
+                                 (w.end_date - w.start_date + 1)::numeric(60,30)
+                            ELSE 0 END AS unit
+                FROM soldiers s
+                CROSS JOIN windows w
+                LEFT JOIN score_projection_quarter_total t ON t.quarter_start = w.quarter_start
+                LEFT JOIN quarter_scores q ON q.soldier_id = s.id
+                                          AND q.quarter_start = w.quarter_start
+                WHERE s.id = ANY(CAST(:soldier_ids AS uuid[]))
+            )
+            SELECT soldier_id, sum(personal) AS numerator, sum(unit) AS denominator
+            FROM contributions
+            GROUP BY soldier_id
+            """
+        ),
+        {
+            "starts": [start for start, _end, _quarter in windows],
+            "ends": [end for _start, end, _quarter in windows],
+            "quarters": [quarter for _start, _end, quarter in windows],
+            "soldier_ids": [soldier.id for soldier in soldiers],
         },
-        quarter_soldier_scores={
-            q_start: q_soldier_scores.get(calendar_qs, {})
-            for q_start, _q_end, calendar_qs in windows
-        },
-        soldier_reset_dates=soldier_reset_dates,
-    )
-    return data
+    ).all()
+    result: dict[uuid.UUID, EffortData] = {}
+    for soldier_id, numerator, denominator in aggregates:
+        W_i = Decimal(denominator or 0)
+        A_i = Decimal(numerator or 0)
+        effective_W = W_i if W_i > 0 else Decimal("1")
+        effort_score = A_i / W_i if W_i > 0 else Decimal("0")
+        result[soldier_id] = EffortData(
+            effort_score=effort_score,
+            C_over_D=Decimal("1") / (effective_W * 1000),
+            effort_offset=int(effort_score * EFFORT_SCALE),
+        )
+    return result
 
 
 def _try_projected_burden_shares(
