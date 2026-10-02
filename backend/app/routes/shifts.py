@@ -1078,6 +1078,17 @@ def assign_batch(
 
     from app.services import assignments as asvc
 
+    # Lock every soldier of the batch up front in id order. create_assignment
+    # locks its soldier too (re-entrant here), but in request-body order; two
+    # batches for different shifts with the soldiers in opposite order would
+    # otherwise deadlock. Lock order: shift row, then soldiers ascending by id.
+    session.execute(
+        select(Soldier.id)
+        .where(Soldier.id.in_({*body.primaries, *body.reserves}))
+        .order_by(Soldier.id)
+        .with_for_update()
+    ).all()
+
     primary_assignments: list[DutyAssignment] = []
     for soldier_id in body.primaries:
         try:

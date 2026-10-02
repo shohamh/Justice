@@ -11,6 +11,10 @@ Schedule reproduced here (two independent sessions = two HTTP requests):
   2. both meet at a rendezvous after their first ``create_assignment``;
   3. X waits for S2 and Y waits for S1.
 PostgreSQL aborts one batch with ``DeadlockDetected`` (an unhandled 500).
+
+Fixed (Task 4): ``assign_batch`` locks all of the batch's soldiers in id order
+right after the shift row. The second batch blocks on the lowest soldier id, so
+the first batch's rendezvous times out, it commits, and then the second runs.
 """
 from __future__ import annotations
 
@@ -18,7 +22,6 @@ import threading
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -66,7 +69,6 @@ def _seed(session):
     return shift_ids, admin.id, s1.id, s2.id
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C10: assign-batch locks soldiers in request-body order")
 def test_batches_with_opposite_soldier_order_do_not_deadlock(race, admin_session, monkeypatch):
     from app.routes import shifts as shifts_routes
 
