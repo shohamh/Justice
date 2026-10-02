@@ -19,12 +19,15 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.services.duty_config import _direct_commander
+
 from app.db.models import (
     DutyAssignment,
+    DutyDayOverride,
+    DutyDismissal,
     DutyLocation,
     DutyShift,
     DutyType,
-    HierarchyNode,
     RangeAssignment,
     RangeEvent,
     RangeLocation,
@@ -170,11 +173,10 @@ class _Attendees:
             self.by_email[email] = ProjectedAttendee(email, person.full_name, required)
 
     def commander_for(self, person: Soldier | None) -> None:
-        if person is None or person.hierarchy_node_id is None:
-            return
-        node = self.session.get(HierarchyNode, person.hierarchy_node_id)
-        if node is not None and node.commander_id is not None and node.commander_id != person.id:
-            self.add(self.session.get(Soldier, node.commander_id), required=False, role="direct_commander")
+        if person is not None:
+            commander = _direct_commander(self.session, person)
+            if commander is not None:
+                self.add(commander, required=False, role="direct_commander")
 
     def finish(self) -> tuple[ProjectedAttendee, ...]:
         return tuple(self.by_email[key] for key in sorted(self.by_email))
@@ -240,17 +242,56 @@ def _duty(session: Session, source_type: SourceType, source: DutyShift | DutyAss
         assignments = [a for a in session.scalars(select(DutyAssignment).where(DutyAssignment.duty_shift_id == source.id)).all() if a.duty_shift_id == source.id and _status(a.status) == "published"]
     else:
         assignments = [source]
+    assignment_ids = {assignment.id for assignment in assignments}
+    overrides = {
+        (row.duty_assignment_id, row.date): row.effective_soldier_id
+        for row in session.scalars(select(DutyDayOverride).where(
+            DutyDayOverride.duty_assignment_id.in_(assignment_ids)
+        ))
+        if row.duty_assignment_id in assignment_ids
+    }
+    dismissals = [
+        row for row in session.scalars(select(DutyDismissal).where(
+            DutyDismissal.duty_assignment_id.in_(assignment_ids)
+        ))
+        if row.duty_assignment_id in assignment_ids
+    ]
+    call_up_lines: set[str] = set()
     for assignment in assignments:
-        person = session.get(Soldier, assignment.soldier_id)
-        called_up = bool(
-            assignment.is_reserve and assignment.called_up_from and assignment.called_up_to
-            and assignment.called_up_from <= source.end_date and assignment.called_up_to >= source.start_date
-        )
-        role = "called_up_reserve" if assignment.is_reserve and called_up else (
-            "reserve" if assignment.is_reserve else "assigned_soldier"
-        )
-        attendees.add(person, required=not assignment.is_reserve or called_up, role=role)
-        attendees.commander_for(person)
+        people: dict[UUID, bool] = {}
+        day = max(source.start_date, assignment.start_date)
+        last_day = min(source.end_date, assignment.end_date)
+        # Midnight is an exclusive endpoint, so it contributes no roster day.
+        if str(assignment.end_time) in {"00:00", "00:00:00"}:
+            last_day = min(last_day, assignment.end_date - timedelta(days=1))
+        while day <= last_day:
+            person_id = overrides.get((assignment.id, day), assignment.soldier_id)
+            dismissed = any(
+                row.duty_assignment_id == assignment.id
+                and row.dismissed_from <= day <= row.dismissed_to
+                for row in dismissals
+            )
+            called_up = bool(
+                assignment.is_reserve and assignment.called_up_from and assignment.called_up_to
+                and assignment.called_up_from <= day <= assignment.called_up_to
+            )
+            if person_id is not None and not dismissed:
+                people[person_id] = people.get(person_id, False) or called_up
+            day += timedelta(days=1)
+        for person_id, called_up in sorted(people.items(), key=lambda pair: str(pair[0])):
+            person = session.get(Soldier, person_id)
+            role = "called_up_reserve" if assignment.is_reserve and called_up else (
+                "reserve" if assignment.is_reserve else "assigned_soldier"
+            )
+            attendees.add(person, required=not assignment.is_reserve or called_up, role=role)
+            attendees.commander_for(person)
+            if called_up:
+                name = person.full_name if person is not None else "Unnamed attendee"
+                call_up_lines.add(
+                    f"Reserve call-up: {name}: {assignment.called_up_from.isoformat()} - "
+                    f"{assignment.called_up_to.isoformat()}"
+                )
+    body.extend(sorted(call_up_lines))
     _contact(session, attendees, duty_type.contact_name, duty_type.contact_phone, body)
     start = israel_local_datetime(source.start_date, source.start_time)
     end = israel_local_datetime(source.end_date, source.end_time)

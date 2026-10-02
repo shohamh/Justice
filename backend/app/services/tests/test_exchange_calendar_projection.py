@@ -9,6 +9,8 @@ import pytest
 
 from app.db.models import (
     DutyAssignment,
+    DutyDayOverride,
+    DutyDismissal,
     DutyLocation,
     DutyShift,
     DutyType,
@@ -34,6 +36,9 @@ class Rows:
     def all(self):
         return self.rows
 
+    def __iter__(self):
+        return iter(self.rows)
+
 
 class FakeSession:
     def __init__(self):
@@ -41,6 +46,8 @@ class FakeSession:
         self.assignments = []
         self.range_assignments = []
         self.soldiers = []
+        self.overrides = []
+        self.dismissals = []
 
     def add(self, model, **fields):
         row = Row(id=uuid4(), **fields)
@@ -60,6 +67,10 @@ class FakeSession:
             return Rows(*self.range_assignments)
         if model is Soldier:
             return Rows(*self.soldiers)
+        if model is DutyDayOverride:
+            return Rows(*self.overrides)
+        if model is DutyDismissal:
+            return Rows(*self.dismissals)
         raise AssertionError(model)
 
 
@@ -135,7 +146,7 @@ def test_called_up_reserve_is_required_only_for_overlapping_dates():
     row = assignment(db, shift, reserve, reserve=True, called_from=TODAY, called_to=TODAY)
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
     assert snap.attendees[0].required is True
-    assert TODAY.isoformat() not in snap.body
+    assert TODAY.isoformat() in snap.body
     row.called_up_from = TODAY + timedelta(days=1)
     row.called_up_to = TODAY + timedelta(days=2)
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
@@ -229,16 +240,17 @@ def test_content_hash_is_stable_until_visible_content_changes():
     assert first.content_hash != project_source(db, "duty_shift", shift.id, today=TODAY).content_hash
 
 
-def test_call_up_details_are_not_shared_in_shift_body():
+def test_call_up_operational_dates_are_shared_without_private_notes():
     db, _, shift = shift_setup()
     private_name = "Reserve Private Person"
     reserve = soldier(db, private_name, "reserve@example.com")
     assignment(db, shift, reserve, reserve=True, called_from=TODAY, called_to=TODAY)
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
     assert snap.attendees[0].required is True
-    assert private_name not in snap.body
-    assert "Reserve call-up" not in snap.body
-    assert TODAY.isoformat() not in snap.body
+    assert private_name in snap.body
+    assert "private" not in snap.body
+    assert "Reserve call-up" in snap.body
+    assert TODAY.isoformat() in snap.body
 
 
 def test_contact_name_uniqueness_includes_soldiers_without_email():
@@ -319,3 +331,67 @@ def test_single_contact_without_usable_email_is_notes_only():
     snap = project_source(db, "duty_shift", shift.id, today=TODAY)
     assert snap.attendees == ()
     assert "Only Contact" in snap.body and "777" in snap.body
+
+
+@pytest.mark.parametrize("self_commanded", [False, True])
+def test_direct_commander_falls_back_to_parent(self_commanded):
+    db, _, shift = shift_setup()
+    commander = soldier(db, "Parent commander", "parent@example.com")
+    parent = db.add(HierarchyNode, commander_id=commander.id, parent_id=None)
+    child = db.add(HierarchyNode, commander_id=None, parent_id=parent.id)
+    person = soldier(db, "Assigned", "assigned@example.com", child.id)
+    if self_commanded:
+        child.commander_id = person.id
+    assignment(db, shift, person)
+    snap = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert ("parent@example.com", False) in [(a.email, a.required) for a in snap.attendees]
+
+
+def test_overrides_replace_attendees_and_their_commanders():
+    db, _, shift = shift_setup()
+    original = soldier(db, "Original", "original@example.com")
+    commander = soldier(db, "Replacement commander", "boss@example.com")
+    node = db.add(HierarchyNode, commander_id=commander.id, parent_id=None)
+    replacement = soldier(db, "Replacement", "replacement@example.com", node.id)
+    row = assignment(db, shift, original)
+    before = project_source(db, "duty_shift", shift.id, today=TODAY)
+    db.overrides.append(Row(duty_assignment_id=row.id, date=TODAY,
+                            effective_soldier_id=replacement.id, reason="PRIVATE_REASON"))
+    after = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert {a.email for a in after.attendees} == {"boss@example.com", "replacement@example.com"}
+    assert before.content_hash != after.content_hash
+    assert "PRIVATE_REASON" not in after.body
+
+
+def test_partial_override_keeps_both_people_and_dismissed_days_remove_original():
+    db, _, shift = shift_setup()
+    shift.end_date = TODAY + timedelta(days=1)
+    original = soldier(db, "Original", "original@example.com")
+    replacement = soldier(db, "Replacement", "replacement@example.com")
+    row = assignment(db, shift, original)
+    row.end_date = shift.end_date
+    db.overrides.append(Row(duty_assignment_id=row.id, date=TODAY,
+                            effective_soldier_id=replacement.id, reason="PRIVATE_REASON"))
+    snap = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert {a.email for a in snap.attendees} == {"original@example.com", "replacement@example.com"}
+    db.dismissals.append(Row(duty_assignment_id=row.id,
+                             dismissed_from=shift.end_date, dismissed_to=shift.end_date,
+                             reason="MEDICAL_REASON"))
+    snap = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert {a.email for a in snap.attendees} == {"replacement@example.com"}
+    assert "MEDICAL_REASON" not in snap.body
+
+
+def test_call_up_date_edit_changes_hash_even_when_required_role_stays_same():
+    db, _, shift = shift_setup()
+    shift.end_date = TODAY + timedelta(days=3)
+    reserve = soldier(db, "Reserve", "reserve@example.com")
+    row = assignment(db, shift, reserve, reserve=True, called_from=TODAY, called_to=TODAY)
+    row.end_date = shift.end_date
+    before = project_source(db, "duty_shift", shift.id, today=TODAY)
+    row.called_up_to = TODAY + timedelta(days=1)
+    after = project_source(db, "duty_shift", shift.id, today=TODAY)
+    assert before.attendees == after.attendees
+    assert before.content_hash != after.content_hash
+    assert row.called_up_from.isoformat() in after.body
+    assert row.called_up_to.isoformat() in after.body

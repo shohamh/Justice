@@ -8,10 +8,11 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.db.models import (
     DutyAssignment,
+    DutyDayOverride,
     DutyLocation,
     DutyShift,
     DutyType,
@@ -139,14 +140,28 @@ def _assignment_source_keys(session: Session, today: date, *filters) -> set[tupl
 def enqueue_affected_by_soldier(session: Session, soldier_id: UUID, *, today: date | None = None) -> int:
     """Reproject the soldier's invitations and direct-command subordinates."""
     local_today = today or israel_today()
+    parent = aliased(HierarchyNode)
     subordinate_ids = session.scalars(
-        select(Soldier.id).join(HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id).where(
-            HierarchyNode.commander_id == soldier_id
-        )
+        select(Soldier.id)
+        .join(HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id)
+        .outerjoin(parent, HierarchyNode.parent_id == parent.id)
+        .where(or_(
+            HierarchyNode.commander_id == soldier_id,
+            and_(
+                or_(HierarchyNode.commander_id.is_(None), HierarchyNode.commander_id == Soldier.id),
+                parent.commander_id == soldier_id,
+            ),
+        ))
     ).all()
     people = _unique_ids([soldier_id, *subordinate_ids])
+    overrides = select(DutyDayOverride.duty_assignment_id).where(
+        DutyDayOverride.effective_soldier_id.in_(people)
+    )
     source_keys = _assignment_source_keys(
-        session, local_today, DutyAssignment.soldier_id.in_(people),
+        session, local_today, or_(
+            DutyAssignment.soldier_id.in_(people),
+            DutyAssignment.id.in_(overrides),
+        ),
     )
     range_ids = session.scalars(
         select(RangeAssignment.range_event_id)
@@ -195,7 +210,17 @@ def enqueue_affected_by_soldier(session: Session, soldier_id: UUID, *, today: da
 
 def enqueue_affected_by_hierarchy_node(session: Session, node_id: UUID, *, today: date | None = None) -> int:
     """Queue invitations for soldiers whose direct commander was reassigned."""
-    soldier_ids = session.scalars(select(Soldier.id).where(Soldier.hierarchy_node_id == node_id)).all()
+    soldier_ids = session.scalars(
+        select(Soldier.id).join(HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id).where(
+            or_(
+                HierarchyNode.id == node_id,
+                and_(
+                    HierarchyNode.parent_id == node_id,
+                    or_(HierarchyNode.commander_id.is_(None), HierarchyNode.commander_id == Soldier.id),
+                ),
+            )
+        )
+    ).all()
     return sum(enqueue_affected_by_soldier(session, soldier_id, today=today) for soldier_id in soldier_ids)
 
 
@@ -274,7 +299,7 @@ def bootstrap_calendar_sources(
             offset += len(rows)
 
     total = 0
-    for _, kind, source_id in merge(*(pages(*source) for source in sources)):
-        enqueue_source(session, kind, source_id, priority=ExchangeCalendarJobPriority.BACKFILL, reason="backfill")
+    for event_date, kind, source_id in merge(*(pages(*source) for source in sources)):
+        enqueue_source(session, kind, source_id, priority=ExchangeCalendarJobPriority.BACKFILL, reason="backfill", event_date=event_date)
         total += 1
     return total

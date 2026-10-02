@@ -67,6 +67,8 @@ export interface ExchangeSyncEvent {
   source_type: ExchangeSourceType;
   source_id: string;
   source_date: string | null;
+  event_label: string | null;
+  location: string | null;
   status: ExchangeSyncStatus;
   last_attempt_at: string | null;
   last_success_at: string | null;

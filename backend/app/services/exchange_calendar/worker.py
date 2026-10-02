@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Callable
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -17,7 +18,7 @@ from exchangelib.errors import (
 )
 from requests.exceptions import ConnectionError as RequestConnectionError
 from requests.exceptions import Timeout as RequestTimeout
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -30,10 +31,13 @@ from app.db.models import (
     ExchangeCalendarWorkerState,
     RangeEvent,
 )
+from app.services.exchange_calendar.lease import LeaseLost, assert_lease_owned, maintain_lease
 from app.services.exchange_calendar.outbox import (
     ExchangeCalendarJobStatus,
     ExchangeCalendarSyncStatus,
     claim_next_job,
+    lease_lock_key,
+    renew_lease,
 )
 from app.services.exchange_calendar.projection import ProjectionError, project_source
 from app.services.exchange_calendar.rate_limiter import (
@@ -147,6 +151,32 @@ class SqlCalendarRepository:
             session.flush()
             session.expunge(job)
             return job
+
+    def renew(self, job: ExchangeCalendarOutbox, now: datetime) -> bool:
+        with self.session_factory.begin() as session:
+            return renew_lease(
+                session,
+                job.id,
+                worker_id=self.worker_id,
+                attempt_count=job.attempt_count,
+                now=now,
+            )
+
+    @contextmanager
+    def hold_lease_lock(self, job: ExchangeCalendarOutbox):
+        """Keep an advisory lock across EWS I/O so expired work is not reclaimed."""
+        engine = self.session_factory.kw.get("bind")
+        if engine is None:
+            raise RuntimeError("Exchange worker session factory has no bound engine")
+        key = lease_lock_key(job.id)
+        with engine.connect() as connection:
+            connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": key})
+            connection.commit()
+            try:
+                yield
+            finally:
+                connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
+                connection.commit()
 
     def current(self, job: ExchangeCalendarOutbox) -> ExchangeCalendarSyncItem:
         with self.session_factory() as session:
@@ -344,40 +374,61 @@ class ExchangeCalendarWorker:
             self.repository.heartbeat(now)
         if not self._probe(now):
             return False
-        if self.last_bootstrap is None or now - self.last_bootstrap >= self.BOOTSTRAP_INTERVAL:
-            self.bootstrap(now)
-            self.last_bootstrap = now
-        job = self.repository.claim(now)
+        bootstrap_now = self.clock()
+        if (
+            self.last_bootstrap is None
+            or bootstrap_now - self.last_bootstrap >= self.BOOTSTRAP_INTERVAL
+        ):
+            self.bootstrap(bootstrap_now)
+            self.last_bootstrap = self.clock()
+        # Probes and source enumeration can take minutes. Lease from a fresh
+        # clock sample after both, never from the start of the worker loop.
+        job = self.repository.claim(self.clock())
         if job is None:
             return False
-        current = self.repository.current(job)
         try:
-            snapshot = self.repository.project(job, now)
-            if snapshot is None:
-                # Find by stable source key even if CreateItem succeeded before
-                # Justice could persist the returned EWS item ID.
-                self.client.cancel(f"{job.source_type}:{job.source_id}", current.exchange_item_id)
-                result = WorkerOutcome("cancelled")
-            elif (
-                current.exchange_item_id
-                and current.content_hash == snapshot.content_hash
-                and (
-                    getattr(job, "reason", "") not in {"backfill", "reconciliation", "reconcile"}
-                    or self.client.matches(snapshot, current.exchange_item_id)
-                )
-            ):
-                result = WorkerOutcome(
-                    "unchanged", current.exchange_item_id, current.exchange_change_key,
-                    snapshot.content_hash, snapshot.start.date(), bool(snapshot.problems),
-                )
-            else:
-                ref = self.client.upsert(
-                    snapshot, current.exchange_item_id, current.exchange_change_key,
-                )
-                result = WorkerOutcome(
-                    ref.action, ref.item_id, ref.change_key, snapshot.content_hash,
-                    snapshot.start.date(), bool(snapshot.problems),
-                )
+            renew = getattr(self.repository, "renew", None)
+            renew_lease_now = (
+                (lambda: renew(job, self.clock())) if renew is not None else (lambda: True)
+            )
+            hold_lock = getattr(self.repository, "hold_lease_lock", None)
+            lock_context = hold_lock(job) if hold_lock is not None else nullcontext()
+            with lock_context, maintain_lease(renew_lease_now):
+                current = self.repository.current(job)
+                snapshot = self.repository.project(job, self.clock())
+                if snapshot is None:
+                    # Find by stable source key even if CreateItem succeeded
+                    # before Justice could persist the returned EWS item ID.
+                    self.client.cancel(
+                        f"{job.source_type}:{job.source_id}", current.exchange_item_id
+                    )
+                    result = WorkerOutcome("cancelled")
+                elif (
+                    current.exchange_item_id
+                    and current.content_hash == snapshot.content_hash
+                    and (
+                        getattr(job, "reason", "")
+                        not in {"backfill", "reconciliation", "reconcile"}
+                        or self.client.matches(snapshot, current.exchange_item_id)
+                    )
+                ):
+                    result = WorkerOutcome(
+                        "unchanged", current.exchange_item_id, current.exchange_change_key,
+                        snapshot.content_hash, snapshot.start.date(), bool(snapshot.problems),
+                    )
+                else:
+                    ref = self.client.upsert(
+                        snapshot, current.exchange_item_id, current.exchange_change_key,
+                    )
+                    result = WorkerOutcome(
+                        ref.action, ref.item_id, ref.change_key, snapshot.content_hash,
+                        snapshot.start.date(), bool(snapshot.problems),
+                    )
+                assert_lease_owned()
+        except LeaseLost:
+            # A newer worker owns this item. Do not persist an outcome or issue
+            # another EWS request; the durable lease will be recovered later.
+            return True
         except Exception as exc:
             result = self._failure(exc, job, self.clock())
         self.repository.complete(job, result, self.clock())

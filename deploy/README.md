@@ -57,6 +57,19 @@ cd frontend && npm ci && npm run build && cd ..
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d --build
 ```
 
+## Optional Exchange calendar worker
+
+The standard production stack does not need Exchange settings or credentials. To enable calendar sync, fill in the Exchange settings in `deploy/.env.production`, provision the password as a protected file, and set `EXCHANGE_PASSWORD_FILE` to its path. Then include the optional overlay:
+
+```bash
+docker compose --env-file deploy/.env.production \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.exchange.prod.yml config
+docker compose --env-file deploy/.env.production \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.exchange.prod.yml up -d --build
+```
+
 ## Restore from backup
 
 ```bash

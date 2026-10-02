@@ -1,4 +1,5 @@
-# Usage: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d
+# Default production stack; no Exchange configuration is required.
+# Add deploy/docker-compose.exchange.prod.yml to the Compose file list to opt into the worker.
 #
 # Prerequisites:
 #   - Build frontend: cd frontend && npm ci && npm run build
@@ -101,33 +102,6 @@ services:
       timeout: 5s
       retries: 5
 
-  exchange-calendar-worker:
-    build:
-      context: ../backend
-      target: production
-    restart: unless-stopped
-    env_file: .env.production
-    environment:
-      EXCHANGE_CALENDAR_ENABLED: ${EXCHANGE_CALENDAR_ENABLED:-true}
-      EXCHANGE_EWS_URL: ${EXCHANGE_EWS_URL:-}
-      EXCHANGE_MAILBOX: ${EXCHANGE_MAILBOX:-}
-      EXCHANGE_USERNAME: ${EXCHANGE_USERNAME:-}
-      EXCHANGE_AUTH_TYPE: ${EXCHANGE_AUTH_TYPE:-}
-      EXCHANGE_REQUESTS_PER_MINUTE: ${EXCHANGE_REQUESTS_PER_MINUTE:-200}
-      LOG_DIR: /app/logs
-      LOG_FORMAT: json
-      EXCHANGE_PASSWORD: ""
-      ENVIRONMENT: production
-      TZ: Asia/Jerusalem
-    command: python -m app.exchange_calendar_worker
-    depends_on:
-      db:
-        condition: service_healthy
-      schema-migration:
-        condition: service_completed_successfully
-    secrets:
-      - EXCHANGE_PASSWORD
-
   telegram-bot:
     build:
       context: ../backend
@@ -162,7 +136,3 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-
-secrets:
-  EXCHANGE_PASSWORD:
-    file: ${EXCHANGE_PASSWORD_FILE:?Set EXCHANGE_PASSWORD_FILE to a file containing the svc_justice Exchange password}

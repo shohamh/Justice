@@ -8,6 +8,7 @@ from app.services.exchange_calendar.worker import ExchangeCalendarWorker
 
 def test_startup_probe_and_six_hour_bootstrap():
     calls = []
+    clock = [datetime(2026, 10, 1, tzinfo=UTC)]
 
     class Repository:
         def claim(self, now):
@@ -17,9 +18,13 @@ def test_startup_probe_and_six_hour_bootstrap():
         def probe(self):
             calls.append("probe")
 
-    worker = ExchangeCalendarWorker(Repository(), Client(), bootstrap=lambda now: calls.append("bootstrap"))
+    worker = ExchangeCalendarWorker(
+        Repository(), Client(), bootstrap=lambda now: calls.append("bootstrap"),
+        clock=lambda: clock[0],
+    )
     now = datetime(2026, 10, 1, tzinfo=UTC)
     for at in (now, now + timedelta(minutes=14), now + timedelta(minutes=15), now + timedelta(hours=6)):
+        clock[0] = at
         assert worker.run_once(at) is False
     assert calls == ["probe", "bootstrap", "probe", "probe", "bootstrap"]
 

@@ -12,6 +12,8 @@ from requests.adapters import HTTPAdapter
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from app.services.exchange_calendar.lease import assert_lease_owned
+
 
 class ExchangeBackoffActive(RuntimeError):
     """The shared Exchange outage backoff has not expired."""
@@ -137,6 +139,9 @@ class RateLimitedHTTPAdapter(HTTPAdapter):
 
     def send(self, request, **kwargs):
         with self._permit():
+            # A request may wait behind the shared rate gate after its lease
+            # renewal failed. Fence it immediately before crossing the network.
+            assert_lease_owned()
             response = super().send(request, **kwargs)
             try:
                 # Requests normally consumes the body in Session.send(), after

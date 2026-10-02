@@ -1,4 +1,4 @@
-"""Official calendar writes stay in the caller's database transaction."""
+﻿"""Official calendar writes stay in the caller's database transaction."""
 
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta
@@ -450,3 +450,148 @@ def test_location_fanout_keeps_old_tracked_standalone_assignment(admin_session: 
     assert triggers.enqueue_affected_by_location(admin_session, place, today=TODAY) == 2
     assert set(visited) == {assignments[1].id, assignments[2].id}
     assert assignments[0].id not in visited
+
+
+def _assignment_for(session, shift, person, *, standalone=False):
+    row = DutyAssignment(
+        soldier_id=person.id, duty_type_id=shift.duty_type_id,
+        duty_location_id=shift.duty_location_id,
+        start_date=shift.start_date, end_date=shift.end_date,
+        duty_shift_id=None if standalone else shift.id,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def test_bulk_delete_route_queues_cancellation(admin_session, monkeypatch):
+    from app.routes import shifts
+    shift = _shift(admin_session)
+    person = _soldier(admin_session)
+    _assignment_for(admin_session, shift, person)
+    source_id = shift.id
+    monkeypatch.setattr(admin_session, "commit", admin_session.flush)
+    monkeypatch.setattr(shifts, "authorize", lambda *args, **kwargs: None)
+    shifts.bulk_delete_shifts(TODAY, TODAY + timedelta(days=2), admin_session, person)
+    assert admin_session.get(DutyShift, source_id) is None
+    assert len(_jobs(admin_session, source_id)) == 1
+    assert _jobs(admin_session, source_id)[0].reason == "source_deleted"
+
+
+def test_bulk_clear_route_queues_roster_update(admin_session, monkeypatch):
+    from app.routes import shifts
+    shift = _shift(admin_session)
+    person = _soldier(admin_session)
+    _assignment_for(admin_session, shift, person)
+    monkeypatch.setattr(admin_session, "commit", admin_session.flush)
+    monkeypatch.setattr(shifts, "authorize", lambda *args, **kwargs: None)
+    shifts.bulk_clear_assignments(TODAY, TODAY + timedelta(days=2), admin_session, person)
+    assert admin_session.get(DutyShift, shift.id) is not None
+    assert len(_jobs(admin_session, shift.id)) == 1
+
+
+def test_clear_all_route_queues_shared_and_standalone_sources(admin_session, monkeypatch):
+    from app.routes import assignments
+    shift = _shift(admin_session)
+    person = _soldier(admin_session)
+    shared = _assignment_for(admin_session, shift, person)
+    solo = _assignment_for(admin_session, shift, person, standalone=True)
+    monkeypatch.setattr(admin_session, "commit", admin_session.flush)
+    monkeypatch.setattr(assignments, "authorize", lambda *args, **kwargs: None)
+    assignments.clear_all_assignments(admin_session, person)
+    assert shared.status == solo.status == "cancelled"
+    assert len(_jobs(admin_session, shift.id)) == 1
+    assert len(_jobs(admin_session, solo.id)) == 1
+
+
+def test_parent_commander_fanout_includes_vacant_child_and_override(admin_session):
+    from app.db.models import DutyDayOverride
+    commander = _soldier(admin_session)
+    parent = HierarchyNode(level="team", name=f"Parent {uuid4()}", path_ids=[], commander_id=commander.id)
+    admin_session.add(parent)
+    admin_session.flush()
+    child = HierarchyNode(level="team", name=f"Child {uuid4()}", path_ids=[], parent_id=parent.id)
+    admin_session.add(child)
+    admin_session.flush()
+    replacement = _soldier(admin_session, node=child.id)
+    original = _soldier(admin_session)
+    direct_shift, swapped_shift = _shift(admin_session), _shift(admin_session)
+    _assignment_for(admin_session, direct_shift, replacement)
+    row = _assignment_for(admin_session, swapped_shift, original)
+    admin_session.add(DutyDayOverride(duty_assignment_id=row.id, date=TODAY,
+                                     effective_soldier_id=replacement.id, reason="replacement"))
+    admin_session.flush()
+    enqueue_affected_by_soldier(admin_session, commander.id, today=TODAY)
+    assert len(_jobs(admin_session, direct_shift.id)) == 1
+    assert len(_jobs(admin_session, swapped_shift.id)) == 1
+
+
+def test_parent_node_change_fanout_includes_vacant_children(admin_session):
+    from app.services.exchange_calendar.triggers import enqueue_affected_by_hierarchy_node
+    parent = HierarchyNode(level="team", name=f"Parent {uuid4()}", path_ids=[])
+    admin_session.add(parent)
+    admin_session.flush()
+    child = HierarchyNode(level="team", name=f"Child {uuid4()}", path_ids=[], parent_id=parent.id)
+    admin_session.add(child)
+    admin_session.flush()
+    person = _soldier(admin_session, node=child.id)
+    shift = _shift(admin_session)
+    _assignment_for(admin_session, shift, person)
+    enqueue_affected_by_hierarchy_node(admin_session, parent.id, today=TODAY)
+    assert len(_jobs(admin_session, shift.id)) == 1
+
+
+def test_hr_contact_rename_and_email_change_queue_old_new_and_tracked_sources(admin_session):
+    from types import SimpleNamespace
+
+    from app.services.hr.mapping import HR_OWNED_FIELDS, MappedSoldierFields
+    from app.services.hr.person_sync import _apply_existing_person
+    initial_queue_count = admin_session.scalar(
+        select(func.count()).select_from(ExchangeCalendarOutbox)
+    )
+    person = _soldier(admin_session)
+    old_shift, new_shift = _shift(admin_session), _shift(admin_session)
+    tracked = _shift(admin_session, start=TODAY - timedelta(days=30))
+    _assignment_for(admin_session, tracked, person)
+    admin_session.add(ExchangeCalendarSyncItem(source_type="duty_shift", source_id=tracked.id,
+                                              exchange_item_id="tracked", status="synced"))
+    admin_session.get(DutyType, old_shift.duty_type_id).contact_name = person.full_name
+    admin_session.get(DutyType, new_shift.duty_type_id).contact_name = "New HR Name"
+    admin_session.flush()
+    mapped = MappedSoldierFields(**{
+        **{name: getattr(person, name) for name in HR_OWNED_FIELDS},
+        "full_name": "New HR Name", "email": "new@example.com",
+    })
+    profile = SimpleNamespace(soldier_id=person.id, overridden_fields=[])
+    user = SimpleNamespace(model_dump=lambda **kwargs: {})
+    _apply_existing_person(admin_session, profile, user, mapped)
+    assert person.email == "new@example.com"
+    for shift in (old_shift, new_shift, tracked):
+        assert len(_jobs(admin_session, shift.id)) == 1
+    admin_session.rollback()
+    assert admin_session.scalar(select(func.count()).select_from(ExchangeCalendarOutbox)) == initial_queue_count
+
+
+def test_bootstrap_claims_nearest_event_first_with_equal_queue_timestamps(admin_session):
+    from datetime import UTC
+
+    from sqlalchemy import delete
+
+    from app.services.exchange_calendar.outbox import claim_next_job
+    # Other route tests may commit their own jobs; claim ordering needs a clean
+    # queue so it asserts only the three bootstrap events created here.
+    admin_session.execute(delete(ExchangeCalendarOutbox))
+    admin_session.expire_all()
+    shifts = [_shift(admin_session, start=TODAY + timedelta(days=offset)) for offset in (20, 2, 9)]
+    bootstrap_calendar_sources(admin_session, now=datetime.combine(TODAY, time(12), ZoneInfo("Asia/Jerusalem")))
+    # Force UUID order to disagree with date order, as PostgreSQL transaction
+    # timestamps already tie for every backfill enqueue.
+    for i, shift in enumerate(shifts):
+        job = _jobs(admin_session, shift.id)[0]
+        job.id = __import__("uuid").UUID(int=i + 1)
+    admin_session.flush()
+    claimed = []
+    for _ in range(3):
+        job = claim_next_job(admin_session, worker_id="test", now=datetime.now(UTC) + timedelta(minutes=1))
+        claimed.append(job.source_id)
+    assert claimed == [shifts[1].id, shifts[2].id, shifts[0].id]

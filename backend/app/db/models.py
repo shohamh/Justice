@@ -2123,6 +2123,7 @@ class ExchangeCalendarOutbox(Base):
     next_attempt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     lease_owner: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     attempt_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)

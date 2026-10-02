@@ -65,7 +65,11 @@ export default function ExchangeCalendarSyncContent() {
   });
 
   const columns: ColDef<ExchangeSyncEvent>[] = [
-    { id: "source", header: "מקור", cell: (row) => <div data-testid={`exchange-sync-event-${row.source_id}`}>{sourceLabels[row.source_type]} · {row.source_date ?? "—"}</div> },
+    { id: "source", header: "מקור", cell: (row) => <div data-testid={`exchange-sync-event-${row.source_id}`}>
+      <div className="font-medium">{row.event_label ?? sourceLabels[row.source_type]}</div>
+      <div>{sourceLabels[row.source_type]} · {row.source_date ?? "—"}{row.location ? ` · ${row.location}` : ""}</div>
+      <div className="font-mono text-xs text-gray-500">{row.source_id.slice(0, 8)}</div>
+    </div> },
     { id: "status", header: "מצב", cell: (row) => <span>{statusLabels[row.status] ?? row.status} <span className="text-xs text-gray-500">({row.status})</span></span> },
     { id: "last_attempt", header: "ניסיון אחרון", cell: (row) => formatTime(row.last_attempt_at) },
     { id: "last_success", header: "הצלחה אחרונה", cell: (row) => formatTime(row.last_success_at) },

@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -60,6 +60,10 @@ def test_sync_item_enforces_unique_source_key_and_status(admin_session: Session)
 
 
 def test_enqueue_coalesces_queued_but_keeps_follow_up_during_lease(admin_session: Session) -> None:
+    # Earlier integration scenarios may commit outbox rows into this shared
+    # test database. Keep this test's claim scoped to its own two jobs.
+    admin_session.execute(delete(ExchangeCalendarOutbox))
+    admin_session.expire_all()
     source_id = _source_id()
     now = datetime.now(UTC) + timedelta(days=1)
     enqueue_source(admin_session, "duty_shift", source_id, priority=ExchangeCalendarJobPriority.BACKFILL, reason="backfill")
@@ -80,6 +84,8 @@ def test_enqueue_coalesces_queued_but_keeps_follow_up_during_lease(admin_session
 
 
 def test_claim_priority_expiry_and_transaction_ownership(admin_session: Session) -> None:
+    admin_session.execute(delete(ExchangeCalendarOutbox))
+    admin_session.expire_all()
     now = datetime.now(UTC) + timedelta(days=1)
     low, high = _source_id(), _source_id()
     enqueue_source(admin_session, "duty_shift", low, priority=ExchangeCalendarJobPriority.BACKFILL, reason="backfill")

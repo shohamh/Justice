@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import IntEnum, StrEnum
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -44,6 +44,11 @@ LEASE_DURATION = timedelta(minutes=5)
 _SOURCE_TYPES = frozenset({"duty_shift", "duty_assignment", "range_event"})
 
 
+def lease_lock_key(job_id: UUID) -> int:
+    """Return a stable signed PostgreSQL advisory-lock key for a job."""
+    return int.from_bytes(job_id.bytes[:8], byteorder="big", signed=True)
+
+
 def enqueue_source(
     session: Session,
     source_type: str,
@@ -51,6 +56,7 @@ def enqueue_source(
     *,
     priority: int,
     reason: str,
+    event_date: date | None = None,
 ) -> None:
     """Queue one source in the caller's transaction, coalescing queued work.
 
@@ -90,6 +96,7 @@ def enqueue_source(
         source_type=source_type,
         source_id=source_id,
         priority=int(priority),
+        event_date=event_date,
         reason=reason,
         status=ExchangeCalendarJobStatus.QUEUED.value,
     )
@@ -98,6 +105,7 @@ def enqueue_source(
             index_elements=["source_type", "source_id"],
             index_where=ExchangeCalendarOutbox.status == ExchangeCalendarJobStatus.QUEUED.value,
             set_={
+                "event_date": func.coalesce(job_insert.excluded.event_date, ExchangeCalendarOutbox.event_date),
                 "priority": func.greatest(
                     ExchangeCalendarOutbox.priority,
                     job_insert.excluded.priority,
@@ -163,18 +171,32 @@ def claim_next_job(
                 ExchangeCalendarSyncItem.source_id == ExchangeCalendarOutbox.source_id,
             ),
         )
-        .where(due_job, ~has_leased_sibling)
         .order_by(
             ExchangeCalendarOutbox.priority.desc(),
+            ExchangeCalendarOutbox.event_date.asc().nullslast(),
             ExchangeCalendarOutbox.queued_at.asc(),
             ExchangeCalendarOutbox.id.asc(),
         )
         .limit(1)
         .with_for_update(skip_locked=True, of=ExchangeCalendarSyncItem)
     )
-    candidate = session.scalar(candidate_statement)
-    if candidate is None:
-        return None
+    # A worker holds a session advisory lock for the full remote operation. The
+    # transaction lock below fences the claim itself, while skipping candidates
+    # that are still being processed even if their timestamp has expired.
+    skipped: set[UUID] = set()
+    while True:
+        statement = candidate_statement.where(due_job, ~has_leased_sibling)
+        if skipped:
+            statement = statement.where(~ExchangeCalendarOutbox.id.in_(skipped))
+        candidate = session.scalar(statement)
+        if candidate is None:
+            return None
+        lock_acquired = session.scalar(
+            select(func.pg_try_advisory_xact_lock(lease_lock_key(candidate.id)))
+        )
+        if lock_acquired:
+            break
+        skipped.add(candidate.id)
 
     # Recheck after locking the source row, then lease this exact job row.
     job_statement = (
@@ -196,3 +218,30 @@ def claim_next_job(
     job.attempt_count += 1
     job.updated_at = now_utc
     return job
+
+
+def renew_lease(
+    session: Session,
+    job_id: UUID,
+    *,
+    worker_id: str,
+    attempt_count: int,
+    now: datetime,
+) -> bool:
+    """Extend only the still-live generation owned by this worker."""
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    now_utc = now.astimezone(UTC)
+    result = session.execute(
+        update(ExchangeCalendarOutbox)
+        .where(
+            ExchangeCalendarOutbox.id == job_id,
+            ExchangeCalendarOutbox.status == ExchangeCalendarJobStatus.LEASED.value,
+            ExchangeCalendarOutbox.lease_owner == worker_id,
+            ExchangeCalendarOutbox.attempt_count == attempt_count,
+            ExchangeCalendarOutbox.lease_expires_at > now_utc,
+        )
+        .values(lease_expires_at=now_utc + LEASE_DURATION, updated_at=now_utc)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1

@@ -232,6 +232,8 @@ def test_events_derive_current_missing_optional_attendee_without_sharing_event_n
     assert response.status_code == 200, response.text
     item = response.json()["items"][0]
     assert item["status"] == "partial"
+    assert "Range 7" in item["event_label"]
+    assert item["location"] == "Range 7"
     assert item["last_success_at"] is not None
     assert item["current_projection_problems"] == [{
         "code": "missing_email", "message": "An invited person has no usable email address.",

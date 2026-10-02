@@ -11,15 +11,15 @@ Before enabling the worker, have the Exchange administrator confirm all of the f
 - The `svc_justice` account is a dedicated service account with the minimum required permission to create, update, find, and cancel events in the selected shared mailbox. Confirm the exact mailbox permission or impersonation role with the administrator.
 - The server's actual throttling policy. The configured application limit is a client safeguard; it does not change or guarantee Exchange's server-side throttling behavior.
 
-Set `EXCHANGE_CALENDAR_ENABLED=true`, the confirmed endpoint, mailbox, username, auth type, and request limit in `deploy/.env.production`. Keep `EXCHANGE_PASSWORD` out of that file. Provision the password separately using the organization's deployment secret manager, then make it available as a protected file whose path is set by `EXCHANGE_PASSWORD_FILE`. Restrict the file and its parent directory to the deployment account. Compose mounts that file as `/run/secrets/EXCHANGE_PASSWORD` for the worker only; the value is never part of the example env file or API container environment.
+The standard production Compose file does not require Exchange settings or a password. To opt in, set `EXCHANGE_CALENDAR_ENABLED=true`, the confirmed endpoint, mailbox, username, auth type, and request limit in `deploy/.env.production`. Keep `EXCHANGE_PASSWORD` out of that file. Provision the password separately using the organization's deployment secret manager, then make it available as a protected file whose path is set by `EXCHANGE_PASSWORD_FILE`. Restrict the file and its parent directory to the deployment account. The optional worker overlay mounts that file as `/run/secrets/EXCHANGE_PASSWORD` for the worker only; the value is never part of the example env file or API container environment.
 
 The production worker uses the backend image and `python -m app.exchange_calendar_worker`. It has no published port and waits for a healthy database and the one-shot `schema-migration` service to complete. The API is a separate service and does not run the worker.
 
-After provisioning the secret and completing the administrator checks, deploy with the same env file used for Compose interpolation:
+After provisioning the secret and completing the administrator checks, deploy with the optional Exchange overlay and the same env file used for Compose interpolation:
 
 ```powershell
-docker compose --env-file deploy/.env.production -f deploy/docker-compose.prod.yml config
-docker compose --env-file deploy/.env.production -f deploy/docker-compose.prod.yml up -d --build
+docker compose --env-file deploy/.env.production -f deploy/docker-compose.prod.yml -f deploy/docker-compose.exchange.prod.yml config
+docker compose --env-file deploy/.env.production -f deploy/docker-compose.prod.yml -f deploy/docker-compose.exchange.prod.yml up -d --build
 ```
 
 If the worker is enabled but endpoint, mailbox, username, or password is missing, it exits with a message naming the missing setting only. It does not include a credential value in its exception or logs. Fix the configuration and restart `exchange-calendar-worker`.
@@ -28,7 +28,7 @@ If the worker is enabled but endpoint, mailbox, username, or password is missing
 
 | Setting | Purpose | Default / limit |
 | --- | --- | --- |
-| `EXCHANGE_CALENDAR_ENABLED` | Enables the dedicated worker | `false` in Settings; production example sets `true` |
+| `EXCHANGE_CALENDAR_ENABLED` | Enables the dedicated worker | `false` in Settings; set `true` when using the production overlay |
 | `EXCHANGE_EWS_URL` | Administrator-confirmed on-prem EWS endpoint | Required when enabled |
 | `EXCHANGE_MAILBOX` | Shared calendar mailbox | Required when enabled |
 | `EXCHANGE_USERNAME` | `svc_justice` login name in the confirmed format | Required when enabled |

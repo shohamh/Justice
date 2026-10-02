@@ -122,6 +122,8 @@ class EventOut(BaseModel):
     source_type: str
     source_id: UUID
     source_date: date | None
+    event_label: str | None
+    location: str | None
     status: str
     last_attempt_at: datetime | None
     last_success_at: datetime | None
@@ -211,6 +213,8 @@ def events(
     for row in rows:
         problems: list[ProblemOut] = []
         source_date = row.source_date
+        event_label: str | None = None
+        location: str | None = None
         projection_day = today
         if row.exchange_item_id:
             model = {
@@ -226,6 +230,8 @@ def events(
             snapshot = project_source(session, row.source_type, row.source_id, today=projection_day)
             if snapshot:
                 source_date = snapshot.start.date()
+                event_label = snapshot.subject
+                location = snapshot.location or None
                 problems = [ProblemOut(
                     code=p.code,
                     message=p.safe_message,
@@ -242,6 +248,7 @@ def events(
         ).all()
         items.append(EventOut(
             source_type=row.source_type, source_id=row.source_id, source_date=source_date,
+            event_label=event_label, location=location,
             status=row.status, last_attempt_at=row.last_attempt_at, last_success_at=row.last_success_at,
             error_category=_safe_category(row.current_error_category),
             error=_safe_error(row.current_error_category, row.current_error),

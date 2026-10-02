@@ -25,6 +25,7 @@ from exchangelib.errors import ErrorItemNotFound
 from exchangelib.protocol import BaseProtocol
 
 from app.services.exchange_calendar.projection import CalendarSnapshot
+from app.services.exchange_calendar.lease import assert_lease_owned
 from app.services.exchange_calendar.rate_limiter import RateLimitedHTTPAdapter
 
 
@@ -150,11 +151,13 @@ class ExchangeCalendarClient:
             except ErrorItemNotFound:
                 item = None
         if item is None:
+            assert_lease_owned()
             item = CalendarItem()
             self._fill(item, snapshot)
             item = self.store.create(item)
             action = "created"
         else:
+            assert_lease_owned()
             self._fill(item, snapshot)
             item = self.store.update(item)
             action = "updated"
@@ -219,6 +222,7 @@ class ExchangeCalendarClient:
                 return
         if item is not None:
             try:
+                assert_lease_owned()
                 self.store.delete(item)
             except ErrorItemNotFound:
                 # A successful prior DeleteItem may have lost its local commit.
