@@ -33,7 +33,7 @@ function Branch({ node, depth, value, onToggle, scopeKey }: {
   };
 
   return (
-    <li role="treeitem" aria-expanded={node.has_children ? expanded : undefined}>
+    <li>
       <div className="flex items-center gap-1 rounded py-1 hover:bg-gray-50 dark:hover:bg-gray-700" style={{ paddingRight: `${depth * 16 + 4}px` }}>
         {node.has_children ? <button type="button" onClick={() => setExpanded((current) => !current)} className="flex h-5 w-5 shrink-0 items-center justify-center text-gray-500" aria-label={`${expanded ? t("team.hierarchy_collapse") : t("team.hierarchy_expand")} ${node.name}`} aria-expanded={expanded} aria-controls={`sub-hierarchy-children-${node.id}`}>{expanded ? "▾" : "▸"}</button> : <span aria-hidden="true" className="h-5 w-5 shrink-0" />}
         <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
@@ -41,7 +41,7 @@ function Branch({ node, depth, value, onToggle, scopeKey }: {
           <span className="truncate text-sm">{node.name}</span>
         </label>
       </div>
-      {expanded && node.has_children && <ul id={`sub-hierarchy-children-${node.id}`} role="group">
+      {expanded && node.has_children && <ul id={`sub-hierarchy-children-${node.id}`}>
         {query.isPending && children.length === 0 && <li role="status" className="py-1 text-xs text-gray-500">{t("team.hierarchy_loading")}</li>}
         {query.isError && children.length === 0 && <li role="alert" className="py-1 text-xs text-red-600">{t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={retry}>{t("team.hierarchy_retry")}</button></li>}
         {children.map((child) => <Branch key={child.id} node={child} depth={depth + 1} value={value} onToggle={onToggle} scopeKey={scopeKey} />)}
@@ -79,7 +79,7 @@ export default function SubHierarchySelector({ value, onChange }: Props) {
 
   return <div className="max-h-60 overflow-y-auto rounded border p-2 dark:border-gray-600 dark:bg-gray-800" data-testid="sub-hierarchy-selector">
     <p className="mb-2 text-xs text-gray-500">{t("algorithm.select_eligible_nodes")}</p>
-    <ul role="tree" aria-label={t("algorithm.select_eligible_nodes")}>
+    <ul>
       {rootsQuery.isPending && roots.length === 0 && <li role="status" className="text-xs text-gray-500">{t("team.hierarchy_loading")}</li>}
       {rootsQuery.isError && roots.length === 0 && <li role="alert" className="text-xs text-red-600">{t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={retryRoots}>{t("team.hierarchy_retry")}</button></li>}
       {roots.map((node) => <Branch key={node.id} node={node} depth={0} value={value} onToggle={toggleNode} scopeKey={scopeKey} />)}

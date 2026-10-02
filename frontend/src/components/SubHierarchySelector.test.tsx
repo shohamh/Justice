@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,6 +39,17 @@ function renderSelector(value: string[] = [], onChange = vi.fn()) {
   return { ...rendered, onChange, queryClient };
 }
 
+function renderControlledSelector(initialValue: string[] = []) {
+  const onChange = vi.fn();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  function ControlledHarness() {
+    const [value, setValue] = useState(initialValue);
+    return <SubHierarchySelector value={value} onChange={(selected) => { onChange(selected); setValue(selected); }} />;
+  }
+  const rendered = render(<QueryClientProvider client={queryClient}><ControlledHarness /></QueryClientProvider>);
+  return { ...rendered, onChange, queryClient };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([node("root", "Root", true)]);
@@ -47,6 +59,12 @@ beforeEach(() => {
 });
 
 describe("SubHierarchySelector", () => {
+  it("uses native nested list semantics rather than advertising an incomplete ARIA tree", async () => {
+    renderSelector();
+    expect(await screen.findByRole("checkbox", { name: "Root" })).toBeInTheDocument();
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+  });
+
   it("loads only roots on mount and fetches one branch when expanded", async () => {
     renderSelector();
 
@@ -88,20 +106,20 @@ describe("SubHierarchySelector", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
   });
 
-  it("retains explicit selected IDs across collapse and reopen", async () => {
-    const onChange = vi.fn();
+  it("retains the controlled explicit selection across collapse and reopen", async () => {
     vi.mocked(hierarchyApi.fetchHierarchyBranchPage)
       .mockResolvedValueOnce({ items: [node("root", "Root", true)], next_cursor: null, has_more: false })
       .mockResolvedValue({ items: [node("child", "Child", false)], next_cursor: null, has_more: false });
-    renderSelector(["hidden-selection"], onChange);
+    const { onChange } = renderControlledSelector(["hidden-selection"]);
     const expand = await screen.findByRole("button", { name: /hierarchy_expand Root/ });
     fireEvent.click(expand);
     fireEvent.click(await screen.findByRole("checkbox", { name: "Child" }));
     expect(onChange).toHaveBeenLastCalledWith(["hidden-selection", "child"]);
+    expect(screen.getByRole("checkbox", { name: "Child" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: /hierarchy_collapse Root/ }));
     expect(screen.queryByRole("checkbox", { name: "Child" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /hierarchy_expand Root/ }));
     expect(await screen.findByRole("checkbox", { name: "Child" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Child" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Child" })).toBeChecked();
   });
 });
