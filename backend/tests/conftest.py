@@ -368,6 +368,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_gimelim_service": "duty",
     "test_hakpaza": "duty",
     "test_reserves": "duty",
+    "test_concurrency_dismissals": "duty",
     "test_score_adjustments_api": "duty",
     "test_adjustments_service": "duty",
     "test_shift_generation": "duty",
