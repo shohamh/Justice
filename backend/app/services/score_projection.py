@@ -1093,6 +1093,22 @@ def _unhealthy_bucket_keys_detailed(
     }
 
 
+def _pending_projection_marker_condition():
+    """The shared predicate for markers that still require read-path repair."""
+    # JSONB None may be stored as either SQL NULL or the JSON value null.
+    divergence_cleared = or_(
+        ScoreProjectionDirtyBucket.divergence.is_(None),
+        ScoreProjectionDirtyBucket.divergence == text("'null'::jsonb"),
+    )
+    return or_(
+        ScoreProjectionDirtyBucket.status == "dirty",
+        and_(
+            ~divergence_cleared,
+            ScoreProjectionDirtyBucket.reconciled_at.is_(None),
+        ),
+    )
+
+
 def _dirty_or_divergent_projection_keys(
     session: Session,
     *,
@@ -1111,21 +1127,7 @@ def _dirty_or_divergent_projection_keys(
         quarter_starts = {quarter_start_value for _soldier_id, quarter_start_value in keys}
     elif not soldier_ids:
         return set()
-    # divergence is JSONB: a cleared flag must match BOTH SQL NULL and the
-    # JSON value null (the ORM persists None as JSON null on this column).
-    divergence_cleared = or_(
-        ScoreProjectionDirtyBucket.divergence.is_(None),
-        ScoreProjectionDirtyBucket.divergence == text("'null'::jsonb"),
-    )
-    conditions = [
-        or_(
-            ScoreProjectionDirtyBucket.status == "dirty",
-            and_(
-                ~divergence_cleared,
-                ScoreProjectionDirtyBucket.reconciled_at.is_(None),
-            ),
-        )
-    ]
+    conditions = [_pending_projection_marker_condition()]
     if keys is not None:
         conditions.append(ScoreProjectionDirtyBucket.quarter_start.in_(quarter_starts))
     rows = session.execute(

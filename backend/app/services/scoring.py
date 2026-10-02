@@ -1374,37 +1374,58 @@ def _refresh_required_soldier_totals(
     from app.services.score_projection import (
         SCORE_PROJECTION_CANONICAL_VERSION,
         _expected_soldier_totals_by_id,
+        _pending_projection_marker_condition,
     )
 
     if not soldier_ids:
         return True
 
-    stored = _soldier_totals_by_id(session, soldier_ids)
     # Read-path contract: totals are trusted unless they are missing/stale or
     # a dirty/divergent marker implicates the soldier. The numeric comparison
     # (an aggregate over partition-row fingerprints) only runs for implicated
     # soldiers.
-    missing_or_stale = [
-        soldier_id
-        for soldier_id in sorted(soldier_ids, key=str)
-        if (row := stored.get(soldier_id)) is None
-        or row.projection_version != SCORE_PROJECTION_CANONICAL_VERSION
-    ]
-    implicated = {
-        row.soldier_id
-        for row in session.execute(
-            select(ScoreProjectionDirtyBucket.soldier_id).where(
-                uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids),
-                or_(
-                    ScoreProjectionDirtyBucket.status == "dirty",
-                    ScoreProjectionDirtyBucket.divergence.is_not(None),
-                ),
-            )
-        ).all()
-    }
+    # Probe only exception IDs, so a healthy population does not hydrate every
+    # SoldierScoreProjection ORM row before a later projected read needs them.
+    required_ids = (
+        select(func.unnest(text("CAST(:required_ids AS uuid[])")))
+        .params(required_ids=sorted(str(soldier_id) for soldier_id in soldier_ids))
+        .subquery("required")
+    )
+    required_soldier_id = required_ids.c.unnest
+    pending_markers = (
+        select(ScoreProjectionDirtyBucket.soldier_id)
+        .where(
+            uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids),
+            _pending_projection_marker_condition(),
+        )
+        .distinct()
+        .subquery("pending_markers")
+    )
+    missing_or_stale_condition = or_(
+        SoldierScoreProjection.soldier_id.is_(None),
+        SoldierScoreProjection.projection_version != SCORE_PROJECTION_CANONICAL_VERSION,
+    )
+    implicated_condition = pending_markers.c.soldier_id.is_not(None)
+    flagged = session.execute(
+        select(
+            required_soldier_id,
+            missing_or_stale_condition.label("missing_or_stale"),
+            implicated_condition.label("implicated"),
+        )
+        .outerjoin(
+            SoldierScoreProjection,
+            SoldierScoreProjection.soldier_id == required_soldier_id,
+        )
+        .outerjoin(pending_markers, pending_markers.c.soldier_id == required_soldier_id)
+        .where(or_(missing_or_stale_condition, implicated_condition))
+    ).all()
+    missing_or_stale = [soldier_id for soldier_id, missing, _pending in flagged if missing]
+    implicated = {soldier_id for soldier_id, _missing, pending in flagged if pending}
     expected_ids = implicated | set(missing_or_stale)
     if not expected_ids:
         return True
+
+    stored = _soldier_totals_by_id(session, expected_ids)
 
     try:
         with session.begin_nested():
