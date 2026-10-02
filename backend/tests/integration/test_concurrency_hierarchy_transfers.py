@@ -9,20 +9,18 @@ Schedule reproduced here (two independent sessions = two approvers' requests):
   1. the rejecting request reads the transfer request (status=pending);
   2. the approving request moves the soldier, sets approved and commits;
   3. the rejecting request resumes, sets rejected and commits.
+
+Fixed (Task 3): both decisions go through ``lock_request_for_decision``
+(soldier row, then request row, FOR UPDATE with a fresh read). The late reject
+re-reads ``approved`` under the lock and fails with ``not_pending``.
 """
 from __future__ import annotations
-
-import pytest
 
 from app.db.models import HierarchyTransferRequest, Soldier
 from app.services import hierarchy_transfers as transfer_service
 from tests.helpers import create_node, create_soldier
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C8/H2: approve and reject of one transfer request both succeed (no lock on the request)",
-)
 def test_approve_and_reject_of_one_transfer_cannot_both_succeed(race, admin_session):
     from_node = create_node(admin_session, level="branch", name="race-transfer-from")
     to_node = create_node(admin_session, level="branch", name="race-transfer-to")
@@ -51,3 +49,4 @@ def test_approve_and_reject_of_one_transfer_cannot_both_succeed(race, admin_sess
         f"approve={early!r}, reject={late!r}; final status={final_status!r}, soldier moved={moved}"
     )
     assert (final_status, moved) == ("approved", True)
+    assert str(late.error) == "not_pending"
