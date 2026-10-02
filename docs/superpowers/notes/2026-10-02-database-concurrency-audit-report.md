@@ -3,12 +3,14 @@
 Date: 2026-10-02
 Spec: `docs/superpowers/specs/2026-10-02-database-concurrency-audit-design.md`
 Plan: `docs/superpowers/plans/2026-10-02-database-concurrency-audit.md`
-Status: **Task 1 (baseline + inventory) and Task 2 (race reproduction for
-C1–C8) complete.** Tasks 3–5 have not started.
+Status: **Tasks 1–3 complete.** Task 1 (baseline + inventory), Task 2 (race
+reproduction for C1–C8) and Task 3 (fixes for C1–C8) are done. Tasks 4–5 have
+not started.
 All eight Critical/High candidates C1–C8 (including every C8 sub-workflow)
-were reproduced against PostgreSQL on unmodified application code and are now
-**confirmed findings** (see §4.1). C9–C18 are still unreproduced candidates
-(Task 4). Nothing has been fixed yet.
+were reproduced against PostgreSQL and are **confirmed findings** (§4.1). All
+of them are now **fixed** with database-level locking/claims and their race
+tests pass for real (§4.2). No fix needed a product decision or a migration.
+C9–C18 are still unreproduced candidates (Task 4).
 
 > Reading rule for this document: "no defect identified" means only that
 > reading the code did not show one. It is **not** a safety claim. The audit
@@ -414,6 +416,49 @@ dedicated tests)**
   lazily INSERT it and one fails. The `race` fixture restores the seeded row
   so race tests match a migrated production database.
 
+### 4.2 Task 3 — dispositions of the confirmed findings
+
+Every fix is database-level (row lock, `SKIP LOCKED` claim, conditional
+`UPDATE ... WHERE`, or the existing per-date advisory lock). Deployment and
+worker topology are unchanged, and no Alembic revision was added (head is
+still `4858092e72e7`). Each strict-xfail marker was removed and the test
+now asserts the single-winner outcome, including the loser's error code.
+Under the fix, the winning racer's rendezvous times out (bounded 10 s)
+because the loser is blocked on the lock. That timeout is the expected
+serialized schedule, not a sleep.
+
+| ID | Disposition | Fix (commit) | Lock order / error mapping |
+|---|---|---|---|
+| C1 (N1) | **Fixed** | `email_worker._drain_email_outbox` claims one row at a time with `SELECT ... FOR UPDATE SKIP LOCKED` and commits `sent_at`/`error` per row. Rows that fail are excluded for the rest of that drain (`f78cf9b4`). | One row lock at a time. Delivery is still at-least-once if a process crashes between the SMTP send and the commit. |
+| C2 (R7) | **Fixed** | `range_reminders._claim_reminder`: `UPDATE range_events SET reminder_sent_at WHERE id AND status='planned' AND reminder_sent_at IS NULL RETURNING` runs before any notification is created. Events are claimed in id order (`bbc66422`). | The losing worker skips the event (returns 0). |
+| C3 (A2) | **Fixed** | `routes/shifts.assign_batch` locks `duty_shifts[id]` with `FOR NO KEY UPDATE` before counting (`a53964b2`). | Shift row, then soldiers (in `create_assignment`). `NO KEY UPDATE` does not conflict with the `KEY SHARE` taken by assignment inserts. The loser gets 409 `primary_capacity_exceeded` / `reserve_capacity_exceeded`. |
+| C4 (R3) | **Fixed** | `approve_assignment_request` takes the per-date advisory lock, then `FOR UPDATE` on the request (re-checks `pending`), then refreshes the event before `_check_capacity` (`22974693`). | Advisory(date), then the request row, the same order as `add_range_assignment`. The approve route now maps `RangeValidationError` to 400, like the manual-add route. It used to be an unhandled 500. |
+| C5 (K1) | **Fixed** | `submit_constraint` locks the soldier row with `FOR NO KEY UPDATE` before `remaining_days` (`8851ecd2`). | Soldier row only. The loser gets `cap_exceeded` (existing 400 mapping). Other inserters that do not check the cap (registration, HR onboarding, import) are unchanged. |
+| C6 (I1) | **Fixed** | `_lock_import_session` (`FOR UPDATE`, `populate_existing`) is used by `confirm_session` and `cancel_session` (`09c5d603`). | The import row is held for the whole confirm transaction. The loser gets `only_draft_sessions_can_be_confirmed/_cancelled` (existing 400). `reparse_session` / `mark_done` / `set_selections` were not changed (not reproduced). |
+| C7 (S4, E2) | **Fixed** | `expire_started_swaps` and `expire_stale_exemption_requests` re-lock each candidate with the decision paths' `_lock_request` in id order and skip it unless it is still open/pending (`b35f0d1f`). | Request row first, the same as the decision paths. A decided request is left as it is. |
+| C8/H2 | **Fixed** | `hierarchy_transfers.lock_request_for_decision` (soldier `FOR UPDATE`, then request `FOR UPDATE`, fresh read) is used by approve/reject and by both routes **before** `authorize` (`058629d9`). | Soldier, then request, the same order as `create_request`. The loser gets `not_pending` (400). Authorization now checks the destination node that is applied. |
+| C8/P3 | **Fixed** | `reject_field_update` takes the same `FOR UPDATE` re-read as `approve_field_update` and requires the status the route authorized against (`be765728`). | The update row only; reject takes no soldier lock, so C9's order is unchanged. The loser gets `not_pending` (400). |
+| C8/X1 | **Fixed** | `enrollment.lock_request` (`FOR UPDATE`, fresh read) is used by approve/reject and by both routes before `authorize` (`533d3436`). | Enrollment request, then soldier (`try_activate`), consistent with exemption → enrollment → soldier. The loser gets `already_decided` (400). |
+| C8/J3 | **Fixed** | `routes/algorithm._transition_draft` applies the bulk routes' guard `UPDATE ... WHERE status='algorithm_draft' RETURNING` to all four single-item accept/reject routes (`f1eab90f`). | The loser gets 409 `not_draft` (existing code). |
+| C8/R5 | **Fixed** | `decide_primary_excusal` takes the per-date advisory lock, then `FOR UPDATE` on the excusal request (re-checks `pending`), before reading eligible reserves (`57da94d3`). | Advisory(date), then request, then assignments, then reconciliation's later-date advisory locks (ascending), the same order as `add_range_assignment`. The second approval takes the no-backfill path and notifies duty managers. |
+
+**Verification.**
+- `pytest tests/integration/test_concurrency_*.py`: **18 passed**, 0 xfailed.
+- Each fix also ran its focused workflow suites: range, shifts routes,
+  constraints, imports, swaps/exemptions, transfers, soldiers/field updates,
+  enrollment/registration, and algorithm proposals.
+- Fast suite (`pytest -p no:cacheprovider`): **2148 passed, 3 skipped,
+  2 failed**. The failures are only the two baseline failures
+  (`test_block_ids_are_unique`, `test_breakdown_contributions_reconstruct_scores`).
+
+**Residual risk (not addressed by Task 3).**
+- C9–C18 and O1 are still unreproduced.
+- The fixes serialize only the writers named above. Range roster writers that
+  do not take the per-date lock (e.g. reserve excusal, removal) were not
+  reviewed under concurrency.
+- Shift writers other than `assign_batch` (single create, algorithm publish)
+  do not check capacity at all, so the shift lock does not constrain them.
+
 ### Items that are not concurrency defects but were found during the inventory
 
 - `constraints.cancel_constraint`: undefined `timezone` on the approved →
@@ -433,7 +478,7 @@ dedicated tests)**
 
 ## 5. Remaining untested concurrency boundaries (so far)
 
-- C1–C8 are reproduced and confirmed (§4.1) but not fixed yet (Task 3).
+- C1–C8 are reproduced, confirmed (§4.1) and fixed (§4.2).
   C9–C18 in §4 and O1 in §4.1 are still unreproduced.
 - Modules listed under "Not reviewed in this task" in §2.
 - No PostgreSQL race test exists for the `create_assignment` soldier lock (A1),
