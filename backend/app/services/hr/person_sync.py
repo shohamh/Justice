@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from datetime import date, datetime, timezone
@@ -22,10 +23,29 @@ from app.services.hr.client import HrApiClient
 from app.services.hr.divergence import record_sync_divergence
 from app.services.hr.mapping import HR_OWNED_FIELDS, HeldForReview, MappedSoldierFields, map_hr_user
 from app.services.hr.schemas import HrUser
+from app.services.identity_write import assign_soldier_email
 from app.services.notifications import create_notification, notify_commanders_of_request
 from app.services.rank_advancement import get_next_rank, resolve_track
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import _reset_rank_advancement
+
+logger = logging.getLogger(__name__)
+
+
+def _assign_hr_email(session: Session, soldier: Soldier, raw_email: str | None) -> None:
+    """Apply HR's email through the shared identity invariant.
+
+    An unsupported address, or one that collides with another soldier's email
+    or AD username, is not applied: the soldier's existing email stays as it
+    was and the rest of the person still syncs. Logs the soldier id and the
+    reason code only (no address). Admin-visible conflict recording for these
+    cases is added by the HR identity conflict work (plan Task 8).
+    """
+    try:
+        assign_soldier_email(session, soldier, raw_email)
+    except ValueError as exc:
+        logger.warning("HR sync: email not applied for soldier %s (%s)", soldier.id, exc)
+
 
 # Priority order for which org-unit id determines a person's placement.
 # TODO: placeholder order, unconfirmed against real HR data — see design
@@ -79,7 +99,6 @@ def _apply_new_person(
             password_hash=hash_password(secrets.token_hex(16)),
             must_change_password=True,
             hierarchy_node_id=node_id,
-            email=mapped.email,
             phone=mapped.phone,
             profile_picture_url=mapped.profile_picture_url,
             gender=mapped.gender,
@@ -91,6 +110,7 @@ def _apply_new_person(
             mandatory_end_date=mapped.mandatory_end_date,
             discharge_date=mapped.discharge_date,
         )
+        _assign_hr_email(session, soldier, mapped.email)
         session.add(soldier)
         session.flush()
 
@@ -206,6 +226,9 @@ def _apply_existing_person(
                     session, soldier_hr_profile_id=profile.id, field_name=field_name,
                     hr_value=new_value, local_value=old_value,
                 )
+            continue
+        if field_name == "email":
+            _assign_hr_email(session, soldier, new_value)
             continue
         old_value = getattr(soldier, field_name)
         if field_name in _DEPENDENT_LOGIC_TRIGGER_FIELDS and old_value != new_value:

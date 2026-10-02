@@ -342,6 +342,23 @@ def _reset_rank_advancement(session: Session, soldier: Soldier, *, since: date) 
     soldier.next_rank_date_overridden = False
 
 
+def _assign_profile_email(session: Session, soldier: Soldier, value: str | None) -> None:
+    """Route a profile email edit through the shared identity invariant.
+
+    Unsupported addresses become ``SoldierValidationError(<code>)``; a duplicate
+    raises ``IdentityCollisionError`` (a ``ValueError``) for the caller to map.
+    """
+    from app.services.identity import IdentityCollisionError
+    from app.services.identity_write import assign_soldier_email
+
+    try:
+        assign_soldier_email(session, soldier, value)
+    except IdentityCollisionError:
+        raise
+    except ValueError as exc:
+        raise SoldierValidationError(str(exc)) from exc
+
+
 def update_soldier_profile(
     session: Session,
     *,
@@ -363,6 +380,9 @@ def update_soldier_profile(
         if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
             if k == "rank" and v != old_rank:
                 soldier.rank_last_set_by = "manual"
+            if k == "email":
+                _assign_profile_email(session, soldier, v)
+                continue
             setattr(soldier, k, v)
     rank_or_track_changed = (
         ("rank" in fields and fields["rank"] != old_rank)

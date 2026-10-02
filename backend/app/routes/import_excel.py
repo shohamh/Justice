@@ -37,6 +37,7 @@ from app.db.models import (
 from app.db.session import get_session
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
+from app.services.identity_write import BulkIdentityCheck, assign_soldier_email, resolve_identity_fields
 from app.services.import_scope import is_node_in_actor_scope
 from app.services.notifications import create_notification
 from app.services.rank_advancement import resolve_track
@@ -195,6 +196,7 @@ def _parse_soldiers_sheet(wb, soldiers_by_pn, nodes_by_name) -> list[SoldierRowP
     ws = wb["soldiers"]
     headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))]
     results = []
+    identity_check = BulkIdentityCheck(soldiers_by_pn.values())
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if all(v is None for v in row):
             continue
@@ -213,6 +215,12 @@ def _parse_soldiers_sheet(wb, soldiers_by_pn, nodes_by_name) -> list[SoldierRowP
             errors.append(f"hierarchy_node_name '{node_name}' not found")
 
         existing = soldiers_by_pn.get(pn)
+        email_error = identity_check.check(
+            str(data.get("email") or "").strip() or None,
+            own_soldier_id=existing.id if existing is not None else None,
+        )
+        if email_error:
+            errors.append(f"email: {email_error}")
         action: Literal["new", "update", "error"] = "error" if errors else ("update" if existing else "new")
 
         results.append(SoldierRowPreview(
@@ -350,6 +358,11 @@ def apply(
                 skipped += 1
                 continue
             if row.action == "new":
+                try:
+                    new_email, new_ad_username = resolve_identity_fields(session, row.email)
+                except ValueError as exc:  # unsupported address or IdentityCollisionError
+                    errors.append(f"Row {row.row}: {exc}")
+                    continue
                 new_soldier = Soldier(
                     personal_number=row.personal_number,
                     full_name=row.full_name,
@@ -361,7 +374,8 @@ def apply(
                     rank_track=resolve_track(row.rank, row.rank_track),
                     hierarchy_node_id=row.hierarchy_node_id,
                     phone=row.phone,
-                    email=row.email,
+                    email=new_email,
+                    ad_username=new_ad_username,
                     food_type=row.food_type,
                     food_constraints=row.food_constraints,
                     profile_picture_url=row.profile_picture_url,
@@ -410,6 +424,13 @@ def apply(
             elif row.action == "update" and row.existing_id:
                 s = session.get(Soldier, row.existing_id)
                 if s:
+                    if row.email is not None:
+                        # First, so a rejected address leaves the soldier untouched.
+                        try:
+                            assign_soldier_email(session, s, row.email)
+                        except ValueError as exc:
+                            errors.append(f"Row {row.row}: {exc}")
+                            continue
                     s.full_name = row.full_name
                     if row.password_hash is not None:
                         s.password_hash = row.password_hash
@@ -428,8 +449,6 @@ def apply(
                         s.hierarchy_node_id = row.hierarchy_node_id
                     if row.phone is not None:
                         s.phone = row.phone
-                    if row.email is not None:
-                        s.email = row.email
                     if row.food_type is not None:
                         s.food_type = row.food_type
                     if row.food_constraints is not None:

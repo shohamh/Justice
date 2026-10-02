@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import EmailVerificationToken, Soldier
 from app.services.email import send_email
+from app.services.identity import normalize_email
 
 _TOKEN_EXPIRY = timedelta(hours=24)
 
@@ -64,18 +65,20 @@ def verify_token(session: Session, *, token: str) -> str:
         return "token_expired"
 
     soldier = session.get(Soldier, row.soldier_id)
-    if soldier is None or soldier.email != row.email:
+    try:
+        # Tokens issued before the identity migration snapshot the raw address.
+        token_email = normalize_email(row.email)
+    except ValueError:
+        token_email = None
+    if soldier is None or token_email is None or soldier.email != token_email:
         # Soldier changed their email since token was issued
         return "token_invalid"
 
-    # Check no other soldier has already verified this email
+    # Email is unique across verified and unverified rows (database-enforced);
+    # this guards legacy data and keeps the redeem result explicit.
     conflict = session.execute(
-        select(Soldier).where(
-            Soldier.email == row.email,
-            Soldier.email_verified == True,  # noqa: E712
-            Soldier.id != soldier.id,
-        )
-    ).scalar_one_or_none()
+        select(Soldier.id).where(Soldier.email == token_email, Soldier.id != soldier.id).limit(1)
+    ).first()
     if conflict is not None:
         return "email_taken"
 

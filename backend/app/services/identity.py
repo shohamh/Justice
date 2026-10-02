@@ -53,3 +53,27 @@ def normalize_email(value: str | None) -> str | None:
 def derive_ad_username(email: str | None) -> str | None:
     """Return the lowercased email local part without dropping punctuation."""
     return _canonical_identity(email)[1]
+
+
+def canonical_identity(value: str | None) -> tuple[str | None, str | None]:
+    """Return ``(normalized_email, ad_username)`` through one validation pass.
+
+    Both are ``None`` for a blank value. Raises ``ValueError`` with one of the
+    codes ``email_invalid``, ``ad_username_too_long`` or ``ad_username_invalid``.
+    Write paths store the two values together; never store one without the other.
+    """
+    return _canonical_identity(value)
+
+
+class IdentityCollisionError(ValueError):
+    """A write would duplicate a unique soldier identity value.
+
+    ``field`` is ``"email"``, ``"ad_username"`` or ``"personal_number"`` and names
+    only the colliding field, never the other soldier. ``str(error)`` is the
+    stable code ``"<field>_taken"``. Raised by the application-level pre-check
+    and, for races, translated from the database unique-constraint error.
+    """
+
+    def __init__(self, field: str) -> None:
+        self.field = field
+        super().__init__(f"{field}_taken")

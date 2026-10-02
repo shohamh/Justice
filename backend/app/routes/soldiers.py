@@ -26,6 +26,9 @@ from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLi
 from app.db.session import get_session
 from app.audit.writer import write_audit
 from app.services import soldiers as svc
+from app.routes.identity_errors import identity_http_exception
+from app.services.identity import IdentityCollisionError
+from app.services.identity_write import flush_with_identity_guard
 from app.services import scoring as scoring_svc
 from app.services.soldiers import (
     approve_field_update,
@@ -852,6 +855,10 @@ def update_profile(
     }
     try:
         update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
+        flush_with_identity_guard(session)
+    except IdentityCollisionError as exc:
+        session.rollback()
+        raise identity_http_exception(exc) from exc
     except svc.SoldierError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()

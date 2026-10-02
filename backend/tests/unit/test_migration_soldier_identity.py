@@ -214,3 +214,37 @@ def test_upgrade_backfills_and_enforces_constraints_and_downgrade_restores():
             ).scalars().all()
         # canonical values are kept: the original raw text is not recoverable
         assert emails == ["first.last@example.com"]
+
+
+_PAIR_REVISION = "20261002_soldier_identity_pair"
+_PAIR_TEMPLATE = None
+
+
+def test_pair_migration_requires_email_and_ad_username_together():
+    global _PAIR_TEMPLATE
+    if _PAIR_TEMPLATE is None:
+        _PAIR_TEMPLATE = db_support.get_migrated_template(REVISION, _ROOT)
+    with db_support.cloned_migration_database(
+        _PAIR_TEMPLATE, upgrade_to_revision=_PAIR_REVISION, rootpath=_ROOT
+    ) as (engine, run_migration):
+        run_migration()
+
+        def insert(pn, email, ad):
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO soldiers "
+                        "(personal_number, full_name, password_hash, email, ad_username) "
+                        "VALUES (:pn, 'n', 'x', :e, :a)"
+                    ),
+                    {"pn": pn, "e": email, "a": ad},
+                )
+
+        insert("3000001", "pair@example.com", "pair")
+        insert("3000002", None, None)
+        with pytest.raises(IntegrityError):  # email without ad_username
+            insert("3000003", "lonely@example.com", None)
+        with pytest.raises(IntegrityError):  # ad_username without email
+            insert("3000004", None, "orphan")
+        with pytest.raises(IntegrityError):  # ad_username not derived from the email
+            insert("3000005", "one@example.com", "two")

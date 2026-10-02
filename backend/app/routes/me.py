@@ -19,7 +19,9 @@ from app.services.authority import (
     has_any_exemption_immediate_apply_scope,
     has_any_visibility,
 )
+from app.routes.identity_errors import identity_http_exception
 from app.services.deputies import list_active_deputies_for
+from app.services.identity_write import assign_soldier_email, flush_with_identity_guard
 from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -196,12 +198,15 @@ def set_email(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    new_email = body.email or None
-    changed = user.email != new_email
-    user.email = new_email
-    if changed:
-        user.email_verified = False
-    if new_email and changed:
+    try:
+        # Stores email + ad_username together, clears email_verified and
+        # invalidates outstanding verification tokens when the address changes.
+        changed = assign_soldier_email(session, user, body.email)
+        flush_with_identity_guard(session)
+    except ValueError as exc:  # unsupported address or IdentityCollisionError
+        session.rollback()
+        raise identity_http_exception(exc) from exc
+    if user.email and changed:
         ev_svc.request_verification(session, soldier=user)
     session.commit()
     return {"email_verified": user.email_verified}

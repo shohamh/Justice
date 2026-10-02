@@ -79,6 +79,16 @@
 ` in both Python and the CHECK.
 - Migration tests are `slow`-marked (run with `pytest --slow tests/unit/test_migration_soldier_identity.py -n0`), using a disposable testcontainers Postgres.
 
+### Task 3: shared email write path (for Tasks 6-8)
+
+- `app/services/identity.py` (pure) gained `canonical_identity(raw) -> (email, ad_username)` and `IdentityCollisionError(ValueError)` with `.field` in `email|ad_username|personal_number`; `str(error)` is `<field>_taken`.
+- `app/services/identity_write.py` is the only supported writer of `Soldier.email`/`ad_username`: `resolve_identity_fields(session, raw, exclude_soldier_id=None)` (use when constructing a Soldier), `assign_soldier_email(session, soldier, raw, verified=False) -> bool` (sets both, clears `email_verified` to `verified`, invalidates verification tokens on change; pass `verified=True` only from a consumed OIDC registration context, Task 7), `check_personal_number_available`, `flush_with_identity_guard(session)` (savepoint flush that turns the three unique-constraint races into `IdentityCollisionError`), `BulkIdentityCheck` (import previews). Errors are raised before any mutation.
+- A second migration `20261002_soldier_identity_pair` adds `ck_soldiers_email_ad_username_pair` (both NULL, or `ad_username = split_part(email,'@',1)`), so a bare `soldier.email = ...` now fails at the database. Tests that need an email on a Soldier use `tests.helpers.set_soldier_email`.
+- HTTP mapping helper `app/routes/identity_errors.py:identity_http_exception` (409 `<field>_taken`, 400 validation code). Registration raises `RegistrationError("email_taken"|"ad_username_taken"|"email_invalid"|"ad_username_too_long"|"ad_username_invalid")` before the invite code is consumed; the personal-number check there keeps its existing `"personal_number already exists"` message. Task 7 must call `resolve_identity_fields`/`flush_with_identity_guard` the same way and add the `verified=True` path.
+- Interim HR behaviour (Task 8 replaces it): `person_sync._assign_hr_email` leaves an unsupported or colliding HR email unchanged, syncs the rest of the person, and logs a warning with the soldier id only. No conflict row is recorded yet. HR email changes now also clear `email_verified`.
+- Imports (Excel apply, import sessions) check emails at preview time (row becomes `error`) and again at apply time; a rejected row is reported in `errors` and leaves the soldier untouched.
+- Direct `.email` writes were removed everywhere (`grep -rn "\.email\s*=" app` is clean).
+
 ### Task 2: Preflight existing data and enforce database uniqueness
 
 **Files:** Create Alembic migration under `backend/alembic/versions/`; add migration test under `backend/tests/unit/test_migration_soldier_identity.py`; update model/tests.
@@ -95,12 +105,12 @@
 
 **Files:** `backend/app/services/registration.py`, `backend/app/services/email_verification.py`, soldier update service, HR person sync/import paths, admin routes/services, relevant tests.
 
-- [ ] Add failing service tests for registration and each discovered email write path, asserting normalized `email` and derived `ad_username` are stored together.
-- [ ] Refactor each write path to call the identity service, update both fields in one SQL transaction, and translate database uniqueness conflicts into stable user-facing errors.
-- [ ] For email changes, clear `email_verified` and invalidate outstanding verification tokens as the current verification flow requires; roll back both fields on either email or username collision.
-- [ ] Update OIDC-verified registration path so only a consumed server-side registration context can preserve the issuer's verified-email status.
-- [ ] Catch `IntegrityError` on the three unique constraints at each write path and map it to a typed `IdentityCollisionError` naming the colliding field (not the other soldier); every path checks collisions first and relies on the DB only for races.
-- [ ] Run focused registration, email verification, HR/import, and soldier update tests; verify no direct write bypass remains by searching assignments to `.email`.
+- [x] Add failing service tests for registration and each discovered email write path, asserting normalized `email` and derived `ad_username` are stored together.
+- [x] Refactor each write path to call the identity service, update both fields in one SQL transaction, and translate database uniqueness conflicts into stable user-facing errors.
+- [x] For email changes, clear `email_verified` and invalidate outstanding verification tokens as the current verification flow requires; roll back both fields on either email or username collision.
+- [x] Update OIDC-verified registration path so only a consumed server-side registration context can preserve the issuer's verified-email status.
+- [x] Catch `IntegrityError` on the three unique constraints at each write path and map it to a typed `IdentityCollisionError` naming the colliding field (not the other soldier); every path checks collisions first and relies on the DB only for races.
+- [x] Run focused registration, email verification, HR/import, and soldier update tests; verify no direct write bypass remains by searching assignments to `.email`.
 
 ### Task 4: Identity resolution service and admin identity conflicts
 

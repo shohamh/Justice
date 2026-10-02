@@ -125,6 +125,11 @@ class Soldier(Base):
             "ad_username IS NULL OR (ad_username <> '' AND ad_username = lower(btrim(ad_username, E' \\t\\r\\n\\f\\v')))",
             name="ck_soldiers_ad_username_canonical",
         ),
+        sa.CheckConstraint(
+            "(email IS NULL AND ad_username IS NULL) "
+            "OR (email IS NOT NULL AND ad_username IS NOT NULL AND ad_username = split_part(email, '@', 1))",
+            name="ck_soldiers_email_ad_username_pair",
+        ),
         sa.Index("uq_soldiers_email", "email", unique=True, postgresql_where=text("email IS NOT NULL")),
         sa.Index(
             "uq_soldiers_ad_username", "ad_username", unique=True,
