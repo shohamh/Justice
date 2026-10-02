@@ -48,6 +48,9 @@
     "section_loading": "Loading {{section}}...",
     "section_error": "Could not load {{section}}."
   },
+  "export": {
+    "hierarchy_data_load_failed": "Could not load transparency and hierarchy data. Export will wait until they load successfully."
+  },
   "common": {
     "retry": "Try again"
   }

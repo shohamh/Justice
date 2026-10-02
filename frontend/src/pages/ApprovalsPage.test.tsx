@@ -1057,3 +1057,39 @@ describe("ApprovalsPage - two-step indicator", () => {
     expect(within(row).getByTestId("constraint-stage-c1")).toHaveTextContent("2/2");
   });
 });
+
+describe("ApprovalsPage hierarchy reads", () => {
+  function renderApprovals(initialEntries: string[] = ["/approvals"]) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={initialEntries}>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("does not load the full tree on the default constraints tab", async () => {
+    renderApprovals();
+    await screen.findByTestId("approvals-tab-constraints");
+
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("loads the full tree when the enrollment tab is selected", async () => {
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-enrollment"));
+
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+  });
+
+  it("loads the full tree for a direct link to the transfers tab", async () => {
+    renderApprovals(["/approvals?tab=transfers"]);
+    await screen.findByTestId("approvals-tab-transfers");
+
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+  });
+});

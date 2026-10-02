@@ -99,6 +99,7 @@ export default function SwapsPage() {
   const hierarchyNodesQuery = useQuery({
     queryKey: queryKeys.hierarchyTreeVisible(),
     queryFn: () => fetchTree().catch(() => [] as NodeDTO[]),
+    enabled: tab === 1,
   });
   const hierarchyNodes = hierarchyNodesQuery.data ?? [];
 

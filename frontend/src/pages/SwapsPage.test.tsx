@@ -1,9 +1,10 @@
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
 import SwapsPage from "./SwapsPage";
 import type { SwapRequest } from "../api/swaps";
+import * as hierarchyApi from "../api/hierarchy";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 const { mySwap, incomingSwap } = vi.hoisted(() => {
@@ -176,5 +177,31 @@ describe("SwapsPage duties query", () => {
     renderPage();
     await screen.findAllByText("Yossi");
     expect(listEffectiveDuties).toHaveBeenCalledWith("me", { include_drafts: true });
+  });
+});
+
+describe("SwapsPage hierarchy reads", () => {
+  test("does not load the visible tree on the default mine tab", async () => {
+    vi.mocked(hierarchyApi.fetchTree).mockClear();
+    renderPage();
+    await screen.findByText("swaps.tab_mine");
+
+    expect(hierarchyApi.fetchTree).not.toHaveBeenCalled();
+  });
+
+  test("loads the visible tree when switching to the board tab", async () => {
+    vi.mocked(hierarchyApi.fetchTree).mockClear();
+    renderPage();
+    fireEvent.click(await screen.findByText("swaps.tab_board"));
+
+    await waitFor(() => expect(hierarchyApi.fetchTree).toHaveBeenCalledTimes(1));
+  });
+
+  test("loads the visible tree for a direct link to the board tab", async () => {
+    vi.mocked(hierarchyApi.fetchTree).mockClear();
+    renderPage(["/swaps?tab=board"]);
+    await screen.findByText("swaps.tab_board");
+
+    await waitFor(() => expect(hierarchyApi.fetchTree).toHaveBeenCalledTimes(1));
   });
 });

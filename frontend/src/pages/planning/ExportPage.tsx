@@ -98,15 +98,30 @@ export default function ExportPage() {
   const { user, authScopeReady } = useAuth();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
+  const needsHierarchyData = !!(checked.transparency || checked.sub_units);
   const transparencyScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparencyForScope(transparencyScope),
     queryFn: getTransparency,
-    enabled: !!transparencyScope,
+    enabled: needsHierarchyData && !!transparencyScope,
   });
   const rows = useMemo<TransparencyRow[]>(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
 
-  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeQuery = useQuery({
+    queryKey: queryKeys.hierarchyTree(),
+    queryFn: fetchFullTree,
+    enabled: needsHierarchyData,
+  });
+  const hierarchyDataReady = !needsHierarchyData || (
+    !!transparencyScope &&
+    transparencyQuery.isSuccess &&
+    transparencyQuery.data !== undefined &&
+    !transparencyQuery.isFetching &&
+    treeQuery.isSuccess &&
+    treeQuery.data !== undefined &&
+    !treeQuery.isFetching
+  );
+  const hierarchyDataLoadFailed = needsHierarchyData && (transparencyQuery.isError || treeQuery.isError);
   const treeNodes = useMemo<NodeDTO[]>(() => treeQuery.data ?? [], [treeQuery.data]);
 
   const flatNodes = useMemo(() => flattenTree(treeNodes), [treeNodes]);
@@ -202,6 +217,8 @@ export default function ExportPage() {
   }
 
   async function handleExport() {
+    if (!hierarchyDataReady) return;
+
     const wb = XLSX.utils.book_new();
 
     if (checked.transparency) {
@@ -248,6 +265,22 @@ export default function ExportPage() {
     <Layout>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("nav.planning_export")}</h2>
+        {hierarchyDataLoadFailed && (
+          <div className="text-red-600 dark:text-red-400" role="alert">
+            <span>{t("export.hierarchy_data_load_failed")}</span>{" "}
+            <button
+              type="button"
+              className="underline"
+              disabled={transparencyQuery.isFetching || treeQuery.isFetching}
+              onClick={() => {
+                if (transparencyQuery.isError) void transparencyQuery.refetch();
+                if (treeQuery.isError) void treeQuery.refetch();
+              }}
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
         <div className="space-y-2">
           <label className="flex items-center gap-2 font-medium border-b pb-2 dark:border-gray-700">
             <input type="checkbox" checked={allChecked} onChange={toggleAll} />
@@ -277,6 +310,7 @@ export default function ExportPage() {
         <button
           type="button"
           className="bg-indigo-600 text-white px-6 py-2 rounded font-medium hover:bg-indigo-700"
+          disabled={!hierarchyDataReady}
           onClick={() => void handleExport()}
         >
           ייצוא

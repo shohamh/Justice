@@ -110,7 +110,8 @@
     "transparency_title": "ייצוא שקיפות",
     "transparency_desc": "ייצוא נתוני ניקוד ושיבוץ לכל החיילים לקובץ Excel.",
     "sub_units_title": "ייצוא תתי-יחידות",
-    "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel."
+    "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel.",
+    "hierarchy_data_load_failed": "טעינת נתוני השקיפות וההיררכיה נכשלה. הייצוא ימתין עד לטעינה מוצלחת."
   },
   "constraints": {
     "remaining_summary": "נותרו {{remaining}} מתוך {{cap}} ימי אילוץ (עד {{until}})"
