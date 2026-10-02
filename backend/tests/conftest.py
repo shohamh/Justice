@@ -328,6 +328,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_password_policy": "auth",
     "test_authz": "auth",
     "test_action_tokens": "auth",
+    "test_concurrency_one_time_tokens": "auth",
     "test_rbac_matrix": "auth",
     "test_registration_routes": "auth",
     "test_validation": "auth",
