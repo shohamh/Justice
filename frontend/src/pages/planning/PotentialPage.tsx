@@ -167,7 +167,7 @@ export default function PotentialPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.potentialSummariesForScope(authorizationScope) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.potentialDetailsForScope(authorizationScope) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.burdenShareGapNodesForScope(authorizationScope, referenceDate) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.burdenShareGapNodesForScope(authorizationScope) }),
     ]);
     setNewReason("");
     setNewDelta(0);
@@ -180,7 +180,7 @@ export default function PotentialPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.potentialSummariesForScope(authorizationScope) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.potentialDetailsForScope(authorizationScope) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.burdenShareGapNodesForScope(authorizationScope, referenceDate) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.burdenShareGapNodesForScope(authorizationScope) }),
     ]);
   }
 

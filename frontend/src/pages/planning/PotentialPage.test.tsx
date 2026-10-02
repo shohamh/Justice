@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { NodeDTO } from "../../api/hierarchy";
 import type { PotentialResult, PotentialSummary } from "../../api/potential";
 import { queryKeys } from "../../queryKeys";
+import { getTransparencyAuthorizationScope } from "../../api/auth";
 import { WHOLE_ORG_ID } from "../../utils/wholeOrg";
 import PotentialPage from "./PotentialPage";
 import * as hierarchyApi from "../../api/hierarchy";
@@ -63,6 +64,16 @@ function renderPage() {
 function expand(name: string) {
   const row = screen.getByRole("row", { name: new RegExp(name) });
   fireEvent.click(within(row).getByRole("button", { name: "הרחב" }));
+}
+
+function cacheFutureGap(client: QueryClient) {
+  const scope = getTransparencyAuthorizationScope(auth.user as Parameters<typeof getTransparencyAuthorizationScope>[0]);
+  const futureKey = queryKeys.burdenShareGapNodesForScope(scope, "2030-01-01");
+  const otherScopeKey = queryKeys.burdenShareGapNodesForScope("other-viewer", "2030-01-01");
+  client.setQueryData(futureKey, []);
+  client.setQueryData(otherScopeKey, []);
+  expect(client.getQueryState(futureKey)?.isInvalidated).toBe(false);
+  return { futureKey, otherScopeKey };
 }
 
 beforeEach(() => {
@@ -129,5 +140,38 @@ describe("PotentialPage summary and detail loading", () => {
     expect(potentialApi.getPotentialSummary).not.toHaveBeenCalled();
     expect(potentialApi.getPotential).not.toHaveBeenCalled();
     expect(client.getQueryData(queryKeys.potentialByNode("root-a", "2026-10-02"))).toBeUndefined();
+  });
+
+  it("invalidates cached burden gaps for other dates after adding a modifier", async () => {
+    const client = renderPage();
+    await screen.findByRole("row", { name: /Root A/ });
+    const { futureKey, otherScopeKey } = cacheFutureGap(client);
+    expand("Root A");
+    fireEvent.change(screen.getByPlaceholderText("potential.modifier_reason_placeholder"), {
+      target: { value: "Temporary adjustment" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "potential.modifier_add" }));
+
+    await waitFor(() => expect(potentialApi.createModifier).toHaveBeenCalledWith(expect.objectContaining({
+      hierarchy_node_id: "root-a", reason: "Temporary adjustment",
+    })));
+    await waitFor(() => expect(client.getQueryState(futureKey)?.isInvalidated).toBe(true));
+    expect(client.getQueryState(otherScopeKey)?.isInvalidated).toBe(false);
+  });
+
+  it("invalidates cached burden gaps for other dates after deleting a modifier", async () => {
+    vi.mocked(potentialApi.listModifiers).mockResolvedValue([{
+      id: "modifier-1", delta: 1, reason: "Temporary adjustment", start_date: "2026-10-01",
+      end_date: null, created_by: "viewer-1",
+    }]);
+    const client = renderPage();
+    await screen.findByRole("row", { name: /Root A/ });
+    const { futureKey, otherScopeKey } = cacheFutureGap(client);
+    expand("Root A");
+    fireEvent.click(await screen.findByRole("button", { name: "potential.modifier_delete" }));
+
+    await waitFor(() => expect(potentialApi.deleteModifier).toHaveBeenCalledWith("modifier-1"));
+    await waitFor(() => expect(client.getQueryState(futureKey)?.isInvalidated).toBe(true));
+    expect(client.getQueryState(otherScopeKey)?.isInvalidated).toBe(false);
   });
 });

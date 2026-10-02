@@ -97,8 +97,10 @@ export const queryKeys = {
     ["scoring", "fairnessComponents", nodeId ?? null, authorizationScope] as const,
   eligibilityGroups: () => ["eligibilityGroups"] as const,
   burdenShareGapNodes: (referenceDate?: string) => ["potential", "burdenShareGap", referenceDate ?? null] as const,
-  burdenShareGapNodesForScope: (authorizationScope: string | null, referenceDate: string) =>
-    ["potential", "burdenShareGap", authorizationScope, referenceDate] as const,
+  burdenShareGapNodesForScope: (authorizationScope: string | null, referenceDate?: string) =>
+    referenceDate === undefined
+      ? (["potential", "burdenShareGap", authorizationScope] as const)
+      : (["potential", "burdenShareGap", authorizationScope, referenceDate] as const),
   burdenShareBreakdown: (soldierId: string) => ["scoring", "burdenShareBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
   importSessionsList: () => ["import", "sessions"] as const,
