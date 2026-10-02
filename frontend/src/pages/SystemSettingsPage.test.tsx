@@ -10,6 +10,19 @@ import * as hierarchyApi from "../api/hierarchy";
 import { UnsavedChangesProvider } from "../contexts/UnsavedChangesContext";
 
 vi.mock("../api/hierarchy");
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "viewer-1",
+      role: "admin",
+      hierarchy_node_id: null,
+      scope_root_ids: [],
+      is_commander: false,
+      is_duty_manager: false,
+      active_deputy_grants: [],
+    },
+  }),
+}));
 
 vi.mock("../api/systemSettings", async () => {
   const actual = await vi.importActual<typeof import("../api/systemSettings")>("../api/systemSettings");
@@ -368,13 +381,15 @@ describe("SystemSettingsContent reset-date overrides", () => {
         "11111111-1111-1111-1111-111111111111": "2026-08-20",
       },
     });
-    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
-      {
+    vi.mocked(hierarchyApi.fetchHierarchyBranchPage).mockResolvedValue({
+      items: [{
         id: "unit-new", level: "unit" as const, name: "יחידה חדשה", parent_id: null,
         commander_id: null, commander_name: null, path_ids: ["unit-new"],
-        duty_managers: [], dm_manageable: false, can_edit: true, children: [],
-      },
-    ]);
+        duty_managers: [], dm_manageable: false, can_edit: true, has_children: false, has_soldiers: false,
+      }],
+      next_cursor: null,
+      has_more: false,
+    });
 
     renderWithProviders(<SystemSettingsContent />);
     // Wait for the existing override row to render, confirming the section

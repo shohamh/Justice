@@ -312,17 +312,21 @@ function TreeNodeBranch({
     >
       <div className="py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-          <button
-            type="button"
-            className={`w-6 h-7 shrink-0 ${node.has_children || node.has_soldiers ? "visible" : "invisible"}`}
-            aria-expanded={isExpanded}
-            aria-label={t(isExpanded ? "team.collapse_node" : "team.expand_node", { name: node.name })}
-            aria-controls={`tree-children-${node.id}`}
-            onClick={() => onToggle(node)}
-            data-testid={`tree-toggle-${node.id}`}
-          >
-            {isExpanded ? "▼" : "▶"}
-          </button>
+          {node.has_children === true ? (
+            <button
+              type="button"
+              className="w-6 h-7 shrink-0"
+              aria-expanded={isExpanded}
+              aria-label={t(isExpanded ? "team.collapse_node" : "team.expand_node", { name: node.name })}
+              aria-controls={`tree-children-${node.id}`}
+              onClick={() => onToggle(node)}
+              data-testid={`tree-toggle-${node.id}`}
+            >
+              {isExpanded ? "▼" : "▶"}
+            </button>
+          ) : (
+            <span aria-hidden="true" className="w-6 h-7 shrink-0" />
+          )}
           {node.can_edit && <NodeDragHandle node={node} />}
           {labelByKey.get(node.level) && (
             <span className="shrink-0 text-xs px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700">
