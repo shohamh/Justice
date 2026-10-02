@@ -5,10 +5,9 @@ import { softDeleteSoldier } from "../api/soldiers";
 import SoldierLink from "./SoldierLink";
 import { grantExemption } from "../api/exemptions";
 import { listExemptionTypes, type ExemptionType } from "../api/dutyConfig";
-import { fetchTree, type NodeDTO } from "../api/hierarchy";
-import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import Combobox from "./Combobox";
+import HierarchyNodePickerModal from "./HierarchyNodePickerModal";
 import DateInput from "../components/DateInput";
 import { isDateRangeValid, todayIso } from "../utils/formatDate";
 
@@ -20,7 +19,6 @@ interface Props {
 export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
   const { t } = useTranslation();
   const [exemptionTypes, setExemptionTypes] = useState<ExemptionType[]>([]);
-  const [nodes, setNodes] = useState<NodeDTO[]>([]);
 
   const [exemptTarget, setExemptTarget] = useState<SoldierWithStatus | null>(null);
   const [exemptionTypeId, setExemptionTypeId] = useState("");
@@ -30,13 +28,14 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
 
   const [moveTarget, setMoveTarget] = useState<SoldierWithStatus | null>(null);
   const [targetNodeId, setTargetNodeId] = useState("");
+  const [targetNodePath, setTargetNodePath] = useState<string[]>([]);
+  const [hierarchyPickerOpen, setHierarchyPickerOpen] = useState(false);
 
   const [releaseTarget, setReleaseTarget] = useState<SoldierWithStatus | null>(null);
   const [releaseDate, setReleaseDate] = useState("");
 
   useEffect(() => {
     listExemptionTypes().then(setExemptionTypes).catch(() => {});
-    fetchTree().then(setNodes).catch(() => {});
   }, []);
 
   function openReleaseModal(s: SoldierWithStatus) {
@@ -77,6 +76,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
     await createTransferRequest(moveTarget.id, targetNodeId);
     setMoveTarget(null);
     setTargetNodeId("");
+    setTargetNodePath([]);
     onRefresh();
   }
 
@@ -143,12 +143,19 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
             <h3 className="font-bold text-lg mb-4">{t("command_dashboard.move_soldier")} - {moveTarget.full_name}</h3>
             <div className="space-y-3">
               <label className="block text-sm">{t("command_dashboard.target_node")}</label>
-              <Combobox
-                items={sortNodesByTree(nodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
-                value={targetNodeId}
-                onChange={setTargetNodeId}
-                placeholder={t("command_dashboard.none")}
-              />
+              <button
+                type="button"
+                data-testid="move-select-destination"
+                aria-label={t("command_dashboard.target_node")}
+                aria-haspopup="dialog"
+                dir="rtl"
+                onClick={() => setHierarchyPickerOpen(true)}
+                className="block w-full border rounded p-1 text-sm text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              >
+                <span data-testid="move-selected-destination">
+                  {targetNodePath.length > 0 ? targetNodePath.join(" / ") : t("command_dashboard.none")}
+                </span>
+              </button>
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setMoveTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
                 <button onClick={handleMove} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">{t("command_dashboard.move_confirm")}</button>
@@ -156,6 +163,16 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
             </div>
           </div>
         </div>
+      )}
+      {moveTarget && hierarchyPickerOpen && (
+        <HierarchyNodePickerModal
+          onClose={() => setHierarchyPickerOpen(false)}
+          onPicked={(nodeId, nodeName, path) => {
+            setTargetNodeId(nodeId);
+            setTargetNodePath(path?.length ? path : [nodeName]);
+            setHierarchyPickerOpen(false);
+          }}
+        />
       )}
       {releaseTarget && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setReleaseTarget(null)}>
