@@ -862,6 +862,7 @@ export default function ImportSessionReviewPage() {
 
         {tab === "duty_shifts" && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            {!readOnly && <p className="p-3 text-xs text-gray-600 dark:text-gray-300">הערות אלו יוצגו למוזמנים בגוף אירוע היומן.</p>}
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
@@ -1116,6 +1117,7 @@ export default function ImportSessionReviewPage() {
 
         {tab === "shift_templates" && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            {!readOnly && <p className="p-3 text-xs text-gray-600 dark:text-gray-300">הערות התבנית יופיעו למוזמנים באירועי המשמרת שייווצרו ממנה.</p>}
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
@@ -1701,6 +1703,7 @@ export default function ImportSessionReviewPage() {
 
         {tab === "range_events" && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            {!readOnly && <p className="p-3 text-xs text-gray-600 dark:text-gray-300">הערות אלו יוצגו למוזמנים בגוף אירוע היומן.</p>}
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">

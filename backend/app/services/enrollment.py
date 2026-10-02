@@ -32,6 +32,8 @@ def try_activate(
     if soldier is None:
         raise EnrollmentError("soldier_not_found")
     soldier.hierarchy_node_id = req.requested_node_id
+    from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+    enqueue_affected_by_soldier(session, soldier.id)
     req.status = "approved"
     session.flush()
     create_notification(

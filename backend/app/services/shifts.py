@@ -9,8 +9,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-
 from app.db.models import DutyAssignment, DutyShift, DutyType
+from app.services.exchange_calendar.triggers import enqueue_source_change
 
 _UNSET = object()
 
@@ -164,6 +164,7 @@ def create_shift(
             "required_count": required_count,
         },
     )
+    enqueue_source_change(session, "duty_shift", shift.id)
     return shift
 
 
@@ -219,6 +220,7 @@ def update_shift(
             "eligible_node_ids": shift.eligible_node_ids,
         },
     )
+    enqueue_source_change(session, "duty_shift", shift.id)
     return shift
 
 
@@ -244,6 +246,7 @@ def delete_shift(
         entity_id=shift.id,
         before={"start_date": shift.start_date.isoformat(), "end_date": shift.end_date.isoformat()},
     )
+    enqueue_source_change(session, "duty_shift", shift.id, reason="source_deleted")
     session.delete(shift)
 
 

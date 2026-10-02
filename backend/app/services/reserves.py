@@ -11,6 +11,7 @@ from app.algorithm.reserve import _hierarchy_distance
 from app.audit.writer import write_audit
 from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, NotificationType
 from app.services.algorithm_bridge import build_hierarchy_maps
+from app.services.exchange_calendar.triggers import enqueue_assignment_change
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -64,6 +65,7 @@ def call_up_reserve(
         from app.services.score_projection import refresh_projection_for_assignment_change
 
         refresh_projection_for_assignment_change(session, assignment=assignment)
+    enqueue_assignment_change(session, assignment, reason="call_up")
     return assignment
 
 
@@ -127,6 +129,7 @@ def dismiss_primary(
         from app.services.score_projection import refresh_projection_for_assignment_change
 
         refresh_projection_for_assignment_change(session, assignment=assignment)
+    enqueue_assignment_change(session, assignment, reason="dismissal")
     return dismissal
 
 
@@ -301,6 +304,7 @@ def dismiss_reserve(
             called_up_to=to_date,
             actor_id=actor_id,
         )
+    enqueue_assignment_change(session, assignment, reason="dismissal")
     return dismissal, reallocations
 
 
@@ -329,6 +333,8 @@ def delete_dismissal(
         from app.services.score_projection import refresh_projection_for_assignment_change
 
         refresh_projection_for_assignment_change(session, assignment=assignment)
+    if assignment is not None:
+        enqueue_assignment_change(session, assignment, reason="dismissal_deleted")
 
 
 def get_shift_reserve_detail(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]:

@@ -566,6 +566,10 @@ def bulk_delete_shifts(
         ))
         session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
 
+    from app.services.exchange_calendar.triggers import enqueue_source_change
+    for source_id in shift_ids:
+        enqueue_source_change(session, "duty_shift", source_id, reason="source_deleted")
+
     if shift_ids:
         session.execute(sa_delete(DutyShift).where(DutyShift.id.in_(shift_ids)))
 
@@ -626,6 +630,10 @@ def bulk_clear_assignments(
             DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
         ))
         session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
+
+    from app.services.exchange_calendar.triggers import enqueue_source_change
+    for source_id in shift_ids:
+        enqueue_source_change(session, "duty_shift", source_id)
 
     write_audit(
         session, actor_id=user.id, action="shift.bulk_clear_assignments", entity_type="duty_shift",

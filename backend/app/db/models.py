@@ -2112,3 +2112,163 @@ class StorageDeleteOutbox(Base):
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+
+
+class ExchangeCalendarSyncItem(Base):
+    """Current Exchange mirror state for one Justice event source."""
+
+    __tablename__ = "exchange_calendar_sync_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    source_type: Mapped[str] = mapped_column(Text)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    source_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    exchange_item_id: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    exchange_change_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    content_hash: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"), default="queued")
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    current_error_category: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    current_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+
+    __table_args__ = (
+        sa.UniqueConstraint("source_type", "source_id", name="uq_exchange_calendar_sync_source"),
+        sa.CheckConstraint(
+            "source_type IN ('duty_shift', 'duty_assignment', 'range_event')",
+            name="ck_exchange_calendar_sync_source_type",
+        ),
+        sa.CheckConstraint(
+            "status IN ('queued', 'in_progress', 'synced', 'partial', 'retry_wait', 'failed', 'cancelled')",
+            name="ck_exchange_calendar_sync_status",
+        ),
+        sa.Index("ix_exchange_calendar_sync_status", "status"),
+        sa.Index("ix_exchange_calendar_sync_source_date", "source_date"),
+    )
+
+
+class ExchangeCalendarOutbox(Base):
+    """Durable work queue; source identity deliberately has no source FK."""
+
+    __tablename__ = "exchange_calendar_outbox"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    source_type: Mapped[str] = mapped_column(Text)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    reason: Mapped[str] = mapped_column(Text)
+    priority: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"), default="queued")
+    queued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    lease_owner: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    attempt_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "source_type IN ('duty_shift', 'duty_assignment', 'range_event')",
+            name="ck_exchange_calendar_outbox_source_type",
+        ),
+        sa.CheckConstraint("priority >= 0", name="ck_exchange_calendar_outbox_priority"),
+        sa.CheckConstraint("attempt_count >= 0", name="ck_exchange_calendar_outbox_attempts"),
+        sa.CheckConstraint(
+            "status IN ('queued', 'leased', 'completed', 'failed', 'cancelled')",
+            name="ck_exchange_calendar_outbox_status",
+        ),
+        # Only queued rows coalesce; an active lease can have one queued follow-up.
+        sa.Index(
+            "uq_exchange_calendar_outbox_pending_source",
+            "source_type",
+            "source_id",
+            unique=True,
+            postgresql_where=sa.text("status = 'queued'"),
+        ),
+        sa.Index(
+            "ix_exchange_calendar_outbox_due",
+            "status",
+            "next_attempt_at",
+            sa.text("priority DESC"),
+            "queued_at",
+        ),
+        sa.Index("ix_exchange_calendar_outbox_lease", "status", "lease_expires_at"),
+    )
+
+
+class ExchangeCalendarSyncAttempt(Base):
+    """Append-only sanitized result history for sync and cancellation attempts."""
+
+    __tablename__ = "exchange_calendar_sync_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    sync_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exchange_calendar_sync_items.id", ondelete="CASCADE"),
+    )
+    outcome: Mapped[str] = mapped_column(Text)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exchange_calendar_outbox.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    error_category: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "outcome IN ('created', 'updated', 'cancelled', 'unchanged', 'partial', 'failed', 'skipped')",
+            name="ck_exchange_calendar_attempt_outcome",
+        ),
+        sa.CheckConstraint(
+            "duration_ms IS NULL OR duration_ms >= 0",
+            name="ck_exchange_calendar_attempt_duration",
+        ),
+        sa.Index("ix_exchange_calendar_attempt_history", "sync_item_id", "attempted_at"),
+    )
+
+
+class ExchangeCalendarWorkerState(Base):
+    """Singleton snapshot of worker liveness, reachability, and shared backoff."""
+
+    __tablename__ = "exchange_calendar_worker_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, server_default=text("1"), default=1)
+    worker_id: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_probe_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    exchange_reachable: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    last_connection_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_successful_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    latest_connection_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    global_backoff_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_outbound_request_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint("id = 1", name="ck_exchange_calendar_worker_state_singleton"),
+    )

@@ -17,7 +17,6 @@ from decimal import Decimal
 import openpyxl
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from app.auth.password import hash_password
 from app.db.models import (
     BugReport,
@@ -61,6 +60,12 @@ from app.services.duty_config import (
     update_location,
 )
 from app.services.file_validation import MAX_XLSX_BYTES, FileValidationError, validate_xlsx
+from app.services.exchange_calendar.triggers import (
+    enqueue_affected_by_soldier,
+    enqueue_assignment_change,
+    enqueue_range_change,
+    enqueue_source_change,
+)
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
 from app.services.import_approvals import (
     resolve_bug_reports,
@@ -1858,6 +1863,7 @@ def confirm_session(
     from app.services.duty_eligibility_watch import recheck_soldier_assignments
     for soldier_id in created_soldiers:
         recheck_soldier_assignments(session, uuid.UUID(soldier_id))
+        enqueue_affected_by_soldier(session, uuid.UUID(soldier_id))
 
     for row in state.get("duty_shifts", []):
         effective = _effective_action(selections, "duty_shifts", row)
@@ -2948,6 +2954,19 @@ def confirm_session(
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)
     session.flush()
+
+    for source_id in created_duty_shifts:
+        enqueue_source_change(session, "duty_shift", uuid.UUID(source_id), reason="import")
+    for assignment_id in created_assignments:
+        assignment = session.get(DutyAssignment, uuid.UUID(assignment_id))
+        if assignment is not None:
+            enqueue_assignment_change(session, assignment, reason="import")
+    for source_id in created_range_events:
+        enqueue_source_change(session, "range_event", uuid.UUID(source_id), reason="import")
+    for assignment_id in created_range_assignments:
+        assignment = session.get(RangeAssignment, uuid.UUID(assignment_id))
+        if assignment is not None and not assignment.is_draft:
+            enqueue_range_change(session, assignment.range_event_id, reason="import")
 
     return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
 

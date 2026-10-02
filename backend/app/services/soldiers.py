@@ -190,6 +190,9 @@ def update_soldier(
         "full_name": soldier.full_name,
         "phone": soldier.phone,
     }
+    if full_name is not None and full_name != soldier.full_name:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, soldier.id)
     if full_name is not None:
         soldier.full_name = full_name
     if phone is not None:
@@ -206,6 +209,9 @@ def update_soldier(
             "phone": soldier.phone,
         },
     )
+    if soldier.full_name != before["full_name"] or soldier.phone != before["phone"]:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, soldier.id)
     return soldier
 
 
@@ -359,6 +365,8 @@ def update_soldier_profile(
     old_rank = soldier.rank
     old_rank_track = soldier.rank_track
     old_enlistment_date = soldier.enlistment_date
+    old_email = soldier.email
+    old_phone = soldier.phone
     for k, v in fields.items():
         if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
             if k == "rank" and v != old_rank:
@@ -425,6 +433,9 @@ def update_soldier_profile(
     if {"last_mitvahim_date", "last_alal_date"} & fields.keys():
         from app.services.duty_eligibility_watch import recheck_soldier_assignments
         recheck_soldier_assignments(session, soldier.id)
+    if soldier.email != old_email or soldier.phone != old_phone:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, soldier.id)
     return soldier
 
 

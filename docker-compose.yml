@@ -216,7 +216,27 @@ services:
       - loki
       - prometheus
 
+  schema-migration:
+    image: justice-backend:dev
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
+    env_file:
+      - .env.defaults
+      - path: .env
+        required: false
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./backend/certs:/app/certs:ro
+    command: alembic upgrade head
+
   backend:
+    image: justice-backend:dev
     build:
       context: ./backend
       args:
@@ -238,6 +258,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
       seaweedfs:
         condition: service_healthy
       seaweedfs-init:
@@ -249,9 +271,40 @@ services:
       - ./backend:/app
       - ./logs:/app/logs
       - ./deploy/seaweedfs/certs/ca.crt:/app/certs/ca.crt:ro
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  exchange-calendar-worker:
+    image: justice-backend:dev
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
+    profiles: [exchange-calendar]
+    command: python -m app.exchange_calendar_worker
+    env_file:
+      - .env.defaults
+      - path: .env
+        required: false
+    environment:
+      LOG_DIR: /app/logs
+      LOKI_URL: http://loki:3100
+      LOKI_APP_LABEL: justice-exchange-calendar
+      EXCHANGE_CALENDAR_ENABLED: ${EXCHANGE_CALENDAR_ENABLED:-false}
+      EXCHANGE_EWS_URL: ${EXCHANGE_EWS_URL:-}
+      EXCHANGE_MAILBOX: ${EXCHANGE_MAILBOX:-}
+      EXCHANGE_USERNAME: ${EXCHANGE_USERNAME:-}
+      EXCHANGE_AUTH_TYPE: ${EXCHANGE_AUTH_TYPE:-}
+      EXCHANGE_REQUESTS_PER_MINUTE: ${EXCHANGE_REQUESTS_PER_MINUTE:-200}
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+      - ./backend/certs:/app/certs:ro
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
 
   frontend:
     build:
@@ -270,6 +323,7 @@ services:
       - file-gateway
 
   telegram-bot:
+    image: justice-backend:dev
     build:
       context: ./backend
       args:

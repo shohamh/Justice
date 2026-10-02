@@ -7,16 +7,20 @@
 .PARAMETER TelegramBot
     Include the Telegram bot.
 
+.PARAMETER ExchangeCalendarWorker
+    Include the opt-in Exchange calendar worker.
+
 .PARAMETER Docker
     Run the complete Docker Compose stack in the foreground.
 
 .EXAMPLE
     .\dev.ps1                         # native backend + frontend (default)
     .\dev.ps1 -TelegramBot            # native backend + frontend + bot
+    .\dev.ps1 -ExchangeCalendarWorker # include the Exchange calendar worker
     .\dev.ps1 -Docker                 # full Compose stack
     .\dev.ps1 -Docker -TelegramBot    # include the bot in Compose
 #>
-param([switch]$TelegramBot, [switch]$Docker)
+param([switch]$TelegramBot, [switch]$ExchangeCalendarWorker, [switch]$Docker)
 
 $root = $PSScriptRoot
 if ($Docker) {
@@ -26,6 +30,7 @@ if ($Docker) {
     if ($LASTEXITCODE -ne 0) { throw 'Local storage certificate setup failed.' }
     $composeServices = @('seaweedfs', 'seaweedfs-s3-proxy', 'seaweedfs-init', 'db', 'redis', 'loki', 'prometheus', 'grafana', 'backend', 'file-authorization', 'file-gateway', 'frontend')
     if ($TelegramBot) { $composeServices += 'telegram-bot' }
+    if ($ExchangeCalendarWorker) { $composeServices += 'exchange-calendar-worker' }
 
     Write-Host '[dev] Starting the Docker Compose stack (Ctrl+C stops the attached services)...' -ForegroundColor Cyan
     Write-Host '  Frontend : http://localhost:5173' -ForegroundColor White
@@ -97,7 +102,7 @@ if (-not (Test-Path "$root\frontend\node_modules\.bin\vite")) {
 
 # ── Stop Docker app containers so their ports are free ────────────────────────
 Write-Host "[dev] Stopping Docker app containers (keeping DB)..." -ForegroundColor Yellow
-try { docker compose stop backend frontend telegram-bot *>$null } catch {}
+try { docker compose stop backend frontend telegram-bot exchange-calendar-worker *>$null } catch {}
 
 # ── Kill all stale dev-server processes ───────────────────────────────────────
 Write-Host "[dev] Killing stale backend/frontend processes..." -ForegroundColor Yellow
@@ -114,7 +119,7 @@ foreach ($port in @(8000, 5173)) {
 
 # Kill any python process running run_dev_server.py or uvicorn for this project
 Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
-    Where-Object { $_.CommandLine -match 'run_dev_server|uvicorn|run_dev_bot' } |
+    Where-Object { $_.CommandLine -match 'run_dev_server|uvicorn|run_dev_bot|app\.exchange_calendar_worker' } |
     ForEach-Object {
         Write-Host "[dev]   killing python pid=$($_.ProcessId) ($($_.CommandLine.Substring(0, [Math]::Min(60,$_.CommandLine.Length)))...)" -ForegroundColor DarkYellow
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
@@ -225,6 +230,12 @@ if ($TelegramBot) {
     # filter one from the other. Set only for this command's cmd.exe shell —
     # LOKI_URL itself is already inherited from the parent process env above.
     $cmds.Add("set LOKI_APP_LABEL=justice-bot && cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
+}
+
+if ($ExchangeCalendarWorker) {
+    $names.Add("exchange-calendar"); $colors.Add("blue")
+    # Keep the Exchange worker's Loki stream separate from API and bot logs.
+    $cmds.Add("set LOKI_APP_LABEL=justice-exchange-calendar && cd /d `"$root\backend`" && `"$venvPy`" -m app.exchange_calendar_worker")
 }
 
 # ── Kill any stale bot processes ─────────────────────────────────────────────

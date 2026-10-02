@@ -525,6 +525,7 @@ export default function ShiftTemplateFormModal({
                 rows={2}
                 className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
               />
+              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">הערות התבנית יופיעו למוזמנים באירועי המשמרת שייווצרו ממנה.</span>
             </label>
 
             <div className="border dark:border-gray-600 rounded p-3">
