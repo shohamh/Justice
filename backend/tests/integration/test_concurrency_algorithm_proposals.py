@@ -10,23 +10,22 @@ Schedule reproduced here (two independent sessions = two HTTP requests):
   1. the reject request loads the draft (status=algorithm_draft);
   2. the accept request publishes it (and refreshes the score projection) and commits;
   3. the reject request resumes, sets algorithm_rejected and commits.
+
+Fixed (Task 3): the four single-item accept/reject routes use the same
+conditional ``UPDATE ... WHERE status = 'algorithm_draft'`` as the bulk
+routes. The late reject matches no row and gets 409 ``not_draft``.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from fastapi import HTTPException
 
 from app.db.models import DutyAssignment, DutyLocation, DutyType, Soldier
 from tests.helpers import create_soldier
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C8/J3: accept and reject of one algorithm draft both succeed (unlocked read-then-write)",
-)
 def test_accept_and_reject_of_one_draft_cannot_both_succeed(race, admin_session):
     # Imported here, not at module level: app.routes.algorithm builds the shared
     # rate limiter with the Redis URL at import time, which must happen after
@@ -65,3 +64,4 @@ def test_accept_and_reject_of_one_draft_cannot_both_succeed(race, admin_session)
         f"accept={early!r}, reject={late!r}; final assignment status={final_status!r}"
     )
     assert final_status == "published"
+    assert (late.error.status_code, late.error.detail) == (409, "not_draft")

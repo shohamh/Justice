@@ -989,6 +989,26 @@ def get_explanation_direct(
     return _explanation_response(session, a, user)
 
 
+def _transition_draft(session: Session, a: DutyAssignment, new_status: str) -> None:
+    """Move one draft proposal to ``new_status`` with a conditional UPDATE.
+
+    Same guard the bulk routes use: ``WHERE status = 'algorithm_draft'`` is
+    re-evaluated under the row lock, so of two concurrent decisions on one
+    draft (accept vs reject, or a single-item route vs a bulk route) only the
+    first wins and the other gets 409 ``not_draft`` instead of overwriting it.
+    """
+    claimed = session.execute(
+        update(DutyAssignment)
+        .where(DutyAssignment.id == a.id, DutyAssignment.status == "algorithm_draft")
+        .values(status=new_status)
+        .returning(DutyAssignment.id)
+        .execution_options(synchronize_session=False)
+    ).first()
+    if claimed is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
+    session.refresh(a)
+
+
 @router.post("/jobs/{job_id}/proposals/{assignment_id}/accept", status_code=status.HTTP_200_OK)
 def accept_proposal(
     job_id: uuid.UUID,
@@ -999,9 +1019,7 @@ def accept_proposal(
     _load_job(session, job_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "published"
+    _transition_draft(session, a, "published")
     write_audit(
         session,
         actor_id=user.id,
@@ -1129,9 +1147,7 @@ def reject_proposal(
     _load_job(session, job_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "algorithm_rejected"
+    _transition_draft(session, a, "algorithm_rejected")
     write_audit(
         session,
         actor_id=user.id,
@@ -1156,9 +1172,7 @@ def accept_proposal_direct(
     job_id = _job_id_for_assignment(session, assignment_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "published"
+    _transition_draft(session, a, "published")
     write_audit(
         session,
         actor_id=user.id,
@@ -1185,9 +1199,7 @@ def reject_proposal_direct(
     job_id = _job_id_for_assignment(session, assignment_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "algorithm_rejected"
+    _transition_draft(session, a, "algorithm_rejected")
     write_audit(
         session,
         actor_id=user.id,
