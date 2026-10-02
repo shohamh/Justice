@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 import uuid
@@ -28,7 +29,17 @@ from app.services.bug_report_export import (
     build_bug_report_export_zip,
     get_bug_report_export_timestamp,
 )
+from app.services.file_validation import FileValidationError, validate_bug_report_attachment
 from app.services.notifications import create_notification
+from app.services.storage_uploads import (
+    StorageReadError,
+    StorageUploadError,
+    commit_uploaded_objects,
+    persist_uploaded_object,
+    read_uploaded_object,
+)
+from app.storage.dependencies import get_object_storage
+from app.storage.protocol import ObjectStorage
 
 router = APIRouter(tags=["bug_reports"])
 
@@ -92,9 +103,12 @@ def _decode_screenshot(b64: str) -> bytes | None:
 def submit_bug_report(
     body: BugReportSubmitBody,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, str]:
     screenshot_bytes = _decode_screenshot(body.screenshot) if body.screenshot else None
+    if body.screenshot and screenshot_bytes is None:
+        raise HTTPException(status_code=400, detail="invalid_file_type")
     try:
         svc.write_bug_report(
             session,
@@ -104,12 +118,12 @@ def submit_bug_report(
             screenshot=screenshot_bytes,
             route=body.route,
             nav_history=[entry.model_dump() for entry in body.nav_history],
+            storage=storage,
         )
     except svc.BugReportRateLimitError as exc:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     except svc.BugReportWriteError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bug_report_write_failed") from exc
-    session.commit()
     return {"status": "ok"}
 
 
@@ -159,7 +173,7 @@ def _summary_out(
         nav_history=report.nav_history,
         audit_snapshot=report.audit_snapshot,
         user_snapshot=report.user_snapshot,
-        has_screenshot=report.screenshot is not None,
+        has_screenshot=report.screenshot is not None or report.storage_key is not None,
         created_at=report.created_at,
         updated_at=report.updated_at,
         comment_count=comment_count,
@@ -376,10 +390,32 @@ def export_bug_reports(
 def get_bug_report_json(
     report_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     _admin: Soldier = Depends(require_roles("admin")),
 ) -> Response:
     report = session.get(BugReport, report_id)
-    if report is None or not report.json_file_path:
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_json_not_found")
+    if report.json_mirror_storage_key:
+        expected_key = f"bug_report_json_mirror/{report.id}"
+        if report.json_mirror_storage_key != expected_key:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="storage_integrity_failed")
+        try:
+            body, reported_size = storage.open_read(key=expected_key)
+            try:
+                content = body.read(2 * 1024 * 1024 + 1)
+            finally:
+                body.close()
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="storage_unavailable") from exc
+        if (
+            len(content) > 2 * 1024 * 1024
+            or len(content) != reported_size
+            or hashlib.sha256(content).hexdigest() != report.json_mirror_sha256
+        ):
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="storage_integrity_failed")
+        return Response(content=content, media_type="application/json")
+    if not report.json_file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_json_not_found")
     path = Path(report.json_file_path)
     if not path.is_file():
@@ -391,12 +427,17 @@ def get_bug_report_json(
 def get_bug_report_screenshot(
     report_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     _admin: Soldier = Depends(require_roles("admin")),
 ) -> Response:
     report = session.get(BugReport, report_id)
-    if report is None or report.screenshot is None:
+    if report is None or (report.screenshot is None and report.storage_key is None):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_screenshot_not_found")
-    return Response(content=report.screenshot, media_type="image/png")
+    try:
+        content = read_uploaded_object(storage, report, file_class="bug_report_screenshot", legacy_field="screenshot", max_bytes=_MAX_SCREENSHOT_BYTES)
+    except StorageReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=content, media_type="image/png")
 
 
 @router.patch("/admin/bug-reports/{report_id}", response_model=BugReportSummaryOut)
@@ -542,12 +583,17 @@ def mark_all_my_bug_reports_seen(
 def get_my_bug_report_screenshot(
     report_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> Response:
     report = _require_reporter_or_admin(session, user, report_id)
-    if report.screenshot is None:
+    if report.screenshot is None and report.storage_key is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_screenshot_not_found")
-    return Response(content=report.screenshot, media_type="image/png")
+    try:
+        content = read_uploaded_object(storage, report, file_class="bug_report_screenshot", legacy_field="screenshot", max_bytes=_MAX_SCREENSHOT_BYTES)
+    except StorageReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=content, media_type="image/png")
 
 
 @router.post(
@@ -649,6 +695,7 @@ async def upload_bug_report_comment_attachment(
     comment_id: uuid.UUID,
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> BugReportCommentAttachmentOut:
     _require_reporter_or_admin(session, user, report_id)
@@ -665,22 +712,22 @@ async def upload_bug_report_comment_attachment(
     if existing_count >= MAX_ATTACHMENTS_PER_COMMENT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="too_many_attachments")
     data = await file.read(_MAX_COMMENT_ATTACHMENT_BYTES + 1)
-    if len(data) > _MAX_COMMENT_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="file_too_large")
-    if file.content_type not in _ALLOWED_COMMENT_ATTACHMENT_TYPES or not _comment_attachment_magic_bytes_match(
-        file.content_type, data
-    ):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_file_type")
+    try:
+        validate_bug_report_attachment(file.content_type or "", data, max_bytes=_MAX_COMMENT_ATTACHMENT_BYTES)
+    except FileValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     safe_name = re.sub(r"[^\w.\-]", "_", (file.filename or "attachment")).replace("..", "_")[:200]
     attachment = BugReportCommentAttachment(
-        comment_id=comment_id,
-        file_name=safe_name,
-        content_type=file.content_type,
-        data=data,
-        uploaded_by=user.id,
+        comment_id=comment_id, file_name=safe_name, content_type=file.content_type or "", uploaded_by=user.id,
     )
-    session.add(attachment)
-    session.commit()
+    try:
+        key = persist_uploaded_object(
+            session, storage, attachment, file_class="bug_report_comment", data=data,
+            content_type=file.content_type or "",
+        )
+        commit_uploaded_objects(session, [key])
+    except StorageUploadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return BugReportCommentAttachmentOut(id=attachment.id, file_name=attachment.file_name, content_type=attachment.content_type)
 
 
@@ -690,6 +737,7 @@ def download_bug_report_comment_attachment(
     comment_id: uuid.UUID,
     attachment_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> Response:
     _require_reporter_or_admin(session, user, report_id)
@@ -699,8 +747,14 @@ def download_bug_report_comment_attachment(
     attachment = session.get(BugReportCommentAttachment, attachment_id)
     if attachment is None or attachment.comment_id != comment_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    try:
+        content = read_uploaded_object(storage, attachment, file_class="bug_report_comment", legacy_field="data", max_bytes=_MAX_COMMENT_ATTACHMENT_BYTES)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="not_found") from exc
+    except StorageReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(
-        content=attachment.data,
+        content=content,
         media_type=attachment.content_type,
         headers={"Content-Disposition": f'attachment; filename="{attachment.file_name}"'},
     )

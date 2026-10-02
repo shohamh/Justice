@@ -6,17 +6,28 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
+from app.auth.authz import Action, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyDismissal, GimelimAttachment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import gimelim as svc
+from app.services.file_validation import (
+    MAX_GIMELIM_FILE_BYTES,
+    FileValidationError,
+    validate_gimelim_file,
+)
 from app.services.gimelim import GimelimError
 from app.services.reserves import ReserveError
 from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.storage_uploads import (
+    StorageUploadError,
+    commit_uploaded_objects,
+    persist_uploaded_object,
+)
+from app.storage.dependencies import get_object_storage
+from app.storage.protocol import ObjectStorage
 
 router = APIRouter(tags=["gimelim"])
 
@@ -243,6 +254,36 @@ def commit_gimelim_route(
     )
 
 
+@router.get(
+    "/gimelim/{dismissal_id}/attachments",
+    response_model=list[GimelimAttachmentOut],
+)
+def list_gimelim_attachments(
+    dismissal_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[GimelimAttachmentOut]:
+    dismissal = session.get(DutyDismissal, dismissal_id)
+    if dismissal is None or not dismissal.is_gimelim:
+        raise HTTPException(status_code=404, detail="gimelim_dismissal_not_found")
+    assignment = session.get(DutyAssignment, dismissal.duty_assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="gimelim_dismissal_not_found")
+    _require_gimelim_permission(session, user, assignment.soldier_id)
+    attachments = (
+        session.query(GimelimAttachment)
+        .filter(GimelimAttachment.dismissal_id == dismissal_id)
+        .order_by(GimelimAttachment.created_at, GimelimAttachment.id)
+        .all()
+    )
+    return [
+        GimelimAttachmentOut(
+            id=item.id, file_name=item.file_name, content_type=item.content_type, created_at=item.created_at
+        )
+        for item in attachments
+    ]
+
+
 @router.post(
     "/gimelim/{dismissal_id}/attachments",
     response_model=GimelimAttachmentOut,
@@ -252,6 +293,7 @@ async def upload_gimelim_attachment(
     dismissal_id: uuid.UUID,
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> GimelimAttachmentOut:
     dismissal = session.get(DutyDismissal, dismissal_id)
@@ -264,40 +306,24 @@ async def upload_gimelim_attachment(
         raise HTTPException(status_code=404, detail="gimelim_dismissal_not_found")
     _require_gimelim_permission(session, user, assignment.soldier_id)
 
-    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="invalid_file_type")
-
-    data = await file.read()
-    if len(data) > 20 * 1024 * 1024:  # 20 MB limit
-        raise HTTPException(status_code=400, detail="file_too_large")
-
-    # Verify actual file magic bytes match the declared content type.
-    # The Content-Type header is attacker-controlled and must not be trusted alone.
-    _MAGIC: dict[str, list[bytes]] = {
-        "application/pdf": [b"%PDF"],
-        "image/jpeg":      [b"\xff\xd8\xff"],
-        "image/png":       [b"\x89PNG\r\n\x1a\n"],
-        "image/gif":       [b"GIF87a", b"GIF89a"],
-        "image/webp":      [b"RIFF"],  # RIFF????WEBP — first 4 bytes are enough
-    }
     declared = file.content_type or ""
-    magic_ok = any(
-        data[: len(prefix)] == prefix
-        for prefix in _MAGIC.get(declared, [])
-    )
-    if not magic_ok:
-        raise HTTPException(status_code=400, detail="invalid_file_type")
+    data = await file.read(MAX_GIMELIM_FILE_BYTES + 1)
+    try:
+        validate_gimelim_file(declared, data)
+    except FileValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     attachment = GimelimAttachment(
         dismissal_id=dismissal_id,
         file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file")).replace("..", "_")[:200],
-        content_type=file.content_type or "application/octet-stream",
-        data=data,
+        content_type=declared,
         uploaded_by=user.id,
     )
-    session.add(attachment)
-    session.commit()
+    try:
+        key = persist_uploaded_object(session, storage, attachment, file_class="gimelim", data=data, content_type=declared)
+        commit_uploaded_objects(session, [key])
+    except StorageUploadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return GimelimAttachmentOut(
         id=attachment.id,

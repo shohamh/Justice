@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import "../i18n";
 import BugReportMyReportsTab from "./BugReportMyReportsTab";
 import * as bugReportsApi from "../api/bugReports";
 import type { BugReportSummary } from "../api/bugReports";
+import { queryKeys } from "../queryKeys";
 
 vi.mock("../api/bugReports", async () => {
   const actual = await vi.importActual<typeof import("../api/bugReports")>("../api/bugReports");
   return {
     ...actual,
     getMyBugReports: vi.fn(),
+    fetchMyBugReportScreenshot: vi.fn(),
     listComments: vi.fn(),
     markBugReportSeen: vi.fn().mockResolvedValue(undefined),
   };
@@ -161,4 +163,20 @@ describe("BugReportMyReportsTab", () => {
     expect(screen.queryByTestId(/^bug-report-status-/)).not.toBeInTheDocument();
     expect(screen.queryByTestId(/^bug-report-view-json-/)).not.toBeInTheDocument();
   });
+  it("revokes screenshot Blob URLs when a report disappears from the query list", async () => {
+    vi.mocked(bugReportsApi.getMyBugReports).mockResolvedValue({ items: [{ ...REPORT, has_screenshot: true }], total: 1 });
+    vi.mocked(bugReportsApi.fetchMyBugReportScreenshot).mockResolvedValue(new Blob(["image"]));
+    if (!URL.createObjectURL) URL.createObjectURL = vi.fn();
+    if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:my-report");
+    const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}><BugReportMyReportsTab expandedId="r1" onToggle={vi.fn()} /></QueryClientProvider>);
+    await waitFor(() => expect(createUrl).toHaveBeenCalled());
+    act(() => queryClient.setQueryData(queryKeys.myBugReports(), { items: [], total: 0 }));
+    await waitFor(() => expect(revokeUrl).toHaveBeenCalledWith("blob:my-report"));
+    createUrl.mockRestore();
+    revokeUrl.mockRestore();
+  });
+
 });

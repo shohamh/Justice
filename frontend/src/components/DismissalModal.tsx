@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
@@ -13,8 +13,10 @@ import {
 import Combobox from "./Combobox";
 import SoldierLink from "./SoldierLink";
 import { translateApiError } from "../utils/translateApiError";
+import { listGimelimAttachments, downloadGimelimAttachment, type GimelimAttachment } from "../api/gimelim";
 import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
 import { dateToLocalIso, lastDutyDay, todayIso } from "../utils/formatDate";
+import { downloadBlob } from "../utils/downloadFile";
 
 interface Props {
   shift: CalendarShift;
@@ -44,6 +46,51 @@ export default function DismissalModal({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [completedDismissalId, setCompletedDismissalId] = useState<string | null>(null);
+  const [attachmentsByDismissalId, setAttachmentsByDismissalId] = useState<Record<string, GimelimAttachment[]>>({});
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
+  const existingGimelimDismissals = useMemo(
+    () => primary.dismissals.filter((dismissal) => dismissal.is_gimelim),
+    [primary.dismissals],
+  );
+  const gimelimDismissalIds = useMemo(
+    () => Array.from(new Set([
+      ...existingGimelimDismissals.map((dismissal) => dismissal.id),
+      ...(completedDismissalId ? [completedDismissalId] : []),
+    ])),
+    [existingGimelimDismissals, completedDismissalId],
+  );
+
+  useEffect(() => {
+    if (gimelimDismissalIds.length === 0) {
+      setAttachmentsByDismissalId({});
+      return;
+    }
+    let cancelled = false;
+    setAttachmentsByDismissalId({});
+    void Promise.all(gimelimDismissalIds.map(async (dismissalId) => {
+      try {
+        return [dismissalId, await listGimelimAttachments(dismissalId)] as const;
+      } catch {
+        if (!cancelled) setAttachmentError("לא ניתן לטעון את הקבצים המצורפים.");
+        return [dismissalId, []] as const;
+      }
+    })).then((entries) => {
+      if (!cancelled) setAttachmentsByDismissalId(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+  }, [gimelimDismissalIds]);
+
+  async function downloadAttachment(dismissalId: string, attachment: GimelimAttachment) {
+    setAttachmentError(null);
+    try {
+      const blob = await downloadGimelimAttachment(dismissalId, attachment.id);
+      downloadBlob(blob, attachment.file_name);
+    } catch {
+      setAttachmentError(t("common.download_failed"));
+    }
+  }
 
   const allDates = useMemo(() => {
     const dates: string[] = [];
@@ -180,14 +227,17 @@ export default function DismissalModal({
 
   const commitMutation = useMutation({
     mutationFn: () => commitGimelim(shift.id, preview!.preview_token),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       qc.invalidateQueries({ queryKey: ["calendarShifts"] });
-      onDone();
-      if (selectedFile && result.dismissal_id) {
-        uploadGimelimAttachment(result.dismissal_id, selectedFile).catch(() => {
-          // Silent — attachment upload failure doesn't block the gimelim action
-        });
+      if (!result.dismissal_id) return;
+      if (selectedFile) {
+        try {
+          await uploadGimelimAttachment(result.dismissal_id, selectedFile);
+        } catch {
+          setAttachmentError(t("dismiss_modal.attachment_upload_failed"));
+        }
       }
+      setCompletedDismissalId(result.dismissal_id);
     },
     onError: (err: { response?: { data?: { detail?: string } } }) => {
       const detail = err?.response?.data?.detail ?? "";
@@ -218,6 +268,26 @@ export default function DismissalModal({
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none p-1">✕</button>
         </div>
+
+        {gimelimDismissalIds.length > 0 && (
+          <section className="mb-4 rounded border border-green-200 bg-green-50 p-3" aria-label="קבצים מצורפים">
+            {completedDismissalId && <p className="font-medium">הדיווח נשמר</p>}
+            {gimelimDismissalIds.map((dismissalId) => {
+              const dismissal = existingGimelimDismissals.find((item) => item.id === dismissalId);
+              const attachments = attachmentsByDismissalId[dismissalId] ?? [];
+              return (
+                <div key={dismissalId}>
+                  {dismissal && <p className="mt-2 text-sm">{dismissal.dismissed_from} – {dismissal.dismissed_to}</p>}
+                  {attachments.map((attachment) => (
+                    <button key={attachment.id} type="button" className="block text-sm text-blue-700 hover:underline" onClick={() => void downloadAttachment(dismissalId, attachment)}>{attachment.file_name}</button>
+                  ))}
+                </div>
+              );
+            })}
+            {attachmentError && <p role="alert" className="text-sm text-red-600">{attachmentError}</p>}
+            {completedDismissalId && <button type="button" data-testid="gimelim-dismissal-done" className="mt-2 rounded bg-blue-600 px-3 py-1 text-white" onClick={onDone}>סיום</button>}
+          </section>
+        )}
 
         {canGimelim && (
           <div className="flex gap-1 mb-5 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">

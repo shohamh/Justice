@@ -22,6 +22,7 @@ import BugReportCommentsPanel from "../../components/BugReportCommentsPanel";
 import DocumentPreviewModal from "../../components/DocumentPreviewModal";
 import { usePagePagination } from "../../hooks/usePagePagination";
 import { DataTable, ColDef } from "../../components/DataTable";
+import { createTemporaryBlobUrl, revokeBlobUrl } from "../../utils/downloadFile";
 
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   low: "bg-gray-100 text-gray-700",
@@ -60,6 +61,10 @@ export function BugReportsContent() {
   const [jsonErrorById, setJsonErrorById] = useState<Record<string, string>>({});
   const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+
+  useEffect(() => () => {
+    if (previewImage) revokeBlobUrl(previewImage.url);
+  }, [previewImage]);
   const [exportScope, setExportScope] = useState<"all_active" | "filtered">("all_active");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
@@ -82,7 +87,7 @@ export function BugReportsContent() {
 
   useEffect(() => {
     return () => {
-      Object.values(screenshotUrlByIdRef.current).forEach((url) => URL.revokeObjectURL(url));
+      Object.values(screenshotUrlByIdRef.current).forEach(revokeBlobUrl);
     };
   }, []);
 
@@ -99,6 +104,19 @@ export function BugReportsContent() {
 
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items]);
   const total = query.data?.total ?? 0;
+
+  useEffect(() => {
+    if (!query.data) return;
+    const reportIds = new Set(query.data.items.map((report) => report.id));
+    setScreenshotUrlById((current) => {
+      const next: Record<string, string> = {};
+      for (const [id, url] of Object.entries(current)) {
+        if (reportIds.has(id)) next[id] = url;
+        else revokeBlobUrl(url);
+      }
+      return next;
+    });
+  }, [query.data]);
   const pages = Math.ceil(total / limit);
 
   async function markReportRead(report: BugReportSummary) {
@@ -136,7 +154,7 @@ export function BugReportsContent() {
     setScreenshotErrorById((prev) => ({ ...prev, [id]: "" }));
     try {
       const blob = await fetchBugReportScreenshot(id);
-      setScreenshotUrlById((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
+      setScreenshotUrlById((prev) => ({ ...prev, [id]: createTemporaryBlobUrl(blob).url }));
     } catch (err: unknown) {
       setScreenshotErrorById((prev) => ({
         ...prev,

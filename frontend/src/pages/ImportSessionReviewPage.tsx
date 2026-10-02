@@ -12,6 +12,8 @@ import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import ImportRowFieldsModal from "../components/ImportRowFieldsModal";
 import ImportRowDetailModal, { type DetailField } from "../components/ImportRowDetailModal";
 import { queryKeys } from "../queryKeys";
+import { downloadImportWorkbook } from "../api/importSessions";
+import { downloadBlob } from "../utils/downloadFile";
 import {
   type ConfirmSessionResult,
   type RowBase,
@@ -213,6 +215,17 @@ function PendingPickBanner({
 export default function ImportSessionReviewPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
+  const [workbookDownloadError, setWorkbookDownloadError] = useState<string | null>(null);
+
+  async function downloadOriginalWorkbook() {
+    setWorkbookDownloadError(null);
+    try {
+      const blob = await downloadImportWorkbook(id ?? "");
+      downloadBlob(blob, detail?.filename ?? "import-session.xlsx");
+    } catch {
+      setWorkbookDownloadError(t("import_sessions.download_source_failed"));
+    }
+  }
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -552,7 +565,11 @@ export default function ImportSessionReviewPage() {
   return (
     <Layout>
       <div className="w-full space-y-4 p-4" dir="rtl">
-        <h1 className="text-xl font-semibold">{detail.filename}</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold">{detail.filename}</h1>
+          <button type="button" onClick={() => void downloadOriginalWorkbook()} className="text-sm text-blue-600 hover:underline">{t("import_sessions.download_source")}</button>
+        </div>
+        {workbookDownloadError && <p role="alert" className="text-sm text-red-600">{workbookDownloadError}</p>}
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">

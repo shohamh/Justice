@@ -271,6 +271,8 @@ async function submitGimelim(page: Page): Promise<void> {
   await page.getByTestId("gimelim-preview-action").click();
   await expect(page.getByTestId("gimelim-preview")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("gimelim-commit-action").click();
+  await expect(modal).toContainText("הדיווח נשמר", { timeout: 30_000 });
+  await page.getByTestId("gimelim-dismissal-done").click();
   await expect(modal).toBeHidden({ timeout: 30_000 });
 }
 

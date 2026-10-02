@@ -1,13 +1,42 @@
 from __future__ import annotations
 
+import base64
+import io
+import json
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import BugReport, BugReportComment, Notification
+from app.db.models import BugReport, BugReportComment, BugReportCommentAttachment, Notification
 from app.routes.bug_reports import MAX_ATTACHMENTS_PER_COMMENT, MAX_COMMENTS_PER_REPORT
+from app.storage.dependencies import get_object_storage
+from app.storage.protocol import StoredObject
 from tests.helpers import auth_headers, create_soldier
+
+
+class FakeObjectStorage:
+    def __init__(self):
+        self.objects: dict[str, bytes] = {}
+
+    def put_bytes(self, *, key, data, content_type, sha256):
+        self.objects[key] = data
+        return StoredObject(key, len(data), sha256, None, None)
+
+    def open_read(self, *, key):
+        return io.BytesIO(self.objects[key]), len(self.objects[key])
+
+    def head(self, *, key):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def fake_object_storage(client: TestClient):
+    storage = FakeObjectStorage()
+    client.app.dependency_overrides[get_object_storage] = lambda: storage
+    yield storage
+    client.app.dependency_overrides.pop(get_object_storage, None)
 
 
 def _submit(client: TestClient, reporter, **overrides):
@@ -244,7 +273,7 @@ def test_attachment_upload_rejected_for_unrelated_soldier(client: TestClient, ad
     assert resp.status_code == 403
 
 
-def test_attachment_upload_succeeds_for_comment_author(client: TestClient, admin_session: Session):
+def test_attachment_upload_succeeds_for_comment_author(client: TestClient, admin_session: Session, fake_object_storage):
     reporter = create_soldier(admin_session, personal_number="bugattach005")
     _submit(client, reporter)
     report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
@@ -258,6 +287,10 @@ def test_attachment_upload_succeeds_for_comment_author(client: TestClient, admin
     assert resp.status_code == 201
     assert resp.json()["file_name"] == "shot.png"
     assert resp.json()["content_type"] == "image/png"
+    attachment = admin_session.query(BugReportCommentAttachment).one()
+    assert attachment.data is None
+    assert attachment.storage_key == f"bug_report_comment/{attachment.id}"
+    assert fake_object_storage.objects[attachment.storage_key] == _PNG_BYTES
 
 
 def test_attachment_upload_rejects_oversized_file(client: TestClient, admin_session: Session):
@@ -582,3 +615,21 @@ def test_upload_attachment_rejects_oversized_file_without_reading_entire_body(
     )
     assert resp.status_code == 400
     assert resp.json()["detail"] == "file_too_large"
+
+
+def test_bug_report_screenshot_and_recovery_mirror_are_objects(client: TestClient, admin_session: Session, fake_object_storage):
+    reporter = create_soldier(admin_session, personal_number="bugobject001")
+    response = client.post(
+        "/api/bug-reports",
+        json={"description": "object-backed", "severity": "low", "route": "/", "screenshot": base64.b64encode(_PNG_BYTES).decode("ascii")},
+        headers=auth_headers(reporter),
+    )
+    assert response.status_code == 201
+    report = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one()
+    assert report.screenshot is None
+    assert report.storage_key == f"bug_report_screenshot/{report.id}"
+    assert report.json_mirror_storage_key == f"bug_report_json_mirror/{report.id}"
+    mirror = json.loads(fake_object_storage.objects[report.json_mirror_storage_key])
+    assert mirror["id"] == str(report.id)
+    assert mirror["screenshot_storage_key"] == report.storage_key
+    assert fake_object_storage.objects[report.storage_key] == _PNG_BYTES

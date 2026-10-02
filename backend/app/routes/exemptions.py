@@ -27,7 +27,20 @@ from app.db.models import (
 from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services import exemptions as svc
-from app.services.file_validation import FileValidationError, validate_exemption_file
+from app.services.file_validation import (
+    MAX_EXEMPTION_FILE_BYTES,
+    FileValidationError,
+    validate_exemption_file,
+)
+from app.services.storage_uploads import (
+    StorageReadError,
+    StorageUploadError,
+    commit_uploaded_objects,
+    persist_uploaded_object,
+    read_uploaded_object,
+)
+from app.storage.dependencies import get_object_storage
+from app.storage.protocol import ObjectStorage
 
 router = APIRouter(prefix="/soldiers/{soldier_id}/exemptions", tags=["exemptions"])
 
@@ -304,10 +317,11 @@ async def upload_file(
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
+    storage: ObjectStorage = Depends(get_object_storage),
 ) -> ExemptionFileOut:
     target, exemption = _load_exemption(session, soldier_id, exemption_id)
     authorize(session, user, Action.EXEMPTION_GRANT, target_node=_node_of(session, target))
-    data = await file.read()
+    data = await file.read(MAX_EXEMPTION_FILE_BYTES + 1)
     content_type = file.content_type or ""
     try:
         validate_exemption_file(content_type, data)
@@ -317,11 +331,13 @@ async def upload_file(
         soldier_exemption_id=exemption.id,
         file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file")).replace("..", "_")[:200],
         content_type=content_type,
-        data=data,
         uploaded_by=user.id,
     )
-    session.add(saved)
-    session.commit()
+    try:
+        key = persist_uploaded_object(session, storage, saved, file_class="soldier_exemption", data=data, content_type=content_type)
+        commit_uploaded_objects(session, [key])
+    except StorageUploadError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     session.refresh(saved)
     return _file_out(saved)
 
@@ -351,6 +367,7 @@ def download_file(
     exemption_id: uuid.UUID,
     file_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> Response:
     target, exemption = _load_exemption(session, soldier_id, exemption_id)
@@ -358,8 +375,14 @@ def download_file(
     file = session.get(SoldierExemptionFile, file_id)
     if file is None or file.soldier_exemption_id != exemption.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file_not_found")
+    try:
+        content = read_uploaded_object(storage, file, file_class="soldier_exemption", legacy_field="data", max_bytes=10 * 1024 * 1024)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="file_not_found") from exc
+    except StorageReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(
-        content=file.data,
+        content=content,
         media_type=file.content_type,
         headers={"Content-Disposition": f'attachment; filename="{file.file_name}"'},
     )

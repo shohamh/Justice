@@ -1,0 +1,16 @@
+# Recovery-only overlay. Set PGDATA_RESTORE and AGE_IDENTITY_PATH in the
+# protected environment file before use. It uses a private Compose project and
+# refuses to start Postgres until restore-pitr.sh writes the ready marker.
+services:
+  db:
+    entrypoint: ["/usr/local/bin/recovery-startup.sh"]
+    command: ["postgres", "-c", "archive_mode=off"]
+    restart: "no"
+    volumes:
+      - ${PGDATA_RESTORE:-/opt/justice/pgdata-restore}:/var/lib/postgresql/data
+      - ${BACKUP_DIR:-/opt/justice/backups}:/backups:ro
+      - ${WAL_ARCHIVE_DIR:-/opt/justice/wal-archive}:/var/lib/postgresql/wal-archive:ro
+      - ${AGE_IDENTITY_PATH:?set AGE_IDENTITY_PATH to the recovery identity}:/run/secrets/age-identity:ro
+    environment:
+      AGE_IDENTITY_FILE: /run/secrets/age-identity
+      PGDATA: /var/lib/postgresql/data

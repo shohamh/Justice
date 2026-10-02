@@ -12,6 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AuditLog, BugReport, Soldier
 from app.logging_config import LOG_DIR
+from app.services.storage_uploads import (
+    enqueue_storage_cleanup,
+    put_managed_object,
+)
+from app.storage.keys import make_object_key
+from app.storage.protocol import ObjectStorage
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,7 @@ class BugReportImportError(Exception):
 class BugReportWriteResult:
     persisted_to_db: bool
     json_file_path: str | None
+    storage_keys: list[str]
 
 
 def _json_default(value: Any) -> Any:
@@ -86,6 +93,7 @@ def write_bug_report(
     screenshot: bytes | None,
     route: str,
     nav_history: list[dict[str, Any]],
+    storage: ObjectStorage | None = None,
 ) -> BugReportWriteResult:
     window_start = datetime.now(timezone.utc) - timedelta(hours=24)
     recent_count = session.execute(
@@ -121,7 +129,30 @@ def write_bug_report(
         "has_screenshot": screenshot is not None,
         "created_at": created_at.isoformat(),
     }
-    json_file_path = _write_json_mirror(report_id, created_at, json_payload)
+    json_file_path = _write_json_mirror(report_id, created_at, json_payload) if storage is None else None
+    storage_keys: list[str] = []
+    screenshot_stored = None
+    mirror_stored = None
+    if storage is not None:
+        try:
+            if screenshot is not None:
+                screenshot_key = make_object_key("bug_report_screenshot", report_id)
+                storage_keys.append(screenshot_key)
+                screenshot_stored = put_managed_object(storage, key=screenshot_key, data=screenshot, content_type="image/png")
+            mirror_key = make_object_key("bug_report_json_mirror", report_id)
+            json_payload.update({
+                "json_mirror_storage_key": mirror_key,
+                "screenshot_storage_key": screenshot_stored.key if screenshot_stored else None,
+                "screenshot_storage_sha256": screenshot_stored.sha256 if screenshot_stored else None,
+                "screenshot_storage_size": screenshot_stored.size if screenshot_stored else None,
+            })
+            mirror_data = json.dumps(json_payload, ensure_ascii=False, indent=2, default=_json_default).encode("utf-8")
+            storage_keys.append(mirror_key)
+            mirror_stored = put_managed_object(storage, key=mirror_key, data=mirror_data, content_type="application/json")
+        except Exception as exc:
+            enqueue_storage_cleanup(session, storage_keys)
+            logger.error("bug_report_object_write_failed", extra={"report_id": str(report_id), "object_count": len(storage_keys)})
+            raise BugReportWriteError("bug_report_object_write_failed") from exc
 
     persisted_to_db = True
     try:
@@ -130,7 +161,12 @@ def write_bug_report(
             description=description,
             severity=severity,
             route=route,
-            screenshot=screenshot,
+            screenshot=screenshot if storage is None else None,
+            storage_key=screenshot_stored.key if screenshot_stored else None,
+            storage_sha256=screenshot_stored.sha256 if screenshot_stored else None,
+            storage_size=screenshot_stored.size if screenshot_stored else None,
+            json_mirror_storage_key=mirror_stored.key if mirror_stored else None,
+            json_mirror_sha256=mirror_stored.sha256 if mirror_stored else None,
             nav_history=nav_history,
             audit_snapshot=audit_snapshot,
             user_snapshot=user_snapshot,
@@ -139,6 +175,7 @@ def write_bug_report(
         report.id = report_id
         session.add(report)
         session.flush()
+        session.commit()
     except Exception:
         session.rollback()
         logger.exception("bug_report_db_insert_failed", extra={"report_id": str(report_id)})
@@ -147,13 +184,16 @@ def write_bug_report(
     if not persisted_to_db and json_file_path is None:
         raise BugReportWriteError("both_json_and_db_write_failed")
 
-    return BugReportWriteResult(persisted_to_db=persisted_to_db, json_file_path=json_file_path)
+    return BugReportWriteResult(persisted_to_db=persisted_to_db, json_file_path=json_file_path, storage_keys=storage_keys)
 
 
 _REQUIRED_IMPORT_FIELDS = ("id", "reporter_id", "description", "severity", "route", "created_at")
 
 
-def import_bug_report_json(session: Session, payload: dict[str, Any]) -> uuid.UUID:
+def import_bug_report_json(
+    session: Session, payload: dict[str, Any], *, mirror_sha256: str | None = None,
+    mirror_size: int | None = None,
+) -> uuid.UUID:
     """Insert one bug report from a previously-written JSON mirror payload
     (the same shape `write_bug_report` produces — see `_write_json_mirror`).
 
@@ -179,6 +219,14 @@ def import_bug_report_json(session: Session, payload: dict[str, Any]) -> uuid.UU
         raise BugReportImportError("malformed_fields") from exc
     if payload["severity"] not in ("low", "medium", "high"):
         raise BugReportImportError("invalid_severity")
+    mirror_key = payload.get("json_mirror_storage_key")
+    if mirror_key is not None and mirror_key != make_object_key("bug_report_json_mirror", report_id):
+        raise BugReportImportError("invalid_mirror_key")
+    screenshot_key = payload.get("screenshot_storage_key")
+    if screenshot_key is not None and screenshot_key != make_object_key("bug_report_screenshot", report_id):
+        raise BugReportImportError("invalid_screenshot_key")
+    if bool(payload.get("has_screenshot")) != (screenshot_key is not None):
+        raise BugReportImportError("invalid_screenshot_reference")
 
     if session.get(BugReport, report_id) is not None:
         raise BugReportImportError("already_exists")
@@ -194,6 +242,11 @@ def import_bug_report_json(session: Session, payload: dict[str, Any]) -> uuid.UU
                 severity=payload["severity"],
                 route=str(payload["route"])[:500],
                 screenshot=None,
+                storage_key=payload.get("screenshot_storage_key"),
+                storage_sha256=payload.get("screenshot_storage_sha256"),
+                storage_size=payload.get("screenshot_storage_size"),
+                json_mirror_storage_key=payload.get("json_mirror_storage_key"),
+                json_mirror_sha256=mirror_sha256,
                 nav_history=payload.get("nav_history") or None,
                 audit_snapshot=payload.get("audit_snapshot") or None,
                 user_snapshot=payload.get("user_snapshot") or None,

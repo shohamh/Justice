@@ -1,0 +1,36 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::__BUCKET__",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "soldier_exemption/*",
+            "exemption_request/*",
+            "gimelim/*",
+            "bug_report_screenshot/*",
+            "bug_report_comment/*",
+            "import_workbook/*",
+            "bug_report_json_mirror/*"
+          ]
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": [
+        "arn:aws:s3:::__BUCKET__/soldier_exemption/*",
+        "arn:aws:s3:::__BUCKET__/exemption_request/*",
+        "arn:aws:s3:::__BUCKET__/gimelim/*",
+        "arn:aws:s3:::__BUCKET__/bug_report_screenshot/*",
+        "arn:aws:s3:::__BUCKET__/bug_report_comment/*",
+        "arn:aws:s3:::__BUCKET__/import_workbook/*",
+        "arn:aws:s3:::__BUCKET__/bug_report_json_mirror/*"
+      ]
+    }
+  ]
+}

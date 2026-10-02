@@ -22,7 +22,9 @@ $root = $PSScriptRoot
 if ($Docker) {
     # Keep the native default workflow available while allowing the complete
     # app and observability stack to run together in Docker Compose.
-    $composeServices = @('db', 'redis', 'loki', 'prometheus', 'grafana', 'backend', 'frontend')
+    & (Join-Path $root 'scripts\dev-certs.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Local storage certificate setup failed.' }
+    $composeServices = @('seaweedfs', 'seaweedfs-s3-proxy', 'seaweedfs-init', 'db', 'redis', 'loki', 'prometheus', 'grafana', 'backend', 'file-authorization', 'file-gateway', 'frontend')
     if ($TelegramBot) { $composeServices += 'telegram-bot' }
 
     Write-Host '[dev] Starting the Docker Compose stack (Ctrl+C stops the attached services)...' -ForegroundColor Cyan

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import re
 import uuid
 from typing import Any
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import require_duty_manager_or_admin
 from app.db.models import ImportSession, Soldier
 from app.db.session import get_session
+from app.services.file_validation import MAX_XLSX_BYTES, FileValidationError, validate_xlsx
 from app.services.import_sessions import (
     ImportSessionError,
     cancel_session,
@@ -22,8 +22,20 @@ from app.services.import_sessions import (
     reparse_session,
     set_selections,
 )
+from app.services.storage_uploads import StorageUploadError, commit_uploaded_objects
+from app.storage.dependencies import get_object_storage
+from app.storage.protocol import ObjectStorage
 
 router = APIRouter(prefix="/import/sessions", tags=["import-sessions"])
+
+_XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _import_session_http_error(exc: ImportSessionError) -> HTTPException:
+    detail = str(exc)
+    unavailable_prefixes = ("storage_", "upload_persistence", "parser_memory_limit_")
+    status_code = 503 if detail.startswith(unavailable_prefixes) else 400
+    return HTTPException(status_code=status_code, detail=detail)
 
 
 DEFAULT_STATUSES = ["draft", "confirmed"]
@@ -86,31 +98,32 @@ async def upload_import_session(
     file: UploadFile = File(...),
     parser_id: str | None = None,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
     if not (file.filename or "").lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="invalid_file_type")
+    if (file.content_type or "").split(";", 1)[0].strip().lower() != _XLSX_CONTENT_TYPE:
+        raise HTTPException(status_code=400, detail="invalid_content_type")
 
-    content = await file.read()
-    if len(content) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="file_too_large")
-    if content[:4] != b"PK\x03\x04":
-        raise HTTPException(status_code=400, detail="invalid_file_type")
+    content = await file.read(MAX_XLSX_BYTES + 1)
+    try:
+        validate_xlsx(content)
+    except FileValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     safe_filename = re.sub(r"[^\w.\-]", "_", file.filename or "import.xlsx").replace("..", "_")[:200]
     try:
         sess = create_session(
-            session,
-            filename=safe_filename,
-            content=content,
-            actor=actor,
-            parser_id=parser_id,
+            session, filename=safe_filename, content=content, actor=actor, parser_id=parser_id, storage=storage,
         )
-    except ValueError as exc:
+        commit_uploaded_objects(session, [sess.storage_key] if sess.storage_key else [])
+    except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _import_session_http_error(exc) from exc
+    except StorageUploadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    session.commit()
     return {"session_id": str(sess.id), "preview": sess.parsed_state}
 
 
@@ -146,14 +159,15 @@ def get_import_session(
 def reparse_import_session(
     session_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
     _get_owned_or_404(session, session_id, actor)
     try:
-        sess = reparse_session(session, session_id=session_id, actor=actor)
+        sess = reparse_session(session, session_id=session_id, actor=actor, storage=storage)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return _session_detail(sess)
@@ -171,7 +185,7 @@ def update_import_session_selections(
         set_selections(session, session_id=session_id, selections=req.selections)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return {"ok": True}
@@ -181,14 +195,15 @@ def update_import_session_selections(
 def confirm_import_session(
     session_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
     _get_owned_or_404(session, session_id, actor)
     try:
-        result = confirm_session(session, session_id=session_id, actor=actor)
+        result = confirm_session(session, session_id=session_id, actor=actor, storage=storage)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return result
@@ -205,7 +220,7 @@ def cancel_import_session(
         sess = cancel_session(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return {"status": sess.status}
@@ -222,7 +237,7 @@ def mark_import_session_done(
         sess = mark_done(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
         session.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _import_session_http_error(exc) from exc
 
     session.commit()
     return {"status": sess.status}
