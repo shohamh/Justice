@@ -768,7 +768,7 @@ def test_breakdown_contributions_reconstruct_scores(admin_session):
     """Each quarter's contributions (duty spans + manual adjustments) must sum
     to that quarter's soldier_score, carry the duty type name, day counts and
     multiplier provenance."""
-    from datetime import date as date_cls
+    from datetime import date as date_cls, datetime, timezone
 
     from app.db.models import ScoreAdjustment
     from app.services.assignments import create_assignment
@@ -790,6 +790,10 @@ def test_breakdown_contributions_reconstruct_scores(admin_session):
     )
     adj = ScoreAdjustment(soldier_id=s.id, delta=Decimal("2.50"), reason="מבחן התאמה")
     admin_session.add(adj)
+    admin_session.flush()
+    # Keep this adjustment in the Q3 quarter asserted below, regardless of when
+    # the test runs. The database otherwise timestamps it in the current quarter.
+    adj.created_at = datetime(2026, 8, 2, tzinfo=timezone.utc)
     admin_session.flush()
 
     planning_start = max(date_cls.today(), date_cls(2026, 9, 30))

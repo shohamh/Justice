@@ -120,7 +120,8 @@ def test_multiple_shifts_combined(admin_session):
 def test_block_ids_are_unique(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    shift = _shift(admin_session, dt, loc, date(2026, 10, 1), date(2026, 10, 2), count=5)
+    start = date.today() + timedelta(days=1)
+    shift = _shift(admin_session, dt, loc, start, start + timedelta(days=1), count=5)
     admin_session.commit()
 
     blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
