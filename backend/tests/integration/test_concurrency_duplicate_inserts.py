@@ -16,13 +16,19 @@ answer the sequential path gives:
 
 Each schedule: two independent sessions both run the existence SELECT, meet
 right after it, then both insert and commit.
+
+Fixed (Task 4): ``set_day_override``, ``mark_no_show`` and ``relink_reserve``
+lock the duty assignment (``FOR NO KEY UPDATE``) before the existence check,
+so the second request sees the first's row and gets the sequential answer.
+``take_free`` translates the unique violation to ``already_pending``, as
+``create_request`` already does (the competing writer may be a
+``create_request`` that takes no assignment lock).
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -141,7 +147,6 @@ def test_concurrent_no_show_marks_yield_already_marked(race, admin_session):
     assert sorted(str(o.error) for o in outcomes if not o.ok) == ["already_marked"]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C17: relink_reserve select-then-insert")
 def test_concurrent_relinks_of_one_primary_both_succeed(race, admin_session):
     start = date.today() + timedelta(days=20)
     primary = _assignment(admin_session, create_soldier(admin_session, personal_number="race-dup-rl-p").id,

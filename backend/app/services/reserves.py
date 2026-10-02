@@ -19,10 +19,11 @@ class ReserveError(Exception):
     """Raised on invalid reserve operations."""
 
 
-def _lock_assignment_for_dismissal(session: Session, assignment: DutyAssignment) -> None:
-    """Serialize dismissals of one assignment so the overlap check and the
-    insert cannot interleave. FOR NO KEY UPDATE does not conflict with the
-    KEY SHARE lock that child-row inserts (dismissals, links) take."""
+def _lock_assignment(session: Session, assignment: DutyAssignment) -> None:
+    """Serialize check-then-insert writers of one assignment's child rows
+    (dismissals, reserve links) so the check and the insert cannot interleave.
+    FOR NO KEY UPDATE does not conflict with the KEY SHARE lock that child-row
+    inserts take."""
     session.execute(
         select(DutyAssignment.id).where(DutyAssignment.id == assignment.id).with_for_update(key_share=True)
     )
@@ -92,7 +93,7 @@ def dismiss_primary(
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
-    _lock_assignment_for_dismissal(session, assignment)
+    _lock_assignment(session, assignment)
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
@@ -229,7 +230,7 @@ def dismiss_reserve(
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
-    _lock_assignment_for_dismissal(session, assignment)
+    _lock_assignment(session, assignment)
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
@@ -442,10 +443,13 @@ def relink_reserve(
     if not reserve_a.is_reserve:
         raise ReserveError("not_a_reserve")
 
+    # One link per primary: lock the primary so a concurrent relink replaces
+    # the committed link instead of both inserting (uq_reserve_links_primary).
+    _lock_assignment(session, primary_assignment)
     existing = session.execute(
         select(DutyReserveLink).where(
             DutyReserveLink.primary_assignment_id == primary_assignment.id
-        )
+        ).execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if existing:
         session.delete(existing)
