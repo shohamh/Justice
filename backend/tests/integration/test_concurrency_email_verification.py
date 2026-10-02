@@ -11,12 +11,18 @@ clicked by two soldiers who entered the same address):
   2. both set ``email_verified`` and commit.
 Two accounts end up verified for one email; password reset by email and other
 email lookups then match two accounts.
+
+Fixed (Task 4): ``verify_token`` locks the token row and then takes a per-email
+advisory lock before the conflict check. The second verification blocks on it,
+the first's rendezvous times out and it commits, and the second then sees the
+verified account and returns ``email_taken``. No unique index was added: a
+partial unique index could fail to build on existing duplicate data, and
+``verify_token`` is the only writer of ``email_verified = true``.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from sqlalchemy import event, func, inspect, select
 
 from app.db.models import EmailVerificationToken, Soldier
@@ -45,7 +51,6 @@ def _pause_after_nth_select(session, entity, n, hook):
     event.listen(session, "do_orm_execute", _after)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C15: verified-email uniqueness check is not serialized")
 def test_two_accounts_cannot_both_verify_one_email(race, admin_session):
     tokens = []
     for n in (1, 2):

@@ -3,13 +3,15 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import EmailVerificationToken, Soldier
 from app.services.email import send_email
 
 _TOKEN_EXPIRY = timedelta(hours=24)
+# Serializes verify_token calls for one email address (see verify_token).
+_VERIFIED_EMAIL_LOCK_NAMESPACE = 0x454D4C56  # "EMLV"
 
 
 def request_verification(session: Session, *, soldier: Soldier) -> bool:
@@ -57,13 +59,21 @@ def verify_token(session: Session, *, token: str) -> str:
             EmailVerificationToken.token == token,
             EmailVerificationToken.used_at.is_(None),
         )
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if row is None:
         return "token_invalid"
     if row.expires_at <= now:
         return "token_expired"
 
-    soldier = session.get(Soldier, row.soldier_id)
+    # One verified account per email: verify_token is the only writer that
+    # sets email_verified=True, so a per-email advisory lock serializes the
+    # "already verified by someone else?" check below with the write.
+    # Lock order: token row, then the email lock, then the soldier.
+    session.execute(select(func.pg_advisory_xact_lock(_VERIFIED_EMAIL_LOCK_NAMESPACE, func.hashtext(row.email))))
+
+    soldier = session.get(Soldier, row.soldier_id, populate_existing=True)
     if soldier is None or soldier.email != row.email:
         # Soldier changed their email since token was issued
         return "token_invalid"
