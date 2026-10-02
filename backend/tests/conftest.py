@@ -394,6 +394,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_scoring_api": "scoring",
     "test_scoring_service": "scoring",
     "test_scoring_reserve": "scoring",
+    "test_concurrency_score_projection": "scoring",
     "test_transparency_export": "scoring",
     # potential: potential endpoint and potential modifiers (marks as "scoring" subsystem)
     "test_potential_api": "scoring",
