@@ -171,7 +171,7 @@ def run_migrations(database_url: str, rootpath: Path) -> None:
 
     cfg = Config(str(rootpath / "alembic.ini"))
     cfg.set_main_option("script_location", str(rootpath / "alembic"))
-    command.upgrade(cfg, "heads")
+    command.upgrade(cfg, "head")
 
     # alembic's env.py runs in-process and disables pre-existing loggers through
     # logging.config.fileConfig; restore them for later caplog assertions.
