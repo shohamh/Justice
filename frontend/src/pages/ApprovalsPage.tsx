@@ -332,7 +332,7 @@ export default function ApprovalsPage() {
   const treeQuery = useQuery({
     queryKey: queryKeys.hierarchyTree(),
     queryFn: fetchFullTree,
-    enabled: tab === "transfers" || selectedEnrollment !== null,
+    enabled: (tab === "transfers" && transferItems.length > 0) || selectedEnrollment !== null,
   });
   const nodes = useMemo(() => {
     const flatNodes: { id: string; name: string }[] = [];

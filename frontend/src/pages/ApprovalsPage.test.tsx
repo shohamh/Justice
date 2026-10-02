@@ -1094,10 +1094,36 @@ describe("ApprovalsPage hierarchy reads", () => {
     await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
   });
 
-  it("loads the full tree for a direct link to the transfers tab", async () => {
-    renderApprovals(["/approvals?tab=transfers"]);
-    await screen.findByTestId("approvals-tab-transfers");
+  it("does not fetch the full tree when the Transfers tab has no pending requests", async () => {
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-transfers"));
 
-    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("approvals.transfers_none")).toBeInTheDocument();
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("loads the full tree for pending transfers and keeps their node labels", async () => {
+    vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([{
+      id: "transfer-1", soldier_id: "soldier-1", soldier_name: "Test Soldier",
+      from_node_id: "node-from", to_node_id: "node-to", status: "pending", reason: null,
+    }]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+      {
+        id: "node-from", level: "unit", name: "Current Unit", parent_id: null,
+        commander_id: null, commander_name: null, path_ids: [], duty_managers: [],
+        dm_manageable: false, can_edit: false,
+      },
+      {
+        id: "node-to", level: "unit", name: "Requested Unit", parent_id: null,
+        commander_id: null, commander_name: null, path_ids: [], duty_managers: [],
+        dm_manageable: false, can_edit: false,
+      },
+    ]);
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-transfers"));
+
+    expect(await screen.findByText("Current Unit")).toBeInTheDocument();
+    expect(screen.getByText("Requested Unit")).toBeInTheDocument();
+    expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
   });
 });
