@@ -10,13 +10,17 @@ Schedule reproduced here (two independent sessions = two worker processes):
   1. both workers run the "already notified?" query for the soldier and meet
      right after it;
   2. both create the notification (plus its outbox rows) and commit.
+
+Fixed (Task 4): each check first takes a transaction-scoped advisory try-lock
+for that check. The overlapping run fails to get it and returns without
+notifying; the first run's rendezvous times out and it commits one
+notification.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date, timedelta
 
-import pytest
 from sqlalchemy import func, select
 
 from app import qualification_expiry_worker as worker
@@ -44,7 +48,6 @@ def _expired_notifications(session, soldier_id, type_):
     ).scalar_one()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C16/N4: expiry dedupe is check-then-insert across processes")
 def test_concurrent_mitvahim_expiry_checks_notify_once(race, admin_session, monkeypatch):
     soldier = create_soldier(admin_session, personal_number="race-qexp-m")
     soldier.last_mitvahim_date = date.today() - timedelta(days=400)
