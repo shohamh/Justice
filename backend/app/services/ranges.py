@@ -625,8 +625,14 @@ def assign_batch(
     from app.services.notifications import notify_personal_constraint_overridden
 
     # Deferred: range_reconciliation imports this module at module scope.
-    from app.services.range_reconciliation import reconcile_future_range_assignments
+    from app.services.range_reconciliation import (
+        lock_reconciliation_target_dates,
+        reconcile_future_range_assignments,
+    )
 
+    # Lock order: this event's date, then every later date the batch's
+    # reconciliation may touch, ascending across all soldiers (C11).
+    lock_reconciliation_target_dates(session, soldier_ids=batch_soldier_ids, source_event=event)
     for row, _constraint in rows_with_constraints:
         reconciliation = reconcile_future_range_assignments(
             session, soldier_id=row.soldier_id, source_event=event,

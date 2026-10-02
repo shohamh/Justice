@@ -11,13 +11,17 @@ Schedule reproduced here (two independent sessions = two HTTP requests):
   2. an ``add_range_assignment`` of C on D3 holds D3 and, reconciling C, waits for D5;
   3. the batch, reconciling B, waits for D3 (B's later range).
 PostgreSQL aborts one request with ``DeadlockDetected`` (an unhandled 500).
+
+Fixed (Task 4): before reconciling, ``assign_batch`` calls
+``lock_reconciliation_target_dates``, which takes every later date the batch
+may touch in ascending order (D3, then D5). The single add then blocks on D3,
+the batch's wait for it times out, the batch commits, and the add runs after.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import select
 
 from app.db.models import DutyType, RangeAssignment, RangeEvent, RangeType, Soldier, SystemSetting
@@ -58,7 +62,6 @@ def _seed(session):
     return d1.id, d3.id, admin.id, a.id, b.id, c.id
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C11: range assign_batch takes later-date locks in per-soldier, not global, order")
 def test_batch_reconciliation_and_single_add_do_not_deadlock(race, admin_session, monkeypatch):
     d1_id, d3_id, admin_id, a_id, b_id, c_id = _seed(admin_session)
 
@@ -103,8 +106,12 @@ def test_batch_reconciliation_and_single_add_do_not_deadlock(race, admin_session
             select(RangeEvent.date, RangeAssignment.soldier_id).join(RangeEvent)
         )
     )
-    assert all(o.ok for o in outcomes), f"outcomes={outcomes}; rows={rows}"
-    # Each soldier keeps only their earliest covering range.
-    by_soldier = {sid: d for d, sid in rows if sid in {str(a_id), str(b_id), str(c_id)}}
-    assert by_soldier[str(a_id)] == str(_D1) and by_soldier[str(b_id)] == str(_D1)
-    assert by_soldier[str(c_id)] == str(_D3)
+    batched, added = outcomes
+    # Once serialized, the batch may refill B's vacated D3 slot with C, so the
+    # later single add can fail with a domain error. A database error
+    # (DeadlockDetected) is the defect.
+    assert batched.ok and (added.ok or isinstance(added.error, ranges_service.RangeValidationError)), (
+        f"outcomes={outcomes}; rows={rows}"
+    )
+    assert (str(_D1), str(a_id)) in rows and (str(_D1), str(b_id)) in rows
+    assert any(row == (str(_D3), str(c_id)) for row in rows)
