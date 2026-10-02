@@ -84,7 +84,7 @@ export default function RangesPage() {
   const event = useQuery({ queryKey: queryKeys.rangeEvent(selected as string), queryFn: () => getRangeEvent(selected as string), enabled: !!selected });
   const excusal = useQuery({ queryKey: queryKeys.rangeExcusalRequests(selected as string), queryFn: () => getRangeExcusalRequests(selected as string), enabled: !!selected && !!user?.is_duty_manager });
   const rangeLocations = useQuery({ queryKey: queryKeys.rangeLocations(), queryFn: listRangeLocations });
-  const hierarchyTree = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const hierarchyTree = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree, enabled: formEvent !== undefined });
   const rows = useMemo(() => ranges.data?.pages.flatMap(page => page.items) ?? [], [ranges.data]);
   const displayEvent = editAssignments ?? formEvent ?? event.data;
   const soldierIds = useMemo(() => {

@@ -83,6 +83,66 @@ beforeEach(() => {
 });
 
 describe("RangesPage", () => {
+  it("does not fetch the full hierarchy on mount", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByTestId("ranges-page");
+
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("loads hierarchy for the create form and keeps tree managers and the current-user fallback selectable", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([{
+      id: "node-1", level: "unit", name: "Unit One", parent_id: null,
+      commander_id: null, commander_name: null, path_ids: ["node-1"],
+      duty_managers: [{ scope_id: "node-1", soldier_id: "tree-manager", name: "Tree Manager" }],
+      dm_manageable: true, can_edit: true,
+    }]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByTestId("ranges-page");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByTestId("create-event-button"));
+    expect(await screen.findByTestId("create-event-form")).toBeInTheDocument();
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+
+    const responsibleInput = screen.getByTestId("new-range-responsible");
+    await waitFor(() => expect(responsibleInput).toHaveValue("me"));
+    fireEvent.focus(responsibleInput);
+    expect(await screen.findByRole("option", { name: "me" })).toBeInTheDocument();
+    const treeManagerOption = await screen.findByRole("button", { name: "Tree Manager" });
+    fireEvent.pointerDown(treeManagerOption);
+    fireEvent.pointerUp(treeManagerOption);
+    expect(responsibleInput).toHaveValue("Tree Manager");
+
+    fireEvent.focus(responsibleInput);
+    expect(await screen.findByRole("option", { name: "me" })).toBeInTheDocument();
+  });
+
+  it("loads hierarchy when an existing range is opened for editing", async () => {
+    const event = {
+      id: "event-edit-tree", hierarchy_node_id: "node-1", range_type: "laser" as const,
+      date: "2026-09-01", location: "Tree range", required_count: 1,
+      reserve_count: 0, status: "planned" as const, assignments: [],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("Tree range");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("edit-range-event-edit-tree"));
+    expect(await screen.findByTestId("range-form")).toBeInTheDocument();
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+  });
+
   it("loads only referenced display rows for the selected event and retains editor search", async () => {
     const event = {
       id: "event-lookup", hierarchy_node_id: "node-1", range_type: "laser" as const,

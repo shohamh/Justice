@@ -36,6 +36,10 @@
     "load_more": "Load more ranges",
     "loading_more": "Loading ranges..."
   },
+  "transparency": {
+    "tree_loading": "Loading units...",
+    "tree_load_error": "Could not load the unit list."
+  },
   "home": {
     "ranges_region": "Upcoming ranges",
     "ranges_load_more": "Load more ranges",

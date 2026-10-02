@@ -539,6 +539,8 @@
     "subunit_global_gap": "פער מול הארגון (יחס)",
     "no_permission": "אין לך הרשאה לצפות בדף זה",
     "load_error": "שגיאה בטעינת נתוני השקיפות",
+    "tree_loading": "טוען יחידות...",
+    "tree_load_error": "טעינת רשימת היחידות נכשלה.",
     "burden_share_breakdown_load_error": "שגיאה בטעינת פירוט חלק בנטל"
   },
   "my_duties": {

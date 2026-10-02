@@ -81,6 +81,10 @@ const RANK_ORDER: Record<string, number> = {
   "רב אלוף": 20,
 };
 
+const RANK_OPTIONS = Object.entries(RANK_ORDER)
+  .sort((left, right) => left[1] - right[1])
+  .map(([rank]) => rank);
+
 // ─── filter pills ─────────────────────────────────────────────────────────────
 
 type OfficerFilter = "all" | "officer" | "enlisted";
@@ -252,7 +256,11 @@ export default function TransparencyPage() {
   // Distinguish that from the "no permission" case handled above.
   const transparencyLoadError = transparencyQuery.isError && !transparencyForbidden;
 
-  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeQuery = useQuery({
+    queryKey: queryKeys.hierarchyTree(),
+    queryFn: fetchFullTree,
+    enabled: treeOpen || selectedNodeId !== null || tab === 1,
+  });
   const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
 
   const fairnessComponentsQuery = useQuery({
@@ -1046,6 +1054,7 @@ export default function TransparencyPage() {
               </div>
             ) : (
               <button
+                data-testid="transparency-unit-filter-toggle"
                 className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-300 hover:underline"
                 onClick={() => setTreeOpen((o) => !o)}
               >
@@ -1066,13 +1075,34 @@ export default function TransparencyPage() {
                     <button className="text-xs text-red-500 hover:underline" onClick={clearFilter}>הצג הכל</button>
                   )}
                 </div>
-                <Combobox
-                  items={sortNodesByTree(flatNodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
-                  value={selectedNodeId ?? ""}
-                  onChange={handleSelectNode}
-                  placeholder="— כל הארגון —"
-                  testId="transparency-unit-filter"
-                />
+                {treeQuery.isLoading && (
+                  <p role="status" data-testid="transparency-tree-loading" className="px-1 py-2 text-sm text-gray-500">
+                    {t("transparency.tree_loading")}
+                  </p>
+                )}
+                {treeQuery.isError && (
+                  <div role="alert" data-testid="transparency-tree-error" className="flex items-center justify-between gap-3 px-1 py-2 text-sm text-red-600 dark:text-red-400">
+                    <span>{t("transparency.tree_load_error")}</span>
+                    <button
+                      type="button"
+                      data-testid="transparency-tree-retry"
+                      disabled={treeQuery.isFetching}
+                      onClick={() => void treeQuery.refetch()}
+                      className="text-indigo-600 underline disabled:opacity-50 dark:text-indigo-300"
+                    >
+                      {t("common.retry")}
+                    </button>
+                  </div>
+                )}
+                {treeQuery.data && (
+                  <Combobox
+                    items={sortNodesByTree(flatNodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
+                    value={selectedNodeId ?? ""}
+                    onChange={handleSelectNode}
+                    placeholder="— כל הארגון —"
+                    testId="transparency-unit-filter"
+                  />
+                )}
               </div>
             )}
           </div>
@@ -1235,7 +1265,7 @@ export default function TransparencyPage() {
               scopeKey={transparencyAuthorizationScope ?? "scope-unavailable"}
               enabled={pageMetaInputReady}
               filterKey={transparencyFilterKey}
-              roleOrder={Object.entries(RANK_ORDER).sort((left, right) => left[1] - right[1]).map(([rank]) => rank)}
+              roleOrder={RANK_OPTIONS}
               fetchPage={fetchTransparencyPage}
               getRowId={(row) => row.soldier_id}
               isCursorStaleError={(error) => isAxiosError(error) && error.response?.status === 409}
