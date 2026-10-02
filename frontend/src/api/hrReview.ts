@@ -92,6 +92,8 @@ export interface PersonSyncRunDTO {
   held_count: number;
   vanished_count: number;
   error_count: number;
+  /** Identity conflicts recorded by this run (duplicate personal numbers, colliding emails). */
+  conflict_count?: number;
   error_message: string | null;
   errors: SyncErrorDTO[];
 }
