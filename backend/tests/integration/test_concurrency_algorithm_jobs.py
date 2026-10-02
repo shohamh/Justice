@@ -91,7 +91,6 @@ def _hook_runner_session(race, monkeypatch, hook):
     monkeypatch.setattr(db_session, "session_scope", scope)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C13: runner writes running over a committed cancel")
 def test_cancel_committed_before_the_runner_starts_is_not_overwritten(race, admin_session, monkeypatch):
     from app.services import algorithm_bridge
 

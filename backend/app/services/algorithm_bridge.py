@@ -10,7 +10,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 from app.services.sql_arrays import uuid_any
 
@@ -1472,9 +1472,18 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
             if job.status == "failed":
                 return
 
-            job.status = "running"
-            job.started_at = datetime.now(tz=UTC)
+            # Claim the job with a conditional UPDATE: a cancel that commits
+            # after the read above must not be overwritten with 'running'.
+            claimed = session.execute(
+                update(AlgorithmJob)
+                .where(AlgorithmJob.id == job_id, AlgorithmJob.status == "pending")
+                .values(status="running", started_at=datetime.now(tz=UTC))
+                .returning(AlgorithmJob.id)
+            ).scalar_one_or_none()
             session.commit()
+            if claimed is None:
+                return
+            session.refresh(job)
 
             try:
                 settings = resolve_solver_settings(session, job.settings_json)
