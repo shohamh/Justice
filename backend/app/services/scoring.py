@@ -1593,7 +1593,7 @@ def _ensure_projection_ready(
         for quarter_start_value in sorted(repaired_quarters):
             _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
 
-    required: set[Any] = set(keys) | set(quarter_starts)
+    required: set[Any] = {key for key in keys if key[1] not in quarter_starts} | quarter_starts
     if not projection_is_current(session, required):
         logger.warning("score projection read fell back because required buckets are not current")
         return False

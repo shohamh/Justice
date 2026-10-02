@@ -16,6 +16,37 @@ from app.services.scoring import _refresh_required_soldier_totals
 from tests.helpers import create_soldier
 
 
+def test_projection_readiness_omits_exact_keys_covered_by_required_quarter(monkeypatch):
+    covered_soldier = uuid4()
+    uncovered_soldier = uuid4()
+    covered_quarter = date(2026, 1, 1)
+    uncovered_quarter = date(2026, 4, 1)
+    required_checks = []
+    session = object()
+
+    monkeypatch.setattr(scoring, "_projection_state_is_complete", lambda _session: True)
+    monkeypatch.setattr(score_projection, "_bucket_health_counts", lambda *_args, **_kwargs: (0, 0))
+    monkeypatch.setattr(
+        score_projection, "_dirty_or_divergent_projection_keys", lambda *_args, **_kwargs: set()
+    )
+    monkeypatch.setattr(
+        scoring, "_required_quarter_totals_match_projection_rows", lambda *_args, **_kwargs: True
+    )
+
+    def record_required(_session, required):
+        required_checks.append(required)
+        return True
+
+    monkeypatch.setattr(score_projection, "projection_is_current", record_required)
+
+    assert scoring._ensure_projection_ready(
+        session,
+        keys={(covered_soldier, covered_quarter), (uncovered_soldier, uncovered_quarter)},
+        quarter_starts={covered_quarter},
+    )
+    assert required_checks == [{covered_quarter, (uncovered_soldier, uncovered_quarter)}]
+
+
 def test_refresh_required_soldier_totals_batches_missing_and_implicated_rows(
     admin_session, monkeypatch
 ):
