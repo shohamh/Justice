@@ -385,6 +385,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_ranges_api": "duty",
     "test_public_settings_ranges": "duty",
     "test_range_reminders": "duty",
+    "test_concurrency_range_batch_lock_order": "duty",
     # scoring: cumulative score / transparency / effort-score reporting
     "test_scoring_api": "scoring",
     "test_scoring_service": "scoring",
