@@ -468,3 +468,89 @@ Current c1 route attribution after the index:
 - The current hierarchy journey uses `/api/hierarchy/branches` at 109/255 ms p50/p95, but the captured browser trace also contains the legacy `/api/hierarchy/tree` response at 158,222 bytes. Continue the repository-wide consumer audit before claiming the full tree has been removed from scale-critical journeys.
 
 Task 9's measurement pass is complete for the agreed c1 page matrix, post-index transparency c1/c5/c10, and the listed read-only query plans. It does not meet the proposed readiness target under single-user load for six of seven journeys, and concurrent transparency remains severely slow with c10 pool errors. The report does not claim a production capacity result or a causal index speedup. Remaining implementation work includes bounding the full transparency projection, reducing shared-shell fanout/pool contention, fixing cursor revision coverage, and migrating remaining full-tree consumers.
+
+## 2026-10-02 final implementation profile and comparison
+
+This final c1 matrix was captured after the calendar batching, shared-navigation count, hierarchy-lazy-load, soldier-detail, transparency projection-read, and Export changes. The [final c1 artifact](data/scale-20k-pages-final-20261002T202041-c1.json) contains five cold and five warm samples for each of the seven journeys (70/70 readiness markers). The [c5](data/scale-20k-pages-final-20261002T202041-c5.json) and [c10](data/scale-20k-pages-final-20261002T202041-c10.json) artifacts each contain one cold/warm transparency burst with five and ten simultaneous clients respectively. The matched earlier c1 artifact is [20261002T065543215Z](data/scale-20k-pages-run-20261002T065543215Z-63128-1b48733d.json). Both c1 runs used Chromium 148.0.7778.96, the isolated scale database, and the same admin profile scope. The final database check was 20,121 soldiers, 1,000,008 duty assignments, and 16 range events; the temporary profile user was deleted after capture. HR provider sync was not invoked.
+
+The valid intermediate [19:46 c1](data/scale-20k-pages-final-20261002T194612-c1.json), [c5](data/scale-20k-pages-final-20261002T194612-c5.json), and [c10](data/scale-20k-pages-final-20261002T194612-c10.json) artifacts are retained for run history and superseded by the final 20:20 captures. The earlier [19:31 c1 attempt](data/scale-20k-pages-final-20261002T193158-c1.json) ended before recording any measurements; it is preserved but excluded from every result and comparison below.
+
+`pageReadyMs` runs from the scenario action through selector visibility and at least 500 ms of tracked API quiet. It is not LCP or proof that all rows/events have painted. Selector visibility and API-quiet timestamps overlap; do not add them. API wall time and accumulated SQL time are distinct, and accumulated SQL can overlap across parallel requests. The final c5/c10 numbers are one burst each, not repeated capacity percentiles.
+
+### Page readiness before and after
+
+The table compares the five-pair c1 page-ready p50/p95 in seconds. These are descriptive runs against the same local seed and browser setup, not a single-variable experiment; no individual code change is credited with the observed difference.
+
+| Journey | Earlier cold p50/p95 | Final cold p50/p95 | Earlier warm p50/p95 | Final warm p50/p95 |
+|---|---:|---:|---:|---:|
+| HR sync review | 2.83/3.26 | 2.94/3.44 | 2.28/2.52 | 2.36/3.08 |
+| Transparency, whole organization | 11.82/13.46 | 9.55/11.36 | 11.17/12.11 | 9.64/10.30 |
+| Hierarchy, whole organization | 2.78/2.96 | 2.78/4.86 | 2.53/3.14 | 2.40/2.88 |
+| Soldier detail, roster search then open | 3.71/3.94 | 3.75/4.69 | 0.98/1.06 | 1.00/1.11 |
+| Calendar, whole organization | 5.27/6.58 | 3.64/4.41 | 3.53/4.52 | 3.24/3.52 |
+| Calendar, synthetic team | 6.32/7.12 | 4.85/5.88 | 5.91/6.28 | 4.88/6.36 |
+| Home dashboard | 6.92/8.30 | 5.68/7.04 | 6.48/7.12 | 5.39/5.75 |
+
+Only warm soldier detail meets the proposed full page-ready p95 under two seconds. Every cold journey misses it, as do the other six warm journeys. HR and soldier-detail page-ready p50s are effectively unchanged within these uncontrolled runs. Transparency and both calendar journeys are faster in the later sample, but the measurement does not isolate the cause. The hierarchy cold p95 is noisier in the later five samples.
+
+The final c1 selector-visible p50/p95 (cold; warm) was: HR 0.92/1.68 s; 0.62/0.77 s; Transparency 0.86/0.90 s; 0.53/0.61 s; hierarchy 0.93/2.07 s; 0.54/0.92 s; soldier detail 2.95/3.88 s; 0.20/0.21 s; whole calendar 1.01/1.05 s; 0.61/0.78 s; synthetic-team calendar 4.25/5.29 s; 4.28/5.72 s; Home 2.28/3.17 s; 1.35/1.86 s. This shows that the soldier modal and synthetic-team selected-path milestones differ materially: the former opens early on warm cache, while the latter's selected path itself takes about 4.3 s. Neither milestone proves every detail row or calendar event is painted.
+
+### Requests, payload, and SQL by journey
+
+Cold-page median request count, response bytes, and accumulated SQL statements in the earlier c1 -> final c1 run:
+
+| Journey | Requests | Response bytes | SQL statements |
+|---|---:|---:|---:|
+| HR sync review | 27 -> 20 | 51,472 -> 49,670 | 111 -> 107 |
+| Transparency | 26 -> 18 | 236,188 -> 76,164 | 175 -> 154 |
+| Hierarchy | 26 -> 19 | 40,345 -> 38,464 | 132 -> 128 |
+| Soldier detail | 32 -> 24 | 200,737 -> 40,634 | 203 -> 184 |
+| Whole calendar | 28 -> 21 | 125,534 -> 123,732 | 177 -> 173 |
+| Synthetic-team calendar | 33 -> 26 | 184,075 -> 182,273 | 245 -> 241 |
+| Home | 43 -> 36 | 209,297 -> 49,316 | 234 -> 217 |
+
+The transparency and soldier-detail journeys have substantially smaller response totals, and all seven reduce request fanout. The calendar byte totals remain similar; its improvement is more consistent with less range/query fanout than a smaller shifts payload. The Home response reduction includes the shared shell and route changes in this implementation interval and cannot be attributed to one endpoint.
+
+### Final route timing and remaining server work
+
+Route p50/p95 wall time (cold; warm), accumulated SQL p50/p95, and SQL count from the final c1 trace:
+
+| Section and route | Wall cold | Wall warm | Accumulated DB cold / warm | SQL / bytes |
+|---|---:|---:|---:|---:|
+| Transparency `GET /api/scoring/transparency/page` | 8.14/9.92 s | 8.58/9.21 s | 3.61/5.34 s; 4.16/4.35 s | 54 / 73,873 |
+| Home alerts `GET /api/command-dashboard/alerts` | 2.97/4.01 s | 3.34/4.14 s | 1.78/1.81 s; 1.39/2.31 s | 17 / 175 |
+| Home potential `GET /api/command-dashboard/potential` | 3.19/4.07 s | 3.23/3.75 s | 2.07/2.49 s; 1.77/2.10 s | 14 / 281 |
+| Home upcoming `GET /api/command-dashboard/upcoming` | 0.61/1.41 s | 0.93/1.31 s | 0.10/0.22 s; 0.10/0.39 s | 14 / 32,026 |
+| Whole calendar `GET /api/calendar/shifts` | 2.10/2.27 s | 1.94/2.14 s | 0.99/1.30 s; 1.06/1.17 s | 34 / 94,570 |
+| Whole calendar `GET /api/ranges` | 0.094/0.130 s | 0.084/0.095 s | 17 statements | 8,023 |
+| Hierarchy first branches `GET /api/hierarchy/branches` | 0.081/0.283 s | — | 21 | 346 |
+| Hierarchy first roster `GET /api/soldiers/roster` | 0.088/0.513 s | 0.095/0.235 s | 7 | about 34.6 KB |
+| Soldier score `GET /api/soldiers/:id/score` | 0.325/0.404 s | 0.259/0.388 s | 27 | 155 |
+| Soldier DTO `GET /api/soldiers/:id` | 0.034/0.107 s | 0.047/0.066 s | 20 | 963 |
+| Shared `GET /api/nav/counts` | 0.88 s p50 | 0.88 s p50 | 37 | 47 |
+| Shared ineligible range count | 1.58 s p50 across 10 Home calls | 1.04 s p50 across 10 Home calls | 17 per response | 11 |
+
+P50/p95 values in the endpoint rows come from five requests per phase unless the row says otherwise. The hierarchy branch warm route is omitted because the trace has repeated branch requests with immediate cached responses; cold first-branch latency is the more representative initial-read sample. A few journey routes are issued more than once per page, so page-level summed DB time is not serial critical-path time. HR-specific API requests are comparatively small (roughly 50–150 ms p50, two or three SQL statements); shared navigation is the larger HR-page server wait. The whole calendar shifts endpoint still takes about two seconds despite the batched range endpoint returning in under 0.15 seconds. For synthetic-team calendar the matching shift response body is only 13 bytes, with p50 around 97 ms cold/122 ms warm, while selected-path page readiness is around 4.85/4.88 seconds; this readiness marker is not event rendering.
+
+The transparency continuation still performs global projection, filter/sort, and complete-row fingerprint work before slicing. An unprofiled direct diagnostic was 7.25 s (54 SQL, 3.31 s accumulated DB). One cProfile sample was 11.35 s (54 SQL, 4.71 s accumulated DB): `_refresh_required_soldier_totals` took 1.105 s, projection readiness 4.40 s, `_try_projected_effort_data` 4.825 s, projection SQL 2.13 s, and projection-key enumeration 1.05 s. The cProfile sample is not a percentile and instrumentation affects duration. Exact page hash matched the earlier response; the measurements point to projection readiness and population-wide preparation as work to bound, but do not prove a single bottleneck phase. The recent SQL aggregation reduced projection row hydration and transparency SQL count, but does not make this route O(page-size).
+
+### Concurrent transparency bursts
+
+| Clients | Earlier cold p50/p95 | Final cold p50/p95 | Earlier warm p50/p95 | Final warm p50/p95 | Final readiness / health |
+|---:|---:|---:|---:|---:|---|
+| 5 | 65.82/87.52 s | 37.92/47.98 s | 60.80/80.21 s | 36.32/46.25 s | 10/10 ready; no unexpected 5xx |
+| 10 | 92.49/126.57 s | 68.54/95.51 s | 101.91/149.64 s | 62.64/86.23 s | 20/20 ready; no unexpected 5xx |
+
+The final c5/c10 traces returned the configured admin-errors endpoint as HTTP 503 because Loki was unavailable; this is the intentional outage state. There were no other HTTP 5xx responses. Each concurrency level is one simultaneous burst, so these results are evidence for those runs only, not capacity percentiles. The older c10 run exhausted the 20-connection pool plus 10 overflow and returned shared-shell HTTP 500s; the final burst did not reproduce that failure. The still-long page readiness values show that the concurrency target is not met.
+
+### Outcome and remaining optimization work
+
+- **Transparency:** summary/row separation, lazy fairness, fewer SQL statements, and SQL-side projected effort aggregation reduce payload/work, but every page still pays for population-wide projection, filtering/sort, and revision/fingerprint preparation. A truly bounded next page requires a stable ordering and authorization/data revision that covers fairness inputs and all source mutations. Keep snapshot caching disabled until source freshness and invalidation are complete.
+- **Home and shared navigation:** the command scope and navigation badge fanout are smaller, but alerts and potential are still multi-second endpoints; the ineligible-soldier count and 37-statement nav aggregate remain costly. Profile these services and reduce duplicate count work before raising pool limits. Defer nonessential shell requests where the UX permits.
+- **Hierarchy and soldier detail:** initial branches and roster pages are sub-second, but full page readiness remains 2.4–4.9 s cold/warm for hierarchy and 3.75 s cold for soldier detail. Further isolate shared-shell waits and modal-selection work. The warm soldier-detail p95 target passes in this run.
+- **Calendar:** range metadata is under 0.15 s, while whole-organization shifts remain about 2 s and synthetic-team selection remains about 4.9 s. Attribute route work by query and server phase; do not infer rendering from the synthetic-team response marker.
+- **HR:** sync-specific reads are fast and read-only; no external provider was called. The page still waits about 2.9/2.4 s p50, largely alongside shared-shell activity, and p95 remains above the target.
+- **Potential:** the new summary/detail split avoids initial detailed soldier payloads for aggregate rows. The summary still scans subtrees, expanded details still load the full selected subtree, and the page still loads the full hierarchy. No PotentialPage browser journey was included in these seven final profiles, so no Potential timing or page-speed gain is claimed.
+- **Full-tree consumers and range candidates:** the hierarchy tree remains in some consumers and some modal flows. The range candidate endpoint still computes and globally orders the authorized eligible pool because auto-select depends on that order. Safe paging needs a bounded ranking/revision contract, while rendering can be virtualized without changing selection order.
+
+The final capture therefore updates the seven-page comparison and confirms one warm p95 target, but it does not close the transparency, Home, calendar, cold-load, or high-concurrency goals. Browser long tasks remain below the multi-second waits; current evidence points to server/API and request coordination time, without assigning every residual to a single backend phase.

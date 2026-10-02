@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "runId": "20261002T163209615Z-49976-b2ba36dc",
+  "generatedAtUtc": "2026-10-02T16:32:09.610Z",
+  "startedAtUtc": "2026-10-02T16:32:09.610Z",
+  "updatedAtUtc": "2026-10-02T16:42:16.026Z",
+  "browser": {
+    "engine": "chromium",
+    "version": "148.0.7778.96"
+  },
+  "runsPerScenario": 5,
+  "batchesPerScenario": 5,
+  "concurrency": 1,
+  "clientsPerBatch": 1,
+  "startBarrier": "all clients begin each cold/warm measurement together",
+  "authenticationSetup": "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
+  "summaryCoverage": "per-run response-byte and database totals require values for every tracked API request",
+  "serverTiming": "x-scale-server-ms measures ASGI time through response-start; serverMinusDbMs is the signed wall-minus-accumulated-SQL residual, not CPU-only time",
+  "timeoutMs": 600000,
+  "scenarios": [
+    {
+      "id": "hr-sync-review",
+      "route": "/admin/settings",
+      "workload": "navigation"
+    },
+    {
+      "id": "transparency-whole-organization",
+      "route": "/transparency",
+      "workload": "navigation"
+    },
+    {
+      "id": "hierarchy-whole-organization",
+      "route": "/team",
+      "workload": "navigation"
+    },
+    {
+      "id": "soldier-detail",
+      "route": "/team",
+      "workload": "soldier-detail"
+    },
+    {
+      "id": "calendar-whole-organization",
+      "route": "/unit-calendar",
+      "workload": "navigation"
+    },
+    {
+      "id": "calendar-synthetic-team",
+      "route": "/unit-calendar",
+      "workload": "calendar-team"
+    },
+    {
+      "id": "home-dashboard",
+      "route": "/",
+      "workload": "navigation"
+    }
+  ],
+  "hrProviderSync": "not-invoked",
+  "measurements": [],
+  "summaries": []
+}
