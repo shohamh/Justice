@@ -13,13 +13,18 @@ Schedule reproduced here (two independent sessions = two HTTP requests):
   2. both meet at a rendezvous right after ``_check_capacity`` returns;
   3. both insert a primary range_assignments row for different soldiers and
      commit.
+
+Fixed (Task 3): ``approve_assignment_request`` takes the same per-date
+advisory lock (then locks the request row) before ``_check_capacity``. The
+second writer blocks until the first commits, so the rendezvous times out for
+the first and the second counts its primary and fails with
+``primary_capacity_exceeded``.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -97,11 +102,6 @@ def _primary_count(session, event_id) -> int:
     ).scalar_one()
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C4: approve_assignment_request skips the per-date advisory lock, so it overruns capacity "
-           "concurrently with add_range_assignment",
-)
 def test_request_approval_and_manual_add_cannot_exceed_capacity(race, admin_session, monkeypatch):
     event_id, request_id, admin_id, manual_id = _seed(admin_session, required_count=1)
 
@@ -113,6 +113,8 @@ def test_request_approval_and_manual_add_cannot_exceed_capacity(race, admin_sess
     assert any(o.ok for o in outcomes), outcomes
     primaries = _primary_count(admin_session, event_id)
     assert primaries <= 1, f"required_count=1 but {primaries} primaries committed; outcomes={outcomes}"
+    loser = next(o for o in outcomes if not o.ok)
+    assert str(loser.error) == "primary_capacity_exceeded"
 
 
 def test_request_approval_and_manual_add_within_capacity_both_succeed(race, admin_session, monkeypatch):
