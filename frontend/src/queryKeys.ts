@@ -40,6 +40,8 @@ export const queryKeys = {
   pendingExemptionRequests: () => ["exemptionRequests", "pending"] as const,
   pendingFieldUpdates: () => ["soldiers", "pendingFieldUpdates"] as const,
   hierarchyTree: () => ["hierarchy", "tree"] as const,
+  hierarchyTreeForPotentialScope: (authorizationScope: string | null) =>
+    ["hierarchy", "tree", "potential", authorizationScope] as const,
   myCommandScope: (soldierId: string | null, authorizationScope: string | null) =>
     ["hierarchy", "myCommandScope", soldierId, authorizationScope] as const,
   hierarchyBranches: (scopeKey?: unknown) =>
@@ -95,6 +97,8 @@ export const queryKeys = {
     ["scoring", "fairnessComponents", nodeId ?? null, authorizationScope] as const,
   eligibilityGroups: () => ["eligibilityGroups"] as const,
   burdenShareGapNodes: (referenceDate?: string) => ["potential", "burdenShareGap", referenceDate ?? null] as const,
+  burdenShareGapNodesForScope: (authorizationScope: string | null, referenceDate: string) =>
+    ["potential", "burdenShareGap", authorizationScope, referenceDate] as const,
   burdenShareBreakdown: (soldierId: string) => ["scoring", "burdenShareBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
   importSessionsList: () => ["import", "sessions"] as const,
@@ -103,7 +107,17 @@ export const queryKeys = {
   importDutyTypesForImport: () => ["import", "dutyTypesForImport"] as const,
   importNodesForImport: () => ["import", "nodesForImport"] as const,
   potentialByNode: (nodeId: string, referenceDate: string) => ["potential", "byNode", nodeId, referenceDate] as const,
+  potentialSummariesForScope: (authorizationScope: string | null) =>
+    ["potential", "summary", authorizationScope] as const,
+  potentialSummaryForScope: (authorizationScope: string | null, nodeId: string, referenceDate: string) =>
+    ["potential", "summary", authorizationScope, nodeId, referenceDate] as const,
+  potentialDetailsForScope: (authorizationScope: string | null) =>
+    ["potential", "detail", authorizationScope] as const,
+  potentialDetailForScope: (authorizationScope: string | null, nodeId: string, referenceDate: string) =>
+    ["potential", "detail", authorizationScope, nodeId, referenceDate] as const,
   potentialModifiers: (nodeId: string) => ["potential", "modifiers", nodeId] as const,
+  potentialModifiersForScope: (authorizationScope: string | null, nodeId: string) =>
+    ["potential", "modifiers", authorizationScope, nodeId] as const,
   scoreAdjustments: (soldierId: string) => ["scoreAdjustments", soldierId] as const,
   soldierScore: (soldierId: string) => ["soldiers", "score", soldierId] as const,
   registrationPublicSettings: () => ["registrationPublicSettings"] as const,

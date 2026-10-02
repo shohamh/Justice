@@ -326,6 +326,8 @@ def test_modifier_deep_in_subtree_rolls_up(app_session):
 
     result = compute_potential(app_session, node_id=parent.id, reference_date=date(2026, 7, 3))
     assert result.final_potential == -5
+    summary = compute_potential_summary(app_session, node_id=parent.id, reference_date=date(2026, 7, 3))
+    assert summary.modifier_total == -5
 
 
 def test_create_modifier_requires_reason(app_session):
@@ -410,6 +412,9 @@ def test_partial_exemption_flags_soldier_still_counted(app_session):
     assert detail.partial_exemption_names == ["פטור שמירות"]
     assert result.raw_eligible_count == 1
     assert result.partial_exemption_count == 1
+    summary = compute_potential_summary(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    assert summary.total_soldiers == 1
+    assert summary.partial_exemption_count == 1
 
 
 def test_fully_exempt_soldier_not_counted_as_partial(app_session):

@@ -9,14 +9,17 @@ import { ExcelExportButton } from "../../components/ExcelExportButton";
 import SoldierLink from "../../components/SoldierLink";
 import {
   getPotential,
+  getPotentialSummary,
   listModifiers,
   createModifier,
   deleteModifier,
   getBurdenShareGap,
-  PotentialResult,
+  PotentialSummary,
   SoldierPotentialDetail,
 } from "../../api/potential";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
+import { getTransparencyAuthorizationScope } from "../../api/auth";
+import { useAuth } from "../../auth/AuthContext";
 import { listDutyTypes } from "../../api/dutyConfig";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
 import { sortNodesByTree } from "../../utils/sortNodesByTree";
@@ -27,6 +30,8 @@ import { todayIso } from "../../utils/formatDate";
 
 export default function PotentialPage() {
   const { t } = useTranslation();
+  const { user, authScopeReady } = useAuth();
+  const authorizationScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
   const queryClient = useQueryClient();
   const { levelTypes } = useLevelTypes();
   const levelLabelByKey = useMemo(
@@ -47,24 +52,29 @@ export default function PotentialPage() {
     setSelectedDutyTypeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeQuery = useQuery({
+    queryKey: queryKeys.hierarchyTreeForPotentialScope(authorizationScope),
+    queryFn: fetchFullTree,
+    enabled: authorizationScope !== null,
+  });
   const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
 
   const nodes = useMemo(() => sortNodesByTree(treeNodes).map((n) => n.node), [treeNodes]);
 
   const topLevelRoots = useMemo(() => nodes.filter((n) => n.parent_id === null), [nodes]);
 
-  const potentialQueries = useQueries({
+  const summaryQueries = useQueries({
     queries: nodes.map((n) => ({
-      queryKey: queryKeys.potentialByNode(n.id, referenceDate),
-      queryFn: () => getPotential(n.id, referenceDate),
+      queryKey: queryKeys.potentialSummaryForScope(authorizationScope, n.id, referenceDate),
+      queryFn: () => getPotentialSummary(n.id, referenceDate),
+      enabled: authorizationScope !== null,
     })),
   });
 
   const results = useMemo(() => {
-    const byId: Record<string, PotentialResult> = {};
+    const byId: Record<string, PotentialSummary> = {};
     nodes.forEach((n, i) => {
-      const result = potentialQueries[i];
+      const result = summaryQueries[i];
       if (result?.data) {
         byId[n.id] = result.data;
       } else if (result?.isError) {
@@ -72,23 +82,39 @@ export default function PotentialPage() {
       }
     });
     return byId;
-  }, [nodes, potentialQueries]);
+  }, [nodes, summaryQueries]);
+
+  const detailNodeIds = useMemo(
+    () => expandedNodeId === WHOLE_ORG_ID
+      ? topLevelRoots.map((node) => node.id)
+      : expandedNodeId ? [expandedNodeId] : [],
+    [expandedNodeId, topLevelRoots],
+  );
+  const detailQueries = useQueries({
+    queries: detailNodeIds.map((nodeId) => ({
+      queryKey: queryKeys.potentialDetailForScope(authorizationScope, nodeId, referenceDate),
+      queryFn: () => getPotential(nodeId, referenceDate),
+      enabled: authorizationScope !== null,
+    })),
+  });
+  const detailError = detailQueries.some((query) => query.isError);
+  const detailReady = detailQueries.length > 0 && detailQueries.every((query) => !!query.data);
+  const detailSoldiers = detailReady ? detailQueries.flatMap((query) => query.data?.soldiers ?? []) : [];
 
   // Synthetic aggregate row representing the whole organization. Skipped when
   // there's exactly one real root node, since that node's own row already IS
   // the whole-org total — only needed as a fallback for 0 or 2+ real roots.
-  const wholeOrgResult = useMemo((): PotentialResult | null => {
+  const wholeOrgResult = useMemo((): PotentialSummary | null => {
     if (topLevelRoots.length <= 1) return null;
-    const rootResults = topLevelRoots.map((n) => results[n.id]).filter((r): r is PotentialResult => !!r);
+    const rootResults = topLevelRoots.map((n) => results[n.id]).filter((r): r is PotentialSummary => !!r);
     if (rootResults.length !== topLevelRoots.length) return null; // not all roots loaded yet
     return {
       node_id: WHOLE_ORG_ID,
       as_of: rootResults[0].as_of,
       raw_eligible_count: rootResults.reduce((s, r) => s + r.raw_eligible_count, 0),
       total_soldiers: rootResults.reduce((s, r) => s + r.total_soldiers, 0),
-      modifiers: rootResults.flatMap((r) => r.modifiers),
+      modifier_total: rootResults.reduce((s, r) => s + r.modifier_total, 0),
       final_potential: rootResults.reduce((s, r) => s + r.final_potential, 0),
-      soldiers: rootResults.flatMap((r) => r.soldiers),
       partial_exemption_count: rootResults.reduce((s, r) => s + r.partial_exemption_count, 0),
     };
   }, [topLevelRoots, results]);
@@ -111,21 +137,23 @@ export default function PotentialPage() {
     can_edit: false,
   }), [t]);
 
+  const hasWholeOrgResult = wholeOrgResult !== null;
   const tableRows = useMemo(
-    () => (wholeOrgResult ? [wholeOrgNode, ...nodes] : nodes),
-    [wholeOrgResult, wholeOrgNode, nodes],
+    () => (hasWholeOrgResult ? [wholeOrgNode, ...nodes] : nodes),
+    [hasWholeOrgResult, wholeOrgNode, nodes],
   );
 
   const modifiersQuery = useQuery({
-    queryKey: queryKeys.potentialModifiers(expandedNodeId ?? "none"),
+    queryKey: queryKeys.potentialModifiersForScope(authorizationScope, expandedNodeId ?? "none"),
     queryFn: () => listModifiers(expandedNodeId!),
-    enabled: !!expandedNodeId && expandedNodeId !== WHOLE_ORG_ID,
+    enabled: authorizationScope !== null && !!expandedNodeId && expandedNodeId !== WHOLE_ORG_ID,
   });
   const modifiers = useMemo(() => modifiersQuery.data ?? [], [modifiersQuery.data]);
 
   const burdenShareGapQuery = useQuery({
-    queryKey: queryKeys.burdenShareGapNodes(referenceDate),
+    queryKey: queryKeys.burdenShareGapNodesForScope(authorizationScope, referenceDate),
     queryFn: () => getBurdenShareGap(referenceDate),
+    enabled: authorizationScope !== null,
   });
   const burdenShareGapByNode = useMemo(
     () => new Map((burdenShareGapQuery.data ?? []).map((r) => [r.node_id, r])),
@@ -135,8 +163,12 @@ export default function PotentialPage() {
   async function handleAddModifier() {
     if (!expandedNodeId || expandedNodeId === WHOLE_ORG_ID || !newReason.trim()) return;
     await createModifier({ hierarchy_node_id: expandedNodeId, delta: newDelta, reason: newReason, start_date: referenceDate });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialModifiers(expandedNodeId) });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialByNode(expandedNodeId, referenceDate) });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialModifiersForScope(authorizationScope, expandedNodeId) });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.potentialSummariesForScope(authorizationScope) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.potentialDetailsForScope(authorizationScope) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.burdenShareGapNodesForScope(authorizationScope, referenceDate) }),
+    ]);
     setNewReason("");
     setNewDelta(0);
   }
@@ -144,12 +176,16 @@ export default function PotentialPage() {
   async function handleDeleteModifier(modifierId: string) {
     if (!expandedNodeId) return;
     await deleteModifier(modifierId);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialModifiers(expandedNodeId) });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialByNode(expandedNodeId, referenceDate) });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialModifiersForScope(authorizationScope, expandedNodeId) });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.potentialSummariesForScope(authorizationScope) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.potentialDetailsForScope(authorizationScope) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.burdenShareGapNodesForScope(authorizationScope, referenceDate) }),
+    ]);
   }
 
-  function modifierSum(r: PotentialResult | undefined): number {
-    return r ? r.modifiers.reduce((s, m) => s + m.delta, 0) : 0;
+  function modifierSum(r: PotentialSummary | undefined): number {
+    return r?.modifier_total ?? 0;
   }
 
   function pctOfParentValue(n: NodeDTO): number | null {
@@ -414,13 +450,24 @@ export default function PotentialPage() {
             onToggle: (n) => toggleExpanded(n.id),
             content: (n) => (
               <div className="p-2">
-                <DataTable
-                  columns={soldierCols}
-                  data={filterSoldiersByDutyType(displayResults[n.id]?.soldiers ?? [])}
-                  filterPlaceholder={t("table.filter_placeholder")}
-                  emptyMessage={t("potential.no_soldiers")}
-                  testId={`potential-soldiers-table-${n.id}`}
-                />
+                {detailError ? (
+                  <div role="alert" className="text-red-600 dark:text-red-400">
+                    {t("potential.details_load_error")}
+                    <button type="button" className="underline mr-2" onClick={() => {
+                      detailQueries.filter((query) => query.isError).forEach((query) => void query.refetch());
+                    }}>{t("potential.retry")}</button>
+                  </div>
+                ) : detailReady ? (
+                  <DataTable
+                    columns={soldierCols}
+                    data={filterSoldiersByDutyType(detailSoldiers)}
+                    filterPlaceholder={t("table.filter_placeholder")}
+                    emptyMessage={t("potential.no_soldiers")}
+                    testId={`potential-soldiers-table-${n.id}`}
+                  />
+                ) : (
+                  <p role="status">{t("potential.details_loading")}</p>
+                )}
               </div>
             ),
           }}

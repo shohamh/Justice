@@ -77,6 +77,8 @@ class PotentialSummaryResult:
     node_id: uuid.UUID
     as_of: date
     raw_eligible_count: int
+    total_soldiers: int
+    partial_exemption_count: int
     modifier_total: int
     final_potential: int
 
@@ -346,6 +348,8 @@ def compute_potential_summary(
         node_id=result.node_id,
         as_of=result.as_of,
         raw_eligible_count=result.raw_eligible_count,
+        total_soldiers=result.total_soldiers,
+        partial_exemption_count=result.partial_exemption_count,
         modifier_total=result.modifier_total,
         final_potential=result.final_potential,
     )

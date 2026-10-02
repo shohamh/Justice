@@ -33,11 +33,13 @@ describe("getPotential", () => {
 });
 
 describe("getPotentialSummary", () => {
-  it("requests only Home aggregate fields for the requested node and date", async () => {
+  it("returns compact aggregate fields for the requested node and date", async () => {
     const summary = {
       node_id: "node-1",
       as_of: "2026-09-15",
       raw_eligible_count: 3,
+      total_soldiers: 4,
+      partial_exemption_count: 1,
       modifier_total: 2,
       final_potential: 5,
     };

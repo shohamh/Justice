@@ -38,6 +38,8 @@ export interface PotentialSummary {
   node_id: string;
   as_of: string;
   raw_eligible_count: number;
+  total_soldiers: number;
+  partial_exemption_count: number;
   modifier_total: number;
   final_potential: number;
 }

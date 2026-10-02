@@ -157,6 +157,8 @@ beforeEach(() => {
     node_id: "node-1",
     as_of: "2026-08-31",
     raw_eligible_count: 3,
+    total_soldiers: 5,
+    partial_exemption_count: 0,
     modifier_total: 0,
     final_potential: 3,
   });
@@ -383,6 +385,8 @@ describe("HomePage - required scoring data load errors", () => {
       node_id: "node-1",
       as_of: "2026-09-15",
       raw_eligible_count: 3,
+      total_soldiers: 5,
+      partial_exemption_count: 0,
       modifier_total: 2,
       final_potential: 5,
     });
