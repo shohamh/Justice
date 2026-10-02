@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import delete, event, text
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType
+from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType, SystemSetting
 from app.services import calendar_shifts
 from app.services.assignments import create_assignment
 from app.services.duty_config import create_duty_type
@@ -112,6 +112,196 @@ def test_calendar_shifts_hides_shift_filled_entirely_outside_subtree(admin_sessi
         admin_session, node_id=node_a.id, date_from=date(2026, 6, 1), date_to=date(2026, 6, 2),
     )
     assert shift.id not in {r["id"] for r in rows_a}
+
+
+def test_hierarchy_calendar_reads_display_data_with_matching_assignments(admin_session):
+    node = create_node(admin_session, level="division", name="calendar-assignment-scope")
+    soldier = create_soldier(
+        admin_session,
+        personal_number="calendar-assignment-scope",
+        hierarchy_node_id=node.id,
+        full_name="Visible Soldier",
+    )
+    soldier.profile_picture_url = "https://example.invalid/calendar-soldier.png"
+    _unused_soldier = create_soldier(
+        admin_session,
+        personal_number="calendar-assignment-scope-unused",
+        hierarchy_node_id=node.id,
+    )
+    dt, loc = _make_duty_type_and_location(admin_session, "assignment-scope")
+    day = date(2026, 6, 1)
+    shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+    )
+    create_assignment(
+        admin_session,
+        soldier_id=soldier.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+        duty_shift_id=shift.id,
+    )
+    admin_session.commit()
+
+    statements = []
+
+    def record(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(" ".join(statement.lower().split()))
+
+    engine = admin_session.get_bind()
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        rows = calendar_shifts.get_calendar_shifts(
+            admin_session,
+            node_id=node.id,
+            date_from=day,
+            date_to=day,
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    matching_assignment_reads = [
+        statement
+        for statement in statements
+        if " from duty_assignments join soldiers " in statement
+    ]
+    assert matching_assignment_reads
+    assert not any(" from soldiers " in statement for statement in statements)
+    assert len(rows) == 1
+    assert rows[0]["assignees"][0]["soldier_id"] == soldier.id
+    assert rows[0]["assignees"][0]["soldier_name"] == "Visible Soldier"
+    assert rows[0]["assignees"][0]["hierarchy_label"] == node.name
+    assert rows[0]["assignees"][0]["hierarchy_path_ids"] == [str(node.id)]
+    assert rows[0]["assignees"][0]["profile_picture_url"] == soldier.profile_picture_url
+
+
+def test_hierarchy_calendar_omits_inactive_assignees(admin_session):
+    node = create_node(admin_session, level="division", name="calendar-inactive-assignee")
+    active = create_soldier(
+        admin_session, personal_number="calendar-active-assignee", hierarchy_node_id=node.id
+    )
+    inactive = create_soldier(
+        admin_session, personal_number="calendar-inactive-assignee", hierarchy_node_id=node.id
+    )
+    inactive.left_at = date(2026, 5, 31)
+    dt, loc = _make_duty_type_and_location(admin_session, "inactive-assignee")
+    day = date(2026, 6, 1)
+    shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+    )
+    for soldier in (active, inactive):
+        create_assignment(
+            admin_session,
+            soldier_id=soldier.id,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            start_date=day,
+            end_date=day + timedelta(days=1),
+            duty_shift_id=shift.id,
+        )
+    admin_session.commit()
+
+    rows = calendar_shifts.get_calendar_shifts(
+        admin_session,
+        node_id=node.id,
+        date_from=day,
+        date_to=day,
+    )
+
+    assert len(rows) == 1
+    assert [assignee["soldier_id"] for assignee in rows[0]["assignees"]] == [active.id]
+
+
+def test_personal_calendar_includes_departed_soldiers_assignments(admin_session):
+    node = create_node(admin_session, level="division", name="calendar-departed-personal")
+    soldier = create_soldier(
+        admin_session, personal_number="calendar-departed-personal", hierarchy_node_id=node.id
+    )
+    soldier.left_at = date(2026, 5, 31)
+    dt, loc = _make_duty_type_and_location(admin_session, "departed-personal")
+    day = date(2026, 6, 1)
+    shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+    )
+    create_assignment(
+        admin_session,
+        soldier_id=soldier.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+        duty_shift_id=shift.id,
+    )
+    admin_session.commit()
+
+    rows = calendar_shifts.get_calendar_shifts(
+        admin_session,
+        soldier_id=soldier.id,
+        date_from=day,
+        date_to=day,
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["assignees"][0]["soldier_id"] == soldier.id
+
+
+def test_framework_calendar_includes_unassigned_shifts(admin_session):
+    root = create_node(admin_session, level="corps", name="calendar-framework-root")
+    unit = create_node(admin_session, level="team", name="calendar-framework-team", parent=root)
+    member = create_soldier(
+        admin_session, personal_number="calendar-framework-member", hierarchy_node_id=unit.id
+    )
+    admin_session.merge(SystemSetting(key="system.root_node_id", value=str(root.id), updated_by=None))
+    dt, loc = _make_duty_type_and_location(admin_session, "framework-unassigned")
+    day = date(2026, 6, 1)
+    assigned_shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+    )
+    open_shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+    )
+    create_assignment(
+        admin_session,
+        soldier_id=member.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=day,
+        end_date=day + timedelta(days=1),
+        duty_shift_id=assigned_shift.id,
+    )
+    admin_session.commit()
+
+    rows = calendar_shifts.get_calendar_shifts(
+        admin_session,
+        node_id=root.id,
+        date_from=day,
+        date_to=day,
+    )
+
+    assert {row["id"] for row in rows} == {assigned_shift.id, open_shift.id}
+    assert next(row for row in rows if row["id"] == open_shift.id)["assignees"] == []
 
 
 def test_calendar_shift_list_queries_stay_bounded_as_shift_count_grows(admin_session):
