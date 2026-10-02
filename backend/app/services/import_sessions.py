@@ -1661,10 +1661,24 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
         soldier.next_rank_date_overridden = False
 
 
+def _lock_import_session(session: Session, session_id: uuid.UUID) -> ImportSession | None:
+    """Load an import session with SELECT ... FOR UPDATE (fresh from the DB).
+
+    confirm_session and cancel_session both check ``status == 'draft'`` and
+    then move the session out of draft. Holding the row lock from that check
+    until commit means a second confirm, or a cancel, waits for the first
+    decision and then sees its committed status instead of applying the
+    import a second time (or after a successful cancel).
+    """
+    return session.get(
+        ImportSession, session_id, with_for_update=True, populate_existing=True,
+    )
+
+
 def confirm_session(
     session: Session, *, session_id: uuid.UUID, actor: Soldier, storage: ObjectStorage | None = None
 ) -> dict:
-    import_session = session.get(ImportSession, session_id)
+    import_session = _lock_import_session(session, session_id)
     if import_session is None:
         raise ImportSessionError("session_not_found")
     if import_session.status != "draft":
@@ -2955,7 +2969,7 @@ def confirm_session(
 def cancel_session(
     session: Session, *, session_id: uuid.UUID, actor: Soldier
 ) -> ImportSession:
-    import_session = session.get(ImportSession, session_id)
+    import_session = _lock_import_session(session, session_id)
     if import_session is None:
         raise ImportSessionError("session_not_found")
     if import_session.status != "draft":

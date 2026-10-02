@@ -15,13 +15,17 @@ Schedules reproduced here (two independent sessions = two HTTP requests):
     1. the confirm request reads the session (status=draft) and parks;
     2. the cancel request reads draft, sets cancelled and commits;
     3. the confirm request resumes, creates the shift, sets confirmed, commits.
+
+Fixed (Task 3): confirm_session and cancel_session load the import session
+with ``SELECT ... FOR UPDATE``. The second request blocks on the row lock, so
+the first request's wait times out and it commits alone; the second then reads
+the committed status and fails with ``only_draft_sessions_can_be_*``.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import DutyLocation, DutyShift, DutyType, ImportSession, Soldier
@@ -56,10 +60,6 @@ def _shift_count(session) -> int:
     return session.execute(select(func.count()).select_from(DutyShift)).scalar_one()
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C6: two concurrent confirm_session calls both pass the unlocked draft check and apply the import twice",
-)
 def test_concurrent_confirms_apply_the_import_once(race, admin_session):
     session_id, admin_id = _seed_draft(admin_session)
     after_status_read = race.rendezvous(2, "both confirms read status=draft")
@@ -80,12 +80,10 @@ def test_concurrent_confirms_apply_the_import_once(race, admin_session):
     shifts = _shift_count(admin_session)
     assert shifts == 1, f"the one-row import created {shifts} duty shifts; outcomes={outcomes}"
     assert sum(o.ok for o in outcomes) == 1
+    loser = next(o for o in outcomes if not o.ok)
+    assert str(loser.error) == "only_draft_sessions_can_be_confirmed"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="C6: a confirm that read status=draft still applies the import after a concurrent cancel committed",
-)
 def test_cancel_committed_during_confirm_stops_the_import(race, admin_session):
     session_id, admin_id = _seed_draft(admin_session)
     confirm_read = race.signal("confirm read status=draft")
@@ -125,3 +123,7 @@ def test_cancel_committed_during_confirm_stops_the_import(race, admin_session):
     shifts = _shift_count(admin_session)
     assert sum(o.ok for o in outcomes) == 1, f"both confirm and cancel succeeded; final status={status!r}, shifts={shifts}"
     assert (status, shifts) in {("cancelled", 0), ("confirmed", 1)}, (status, shifts)
+    # The confirm holds the row lock from its draft check, so the cancel waits
+    # for it and then loses.
+    assert (status, shifts) == ("confirmed", 1)
+    assert str(outcomes[1].error) == "only_draft_sessions_can_be_cancelled"
