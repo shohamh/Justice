@@ -19,6 +19,15 @@ class ReserveError(Exception):
     """Raised on invalid reserve operations."""
 
 
+def _lock_assignment_for_dismissal(session: Session, assignment: DutyAssignment) -> None:
+    """Serialize dismissals of one assignment so the overlap check and the
+    insert cannot interleave. FOR NO KEY UPDATE does not conflict with the
+    KEY SHARE lock that child-row inserts (dismissals, links) take."""
+    session.execute(
+        select(DutyAssignment.id).where(DutyAssignment.id == assignment.id).with_for_update(key_share=True)
+    )
+
+
 def call_up_reserve(
     session: Session,
     *,
@@ -83,6 +92,7 @@ def dismiss_primary(
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
+    _lock_assignment_for_dismissal(session, assignment)
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
@@ -219,6 +229,7 @@ def dismiss_reserve(
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
+    _lock_assignment_for_dismissal(session, assignment)
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)

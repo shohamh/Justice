@@ -11,13 +11,17 @@ the same soldier for overlapping days):
   2. both insert their dismissal and commit.
 The assignment ends up with two overlapping dismissals, and the soldier gets
 two "dismissed" notifications for the same days.
+
+Fixed (Task 4): ``dismiss_primary`` and ``dismiss_reserve`` lock the assignment
+row (``FOR NO KEY UPDATE``) before reading its dismissals. The second request
+blocks, the first's rendezvous times out and it commits, and the second then
+sees the committed dismissal and fails with ``overlapping_dismissal``.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -64,7 +68,6 @@ def _seed(session):
     return assignment.id, admin.id
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C16/D1: dismissal overlap check is not serialized")
 def test_concurrent_overlapping_dismissals_record_only_one(race, admin_session):
     assignment_id, admin_id = _seed(admin_session)
     after_overlap_read = race.rendezvous(2, "both read the existing dismissals")
