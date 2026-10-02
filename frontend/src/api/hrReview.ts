@@ -128,3 +128,94 @@ export async function runSyncNow(): Promise<RunNowResultDTO> {
   const r = await api.post<unknown>("/admin/hr-sync/run-now");
   return requiredObjectResponse(r.data, "Invalid run-now response") as unknown as RunNowResultDTO;
 }
+
+// ---- HR identity conflicts (duplicate personal numbers / colliding identities) ----
+
+export type HrIdentityConflictStatus = "open" | "acknowledged" | "resolved";
+
+export interface HrIdentityCandidateDTO {
+  index: number;
+  key_type: string | null;
+  key_value: string | null;
+  /** Raw HR record, camelCase aliases as HR sends them. */
+  payload: Record<string, unknown>;
+  is_applied: boolean;
+  choosable: boolean;
+  /** Backend code explaining why this candidate cannot be chosen. */
+  invalid_reason: string | null;
+}
+
+export interface HrPreferredRecordDTO {
+  personal_number: string;
+  key_type: string;
+  key_value: string;
+  chosen_by: string | null;
+  chosen_by_name: string | null;
+  chosen_at: string;
+}
+
+export interface HrCollidingSoldierDTO {
+  soldier_id: string;
+  full_name: string | null;
+  personal_number: string | null;
+}
+
+export interface HrIdentityConflictDTO {
+  id: string;
+  personal_number: string;
+  kind: string;
+  reason: string;
+  status: HrIdentityConflictStatus;
+  applied_index: number | null;
+  chosen_index: number | null;
+  candidates: HrIdentityCandidateDTO[];
+  colliding_soldiers: HrCollidingSoldierDTO[];
+  preferred_record: HrPreferredRecordDTO | null;
+  hr_person_sync_id: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+}
+
+function parseHrConflict(value: unknown): HrIdentityConflictDTO {
+  const data = requiredObjectResponse(value, "Invalid identity conflict response");
+  return {
+    ...(data as unknown as HrIdentityConflictDTO),
+    candidates: optionalArrayResponse<HrIdentityCandidateDTO>(data.candidates),
+    colliding_soldiers: optionalArrayResponse<HrCollidingSoldierDTO>(data.colliding_soldiers),
+    preferred_record: (data.preferred_record ?? null) as HrPreferredRecordDTO | null,
+  };
+}
+
+export async function listHrIdentityConflicts(
+  status: HrIdentityConflictStatus | "all" = "open",
+): Promise<{ items: HrIdentityConflictDTO[] }> {
+  const r = await api.get<unknown>("/admin/hr-sync/identity-conflicts", { params: { status } });
+  const data = requiredObjectResponse(r.data, "Invalid identity-conflicts response");
+  return { items: optionalArrayResponse<unknown>(data.items).map(parseHrConflict) };
+}
+
+export async function acknowledgeHrIdentityConflict(conflictId: string): Promise<HrIdentityConflictDTO> {
+  const r = await api.post<unknown>(`/admin/hr-sync/identity-conflicts/${conflictId}/acknowledge`);
+  return parseHrConflict(r.data);
+}
+
+export async function chooseHrIdentityCandidate(
+  conflictId: string, candidateIndex: number,
+): Promise<HrIdentityConflictDTO> {
+  const r = await api.post<unknown>(
+    `/admin/hr-sync/identity-conflicts/${conflictId}/choose`, { candidate_index: candidateIndex },
+  );
+  return parseHrConflict(r.data);
+}
+
+export async function listHrPreferredRecords(): Promise<{ items: HrPreferredRecordDTO[] }> {
+  const r = await api.get<unknown>("/admin/hr-sync/preferred-records");
+  const data = requiredObjectResponse(r.data, "Invalid preferred-records response");
+  return { items: optionalArrayResponse<HrPreferredRecordDTO>(data.items) };
+}
+
+export async function clearHrPreferredRecord(personalNumber: string): Promise<void> {
+  await api.delete(`/admin/hr-sync/preferred-records/${encodeURIComponent(personalNumber)}`);
+}
