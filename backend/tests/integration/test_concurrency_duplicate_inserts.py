@@ -104,7 +104,6 @@ def test_concurrent_day_overrides_for_one_day_both_succeed(race, admin_session):
     assert _count(admin_session, DutyDayOverride, duty_assignment_id=a.id) == 1
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C17: take_free IntegrityError is not translated")
 def test_concurrent_take_free_of_one_duty_yields_already_pending(race, admin_session, monkeypatch):
     owner = create_soldier(admin_session, personal_number="race-dup-tf-owner")
     c1 = create_soldier(admin_session, personal_number="race-dup-tf-c1")
