@@ -57,6 +57,58 @@ _CANCEL_KEY_PREFIX = "algo_job_cancel:"
 _CANCEL_KEY_TTL_SECONDS = 3600  # long enough to outlive any single job run
 _CANCEL_POLL_SECONDS = 0.5
 
+# Session-level advisory lock held by the process that is running a job, on a
+# dedicated connection, for as long as the run lasts. PostgreSQL drops it when
+# that connection goes away (process crash/restart), which is exactly what
+# makes a 'running' row an orphan. See job_has_live_runner.
+_JOB_RUNNER_LOCK_NAMESPACE = 0x414C474A  # "ALGJ"
+
+
+def _job_runner_lock_key(job_id: uuid.UUID):
+    return func.hashtext(str(job_id))
+
+
+def _acquire_job_runner_lock(job_id: uuid.UUID):
+    """Return a connection holding the job's runner lock, or None if another
+    live process already holds it (that process is running this job)."""
+    from app.db.session import get_engine
+
+    conn = get_engine().connect()
+    try:
+        acquired = conn.execute(
+            select(func.pg_try_advisory_lock(_JOB_RUNNER_LOCK_NAMESPACE, _job_runner_lock_key(job_id)))
+        ).scalar_one()
+        # A session-level advisory lock outlives the transaction; commit so the
+        # connection does not sit idle in transaction for the whole solve.
+        conn.commit()
+    except BaseException:
+        conn.close()
+        raise
+    if not acquired:
+        conn.close()
+        return None
+    return conn
+
+
+def _release_job_runner_lock(conn, job_id: uuid.UUID) -> None:
+    try:
+        conn.execute(select(func.pg_advisory_unlock(_JOB_RUNNER_LOCK_NAMESPACE, _job_runner_lock_key(job_id))))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def job_has_live_runner(session: Session, job_id: uuid.UUID) -> bool:
+    """True when some live process holds the job's runner lock.
+
+    Uses a transaction-scoped try-lock, so a probe that succeeds keeps the
+    lock until the caller's commit, which stops the job from being claimed
+    while the caller marks it failed."""
+    acquired = session.execute(
+        select(func.pg_try_advisory_xact_lock(_JOB_RUNNER_LOCK_NAMESPACE, _job_runner_lock_key(job_id)))
+    ).scalar_one()
+    return not acquired
+
 
 def request_job_cancellation(job_id: uuid.UUID) -> None:
     """Mark a job as cancel-requested in Redis, visible to whichever replica
@@ -1466,7 +1518,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         target=_watch_job_cancel_requested, args=(job_id, cancel_event), daemon=True,
     ).start()
 
+    runner_lock = None
     try:
+        # Mark this process as the job's live runner for the whole run, so a
+        # sibling web worker's startup hook does not fail it as orphaned.
+        runner_lock = _acquire_job_runner_lock(job_id)
+        if runner_lock is None:
+            _log.warning("[job %s] another live process is already running this job", job_id)
+            return
         with session_scope() as session:
             job = session.get(AlgorithmJob, job_id)
             if job is None:
@@ -1951,7 +2010,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         # cancel_event as a "should I stop" signal.
         cancel_event.set()
         _cancel_events.pop(str(job_id), None)
-        _clear_cancellation_request(job_id)
+        if runner_lock is not None:
+            try:
+                _release_job_runner_lock(runner_lock, job_id)
+            except Exception:  # noqa: BLE001 - closing the connection drops the lock anyway
+                _log.exception("[job %s] failed to release the runner lock", job_id)
+            # Only the job's runner clears its Redis cancel flag; a process
+            # that found another live runner must leave it for that runner.
+            _clear_cancellation_request(job_id)
 
 
 def serialize_solver_inputs(

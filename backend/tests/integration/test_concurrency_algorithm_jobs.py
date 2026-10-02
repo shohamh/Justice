@@ -20,13 +20,20 @@ The audit's original J1 hypothesis (a cancel committing between the runner's
 then ``persist_results`` has flushed an UPDATE of the job row, so the cancel
 blocks on that row lock until the runner commits. The second schedule above
 is what that cancel actually does once the lock is released.
+
+Fixed (Task 4):
+* the runner claims the job with ``UPDATE ... WHERE status='pending'`` and
+  returns when the claim matches no row;
+* ``cancel_job`` (and the timeout watchdog) re-read the job ``FOR UPDATE``
+  before checking its status, so a finished job gets 409 ``not_cancellable``;
+* the runner holds a session-level advisory lock for the job on a dedicated
+  connection for the whole run; the startup hook fails a ``running`` job only
+  when it can take that lock (its owner connection is gone).
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
 from decimal import Decimal
-
-import pytest
 
 from app.db.models import AlgorithmJob, DutyLocation, DutyShift, DutyType, Soldier
 from tests.helpers import create_node, create_soldier
@@ -161,7 +168,6 @@ def test_cancel_cannot_overwrite_a_job_that_finished_after_its_read(race, admin_
     assert (cancelled.error.status_code, cancelled.error.detail) == (409, "not_cancellable")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C13/J4: startup hook fails jobs a sibling process is solving")
 def test_startup_hook_does_not_fail_a_job_another_process_is_solving(race, admin_session, monkeypatch):
     from app.main import _fail_orphaned_algorithm_jobs
     from app.services import algorithm_bridge
@@ -198,3 +204,16 @@ def test_startup_hook_does_not_fail_a_job_another_process_is_solving(race, admin
     final_status, final_error = _status(admin_session, job_id)
     assert "server_restarted" not in (final_error or ""), (final_status, final_error)
     assert final_status in ("done", "failed")
+
+
+def test_startup_hook_still_fails_a_job_whose_runner_is_gone(admin_session):
+    """Control: with no live runner holding the job's lock, the row is an orphan."""
+    from app.main import _fail_orphaned_algorithm_jobs
+
+    job_id, _dm_id = _seed(admin_session, "dead", status="running")
+
+    _fail_orphaned_algorithm_jobs()
+
+    assert _status(admin_session, job_id) == (
+        "failed", '{"status": "INTERRUPTED", "reason": "server_restarted"}',
+    )
