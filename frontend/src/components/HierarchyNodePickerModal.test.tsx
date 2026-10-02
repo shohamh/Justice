@@ -131,7 +131,7 @@ describe("HierarchyNodePickerModal", () => {
       expect.objectContaining({ parentId: "root-1" }),
     );
     fireEvent.click(screen.getByTestId("picker-select-node-unit-1"));
-    expect(onPicked).toHaveBeenCalledWith("unit-1", "Unit Alpha");
+    expect(onPicked).toHaveBeenCalledWith("unit-1", "Unit Alpha", ["Root", "Unit Alpha"]);
   });
 
   it("continues a branch page with an accessible load-more control", async () => {

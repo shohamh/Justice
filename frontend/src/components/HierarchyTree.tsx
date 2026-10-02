@@ -468,6 +468,13 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null);
   const [transferReason, setTransferReason] = useState("");
   const portfolioDialog = usePortfolioDialog(nodes, onChanged);
+  const hierarchyPathByNodeId = useMemo(() => {
+    const namesById = new Map(nodes.map((node) => [node.id, node.name]));
+    return new Map(nodes.map((node) => [
+      node.id,
+      node.path_ids.map((id) => namesById.get(id)).filter((name): name is string => Boolean(name)),
+    ]));
+  }, [nodes]);
 
   const { levelTypes, loading: levelTypesLoading } = useLevelTypes();
   const { rankByKey, maxRank, labelByKey } = useMemo(() => {
@@ -678,7 +685,12 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
                 s={s}
                 nodeId={node.id}
                 canEdit={node.can_edit}
-                onEdit={setEditSoldier}
+                onEdit={(selectedSoldier) => setEditSoldier({
+                  ...selectedSoldier,
+                  hierarchy_path: selectedSoldier.hierarchy_path?.length
+                    ? selectedSoldier.hierarchy_path
+                    : hierarchyPathByNodeId.get(selectedSoldier.hierarchy_node_id ?? "") ?? [],
+                })}
                 t={t}
               />
             ))}
@@ -760,7 +772,6 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         <UnifiedSoldierModal
           soldier={editSoldier}
           score={null}
-          nodes={nodes}
           onClose={() => setEditSoldier(null)}
           onRefresh={onChanged}
           initialEditing={true}

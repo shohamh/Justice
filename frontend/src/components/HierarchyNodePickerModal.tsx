@@ -16,7 +16,7 @@ import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   onClose: () => void;
-  onPicked: (nodeId: string, nodeName: string) => void;
+  onPicked: (nodeId: string, nodeName: string, path?: string[]) => void;
 }
 
 function useNearEndPrefetch({
@@ -94,12 +94,14 @@ function BranchContinuation({
 function BranchNode({
   node,
   depth,
+  ancestorNames,
   scopeKey,
   scrollRoot,
   onPicked,
 }: {
   node: NodeDTO;
   depth: number;
+  ancestorNames: string[];
   scopeKey: string;
   scrollRoot: HTMLElement | null;
   onPicked: Props["onPicked"];
@@ -175,7 +177,7 @@ function BranchNode({
         <button
           type="button"
           className="shrink-0 text-xs text-indigo-600 hover:underline"
-          onClick={() => onPicked(node.id, node.name)}
+          onClick={() => onPicked(node.id, node.name, [...ancestorNames, node.name])}
           data-testid={`picker-select-node-${node.id}`}
         >
           בחר
@@ -197,6 +199,7 @@ function BranchNode({
               key={child.id}
               node={child}
               depth={depth + 1}
+              ancestorNames={[...ancestorNames, node.name]}
               scopeKey={scopeKey}
               scrollRoot={scrollRoot}
               onPicked={onPicked}
@@ -298,7 +301,7 @@ export default function HierarchyNodePickerModal({ onClose, onPicked }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(event) => { event.stopPropagation(); onClose(); }}>
       <div
         className="flex max-h-[80dvh] w-96 flex-col rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
         dir="rtl"
@@ -348,7 +351,7 @@ export default function HierarchyNodePickerModal({ onClose, onPicked }: Props) {
                 <button
                   type="button"
                   className="shrink-0 text-xs text-indigo-600 hover:underline"
-                  onClick={() => onPicked(match.node.id, match.node.name)}
+                  onClick={() => onPicked(match.node.id, match.node.name, matchPath(match).map((part) => part.name))}
                   data-testid={`picker-select-node-${match.node.id}`}
                 >
                   בחר
@@ -379,6 +382,7 @@ export default function HierarchyNodePickerModal({ onClose, onPicked }: Props) {
                   key={node.id}
                   node={node}
                   depth={0}
+                  ancestorNames={[]}
                   scopeKey={authorizationScope}
                   scrollRoot={scrollRoot}
                   onPicked={onPicked}
