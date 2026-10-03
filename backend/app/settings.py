@@ -1,7 +1,9 @@
+import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Repo-root env files, resolved by absolute path so they're found regardless
@@ -12,11 +14,69 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULTS_FILE = _REPO_ROOT / ".env.defaults"
 _SECRETS_FILE = _REPO_ROOT / ".env"
+_RUNTIME_SECRETS_DIR = Path("/run/secrets")
 
 
-class Settings(BaseSettings):
+class StorageSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore"
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
+    )
+
+    storage_bucket: str = Field(default="", alias="STORAGE_BUCKET")
+    storage_region: str = Field(default="us-east-1", alias="STORAGE_REGION")
+    storage_local_test_stub: bool = Field(default=False, alias="STORAGE_LOCAL_TEST_STUB")
+    storage_endpoint_url: str = Field(default="", alias="STORAGE_ENDPOINT_URL")
+    storage_path_style: bool = Field(default=True, alias="STORAGE_PATH_STYLE")
+    storage_ca_bundle_path: str = Field(default="", alias="STORAGE_CA_BUNDLE_PATH")
+    storage_access_key_id: SecretStr = Field(default=SecretStr(""), alias="STORAGE_ACCESS_KEY_ID")
+    storage_maintenance_access_key_id: SecretStr = Field(default=SecretStr(""), alias="STORAGE_MAINTENANCE_ACCESS_KEY_ID")
+    storage_maintenance_secret_access_key: SecretStr = Field(default=SecretStr(""), alias="STORAGE_MAINTENANCE_SECRET_ACCESS_KEY")
+    storage_secret_access_key: SecretStr = Field(default=SecretStr(""), alias="STORAGE_SECRET_ACCESS_KEY")
+    storage_session_token: SecretStr = Field(default=SecretStr(""), alias="STORAGE_SESSION_TOKEN")
+    storage_sse_algorithm: str = Field(default="", alias="STORAGE_SSE_ALGORITHM")
+    storage_sse_key_id: str = Field(default="", alias="STORAGE_SSE_KEY_ID")
+
+    @field_validator("storage_endpoint_url")
+    @classmethod
+    def validate_storage_endpoint(cls, value: str, info) -> str:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if parsed.query or parsed.fragment:
+            raise ValueError('Storage endpoint must not contain query or fragment')
+        if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password:
+            return value
+        local_stub = info.data.get("storage_local_test_stub", False)
+        if (local_stub and os.getenv("PYTEST_CURRENT_TEST")
+                and parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+                and not parsed.username and not parsed.password):
+            return value
+        raise ValueError("Storage endpoint must use HTTPS without embedded credentials")
+
+
+class StorageMaintenanceSettings(StorageSettings):
+    """Narrow settings for storage migration and reconciliation operations."""
+
+    model_config = SettingsConfigDict(
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        hide_input_in_errors=True,
+    )
+
+    database_url: str = Field(alias="DATABASE_URL")
+
+
+class Settings(StorageSettings):
+    model_config = SettingsConfigDict(
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE),
+        env_file_encoding="utf-8",
+        env_ignore_empty=True,
+        secrets_dir=(
+            str(_RUNTIME_SECRETS_DIR) if _RUNTIME_SECRETS_DIR.is_dir() else None
+        ),
+        extra="ignore",
+        hide_input_in_errors=True,
     )
 
     database_url: str = Field(alias="DATABASE_URL")
@@ -51,6 +111,16 @@ class Settings(BaseSettings):
     hr_api_ca_bundle_path: str = Field(default="", alias="HR_API_CA_BUNDLE_PATH")
     hr_api_page_size: int = Field(default=200, alias="HR_API_PAGE_SIZE")
 
+    exchange_calendar_enabled: bool = Field(default=False, alias="EXCHANGE_CALENDAR_ENABLED")
+    exchange_ews_url: str = Field(default="", alias="EXCHANGE_EWS_URL")
+    exchange_mailbox: str = Field(default="", alias="EXCHANGE_MAILBOX")
+    exchange_username: str = Field(default="", alias="EXCHANGE_USERNAME")
+    exchange_password: SecretStr | None = Field(default=None, alias="EXCHANGE_PASSWORD")
+    exchange_auth_type: str = Field(default="", alias="EXCHANGE_AUTH_TYPE")
+    exchange_requests_per_minute: int = Field(
+        default=200, ge=1, le=200, alias="EXCHANGE_REQUESTS_PER_MINUTE"
+    )
+
     bootstrap_admin_personal_number: str | None = Field(
         default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"
     )
@@ -65,7 +135,43 @@ class Settings(BaseSettings):
     def hr_sync_enabled(self) -> bool:
         return bool(self.hr_api_base_url and self.hr_api_key)
 
+    def require_exchange_calendar_configuration(self) -> tuple[str, str, str, str]:
+        """Return worker credentials or report only which setting names are missing."""
+        password = (
+            self.exchange_password.get_secret_value()
+            if self.exchange_password is not None
+            else ""
+        )
+        required = {
+            "EXCHANGE_EWS_URL": self.exchange_ews_url,
+            "EXCHANGE_MAILBOX": self.exchange_mailbox,
+            "EXCHANGE_USERNAME": self.exchange_username,
+            "EXCHANGE_PASSWORD": password,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise ValueError(
+                "Exchange calendar is enabled but required settings are missing: "
+                + ", ".join(missing)
+            )
+        return (
+            self.exchange_ews_url,
+            self.exchange_mailbox,
+            self.exchange_username,
+            password,
+        )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+@lru_cache(maxsize=1)
+def get_storage_settings() -> StorageSettings:
+    return StorageSettings()
+
+
+@lru_cache(maxsize=1)
+def get_storage_maintenance_settings() -> StorageMaintenanceSettings:
+    return StorageMaintenanceSettings()

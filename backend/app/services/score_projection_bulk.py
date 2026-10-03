@@ -164,8 +164,13 @@ def _rebuild_quarter_buckets_bulk(
             SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
         )
     )
+    # Insert in soldier order (callers go quarter by quarter), matching the
+    # (quarter, soldier) order of refresh_projection_for_change, so two
+    # first inserts of one partition key cannot wait on each other in a cycle.
     partition_models = [
-        _partition_row_model(row) for bucket in buckets for row in _bucket_partition_rows(bucket)
+        _partition_row_model(row)
+        for bucket in sorted(buckets, key=lambda b: b.soldier_id)
+        for row in _bucket_partition_rows(bucket)
     ]
     session.add_all(partition_models)
     session.flush()

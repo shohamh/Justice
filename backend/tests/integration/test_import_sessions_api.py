@@ -79,7 +79,7 @@ def test_upload_creates_draft_session(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     resp = _upload(client, _token(admin), xlsx)
 
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "session_id" in body
     assert body["preview"]["duty_shifts"][0]["action"] == "new"

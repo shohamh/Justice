@@ -88,3 +88,13 @@ export async function uploadGimelimAttachment(
     )
   ).data;
 }
+
+export async function downloadGimelimAttachment(dismissalId: string, attachmentId: string): Promise<Blob> {
+  return (await api.get(`/file-download/gimelim/${dismissalId}/attachments/${attachmentId}`, { responseType: "blob" })).data;
+}
+
+export interface GimelimAttachment { id: string; file_name: string; content_type: string; created_at: string }
+
+export async function listGimelimAttachments(dismissalId: string): Promise<GimelimAttachment[]> {
+  return (await api.get<GimelimAttachment[]>("/gimelim/" + dismissalId + "/attachments")).data;
+}

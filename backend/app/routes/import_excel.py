@@ -15,7 +15,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from app.audit.writer import write_audit
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from app.db.models import (
@@ -35,6 +34,10 @@ from app.db.models import (
     TelegramLink,
 )
 from app.db.session import get_session
+from app.services.exchange_calendar.triggers import (
+    enqueue_affected_by_soldier,
+    enqueue_assignment_change,
+)
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
 from app.services.import_scope import is_node_in_actor_scope
@@ -343,6 +346,7 @@ def apply(
     created = updated = skipped = 0
     errors: list[str] = []
     created_assignments: list[DutyAssignment] = []
+    calendar_soldier_ids: set[uuid.UUID] = set()
 
     try:
         for row in req.soldiers:
@@ -380,6 +384,7 @@ def apply(
                     new_soldier.next_rank_date_overridden = row.next_rank_date_overridden
                 session.add(new_soldier)
                 session.flush()
+                calendar_soldier_ids.add(new_soldier.id)
                 if any(
                     value is not None
                     for value in (
@@ -480,9 +485,12 @@ def apply(
                             )
                         else:
                             s.unit_join_date = requested_unit_join_date
+                    calendar_soldier_ids.add(s.id)
                     updated += 1
 
         session.flush()
+        for soldier_id in calendar_soldier_ids:
+            enqueue_affected_by_soldier(session, soldier_id)
 
         # Assignments
         for row in req.assignments:
@@ -507,6 +515,9 @@ def apply(
             session.flush()
             created_assignments.append(assignment)
             created += 1
+
+        for assignment in created_assignments:
+            enqueue_assignment_change(session, assignment, reason="import")
 
         write_audit(
             session, actor_id=actor.id, action="import.excel_apply", entity_type="import_batch",

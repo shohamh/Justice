@@ -200,3 +200,66 @@ def test_responsible_manager_approves_request_into_selected_tier(
     assert approve_response.status_code == 200, approve_response.text
     assert approve_response.json()["is_reserve"] is True
     assert approve_response.json()["is_draft"] is False
+
+
+def test_approving_a_request_on_a_full_event_returns_400(
+    client: TestClient, admin_session: Session,
+) -> None:
+    from datetime import date, timedelta
+
+    _enable_mitvachim(admin_session)
+    owner_node = create_node(admin_session, level="פלוגה", name="owner-5")
+    proposer_node = create_node(admin_session, level="פלוגה", name="proposer-5")
+    owner = create_soldier(
+        admin_session, personal_number="7000041", role="duty_manager", hierarchy_node_id=owner_node.id,
+    )
+    proposer = create_soldier(
+        admin_session, personal_number="7000042", role="duty_manager", hierarchy_node_id=proposer_node.id,
+    )
+    first = create_soldier(admin_session, personal_number="7000043", hierarchy_node_id=proposer_node.id)
+    second = create_soldier(admin_session, personal_number="7000044", hierarchy_node_id=proposer_node.id)
+    admin_session.add(DutyType(
+        name="weapon duty 5",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        eligible_node_ids=[proposer_node.id],
+    ))
+    location = create_range_location(admin_session, name="test range 5")
+    admin_session.commit()
+    response = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(owner_node.id),
+            "range_type": "live",
+            "date": (date.today() + timedelta(days=14)).isoformat(),
+            "range_location_id": str(location.id),
+            "required_count": 1,
+            "reserve_count": 0,
+            "responsible_duty_manager_id": str(owner.id),
+        },
+        headers=auth_headers(owner),
+    )
+    assert response.status_code == 201, response.text
+    event_id = response.json()["id"]
+    request_ids = []
+    for soldier in (first, second):
+        request_response = client.post(
+            f"/api/ranges/{event_id}/assignment-requests",
+            json={"soldier_id": str(soldier.id), "reason": "needs qualification"},
+            headers=auth_headers(proposer),
+        )
+        assert request_response.status_code == 201, request_response.text
+        request_ids.append(request_response.json()["id"])
+
+    def approve(request_id):
+        return client.patch(
+            f"/api/ranges/{event_id}/assignment-requests/{request_id}/approve",
+            json={"is_reserve": False},
+            headers=auth_headers(owner),
+        )
+
+    assert approve(request_ids[0]).status_code == 200
+    full_response = approve(request_ids[1])
+
+    assert full_response.status_code == 400, full_response.text
+    assert full_response.json()["detail"] == "primary_capacity_exceeded"

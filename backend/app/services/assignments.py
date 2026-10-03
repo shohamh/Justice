@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -22,12 +22,26 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
+from app.services.exchange_calendar.triggers import enqueue_assignment_change
 from app.services.notifications import create_notification
 from app.services.rest import effective_assignment_end, resolve_rest_hours
 from app.services.settings_loader import get_setting_int
 from app.services.weapon_eligibility import compute_eligibility
 
 _OVERRIDE_REASONS = {"replacement", "no_show_covered", "cancelled", "manual_edit"}
+
+
+def lock_assignment_row(session: Session, assignment_id: uuid.UUID) -> None:
+    """FOR NO KEY UPDATE on one duty_assignments row.
+
+    Serializes check-then-insert writers of rows that hang off one assignment
+    (day overrides, no-shows, reserve links) so the existence check sees what
+    a concurrent writer committed instead of both inserting and one dying on
+    the unique constraint. NO KEY UPDATE does not block the KEY SHARE lock
+    that child-row inserts take on the assignment."""
+    session.execute(
+        select(DutyAssignment.id).where(DutyAssignment.id == assignment_id).with_for_update(key_share=True)
+    )
 
 
 class AssignmentError(Exception):
@@ -257,6 +271,7 @@ def create_assignment(
         from app.services.score_projection import refresh_projection_for_assignment_change
 
         refresh_projection_for_assignment_change(session, assignment=a)
+    enqueue_assignment_change(session, a)
     return a
 
 
@@ -285,6 +300,7 @@ def cancel_assignment(
     from app.services.score_projection import refresh_projection_for_assignment_change
 
     refresh_projection_for_assignment_change(session, assignment=assignment)
+    enqueue_assignment_change(session, assignment, reason="cancelled")
     return assignment
 
 
@@ -383,6 +399,7 @@ def replace_assignment(
         refresh_projection_for_assignment_change(
             session, assignment=assignment, extra_soldier_ids={before_soldier_id}
         )
+    enqueue_assignment_change(session, assignment)
     return assignment
 
 
@@ -401,7 +418,76 @@ def _day_busy(
     )
     if exclude_assignment_id is not None:
         q = q.where(DutyAssignment.id != exclude_assignment_id)
+    if session.execute(q).first() is not None:
+        return True
+    return covers_by_override(
+        session, soldier_id=soldier_id, start_date=on_date, end_date=on_date + timedelta(days=1),
+        exclude_assignment_id=exclude_assignment_id,
+    )
+
+
+def covers_by_override(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    exclude_assignment_id: uuid.UUID | None = None,
+) -> bool:
+    """True if a day override makes ``soldier_id`` the effective soldier of a
+    non-cancelled duty on any day in ``[start_date, end_date)``.
+
+    Product rule (C14): covering a duty by override makes the covering
+    soldier busy for that day, the same as a nominal assignment."""
+    q = (
+        select(DutyDayOverride.id)
+        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
+        .where(
+            DutyDayOverride.effective_soldier_id == soldier_id,
+            DutyDayOverride.date >= start_date,
+            DutyDayOverride.date < end_date,
+            DutyAssignment.status != "cancelled",
+        )
+    )
+    if exclude_assignment_id is not None:
+        q = q.where(DutyDayOverride.duty_assignment_id != exclude_assignment_id)
     return session.execute(q).first() is not None
+
+
+def lock_soldiers_for_publish(session: Session, soldier_ids) -> None:
+    """FOR NO KEY UPDATE on soldiers in ascending id order (J2).
+
+    Serializes publishing an algorithm draft with create_assignment (soldier
+    FOR UPDATE) and set_day_override (covering soldier), so the overlap
+    re-check in ``publish_would_double_book`` sees what they committed.
+    Lock order: soldiers (ascending id) -> assignment rows -> projection."""
+    ids = sorted(set(soldier_ids))
+    if ids:
+        session.execute(
+            select(Soldier.id).where(Soldier.id.in_(ids)).order_by(Soldier.id).with_for_update(key_share=True)
+        ).all()
+
+
+def publish_would_double_book(session: Session, assignment: DutyAssignment) -> bool:
+    """True if publishing ``assignment`` would overlap a published duty of the
+    same soldier, or a day that soldier already covers by override (J2: the
+    solver's snapshot can be older than a manual edit). Call with the soldier
+    locked (``lock_soldiers_for_publish``)."""
+    overlap = session.execute(
+        select(DutyAssignment.id).where(
+            DutyAssignment.soldier_id == assignment.soldier_id,
+            DutyAssignment.status == "published",
+            DutyAssignment.id != assignment.id,
+            DutyAssignment.start_date < assignment.end_date,
+            DutyAssignment.end_date > assignment.start_date,
+        )
+    ).first()
+    if overlap is not None:
+        return True
+    return covers_by_override(
+        session, soldier_id=assignment.soldier_id, start_date=assignment.start_date,
+        end_date=assignment.end_date, exclude_assignment_id=assignment.id,
+    )
 
 
 def _notify_day_override_change(
@@ -448,7 +534,16 @@ def set_day_override(
     if reason not in _OVERRIDE_REASONS:
         raise AssignmentError("bad_reason")
     if effective_soldier_id is not None:
-        if session.get(Soldier, effective_soldier_id) is None:
+        # Lock the covering soldier before the busy check (C14): two
+        # overrides or swap finalizations that name the same soldier for the
+        # same day, on different duties, otherwise both pass _day_busy before
+        # either commits. NO KEY UPDATE conflicts with create_assignment's
+        # FOR UPDATE on the soldier but not with child-row KEY SHARE locks.
+        # Lock order: (swap request ->) covering soldier -> assignment.
+        locked = session.execute(
+            select(Soldier.id).where(Soldier.id == effective_soldier_id).with_for_update(key_share=True)
+        ).first()
+        if locked is None:
             raise AssignmentError("soldier_not_found")
         if _day_busy(
             session,
@@ -465,10 +560,12 @@ def set_day_override(
             end_date=date,
         ):
             raise AssignmentError("exempted")
+    # Lock order: (swap request, when called from a swap) -> assignment.
+    lock_assignment_row(session, assignment.id)
     existing = session.execute(
         select(DutyDayOverride).where(
             DutyDayOverride.duty_assignment_id == assignment.id, DutyDayOverride.date == date
-        )
+        ).execution_options(populate_existing=True)
     ).scalar_one_or_none()
     after = {
         "effective_soldier_id": str(effective_soldier_id) if effective_soldier_id else None,
@@ -505,6 +602,7 @@ def set_day_override(
                 - {None},
                 affected_dates={date},
             )
+        enqueue_assignment_change(session, assignment)
         return existing
     ov = DutyDayOverride(
         duty_assignment_id=assignment.id,
@@ -536,6 +634,7 @@ def set_day_override(
             soldier_ids={assignment.soldier_id, effective_soldier_id} - {None},
             affected_dates={date},
         )
+    enqueue_assignment_change(session, assignment)
     return ov
 
 
@@ -567,6 +666,7 @@ def clear_day_override(
         actor_id=actor_id,
     )
     old_effective_id = ov.effective_soldier_id
+    enqueue_assignment_change(session, assignment)
     session.delete(ov)
     session.flush()
     if assignment.status == "published":

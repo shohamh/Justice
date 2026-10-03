@@ -173,6 +173,9 @@ def update_duty_type(
     )
     if contact_or_instructions_changed:
         _notify_duty_instructions_changed(session, duty_type=duty_type, actor_id=actor_id)
+    if duty_type.name != before["name"] or contact_or_instructions_changed or description is not None:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_duty_type
+        enqueue_affected_by_duty_type(session, duty_type.id)
     return duty_type
 
 
@@ -295,6 +298,9 @@ def update_location(
         before=before,
         after={"name": location.name, "base": location.base},
     )
+    if location.name != before["name"] or location.base != before["base"]:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_location
+        enqueue_affected_by_location(session, location)
     return location
 
 

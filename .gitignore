@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -60,3 +60,9 @@ backend/vendor/
 # Local attachments and image assets
 .codex-remote-attachments/
 /pics/
+deploy/seaweedfs/certs/
+deploy/seaweedfs/secrets/
+deploy/minio/certs/
+deploy/minio/secrets/
+
+/backend/var/file-storage-migration-report.json

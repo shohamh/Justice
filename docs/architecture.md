@@ -164,3 +164,7 @@ For the full design rationale (why Redis over alternatives, why direct-push
 logging instead of a Promtail/DaemonSet, and the tradeoffs considered for
 each piece), see
 [`docs/superpowers/specs/2026-09-25-runtime-statelessness-observability-design.md`](superpowers/specs/2026-09-25-runtime-statelessness-observability-design.md).
+
+## Protected object downloads
+
+Browser file downloads use the same-origin `/api/file-download/` route through Nginx or Vite to the private file gateway. The gateway validates the Justice bearer token by calling the file-authorization service over verified mutual TLS. Only an allow decision permits the gateway to stream the object from S3-compatible storage. The browser never receives an S3 URL or storage credentials. The authorization listener and gateway are not published on host ports, and the internal authorization path is not proxied publicly. See [the file-storage migration runbook](operations/file-storage-migration.md) for rollout and rollback requirements.

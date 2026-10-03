@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -209,6 +209,9 @@ def set_email(
         user.email_verified = False
     if new_email and changed:
         ev_svc.request_verification(session, soldier=user)
+    if changed:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, user.id)
     session.commit()
     return {"email_verified": user.email_verified}
 

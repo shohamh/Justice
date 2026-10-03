@@ -13,7 +13,13 @@ from starlette.responses import Response as StarletteResponse
 
 from app.duty_eligibility_worker import run_duty_eligibility_worker
 from app.email_worker import run_email_worker
-from app.error_logging import REQUEST_ID_HEADER, log_backend_exception, redact, request_data, request_id
+from app.error_logging import (
+    REQUEST_ID_HEADER,
+    log_backend_exception,
+    redact,
+    request_data,
+    request_id,
+)
 from app.hr_sync_worker import run_hr_sync_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -22,6 +28,7 @@ from app.range_attendance_worker import run_range_attendance_worker
 from app.range_reminder_worker import run_range_reminder_worker
 from app.rank_advancement_worker import run_rank_advancement_worker
 from app.rate_limit import limiter
+from app.routes import admin_errors as admin_error_routes
 from app.routes import algorithm as algorithm_routes
 from app.routes import approvals_export as approvals_export_routes
 from app.routes import assignments as assignment_routes
@@ -31,7 +38,6 @@ from app.routes import bug_reports as bug_report_routes
 from app.routes import calendar as calendar_routes
 from app.routes import calendar_holidays as calendar_holidays_routes
 from app.routes import client_errors as client_error_routes
-from app.routes import admin_errors as admin_error_routes
 from app.routes import commander_dashboard as commander_dashboard_routes
 from app.routes import config_export as config_export_routes
 from app.routes import constraints as constraint_routes
@@ -39,6 +45,7 @@ from app.routes import deputies as deputy_routes
 from app.routes import dm_scope as dm_scope_routes
 from app.routes import duty_config as duty_config_routes
 from app.routes import enrollment as enrollment_routes
+from app.routes import exchange_calendar_sync as exchange_calendar_sync_routes
 from app.routes import exemption_requests as exemption_request_routes
 from app.routes import exemptions as exemption_routes
 from app.routes import gimelim as gimelim_routes
@@ -160,17 +167,22 @@ def _fail_orphaned_algorithm_jobs() -> None:
     algorithm_bridge._watch_job_timeout) live only in the process that started
     the job. If that process dies mid-solve (crash, reload, restart), the DB
     row is orphaned at status="running" forever — nothing in the new process
-    knows about it. Since we just started, any "running" row predates us and
-    cannot be ours, so it's safe to fail it unconditionally on boot.
+    knows about it. Every web worker process runs this hook at startup, so a
+    "running" row may still belong to a live sibling process: the runner holds
+    a per-job advisory lock for its whole run (see
+    algorithm_bridge.job_has_live_runner), and only rows whose lock is free
+    are orphans.
     """
     import json
     from datetime import UTC, datetime
 
     from app.db.models import AlgorithmJob
     from app.db.session import session_scope
+    from app.services.algorithm_bridge import job_has_live_runner
 
     with session_scope() as session:
-        orphaned = session.query(AlgorithmJob).filter(AlgorithmJob.status == "running").all()
+        running = session.query(AlgorithmJob).filter(AlgorithmJob.status == "running").all()
+        orphaned = [job for job in running if not job_has_live_runner(session, job.id)]
         for job in orphaned:
             job.status = "failed"
             job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "server_restarted"})
@@ -231,6 +243,7 @@ def create_app() -> FastAPI:
     app.include_router(health_routes.router, prefix="/api")
     app.include_router(client_error_routes.router, prefix="/api")
     app.include_router(admin_error_routes.router, prefix="/api")
+    app.include_router(exchange_calendar_sync_routes.router, prefix="/api")
     app.include_router(auth_routes.router, prefix="/api")
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(my_request_routes.router, prefix="/api")

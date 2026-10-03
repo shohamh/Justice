@@ -1,12 +1,164 @@
 services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.40@sha256:52194fba4fecd0083c842158b3a902ba6e04a63619b2b0efcd08007bdb6a4602
+    command:
+      - server
+      - -dir=/data
+      - -filer
+      - -s3
+      - -ip.bind=0.0.0.0
+      - -s3.ip.bind=127.0.0.1
+      - -s3.config=/etc/seaweedfs/s3.json
+      - -s3.iam.readOnly=true
+      - -s3.port=8333
+      - -s3.port.https=8334
+      - -s3.cert.file=/run/certs/seaweedfs.crt
+      - -s3.key.file=/run/certs/seaweedfs.key
+    env_file:
+      - ./deploy/seaweedfs/secrets/encryption.env
+    volumes:
+      - seaweedfs-data:/data
+      - ./deploy/seaweedfs/secrets/s3.json:/etc/seaweedfs/s3.json:ro
+      - ./deploy/seaweedfs/certs/seaweedfs/public.crt:/run/certs/seaweedfs.crt:ro
+      - ./deploy/seaweedfs/certs/seaweedfs/private.key:/run/certs/seaweedfs.key:ro
+    networks:
+      - storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:9333/cluster/status >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  seaweedfs-s3-proxy:
+    image: nginx:1.29.1-alpine
+    network_mode: "service:seaweedfs"
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    volumes:
+      - ./deploy/seaweedfs/nginx-s3.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/seaweedfs/certs/seaweedfs/public.crt:/run/certs/seaweedfs.crt:ro
+      - ./deploy/seaweedfs/certs/seaweedfs/private.key:/run/certs/seaweedfs.key:ro
+      - ./deploy/seaweedfs/certs/ca.crt:/run/certs/ca.crt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -S -O /dev/null https://127.0.0.1:9443/ 2>&1 | grep -q '403 Forbidden'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  seaweedfs-init:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.storage.initialize_bucket"]
+    env_file:
+      - ./deploy/seaweedfs/secrets/initializer.env
+    environment:
+      STORAGE_CA_BUNDLE_PATH: /app/certs/ca.crt
+    volumes:
+      - ./deploy/seaweedfs/certs/ca.crt:/app/certs/ca.crt:ro
+    depends_on:
+      seaweedfs-s3-proxy:
+        condition: service_healthy
+    networks: [storage]
+    restart: "no"
+
+  file-authorization:
+    build:
+      context: ./backend
+    command: python -m app.file_authorization.main
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://app:app_pw@db:5432/justice}
+      DB_ADMIN_URL: ${DATABASE_URL:-postgresql+psycopg://app:app_pw@db:5432/justice}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod-this-is-only-a-dev-default-with-32-bytes}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      FILE_AUTHORIZATION_TLS_CERT: /run/tls/server.crt
+      FILE_AUTHORIZATION_TLS_KEY: /run/tls/server.key
+      FILE_AUTHORIZATION_GATEWAY_CA: /run/tls/ca.crt
+    networks:
+      - file-authz
+      - authz-db
+    volumes:
+      - ./deploy/seaweedfs/certs/file-authorization/public.crt:/run/tls/server.crt:ro
+      - ./deploy/seaweedfs/certs/file-authorization/private.key:/run/tls/server.key:ro
+      - ./deploy/seaweedfs/certs/ca.crt:/run/tls/ca.crt:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+  file-gateway:
+    build:
+      context: ./backend
+    command: uvicorn app.file_gateway.main:app --host 0.0.0.0 --port 8080
+    env_file:
+      - ./deploy/seaweedfs/secrets/gateway.env
+    environment:
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-justice-files}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-https://seaweedfs:9443}
+      STORAGE_PATH_STYLE: ${STORAGE_PATH_STYLE:-true}
+      FILE_AUTHORIZATION_URL: https://file-authorization:8443
+      FILE_AUTHORIZATION_CA: /run/tls/ca.crt
+      FILE_GATEWAY_CLIENT_CERT: /run/tls/client.crt
+      FILE_GATEWAY_CLIENT_KEY: /run/tls/client.key
+      STORAGE_CA_BUNDLE_PATH: /app/certs/ca.crt
+    volumes:
+      - ./deploy/seaweedfs/certs/gateway/public.crt:/run/tls/client.crt:ro
+      - ./deploy/seaweedfs/certs/gateway/private.key:/run/tls/client.key:ro
+      - ./deploy/seaweedfs/certs/ca.crt:/run/tls/ca.crt:ro
+      - ./deploy/seaweedfs/certs/ca.crt:/app/certs/ca.crt:ro
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+      seaweedfs-init:
+        condition: service_completed_successfully
+      file-authorization:
+        condition: service_started
+      backend:
+        condition: service_started
+    networks:
+      - default
+      - storage
+      - file-authz
+    restart: unless-stopped
+  file-storage-maintenance:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.storage.maintenance_cli"]
+    profiles: ["storage-maintenance"]
+    env_file:
+      - ./deploy/seaweedfs/secrets/maintenance.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://app:app_pw@db:5432/justice}
+      DB_ADMIN_URL: ${DB_ADMIN_URL:-postgresql+psycopg://db_admin:db_admin_pw@db:5432/justice}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-justice-files}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-https://seaweedfs:9443}
+      STORAGE_PATH_STYLE: ${STORAGE_PATH_STYLE:-true}
+      STORAGE_CA_BUNDLE_PATH: /app/certs/ca.crt
+    volumes:
+      - ./deploy/seaweedfs/certs/ca.crt:/app/certs/ca.crt:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      seaweedfs-init:
+        condition: service_completed_successfully
+    networks: [default, storage]
+    restart: "no"
   db:
     image: postgres:16-alpine
+    networks: [default, authz-db]
     environment:
       POSTGRES_USER: db_admin
       POSTGRES_PASSWORD: db_admin_pw
       POSTGRES_DB: justice
     # Match production's Asia/Jerusalem timezone so CURRENT_DATE-based
-    # defaults (e.g. Soldier.enrolled_at) don't drift near local midnight —
+    # defaults (e.g. Soldier.enrolled_at) don't drift near local midnight â€”
     # see backend/Dockerfile for the same fix on the app side.
     command: postgres -c timezone=Asia/Jerusalem
     ports:
@@ -64,7 +216,27 @@ services:
       - loki
       - prometheus
 
+  schema-migration:
+    image: justice-backend:dev
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
+    env_file:
+      - .env.defaults
+      - path: .env
+        required: false
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./backend/certs:/app/certs:ro
+    command: alembic upgrade head
+
   backend:
+    image: justice-backend:dev
     build:
       context: ./backend
       args:
@@ -75,22 +247,64 @@ services:
       - .env.defaults
       - path: .env
         required: false
+      - ./deploy/seaweedfs/secrets/api.env
     environment:
       - LOG_DIR=/app/logs
       - LOKI_URL=http://loki:3100
+      - LOGIN_RATE_LIMIT=${LOGIN_RATE_LIMIT:-10/5minutes}
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_healthy
+      seaweedfs-init:
+        condition: service_completed_successfully
+    networks:
+      - default
+      - storage
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+      - ./deploy/seaweedfs/certs/ca.crt:/app/certs/ca.crt:ro
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  exchange-calendar-worker:
+    image: justice-backend:dev
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
+    profiles: [exchange-calendar]
+    command: python -m app.exchange_calendar_worker
+    env_file:
+      - .env.defaults
+      - path: .env
+        required: false
+    environment:
+      LOG_DIR: /app/logs
+      LOKI_URL: http://loki:3100
+      LOKI_APP_LABEL: justice-exchange-calendar
+      EXCHANGE_CALENDAR_ENABLED: ${EXCHANGE_CALENDAR_ENABLED:-false}
+      EXCHANGE_EWS_URL: ${EXCHANGE_EWS_URL:-}
+      EXCHANGE_MAILBOX: ${EXCHANGE_MAILBOX:-}
+      EXCHANGE_USERNAME: ${EXCHANGE_USERNAME:-}
+      EXCHANGE_AUTH_TYPE: ${EXCHANGE_AUTH_TYPE:-}
+      EXCHANGE_REQUESTS_PER_MINUTE: ${EXCHANGE_REQUESTS_PER_MINUTE:-200}
     volumes:
       - ./backend:/app
       - ./logs:/app/logs
       - ./backend/certs:/app/certs:ro
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
 
   frontend:
     build:
@@ -100,13 +314,16 @@ services:
       - "5173:5173"
     environment:
       - VITE_BACKEND_URL=http://backend:8000
+      - VITE_FILE_GATEWAY_URL=http://file-gateway:8080
     volumes:
       - ./frontend:/app
       - /app/node_modules  # preserve node_modules built into the image
     depends_on:
       - backend
+      - file-gateway
 
   telegram-bot:
+    image: justice-backend:dev
     build:
       context: ./backend
       args:
@@ -129,3 +346,14 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  seaweedfs-data:
+
+networks:
+  storage:
+    internal: true
+  file-authz:
+    internal: true
+  authz-db:
+    internal: true

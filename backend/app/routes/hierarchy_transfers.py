@@ -69,7 +69,9 @@ def approve_transfer(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> TransferOut:
-    req = session.get(HierarchyTransferRequest, request_id)
+    # Lock (soldier, then request) before authorizing: the destination node
+    # checked below is then the one the decision applies.
+    req = svc.lock_request_for_decision(session, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     forbid_self_target(user, req.soldier_id)
@@ -91,7 +93,9 @@ def reject_transfer(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> TransferOut:
-    req = session.get(HierarchyTransferRequest, request_id)
+    # Lock (soldier, then request) before authorizing: the destination node
+    # checked below is then the one the decision applies.
+    req = svc.lock_request_for_decision(session, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     forbid_self_target(user, req.soldier_id)

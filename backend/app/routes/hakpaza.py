@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, ForcedCallup, HierarchyNode, NotificationType, Soldier
 from app.db.session import get_session
 from app.services import hakpaza as svc
+from app.services.exchange_calendar.triggers import enqueue_assignment_change
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -246,6 +246,8 @@ def approve(
     h.approver_id = actor.id
     h.approved_at = datetime.now(timezone.utc)
     h.replacement_assignment_id = new_assignment.id
+    enqueue_assignment_change(session, original, reason="call_up")
+    enqueue_assignment_change(session, new_assignment, reason="call_up")
 
     create_notification(
         session, soldier_id=h.pulled_soldier_id,

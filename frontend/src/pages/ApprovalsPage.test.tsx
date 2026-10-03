@@ -11,7 +11,6 @@ import * as enrollmentApi from "../api/enrollment";
 import * as hierarchyApi from "../api/hierarchy";
 import * as authApi from "../api/auth";
 import * as hierarchyTransfersApi from "../api/hierarchyTransfers";
-import { api } from "../api/client";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 vi.mock("react-i18next", () => ({
@@ -27,9 +26,6 @@ vi.mock("../api/enrollment");
 vi.mock("../api/hierarchy");
 vi.mock("../api/auth");
 vi.mock("../api/hierarchyTransfers");
-vi.mock("../api/client", () => ({
-  api: { get: vi.fn() },
-}));
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -136,8 +132,7 @@ beforeEach(() => {
     response: { status: 400, data: { detail: "already_decided" } },
   });
   vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([]);
-  vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("");
-  vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([]);
+    vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([]);
   vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([]);
   vi.mocked(swapsApi.isSwapActionableForUser).mockImplementation((swap, userId, isAdmin = false) => {
     if (isAdmin) return true;
@@ -592,9 +587,8 @@ describe("ApprovalsPage - transfers tab", () => {
 describe("ApprovalsPage - exemption file links", () => {
   it("opens exemption files via an authenticated blob fetch and previews them in-app", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
-    const blob = new Blob(["data"], { type: "application/pdf" });
-    vi.mocked(api.get).mockResolvedValue({ data: blob });
+        const blob = new Blob(["data"], { type: "application/pdf" });
+    vi.mocked(exemptionsApi.downloadExemptionRequestFile).mockResolvedValue(blob);
 
     const originalCreateObjectURL = URL.createObjectURL;
     const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -621,10 +615,7 @@ describe("ApprovalsPage - exemption file links", () => {
       fireEvent.click(fileLink);
 
       await waitFor(() => {
-        expect(api.get).toHaveBeenCalledWith(
-          "/exemption-requests/er1/files/f1",
-          expect.objectContaining({ responseType: "blob" }),
-        );
+        expect(exemptionsApi.downloadExemptionRequestFile).toHaveBeenCalledWith("er1", "f1");
       });
       expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
       const downloadLink = await screen.findByRole("link", { name: /הורדה/ });
@@ -641,8 +632,7 @@ describe("ApprovalsPage - exemption file links", () => {
 
   it("shows an error message when the exemption file fetch fails", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
-    vi.mocked(api.get).mockRejectedValue({
+        vi.mocked(exemptionsApi.downloadExemptionRequestFile).mockRejectedValue({
       response: { status: 404, data: { detail: "file_not_found" } },
     });
 
@@ -670,8 +660,7 @@ describe("ApprovalsPage - exemption file links", () => {
 
   it("shows a specific message when opening an exemption file returns no_permission", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
-    vi.mocked(api.get).mockRejectedValue({
+        vi.mocked(exemptionsApi.downloadExemptionRequestFile).mockRejectedValue({
       response: { status: 403, data: { detail: "no_permission" } },
     });
 

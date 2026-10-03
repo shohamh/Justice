@@ -19,12 +19,7 @@ def write_audit(
     after: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
 ) -> AuditLog:
-    """Append a row to the audit log.
-
-    Must be called from within an existing session/transaction so the audit
-    write and the underlying mutation succeed or fail atomically. Never opens
-    its own session.
-    """
+    """Append an audit row atomically with a mutation."""
     entry = AuditLog(
         actor_id=actor_id,
         action=action,
@@ -36,3 +31,23 @@ def write_audit(
     )
     session.add(entry)
     return entry
+
+
+def write_file_download_audit(
+    session: Session,
+    *,
+    actor_id: uuid.UUID | None,
+    allowed: bool,
+    resource_id: uuid.UUID | None,
+    file_class: str | None,
+    request_id: str,
+) -> AuditLog:
+    """Write a privacy-safe decision record; never pass file metadata here."""
+    return write_audit(
+        session,
+        actor_id=actor_id,
+        action="file.download.allow" if allowed else "file.download.deny",
+        entity_type="file",
+        entity_id=resource_id,
+        context={"file_class": file_class, "request_id": request_id},
+    )

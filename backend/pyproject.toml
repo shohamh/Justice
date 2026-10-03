@@ -30,6 +30,11 @@ dependencies = [
   "holidays>=0.46",
   "jinja2>=3.1",
   "httpx>=0.27",
+  "boto3>=1.35",
+  "exchangelib>=5.5,<6",
+  # Temporary: pyspnego 0.12.2 imports cryptography.hazmat.backends.default_backend.
+  # Remove when pyspnego drops that import and the auth import test passes on 49+.
+  "cryptography>=46,<49",
   "prometheus-fastapi-instrumentator>=7.0",
 ]
 
@@ -68,6 +73,11 @@ testpaths = ["tests"]
 # file name — run a slice with e.g. `pytest -m algorithm`.
 addopts = "-ra -q -n 4"
 asyncio_mode = "auto"
+# The local Starlette 0.37.2 import emits this warning with python-multipart 0.0.30;
+# the repository lock resolves Starlette 1.3.1. Keep other warnings visible.
+filterwarnings = [
+  'ignore:^Please use `import python_multipart` instead\.$:PendingDeprecationWarning:^starlette\.formparsers$',
+]
 markers = [
   "slow: scale and statistical CP-SAT tests; deselected by default, run with: pytest --slow",
   "algorithm: CP-SAT solver, scheduling model, fairness/effort scoring inputs",

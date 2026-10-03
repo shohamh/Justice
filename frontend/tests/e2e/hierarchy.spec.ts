@@ -101,8 +101,8 @@ test.describe("Hierarchy tree", () => {
 
     // Wait for soldiers to appear (they load asynchronously)
     const soldierEntries = page.getByTestId(/^tree-soldier-/);
+    await expect.poll(() => soldierEntries.count(), { timeout: 15_000 }).toBeGreaterThan(0);
     const soldierCount = await soldierEntries.count();
-    expect(soldierCount).toBeGreaterThan(0);
 
     // Each soldier should appear exactly once in the tree
     const seen = new Map<string, number>();

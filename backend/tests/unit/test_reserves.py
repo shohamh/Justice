@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
-from uuid import uuid4
 
+import pytest
 from sqlalchemy import select
 
 from app.db.models import (
@@ -11,6 +11,7 @@ from app.db.models import (
     DutyReserveLink,
     DutyShift,
     DutyType,
+    ExchangeCalendarOutbox,
     Soldier,
     SystemSetting,
 )
@@ -130,6 +131,63 @@ def test_dismiss_primary_creates_record(admin_session):
     assert dismissal.dismissed_from == date(2026, 6, 5)
     assert dismissal.dismissed_to == date(2026, 6, 7)
     assert dismissal.reason == "חופש"
+
+
+@pytest.mark.parametrize("standalone", [False, True])
+def test_primary_dismissal_create_and_delete_enqueue_calendar_update(admin_session, standalone):
+    from app.services.exchange_calendar.triggers import israel_today
+
+    shift, primary, reserve, _, _ = _seed(admin_session)
+    start = israel_today() + timedelta(days=2)
+    end = start + timedelta(days=7)
+    for source in (shift, primary, reserve):
+        source.start_date = start
+        source.end_date = end
+    if standalone:
+        primary.duty_shift_id = None
+    source_id = primary.id if standalone else shift.id
+
+    dismissal = svc.dismiss_primary(
+        admin_session,
+        assignment=primary,
+        from_date=start + timedelta(days=1),
+        to_date=start + timedelta(days=1),
+        reason="schedule change",
+    )
+    queued = admin_session.scalars(
+        select(ExchangeCalendarOutbox).where(ExchangeCalendarOutbox.source_id == source_id)
+    ).all()
+    assert len(queued) == 1
+
+    svc.delete_dismissal(admin_session, dismissal=dismissal)
+    queued_after_delete = admin_session.scalars(
+        select(ExchangeCalendarOutbox).where(ExchangeCalendarOutbox.source_id == source_id)
+    ).all()
+    assert len(queued_after_delete) == 1
+
+
+def test_reserve_dismissal_enqueues_shift_calendar_update(admin_session):
+    from app.services.exchange_calendar.triggers import israel_today
+
+    shift, primary, reserve, _, _ = _seed(admin_session)
+    start = israel_today() + timedelta(days=2)
+    end = start + timedelta(days=7)
+    for source in (shift, primary, reserve):
+        source.start_date = start
+        source.end_date = end
+
+    svc.dismiss_reserve(
+        admin_session,
+        assignment=reserve,
+        from_date=start + timedelta(days=1),
+        to_date=start + timedelta(days=1),
+        reason="schedule change",
+    )
+
+    queued = admin_session.scalars(
+        select(ExchangeCalendarOutbox).where(ExchangeCalendarOutbox.source_id == shift.id)
+    ).all()
+    assert len(queued) == 1
 
 
 def test_dismiss_primary_rejects_reserve(admin_session):

@@ -106,6 +106,10 @@ def redeem_reset_token(session: Session, *, token: str, new_password: str) -> st
             PasswordResetToken.token == token,
             PasswordResetToken.used_at.is_(None),
         )
+        # One-time use: a concurrent redeemer waits here and then finds the
+        # token used (token_invalid) instead of resetting the password again.
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if row is None:
         return "token_invalid"

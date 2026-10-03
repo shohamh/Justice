@@ -4,24 +4,47 @@ import re
 import uuid
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import (
-    Action, authorize, can_see_private, can_view_medical_document, forbid_self_target, is_commander,
-    is_duty_manager, scope_root_ids,
+    Action,
+    authorize,
+    can_see_private,
+    can_view_medical_document,
+    forbid_self_target,
+    is_commander,
+    is_duty_manager,
+    scope_root_ids,
 )
-from app.rate_limit import limiter
 from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import (
-    ExemptionRequest, ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier, SoldierEnrollmentRequest,
+    ExemptionRequest,
+    ExemptionRequestFile,
+    ExemptionType,
+    HierarchyNode,
+    Soldier,
+    SoldierEnrollmentRequest,
 )
 from app.db.session import get_session
+from app.rate_limit import limiter
 from app.services.approval_scope import exemption_approval_flags
 from app.services.authority import (
-    commander_can_grant_commander_exemption, dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+    REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+    commander_can_grant_commander_exemption,
+    dm_scope_covers_target,
     senior_commander_approval_authorized,
 )
 from app.services.exemption_requests import (
@@ -35,16 +58,31 @@ from app.services.exemption_requests import (
     submit_request,
 )
 from app.services.exemptions import ExemptionError
+from app.services.file_validation import (
+    MAX_EXEMPTION_FILE_BYTES,
+    FileValidationError,
+    validate_exemption_file,
+)
 from app.services.request_metadata import (
     exemption_decision_latest,
     latest_activity,
     person_ref,
+)
+from app.services.request_metadata import (
     waiting_on as resolve_waiting_on,
 )
+from app.services.storage_uploads import (
+    StorageReadError,
+    StorageUploadError,
+    commit_uploaded_objects,
+    enqueue_storage_cleanup,
+    persist_uploaded_object,
+    read_uploaded_object,
+)
+from app.storage.dependencies import get_object_storage
+from app.storage.protocol import ObjectStorage
 
 router = APIRouter(tags=["exemption-requests"])
-
-from app.services.file_validation import FileValidationError, validate_exemption_file
 
 
 class PersonRefOut(BaseModel):
@@ -211,7 +249,10 @@ def _exemption_approval_flags(
 def _nearest_approvers(
     session: Session, soldier_id: uuid.UUID
 ) -> tuple[NearestApproverOut | None, NearestApproverOut | None]:
-    from app.services.approval_scope import nearest_commander_for_soldier, nearest_duty_manager_for_soldier
+    from app.services.approval_scope import (
+        nearest_commander_for_soldier,
+        nearest_duty_manager_for_soldier,
+    )
 
     cmd_id = nearest_commander_for_soldier(session, soldier_id)
     dm_id = nearest_duty_manager_for_soldier(session, soldier_id)
@@ -228,6 +269,7 @@ async def create_exemption_request(
     payload: str = Form(...),
     files: list[UploadFile] = File(default=[]),
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_enrolled),
 ) -> ExemptionRequestOut:
     try:
@@ -239,7 +281,7 @@ async def create_exemption_request(
     for f in files:
         if not f.filename:
             continue
-        data = await f.read()
+        data = await f.read(MAX_EXEMPTION_FILE_BYTES + 1)
         try:
             validate_exemption_file(f.content_type or "", data)
         except FileValidationError as exc:
@@ -263,22 +305,31 @@ async def create_exemption_request(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     saved_files: list[ExemptionFileOut] = []
-    for filename, content_type, data in file_payloads:
-        ef = ExemptionRequestFile(
-            exemption_request_id=req.id,
-            file_name=re.sub(r"[^\w.\-]", "_", filename).replace("..", "_")[:200],
-            content_type=content_type,
-            data=data,
-            uploaded_by=user.id,
-        )
-        session.add(ef)
-        session.flush()
-        saved_files.append(ExemptionFileOut(
-            id=ef.id, file_name=ef.file_name, content_type=ef.content_type,
-            created_at=ef.created_at.isoformat(),
-        ))
+    uploaded_keys: list[str] = []
+    try:
+        for filename, content_type, data in file_payloads:
+            ef = ExemptionRequestFile(
+                exemption_request_id=req.id,
+                file_name=re.sub(r"[^\w.\-]", "_", filename).replace("..", "_")[:200],
+                content_type=content_type,
+                uploaded_by=user.id,
+            )
+            uploaded_keys.append(persist_uploaded_object(
+                session, storage, ef, file_class="exemption_request", data=data, content_type=content_type,
+            ))
+            saved_files.append(ExemptionFileOut(
+                id=ef.id, file_name=ef.file_name, content_type=ef.content_type,
+                created_at=ef.created_at.isoformat(),
+            ))
+    except StorageUploadError as exc:
+        enqueue_storage_cleanup(session, uploaded_keys)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
-    session.commit()
+    try:
+        commit_uploaded_objects(session, uploaded_keys)
+    except StorageUploadError as exc:
+        enqueue_storage_cleanup(session, uploaded_keys)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
     return _out(
         session, req, include_sensitive=True, files=saved_files,
@@ -606,12 +657,13 @@ async def upload_exemption_file(
     request_id: uuid.UUID,
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> ExemptionFileOut:
     req = session.get(ExemptionRequest, request_id)
     if req is None or req.soldier_id != user.id:
         raise HTTPException(status_code=404, detail="exemption_request_not_found")
-    data = await file.read()
+    data = await file.read(MAX_EXEMPTION_FILE_BYTES + 1)
     try:
         validate_exemption_file(file.content_type or "", data)
     except FileValidationError as exc:
@@ -620,11 +672,13 @@ async def upload_exemption_file(
         exemption_request_id=request_id,
         file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file")).replace("..", "_")[:200],
         content_type=file.content_type,
-        data=data,
         uploaded_by=user.id,
     )
-    session.add(ef)
-    session.commit()
+    try:
+        key = persist_uploaded_object(session, storage, ef, file_class="exemption_request", data=data, content_type=file.content_type or "")
+        commit_uploaded_objects(session, [key])
+    except StorageUploadError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     return ExemptionFileOut(
         id=ef.id,
         file_name=ef.file_name,
@@ -670,6 +724,7 @@ def download_exemption_file(
     request_id: uuid.UUID,
     file_id: uuid.UUID,
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> Response:
     req = session.get(ExemptionRequest, request_id)
@@ -682,8 +737,14 @@ def download_exemption_file(
     ef = session.get(ExemptionRequestFile, file_id)
     if ef is None or ef.exemption_request_id != request_id:
         raise HTTPException(status_code=404, detail="file_not_found")
+    try:
+        content = read_uploaded_object(storage, ef, file_class="exemption_request", legacy_field="data", max_bytes=10 * 1024 * 1024)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="file_not_found") from exc
+    except StorageReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(
-        content=ef.data,
+        content=content,
         media_type=ef.content_type,
         headers={"Content-Disposition": f'attachment; filename="{ef.file_name}"'},
     )
@@ -762,6 +823,7 @@ async def create_exemption_request_for_soldier(
     payload: str = Form(...),
     files: list[UploadFile] = File(default=[]),
     session: Session = Depends(get_session),
+    storage: ObjectStorage = Depends(get_object_storage),
     user: Soldier = Depends(require_password_changed),
 ) -> ExemptionRequestOut:
     """Commander/duty-manager "log an exemption" for a soldier: files the same
@@ -788,7 +850,7 @@ async def create_exemption_request_for_soldier(
     for f in files:
         if not f.filename:
             continue
-        data = await f.read()
+        data = await f.read(MAX_EXEMPTION_FILE_BYTES + 1)
         try:
             validate_exemption_file(f.content_type or "", data)
         except FileValidationError as exc:
@@ -812,20 +874,25 @@ async def create_exemption_request_for_soldier(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     saved_files: list[ExemptionFileOut] = []
-    for filename, content_type, data in file_payloads:
-        ef = ExemptionRequestFile(
-            exemption_request_id=req.id,
-            file_name=re.sub(r"[^\w.\-]", "_", filename).replace("..", "_")[:200],
-            content_type=content_type,
-            data=data,
-            uploaded_by=user.id,
-        )
-        session.add(ef)
-        session.flush()
-        saved_files.append(ExemptionFileOut(
-            id=ef.id, file_name=ef.file_name, content_type=ef.content_type,
-            created_at=ef.created_at.isoformat(),
-        ))
+    uploaded_keys: list[str] = []
+    try:
+        for filename, content_type, data in file_payloads:
+            ef = ExemptionRequestFile(
+                exemption_request_id=req.id,
+                file_name=re.sub(r"[^\w.\-]", "_", filename).replace("..", "_")[:200],
+                content_type=content_type,
+                uploaded_by=user.id,
+            )
+            uploaded_keys.append(persist_uploaded_object(
+                session, storage, ef, file_class="exemption_request", data=data, content_type=content_type,
+            ))
+            saved_files.append(ExemptionFileOut(
+                id=ef.id, file_name=ef.file_name, content_type=ef.content_type,
+                created_at=ef.created_at.isoformat(),
+            ))
+    except StorageUploadError as exc:
+        enqueue_storage_cleanup(session, uploaded_keys)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
     can_commander_step, can_dm_step = _exemption_approval_flags(session, user, target_node)
     if can_commander_step:
@@ -833,7 +900,10 @@ async def create_exemption_request_for_soldier(
         if can_dm_step:
             req = approve_duty_manager_step(session, req.id, decided_by=user.id)
 
-    session.commit()
+    try:
+        commit_uploaded_objects(session, uploaded_keys)
+    except StorageUploadError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
     decision_times = exemption_decision_latest(session, [req.id])
     return _out(

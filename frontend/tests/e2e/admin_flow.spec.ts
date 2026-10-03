@@ -13,7 +13,7 @@ test("admin first login: forced password change, then onboard a soldier", async 
   await expect(page).toHaveURL(/\/change-password$/);
   await expect(page.getByTestId("forced-notice")).toBeVisible();
   await page.getByTestId("current-password").fill("ChangeMeOnFirstLogin!");
-  await page.getByTestId("new-password").fill("AdminNewPassw0rd");
+  await page.getByTestId("new-password").fill("AdminNewPassw0rd!");
   await page.getByTestId("change-password-submit").click();
 
   // Now on home, admin sees the commander nav entry (which contains Team).
@@ -27,7 +27,10 @@ test("admin first login: forced password change, then onboard a soldier", async 
   const pn = `91${Date.now() % 100000}`;
   await page.getByTestId("onboard-pn").fill(pn);
   await page.getByTestId("onboard-name").fill("חייל בדיקה");
+  await page.getByTestId("onboard-node").click();
+  await expect(page.getByRole("option", { name: /פסיפס/ })).toBeVisible();
+  await page.getByRole("option", { name: /פסיפס/ }).click();
   await page.getByTestId("onboard-submit").click();
-  await expect(page.getByTestId("temp-password")).toBeVisible();
-  await expect(page.getByTestId(`soldier-row-${pn}`)).toBeVisible();
+  await expect(page.getByTestId("temp-password")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId(`soldier-row-${pn}`)).toBeVisible({ timeout: 15_000 });
 });

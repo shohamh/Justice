@@ -6,9 +6,9 @@ from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from app.audit.writer import write_audit
 from app.db.models import DutyShift, ShiftTemplate
+from app.services.exchange_calendar.triggers import enqueue_source_change
 
 
 class TemplateError(Exception):
@@ -261,6 +261,8 @@ def generate_shifts(
         session.add(shift)
         created.append(shift)
     session.flush()
+    for shift in created:
+        enqueue_source_change(session, "duty_shift", shift.id, reason="shift_template")
     if created:
         write_audit(
             session,

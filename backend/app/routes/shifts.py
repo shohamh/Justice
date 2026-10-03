@@ -566,6 +566,10 @@ def bulk_delete_shifts(
         ))
         session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
 
+    from app.services.exchange_calendar.triggers import enqueue_source_change
+    for source_id in shift_ids:
+        enqueue_source_change(session, "duty_shift", source_id, reason="source_deleted")
+
     if shift_ids:
         session.execute(sa_delete(DutyShift).where(DutyShift.id.in_(shift_ids)))
 
@@ -626,6 +630,10 @@ def bulk_clear_assignments(
             DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
         ))
         session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
+
+    from app.services.exchange_calendar.triggers import enqueue_source_change
+    for source_id in shift_ids:
+        enqueue_source_change(session, "duty_shift", source_id)
 
     write_audit(
         session, actor_id=user.id, action="shift.bulk_clear_assignments", entity_type="duty_shift",
@@ -1038,6 +1046,22 @@ def assign_batch(
     if not body.primaries and not body.reserves:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_soldiers")
 
+    # Serialize capacity-checked writers of this shift: two concurrent batches
+    # for different soldiers would otherwise both count the same free slots and
+    # both insert. FOR NO KEY UPDATE conflicts with itself but not with the
+    # FOR KEY SHARE that any assignment INSERT takes on the shift row, so
+    # writers that do not check capacity are not blocked by it. Lock order:
+    # shift row first, then soldiers (inside create_assignment).
+    shift = session.execute(
+        select(DutyShift)
+        .where(DutyShift.id == shift_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if shift is None:
+        # Deleted after the load above (M4): same answer as a missing shift.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+
     existing_primary_count = session.execute(
         select(func.count()).select_from(DutyAssignment).where(
             DutyAssignment.duty_shift_id == shift_id,
@@ -1064,6 +1088,17 @@ def assign_batch(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="reserve_capacity_exceeded")
 
     from app.services import assignments as asvc
+
+    # Lock every soldier of the batch up front in id order. create_assignment
+    # locks its soldier too (re-entrant here), but in request-body order; two
+    # batches for different shifts with the soldiers in opposite order would
+    # otherwise deadlock. Lock order: shift row, then soldiers ascending by id.
+    session.execute(
+        select(Soldier.id)
+        .where(Soldier.id.in_({*body.primaries, *body.reserves}))
+        .order_by(Soldier.id)
+        .with_for_update()
+    ).all()
 
     primary_assignments: list[DutyAssignment] = []
     for soldier_id in body.primaries:
