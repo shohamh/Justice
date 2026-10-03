@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
 import uuid
+from datetime import date
 
 
 def _parse_resume_after_args(
@@ -37,11 +37,15 @@ def main() -> None:
     args = parser.parse_args()
 
     from app.db.session import SessionLocal
-    from app.services.score_projection import backfill_score_projection
+    from app.services.score_projection import (
+        backfill_score_projection,
+        lock_score_projection_maintenance,
+    )
 
     resume_after = _parse_resume_after_args(parser, args)
     with SessionLocal() as session:
         while True:
+            lock_score_projection_maintenance(session)
             state = backfill_score_projection(
                 session,
                 batch_size=args.batch_size,

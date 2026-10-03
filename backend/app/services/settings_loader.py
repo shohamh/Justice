@@ -38,6 +38,11 @@ _HIDDEN_KEYS = {"system.holding_node_id"}
 # app.services.scoring._burden_share_reset_date and effective_active_start.
 FAIRNESS_RESET_DATE_KEY = "fairness.reset_date"
 RESET_DATE_OVERRIDES_KEY = "fairness.reset_date_overrides"
+_SCORE_PROJECTION_MULTIPLIER_SETTING_KEYS = {
+    "scoring.reserve_standby_multiplier",
+    "scoring.reserve_called_up_multiplier",
+    "scoring.dismissed_multiplier",
+}
 
 _DENSITY_DEFAULTS = {
     "algorithm.max_duties_per_window": 8,
@@ -76,6 +81,10 @@ def set_setting(session: Session, key: str, value: Any, *, actor_id: uuid.UUID |
     value = _json_safe(value)
     row = session.get(SystemSetting, key)
     before = row.value if row is not None else None
+    if before != value and key in _SCORE_PROJECTION_MULTIPLIER_SETTING_KEYS:
+        from app.services.score_projection import invalidate_score_projection_for_multiplier_setting
+
+        invalidate_score_projection_for_multiplier_setting(session, setting_key=key)
     if row is None:
         row = SystemSetting(key=key, value=value, updated_by=actor_id)
         session.add(row)

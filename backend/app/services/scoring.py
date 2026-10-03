@@ -30,6 +30,7 @@ from app.db.models import (
     SoldierExemption,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
+    SystemSetting,
 )
 from app.services.authority import (
     build_soldier_scope_visibility,
@@ -45,15 +46,16 @@ logger = logging.getLogger(__name__)
 
 
 def _duty_type_scores(session: Session) -> dict[uuid.UUID, Decimal]:
-    return {dt.id: dt.score_per_day for dt in session.execute(select(DutyType)).scalars().all()}
+    return dict(session.execute(select(DutyType.id, DutyType.score_per_day)).all())
 
 
 def _get_multiplier_setting(session: Session, key: str, default: str) -> Decimal:
-    from app.services.settings_loader import SettingNotFound, get_setting
-    try:
-        return Decimal(str(get_setting(session, key)))
-    except SettingNotFound:
+    row = session.execute(
+        select(SystemSetting.key, SystemSetting.value).where(SystemSetting.key == key)
+    ).first()
+    if row is None:
         return Decimal(default)
+    return Decimal(str(row.value))
 
 
 def effective_duty_days(
@@ -1571,6 +1573,22 @@ def _ensure_projection_ready(
             soldier_ids=key_soldiers | total_soldier_ids,
         )
     )
+
+    if rebuild_keys:
+        from app.services.score_projection import (
+            _mark_dirty_bucket,
+            lock_score_projection_maintenance_shared,
+        )
+
+        lock_score_projection_maintenance_shared(session)
+        for soldier_id, quarter_start_value in sorted(
+            rebuild_keys, key=lambda item: (str(item[0]), item[1])
+        ):
+            _mark_dirty_bucket(
+                session,
+                soldier_id=soldier_id,
+                quarter_start_value=quarter_start_value,
+            )
 
     repaired_quarters: set[date] = set()
     repaired_keys: set[tuple[uuid.UUID, date]] = set()

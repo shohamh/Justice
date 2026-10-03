@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, func, null, or_, select, text
+from sqlalchemy import and_, func, null, or_, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from app.services.sql_arrays import uuid_any
@@ -33,6 +33,13 @@ logger = logging.getLogger(__name__)
 SCORE_PROJECTION_CANONICAL_VERSION = "1"
 SCORE_PROJECTION_STATE_KEY = "score_projection"
 SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY = "scoring.commander_dashboard_projection_reads_enabled"
+SCORE_PROJECTION_MAINTENANCE_LOCK_KEY = "justice.score_projection_maintenance"
+
+_MULTIPLIER_SOURCE_BY_SETTING_KEY = {
+    "scoring.reserve_standby_multiplier": "reserve_standby",
+    "scoring.reserve_called_up_multiplier": "reserve_called_up",
+    "scoring.dismissed_multiplier": "dismissal",
+}
 
 
 @dataclass(frozen=True)
@@ -94,6 +101,94 @@ def _quarter_datetime_bounds(quarter_start_value: date) -> tuple[datetime, datet
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def lock_score_projection_maintenance(session: Session) -> None:
+    """Serialize score-input changes with the projection maintenance worker.
+
+    The worker uses this transaction-scoped advisory lock while it advances its
+    quarter backfill/revalidation cursor. A config writer takes the same lock
+    before marking current buckets dirty, so the worker cannot finish an old
+    batch after the writer's affected-key scan and leave that batch unmarked.
+    """
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": SCORE_PROJECTION_MAINTENANCE_LOCK_KEY},
+    )
+
+
+def lock_score_projection_maintenance_shared(session: Session) -> None:
+    """Keep an ordinary projection rebuild consistent with config changes.
+
+    Normal projection writers and read repairs share this transaction lock,
+    so they can proceed together while configuration invalidation and the
+    maintenance worker retain exclusive access to the same key.
+    """
+    session.execute(
+        text("SELECT pg_advisory_xact_lock_shared(hashtextextended(:lock_key, 0))"),
+        {"lock_key": SCORE_PROJECTION_MAINTENANCE_LOCK_KEY},
+    )
+
+
+def invalidate_score_projection_buckets(
+    session: Session,
+    *,
+    duty_type_id: uuid.UUID | None = None,
+    multiplier_source: str | None = None,
+) -> None:
+    """Mark existing buckets affected by a scoring config change for read repair.
+
+    Exactly one selector is required. The insert-select marks only projected
+    buckets containing the changed duty type or multiplier source; normal
+    projected reads repair these pending buckets from canonical source rows.
+    """
+    if (duty_type_id is None) == (multiplier_source is None):
+        raise ValueError("provide exactly one score projection invalidation selector")
+
+    lock_score_projection_maintenance(session)
+
+    if duty_type_id is not None:
+        where_sql = "p.duty_type_id = :duty_type_id"
+        params: dict[str, Any] = {"duty_type_id": duty_type_id}
+    else:
+        where_sql = """EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+                CASE
+                    WHEN jsonb_typeof(p.source_fingerprint -> 'duty_rows') = 'array'
+                    THEN p.source_fingerprint -> 'duty_rows'
+                    ELSE '[]'::jsonb
+                END
+            ) AS duty_rows(duty_row)
+            WHERE duty_rows.duty_row ->> 'multiplier_source' = :multiplier_source
+        )"""
+        params = {"multiplier_source": multiplier_source}
+
+    session.execute(
+        text(
+            f"""
+            INSERT INTO score_projection_dirty_buckets
+                (soldier_id, quarter_start, status, divergence)
+            SELECT DISTINCT p.soldier_id, p.quarter_start, 'dirty', 'null'::jsonb
+            FROM soldier_quarter_score_projection AS p
+            WHERE {where_sql}
+            ON CONFLICT (soldier_id, quarter_start) DO UPDATE
+            SET status = 'dirty',
+                divergence = 'null'::jsonb,
+                updated_at = now()
+            """
+        ),
+        params,
+    )
+
+
+def invalidate_score_projection_for_multiplier_setting(
+    session: Session, *, setting_key: str
+) -> None:
+    multiplier_source = _MULTIPLIER_SOURCE_BY_SETTING_KEY.get(setting_key)
+    if multiplier_source is None:
+        return
+    invalidate_score_projection_buckets(session, multiplier_source=multiplier_source)
 
 
 def _q6(value: Any) -> Decimal:
@@ -242,6 +337,64 @@ def _mark_dirty_bucket(
     dirty.updated_at = _utcnow()
     session.flush()
     return dirty
+
+
+def _mark_dirty_buckets_bulk(
+    session: Session, *, keys: set[tuple[uuid.UUID, date]] | list[tuple[uuid.UUID, date]]
+) -> dict[tuple[uuid.UUID, date], ScoreProjectionDirtyBucket]:
+    """Upsert and lock a bulk writer's bucket markers with bounded SQL calls.
+
+    Parallel arrays keep the key transport to two bind parameters even for a
+    large soldier-by-quarter batch. Both writes use the same deterministic
+    (soldier, quarter) order as the ordinary per-bucket marker path.
+    """
+    ordered_keys = sorted(set(keys), key=_partition_sort_key)
+    if not ordered_keys:
+        return {}
+
+    params = {
+        "soldier_ids": [str(soldier_id) for soldier_id, _quarter in ordered_keys],
+        "quarter_starts": [quarter for _soldier_id, quarter in ordered_keys],
+    }
+    session.execute(
+        text(
+            """
+            INSERT INTO score_projection_dirty_buckets (
+                soldier_id, quarter_start, status, divergence
+            )
+            SELECT requested.soldier_id, requested.quarter_start, 'dirty', NULL::jsonb
+            FROM UNNEST(CAST(:soldier_ids AS uuid[]), CAST(:quarter_starts AS date[]))
+                AS requested(soldier_id, quarter_start)
+            ORDER BY requested.soldier_id, requested.quarter_start
+            ON CONFLICT (soldier_id, quarter_start) DO UPDATE
+            SET status = 'dirty', divergence = NULL, updated_at = now()
+            """
+        ),
+        params,
+    )
+    locked_rows = session.execute(
+        select(ScoreProjectionDirtyBucket)
+        .from_statement(
+            text(
+                """
+                SELECT dirty.*
+                FROM score_projection_dirty_buckets AS dirty
+                JOIN UNNEST(CAST(:soldier_ids AS uuid[]), CAST(:quarter_starts AS date[]))
+                    AS requested(soldier_id, quarter_start)
+                  ON requested.soldier_id = dirty.soldier_id
+                 AND requested.quarter_start = dirty.quarter_start
+                ORDER BY dirty.soldier_id, dirty.quarter_start
+                FOR UPDATE OF dirty
+                """
+            )
+        )
+        .execution_options(populate_existing=True),
+        params,
+    ).scalars().all()
+    dirty_rows = {(row.soldier_id, row.quarter_start): row for row in locked_rows}
+    if len(dirty_rows) != len(ordered_keys):
+        raise RuntimeError("bulk score projection marker upsert returned an incomplete key set")
+    return dirty_rows
 
 
 def _persisted_bucket_summary(
@@ -874,6 +1027,30 @@ def lock_partition_rows(
     ).all()
 
 
+def lock_partition_rows_for_keys(
+    session: Session, *, keys: set[tuple[uuid.UUID, date]] | list[tuple[uuid.UUID, date]]
+) -> None:
+    """Lock exact bucket partition rows in (quarter, soldier, row id) order."""
+    ordered_keys = sorted(set(keys), key=lambda item: (item[1], str(item[0])))
+    if not ordered_keys:
+        return
+    session.execute(
+        select(SoldierQuarterScoreProjection.id)
+        .where(
+            tuple_(
+                SoldierQuarterScoreProjection.soldier_id,
+                SoldierQuarterScoreProjection.quarter_start,
+            ).in_(ordered_keys)
+        )
+        .order_by(
+            SoldierQuarterScoreProjection.quarter_start,
+            SoldierQuarterScoreProjection.soldier_id,
+            SoldierQuarterScoreProjection.id,
+        )
+        .with_for_update()
+    ).all()
+
+
 def _lock_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> SoldierScoreProjection:
     return _lock_or_create_row(
         session, SoldierScoreProjection, SoldierScoreProjection.soldier_id, soldier_id,
@@ -1341,20 +1518,35 @@ def _mark_projection_key_current(
 def _repair_projection_keys(
     session: Session, *, keys: set[tuple[uuid.UUID, date]]
 ) -> set[uuid.UUID]:
+    if not keys:
+        return set()
+
+    lock_score_projection_maintenance_shared(session)
+    ordered_keys = sorted(keys, key=_partition_sort_key)
+    dirty_rows = {
+        (soldier_id, quarter_start_value): _mark_dirty_bucket(
+            session,
+            soldier_id=soldier_id,
+            quarter_start_value=quarter_start_value,
+        )
+        for soldier_id, quarter_start_value in ordered_keys
+    }
+
     repaired_soldiers: set[uuid.UUID] = set()
     repaired_quarters: set[date] = set()
-    for soldier_id, quarter_start_value in sorted(keys, key=_partition_sort_key):
+    for soldier_id, quarter_start_value in ordered_keys:
         rebuild_projection_bucket(
             session,
             soldier_id,
             quarter_start_value,
             refresh_quarter_total=False,
         )
-        _mark_projection_key_current(
-            session,
-            soldier_id=soldier_id,
-            quarter_start_value=quarter_start_value,
-        )
+        dirty = dirty_rows[(soldier_id, quarter_start_value)]
+        dirty.status = "current"
+        dirty.divergence = null()
+        dirty.refreshed_at = _utcnow()
+        dirty.updated_at = _utcnow()
+        session.flush()
         repaired_soldiers.add(soldier_id)
         repaired_quarters.add(quarter_start_value)
     for quarter_start_value in sorted(repaired_quarters):
@@ -1533,6 +1725,8 @@ def refresh_projection_for_change(
     quarter_starts = _quarters_for_dates(affected_dates)
     if not soldier_id_set or not quarter_starts:
         return
+
+    lock_score_projection_maintenance_shared(session)
 
     # Lock order (shared with refresh_projections_for_assignments_bulk; see
     # lock_partition_rows): every dirty bucket (soldier id, then quarter),
@@ -2010,7 +2204,8 @@ def refresh_projections_for_assignments_bulk(
     algorithm run).
 
     Relies on request-scoped transaction atomicity: any failure rolls the whole
-    publish back, so no dirty-marker bookkeeping is needed here.
+    publish back. Dirty-marker locks serialize overlapping bulk refreshes with
+    ordinary writes and read repairs for the same buckets.
     """
     from app.services.score_projection_bulk import (
         _bulk_upsert_soldier_totals,
@@ -2027,11 +2222,24 @@ def refresh_projections_for_assignments_bulk(
     if not affected_soldiers or not affected_quarters:
         return
 
-    # Same lock order as refresh_projection_for_change (see
-    # lock_partition_rows): partition rows, then soldier totals ascending,
-    # then quarter totals ascending. The soldier totals used to be upserted
-    # inside the per-quarter loop, i.e. after one quarter's total and before
-    # the next quarter's partition rows.
+    lock_score_projection_maintenance_shared(session)
+
+    # Keep the same marker-before-partition order as
+    # refresh_projection_for_change and read repairs. This is the cross
+    # product that the bulk rebuild below force-rebuilds for every quarter.
+    bucket_keys = sorted(
+        (
+            (soldier_id, quarter_start_value)
+            for soldier_id in affected_soldiers
+            for quarter_start_value in affected_quarters
+        ),
+        key=_partition_sort_key,
+    )
+    dirty_rows = _mark_dirty_buckets_bulk(session, keys=bucket_keys)
+
+    # Then lock partition rows, followed by soldier totals ascending and
+    # quarter totals ascending. Soldier totals must not be interleaved with
+    # the per-quarter rebuilds, which deadlocked against concurrent refreshes.
     lock_partition_rows(session, soldier_ids=affected_soldiers, quarter_starts=affected_quarters)
     for quarter in sorted(affected_quarters):
         _rebuild_quarter_buckets_bulk(
@@ -2046,6 +2254,13 @@ def refresh_projections_for_assignments_bulk(
     for quarter in sorted(affected_quarters):
         _upsert_quarter_total(session, quarter_start_value=quarter)
 
+    now = _utcnow()
+    for dirty in dirty_rows.values():
+        dirty.status = "current"
+        dirty.divergence = None
+        dirty.refreshed_at = now
+        dirty.updated_at = now
+    session.flush()
 
 def reconcile_score_projection(session: Session, limit: int = 500) -> dict[str, Any]:
     from app.services.score_projection_reconciliation import reconcile_score_projection as _reconcile
