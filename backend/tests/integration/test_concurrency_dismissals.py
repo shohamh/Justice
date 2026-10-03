@@ -22,7 +22,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -292,7 +291,6 @@ def test_reserve_dismissal_with_a_primary_linked_mid_request_does_not_deadlock(r
     assert link.reserve_assignment_id == cover_id
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="dismiss-and-cover route vs dismiss_reserve deadlock")
 def test_dismiss_and_cover_route_and_reserve_dismissal_do_not_deadlock(race, admin_session, monkeypatch):
     """``POST /shifts/{id}/dismissals`` (dismiss primary P, call up covering
     reserve R2, relink, reallocate) locked P (``dismiss_primary``), refreshed

@@ -29,6 +29,32 @@ def _lock_assignment(session: Session, assignment: DutyAssignment) -> None:
     )
 
 
+def lock_reserve_and_linked_primaries(
+    session: Session,
+    reserve: DutyAssignment,
+    *,
+    extra_primary_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] = (),
+) -> None:
+    """Lock a reserve, then its linked primaries (plus ``extra_primary_ids``)
+    in ascending id order, all ``FOR NO KEY UPDATE``.
+
+    Lock order for every reserve-side workflow: reserve -> primaries
+    (ascending id) -> projection. dismiss_reserve and the dismiss-and-cover
+    route both start with this; primary-side writers (dismiss_primary,
+    mark_no_show, set_day_override, relink_reserve) lock a primary and then
+    the projection, which is consistent with it."""
+    _lock_assignment(session, reserve)
+    linked = select(DutyReserveLink.primary_assignment_id).where(
+        DutyReserveLink.reserve_assignment_id == reserve.id
+    )
+    condition = DutyAssignment.id.in_(linked)
+    if extra_primary_ids:
+        condition = condition | DutyAssignment.id.in_(list(extra_primary_ids))
+    session.execute(
+        select(DutyAssignment.id).where(condition).order_by(DutyAssignment.id).with_for_update(key_share=True)
+    ).all()
+
+
 def call_up_reserve(
     session: Session,
     *,
@@ -230,23 +256,14 @@ def dismiss_reserve(
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
-    _lock_assignment(session, assignment)
     # Lock order: reserve -> linked primaries (ascending id) -> projection.
     # dismiss_primary / mark_no_show / set_day_override lock a primary first
     # and the projection after, so every primary lock here must come before
-    # the projection refresh. Take the linked primaries now, in id order. A
-    # primary linked to this reserve by a transaction that commits after this
-    # statement is not in this set; relink_reserve locks it below, which is
-    # why the projection refresh runs only after the relinks/reallocation.
-    session.execute(
-        select(DutyAssignment.id)
-        .where(DutyAssignment.id.in_(
-            select(DutyReserveLink.primary_assignment_id)
-            .where(DutyReserveLink.reserve_assignment_id == assignment.id)
-        ))
-        .order_by(DutyAssignment.id)
-        .with_for_update(key_share=True)
-    ).all()
+    # the projection refresh. A primary linked to this reserve by a
+    # transaction that commits after this statement is not in this set;
+    # relink_reserve locks it below, which is why the projection refresh runs
+    # only after the relinks/reallocation.
+    lock_reserve_and_linked_primaries(session, assignment)
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
