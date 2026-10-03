@@ -35,6 +35,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from decimal import Decimal
 
+import pytest
+
 from app.db.models import AlgorithmJob, DutyLocation, DutyShift, DutyType, Soldier
 from tests.helpers import create_node, create_soldier
 
@@ -217,3 +219,68 @@ def test_startup_hook_still_fails_a_job_whose_runner_is_gone(admin_session):
     assert _status(admin_session, job_id) == (
         "failed", '{"status": "INTERRUPTED", "reason": "server_restarted"}',
     )
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M3: a losing duplicate runner pops the real runner's cancel event")
+def test_duplicate_runner_leaves_the_live_runners_cancel_event_alone(admin_session):
+    """M3 — ``run_algorithm_job`` registered its cancel event in
+    ``_cancel_events`` before trying the runner lock. A duplicate run of a job
+    another runner in the same process holds overwrote that runner's event,
+    returned, and popped it in ``finally``, so ``cancel_job``'s same-process
+    fast path could no longer reach the live solve.
+
+    Fixed: the event is registered only after the lock is acquired, and the
+    ``finally`` removes the entry only if it is this run's own event."""
+    import threading
+
+    from app.services import algorithm_bridge
+
+    job_id, _dm_id = _seed(admin_session, "m3", status="running")
+    live_lock = algorithm_bridge._acquire_job_runner_lock(job_id)
+    assert live_lock is not None
+    live_event = threading.Event()
+    algorithm_bridge._cancel_events[str(job_id)] = live_event
+    try:
+        algorithm_bridge.run_algorithm_job(job_id, None)  # returns: another runner holds the lock
+
+        assert algorithm_bridge._cancel_events.get(str(job_id)) is live_event, (
+            "the duplicate run replaced or removed the live runner's cancel event"
+        )
+        assert not live_event.is_set()
+    finally:
+        algorithm_bridge._cancel_events.pop(str(job_id), None)
+        algorithm_bridge._release_job_runner_lock(live_lock, job_id)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C13: failed unlock returns a lock-holding connection to the pool")
+def test_failed_runner_unlock_does_not_leave_the_lock_on_a_pooled_connection(race, admin_session):
+    """C13 residual — ``_release_job_runner_lock`` closed the runner's
+    connection back into the pool in ``finally``. If ``pg_advisory_unlock``
+    raised, the session-level lock stayed on that pooled connection, so the job
+    still looked live to the startup hook.
+
+    Fixed: on an unlock failure the connection is invalidated (the DBAPI
+    connection is closed, which drops the lock) instead of being pooled."""
+    from app.services import algorithm_bridge
+
+    job_id, _dm_id = _seed(admin_session, "unlock", status="running")
+    conn = algorithm_bridge._acquire_job_runner_lock(job_id)
+    assert conn is not None
+
+    class _FailingUnlock:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def execute(self, *_args, **_kwargs):
+            raise RuntimeError("injected pg_advisory_unlock failure")
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with pytest.raises(RuntimeError, match="injected"):
+        algorithm_bridge._release_job_runner_lock(_FailingUnlock(conn), job_id)
+
+    probe = race.session()
+    still_live = algorithm_bridge.job_has_live_runner(probe, job_id)
+    probe.rollback()
+    assert still_live is False, "the runner lock survived on a connection returned to the pool"
