@@ -342,6 +342,9 @@ describe("HomePage - required scoring data load errors", () => {
 
     const { container } = renderHome();
 
+    expect(mockFetchMyCommandScope).not.toHaveBeenCalled();
+    expect(commandDashboardApi.getAlerts).not.toHaveBeenCalled();
+
     expect(await screen.findByText("דאשבורד מפקד")).toBeInTheDocument();
     expect(await screen.findByTestId("panel-ineligible-soldiers")).toBeInTheDocument();
     expect(screen.getByTestId("panel-alerts")).toBeInTheDocument();
@@ -356,7 +359,12 @@ describe("HomePage - required scoring data load errors", () => {
     expect(screen.getByTestId("command-unit-calendar")).toHaveAttribute("data-highlight-soldier-id", "soldier-1");
     expect(container.querySelectorAll('a[href="/approvals?tab=constraints"]')).toHaveLength(1);
 
-    await waitFor(() => expect(commandDashboardApi.getAlerts).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(mockFetchMyCommandScope).toHaveBeenCalledTimes(1);
+      expect(commandDashboardApi.getAlerts).toHaveBeenCalledTimes(1);
+      expect(commandDashboardApi.getPotential).toHaveBeenCalledTimes(1);
+      expect(commandDashboardApi.getUpcoming).toHaveBeenCalledTimes(1);
+    });
     expect(commandDashboardApi.getPotential).toHaveBeenCalledTimes(1);
     expect(commandDashboardApi.getUpcoming).toHaveBeenCalledTimes(1);
     expect(mockFetchMyCommandScope).toHaveBeenCalledTimes(1);
@@ -430,7 +438,7 @@ describe("HomePage - required scoring data load errors", () => {
     renderHome();
 
     const panel = await screen.findByTestId("panel-ineligible-soldiers");
-    expect(await screen.findByTestId("ineligible-range-badge")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("ineligible-range-badge")).toHaveTextContent("1"));
     expect(ineligibleSoldiersApi.getIneligibleSoldierCount).toHaveBeenCalledWith("commander");
     expect(ineligibleSoldiersApi.getIneligibleSoldiers).not.toHaveBeenCalled();
 

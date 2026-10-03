@@ -192,3 +192,8 @@ Commit `214efa0c` tightens the transfer-count query-shape regression after revie
 ## Task 8 follow-up: HelpModal hierarchy eligibility picker request shape (2026-10-03)
 
 `HierarchyEligibilityTab` no longer requests `/hierarchy/tree` or flattens the full hierarchy at tab mount. It mounts `HierarchyNodePickerModal` only after explicit user selection, and the selection button accessible name reflects the chosen ancestor path. The existing picker uses root branch pages, fetches child pages only after expansion, and uses server search on user query; its selection callback now includes `path_ids` while preserving existing path-name data. Focused tests verify these request and callback shapes and the existing eligibility rules. This is request-shape evidence only; no page-latency gain is claimed.
+
+
+## Task 6/7 follow-up: schedule Home secondary reads (2026-10-03)
+
+Home secondary read queries now wait for primary duties, type, location, and settings data, then open after 400 ms with no app-wide React Query fetch in progress, capped at 1,200 ms after readiness. The gate resets when primary readiness or authorization scope changes and checks query-client fetch state again when the idle timer fires. It covers command scope, command widgets, owned-node potential summaries, command count/list reads, and upcoming ranges; role/authorization predicates and query keys remain unchanged, and ordinary soldiers continue to have command requests disabled. Focused Home/hook testing verifies held/released command reads and idle/max-wait/reset behavior. This is client request scheduling evidence only; no page reprofile or speed claim is made.

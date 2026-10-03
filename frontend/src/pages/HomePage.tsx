@@ -49,6 +49,7 @@ import {
 import { getPotentialSummary as getNodePotentialSummary, type PotentialSummary } from "../api/potential";
 import { useLevelTypes } from "../hooks/useLevelTypes";
 import { useAdminIneligibleSoldierCount } from "../hooks/useAdminIneligibleSoldierCount";
+import { useDashboardIdleGate } from "../hooks/useDashboardIdleGate";
 
 // Hebrew-style "X, Y and Z" join: comma-separates all but the last item,
 // then attaches the last with "ו" (no comma) — e.g. "המדור, הפלוגה והמרכז".
@@ -129,15 +130,50 @@ export default function HomePage() {
 
   const commandScopeAvailable = isCommandScopeAvailable(user);
   const authorizationScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
+
+  // These are the primary Home reads. Secondary dashboard requests wait until
+  // they settle and the rest of the app has had a short idle window.
+  const dutyWindow = { date_from: offsetDate(-365), date_to: offsetDate(60) };
+  const dutiesQuery = useQuery({
+    queryKey: user
+      ? [...queryKeys.effectiveDuties(user.id, dutyWindow), authorizationScope]
+      : ["effectiveDuties", "anonymous"],
+    queryFn: () => listEffectiveDuties(user!.id, { ...dutyWindow, include_drafts: true }),
+    enabled: !!user,
+  });
+  const duties = useMemo(() => dutiesQuery.data ?? [], [dutiesQuery.data]);
+
+  const typesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const typeNames = Object.fromEntries(
+    (Array.isArray(typesQuery.data) ? typesQuery.data : []).map((t) => [t.id, t.name]),
+  );
+
+  const locsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
+  const locationNames = Object.fromEntries(
+    (Array.isArray(locsQuery.data) ? locsQuery.data : []).map((l) => [l.id, l.name]),
+  );
+
+  const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
+  const settings = settingsQuery.data ?? ({} as SettingsMap);
+  const primaryDataPending = dutiesQuery.isPending || typesQuery.isPending || locsQuery.isPending || settingsQuery.isPending;
+  useEffect(() => {
+    setPrimaryReadyScope(
+      authorizationScope !== null && !primaryDataPending ? authorizationScope : null,
+    );
+  }, [authorizationScope, primaryDataPending]);
+  const primaryDataReady =
+    authorizationScope !== null && primaryReadyScope === authorizationScope;
+  const secondaryReadsReady = useDashboardIdleGate(primaryDataReady, authorizationScope);
+
   const adminIneligibleSoldierCountQuery = useAdminIneligibleSoldierCount({
     actorId: user?.role === "admin" ? user.id : null,
     authorizationScope,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope,
   });
   const commanderIneligibleSoldierCountQuery = useQuery({
     queryKey: [...queryKeys.ineligibleSoldierCount(), "commander", authorizationScope],
     queryFn: () => getIneligibleSoldierCount("commander"),
-    enabled: user?.role !== "admin" && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && user?.role !== "admin" && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
     retry: false,
   });
   const ineligibleSoldierCountQuery = user?.role === "admin"
@@ -147,7 +183,7 @@ export default function HomePage() {
   const commandScopeQuery = useQuery({
     queryKey: queryKeys.myCommandScope(user?.id ?? null, authorizationScope),
     queryFn: fetchMyCommandScope,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const commandNodesOwnedByUser = useMemo(
     () => commandScopeQuery.data?.commanded_nodes ?? [],
@@ -192,21 +228,21 @@ export default function HomePage() {
   const commandAlertsQuery = useQuery({
     queryKey: [...queryKeys.commandDashboardAlerts(), authorizationScope],
     queryFn: getCommandAlerts,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const commandAlerts = commandAlertsQuery.data ?? null;
 
   const commandUpcomingQuery = useQuery({
     queryKey: [...queryKeys.commandDashboardUpcoming(), authorizationScope],
     queryFn: getCommandUpcoming,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const commandUpcoming = commandUpcomingQuery.data ?? null;
 
   const commandPotentialQuery = useQuery({
     queryKey: [...queryKeys.commandDashboardPotential(), authorizationScope],
     queryFn: getCommandPotential,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const commandPotential = commandPotentialQuery.data ?? null;
 
@@ -214,7 +250,7 @@ export default function HomePage() {
     queries: commandNodesOwnedByUser.map((node) => ({
       queryKey: [...queryKeys.commandDashboardOwnPotential(node.id), "summary", authorizationScope],
       queryFn: () => getNodePotentialSummary(node.id),
-      enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+      enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
     })),
   });
 
@@ -231,39 +267,12 @@ export default function HomePage() {
     return byId;
   }, [commandNodesOwnedByUser, ownPotentialQueries]);
 
-  // These queries fetch required-object payloads (see api/scoring.ts) — a
-  // malformed shape throws instead of silently rendering wrong totals, so
-  // surface that as a single banner rather than letting the page's ?? []/??
-  // null fallbacks mask the failure.
-  const dutyWindow = { date_from: offsetDate(-365), date_to: offsetDate(60) };
-  const dutiesQuery = useQuery({
-    queryKey: user
-      ? [...queryKeys.effectiveDuties(user.id, dutyWindow), authorizationScope]
-      : ["effectiveDuties", "anonymous"],
-    queryFn: () => listEffectiveDuties(user!.id, { ...dutyWindow, include_drafts: true }),
-    enabled: !!user,
-  });
-  const duties = useMemo(() => dutiesQuery.data ?? [], [dutiesQuery.data]);
-
-  const typesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
-  const typeNames = Object.fromEntries(
-    (Array.isArray(typesQuery.data) ? typesQuery.data : []).map((t) => [t.id, t.name]),
-  );
-
-  const locsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
-  const locationNames = Object.fromEntries(
-    (Array.isArray(locsQuery.data) ? locsQuery.data : []).map((l) => [l.id, l.name]),
-  );
-
   const mySwapsQuery = useQuery({
     queryKey: [...queryKeys.mySwaps(), authorizationScope],
     queryFn: listMySwaps,
     enabled: primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const mySwaps = mySwapsQuery.data ?? [];
-
-  const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
-  const settings = settingsQuery.data ?? ({} as SettingsMap);
 
   const rangeToday = todayIso();
   const rangesQuery = useInfiniteQuery({
@@ -277,6 +286,7 @@ export default function HomePage() {
     }, pageParam),
     getNextPageParam: lastPage => lastPage.next_cursor ?? undefined,
     enabled:
+      secondaryReadsReady &&
       primaryReadyScope === authorizationScope &&
       authorizationScope !== null &&
       !!user?.hierarchy_node_id &&
@@ -313,54 +323,45 @@ export default function HomePage() {
     burdenShareBreakdownQuery.refetch(),
   ]);
 
-  const primaryDataPending = dutiesQuery.isPending || typesQuery.isPending || locsQuery.isPending || settingsQuery.isPending;
-  useEffect(() => {
-    setPrimaryReadyScope(
-      authorizationScope !== null && !primaryDataPending ? authorizationScope : null,
-    );
-  }, [authorizationScope, primaryDataPending]);
-  const primaryDataReady =
-    authorizationScope !== null && primaryReadyScope === authorizationScope;
-
   const enrollQuery = useQuery({
     queryKey: [...queryKeys.pendingEnrollments(), authorizationScope],
     queryFn: listPendingEnrollments,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const pendingEnrollments = enrollQuery.data ?? [];
 
   const pendingSwapsQuery = useQuery({
     queryKey: [...queryKeys.pendingSwaps(), authorizationScope],
     queryFn: listPendingSwaps,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const pendingSwaps = pendingSwapsQuery.data ?? [];
 
   const pendingConstraintsQuery = useQuery({
     queryKey: [...queryKeys.pendingConstraintsCount(), authorizationScope],
     queryFn: getPendingCount,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const pendingConstraints = pendingConstraintsQuery.data ?? 0;
 
   const pendingExemptionsQuery = useQuery({
     queryKey: [...queryKeys.pendingExemptionsCount(), authorizationScope],
     queryFn: getPendingExemptionCount,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const pendingExemptions = pendingExemptionsQuery.data ?? 0;
 
   const pendingFieldUpdatesQuery = useQuery({
     queryKey: [...queryKeys.pendingFieldUpdatesCount(), authorizationScope],
     queryFn: getPendingFieldUpdateCount,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const pendingFieldUpdates = pendingFieldUpdatesQuery.data ?? 0;
 
   const pendingTransfersQuery = useQuery({
     queryKey: [...queryKeys.pendingHierarchyTransfers(), authorizationScope],
     queryFn: listPendingTransferRequests,
-    enabled: commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const pendingTransfers = pendingTransfersQuery.data ?? [];
 

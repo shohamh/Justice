@@ -629,3 +629,8 @@ A read-only post-change `GET /api/nav/counts` service measurement was attempted 
 ### HelpModal eligibility picker request-shape follow-up (2026-10-03)
 
 The HelpModal hierarchy eligibility tab no longer makes its unconditional full-tree request on tab mount. It opens the existing lazy picker only on user request; that picker reads root branch pages, child branches on expansion, and server search results when searching. Branch and search selections both preserve ancestor-name paths and now return the selected node's `path_ids`. These are request-shape and component-test observations only; no request duration, scale profile, or page-ready measurement was collected, so no latency gain is claimed.
+
+
+### Home secondary-read scheduling follow-up (2026-10-03)
+
+Home now delays selected secondary React Query reads until primary duties, duty types, locations, and settings are ready and the app has had 400 ms with no query fetches; a 1,200 ms cap prevents indefinite deferral. A newly started fetch cancels the idle window, and the callback rechecks the query client before opening. This changes client request scheduling only. Focused tests cover the idle delay, cap, reset, interruption, command-role held/released reads, and plain-soldier command exclusion. No browser/page reprofile was run, and no speed or latency gain is claimed.
