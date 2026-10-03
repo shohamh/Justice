@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -97,3 +98,84 @@ def test_concurrent_overlapping_dismissals_record_only_one(race, admin_session):
     assert count == 1, f"{count} overlapping dismissals committed; outcomes={outcomes}"
     loser = next(o for o in outcomes if not o.ok)
     assert str(loser.error) == "overlapping_dismissal"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="dismiss_reserve locks quarter total before the linked primary")
+def test_covered_reserve_dismissal_and_primary_dismissal_do_not_deadlock(race, admin_session):
+    """``dismiss_reserve(R, covering_reserve_id=R2)`` locks R, refreshes the
+    score projection (locking the quarter-total row) and only then relinks
+    R's primaries, locking each primary P. ``dismiss_primary(P)`` locks P and
+    then refreshes the projection (quarter total). Opposite order on P and the
+    quarter total.
+
+    Schedule: the reserve dismissal holds the quarter total; the primary
+    dismissal holds P; each then waits for the other's lock."""
+    from app.db.models import DutyReserveLink
+
+    admin = create_soldier(admin_session, personal_number="race-dr-admin", role="admin")
+    dt = DutyType(name="race-dr-type", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="race-dr-loc")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+
+    def assignment(pn, is_reserve):
+        s = create_soldier(admin_session, personal_number=pn)
+        a = DutyAssignment(soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id, start_date=_START,
+                           end_date=_START + timedelta(days=8), status="published", is_reserve=is_reserve)
+        admin_session.add(a)
+        admin_session.flush()
+        return a
+
+    primary = assignment("race-dr-p", False)
+    reserve = assignment("race-dr-r", True)
+    cover = assignment("race-dr-r2", True)
+    admin_session.add(DutyReserveLink(primary_assignment_id=primary.id, reserve_assignment_id=reserve.id,
+                                      hierarchy_distance=0))
+    admin_session.add(ScoreProjectionQuarterTotal(
+        quarter_start=date(_START.year, (_START.month - 1) // 3 * 3 + 1, 1), projection_version="1",
+        raw_day_count=0, effective_weighted_days=Decimal("0"), duty_score=Decimal("0"),
+        adjustment_score=Decimal("0"), total_score=Decimal("0"),
+    ))
+    admin_session.commit()
+    primary_id, reserve_id, cover_id, admin_id = primary.id, reserve.id, cover.id, admin.id
+
+    reserve_side_holds_total = race.signal("reserve dismissal holds the quarter total")
+    primary_side_holds_primary = race.signal("primary dismissal holds the primary")
+
+    def dismiss_reserve():
+        s = race.session()
+        r = s.get(DutyAssignment, reserve_id)
+
+        def _after_total_lock():
+            reserve_side_holds_total.set()
+            primary_side_holds_primary.wait()
+
+        race.pause_after_select(s, ScoreProjectionQuarterTotal, _after_total_lock)
+        d, _ = reserves_service.dismiss_reserve(
+            s, assignment=r, from_date=_START + timedelta(days=1), to_date=_START + timedelta(days=2),
+            reason=None, actor_id=admin_id, covering_reserve_id=cover_id,
+        )
+        s.commit()
+        return d.id
+
+    def dismiss_primary():
+        reserve_side_holds_total.wait()
+        s = race.session()
+        p = s.get(DutyAssignment, primary_id)
+        # The dismissal-overlap read runs right after dismiss_primary locks P.
+        race.pause_after_select(s, DutyDismissal, primary_side_holds_primary.set)
+        d = reserves_service.dismiss_primary(
+            s, assignment=p, from_date=_START + timedelta(days=4), to_date=_START + timedelta(days=5),
+            reason=None, actor_id=admin_id,
+        )
+        s.commit()
+        return d.id
+
+    outcomes = race.run(dismiss_reserve, dismiss_primary)
+
+    assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
+    admin_session.expire_all()
+    link = admin_session.execute(
+        select(DutyReserveLink).where(DutyReserveLink.primary_assignment_id == primary_id)
+    ).scalar_one()
+    assert link.reserve_assignment_id == cover_id
