@@ -73,6 +73,7 @@ try {
 
     $env:COOKIE_SECURE = 'false'
     if ($NoOidc) { foreach ($n in 'OIDC_ISSUER','OIDC_CLIENT_ID','OIDC_CLIENT_SECRET','OIDC_REDIRECT_URI','OIDC_ALLOW_INSECURE_LOCAL') { Remove-Item "Env:$n" -ErrorAction SilentlyContinue } }  # a previous run in this shell may have exported them
+    Remove-Item Env:E2E_OIDC_DISABLED -ErrorAction SilentlyContinue  # may linger from a previous -NoOidc run in this shell
     if ($NoOidc) { $PlaywrightArgs = @('-g', 'no OIDC settings') + $PlaywrightArgs; $env:E2E_OIDC_DISABLED = '1' }
     $env:FRONTEND_URL = 'http://localhost:5183'; $env:ALLOWED_ORIGINS = 'http://localhost:5183'
     if (-not $NoOidc) { $env:OIDC_ISSUER = 'http://127.0.0.1:8411/realms/justice-test' }
