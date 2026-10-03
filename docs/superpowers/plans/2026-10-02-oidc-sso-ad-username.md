@@ -231,7 +231,7 @@ Task 9 notes: browser (Playwright) specs for the ambiguous-SSO-to-admin journey,
 - [x] Test state, nonce, PKCE verifier, signature, `iss`, `aud`, `azp`, `exp`, `iat`, missing/unverified email, discovery outage, JWKS outage, key rotation, replay, and open redirect rejection.
 - [x] Search application logs, audit events, URLs, responses, browser storage, and test artifacts for tokens, authorization codes, state, nonce, email claims, or secrets; remove any leak.
 - [x] Run email and OIDC migrations against PostgreSQL with conflict and clean fixtures; run backend auth/registration/email suites and frontend auth tests.
-- [ ] Run existing login and registration browser journeys plus new mock-provider OIDC journey; verify the legacy password flow still produces the existing session.
+- [x] Run existing login and registration browser journeys plus new mock-provider OIDC journey; verify the legacy password flow still produces the existing session. (Ran 2026-10-03, see the follow-up note at the end.)
 - [x] Document provider configuration and local mock-provider setup without embedding production issuer URLs or credentials; explicitly state provider-specific AD syntax assumptions.
 
 Task 10 notes (independent review, 2026-10-02):
@@ -247,3 +247,5 @@ OIDC protocol and identity linking are security-sensitive and touch overlapping 
 
 
 Real-provider browser run (Keycloak, `frontend/tests/e2e/oidc/run.ps1`, see docs/operations/oidc-sso.md): 9 of 9 journeys in `oidc_keycloak.spec.ts` passed in Playwright's bundled Chromium. It found one real bug (the register schema rejected the `email: null` the SPA sends for SSO registration, fixed in commit 7a4a8718 with a backend test). Not run: the pre-existing `login.spec.ts`/default-config specs (system Chrome crashed at launch on this machine), Vitest, and the mock-provider spec `oidc_sso.spec.ts` (needs `E2E_OIDC_MOCK_URL`). The task 10 existing-journeys item therefore stays open.
+
+Follow-up run (2026-10-03): Keycloak journeys 8/8 green plus the real no-OIDC journey (backend started without `OIDC_*`: no SSO button, `/api/auth/oidc/start` 404), twice on fresh databases with retries 0; the SSO-registered soldier gets 403 on three admin-only calls before and after approval; existing `login.spec.ts`, `fixtures/auth.spec.ts` and `smoke/authorization_boundaries.spec.ts` (desktop) 11/11; Vitest src/api, src/auth, LoginPage, RegisterPage, admin 58 files/380 tests; mock-provider `oidc_sso.spec.ts` 4 passed, 1 skipped (the unconfigured case, covered by the real no-OIDC journey). Fixed: transient refresh failures on mount logged users out (commit 72e1d4a5). Task 10 "existing login/registration browser journeys" is now run.
