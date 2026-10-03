@@ -23,8 +23,8 @@ from app.db.models import (
     SwapCandidate,
     SwapRequest,
 )
+from app.services import hierarchy_transfers, swaps
 from app.services import nav_counts as nav_counts_service
-from app.services import swaps
 from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -233,7 +233,7 @@ def test_nav_count_source_failure_does_not_zero_other_badges(
     monkeypatch.setattr(nav_counts_service, "_count_field_updates", lambda *_: 3)
     monkeypatch.setattr(nav_counts_service, "_count_enrollments", lambda *_: 4)
     monkeypatch.setattr(nav_counts_service, "_count_actionable_swaps", lambda *_: 5)
-    monkeypatch.setattr(nav_counts_service.hierarchy_transfers, "list_pending_for_approver", lambda **_: [])
+    monkeypatch.setattr(nav_counts_service, "_count_transfers", lambda *_: 0)
     monkeypatch.setattr(nav_counts_service, "_count_hakpaza", lambda *_: 6)
     monkeypatch.setattr(nav_counts_service, "_count_incoming_swaps", lambda *_: 7)
 
@@ -241,6 +241,75 @@ def test_nav_count_source_failure_does_not_zero_other_badges(
 
     assert response.status_code == 200, response.text
     assert response.json() == {"approvals": 14, "hakpaza": 6, "incoming_swaps": 7}
+
+
+@pytest.mark.parametrize(
+    ("actor_key", "expected"),
+    [("admin", 1), ("commander", 2), ("duty_manager", 1), ("no_scope", 0)],
+)
+def test_transfer_badge_matches_pending_destination_scope_with_sql_count(
+    admin_session: Session,
+    actor_key: str,
+    expected: int,
+):
+    suffix = _id()
+    admin = create_soldier(admin_session, personal_number=f"transfer_admin_{suffix}", role="admin")
+    commander = create_soldier(admin_session, personal_number=f"transfer_cmd_{suffix}", role="commander")
+    duty_manager = create_soldier(admin_session, personal_number=f"transfer_dm_{suffix}", role="duty_manager")
+    no_scope = create_soldier(admin_session, personal_number=f"transfer_none_{suffix}", role="commander")
+    requester = create_soldier(admin_session, personal_number=f"transfer_requester_{suffix}")
+    source = create_node(admin_session, level="unit", name=f"transfer_source_{suffix}")
+    root = create_node(
+        admin_session, level="group", name=f"transfer_root_{suffix}", commander_id=commander.id
+    )
+    child = create_node(admin_session, level="branch", name=f"transfer_child_{suffix}", parent=root)
+    leaf = create_node(admin_session, level="unit", name=f"transfer_leaf_{suffix}", parent=child)
+    admin_session.add_all([
+        DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=leaf.id),
+        DutyManagerScope(duty_manager_id=commander.id, hierarchy_node_id=leaf.id),
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=leaf.id),
+    ])
+    for destination, status in (
+        (child, "pending"),
+        (leaf, "pending"),
+        (source, "pending"),
+        (leaf, "approved"),
+        (leaf, "rejected"),
+    ):
+        admin_session.add(HierarchyTransferRequest(
+            soldier_id=requester.id,
+            requested_by=requester.id,
+            from_node_id=source.id,
+            to_node_id=destination.id,
+            status=status,
+        ))
+    admin_session.commit()
+
+    actor = {"admin": admin, "commander": commander, "duty_manager": duty_manager,
+             "no_scope": no_scope}[actor_key]
+    assert len(hierarchy_transfers.list_pending_for_approver(
+        admin_session, approver_id=actor.id
+    )) == expected
+
+    statements: list[str] = []
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement.lower())
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_transfers(admin_session, actor)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == expected
+    transfer_queries = [sql for sql in statements if "hierarchy_transfer_requests" in sql]
+    assert len(transfer_queries) == (0 if actor_key == "no_scope" else 1)
+    assert all("count(" in sql and "&&" in sql for sql in transfer_queries)
+    assert not any("select hierarchy_transfer_requests." in sql for sql in statements)
+    assert not any("select hierarchy_nodes." in sql and
+                   "select hierarchy_nodes.id" not in sql for sql in statements)
 
 
 def test_admin_constraint_badge_counts_pending_rows_except_own_with_sql_count(

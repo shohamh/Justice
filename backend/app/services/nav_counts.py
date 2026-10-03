@@ -19,6 +19,7 @@ from app.db.models import (
     ForcedCallup,
     HierarchyLevelType,
     HierarchyNode,
+    HierarchyTransferRequest,
     PersonalConstraint,
     Soldier,
     SoldierEnrollmentRequest,
@@ -27,7 +28,7 @@ from app.db.models import (
     SwapManagerApproval,
     SwapRequest,
 )
-from app.services import constraints, exemption_requests, hierarchy_transfers, swaps
+from app.services import constraints, exemption_requests, swaps
 from app.services.approval_scope import (
     commander_chain_for_soldier,
     duty_manager_chain_for_soldier,
@@ -292,6 +293,21 @@ def _count_enrollments(session: Session, user: Soldier) -> int:
     ).scalar_one())
 
 
+def _count_transfers(session: Session, user: Soldier) -> int:
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return 0
+    return int(session.execute(
+        select(func.count())
+        .select_from(HierarchyTransferRequest)
+        .join(HierarchyNode, HierarchyNode.id == HierarchyTransferRequest.to_node_id)
+        .where(
+            HierarchyTransferRequest.status == "pending",
+            HierarchyNode.path_ids.overlap(list(roots)),
+        )
+    ).scalar_one())
+
+
 def _swap_manager_approver_ids(session: Session, soldier_id: uuid.UUID) -> set[uuid.UUID]:
     approver_ids = set(commander_chain_for_soldier(session, soldier_id))
     try:
@@ -446,7 +462,7 @@ def get_nav_counts(session: Session, user: Soldier) -> dict[str, int]:
         ("swaps", lambda: _count_actionable_swaps(session, user)),
         (
             "transfers",
-            lambda: len(hierarchy_transfers.list_pending_for_approver(session, approver_id=user.id)),
+            lambda: _count_transfers(session, user),
         ),
     )
     approvals = sum(
