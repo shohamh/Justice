@@ -29,7 +29,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -160,7 +159,6 @@ def test_first_two_refreshes_of_one_soldier_bucket_both_succeed(race, admin_sess
     assert buckets == 1
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="projection refresh lock interleave deadlocks")
 def test_overlapping_multi_soldier_refreshes_do_not_deadlock(race, admin_session):
     """``refresh_projection_for_change`` locked, per soldier in id order, the
     dirty bucket, the soldier total and then the quarter total. A refresh of

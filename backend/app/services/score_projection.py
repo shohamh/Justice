@@ -753,11 +753,22 @@ def _zero_totals() -> dict[str, Any]:
     }
 
 
-def _upsert_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> SoldierScoreProjection:
-    projection = _lock_or_create_row(
+def _lock_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> SoldierScoreProjection:
+    return _lock_or_create_row(
         session, SoldierScoreProjection, SoldierScoreProjection.soldier_id, soldier_id,
         {**_zero_totals(), "cumulative_score": Decimal("0"), "shift_count": 0},
     )
+
+
+def _lock_quarter_total(session: Session, *, quarter_start_value: date) -> ScoreProjectionQuarterTotal:
+    return _lock_or_create_row(
+        session, ScoreProjectionQuarterTotal, ScoreProjectionQuarterTotal.quarter_start, quarter_start_value,
+        {**_zero_totals(), "raw_day_count": 0, "effective_weighted_days": Decimal("0"), "total_score": Decimal("0")},
+    )
+
+
+def _upsert_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> SoldierScoreProjection:
+    projection = _lock_soldier_total(session, soldier_id=soldier_id)
     want = _expected_soldier_totals_by_id(session, {soldier_id})[soldier_id]
     duty_score = _q6(want["duty_score"])
     adjustment_score = _q6(want["adjustment_score"])
@@ -789,10 +800,7 @@ def _upsert_quarter_total(
 ) -> ScoreProjectionQuarterTotal:
     # Lock (creating if needed) before summing: the sums must include every
     # concurrent writer's committed partition rows, or the total drifts.
-    projection = _lock_or_create_row(
-        session, ScoreProjectionQuarterTotal, ScoreProjectionQuarterTotal.quarter_start, quarter_start_value,
-        {**_zero_totals(), "raw_day_count": 0, "effective_weighted_days": Decimal("0"), "total_score": Decimal("0")},
-    )
+    projection = _lock_quarter_total(session, quarter_start_value=quarter_start_value)
     raw_day_count, effective_weighted_days, duty_score, adjustment_score = _quarter_sums(
         session, quarter_start_value=quarter_start_value
     )
@@ -1363,15 +1371,33 @@ def refresh_projection_for_change(
     if not soldier_id_set or not quarter_starts:
         return
 
-    for soldier_id in sorted(soldier_id_set, key=str):
-        for quarter_start_value in sorted(quarter_starts):
-            dirty = _mark_dirty_bucket(
+    # Lock order: every dirty bucket (soldier id as text, then quarter), then
+    # every soldier total (soldier id as text), then every quarter total, all
+    # before the first rebuild. Locking them interleaved per soldier (bucket
+    # S1, totals, quarter total, bucket S2, ...) deadlocked against a
+    # concurrent refresh of a subset of the soldiers: one held the quarter
+    # total and wanted bucket S2, the other held bucket S2 and wanted the
+    # quarter total. The rebuilds below re-lock the same rows (re-entrant).
+    soldiers_in_order = sorted(soldier_id_set, key=str)
+    quarters_in_order = sorted(quarter_starts)
+    dirty_rows: dict[tuple[uuid.UUID, date], ScoreProjectionDirtyBucket] = {}
+    for soldier_id in soldiers_in_order:
+        for quarter_start_value in quarters_in_order:
+            dirty_rows[(soldier_id, quarter_start_value)] = _mark_dirty_bucket(
                 session,
                 soldier_id=soldier_id,
                 quarter_start_value=quarter_start_value,
                 old_node_ids=old_node_ids,
                 new_node_ids=new_node_ids,
             )
+    for soldier_id in soldiers_in_order:
+        _lock_soldier_total(session, soldier_id=soldier_id)
+    for quarter_start_value in quarters_in_order:
+        _lock_quarter_total(session, quarter_start_value=quarter_start_value)
+
+    for soldier_id in soldiers_in_order:
+        for quarter_start_value in quarters_in_order:
+            dirty = dirty_rows[(soldier_id, quarter_start_value)]
             rebuild_projection_bucket(session, soldier_id, quarter_start_value)
             dirty.status = "current"
             # A successful rebuild clears any recorded divergence; leaving it
