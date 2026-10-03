@@ -77,7 +77,7 @@ async function apiAs(personalNumber: string, password = SEED_PASSWORD) {
   const res = await api.post("/api/auth/login", {
     data: { personal_number: personalNumber, password },
   });
-  expect(res.ok(), `login ${personalNumber}`).toBeTruthy();
+  expect(res.ok(), `login ${personalNumber}: ${res.status()} ${(await res.text()).slice(0, 200)}`).toBeTruthy();
   const token = ((await res.json()) as { access_token: string }).access_token;
   return { api, headers: { Authorization: `Bearer ${token}` } };
 }
@@ -186,26 +186,17 @@ test.describe("failures stay generic", () => {
     expect(await refreshOk(page)).toBeFalsy();
     await expectNoSensitiveValues(page, ["sso.ambig", "example.test"]);
 
-    const admin = await browser.newContext({ baseURL: APP });
+    // The admin signs in through the API and the page starts from that session (as the other e2e
+    // suites do): signing in through the UI and navigating away at once aborted the home page's
+    // ~45 in-flight calls, which kept the small test backend busy and starved the next page load.
+    const adminApi = await apiAs(ADMIN);
+    const admin = await browser.newContext({ baseURL: APP, storageState: await adminApi.api.storageState() });
     const adminPage = await admin.newPage();
-    const adminLog: string[] = [];
-    const started = Date.now();
-    adminPage.on("response", (r) => {
-      if (/\/api\/(auth|settings|me)/.test(r.url())) adminLog.push(`+${Date.now() - started} ${r.request().method()} ${new URL(r.url()).pathname} ${r.status()}`);
-    });
-    adminPage.on("requestfailed", (r) => adminLog.push(`+${Date.now() - started} FAILED ${new URL(r.url()).pathname} ${r.failure()?.errorText}`));
-    adminPage.on("framenavigated", (f) => { if (f === adminPage.mainFrame()) adminLog.push(`+${Date.now() - started} NAV ${f.url()}`); });
-    await adminPage.goto("/login");
-    await adminPage.getByTestId("personal-number-input").fill(ADMIN);
-    await adminPage.getByTestId("password-input").fill(SEED_PASSWORD);
-    await adminPage.getByTestId("login-submit").click();
-    await expect(adminPage).toHaveURL(/\/$/);
-    await adminPage.goto("/admin/settings?tab=7"); // full load right after login (needs the session-restore retry)
-    await expect(adminPage.getByTestId("identity-conflicts-content"), `admin page log:
-${adminLog.join("
-")}`).toBeVisible();
+    await adminPage.goto("/admin/settings?tab=7");
+    await expect(adminPage.getByTestId("identity-conflicts-content")).toBeVisible();
     await expect(adminPage.locator('[data-testid^="identity-conflict-"]').first()).toBeVisible();
     await expect(adminPage.getByTestId("identity-conflicts-empty")).toHaveCount(0);
+    await adminApi.api.dispose();
     await admin.close();
   });
 });

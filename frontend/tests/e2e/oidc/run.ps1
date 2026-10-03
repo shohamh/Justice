@@ -79,7 +79,7 @@ try {
     if (-not $NoOidc) { $env:OIDC_CLIENT_SECRET = 'justice-test-only-client-secret' }
     if (-not $NoOidc) { $env:OIDC_REDIRECT_URI = 'http://localhost:8410/api/auth/oidc/callback' }
     if (-not $NoOidc) { $env:OIDC_ALLOW_INSECURE_LOCAL = 'true' }
-    $env:OIDC_RATE_LIMIT = '200/minute'; $env:LOGIN_RATE_LIMIT = '1000/minute'
+    $env:OIDC_RATE_LIMIT = '200/minute'; $env:LOGIN_RATE_LIMIT = '1000/minute'; $env:LOGIN_ACCOUNT_RATE_LIMIT = '1000/minute'  # default per-account limit (10 per 5 min) is exceeded by the test logins
     Start-Process -FilePath $py -ArgumentList '-m uvicorn app.main:app --host 127.0.0.1 --port 8410' -WorkingDirectory $backend -WindowStyle Hidden -RedirectStandardOutput "$logs\backend.log" -RedirectStandardError "$logs\backend.err.log"
     # Serve the production build (vite preview) rather than the dev server: the dev server's on-demand
     # transforms stalled proxied API calls on a small machine. The preview server has the same /api proxy.
