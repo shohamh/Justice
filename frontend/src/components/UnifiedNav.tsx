@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
@@ -66,6 +66,7 @@ export default function UnifiedNav() {
   const location = useLocation();
   const settings = usePublicSettings();
   const queryClient = useQueryClient();
+  const inFlightQueries = useIsFetching();
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
   const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
   const canViewTransparency = user?.can_view_transparency !== false;
@@ -131,14 +132,22 @@ export default function UnifiedNav() {
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
   const previousPathname = useRef(location.pathname);
 
-  // Let route content paint and start its primary reads before loading shared
-  // navigation counters. A short route-settle gate avoids adding secondary
-  // requests to each page's initial request burst.
+  // Open the gate at the deadline even if another query never settles.
   useEffect(() => {
-    const timer = window.setTimeout(() => setSettledNavRequestKey(navRequestKey), 400);
+    if (navReadsEnabled) return;
+    const timer = window.setTimeout(() => setSettledNavRequestKey(navRequestKey), 1_200);
     return () => window.clearTimeout(timer);
-  }, [navRequestKey]);
+  }, [navReadsEnabled, navRequestKey]);
 
+  // Navigation reads remain disabled until the gate opens, so their own fetches
+  // cannot interrupt the route's quiet period.
+  useEffect(() => {
+    if (navReadsEnabled || inFlightQueries > 0) return;
+    const timer = window.setTimeout(() => {
+      if (queryClient.isFetching() === 0) setSettledNavRequestKey(navRequestKey);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [inFlightQueries, navReadsEnabled, navRequestKey, queryClient]);
 
   useEffect(() => {
     if (!canPlan || !navReadsEnabled) return;

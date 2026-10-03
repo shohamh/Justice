@@ -1,11 +1,10 @@
-import { render as testingLibraryRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render as testingLibraryRender, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import UnifiedNav, { aggregateBadgeCounts } from "./UnifiedNav";
 
 const mockLocation = vi.hoisted(() => ({ pathname: "/" }));
 
-function render(ui: React.ReactElement) {
-  const queryClient = new QueryClient();
+function render(ui: React.ReactElement, queryClient = new QueryClient()) {
   return testingLibraryRender(ui, {
     wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
   });
@@ -247,6 +246,75 @@ describe("UnifiedNav — commander role", () => {
   });
 });
 
+describe("UnifiedNav route query idle gate", () => {
+  let queryClient: QueryClient;
+  let settleRouteQuery: (value: number) => void;
+  let routeQuery: Promise<number>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    routeQuery = queryClient.fetchQuery({
+      queryKey: ["route-content"],
+      queryFn: () => new Promise<number>((resolve) => { settleRouteQuery = resolve; }),
+    });
+    mockUseAuth.mockReturnValue({ user: { id: "admin-1", role: "admin", scope_root_ids: [], active_deputy_grants: [] } });
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      settleRouteQuery(1);
+      await routeQuery;
+    });
+    vi.useRealTimers();
+  });
+
+  test("keeps all navigation reads disabled while route work runs past 400 ms", async () => {
+    render(<UnifiedNav />, queryClient);
+    expect(screen.getByTestId("nav-home")).toBeInTheDocument();
+    expect(queryClient.isFetching()).toBe(1);
+
+    act(() => { vi.advanceTimersByTime(500); });
+
+    expect(mockGetNavCounts).not.toHaveBeenCalled();
+    expect(mockGetIneligibleSoldierCount).not.toHaveBeenCalled();
+    expect(mockListJobs).not.toHaveBeenCalled();
+  });
+
+  test("starts navigation reads only after route work settles and 400 ms stay quiet", async () => {
+    render(<UnifiedNav />, queryClient);
+    act(() => { vi.advanceTimersByTime(500); });
+    await act(async () => {
+      settleRouteQuery(1);
+      await routeQuery;
+    });
+    act(() => { vi.advanceTimersByTime(0); });
+    act(() => { vi.advanceTimersByTime(399); });
+    expect(mockGetNavCounts).not.toHaveBeenCalled();
+    expect(mockGetIneligibleSoldierCount).not.toHaveBeenCalled();
+    expect(mockListJobs).not.toHaveBeenCalled();
+
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(mockGetNavCounts).toHaveBeenCalledTimes(1);
+    expect(mockGetIneligibleSoldierCount).toHaveBeenCalledTimes(1);
+    expect(mockListJobs).toHaveBeenCalledTimes(1);
+  });
+
+  test("starts navigation reads by 1200 ms when route work never settles", async () => {
+    render(<UnifiedNav />, queryClient);
+    act(() => { vi.advanceTimersByTime(1199); });
+    expect(mockGetNavCounts).not.toHaveBeenCalled();
+    expect(mockGetIneligibleSoldierCount).not.toHaveBeenCalled();
+    expect(mockListJobs).not.toHaveBeenCalled();
+
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(mockGetNavCounts).toHaveBeenCalledTimes(1);
+    expect(mockGetIneligibleSoldierCount).toHaveBeenCalledTimes(1);
+    expect(mockListJobs).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("UnifiedNav — duty_manager role", () => {
   beforeEach(() => {
     mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
@@ -327,7 +395,7 @@ describe("UnifiedNav — algorithm badge color", () => {
     // Override the context mock to return a non-empty seenIds for this test
     mockUseSeenJobs.mockImplementation(() => ({
       seenIds: new Set(["job-seen"]),
-      seedSeenIds: vi.fn(),
+      seedSeenIds: mockSeedSeenIds,
       markJobSeen: vi.fn(),
       markAllSeen: vi.fn(),
     }));
