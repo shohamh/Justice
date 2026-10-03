@@ -3,17 +3,21 @@
 Date: 2026-10-02
 Spec: `docs/superpowers/specs/2026-10-02-database-concurrency-audit-design.md`
 Plan: `docs/superpowers/plans/2026-10-02-database-concurrency-audit.md`
-Status: **Tasks 1–5 complete.** Task 1 (baseline + inventory), Task 2 (race
-reproduction for C1–C8), Task 3 (fixes for C1–C8), Task 4 (C9–C18 and O1) and
+Status: **Tasks 1–6 complete.** Task 1 (baseline + inventory), Task 2 (race
+reproduction for C1–C8), Task 3 (fixes for C1–C8), Task 4 (C9–C18 and O1),
 Task 5 (consolidated dispositions, open items, final verification: §6–§8)
-are done.
+and Task 6 (the known residuals, including C14 after the product decision:
+§4.4) are done.
 All eight Critical/High candidates C1–C8 (including every C8 sub-workflow)
 were reproduced against PostgreSQL and are **confirmed findings** (§4.1). All
 of them are now **fixed** with database-level locking/claims and their race
 tests pass for real (§4.2). No fix needed a product decision or a migration.
 Task 4 (§4.3) reproduced C9–C13, C15, C16 (D1, N4, R8), C17, C18 and O1 and
-fixed each one; C14 is deferred for a product decision, and C16/K3 and the
-original J1 schedule were not reproduced. Still no migration (head
+fixed each one; C16/K3 and the original J1 schedule were not reproduced.
+Task 6 (§4.4) reproduced and fixed C14 (after the product decision), I1, M1,
+M2, M3, M4, the auto-mark rollback, the C13 unlock failure, the
+`dismiss_reserve` newly-linked-primary window, the
+`refresh_projection_for_change` interleave and J2. Still no migration (head
 `4858092e72e7`).
 
 > Reading rule for this document: "no defect identified" means only that
@@ -524,26 +528,20 @@ registered in `_AREA_MARKERS`.
   lock. What the cancel then does is the "finish" schedule above (fixed).
 - **C16/K3**, see the table.
 
-**Deferred: C14 (S5/A6) — product decision needed.** Two swaps (or a swap and
-a manual override) on different duties the same day can both make the same
-soldier the effective soldier for that day. `_day_busy` checks only nominal
-`duty_assignments.soldier_id` and ignores `duty_day_overrides`, so this is
-reachable **sequentially** too. Before a lock can be added, the product needs
-to decide: does an override make the covering soldier "busy" for that day
-(i.e. must `_day_busy` include effective soldiers from overrides), and should
-a covering soldier be allowed to hold two duties on one day by override?
-Once that is decided, the fix is a check that includes overrides plus a
-per-(soldier, date) serialization point (for example an advisory lock on the
-covering soldier's id and the date, taken in `set_day_override` and
-`_apply_cover`). No safeguard was weakened.
+**C14 (S5/A6) — resolved in Task 6 (§4.4).** The product decision is that a
+day override makes the covering soldier busy for that day. Task 4's analysis
+(kept for context): two swaps (or a swap and a manual override) on different
+duties the same day could both make the same soldier the effective soldier
+for that day; `_day_busy` checked only nominal `duty_assignments.soldier_id`,
+so this was reachable sequentially too.
 
 **Medium/low items that remain open.**
 
 | Item | Impact | Evidence | Recovery path | Owner | Why deferral is reasonable |
 |---|---|---|---|---|---|
-| C14 cross-request double booking | A soldier can be the effective soldier for two duties on one day | Sequential rule gap (code reading); see above | Manager removes one override | Product owner (rule), then backend | Needs the rule decision above; the sequential path has the same gap |
+| C14 cross-request double booking | **Resolved in Task 6** (§4.4) | | | | |
 | N4 try-lock skip | If the process that wins the daily expiry check crashes mid-run, the others skipped that day | Design of the fix | The next daily run notifies (dedupe is per expiry date) | Backend | One-day delay of an informational notification; no duplicate or lost state |
-| Projection lock order inside `refresh_projection_for_change` | Two refreshes covering overlapping soldier sets lock dirty buckets and the quarter total interleaved per soldier, so a cycle (bucket S1 → quarter total → bucket S2 vs bucket S2 → quarter total) is possible | Code reading only; **not reproduced**. The old code already took these locks in the same order (UPDATE of the same rows) | A deadlock surfaces as one 500; the user retries | Backend | Not demonstrated; reordering the projection refresh is a larger change with many callers |
+| Projection lock order inside `refresh_projection_for_change` | **Resolved in Task 6** (§4.4): reproduced (`DeadlockDetected`) and fixed | | | | |
 | `take_free` rollback on conflict | The loser's whole session is rolled back inside the service | Same pattern as `create_request` | n/a (the route returns an error) | Backend | Matches existing project convention |
 | Runner lock holds a pool connection per running job | One extra DB connection for each solve in progress | Fix design (C13/J4) | — | Backend | Solves are few and bounded by the solver executor; pool is 20 + 10 overflow |
 
@@ -559,6 +557,63 @@ covering soldier's id and the date, taken in `set_day_override` and
 - Fast suite (`pytest -p no:cacheprovider -o addopts="-n 4"`): **2178 passed,
   3 skipped, 2 failed**. The failures are only the two baseline failures.
 
+### 4.4 Task 6 — the known residuals
+
+**Method.** Same as §4.1/§4.3. Each item was reproduced first: a test was
+committed as `@pytest.mark.xfail(strict=True, raises=AssertionError)` and
+seen to fail on the unmodified code with `--runxfail`. The fix came in its
+own commit, which also removes the marker. Deadlock candidates assert that no
+racer fails with a database error. The M2 and auto-mark tests probe the row
+from an independent session with `FOR UPDATE NOWAIT` while the code under
+test is running. The C13 test injects a failing `pg_advisory_unlock`. No
+sleeps were used and no migration was added. Base: `d0e0d97b`.
+
+| Item | Test (file :: test) | Observed on unmodified code | Fix (commit; test commit) | Lock order / behaviour after the fix |
+|---|---|---|---|---|
+| C14 rule (S5/A6) | `test_concurrency_day_override_busy.py::test_override_makes_the_covering_soldier_busy_for_that_day`, `::test_swap_eligibility_treats_a_covered_day_as_busy` (control: `::test_override_on_a_cancelled_duty_does_not_make_the_soldier_busy`) | A soldier who already covered duty A on day d by override could be made the cover of duty B on day d, and `check_soldier_for_assignment` reported him eligible. | `_day_busy` and `check_soldier_for_assignment` count overrides whose effective soldier is the candidate, on a non-cancelled duty, through the new `assignments.covers_by_override` (`9276dde8`; test `aa075c68`). | Product rule (user decision): an override makes the covering soldier busy for that day. The loser gets `overlap` (manual override) or `cover_blocked:overlap` (swap). |
+| C14 race | `…::test_concurrent_overrides_cannot_double_book_one_covering_soldier`, `…::test_concurrent_swap_finalizations_cannot_double_book_one_candidate` | Even with the rule fixed, two overrides (or two `claim_request` finalizations of different swap requests) naming one candidate for one day both passed the check, and **2** overrides were committed. In the swap test both requests ended `applied`. | `set_day_override` locks the covering soldier (`FOR NO KEY UPDATE`) before the busy check (`eb0feed7`). | (swap request →) covering soldier → assignment → projection. NO KEY UPDATE conflicts with `create_assignment`'s soldier `FOR UPDATE`, but not with child-row KEY SHARE. |
+| I1 | `test_concurrency_range_attendance.py::test_attendance_correction_and_duty_dismissal_of_one_soldier_do_not_deadlock` | `mark_attendance(no_show)` held the projection rows and `recheck_assignments` wanted the duty row; `dismiss_primary` held the duty row and wanted the projection: `DeadlockDetected`. | `mark_attendance` locks the soldier's published `duty_assignments` in id order (`FOR NO KEY UPDATE`) right after `lock_assignment_for_attendance` (`ce29640b`; test `d375fd85`). | soldier → range assignment → duty assignments (ascending) → projection. |
+| M1 | `test_concurrency_email_verification.py::test_verification_and_email_change_of_one_soldier_do_not_deadlock` | `verify_token` held the token and UPDATEd the soldier at flush; `PATCH /me/email` held the soldier (autoflush) and UPDATEd the token: `DeadlockDetected`. | `verify_token` looks up the token's soldier without a lock, locks the soldier (`FOR NO KEY UPDATE`), then the token `FOR UPDATE`, then the per-email advisory lock (`5940d19f`; test `e675178f`). | soldier → token → email lock. With this schedule the email change commits first and the verification then returns `token_invalid`. The C15 test still passes. |
+| M2 | `test_concurrency_import_sessions.py::test_confirm_does_not_hold_the_session_lock_while_reading_the_workbook` | During the workbook read, the import-session row was locked (the `NOWAIT` probe saw `held`). | `confirm_session` checks `draft` without a lock, reads and parses the workbook, then takes `_lock_import_session` and re-checks `draft` before applying. If the workbook identity changed in between (storage key, sha256, parser id, soldiers present), it reads again under the lock (`f5780bce`; test `71b82923`). | The C6 double-confirm test is unchanged and green. In the C6 confirm-vs-cancel test, the parked confirm now holds no lock, so **the cancel wins** and the confirm fails `only_draft_sessions_can_be_confirmed`. The test's final assertion was updated to match. The invariant is unchanged: exactly one of the two succeeds and the state is consistent. |
+| M3 | `test_concurrency_algorithm_jobs.py::test_duplicate_runner_leaves_the_live_runners_cancel_event_alone` | A duplicate `run_algorithm_job` that lost the runner try-lock removed the live runner's `_cancel_events` entry. | The event is registered, and its watcher thread started, only after the lock is acquired. `finally` pops the entry only if it is this run's own event (`243514ef`; test `c4f811a3`). | — |
+| C13 unlock failure | `…::test_failed_runner_unlock_does_not_leave_the_lock_on_a_pooled_connection` | After an injected unlock failure, the connection went back to the pool still holding the session lock, so `job_has_live_runner` returned `True`. | `_release_job_runner_lock` calls `conn.invalidate()` on error and re-raises (`5fe10518`). The caller already logs the error. | — |
+| M4 | `test_concurrency_shift_assign_batch.py::test_batch_for_a_shift_deleted_mid_request_returns_404` | A shift deleted between `_load` and the locked re-select raised `NoResultFound` (500). | `scalar_one_or_none()`, then 404 `not_found` (`5917f33e`; test `84005650`). | — |
+| Auto-mark rollback | `test_concurrency_range_attendance.py::test_auto_mark_releases_locks_after_a_validation_error` | After a `RangeValidationError`, the skipped row's soldier lock was still held while the sweep handled the next row (`NOWAIT` probe: `held`). | `session.rollback()` before `continue` (`cab27990`; test `7e0442b1`). | — |
+| `dismiss_reserve` newly linked primary | `test_concurrency_dismissals.py::test_reserve_dismissal_with_a_primary_linked_mid_request_does_not_deadlock` (3 sessions) | B relinked P2 to R and committed after A's primary-lock statement. C locked P2 (`dismiss_primary`). A took the projection rows and then locked P2 inside `relink_reserve`. C wanted the projection: `DeadlockDetected`. | `dismiss_reserve` locks R's linked primaries on both paths (cover and no-cover), relinks or reallocates (`reallocate_orphaned_primaries` processes primaries in id order), and refreshes the projection last (`95389a87`; test `c0fa79b6`). | reserve → linked primaries ascending → newly linked primaries (inside `relink_reserve`) → link rows → projection. Every primary lock now comes before the projection. |
+| `refresh_projection_for_change` interleave | `test_concurrency_score_projection.py::test_overlapping_multi_soldier_refreshes_do_not_deadlock` | A refresh of {S1,S2} held the quarter total and wanted bucket(S2). A refresh of {S2} held bucket(S2) and wanted the quarter total: `DeadlockDetected`. | All dirty buckets (soldier id as text, then quarter), then all soldier totals, then all quarter totals are locked before the first rebuild (`23a5b2b7`; test `a33ccd57`). | buckets → soldier totals → quarter totals, each in a global order. |
+| J2 | `test_concurrency_algorithm_proposals.py::test_accepting_a_stale_draft_cannot_double_book_the_soldier`, `…::test_bulk_accept_skips_a_stale_draft_that_would_double_book` | Schedule: a manual `create_assignment` committed after the solver's snapshot, then the runner persisted its draft for the same soldier and days (`persist_results` does not re-check). Accept, both single and bulk, published the draft, leaving **2** overlapping published duties. | The single-item accept routes (job-scoped and direct) lock the soldier, re-check against published duties and override cover (`assignments.publish_would_double_book`), and return 409 `overlap`. Bulk accept locks the drafts' soldiers in id order and leaves conflicting drafts as `algorithm_draft`; the `accepted` count excludes them (`a5a30a08`; test `2560195d`). | soldiers ascending (NO KEY UPDATE) → draft rows → projection. Authorization still runs first. |
+
+**Residuals after Task 6.** Found by code reading. None of these was
+reproduced.
+- **C14 scope.** The rule is applied to `set_day_override`, swap
+  finalization and swap eligibility. `create_assignment` / `_has_overlap`
+  (manual or batch creation of a *nominal* duty) still ignores overrides. A
+  soldier who covers day d by override can therefore still get a new nominal
+  duty that includes d. The nominal soldier of an overridden day is still
+  counted busy, which is unchanged behaviour. Both are product questions.
+- **J2 scope.** `persist_results` still inserts drafts without an overlap
+  check. The re-check happens only at accept. Bulk accept skips conflicting
+  drafts silently: the response only lowers `accepted`, and the drafts stay
+  as drafts.
+- **Dismiss-and-cover route** (`routes/reserves.py`, the endpoint that runs
+  `dismiss_primary`, `call_up_reserve`, `relink_reserve` and
+  `reallocate_orphaned_primaries`). It takes primary → projection → reserve
+  (`call_up_reserve`'s UPDATE). That is the reverse of `dismiss_reserve`'s
+  reserve → primaries, so it is a deadlock candidate.
+- **Other projection writers were not reordered.** These still take their
+  own orders: `refresh_projections_for_assignments_bulk` (per quarter:
+  buckets, soldier totals, then the quarter total), the repair and
+  reconciliation paths, and the `scoring.py` repair loops. Only
+  `refresh_projection_for_change` uses the global order.
+- **M2.** If a reparse changes the workbook identity between the unlocked
+  read and the lock, the fallback reads again *under* the lock. That is rare,
+  and it is the old behaviour.
+- **I1.** The pre-lock covers the duty-side writers that lock an assignment
+  row and then the projection. Other inversions with `cancel_assignment` /
+  `replace_assignment` were not re-examined.
+
+**Verification (Task 6).** See §8.4.
+
 ### Items that are not concurrency defects but were found during the inventory
 
 - `constraints.cancel_constraint`: undefined `timezone` on the approved →
@@ -571,8 +626,9 @@ covering soldier's id and the date, taken in `set_day_override` and
 - `confirm_session` soldier rows have no savepoint. A single row-level DB
   error inside the try/except leaves the session needing rollback, which
   poisons the rest of the import.
-- `_day_busy` (used by `set_day_override`) ignores existing overrides when it
-  decides whether the effective soldier is free (sequential rule gap).
+- `_day_busy` (used by `set_day_override`) ignored existing overrides when it
+  decided whether the effective soldier is free (sequential rule gap).
+  **Fixed in Task 6** (C14, §4.4).
 
 ---
 
@@ -604,7 +660,7 @@ stated. "Ref" points to the section with the evidence.
 | S2 | Request `FOR UPDATE` first in each entry point; same-request races. | Reviewed | `test_concurrent_finalize_of_two_candidates_applies_only_one` | §2 |
 | S3 | Reproduced: 500 on `UniqueViolation`. | **Fixed** (C17, `b13130d1`) | `test_concurrency_duplicate_inserts.py::test_concurrent_take_free_of_one_duty_yields_already_pending` | §4.3 |
 | S4 | Reproduced: `applied` overwritten by `cancelled` while cover overrides committed. | **Fixed** (C7, `b35f0d1f`) | `test_concurrency_expiry_workers.py::test_swap_expiry_does_not_cancel_a_swap_applied_after_its_read` | §4.1, §4.2 |
-| S5 | Sequential rule gap in `_day_busy` (ignores overrides), so also reachable without concurrency. | **Awaiting product decision** (C14) | none | §4.3 |
+| S5 | Rule gap reproduced (sequential) and race reproduced (2 overrides / 2 applied swaps for one cover on one day). | **Fixed** (C14, `9276dde8`, `eb0feed7`) | `test_concurrency_day_override_busy.py` (5 tests) | §4.4 |
 | K1 | Reproduced: 4 pending days against cap 3. | **Fixed** (C5, `8851ecd2`) | `test_concurrency_personal_constraints.py` | §4.1, §4.2 |
 | K2 | Same-row lock reviewed. Route chooses the auth branch from the pre-lock status (M/L permission-staleness note); not reproduced. | Reviewed; open note | existing sequential | §2 |
 | K3 | Not a concurrency defect: the sequential outcome is identical. | Not reproduced; product question | none | §4.3 |
@@ -619,7 +675,7 @@ stated. "Ref" points to the section with the evidence.
 | P4 | Reproduced: `DeadlockDetected`. | **Fixed** (C9, `daf8ec74`) | `test_concurrency_field_update_lock_order.py` | §4.3 |
 | P5 | Profile PATCH lost update and `bump_token_version` read-modify-write. Not reproduced. | Open, M | none | §8 |
 | P6 | Duplicate `personal_number` surfaces as a 500. Not reproduced. | Open, L | none | §8 |
-| I1 | Reproduced: import applied twice; cancel silently lost. | **Fixed** (C6, `09c5d603`) | `test_concurrency_import_sessions.py` (2 tests) | §4.1, §4.2 |
+| I1 | Reproduced: import applied twice; cancel silently lost. Task 6 (M2): the workbook read now happens before the lock. | **Fixed** (C6, `09c5d603`; M2 `f5780bce`) | `test_concurrency_import_sessions.py` (3 tests) | §4.1, §4.2, §4.4 |
 | I2 | `cancel_session` covered by the C6 lock. `reparse_session`, `mark_done`, `set_selections` not changed or reproduced. | Partly fixed; remainder open, M | `test_concurrency_import_sessions.py` (cancel only) | §7 |
 | I3 | Import overwrites of live rows. Not reproduced. | Open, M | none | §8 |
 | R1 | Per-date advisory lock plus unique key; same-date add vs add. | Reviewed | existing sequential | §2 |
@@ -647,7 +703,7 @@ stated. "Ref" points to the section with the evidence.
 | N4 | Reproduced: duplicate `mitvahim_expired` notification. | **Fixed** (C16, `a1a4dbd8`) | `test_concurrency_qualification_expiry.py` | §4.3 |
 | N5 | Rank advancement `_promote_due_soldiers` in 4 processes. | **Not reviewed** in depth | existing sequential | §8 |
 | J1 | Start overwrite and finish overwrite reproduced. The original refresh-to-commit schedule was not reproducible (a row lock blocks it). | **Fixed** (C13, `39a9a1c5`, `30a37435`) | `test_concurrency_algorithm_jobs.py` | §4.3 |
-| J2 | Stale snapshot vs manual assignments; accept does not re-check overlap. | Open, M/H (stale decision) | none | §7, §8 |
+| J2 | Reproduced: a draft persisted from a stale snapshot was published over a manual assignment (2 overlapping published duties). | **Fixed at accept** (`a5a30a08`); `persist_results` still unchecked | `test_concurrency_algorithm_proposals.py` (2 J2 tests) | §4.4 |
 | J3 | Reproduced: `algorithm_rejected` after publish. | **Fixed** (C8, `f1eab90f`) | `test_concurrency_algorithm_proposals.py` | §4.1, §4.2 |
 | J4 | Reproduced: live sibling job marked `failed`. | **Fixed** (C13, `7301d6fc`) | `test_concurrency_algorithm_jobs.py` (startup hook, control) | §4.3 |
 | J5 | Advisory try-locks. | Reviewed | `test_hr_sync_worker.py` | §2 |
@@ -669,8 +725,9 @@ advancement internals) remain **not reviewed**.
 |---|---|---|
 | Critical | C1 (N1) | Fixed and tested |
 | High | C2, C3, C4, C5, C6, C7 (S4, E2), C8 (H2, P3, X1, R5, J3) | All fixed and tested |
-| High, needs product input | C14 (S5) | Awaiting product decision |
-| Medium/High, not reproduced | J2 (stale algorithm snapshot vs manual edits) | Open, see §7 |
+| High | C14 (S5), after the product decision | Fixed and tested (Task 6) |
+| Medium/High | J2 (stale algorithm snapshot vs manual edits) | Reproduced; fixed at accept (Task 6); `persist_results` unchecked |
+| Medium (Task 6 residuals) | I1, M1, M2, M3, M4, auto-mark rollback, C13 unlock, `dismiss_reserve` newly linked primary, projection interleave | Fixed and tested (§4.4) |
 | Medium | C9, C10, C11, C12, C13, C15, C16, C18, O1 | Fixed and tested (C16/K3 not reproduced) |
 | Low | C17 | Fixed and tested |
 
@@ -683,21 +740,22 @@ critical/high defect.
 |---|---|---|---|---|---|
 | Email delivery is at-least-once (N1, and N2 for Telegram) | A crash between the SMTP/Telegram send and the commit of `sent_at` re-sends that one message. The bot has no claim, so scaling it out would duplicate. | By design of the claim (`SKIP LOCKED` row held across the send); not reproduced | Recipient sees a duplicate; no data corruption | Backend | Exactly-once is not achievable with SMTP. Duplicates are limited to crash windows, and one bot process is the deployed topology. |
 | SMTP-held row lock (Task 3 minor) | The outbox row lock is held while SMTP is called. | **Resolved in Task 4**: 30 s connection timeout (`6c6c2b40`). | Other drainers skip the row (`SKIP LOCKED`) | n/a | Resolved. Residual: password-reset and verification mail still send inline (T3). |
-| `range_attendance_auto_mark` missing rollback before `continue` | The except branch has no `session.rollback()` (`range_attendance_auto_mark.py` :69). Every `RangeValidationError` in `mark_attendance` is raised before any write (`ranges.py` :873-893), so no partial state persists; the soldier and assignment locks from `lock_assignment_for_attendance` are only retained until the next commit in the loop. (Corrects an earlier note that partial writes could persist.) | Code reading (found by code reading, NOT reproduced) | Locks release at the next commit or the end of the sweep | Backend | Only extends lock retention within one sweep; follow-up: add `session.rollback()` and a test. |
-| M1: `verify_token` vs `PATCH /me/email` (soldier to token cycle) | `verify_token` locks token, then the email advisory lock, then UPDATEs the soldier (`email_verification.py` :62, :74). `PATCH /me/email` (`routes/me.py` :199-205) autoflushes the soldier UPDATE, then `request_verification` updates unused tokens. With the branch's `FOR UPDATE` this cycle can occur, but only when one user races themselves. | Code reading (found by code reading, NOT reproduced) | One request gets a 500; the retry succeeds | Backend | Needs a user racing their own verify and email change; no cross-user effect. |
-| M2: `confirm_session` holds the import-session `FOR UPDATE` across object storage and the whole import | Lock at `import_sessions.py` :1681, storage read :1698, workbook parse :194, then the import. Contrary to the spec's "do not hold row locks across ... object storage". Impact is limited to operations on the same import session. | Code reading (found by code reading, NOT reproduced) | Other operations on that session wait, then fail `only_draft_sessions_can_be_...` or proceed | Backend | The lock is what serializes confirm vs cancel (C6); splitting it needs a status-claim redesign. |
-| M3: `run_algorithm_job` cancel-event registry | `_cancel_events[str(job_id)]` is registered (`algorithm_bridge.py` :1516) before the runner try-lock. A losing duplicate in the same process overwrites, then pops, the real runner's event in `finally` (:2012). | Code reading (found by code reading, NOT reproduced) | Cancel still works through Redis, only slower | Backend | Needs a duplicate runner for one job in one process; degraded latency only. |
-| M4: `assign_batch` shift re-select | `routes/shifts.py` :1048 re-selects the shift with `.scalar_one()`, so a shift deleted mid-request gives a 500 instead of 404. | Code reading (found by code reading, NOT reproduced) | Retry returns 404 | Backend | Error mapping only; no state damage. |
-| I1: `mark_attendance` vs the new assignment-row lockers (deadlock) | `mark_attendance` (`ranges.py` ~:912, :948, :989) takes soldier, range assignment, `create_adjustment`, `refresh_projection_for_change` (bucket(S,Q), soldier_total(S), quarter_total(Q)), and only then `recheck_assignments(commit=False)` UPDATEs the soldier's published `duty_assignments`. The branch's assignment-row lockers (`dismiss_primary` `reserves.py`:96, `dismiss_reserve` :233, `mark_no_show` `no_show.py`:40, `set_day_override` `assignments.py`:482) lock the assignment row (`FOR NO KEY UPDATE`) then the projection: reverse order. A manual attendance correction racing one of them on the same soldier can deadlock. Pre-existing inversion vs `cancel_assignment` / `replace_assignment`, widened by the branch (those row accesses were `KEY SHARE` only before). | Code reading (found by code reading, NOT reproduced) | One request gets a 500; the retry succeeds | Backend | Not demonstrated; needs a manual attendance correction and an assignment-row writer on the same soldier at once. Suggested fix: in `mark_attendance`, after `lock_assignment_for_attendance`, lock the soldier's published `duty_assignments` in id order `FOR NO KEY UPDATE` (mirrors the `dismiss_reserve` fix). |
-| C13 advisory unlock failure | `_release_job_runner_lock` closes the connection back to the pool in `finally`. If `pg_advisory_unlock` raises, the session lock stays on a pooled connection and the job looks alive to the startup hook. Confirmed in `algorithm_bridge.py`. | Code reading | The lock drops when the pooled connection is recycled or the process restarts | Backend | Needs a failing unlock, which is rare. Fix: `conn.invalidate()` on error. |
-| `dismiss_reserve` snapshot window | Linked primaries are locked from the start-of-transaction snapshot, so a primary linked to the reserve after that snapshot is not locked. The no-cover path inserts links after the projection refresh without ordering. | Review note; not reproduced | A deadlock gives one 500 | Backend | Narrow window, deadlock only; reproduction needs a third concurrent link writer. |
-| `refresh_projection_for_change` interleave | Two refreshes over overlapping soldier sets could lock bucket S1, the quarter total and bucket S2 in opposite orders. | Code reading only (§4.3). The pre-existing code had the same order. | One 500; the user retries | Backend | Not demonstrated; reordering touches many callers. |
-| C14 product decision | A soldier can be the effective soldier on two duties the same day. | Sequential rule gap; §4.3 | Manager removes one override | Product owner, then backend | Needs the rule decision; fix designed in §4.3. |
+| `range_attendance_auto_mark` missing rollback before `continue` | **Resolved in Task 6** (`cab27990`; §4.4). | | | | |
+| M1: `verify_token` vs `PATCH /me/email` | **Resolved in Task 6**: reproduced (`DeadlockDetected`), fixed (`5940d19f`; §4.4). | | | | |
+| M2: `confirm_session` lock across object storage | **Resolved in Task 6**: reproduced (`NOWAIT` probe), fixed (`f5780bce`; §4.4). Residual: the reparse fallback reads under the lock. | | | | |
+| M3: `run_algorithm_job` cancel-event registry | **Resolved in Task 6** (`243514ef`; §4.4). | | | | |
+| M4: `assign_batch` shift re-select | **Resolved in Task 6** (`5917f33e`; §4.4). | | | | |
+| I1: `mark_attendance` vs the assignment-row lockers | **Resolved in Task 6**: reproduced (`DeadlockDetected`), fixed (`ce29640b`; §4.4). | | | | |
+| C13 advisory unlock failure | **Resolved in Task 6** (`5fe10518`; §4.4). | | | | |
+| `dismiss_reserve` snapshot window | **Resolved in Task 6**: reproduced with 3 sessions (`DeadlockDetected`), fixed (`95389a87`; §4.4). | | | | |
+| `refresh_projection_for_change` interleave | **Resolved in Task 6**: reproduced (`DeadlockDetected`), fixed (`23a5b2b7`; §4.4). Other projection writers keep their own order (residual). | | | | |
+| C14 | **Resolved in Task 6** after the product decision (`9276dde8`, `eb0feed7`; §4.4). Residual: nominal `create_assignment` ignores overrides. | | | | |
 | Uncovered writer: single shift-assignment create | Takes only the soldier lock and does not check capacity, so the C3 shift lock does not constrain it. | Code reading | Manager sees over-capacity and removes one | Backend | `assign_batch` was the reproduced path; single create has no capacity rule today. |
-| Uncovered writer: algorithm publish | Accept checks no capacity or overlap against concurrent manual edits (J2). | Code reading | Manager rejects or replaces the assignment | Backend | Snapshot staleness needs a product choice (re-solve vs re-validate on accept). |
+| Uncovered writer: algorithm publish | Accept now re-checks against published duties and override cover (J2, `a5a30a08`). `persist_results` and capacity are still unchecked. | Code reading | Manager rejects or replaces the assignment | Backend | Re-validation at accept closes the double booking; capacity is a product choice. |
 | Uncovered writers: range roster writers without the date lock | Reserve excusal and removal paths outside the per-date advisory lock. | Code reading | Manager corrects the roster | Backend | Not demonstrated; the main capacity paths (R1, R3, R5) are serialized. |
 | Uncovered writers: import `reparse_session` / `mark_done` / `set_selections` | A reparse can race a confirm or cancel. | Code reading; the lock was added only to confirm and cancel | Re-run or cancel the import | Backend | Not reproduced; the destructive path (confirm) is serialized. |
 | `take_free` rollback on conflict; one pool connection per running job | See the §4.3 table. | | | Backend | Matches project convention; pool headroom is sufficient. |
+| Dismiss-and-cover route lock order (Task 6 finding) | `routes/reserves.py` dismiss-and-cover takes primary → projection → reserve (`call_up_reserve` UPDATE), the reverse of `dismiss_reserve`'s reserve → primaries | Code reading, NOT reproduced | One 500; the retry succeeds | Backend | Not demonstrated; needs a reserve dismissal and a cover of one of its primaries at once |
 | Test hygiene minors | C11 test final-state assertions relaxed; the D2 follow-up test relies on 10 s timeouts; `pause_after_select` is a fragile park point; earlier-task commit trailers say "Claude Opus 5.5". | Ledger | n/a | Test owner | No production behavior impact. |
 
 ### 7.1 Final cross-workflow lock-order table
@@ -707,15 +765,19 @@ each row.
 
 | Workflow | Order |
 |---|---|
-| Duty side | swap request, then assignment, then projection (bucket, then soldier total, then quarter total) |
-| `dismiss_reserve` | reserve, then linked primaries ascending id, then projection |
+| Duty side | swap request, then covering soldier (`set_day_override`, NO KEY UPDATE; C14), then assignment, then projection |
+| Projection (`refresh_projection_for_change`) | every dirty bucket (soldier id as text, then quarter), then every soldier total (soldier id as text), then every quarter total (ascending), before any rebuild (Task 6). Other projection writers (bulk publish, repair, reconciliation) keep their own per-quarter order. |
+| `dismiss_reserve` | reserve, then linked primaries ascending id, then any newly linked primary (inside `relink_reserve`), then link rows (primary id order), then projection (refreshed last; Task 6) |
 | Shift batch | shift row (`NO KEY UPDATE`), then soldiers ascending id (`FOR UPDATE`) |
+| Algorithm accept (J2) | soldiers ascending id (`NO KEY UPDATE`), then draft rows, then projection |
 | Soldier field update | soldier, then field update |
 | Hierarchy transfer | soldier, then transfer request |
 | Enrollment | enrollment request, then soldier |
 | Range side | advisory(date), then request / excusal, then range assignments, then advisory(later dates, ascending), then recheck |
-| Range attendance | soldier, then range assignment, then projection, then assignment rows (reverse of the duty-side assignment-row lockers; see I1) |
-| Tokens | token, then email advisory lock, then soldier (see M1) |
+| Range attendance | soldier, then range assignment, then the soldier's published duty assignments ascending id, then projection (I1 fixed) |
+| Email verification | soldier, then token, then email advisory lock (M1 fixed); `PATCH /me/email`: soldier, then tokens |
+| Import confirm | no lock during the object-storage read and parse; then the import-session row, then the applied rows (M2) |
+| Dismiss-and-cover route | primary, then projection, then reserve (open candidate, see §7) |
 | No-wait | job-runner lock (session advisory), qualification-expiry try-lock, email outbox `SKIP LOCKED` |
 
 ## 8. Final verification and remaining untested boundaries
@@ -738,9 +800,10 @@ Testcontainers `postgres:16-alpine`, `-o addopts="-n 4"`.
 - Every Critical/High item (C1 to C8 and every C8 sub-workflow) has a
   reproduction that failed on unmodified code (§4.1), a fix (§4.2) and a
   regression test that passes in `tests/integration/test_concurrency_*.py`.
-- The only High-class item not fixed is **C14 (S5)**, **awaiting a product
-  decision** (§4.3). **J2** is an open Medium/High stale-decision item that was
-  not reproduced (§7).
+- (Task 5 snapshot) C14 was then awaiting a product decision and J2 was not
+  reproduced. **Task 6 update:** both are now reproduced and fixed (§4.4), with
+  the scope limits listed there (nominal `create_assignment` ignores
+  overrides; `persist_results` does not re-check).
 - No migration was added. `alembic heads` shows a single head.
 
 ### 8.3 Remaining untested boundaries
@@ -748,7 +811,7 @@ Testcontainers `postgres:16-alpine`, `-o addopts="-n 4"`.
 - A1: no PostgreSQL race test of the create-assignment soldier lock itself.
 - A4, A5, `clear_day_override`, P5, P6, I3, D4, R4, T3 (concurrent
   invalidation), T7, X2, X3, N2 (bot scaled out), N5.
-- J2 (algorithm snapshot vs manual changes) and the uncovered writers in §7.
+- J2 beyond accept (`persist_results`, capacity) and the uncovered writers in §7.
 - All modules named in §6 as not reviewed.
 - Production `default_transaction_isolation`, `WEB_CONCURRENCY` other than 4,
   and a bot scaled beyond one process were not checked.
@@ -756,3 +819,22 @@ Testcontainers `postgres:16-alpine`, `-o addopts="-n 4"`.
   process; real multi-process behavior was not exercised.
 - Crashes between an external side effect and its commit (email, Telegram,
   object store) were not injected.
+
+### 8.4 Verification run (Task 6)
+
+Run on branch `feature/database-transaction-concurrency-audit` with
+`backend/.venv` and Testcontainers `postgres:16-alpine`, using
+`-o addopts="-n 4"`.
+
+| Check | Result |
+|---|---|
+| Reproductions | Each of the 16 new tests failed on the unmodified code with `--runxfail`, before its fix. Deadlocks surfaced as `DeadlockDetected`; the other failures were assertion failures (§4.4). |
+| Concurrency suite `pytest tests/integration/test_concurrency_*.py` (25 files) | **61 passed**, 0 xfailed |
+| Focused suites | After each fix: assignments/swaps/eligibility (223), ranges/attendance/excusal/partial commits (118), email verification, import sessions/export (60), algorithm jobs/notifications/proposals/routes, shifts routes, reserves/no-show/dismissals (59), `-m scoring` (57); all passed. The relevant `app/services/tests` files (algorithm bridge, assignments, eligibility watch, eligibility, import sessions/approvals, range auto-mark, rank eligibility projection, score projection ×5) ran against a temporary Redis container (`REDIS_URL=redis://localhost:6391/0`, since removed): **281 passed**. |
+| Fast suite `pytest -p no:cacheprovider` | **2195 passed, 3 skipped, 2 failed** (404 s). The failures are the two baseline failures (`test_breakdown_contributions_reconstruct_scores`, `test_block_ids_are_unique`); there are no new failures. |
+| Alembic | No migration file touched; `alembic heads` = `4858092e72e7` (single head) |
+| Whitespace | `git diff --check d0e0d97b..HEAD`: clean |
+
+**Not claimed.** These fixes remove the specific schedules that were
+reproduced. They do not show that the workflows are free of races. The
+residuals are listed in §4.4 and §7.
