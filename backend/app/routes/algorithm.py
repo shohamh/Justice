@@ -1018,6 +1018,21 @@ def _transition_draft(session: Session, a: DutyAssignment, new_status: str) -> N
     session.refresh(a)
 
 
+def _publish_draft(session: Session, a: DutyAssignment) -> None:
+    """Publish one draft after re-checking it against the live schedule (J2).
+
+    The solver works from a snapshot taken when the job started; a manual
+    assignment or day override committed since can make the draft a double
+    booking. Lock the soldier (the lock create_assignment and
+    set_day_override serialize on), re-check, then claim the draft."""
+    from app.services.assignments import lock_soldiers_for_publish, publish_would_double_book
+
+    lock_soldiers_for_publish(session, [a.soldier_id])
+    if a.status == "algorithm_draft" and publish_would_double_book(session, a):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="overlap")
+    _transition_draft(session, a, "published")
+
+
 @router.post("/jobs/{job_id}/proposals/{assignment_id}/accept", status_code=status.HTTP_200_OK)
 def accept_proposal(
     job_id: uuid.UUID,
@@ -1028,7 +1043,7 @@ def accept_proposal(
     _load_job(session, job_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    _transition_draft(session, a, "published")
+    _publish_draft(session, a)
     write_audit(
         session,
         actor_id=user.id,
@@ -1061,11 +1076,26 @@ def bulk_accept_proposals(
     _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
 
+    # J2: re-check each draft against the live schedule (the solver's
+    # snapshot can be older than a manual edit). Lock the drafts' soldiers in
+    # id order, then leave any draft that would double-book its soldier as a
+    # draft instead of publishing it.
+    from app.services.assignments import lock_soldiers_for_publish, publish_would_double_book
+
+    drafts = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.id.in_(body.assignment_ids),
+            DutyAssignment.status == "algorithm_draft",
+        )
+    ).scalars().all()
+    lock_soldiers_for_publish(session, [d.soldier_id for d in drafts])
+    publishable_ids = [d.id for d in drafts if not publish_would_double_book(session, d)]
+
     # Bulk UPDATE — one statement regardless of count
     result = session.execute(
         update(DutyAssignment)
         .where(
-            DutyAssignment.id.in_(body.assignment_ids),
+            DutyAssignment.id.in_(publishable_ids),
             DutyAssignment.status == "algorithm_draft",
         )
         .values(status="published")
@@ -1181,7 +1211,7 @@ def accept_proposal_direct(
     job_id = _job_id_for_assignment(session, assignment_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    _transition_draft(session, a, "published")
+    _publish_draft(session, a)
     write_audit(
         session,
         actor_id=user.id,

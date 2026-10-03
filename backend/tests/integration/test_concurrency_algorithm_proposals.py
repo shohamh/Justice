@@ -20,7 +20,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from fastapi import HTTPException
 
 from app.db.models import DutyAssignment, DutyLocation, DutyType, Soldier
@@ -120,7 +119,6 @@ def _published_count(admin_session, soldier_id):
     ).scalar_one()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="J2: accept publishes a draft over a manual assignment")
 def test_accepting_a_stale_draft_cannot_double_book_the_soldier(race, admin_session):
     from app.routes import algorithm as algorithm_routes
 
@@ -139,7 +137,6 @@ def test_accepting_a_stale_draft_cannot_double_book_the_soldier(race, admin_sess
     assert admin_session.get(DutyAssignment, ids["draft"]).status == "algorithm_draft"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="J2: bulk accept publishes a draft over a manual assignment")
 def test_bulk_accept_skips_a_stale_draft_that_would_double_book(race, admin_session):
     from app.routes import algorithm as algorithm_routes
 

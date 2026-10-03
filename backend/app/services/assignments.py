@@ -450,6 +450,42 @@ def covers_by_override(
     return session.execute(q).first() is not None
 
 
+def lock_soldiers_for_publish(session: Session, soldier_ids) -> None:
+    """FOR NO KEY UPDATE on soldiers in ascending id order (J2).
+
+    Serializes publishing an algorithm draft with create_assignment (soldier
+    FOR UPDATE) and set_day_override (covering soldier), so the overlap
+    re-check in ``publish_would_double_book`` sees what they committed.
+    Lock order: soldiers (ascending id) -> assignment rows -> projection."""
+    ids = sorted(set(soldier_ids))
+    if ids:
+        session.execute(
+            select(Soldier.id).where(Soldier.id.in_(ids)).order_by(Soldier.id).with_for_update(key_share=True)
+        ).all()
+
+
+def publish_would_double_book(session: Session, assignment: DutyAssignment) -> bool:
+    """True if publishing ``assignment`` would overlap a published duty of the
+    same soldier, or a day that soldier already covers by override (J2: the
+    solver's snapshot can be older than a manual edit). Call with the soldier
+    locked (``lock_soldiers_for_publish``)."""
+    overlap = session.execute(
+        select(DutyAssignment.id).where(
+            DutyAssignment.soldier_id == assignment.soldier_id,
+            DutyAssignment.status == "published",
+            DutyAssignment.id != assignment.id,
+            DutyAssignment.start_date < assignment.end_date,
+            DutyAssignment.end_date > assignment.start_date,
+        )
+    ).first()
+    if overlap is not None:
+        return True
+    return covers_by_override(
+        session, soldier_id=assignment.soldier_id, start_date=assignment.start_date,
+        end_date=assignment.end_date, exclude_assignment_id=assignment.id,
+    )
+
+
 def _notify_day_override_change(
     session: Session,
     *,
