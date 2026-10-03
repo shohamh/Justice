@@ -76,3 +76,20 @@ $env:COOKIE_SECURE = 'false'
 ```
 
 The mock picks who the next login is from `POST <mock>/__identity` with `{"subject": "...", "email": "someone@example.test", "email_verified": true}`. The Playwright spec `frontend/tests/e2e/oidc_sso.spec.ts` is skipped unless `E2E_OIDC_MOCK_URL` is set to the mock's base URL (and `E2E_OIDC_DISABLED=1` against a backend with no `OIDC_*` settings for the unconfigured case).
+
+## Real-provider browser tests (Keycloak)
+
+`frontend/tests/e2e/oidc/` runs the SSO journeys in a real browser against a real OIDC provider (Keycloak 26, `start-dev`, imported from the checked-in test realm `justice-test-realm.json`: a confidential client with the exact redirect URI and PKCE S256 enforced, and synthetic `example.test` users sharing one throwaway test password). Everything in that folder is a local test fixture; never reuse its client secret, password or realm outside local testing.
+
+```powershell
+cd frontend
+$env:E2E_BROWSER_CHANNEL = ''          # use Playwright's bundled Chromium instead of the system Chrome
+.\tests\e2e\oidc\run.ps1               # start, test, tear down (add -KeepUp to leave it running, -Down to clean up)
+.\tests\e2e\oidc\run.ps1 -PlaywrightArgs '-g','ambiguous'
+```
+
+`run.ps1` starts the throwaway containers `oidc-e2e-pg`, `oidc-e2e-redis` and `oidc-e2e-keycloak` (memory capped: about 200 MB, 64 MB and 900 MB with a 512 MB Java heap) on ports 55440, 56392 and 8180, migrates and seeds a fresh database, seeds two e-mail identities (`seed_identities.py`), runs the backend on :8010 and Vite on :5183 natively with `OIDC_*` pointing at Keycloak, runs `playwright.oidc.config.ts`, then stops and removes everything it started. It does not touch the normal dev stack ports, and Docker Compose is not used.
+
+The issuer is `http://127.0.0.1:8180/realms/justice-test` while the app is at `http://localhost:5183`. They are different sites, so the cross-site callback redirect and the `oidc_txn` (Lax) and `oidc_reg` / `refresh_token` (Strict) cookie behaviour are exercised for real. A `*.localhost` issuer host is not used: Python on Windows cannot resolve it and the backend only accepts literal loopback hosts over http.
+
+Keycloak users and what they exercise: `sso.existing` (matches seeded soldier 1000003), `sso.new1` (unmatched, registers without an invite code), `sso.ambig` (same AD username as seeded soldier 1000004 but another e-mail domain: a username-only match, which is the only ambiguity the database constraints allow), `sso.unverified` (`emailVerified=false`). The first Keycloak login after a cold start can take a minute on a small machine.

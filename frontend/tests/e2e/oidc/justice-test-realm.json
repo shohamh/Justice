@@ -1,0 +1,124 @@
+{
+  "realm": "justice-test",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "clients": [
+    {
+      "clientId": "justice-test-client",
+      "name": "Justice local test client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "justice-test-only-client-secret",
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8010/api/auth/oidc/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "sso.existing",
+      "email": "sso.existing@example.test",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Existing",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test-Passw0rd!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "sso.new1",
+      "email": "sso.new1@example.test",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "New1",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test-Passw0rd!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "sso.new2",
+      "email": "sso.new2@example.test",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "New2",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test-Passw0rd!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "sso.new3",
+      "email": "sso.new3@example.test",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "New3",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test-Passw0rd!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "sso.ambig",
+      "email": "sso.ambig@example.test",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "Ambig",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test-Passw0rd!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "sso.unverified",
+      "email": "sso.unverified@example.test",
+      "emailVerified": false,
+      "firstName": "Test",
+      "lastName": "Unverified",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test-Passw0rd!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
