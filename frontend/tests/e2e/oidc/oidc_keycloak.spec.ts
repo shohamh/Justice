@@ -188,13 +188,22 @@ test.describe("failures stay generic", () => {
 
     const admin = await browser.newContext({ baseURL: APP });
     const adminPage = await admin.newPage();
+    const adminLog: string[] = [];
+    const started = Date.now();
+    adminPage.on("response", (r) => {
+      if (/\/api\/(auth|settings|me)/.test(r.url())) adminLog.push(`+${Date.now() - started} ${r.request().method()} ${new URL(r.url()).pathname} ${r.status()}`);
+    });
+    adminPage.on("requestfailed", (r) => adminLog.push(`+${Date.now() - started} FAILED ${new URL(r.url()).pathname} ${r.failure()?.errorText}`));
+    adminPage.on("framenavigated", (f) => { if (f === adminPage.mainFrame()) adminLog.push(`+${Date.now() - started} NAV ${f.url()}`); });
     await adminPage.goto("/login");
     await adminPage.getByTestId("personal-number-input").fill(ADMIN);
     await adminPage.getByTestId("password-input").fill(SEED_PASSWORD);
     await adminPage.getByTestId("login-submit").click();
     await expect(adminPage).toHaveURL(/\/$/);
     await adminPage.goto("/admin/settings?tab=7"); // full load right after login (needs the session-restore retry)
-    await expect(adminPage.getByTestId("identity-conflicts-content")).toBeVisible();
+    await expect(adminPage.getByTestId("identity-conflicts-content"), `admin page log:
+${adminLog.join("
+")}`).toBeVisible();
     await expect(adminPage.locator('[data-testid^="identity-conflict-"]').first()).toBeVisible();
     await expect(adminPage.getByTestId("identity-conflicts-empty")).toHaveCount(0);
     await admin.close();
