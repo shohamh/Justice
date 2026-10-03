@@ -80,20 +80,22 @@ def _can_approve_constraint(
 
 
 def _count_constraints(session: Session, user: Soldier) -> int:
+    if user.role == "admin":
+        return int(session.execute(
+            select(func.count()).select_from(PersonalConstraint).where(
+                PersonalConstraint.status.in_(
+                    ("pending_commander", "pending_duty_manager")
+                ),
+                PersonalConstraint.soldier_id != user.id,
+            )
+        ).scalar_one())
+
     roots = scope_root_ids(session, user)
-    if user.role != "admin" and not roots:
+    if not roots:
         # The existing count route rejects an unscoped actor; UnifiedNav catches
         # that source independently and displays zero.
         return 0
-    rows = (
-        list(session.execute(
-            select(PersonalConstraint).where(
-                PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager"))
-            )
-        ).scalars().all())
-        if user.role == "admin"
-        else constraints.list_pending_approvals(session, node_ids=roots)
-    )
+    rows = constraints.list_pending_approvals(session, node_ids=roots)
     if not rows:
         return 0
     soldier_ids = {row.soldier_id for row in rows}

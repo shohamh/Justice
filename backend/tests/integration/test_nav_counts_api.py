@@ -239,3 +239,52 @@ def test_nav_count_source_failure_does_not_zero_other_badges(
 
     assert response.status_code == 200, response.text
     assert response.json() == {"approvals": 14, "hakpaza": 6, "incoming_swaps": 7}
+
+
+def test_admin_constraint_badge_counts_pending_rows_except_own_with_sql_count(
+    client: TestClient,
+    admin_session: Session,
+):
+    from sqlalchemy import event
+
+    admin = create_soldier(admin_session, personal_number=f"nav_admin_constraint_{_id()}", role="admin")
+    target = create_soldier(admin_session, personal_number=f"nav_constraint_target_{_id()}")
+    admin_session.add_all([
+        PersonalConstraint(
+            soldier_id=target.id,
+            start_date=date.today() + timedelta(days=10),
+            end_date=date.today() + timedelta(days=11),
+            reason="admin can approve",
+            status="pending_commander",
+        ),
+        PersonalConstraint(
+            soldier_id=admin.id,
+            start_date=date.today() + timedelta(days=12),
+            end_date=date.today() + timedelta(days=13),
+            reason="own request is excluded",
+            status="pending_duty_manager",
+        ),
+    ])
+    admin_session.commit()
+    expected = client.get("/api/constraints/pending/count", headers=auth_headers(admin))
+    assert expected.status_code == 200, expected.text
+    statements: list[str] = []
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement)
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_constraints(admin_session, admin)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == expected.json()["count"] == 1
+    constraint_queries = [sql.lower() for sql in statements if "personal_constraints" in sql.lower()]
+    assert any("count(" in sql for sql in constraint_queries)
+    assert not any("select personal_constraints." in sql for sql in constraint_queries)
+    assert any(
+        "soldier_id" in sql and ("!=" in sql or "<>" in sql)
+        for sql in constraint_queries
+    )
