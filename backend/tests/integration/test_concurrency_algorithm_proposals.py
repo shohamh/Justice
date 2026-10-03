@@ -149,5 +149,34 @@ def test_bulk_accept_skips_a_stale_draft_that_would_double_book(race, admin_sess
 
     published = _published_count(admin_session, ids["soldier"])
     assert published == 1, f"soldier has {published} overlapping published duties"
-    assert result == {"accepted": 0}
+    assert result == {"accepted": 0, "skipped": [str(ids["draft"])]}
+    assert admin_session.get(DutyAssignment, ids["draft"]).status == "algorithm_draft"
+
+
+def test_bulk_accept_publishes_clean_drafts_and_reports_the_skipped_one(race, admin_session):
+    """Bulk accept with one stale draft and one clean draft: the clean draft
+    is published, the stale one stays a draft, and its id is returned in
+    ``skipped`` so the caller can tell the user."""
+    from app.routes import algorithm as algorithm_routes
+
+    ids = _stale_draft_over_a_manual_assignment(race, admin_session, "mixed")
+    other = create_soldier(admin_session, personal_number="race-j2-mixed-other")
+    start = date.today() + timedelta(days=15)
+    clean = DutyAssignment(
+        soldier_id=other.id, duty_type_id=ids["dt"], duty_location_id=ids["loc"], start_date=start,
+        end_date=start + timedelta(days=1), status="algorithm_draft", algorithm_job_id=ids["job"],
+    )
+    admin_session.add(clean)
+    admin_session.commit()
+    clean_id = clean.id
+
+    s = race.session()
+    result = algorithm_routes.bulk_accept_proposals(
+        job_id=ids["job"], body=algorithm_routes.BulkAcceptRequest(assignment_ids=[ids["draft"], clean_id]),
+        session=s, user=s.get(Soldier, ids["admin"]),
+    )
+
+    assert result == {"accepted": 1, "skipped": [str(ids["draft"])]}
+    admin_session.expire_all()
+    assert admin_session.get(DutyAssignment, clean_id).status == "published"
     assert admin_session.get(DutyAssignment, ids["draft"]).status == "algorithm_draft"

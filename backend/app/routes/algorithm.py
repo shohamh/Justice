@@ -1072,7 +1072,10 @@ def bulk_accept_proposals(
     body: BulkAcceptRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> dict[str, int]:
+) -> dict[str, Any]:
+    """Publish the given drafts. ``accepted`` counts the published drafts;
+    ``skipped`` lists the ids of drafts left unpublished because they would
+    double-book their soldier against the live schedule (J2)."""
     _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
 
@@ -1089,7 +1092,9 @@ def bulk_accept_proposals(
         )
     ).scalars().all()
     lock_soldiers_for_publish(session, [d.soldier_id for d in drafts])
-    publishable_ids = [d.id for d in drafts if not publish_would_double_book(session, d)]
+    skipped_ids = [d.id for d in drafts if publish_would_double_book(session, d)]
+    skipped = set(skipped_ids)
+    publishable_ids = [d.id for d in drafts if d.id not in skipped]
 
     # Bulk UPDATE — one statement regardless of count
     result = session.execute(
@@ -1131,7 +1136,7 @@ def bulk_accept_proposals(
 
     _maybe_publish_job(session, job_id)
     session.commit()
-    return {"accepted": len(accepted_ids)}
+    return {"accepted": len(accepted_ids), "skipped": [str(i) for i in skipped_ids]}
 
 
 @router.post("/jobs/{job_id}/proposals/bulk-reject", status_code=status.HTTP_200_OK)
