@@ -69,6 +69,10 @@ The 20k cProfile found substantial Python time and allocation in enumerating eve
 
 Build the initial Home response from the current soldier's required data and bounded visible aggregates. Remove full transparency projections and unbounded assignment histories from the initial path. Load secondary widgets after the primary content is ready. Preserve current-duty and authorization semantics.
 
+### Task 22 follow-up: Keep commander score readiness at compact scope
+
+The final c1 trace recorded Home alerts at 4.01 s cold / 4.14 s warm wall p95, with 1.81 s / 2.31 s accumulated SQL p95 across 17 statements. `commander_alert_warning_scores` can call `commander_score_totals`, whose projection-enabled path materializes every persisted `(soldier_id, quarter_start)` pair in the authorized scope. Replace that pair materialization on the healthy projection-read path with compact soldier and quarter scopes, retaining exact bucket repair keys only for unhealthy/dirty buckets. Preserve the alert threshold, authorized soldier scope, score totals, canonical fallback and diagnostic comparisons. Add PostgreSQL regressions for output parity, dirty/stale repair, and absence of all-pairs materialization. The captured trace does not identify the projection gate state or isolate this function; do not attribute the route timing to this path or claim a page speedup without a matched reprofile.
+
 ### Task 7: Bound calendar, HR review, and shared-shell work
 
 Fetch calendar shifts for the visible date window, deduplicate overlapping requests, and reuse only correctly keyed window data. Virtualize calendar events only if measurements show render cost is significant. Attribute calendar time separately to SQL, Python, serialization, and browser rendering.

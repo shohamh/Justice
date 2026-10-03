@@ -1120,6 +1120,27 @@ def _projection_keys_for_soldiers(
     }
 
 
+def _compact_projection_scope_for_soldiers(
+    session: Session, soldier_ids: set[uuid.UUID]
+) -> tuple[set[uuid.UUID], set[date]]:
+    """Distinct persisted soldiers and quarters without returning bucket pairs."""
+    if not soldier_ids:
+        return set(), set()
+    row = session.execute(
+        text(
+            """
+            SELECT ARRAY_AGG(DISTINCT soldier_id), ARRAY_AGG(DISTINCT quarter_start)
+            FROM soldier_quarter_score_projection
+            WHERE soldier_id = ANY(CAST(:ids AS uuid[]))
+            """
+        ).bindparams(ids=sorted(str(soldier_id) for soldier_id in soldier_ids))
+    ).one()
+    return (
+        {value if isinstance(value, uuid.UUID) else uuid.UUID(str(value)) for value in row[0] or []},
+        set(row[1] or []),
+    )
+
+
 def _bucket_health_counts(session: Session, *, soldier_ids: set[uuid.UUID]) -> tuple[int, int]:
     """One-row health summary: (duplicate-aggregate-groups, stale-version rows).
 
@@ -1705,9 +1726,14 @@ def commander_score_totals(
             fallback_reason="projection_backfill_incomplete",
         )
 
-    keys = _projection_keys_for_soldiers(session, soldier_ids)
-    repair_keys = _dirty_or_divergent_projection_keys(session, keys=keys)
-    repair_keys.update(_incomplete_bucket_keys(session, keys))
+    bucket_soldier_ids, quarter_starts = _compact_projection_scope_for_soldiers(
+        session, soldier_ids
+    )
+    repair_keys = _dirty_or_divergent_projection_keys(session, soldier_ids=soldier_ids)
+    if quarter_starts:
+        duplicate_groups, stale_rows = _bucket_health_counts(session, soldier_ids=soldier_ids)
+        if duplicate_groups or stale_rows:
+            repair_keys.update(_unhealthy_bucket_keys_detailed(session, soldier_ids=soldier_ids))
 
     repaired_soldiers: set[uuid.UUID] = set()
     if repair_keys:
@@ -1739,7 +1765,7 @@ def commander_score_totals(
                 fallback_reason="projection_repair_failed",
             )
 
-    if keys and not projection_is_current(session, keys):
+    if _dirty_markers_present(session, soldier_ids=soldier_ids):
         logger.warning(
             "commander dashboard score projection fell back because required buckets are not current",
             extra={
@@ -1759,7 +1785,12 @@ def commander_score_totals(
             fallback_reason="projection_not_current",
         )
 
-    if _incomplete_bucket_keys(session, keys):
+    duplicate_groups, stale_rows = (
+        _bucket_health_counts(session, soldier_ids=soldier_ids)
+        if quarter_starts or repair_keys
+        else (0, 0)
+    )
+    if duplicate_groups or stale_rows:
         logger.warning(
             "commander dashboard score projection fell back because required buckets are incomplete",
             extra={
@@ -1780,7 +1811,7 @@ def commander_score_totals(
         )
 
     projected_scores = _projected_commander_score_totals(session, soldier_ids=soldier_ids)
-    required_total_ids = {soldier_id for soldier_id, _quarter_start_value in keys}
+    required_total_ids = bucket_soldier_ids
     missing_total_ids = required_total_ids - set(projected_scores)
     if missing_total_ids:
         repaired_soldiers.update(_repair_projection_for_soldiers(session, soldier_ids=missing_total_ids))
