@@ -26,6 +26,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import DutyLocation, DutyShift, DutyType, ImportSession, Soldier
@@ -127,3 +128,50 @@ def test_cancel_committed_during_confirm_stops_the_import(race, admin_session):
     # for it and then loses.
     assert (status, shifts) == ("confirmed", 1)
     assert str(outcomes[1].error) == "only_draft_sessions_can_be_cancelled"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M2: confirm holds the import lock across the workbook read")
+def test_confirm_does_not_hold_the_session_lock_while_reading_the_workbook(race, admin_session, monkeypatch):
+    """M2 — ``confirm_session`` took the import-session ``FOR UPDATE`` and only
+    then read the workbook from object storage and parsed it (for soldier
+    password hashes), so every other operation on that session waited for a
+    network read and a parse.
+
+    The stubbed storage read probes the row from an independent session with
+    ``FOR UPDATE NOWAIT``. Fixed: the workbook is read and parsed before the
+    lock; the lock is taken afterwards, the draft status re-checked and the
+    import applied."""
+    from types import SimpleNamespace
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    session_id, admin_id = _seed_draft(admin_session)
+    draft = admin_session.get(ImportSession, session_id)
+    # A skipped soldier row is enough to make confirm read the workbook.
+    draft.parsed_state = {**draft.parsed_state, "soldiers": [{"row": 3, "action": "error"}], "parser_id": None}
+    admin_session.commit()
+
+    probe: dict[str, str] = {}
+
+    def fake_read(session, import_session, storage=None):
+        s = race.session()
+        try:
+            s.execute(text("SELECT id FROM import_sessions WHERE id = :id FOR UPDATE NOWAIT"), {"id": session_id})
+            probe["lock"] = "free"
+        except OperationalError:
+            probe["lock"] = "held"
+        finally:
+            s.rollback()
+        return b"workbook"
+
+    monkeypatch.setattr(import_service, "read_import_workbook", fake_read)
+    monkeypatch.setattr(import_service, "_parse_workbook", lambda *_a, **_kw: (None, SimpleNamespace(soldiers=[])))
+
+    s = race.session()
+    result = import_service.confirm_session(s, session_id=session_id, actor=s.get(Soldier, admin_id))
+    s.commit()
+
+    assert probe["lock"] == "free", "the import-session row lock was held during the workbook read"
+    assert result["created"] == 1
+    assert _shift_count(admin_session) == 1
