@@ -151,9 +151,14 @@ def _assert_commander(session: Session, user: Soldier) -> list[uuid.UUID]:
 
 
 def _authorized_subtree_ids(session: Session, root_ids: list[uuid.UUID]) -> list[uuid.UUID]:
-    subtree: set[uuid.UUID] = set()
-    for root_id in root_ids:
-        subtree.update(_get_subtree_ids(session, root_id))
+    subtree = set(root_ids)
+    if not subtree:
+        return []
+    subtree.update(
+        session.execute(
+            select(HierarchyNode.id).where(HierarchyNode.path_ids.overlap(list(subtree)))
+        ).scalars().all()
+    )
     return list(subtree)
 
 
