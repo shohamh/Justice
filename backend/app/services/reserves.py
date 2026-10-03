@@ -231,22 +231,22 @@ def dismiss_reserve(
     if to_date < from_date:
         raise ReserveError("bad_date_range")
     _lock_assignment(session, assignment)
-    if covering_reserve_id is not None:
-        # relink_reserve below locks each linked primary. Take those locks now,
-        # in id order and before the projection refresh locks the quarter
-        # total: dismiss_primary / mark_no_show / set_day_override lock a
-        # primary first and the quarter total after, so taking the primary
-        # after the quarter total here would deadlock against them.
-        # Lock order: reserve -> linked primaries (ascending id) -> projection.
-        session.execute(
-            select(DutyAssignment.id)
-            .where(DutyAssignment.id.in_(
-                select(DutyReserveLink.primary_assignment_id)
-                .where(DutyReserveLink.reserve_assignment_id == assignment.id)
-            ))
-            .order_by(DutyAssignment.id)
-            .with_for_update(key_share=True)
-        ).all()
+    # Lock order: reserve -> linked primaries (ascending id) -> projection.
+    # dismiss_primary / mark_no_show / set_day_override lock a primary first
+    # and the projection after, so every primary lock here must come before
+    # the projection refresh. Take the linked primaries now, in id order. A
+    # primary linked to this reserve by a transaction that commits after this
+    # statement is not in this set; relink_reserve locks it below, which is
+    # why the projection refresh runs only after the relinks/reallocation.
+    session.execute(
+        select(DutyAssignment.id)
+        .where(DutyAssignment.id.in_(
+            select(DutyReserveLink.primary_assignment_id)
+            .where(DutyReserveLink.reserve_assignment_id == assignment.id)
+        ))
+        .order_by(DutyAssignment.id)
+        .with_for_update(key_share=True)
+    ).all()
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
@@ -287,16 +287,12 @@ def dismiss_reserve(
         reference_type="duty_assignment", reference_id=assignment.id,
         actor_id=actor_id,
     )
-    if assignment.status == "published":
-        from app.services.score_projection import refresh_projection_for_assignment_change
-
-        refresh_projection_for_assignment_change(session, assignment=assignment)
     if covering_reserve_id is not None:
         link_rows = (
             session.execute(
                 select(DutyReserveLink).where(
                     DutyReserveLink.reserve_assignment_id == assignment.id
-                )
+                ).order_by(DutyReserveLink.primary_assignment_id)
             )
             .scalars()
             .all()
@@ -329,6 +325,10 @@ def dismiss_reserve(
             called_up_to=to_date,
             actor_id=actor_id,
         )
+    if assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_assignment_change
+
+        refresh_projection_for_assignment_change(session, assignment=assignment)
     return dismissal, reallocations
 
 
@@ -539,9 +539,12 @@ def reallocate_orphaned_primaries(
     )
 
     # Filter to primaries overlapping the call-up range
-    affected = [
-        p for p in primaries if p.start_date <= called_up_to and p.end_date > called_up_from
-    ]
+    # Id order, so concurrent reallocations replace overlapping links in one
+    # global order.
+    affected = sorted(
+        (p for p in primaries if p.start_date <= called_up_to and p.end_date > called_up_from),
+        key=lambda p: p.id,
+    )
     if not affected:
         return []
 

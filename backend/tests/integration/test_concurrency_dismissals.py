@@ -22,7 +22,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -186,7 +185,6 @@ def test_covered_reserve_dismissal_and_primary_dismissal_do_not_deadlock(race, a
     assert link.reserve_assignment_id == cover_id
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="dismiss_reserve locks a newly linked primary after the projection")
 def test_reserve_dismissal_with_a_primary_linked_mid_request_does_not_deadlock(race, admin_session):
     """``dismiss_reserve(R, covering_reserve_id)`` locks R's linked primaries
     from the links visible when that statement runs. A primary P2 linked to R
