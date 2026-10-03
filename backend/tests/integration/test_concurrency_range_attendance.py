@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -129,3 +130,72 @@ def test_auto_mark_does_not_overwrite_a_manual_no_show(race, admin_session):
     )
     assert _qualifications(admin_session, soldier_id) == 0
     assert worker_outcome.value == 0
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="I1: mark_attendance vs dismiss_primary deadlock")
+def test_attendance_correction_and_duty_dismissal_of_one_soldier_do_not_deadlock(race, admin_session):
+    """I1 — ``mark_attendance`` locks the soldier and the range assignment,
+    refreshes the score projection (``create_adjustment`` for a no-show) and
+    only then lets ``recheck_assignments`` UPDATE the soldier's published duty
+    assignments. ``dismiss_primary`` on one of those duties locks the duty row
+    first and then refreshes the projection: the reverse order.
+
+    Schedule: the attendance mark holds the projection rows; the dismissal
+    holds the duty row; each then waits for the other's lock.
+
+    Fixed: ``mark_attendance`` locks the soldier's published duty assignments
+    (id order, ``FOR NO KEY UPDATE``) right after the range assignment, before
+    any projection lock (soldier -> range assignment -> duty assignments ->
+    projection)."""
+    from app.db.models import DutyAssignment, DutyDismissal, DutyLocation, ScoreProjectionQuarterTotal
+    from app.services import reserves as reserves_service
+
+    assignment_id, soldier_id, manager_id = _seed(admin_session, "i1")
+    dt = DutyType(name="race-att-i1 plain", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="race-att-i1 loc")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    start = date.today() + timedelta(days=30)
+    duty = DutyAssignment(
+        soldier_id=soldier_id, duty_type_id=dt.id, duty_location_id=loc.id, start_date=start,
+        end_date=start + timedelta(days=5), status="published", is_reserve=False,
+        # A stale cached warning: recheck_assignments clears it, so it UPDATEs this row.
+        weapon_ineligible=True,
+    )
+    admin_session.add(duty)
+    admin_session.commit()
+    duty_id = duty.id
+
+    attendance_holds_projection = race.signal("attendance mark holds the projection rows")
+    dismissal_holds_duty = race.signal("dismissal holds the duty row")
+
+    def mark_no_show():
+        s = race.session()
+
+        def _after_total_lock():
+            attendance_holds_projection.set()
+            dismissal_holds_duty.wait()
+
+        race.pause_after_select(s, ScoreProjectionQuarterTotal, _after_total_lock)
+        return ranges_service.mark_attendance(
+            s, assignment=s.get(RangeAssignment, assignment_id), status=RangeAttendanceStatus.no_show,
+            marked_by=manager_id, note="לא הגיע",
+        ).attendance_status
+
+    def dismiss():
+        attendance_holds_projection.wait()
+        s = race.session()
+        d = s.get(DutyAssignment, duty_id)
+        race.pause_after_select(s, DutyDismissal, dismissal_holds_duty.set)
+        reserves_service.dismiss_primary(
+            s, assignment=d, from_date=start + timedelta(days=1), to_date=start + timedelta(days=2),
+            reason=None, actor_id=manager_id,
+        )
+        s.commit()
+
+    outcomes = race.run(mark_no_show, dismiss)
+
+    assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
+    admin_session.expire_all()
+    assert admin_session.get(RangeAssignment, assignment_id).attendance_status == RangeAttendanceStatus.no_show
+    assert admin_session.get(DutyAssignment, duty_id).weapon_ineligible is False
