@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -289,3 +290,93 @@ def test_reserve_dismissal_with_a_primary_linked_mid_request_does_not_deadlock(r
         select(DutyReserveLink).where(DutyReserveLink.primary_assignment_id == p2_id)
     ).scalar_one()
     assert link.reserve_assignment_id == cover_id
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="dismiss-and-cover route vs dismiss_reserve deadlock")
+def test_dismiss_and_cover_route_and_reserve_dismissal_do_not_deadlock(race, admin_session, monkeypatch):
+    """``POST /shifts/{id}/dismissals`` (dismiss primary P, call up covering
+    reserve R2, relink, reallocate) locked P (``dismiss_primary``), refreshed
+    the projection and then UPDATEd R2 (``call_up_reserve``).
+    ``dismiss_reserve(R2)`` locks R2 and then R2's linked primaries, P
+    included: the reverse order on P and R2 when R2 is P's own reserve.
+
+    Fixed: the route locks R2 and then R2's linked primaries plus P (ascending
+    id) before dismissing P, the order ``dismiss_reserve`` uses."""
+    import threading
+
+    from app.db.models import DutyReserveLink, DutyShift, Soldier
+    from app.routes import reserves as reserves_routes
+
+    admin = create_soldier(admin_session, personal_number="race-dc-admin", role="admin")
+    dt = DutyType(name="race-dc-type", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="race-dc-loc")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    shift = DutyShift(duty_type_id=dt.id, duty_location_id=loc.id, start_date=_START,
+                      end_date=_START + timedelta(days=8), required_count=1)
+    admin_session.add(shift)
+    admin_session.flush()
+
+    def assignment(pn, is_reserve):
+        s = create_soldier(admin_session, personal_number=pn)
+        a = DutyAssignment(soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id, start_date=_START,
+                           end_date=_START + timedelta(days=8), status="published", is_reserve=is_reserve,
+                           duty_shift_id=shift.id)
+        admin_session.add(a)
+        admin_session.flush()
+        return a
+
+    primary = assignment("race-dc-p", False)
+    reserve = assignment("race-dc-r", True)
+    admin_session.add(DutyReserveLink(primary_assignment_id=primary.id, reserve_assignment_id=reserve.id,
+                                      hierarchy_distance=0))
+    admin_session.add(ScoreProjectionQuarterTotal(
+        quarter_start=date(_START.year, (_START.month - 1) // 3 * 3 + 1, 1), projection_version="1",
+        raw_day_count=0, effective_weighted_days=Decimal("0"), duty_score=Decimal("0"),
+        adjustment_score=Decimal("0"), total_score=Decimal("0"),
+    ))
+    admin_session.commit()
+    shift_id, primary_id, reserve_id, admin_id = shift.id, primary.id, reserve.id, admin.id
+
+    route_holds_primary = race.signal("route holds the primary")
+    reserve_side_holds_reserve = race.signal("reserve dismissal holds R2")
+    in_reserve_side = threading.local()
+    real_lock = reserves_service._lock_assignment
+
+    def lock_and_signal(session, assignment):
+        real_lock(session, assignment)
+        if getattr(in_reserve_side, "on", False) and assignment.id == reserve_id:
+            reserve_side_holds_reserve.set()
+
+    monkeypatch.setattr(reserves_service, "_lock_assignment", lock_and_signal)
+
+    def route():
+        s = race.session()
+
+        def _after_primary_lock():
+            route_holds_primary.set()
+            reserve_side_holds_reserve.wait()
+
+        race.pause_after_select(s, DutyDismissal, _after_primary_lock)
+        body = reserves_routes.DismissAndReallocateRequest(
+            primary_assignment_id=primary_id, covering_reserve_assignment_id=reserve_id,
+            from_date=_START + timedelta(days=1), to_date=_START + timedelta(days=2),
+        )
+        return reserves_routes.dismiss_and_reallocate(
+            shift_id=shift_id, body=body, session=s, user=s.get(Soldier, admin_id),
+        )
+
+    def dismiss_reserve():
+        route_holds_primary.wait()
+        in_reserve_side.on = True
+        s = race.session()
+        d, _ = reserves_service.dismiss_reserve(
+            s, assignment=s.get(DutyAssignment, reserve_id), from_date=_START + timedelta(days=5),
+            to_date=_START + timedelta(days=6), reason=None, actor_id=admin_id,
+        )
+        s.commit()
+        return d.id
+
+    outcomes = race.run(route, dismiss_reserve)
+
+    assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
