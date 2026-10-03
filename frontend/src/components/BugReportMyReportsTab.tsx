@@ -13,6 +13,7 @@ import {
 import { translateApiError } from "../utils/translateApiError";
 import BugReportCommentsPanel from "./BugReportCommentsPanel";
 import DocumentPreviewModal from "./DocumentPreviewModal";
+import { createTemporaryBlobUrl, revokeBlobUrl } from "../utils/downloadFile";
 
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   low: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
@@ -45,6 +46,10 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
   const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
   const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+
+  useEffect(() => () => {
+    if (previewImage) revokeBlobUrl(previewImage.url);
+  }, [previewImage]);
   const [markingAllSeen, setMarkingAllSeen] = useState(false);
   const hasUnseenActivity = reports.some((r) => r.has_unseen_activity);
 
@@ -66,9 +71,22 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
 
   useEffect(() => {
     return () => {
-      Object.values(screenshotUrlByIdRef.current).forEach((url) => URL.revokeObjectURL(url));
+      Object.values(screenshotUrlByIdRef.current).forEach(revokeBlobUrl);
     };
   }, []);
+
+  useEffect(() => {
+    if (!query.data) return;
+    const reportIds = new Set(query.data.items.map((report) => report.id));
+    setScreenshotUrlById((current) => {
+      const next: Record<string, string> = {};
+      for (const [id, url] of Object.entries(current)) {
+        if (reportIds.has(id)) next[id] = url;
+        else revokeBlobUrl(url);
+      }
+      return next;
+    });
+  }, [query.data]);
 
   const bugReportSeverityLabel = (severity: BugReportSeverity) => t(`bug_reports.severity_${severity}`);
   const bugReportStatusLabel = (status: BugReportStatus) => t(`bug_reports.status_${status}`);
@@ -78,7 +96,7 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
     setScreenshotErrorById((prev) => ({ ...prev, [id]: "" }));
     try {
       const blob = await fetchMyBugReportScreenshot(id);
-      setScreenshotUrlById((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
+      setScreenshotUrlById((prev) => ({ ...prev, [id]: createTemporaryBlobUrl(blob).url }));
     } catch (err: unknown) {
       setScreenshotErrorById((prev) => ({
         ...prev,

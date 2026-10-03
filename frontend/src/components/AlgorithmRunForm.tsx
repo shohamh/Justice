@@ -50,6 +50,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
   const [settings, setSettings] = useState<SolverSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
+  const [hasOpenedSubtreeSelector, setHasOpenedSubtreeSelector] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [availabilityWarning, setAvailabilityWarning] = useState<AvailabilityResponse | null>(null);
@@ -309,9 +310,14 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
         </div>
       )}
 
-      <details className="border dark:border-gray-600 rounded p-2">
+      <details
+        className="border dark:border-gray-600 rounded p-2"
+        onToggle={event => {
+          if (event.currentTarget.open) setHasOpenedSubtreeSelector(true);
+        }}
+      >
         <summary className="cursor-pointer">{t("algorithm.restrict_to_subtree")}</summary>
-        <SubHierarchySelector value={eligibleNodeIds} onChange={setEligibleNodeIds} />
+        {hasOpenedSubtreeSelector && <SubHierarchySelector value={eligibleNodeIds} onChange={setEligibleNodeIds} />}
       </details>
 
       {error && <p className="text-red-500">{error}</p>}

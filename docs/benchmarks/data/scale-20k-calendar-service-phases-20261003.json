@@ -1,0 +1,58 @@
+{
+  "captured_at_utc": "2026-10-02T22:20:51.338922+00:00",
+  "kind": "one_in_process_read_only_diagnostic_sample",
+  "transaction": "SET TRANSACTION READ ONLY before any query; rolled back at end",
+  "visible_date_from_inclusive": "2026-09-27",
+  "visible_date_to_inclusive": "2026-10-31",
+  "scope": "existing active admin; system root node; no soldier_id",
+  "dataset": {
+    "active_soldiers": 20121,
+    "duty_assignment_rows": 1000008
+  },
+  "returned_shifts": 135,
+  "returned_assignment_rows": 4,
+  "json_response_bytes": 76877,
+  "json_boundary": "CalendarShiftsResponse.model_dump(mode=json) then FastAPI/Starlette JSONResponse.body; excludes HTTP/ASGI middleware and transfer",
+  "total_profiled_wall_ms": 1142.275,
+  "phase_sum_wall_ms": 1142.177,
+  "phase_sum_sql_cursor_count": 33,
+  "phase_sum_sql_cursor_ms": 249.685,
+  "phases": [
+    {
+      "name": "scope_authorization_setup",
+      "wall_ms": 17.54,
+      "sql_cursor_count": 7,
+      "sql_cursor_ms": 12.474
+    },
+    {
+      "name": "get_calendar_shifts",
+      "wall_ms": 729.769,
+      "sql_cursor_count": 25,
+      "sql_cursor_ms": 233.667
+    },
+    {
+      "name": "swap_count_enrichment",
+      "wall_ms": 5.374,
+      "sql_cursor_count": 1,
+      "sql_cursor_ms": 3.544
+    },
+    {
+      "name": "pydantic_construction_holidays_redaction_capability",
+      "wall_ms": 386.552,
+      "sql_cursor_count": 0,
+      "sql_cursor_ms": 0.0
+    },
+    {
+      "name": "pydantic_json_mode_serialization",
+      "wall_ms": 2.129,
+      "sql_cursor_count": 0,
+      "sql_cursor_ms": 0.0
+    },
+    {
+      "name": "json_response_encoding",
+      "wall_ms": 0.813,
+      "sql_cursor_count": 0,
+      "sql_cursor_ms": 0.0
+    }
+  ]
+}

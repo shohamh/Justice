@@ -29,6 +29,8 @@ describe("HrSyncReviewContent", () => {
     vi.mocked(hrReviewApi.listVanished).mockResolvedValue({ items: [] });
     vi.mocked(hrReviewApi.listRankConflicts).mockResolvedValue({ items: [] });
     vi.mocked(hrReviewApi.listSyncRuns).mockResolvedValue({ person_syncs: [], hierarchy_syncs: [] });
+    vi.mocked(hrReviewApi.listHrIdentityConflicts).mockResolvedValue({ items: [] });
+    vi.mocked(hrReviewApi.listHrPreferredRecords).mockResolvedValue({ items: [] });
     vi.mocked(hrReviewApi.dismissHeldForReview).mockResolvedValue({
       id: "1", personal_number: "123", review_reason: "bad date", last_synced_at: null, raw_dto: null,
     });
@@ -37,6 +39,24 @@ describe("HrSyncReviewContent", () => {
   it("shows the held-for-review section with the fetched item", async () => {
     renderWithClient();
     await waitFor(() => expect(screen.getByText("ישראל ישראלי · 123")).toBeInTheDocument());
+  });
+
+  it("shows the identity conflicts section with its empty state", async () => {
+    renderWithClient();
+    expect(await screen.findByTestId("hr-identity-conflicts-empty")).toBeInTheDocument();
+  });
+
+  it("shows an HR identity conflict warning in the review page", async () => {
+    vi.mocked(hrReviewApi.listHrIdentityConflicts).mockResolvedValue({
+      items: [{
+        id: "c9", personal_number: "9999999", kind: "duplicate_personal_number", reason: "latest",
+        status: "open", applied_index: 0, chosen_index: null, candidates: [], colliding_soldiers: [],
+        preferred_record: null, hr_person_sync_id: null, created_at: "2026-10-02T08:00:00Z",
+        last_seen_at: null, acknowledged_at: null, resolved_at: null,
+      }],
+    });
+    renderWithClient();
+    expect(await screen.findByTestId("hr-identity-conflict-c9")).toBeInTheDocument();
   });
 
   it("dismisses a held-for-review item on button click", async () => {

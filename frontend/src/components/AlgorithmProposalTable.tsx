@@ -3,7 +3,7 @@ import axios from "axios";
 import { useTranslation } from "react-i18next";
 import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, pollJob } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
-import { SoldierDTO } from "../api/soldiers";
+import { SoldierNameDTO } from "../api/soldiers";
 import { DutyShift } from "../api/shifts";
 import Combobox from "./Combobox";
 import { DataTable, type ColDef } from "./DataTable";
@@ -15,7 +15,7 @@ import ConfirmDialog from "./ConfirmDialog";
 interface Props {
   job: AlgorithmJob;
   jobId: string;
-  soldiers: SoldierDTO[];
+  soldiers: SoldierNameDTO[];
   dutyTypes: DutyType[];
   shiftsById?: Record<string, DutyShift>;
   onProposalUpdate: (updated: AlgorithmJob) => void;
@@ -32,6 +32,8 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const [rejecting, setRejecting] = useState(false);
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [pendingRejectIds, setPendingRejectIds] = useState<string[] | null>(null);
+  // Drafts the server refused to publish on the last bulk accept (they now overlap another duty).
+  const [skippedIds, setSkippedIds] = useState<string[]>([]);
 
   function apiErrorMsg(e: unknown): string {
     if (axios.isAxiosError(e)) {
@@ -45,17 +47,21 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
           .join(", ");
         return `שגיאה ${status}: נתונים לא תקינים בשדות: ${fields}`;
       }
+      if (detail === "overlap") {
+        return "לא ניתן לפרסם: קיימת חפיפה עם תורנות או החלפה שנוספו לאחר הרצת האלגוריתם";
+      }
       if (detail) return `שגיאה ${status ?? ""}: ${detail}`;
       return `שגיאה HTTP ${status ?? ""}`;
     }
     return "שגיאה בטעינת תוצאות האלגוריתם";
   }
 
-  const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
+  const namesById = useMemo(() => new Map(soldiers.map(s => [s.id, s.full_name] as const)), [soldiers]);
+  const soldierName = (id: string) => namesById.get(id) ?? id.slice(0, 8);
   const soldierLink = (id: string): React.ReactNode => {
-    const s = soldiers.find(s => s.id === id);
-    if (!s) return id.slice(0, 8);
-    return <SoldierLink id={s.id} name={s.full_name} />;
+    const name = namesById.get(id);
+    if (!name) return id.slice(0, 8);
+    return <SoldierLink id={id} name={name} />;
   };
   const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
 
@@ -108,9 +114,12 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     if (toApprove.length === 0) return;
     setApproving(true);
     setApproveError(null);
+    setSkippedIds([]);
     try {
-      await bulkAcceptProposals(jobId, toApprove.map(p => p.assignment_id));
-      const approvedIds = new Set(toApprove.map(p => p.assignment_id));
+      const result = await bulkAcceptProposals(jobId, toApprove.map(p => p.assignment_id));
+      const skipped = new Set(result.skipped ?? []);
+      setSkippedIds(toApprove.map(p => p.assignment_id).filter(id => skipped.has(id)));
+      const approvedIds = new Set(toApprove.map(p => p.assignment_id).filter(id => !skipped.has(id)));
       onProposalUpdate({
         ...job,
         proposals: job.proposals.map(p =>
@@ -350,6 +359,32 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
               <span className="text-xs text-red-600 dark:text-red-400">{rejectError}</span>
             )}
           </div>
+          {skippedIds.length > 0 && (
+            <div
+              role="alert"
+              data-testid="algorithm-skipped-drafts"
+              className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+            >
+              <p className="font-medium">
+                {skippedIds.length === 1 ? "טיוטה אחת לא פורסמה" : `${skippedIds.length} טיוטות לא פורסמו`}
+              </p>
+              <p className="mt-1">
+                הטיוטות הבאות יוצרות חפיפה עם תורנות או החלפה שנוספו לאחר הרצת האלגוריתם, ולכן נשארו כטיוטה.
+                ניתן להחליף את החייל, או לבטל את הטיוטה.
+              </p>
+              <ul className="mt-2 list-disc pr-5">
+                {skippedIds.map(id => {
+                  const p = job.proposals.find(x => x.assignment_id === id);
+                  if (!p) return null;
+                  return (
+                    <li key={id} data-testid={`algorithm-skipped-${id}`}>
+                      {soldierName(p.soldier_id)} · {typeName(p.duty_type_id)} · {p.start_date === p.end_date ? p.start_date : `${p.start_date} – ${p.end_date}`}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           <DataTable
             columns={cols}
             data={filteredProposals}

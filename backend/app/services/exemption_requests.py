@@ -302,14 +302,24 @@ def expire_stale_exemption_requests(session: Session, *, today: date | None = No
     swap requests (see app/services/swaps.py). Called by the same periodic
     worker; no user actor, so notifications/audit use actor_id=None."""
     today = today or date.today()
-    requests = session.execute(
+    due_ids = [r.id for r in session.execute(
         select(ExemptionRequest).where(
             ExemptionRequest.status.in_(["pending_commander", "pending_duty_manager"]),
             ExemptionRequest.end_date.is_not(None),
             ExemptionRequest.end_date < today,
-        )
-    ).scalars().all()
-    for req in requests:
+        ).order_by(ExemptionRequest.id)
+    ).scalars().all()]
+    requests: list[ExemptionRequest] = []
+    for request_id in due_ids:
+        # The SELECT above is unlocked: a decision may have approved or
+        # rejected this request since. Take the same row lock the decision
+        # paths take (_lock_request) and re-check that it is still pending,
+        # so the worker never overwrites a decision with 'expired'. Locks
+        # are taken in id order so concurrent workers cannot deadlock.
+        req = _lock_request(session, request_id)
+        if req is None or req.status not in ("pending_commander", "pending_duty_manager"):
+            continue
+        requests.append(req)
         req.status = "expired"
         req.decision_note = "התאריך שהוגדר לבקשה עבר"
         create_notification(

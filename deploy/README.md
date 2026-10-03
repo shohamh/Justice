@@ -34,7 +34,7 @@ openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
 
 # 2. Configure environment
 cp deploy/.env.production.example deploy/.env.production
-# Edit .env.production — fill in DB_PASSWORD, JWT_SECRET, TELEGRAM_BOT_TOKEN, ALLOWED_ORIGINS
+# Edit .env.production â€” fill in DB_PASSWORD, JWT_SECRET, TELEGRAM_BOT_TOKEN, ALLOWED_ORIGINS
 
 # 3. Build frontend
 cd frontend && npm ci && npm run build && cd ..
@@ -57,6 +57,19 @@ cd frontend && npm ci && npm run build && cd ..
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d --build
 ```
 
+## Optional Exchange calendar worker
+
+The standard production stack does not need Exchange settings or credentials. To enable calendar sync, fill in the Exchange settings in `deploy/.env.production`, provision the password as a protected file, and set `EXCHANGE_PASSWORD_FILE` to its path. Then include the optional overlay:
+
+```bash
+docker compose --env-file deploy/.env.production \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.exchange.prod.yml config
+docker compose --env-file deploy/.env.production \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.exchange.prod.yml up -d --build
+```
+
 ## Restore from backup
 
 ```bash
@@ -69,3 +82,64 @@ RECOVERY_TARGET_TIME="2026-06-29 14:30:00+00" deploy/restore-pitr.sh /opt/justic
 # Restart
 docker compose -f deploy/docker-compose.prod.yml start backend telegram-bot
 ```
+
+## Encrypted PostgreSQL backups
+
+The PostgreSQL image uses the pinned age v1.2.1 binary and PostgreSQL 16.4
+Alpine base. Set AGE_BACKUP_RECIPIENTS in deploy/.env.production to one or
+more space-separated age public recipients. Keep the matching private identity
+outside the repository and do not mount it into production database, API, or bot
+services. Base backups and WAL segments are encrypted before they reach the
+backup/archive directories. Base backup plaintext is streamed directly from
+pg_basebackup into age and is not written to a temporary file.
+
+For rotation, add the new public recipient to AGE_BACKUP_RECIPIENTS_NEXT while
+retaining the old recipient. New archives then decrypt with either identity.
+Before removing the old recipient, verify every retained base backup can be
+decrypted with the new identity. WAL segments retained for recovery must also
+remain decryptable; keep the old identity available in a protected offline
+location until those segments expire.
+
+Generate a private key and public recipient in a controlled environment:
+
+    umask 077
+mkdir -p /secure/justice
+# Keep this identity in an encrypted/offline secret store; never commit it.
+docker run --rm -v /secure/justice:/secrets justice-postgres:16-age1.2.1 age-keygen -o /secrets/age-identity
+
+Store age-identity at the path configured by AGE_IDENTITY_PATH with permissions
+readable only by the recovery operator. To prepare an isolated recovery directory:
+
+    docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.recovery.yml --env-file deploy/.env.production --project-name justice-recovery run --rm --no-deps db true
+    RECOVERY_TARGET_TIME="2026-09-27 14:30:00+00" deploy/restore-pitr.sh /opt/justice/backups/base_YYYYMMDD_HHMMSS.tar.gz.age
+
+The first command validates the recovery-only Compose mounts without starting
+Postgres. The restore script decrypts the selected base archive inside the
+database image, extracts it into the separate PGDATA_RESTORE directory, and
+configures WAL replay through restore-wal.sh. Inspect recovery Postgres logs and
+confirm the expected point-in-time state before switching application services
+to the restored data directory. A missing or corrupt WAL segment makes
+PostgreSQL report a restore-command failure; check docker compose logs db and
+the host backup logs, then alert the operator before promoting the recovery
+instance.
+
+## Backup failure notifications
+
+`backup.sh` checks PostgreSQL's last archive-failure and success timestamps and alerts when WAL archiving has an unrecovered failure. It posts one fixed, generic message to `BACKUP_ALERT_WEBHOOK`; it never includes SQL text, WAL names, database contents, or credentials in the payload or its own output. Webhook errors are redacted and remain a nonzero backup result.
+
+Configure the HTTPS webhook only in the host scheduler environment. Do not add it to `deploy/.env.production`: Compose passes that file to application services. For a systemd backup service, create a root-owned mode-0600 `/etc/justice/backup-alert.env` containing:
+
+```sh
+BACKUP_ALERT_WEBHOOK=https://your-alert-receiver.example/webhook/your-secret-token
+```
+
+Then add `EnvironmentFile=/etc/justice/backup-alert.env` to the host-only service that runs `deploy/backup.sh`. The receiver must accept a JSON `text` field and return a 2xx status. Missing configuration, curl errors, timeouts, and non-2xx responses are visible in the backup log, and the backup command exits nonzero. Test a webhook rotation with a non-production receiver before deploying it.
+
+## Recovery startup sequence
+
+`deploy/restore-pitr.sh` extracts and configures the selected encrypted base backup, atomically writes `.recovery-ready` last, starts the isolated recovery database, and waits until PostgreSQL finishes WAL replay. The recovery entrypoint refuses to start Postgres unless the base directory, `recovery.signal`, restore command, and ready marker all exist. If preparation fails, no PostgreSQL server starts. Keep the recovery project isolated and inspect the restored data before routing services to it.
+
+
+## S3 file storage maintenance
+
+See [file storage maintenance](../docs/operations/file-storage-maintenance.md) for the isolated maintenance credentials, preflight and migration commands, and the 15-minute reconciliation schedule.

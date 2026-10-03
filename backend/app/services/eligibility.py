@@ -351,5 +351,14 @@ def check_soldier_for_assignment(
         conflict_q = conflict_q.where(DutyAssignment.id != exclude_assignment_id)
     if session.execute(conflict_q).first() is not None:
         return False, "שיבוץ קיים בתאריכים אלו", None
+    # A day override that already makes this soldier the cover of another
+    # duty on one of these days counts as a scheduling conflict too (C14).
+    from app.services.assignments import covers_by_override
+
+    if covers_by_override(
+        session, soldier_id=soldier_id, start_date=assignment.start_date, end_date=assignment.end_date,
+        exclude_assignment_id=assignment.id,
+    ):
+        return False, "שיבוץ קיים בתאריכים אלו", None
 
     return True, None, constraint_warning

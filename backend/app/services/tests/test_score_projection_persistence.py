@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models import (
@@ -17,6 +17,7 @@ from app.db.models import (
     SoldierScoreProjection,
 )
 from app.scripts.score_projection import _parse_resume_after_args
+from app.services import scoring
 from app.services.score_projection import (
     SCORE_PROJECTION_CANONICAL_VERSION,
     backfill_score_projection,
@@ -54,6 +55,86 @@ def _quarter_total(session, *, quarter_start_value: date) -> ScoreProjectionQuar
             ScoreProjectionQuarterTotal.quarter_start == quarter_start_value
         )
     ).scalar_one()
+
+
+def test_burden_share_projection_aggregates_scores_without_hydrating_fingerprints(
+    admin_session, monkeypatch
+):
+    quarter = date(2026, 1, 1)
+    selected = create_soldier(admin_session, personal_number="projection-aggregate-selected")
+    other = create_soldier(admin_session, personal_number="projection-aggregate-other")
+    duty_type = _duty_type(admin_session, name="projection-aggregate-duty")
+    admin_session.add_all(
+        [
+            SoldierQuarterScoreProjection(
+                soldier_id=selected.id,
+                quarter_start=quarter,
+                duty_type_id=duty_type.id,
+                projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                effective_weighted_days=Decimal("0"),
+                duty_score=Decimal("1.000001"),
+                adjustment_score=Decimal("0"),
+                source_fingerprint={"large": ["irrelevant"] * 100},
+            ),
+            SoldierQuarterScoreProjection(
+                soldier_id=selected.id,
+                quarter_start=quarter,
+                duty_type_id=None,
+                projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                effective_weighted_days=Decimal("0"),
+                duty_score=Decimal("0"),
+                adjustment_score=Decimal("2.000002"),
+                source_fingerprint={"large": ["irrelevant"] * 100},
+            ),
+            SoldierQuarterScoreProjection(
+                soldier_id=other.id,
+                quarter_start=quarter,
+                duty_type_id=None,
+                projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                effective_weighted_days=Decimal("0"),
+                duty_score=Decimal("4.000004"),
+                adjustment_score=Decimal("5.000005"),
+                source_fingerprint={"large": ["irrelevant"] * 100},
+            ),
+            ScoreProjectionQuarterTotal(
+                quarter_start=quarter,
+                projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                effective_weighted_days=Decimal("0"),
+                duty_score=Decimal("5.000005"),
+                adjustment_score=Decimal("7.000007"),
+                total_score=Decimal("12.000012"),
+            ),
+        ]
+    )
+    admin_session.flush()
+    monkeypatch.setattr(scoring, "_ensure_projection_ready", lambda *args, **kwargs: True)
+
+    statements = []
+
+    def record_query(_connection, _cursor, statement, _parameters, _context, _executemany):
+        if "WHERE soldier_quarter_score_projection.soldier_id" in statement:
+            statements.append(statement.lower())
+
+    event.listen(admin_session.bind, "before_cursor_execute", record_query)
+    try:
+        result = scoring._projection_burden_share_inputs(
+            admin_session,
+            soldiers=[selected],
+            reset_date=quarter,
+            planning_start=date(2026, 4, 1),
+            planning_end=date(2026, 4, 1),
+        )
+    finally:
+        event.remove(admin_session.bind, "before_cursor_execute", record_query)
+
+    assert result is not None
+    windows, totals, soldier_scores = result
+    assert windows == [(date(2026, 1, 1), date(2026, 3, 31), quarter)]
+    assert totals == {quarter: Decimal("12.000012")}
+    assert soldier_scores == {quarter: {selected.id: Decimal("3.000003")}}
+    assert len(statements) == 1
+    assert "source_fingerprint" not in statements[0]
+    assert "group by" in statements[0]
 
 
 def test_rebuild_projection_bucket_persists_duty_type_rows_and_quarter_aggregate(admin_session):

@@ -11,6 +11,11 @@ from jinja2 import Environment, FileSystemLoader
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "email_templates"
+# Bound every SMTP socket operation. The email worker sends while it holds the
+# claimed outbox row's lock (and password-reset/verification requests send
+# inside their request transaction), so a stalled server must not hold those
+# locks indefinitely.
+_SMTP_TIMEOUT_SECONDS = 30
 _jinja_env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
 
 
@@ -56,7 +61,7 @@ def send_email(*, to: str, subject: str, body: str = "", html_body: str | None =
             msg["Subject"] = subject
             msg["From"] = settings.smtp_from or settings.smtp_user
             msg["To"] = to
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=_SMTP_TIMEOUT_SECONDS) as smtp:
             smtp.starttls()
             if settings.smtp_user:
                 smtp.login(settings.smtp_user, settings.smtp_password)

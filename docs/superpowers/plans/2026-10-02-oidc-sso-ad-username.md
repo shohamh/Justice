@@ -1,0 +1,251 @@
+# OIDC SSO and AD Username Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add optional provider-configured OIDC sign-in, enforce unique normalized soldier email and email-derived AD username, cross-check every SSO and HR-sync identity against existing soldiers (personal number, email, AD username) so ambiguity is surfaced as an admin-visible conflict instead of guessed, and continue unmatched verified identities into registration without an activation code.
+
+**Architecture:** Keep OIDC protocol handling in a small backend service using a maintained client library, with server-side one-time state/nonce/PKCE transactions. Persist stable issuer/subject links separately from Soldier and issue existing Justice JWT/cookie sessions only after a valid match or completed registration. Centralize email and AD username normalization and one identity-resolution service (exactly-one-match or conflict) so registration, HR sync, imports, admin changes, and self-service updates share the same invariant.
+
+**Tech Stack:** FastAPI, SQLAlchemy, PostgreSQL, Alembic, maintained Python OIDC client, React/TypeScript, pytest, Vitest, Playwright.
+
+**Spec:** `docs/superpowers/specs/2026-10-02-oidc-sso-ad-username-design.md`
+
+## Global Constraints
+
+- Email is trimmed and compared case-insensitively; `NULL` is allowed, blank becomes `NULL`; unique email applies to verified and unverified values.
+- `ad_username` is derived from the normalized email local part in lowercase, without stripping plus tags or dots; both email and AD username are database-unique when non-null.
+- Personal number, normalized email, and derived AD username are each database-unique (`soldiers.personal_number` already is; add a trimmed/non-blank CHECK and include it in migration preflight). The DB is the last line of defence; application code also checks first so conflicts become typed errors, not raw `IntegrityError`s.
+- Identity resolution is a single shared function: given a verified email and derived AD username it returns exactly one of `Match(soldier)`, `NoMatch`, or `Ambiguous(candidates)`. A Soldier is a match only when its email and AD username both equal the claim. Zero candidates -> `NoMatch`; more than one candidate, or one soldier matching on email and a *different* one on AD username -> `Ambiguous`. Ambiguity never logs anyone in, never creates a Soldier, and is recorded as an admin-visible `IdentityConflict`.
+- HR sync never overrides silently: a personal number that appears more than once in the HR feed, or an HR person whose email/AD username collides with a different Soldier, raises a typed `HrIdentityConflictError` (a `ValueError` subclass) that the sync catches and records as an admin-visible HR sync conflict (warning) listing every candidate. For a duplicated personal number the sync then continues by default with the **latest** record (the last occurrence in the feed; HR records carry no per-record timestamp), and the admin can pick a different candidate as the remembered choice for all future syncs (see Task 8). A collision with a different Soldier's email/AD username is never applied (the DB would reject it): the person's other fields sync and the colliding value is left unchanged.
+- Migration reports collisions and does not merge, rename, or arbitrarily select a Soldier.
+- Stable identity is `(configured issuer, validated subject)`, never email or `preferred_username`.
+- Use Authorization Code + PKCE S256 with transaction-specific state/nonce, exact redirect URI, verified issuer metadata, bounded expiry, and single-use browser-bound transaction.
+- Require a verified email claim; no account is created until registration succeeds. Registration reached from an unmatched SSO identity does **not** require an activation/invite code (the verified, unconsumed server-side OIDC context replaces it); personal number, profile fields, and the password field are still required, and ordinary non-SSO registration still requires the invite code. The new soldier lands in the holding node through the existing registration path and stays there, with no elevated access, until a commander at or above mador approves them via the existing enrollment approval flow.
+- Keep tokens and PII out of URLs, browser storage, logs, and test artifacts; retain current password login and authorization roles.
+- OIDC remains disabled when configuration is absent or invalid; no production issuer or secret is selected in this slice.
+
+## Review Focus
+
+- Duplicate emails differ only in case or surrounding spaces; test migration preflight and DB uniqueness for verified and unverified rows.
+- Emails with missing local part, unsupported AD characters, plus tags, dots, or Unicode; test explicitly selected validation policy without silent lossy normalization.
+- Callback state, nonce, PKCE verifier, browser cookie, issuer, audience/azp, expiry, signature, or redirect URI mismatches; test each rejects before session issuance.
+- Concurrent first-link or registration attempts for one subject, email, or derived username; test PostgreSQL uniqueness and one-time context consumption.
+- Expired/disabled Soldier, already-linked subject, changed email, provider outage/key rotation, and registration replay; assert safe generic response and no account takeover.
+- Two soldiers each matching one half of the claim (A by email, B by AD username), two soldiers matching the same claim in legacy/pre-constraint data, and one match that is inactive; assert `Ambiguous`, a recorded conflict, a generic user response, and no session or link.
+- Duplicate personal numbers in one HR feed (identical vs. differing payloads), HR email/AD username colliding with another Soldier, and conflict re-detection on every later sync until acknowledged; assert the validation error is raised, caught per person, logged, the latest record is applied, and an admin-visible warning exists.
+- Invite-code waiver can only be exercised through a live OIDC registration context; assert a forged/expired/replayed context or a plain request cannot skip the invite code.
+
+---
+
+## File Map
+
+- Add shared email/AD normalization in `backend/app/services/identity.py`; update `backend/app/db/models.py`, registration, email verification, soldier update, HR sync/import, and admin mutation call sites found by repository search.
+- Add Alembic revisions under `backend/alembic/versions/` for normalization/backfill constraints and OIDC identity storage; migration diagnostics must be executable before enforcing constraints.
+- Add `resolve_soldier_identity` and conflict recording in `backend/app/services/identity_resolution.py`, an admin conflicts router (`backend/app/routes/identity_conflicts.py`), and HR conflict detection/resolution in `backend/app/services/hr/person_sync.py`, a new `backend/app/services/hr/conflicts.py`, and `backend/app/routes/hr_review.py`; model and Alembic additions for the conflict tables.
+- Add OIDC configuration to `backend/app/settings.py`, service modules under `backend/app/auth/` or `backend/app/services/oidc.py`, and routes in `backend/app/routes/auth.py` (split router if that file becomes unmanageable).
+- Update `frontend/src/api/auth.ts`, `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/RegisterPage.tsx`, and their tests for SSO action and locked prefilled identity fields (invite-code field hidden in SSO registration); add an admin identity-conflicts view and an HR sync conflicts tab with resolve actions in `frontend/src/pages/admin/` plus `frontend/src/api/hrReview.ts` and `he.json` strings.
+- Add backend unit/integration tests under `backend/tests/unit/` and `backend/tests/integration/`; add browser coverage under `frontend/tests/e2e/` using synthetic OIDC fixtures only.
+
+### Task 1: Define and test email plus AD username normalization
+
+**Files:** Create `backend/app/services/identity.py`; create `backend/tests/unit/test_identity.py`.
+
+- [x] Write parameterized failing tests for trimmed email, case normalization, canonical local-part extraction (`Dude@gmail.com` -> `dude`), blank-to-`None`, invalid addresses, absent local part, plus tags, dots, and the selected AD username character/length policy.
+- [x] Confirm the intended AD username character and length limits with the chosen directory convention; encode the explicit allowed format and reject unsupported values without dropping characters.
+- [x] Implement `normalize_email(value: str | None) -> str | None` and `derive_ad_username(email: str | None) -> str | None` with one shared validation path.
+- [x] Run the focused identity unit tests and verify normalization is deterministic and idempotent.
+- [x] Search every write path for `Soldier.email`; list registration, HR sync, imports, admin edit, self-service edit, and verification code in the plan's implementation notes before moving to the migration.
+
+## Implementation Notes
+
+### Task 1: identity contract and Soldier email write-path inventory
+
+- The chosen directory convention is legacy Windows AD `sAMAccountName`: the derived local part is lowercase, at most 20 characters, and rejects `" / \\ [ ] : ; | = , + * ? < >` without removing or replacing any characters. Dots remain unchanged. The shared helper currently accepts ASCII dot-atom local parts and ASCII hostname domains; unsupported Unicode and quoted email syntax raise `ValueError` for migration preflight to report. This is a selected application email policy, not a provider alias rule.
+- Registration: `backend/app/routes/auth.py` passes `RegisterRequest.email` into `backend/app/services/registration.py:register`, which creates `Soldier(email=email)`.
+- HR sync: `backend/app/services/hr/mapping.py:map_hr_user` copies `HrUser.mail` into `MappedSoldierFields.email`; `backend/app/services/hr/person_sync.py:_apply_new_person` creates a Soldier, and `_apply_existing_person` assigns HR-owned fields dynamically with `setattr(soldier, field_name, new_value)`. `HR_OWNED_FIELDS` includes `email`; an HR override may skip that assignment.
+- Legacy Excel import: `backend/app/routes/import_excel.py` parses email into the import row, creates `Soldier(email=row.email)` for new rows, and assigns `s.email = row.email` for updates when the row has an email.
+- Import sessions: `backend/app/services/import_parsers/v1_standard.py` parses email, `backend/app/services/import_sessions.py` builds the normalized import row, creates `Soldier(email=row.get("email"))`, and assigns `s.email = row["email"]` for updates when present.
+- Admin/duty-manager profile edit: `backend/app/routes/soldiers.py:update_profile` passes request fields to `backend/app/services/soldiers.py:update_soldier_profile`; `PROFILE_FIELDS` includes `email`, so its `setattr(soldier, k, v)` writes it. The basic `PATCH /soldiers/{id}` route does not accept email.
+- Enrollment review edit: `backend/app/routes/enrollment.py` applies `body.email` through `_apply("email", body.email or None)`, which dynamically calls `setattr(s, field, new_value)`.
+- Self-service edit: `backend/app/routes/me.py:set_email` directly assigns `user.email = new_email` and clears `email_verified` on change, then requests verification.
+- Verification: `backend/app/services/email_verification.py:request_verification` snapshots `soldier.email` in `EmailVerificationToken.email`; `verify_token` compares it to the current Soldier email and sets `soldier.email_verified = True`. Its conflict lookup currently checks only other **verified** rows, so Task 3 must align it with uniqueness across verified and unverified addresses.
+- Other Soldier constructors in `backend/app/services/soldiers.py:onboard_soldier` and `backend/app/scripts/{bootstrap,seed,seed_polaris,storage_migration_rehearsal_fixture}.py` do not currently set email; retain the invariant if they gain email input.
+
+### Task 2: migration and preflight (for Tasks 3-8)
+
+- Revision `20261002_soldier_identity` (down `4858092e72e7`). Adds `soldiers.ad_username`, CHECKs `ck_soldiers_personal_number_trimmed`, `ck_soldiers_email_canonical`, `ck_soldiers_ad_username_canonical`, and partial unique indexes `uq_soldiers_email`, `uq_soldiers_ad_username` (mirrored on the `Soldier` model). The CHECKs reject non-canonical (untrimmed/uppercase) values, so every write path must store `normalize_email(...)`/`derive_ad_username(...)` output. There is deliberately no DB CHECK tying `ad_username` to `email` yet (it would break existing paths mid-refactor); Task 3 adds that consistency CHECK in a follow-up migration once all write paths set both.
+- `app/services/identity_preflight.py`: `collect_identity_conflicts(connection) -> IdentityPreflightReport` (read-only; conflict kinds `invalid_email`, `ad_username_too_long`, `ad_username_invalid`, `duplicate_email`, `duplicate_ad_username`, `blank_personal_number`, `untrimmed_personal_number`, `duplicate_personal_number`), `IdentityPreflightError`. The migration calls it first and aborts before any DDL. Operator CLI: `python -m app.scripts.identity_preflight` (exit 1 on conflicts). Reports contain soldier ids only, never addresses.
+- Untrimmed but non-colliding personal numbers are reported as conflicts (not auto-trimmed), since trimming would be a silent rename. Personal-number whitespace set is ` 	
+` in both Python and the CHECK.
+- Migration tests are `slow`-marked (run with `pytest --slow tests/unit/test_migration_soldier_identity.py -n0`), using a disposable testcontainers Postgres.
+
+### Task 3: shared email write path (for Tasks 6-8)
+
+- `app/services/identity.py` (pure) gained `canonical_identity(raw) -> (email, ad_username)` and `IdentityCollisionError(ValueError)` with `.field` in `email|ad_username|personal_number`; `str(error)` is `<field>_taken`.
+- `app/services/identity_write.py` is the only supported writer of `Soldier.email`/`ad_username`: `resolve_identity_fields(session, raw, exclude_soldier_id=None)` (use when constructing a Soldier), `assign_soldier_email(session, soldier, raw, verified=False) -> bool` (sets both, clears `email_verified` to `verified`, invalidates verification tokens on change; pass `verified=True` only from a consumed OIDC registration context, Task 7), `check_personal_number_available`, `flush_with_identity_guard(session)` (savepoint flush that turns the three unique-constraint races into `IdentityCollisionError`), `BulkIdentityCheck` (import previews). Errors are raised before any mutation.
+- A second migration `20261002_soldier_identity_pair` adds `ck_soldiers_email_ad_username_pair` (both NULL, or `ad_username = split_part(email,'@',1)`), so a bare `soldier.email = ...` now fails at the database. Tests that need an email on a Soldier use `tests.helpers.set_soldier_email`.
+- HTTP mapping helper `app/routes/identity_errors.py:identity_http_exception` (409 `<field>_taken`, 400 validation code). Registration raises `RegistrationError("email_taken"|"ad_username_taken"|"email_invalid"|"ad_username_too_long"|"ad_username_invalid")` before the invite code is consumed; the personal-number check there keeps its existing `"personal_number already exists"` message. Task 7 must call `resolve_identity_fields`/`flush_with_identity_guard` the same way and add the `verified=True` path.
+- Interim HR behaviour (Task 8 replaces it): `person_sync._assign_hr_email` leaves an unsupported or colliding HR email unchanged, syncs the rest of the person, and logs a warning with the soldier id only. No conflict row is recorded yet. HR email changes now also clear `email_verified`.
+- Imports (Excel apply, import sessions) check emails at preview time (row becomes `error`) and again at apply time; a rejected row is reported in `errors` and leaves the soldier untouched.
+- Direct `.email` writes were removed everywhere (`grep -rn "\.email\s*=" app` is clean).
+
+### Task 4: identity resolution and admin conflicts (for Tasks 6-8)
+
+- Tables `identity_conflicts` (partial unique index on `(source, ad_username)` where `status='open'`) and `identity_conflict_candidates` (unique `(conflict_id, soldier_id)`, `matched_fields text[]`), revision `20261002_identity_conflicts`. Models `IdentityConflict`, `IdentityConflictCandidate`. Task 8 can reuse them with `source='hr_sync'` and add its own columns.
+- `app/services/identity_resolution.py`: `resolve_soldier_identity(session, email, ad_username) -> Match | NoMatch | Ambiguous` (both inputs normalized; blank raises `ValueError("identity_claim_incomplete")`; never raises on ambiguity; `Match` may hold an inactive soldier, the caller rejects it). A single soldier matching only one field is `Ambiguous` (e.g. same AD username on another mail domain). After an admin resolves a conflict, the same AD username resolves to the chosen soldier as a `Match` while that soldier is still a candidate. `record_identity_conflict(session, source=, ad_username=, candidates=, personal_number=None)` accepts `Ambiguous.candidates` directly, reuses the open row, adds new candidates, logs soldier ids at ERROR level only; it does not commit. `resolve_identity_conflict` / `dismiss_identity_conflict` raise `ValueError` codes `conflict_not_open`, `not_a_candidate`, `reason_required`.
+- Endpoints (admin only): `GET /api/admin/identity-conflicts?status=open|resolved|dismissed`, `POST /api/admin/identity-conflicts/{id}/resolve {soldier_id}`, `POST .../dismiss {reason}`; candidates expose name, personal number, masked email, matched fields, active flag. Audit actions `identity_conflict.resolve|dismiss`.
+- The generic user-facing response for an ambiguous login belongs to the Task 6 callback; nothing user-facing exists yet.
+- Known pre-existing failures on 2026-10-02, unrelated: `tests/unit/test_algorithm_bridge_shifts.py::test_block_ids_are_unique` and `tests/test_effort_score.py::test_breakdown_contributions_reconstruct_scores` (hard-coded dates now in the past).
+
+### Task 8: HR identity conflicts (for Task 9)
+
+- Tables `hr_identity_conflicts` (own table, not the Task 4 ones: candidates are HR payloads, not soldiers) and `hr_preferred_records`, plus `hr_person_syncs.conflict_count`; revision `20261002_hr_identity_conflicts` (down `20261002_identity_conflicts`, parallel to the OIDC migration). `HrIdentityConflictError(ValueError)` in `services/hr/errors.py`; logic in `services/hr/conflicts.py` (detection, recording) and `conflict_actions.py` (admin actions); the run listing `GET /api/admin/hr-sync/runs` now includes `conflict_count` per person sync.
+- Kinds: `duplicate_personal_number`, `email_collision`, `ad_username_collision`, `email_invalid`. Reasons: `latest`, `preferred_stale`, `preferred_ambiguous`, `preferred_invalid`, `email_not_applied`. Statuses: `open`, `acknowledged`, `resolved`. Unchanged open conflicts are re-counted every sync; an acknowledged unchanged one is quiet; changed inputs reopen it.
+- All endpoints are admin only under `/api/admin/hr-sync`. Errors are `{"detail": "<code>"}`.
+- `GET /identity-conflicts?status=open|acknowledged|resolved|all` (default `open`) -> `{items: [{id, personal_number, kind, reason, status, applied_index, chosen_index, candidates: [{index, key_type, key_value, payload (raw HR record, camelCase aliases), is_applied, choosable, invalid_reason}], colliding_soldiers: [{soldier_id, full_name, personal_number}], preferred_record: {personal_number, key_type, key_value, chosen_by, chosen_by_name, chosen_at} | null, hr_person_sync_id, created_at, last_seen_at, acknowledged_at, resolved_at}]}`. `invalid_reason` codes: `candidate_has_no_key`, `email_missing`, `email_invalid`, `ad_username_too_long`, `ad_username_invalid`, `email_taken`, `ad_username_taken`, `candidate_held_for_review`, `candidate_key_not_unique`, `not_a_duplicate_conflict`, `conflict_not_active`.
+- `POST /identity-conflicts/{id}/acknowledge` (no body) -> the conflict item. 404 `conflict_not_found`, 409 `conflict_not_active` / `conflict_not_open`.
+- `POST /identity-conflicts/{id}/choose` body `{candidate_index: int}` -> the conflict item (status `resolved`). Applies that record immediately and stores the preference. 400 with any `invalid_reason` code above, or `candidate_not_found`, `not_a_duplicate_conflict`; 404 / 409 as above.
+- `GET /preferred-records` -> `{items: [{personal_number, key_type, key_value, chosen_by, chosen_by_name, chosen_at}]}`; `DELETE /preferred-records/{personal_number}` -> 204 (404 `preference_not_found`). Audit actions: `hr_sync.identity_conflict.acknowledge|choose`, `hr_sync.preferred_record.clear`.
+
+### Tasks 5-7: OIDC login and registration (for Tasks 9-10)
+
+- Library: Authlib 1.8.0 (pinned, plus `joserfc>=1.7.5,<2`; `uv.lock` updated). Authlib's `authlib.jose` and httpx client integration are deprecated in 1.8, so only its non-deprecated pieces are used: `prepare_grant_uri`, `create_s256_code_challenge`, `CodeIDToken` claim rules; signatures and JWKS go through joserfc (Authlib's own dependency). The HTTP calls (discovery, JWKS, token) use httpx with timeouts and no redirects.
+- Config (`app/settings.py`): `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (optional: none = public client), `OIDC_REDIRECT_URI` (exact, e.g. `https://host/api/auth/oidc/callback`), `OIDC_TRANSACTION_TTL_SECONDS` (default 300, max 900), `OIDC_REGISTRATION_TTL_SECONDS` (default 900, max 3600), `OIDC_ALLOW_INSECURE_LOCAL` (permits http only for loopback hosts), `OIDC_RATE_LIMIT` (default `20/minute`). `app.services.oidc.load_oidc_config` returns `None` (SSO disabled, no failure) when absent or invalid. Provider must advertise S256 PKCE, `email_verified` must be `true`, signature algs are an asymmetric allowlist.
+- `app/services/oidc.py` (`OidcClient.start()/complete()`, `OidcError.code`), `oidc_transactions.py` (hashed state, browser cookie hash, atomic consume; wrong-browser use burns the transaction), `oidc_login.py` (`authenticate` -> `SsoResult.kind` login|denied|no_match), `oidc_registration.py` (context create/lock/consume, `still_unmatched`, `bind_and_consume`). Tests use `tests/support/mock_oidc.py` (in-process provider via `httpx.MockTransport`; `asgi_app()` serves it over HTTP for Playwright, `POST /__identity {subject,email,email_verified}` selects who the next login is).
+- Migrations (single chain, parent `20261002_identity_conflicts`; head `20261003_oidc_registration`): `oidc_transactions`, `oidc_identities` (unique `(issuer, subject)`, unique `soldier_id`), `oidc_registration_contexts` (unique token hash, partial unique `(issuer, subject)` while unconsumed). `tests/support/database.py` now upgrades to `heads` because the HR migration shares the parent until the lead merges the heads.
+- Frontend contract (all under `/api`):
+  - `GET /auth/oidc/status` -> `{"enabled": bool}`.
+  - SSO button: top-level navigation to `GET /api/auth/oidc/start` (302 to the provider; never fetch it).
+  - Callback is browser-only and always redirects to the frontend origin (`FRONTEND_URL`): `/` signed in (the SPA then calls `POST /api/auth/refresh`, which uses the refresh cookie, to get its access token), `/register?sso=1` unmatched (continue registration), `/login?sso_error=1` any failure (one generic error; nothing else is ever in the URL).
+  - `GET /auth/oidc/registration-context` -> 200 `{"email","ad_username"}` (read-only prefill; `Cache-Control: no-store`) or 404 `{"detail":"no_registration_context"}`; needs the HttpOnly `oidc_reg` cookie (sent automatically).
+  - `GET /auth/register/nodes` works without `invite_code` when that cookie is live (otherwise 422 without the param, 403 for a wrong code, as before).
+  - `POST /auth/register` (multipart `payload` JSON as before): `invite_code` may be omitted/empty only when the context cookie is live; the server then ignores the `email` in the payload, stores the context email as verified and links the identity. Response is the usual `LoginResponse`. Errors: 400 `invalid invite code` (no code, no live context), 400 `registration_unavailable` (email/username/personal number taken, subject already linked, or identity no longer unmatched; a conflict is recorded; deliberately identical for all), other validation errors unchanged. A failed attempt leaves the context usable until it expires.
+- Deviation to note: the plan says enrollment approval needs a commander at or above mador. In `enrollment.py` it does not: `authorize(ENROLLMENT_APPROVE)` admits any commander of the requested node (and DMs/admins in scope); only editing rank advancement needs mador (`test_below_mador_commander_can_approve_without_editing_rank`). Authority was left unchanged; `test_oidc_registration.py` asserts pending-in-holding, self/bystander denied, node commander approves.
+
+### Task 2: Preflight existing data and enforce database uniqueness
+
+**Files:** Create Alembic migration under `backend/alembic/versions/`; add migration test under `backend/tests/unit/test_migration_soldier_identity.py`; update model/tests.
+
+- [x] Write migration tests with duplicate normalized emails, duplicate derived usernames from different email domains, blank values, malformed addresses, and valid rows; assert diagnostics identify conflicting soldier IDs without changing or merging data.
+- [x] Add `Soldier.ad_username` and normalized email expression/index design to the SQLAlchemy model using PostgreSQL-compatible constraints matching the chosen canonical stored values.
+- [x] Implement a preflight command/migration step that raises a clear actionable conflict report before any backfill or constraint DDL; ensure it prints addresses only where needed for operator resolution and does not run in production implicitly.
+- [x] Backfill canonical email and derived username only after preflight reports no conflicts; keep blank email as `NULL` and retain `email_verified` without using it to determine uniqueness.
+- [x] Add unique partial indexes for non-null email and AD username; test case-insensitive duplicate prevention under PostgreSQL and migration downgrade behavior.
+- [x] Extend preflight to personal numbers: report soldiers whose trimmed personal numbers collide or are blank (the raw column is already unique, so only normalized collisions are new), and add a CHECK that `personal_number` equals its trimmed form and is non-blank. Test that personal number, email, and AD username each reject a duplicate at the PostgreSQL level.
+- [x] Run migration tests and verify Alembic upgrade/downgrade on the disposable database.
+
+### Task 3: Route every Soldier email mutation through the shared invariant
+
+**Files:** `backend/app/services/registration.py`, `backend/app/services/email_verification.py`, soldier update service, HR person sync/import paths, admin routes/services, relevant tests.
+
+- [x] Add failing service tests for registration and each discovered email write path, asserting normalized `email` and derived `ad_username` are stored together.
+- [x] Refactor each write path to call the identity service, update both fields in one SQL transaction, and translate database uniqueness conflicts into stable user-facing errors.
+- [x] For email changes, clear `email_verified` and invalidate outstanding verification tokens as the current verification flow requires; roll back both fields on either email or username collision.
+- [x] Update OIDC-verified registration path so only a consumed server-side registration context can preserve the issuer's verified-email status.
+- [x] Catch `IntegrityError` on the three unique constraints at each write path and map it to a typed `IdentityCollisionError` naming the colliding field (not the other soldier); every path checks collisions first and relies on the DB only for races.
+- [x] Run focused registration, email verification, HR/import, and soldier update tests; verify no direct write bypass remains by searching assignments to `.email`.
+
+### Task 4: Identity resolution service and admin identity conflicts
+
+**Files:** Create `backend/app/services/identity_resolution.py`; model + Alembic migration for `identity_conflicts` (id, source `sso|hr_sync|registration`, derived AD username, personal number nullable, status `open|resolved|dismissed`, created/resolved timestamps and resolver) and `identity_conflict_candidates` (conflict id, soldier id, which fields matched); create `backend/app/routes/identity_conflicts.py`; tests under `backend/tests/unit/` and `backend/tests/integration/`.
+
+- [x] Write failing tests for `resolve_soldier_identity(session, email, ad_username)` returning `Match`, `NoMatch`, or `Ambiguous`, covering: exactly one soldier matching both fields; none; email matches A and AD username matches B; multiple matches in data that predates the constraints; match on only one field; inactive soldier.
+- [x] Implement the resolver as the only code that decides "who is this person"; it queries email and AD username candidates, de-duplicates by Soldier id, and never raises on ambiguity (it returns it).
+- [x] Add `record_identity_conflict(...)` that stores the conflict plus candidate soldier ids idempotently (same AD username + source reuses the open row) and emits an error-level log with soldier ids only, no email or claims.
+- [x] Add admin-only endpoints (reuse the existing admin role dependency): list open conflicts with candidates (soldier id, name, personal number, masked email), resolve with an explicit chosen soldier id (the next SSO attempt then links to it), and dismiss with a reason. Resolution is audited and never edits the other candidates implicitly.
+- [x] Test endpoint authorization (non-admin denied), idempotent recording, resolve/dismiss transitions, and that user-facing responses for an ambiguous login stay generic.
+
+### Task 5: Add OIDC provider configuration and protocol service
+
+**Files:** `backend/app/settings.py`, create `backend/app/services/oidc.py` (or `backend/app/auth/oidc.py`), `backend/pyproject.toml`, OIDC unit tests.
+
+- [x] Select a maintained OIDC library compatible with supported Python version; add its pinned dependency and verify it validates discovery, JWKS signatures, and ID-token claims.
+- [x] Add optional server settings for issuer, client ID/secret, exact redirect URI, and transaction TTL; default disabled and validate HTTPS outside local development.
+- [x] Write unit tests for code flow configuration, PKCE S256, random state/nonce, exact redirect URI, allowed signing algorithms, and verified-email requirements using a local mock OIDC provider.
+- [x] Implement discovery only from the configured HTTPS issuer; validate exact issuer, audience/authorized party, expiry, issued-at, nonce, signature, and key rotation using the library.
+- [x] Add one-time transaction persistence bound to the initiating browser session; store PKCE verifier server-side, expire quickly, and consume atomically.
+- [x] Ensure provider tokens, authorization codes, state, nonce, email, and claims are redacted from logs and never returned to the frontend.
+- [x] Run protocol unit tests against a local mock issuer and verify discovery/JWKS failure denies login without passwordless fallback.
+
+### Task 6: Persist stable OIDC identities and complete existing-account login
+
+**Files:** Create OIDC identity model/migration, `backend/app/routes/auth.py` or dedicated OIDC router, session issuance helpers, backend integration tests.
+
+- [x] Write migration/model tests enforcing unique `(issuer, subject)` and one identity row per Soldier according to the accepted schema.
+- [x] Implement start and callback endpoints with rate limits; callback consumes state transaction, validates OIDC response, requires verified email, and queries stable issuer/subject first.
+- [x] For an existing linked identity, deny inactive soldiers and otherwise call the same session issuance/cookie logic as password login.
+- [x] For a first link, call `resolve_soldier_identity` with the verified email and derived AD username. `Match` -> bind subject in a transaction and reject inactive or already-bound candidates generically. `Ambiguous` -> record an `IdentityConflict` (source `sso`), deny with the generic account-linking error, and create no session. `NoMatch` -> hand over to the registration continuation (Task 7).
+- [x] Add PostgreSQL integration tests for linked login, first link, concurrent first-link attempts, inactive account, email mismatch, existing binding elsewhere, uniqueness race, and session/cookie compatibility.
+- [x] Verify all existing role/permission checks remain unchanged and provider claims do not populate authorization fields.
+
+### Task 7: Continue unmatched identities into registration without an activation code
+
+**Files:** `backend/app/services/oidc_registration.py`, `backend/app/routes/auth.py` or registration router, `RegisterRequest` and registration service, backend integration tests.
+
+- [x] Write failing tests proving an unmatched verified subject creates no Soldier and instead creates a short-lived, single-use, browser-bound registration context.
+- [x] Implement generic callback routing to `/register` with no email, token, state, or reusable credential in query parameters; supply prefilled values through the same-origin authenticated/session context.
+- [x] Mark email and derived username read-only in the registration context. The invite/activation code is **not** required when registering from a live OIDC context (`NoMatch` result); personal number, profile eligibility, and the current password field remain required, and registration without such a context still requires the invite code. The server decides this from the stored context, never from a client flag.
+- [x] Re-run `resolve_soldier_identity` at the final registration step (not only at callback time) and refuse with a generic error plus a recorded conflict if the result is no longer `NoMatch`; enforce personal-number uniqueness there too.
+- [x] Update final registration to consume context atomically with Soldier creation and issuer/subject binding; failed validation or DB error must leave neither a Soldier nor a link.
+- [x] Confirm SSO registration uses the existing holding-node placement and enrollment approval (a commander at or above mador via `backend/app/routes/enrollment.py`), and add a test that the new soldier is in the holding node, pending, with no extra access until approved.
+- [x] Test that the invite code is skippable only with a valid context, and still enforced for plain registration and for forged, expired, or replayed contexts.
+- [x] Test replay, expiry, browser mismatch, already-owned email, already-owned personal number, concurrent consume, collision, invalid invite/personal number, successful create, and login session issuance.
+- [x] Verify error responses do not reveal whether a Soldier/email/subject exists.
+
+### Task 8: Detect, warn about, and resolve HR sync identity conflicts
+
+**Files:** `backend/app/services/hr/person_sync.py`, create `backend/app/services/hr/conflicts.py`, `backend/app/services/hr/errors.py`, `backend/app/routes/hr_review.py`, model + Alembic migration for HR conflicts and a `hr_preferred_records` table (reuse the Task 4 tables with source `hr_sync` if the shapes fit; add `hr_person_sync_id`, the raw HR payload per candidate, and `conflict_count` on `hr_person_syncs`), tests under `backend/app/services/hr/tests/` and `backend/tests/integration/`.
+
+Note: `soldiers.personal_number` and `soldier_hr_profiles.personal_number` are already unique, so duplicates arrive from the HR feed (the same personal number twice, where the later record silently overwrites the earlier one today; that silent overwrite is what this task replaces with a warning) or as HR records whose email/AD username collide with a different Soldier, not as duplicate Soldier rows.
+
+- [x] Write failing tests: feed with the same personal number twice (identical and differing payloads), HR email that normalizes to another Soldier's email, HR email whose derived AD username belongs to a different Soldier, HR person with an invalid email, and a clean feed (no regression).
+- [x] Add `HrIdentityConflictError(ValueError)` in `errors.py` carrying the personal number and candidates. Add an explicit invariant check before `_apply_new_person`/`_apply_existing_person` that raises it, and use `.all()` rather than `scalar_one_or_none()` for the personal-number lookups so multiple rows raise the typed error, not `MultipleResultsFound`. Detect in-feed duplicates by grouping `users` by normalized personal number before the loop.
+- [x] In `run_person_sync`, catch `HrIdentityConflictError` separately from generic exceptions. For a duplicated personal number: record the conflict (status `warning`, with all candidate payloads and which one was applied) idempotently, log at warning level (ids only, no PII), increment `conflict_count`, and continue by default with the latest record (last occurrence in the feed), so earlier occurrences are not applied. For an email/AD username collision with another Soldier: apply the person's other fields, leave the colliding value unchanged, and record the same kind of warning. Never fail the run, and keep processing other people. Re-detect each sync: an unchanged, acknowledged conflict stays quiet, and one whose inputs changed reopens.
+- [x] Add `hr_preferred_records` (unique `personal_number`, `key_type`, `key_value`, chosen-by admin, chosen-at, optional note) so an admin's choice persists across syncs. The record key is the most stable identifier the HR payload offers, in priority order: `t_person_id`, then `username`, then normalized `mail`; the stored `key_type` records which one was used, and a candidate with none of them cannot be chosen.
+- [x] Add `GET /hr-review/identity-conflicts` and endpoints to acknowledge, choose, and clear the preference. Acknowledge accepts the default (latest record) for this occurrence and silences the warning. Choose takes a candidate and stores it as the preferred record for that personal number; it is only allowed for a candidate with a valid normalized email and derived AD username that collides with nothing else, otherwise a validation error. Choosing applies that candidate immediately through the normal sync write path and resolves the conflict. Clear removes the preference so the default (latest) applies again. Choosing and clearing are audited.
+- [x] Use the remembered choice on every later sync: when a personal number is duplicated in the feed and exactly one record matches the stored key, apply that record and record no warning. If no record matches (the preferred one left the feed), or more than one still matches the key, fall back to the latest record and record a warning that names the stale or ambiguous preference without deleting it. If the feed has no duplicate, the preference is ignored and kept. Re-validate the preferred record at sync time (valid email and AD username, no collisions); if it fails, fall back and warn rather than apply it.
+- [x] Tests for list/acknowledge/choose/clear, authorization, invalid pick, default-latest applied, chosen record applied on the next and later syncs with no warning, preference persisted across runs, preferred record missing or duplicated falls back and warns, clearing restores the default, choose then re-sync is clean, and the validation error surfacing in logs and the run's error/conflict counts so it can be monitored.
+
+### Task 9: Add frontend login and registration experience
+
+**Files:** `frontend/src/api/auth.ts`, `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/RegisterPage.tsx`, corresponding unit tests, E2E spec.
+
+- [x] Add failing tests that the SSO button appears only when the server reports OIDC availability and leaves the personal-number/password login usable.
+- [x] Implement a top-level navigation to the backend OIDC start route; do not store provider tokens or callback parameters in web storage.
+- [x] Add read-only prefilled email and AD username fields when registration resumes from OIDC context; preserve ordinary local registration fields and validation unchanged.
+- [x] Hide the invite-code field when registration resumes from an OIDC context; keep it for ordinary registration. After SSO registration, show the existing pending-approval state for holding-node soldiers.
+- [x] Add a browser test that an SSO-registered soldier is in the holding node, has no access beyond what holding-node soldiers have, and gains it only after a commander at or above mador approves. (Ran against real Keycloak: pending enrollment request after SSO registration, team commander gets 403 `sso_approval_requires_mador`, mador commander approves. The "no extra access" part is only checked as "still pending"; no per-route access probe was run.)
+- [x] Add an admin identity-conflicts view listing open SSO/registration conflicts with their candidate soldiers and resolve/dismiss actions, and an HR sync conflicts tab in `HrSyncReviewContent` showing a warning for each conflict with the duplicate HR records side by side, the one applied by default (latest) marked, an "acknowledge" action, a "use this one from now on" action that remembers the choice (enabled only for candidates with a valid email and AD username), a visible "remembered choice" marker with a "clear" action, and the validation reason when a pick is invalid. Add Hebrew strings in `he.json` (grep call sites first; duplicate keys are a known hazard).
+- [x] Add safe loading/error display for cancelled/failed SSO without echoing callback data or identity details.
+- [x] Add component tests for both conflict screens (empty, list, resolve, error) and a browser test that an ambiguous SSO login shows the generic error to the user and the conflict in the admin screen.
+- [x] Add browser tests for configured/unconfigured login UI, SSO-to-registration prefill, manual registration compatibility, and no sensitive values in browser URL/storage. (`frontend/tests/e2e/oidc/oidc_keycloak.spec.ts`, run against real Keycloak. The unconfigured case mocks `/api/auth/oidc/status` in the browser; a backend with no `OIDC_*` settings was not started.)
+- [ ] Run focused Vitest and Playwright flows against the local mock OIDC provider.
+
+Task 9 notes: browser (Playwright) specs for the ambiguous-SSO-to-admin journey, the holding-node approval journey and the mock-provider runs are written only as `frontend/tests/e2e/oidc_sso.spec.ts` (login UI, failed-callback banner, registration prefill, no sensitive URL/storage values; env-gated on `E2E_OIDC_MOCK_URL` / `E2E_OIDC_DISABLED`) and were NOT run: they need a dedicated backend configured against the mock provider. Those three plan items stay unchecked. The HR conflicts UI is a section (not a tab) inside `HrSyncReviewContent`, since that page has no tab structure.
+
+### Task 10: Security review and complete verification
+
+**Files:** OIDC/email tests, migration, auth routes/services, frontend files, docs.
+
+- [x] Test the cross-check matrix end to end: SSO match, no match (registration without invite code), ambiguous (conflict recorded, no session), and HR duplicate personal numbers (validation error raised and caught, warning recorded, latest record applied, other people still synced).
+- [x] Test state, nonce, PKCE verifier, signature, `iss`, `aud`, `azp`, `exp`, `iat`, missing/unverified email, discovery outage, JWKS outage, key rotation, replay, and open redirect rejection.
+- [x] Search application logs, audit events, URLs, responses, browser storage, and test artifacts for tokens, authorization codes, state, nonce, email claims, or secrets; remove any leak.
+- [x] Run email and OIDC migrations against PostgreSQL with conflict and clean fixtures; run backend auth/registration/email suites and frontend auth tests.
+- [x] Run existing login and registration browser journeys plus new mock-provider OIDC journey; verify the legacy password flow still produces the existing session. (Ran 2026-10-03, see the follow-up note at the end.)
+- [x] Document provider configuration and local mock-provider setup without embedding production issuer URLs or credentials; explicitly state provider-specific AD syntax assumptions.
+
+Task 10 notes (independent review, 2026-10-02):
+
+- Fixed: the OIDC callback URL carries the one-time authorization code and state; both reached the backend error log/admin error inbox (`redact` did not know `code`/`state`) and the uvicorn access log. `error_logging.redact_query` and `logging_config.OidcQueryRedactionFilter` now redact them (tests in `tests/test_error_logging.py`).
+- Added tests (`tests/unit/test_oidc_security_review.py`): HS256 algorithm confusion, signature algorithm outside the provider-advertised list, non-matching `azp` with one audience, expiry leeway edges, expired discovery/JWKS caches fail closed during an outage, discovery redirects are not followed. No other defects found in the protocol, transaction, linking or registration code.
+- Verification run: alembic upgrade head, full downgrade to `4858092e72e7` and upgrade head on a disposable PostgreSQL 16 container (the merge head makes `downgrade -1` an "Ambiguous walk"; documented in `docs/operations/oidc-sso.md`); slow migration tests; OIDC/identity/HR-conflict suites; `-m "auth or soldiers or hierarchy"`; `app/services/hr`; focused Vitest; `npm run lint`; `npm run typecheck`.
+- NOT run: the Playwright journeys (the existing login/registration journeys and `frontend/tests/e2e/oidc_sso.spec.ts` against the mock provider), so that checkbox stays open, as do the three Task 9 browser items. They need a dedicated backend and frontend stack that this resource-constrained review did not start.
+
+## Execution Handoff
+
+OIDC protocol and identity linking are security-sensitive and touch overlapping email write paths. Use subagent-driven execution only after review of this plan, with one owner for shared normalization/migrations/identity resolution (Tasks 1-4, which Tasks 6-8 depend on) and one integrated reviewer for callback, registration, and frontend flow consistency.
+
+
+Real-provider browser run (Keycloak, `frontend/tests/e2e/oidc/run.ps1`, see docs/operations/oidc-sso.md): 9 of 9 journeys in `oidc_keycloak.spec.ts` passed in Playwright's bundled Chromium. It found one real bug (the register schema rejected the `email: null` the SPA sends for SSO registration, fixed in commit 7a4a8718 with a backend test). Not run: the pre-existing `login.spec.ts`/default-config specs (system Chrome crashed at launch on this machine), Vitest, and the mock-provider spec `oidc_sso.spec.ts` (needs `E2E_OIDC_MOCK_URL`). The task 10 existing-journeys item therefore stays open.
+
+Follow-up run (2026-10-03): Keycloak journeys 8/8 green plus the real no-OIDC journey (backend started without `OIDC_*`: no SSO button, `/api/auth/oidc/start` 404), twice on fresh databases with retries 0; the SSO-registered soldier gets 403 on three admin-only calls before and after approval; existing `login.spec.ts`, `fixtures/auth.spec.ts` and `smoke/authorization_boundaries.spec.ts` (desktop) 11/11; Vitest src/api, src/auth, LoginPage, RegisterPage, admin 58 files/380 tests; mock-provider `oidc_sso.spec.ts` 4 passed, 1 skipped (the unconfigured case, covered by the real no-OIDC journey). Fixed: transient refresh failures on mount logged users out (commit 72e1d4a5). Task 10 "existing login/registration browser journeys" is now run.

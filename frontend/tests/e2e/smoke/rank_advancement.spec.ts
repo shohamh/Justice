@@ -344,9 +344,9 @@ test("a soldier due for promotion is actually promoted by the real worker functi
     // This is the one deliberately non-UI step in this spec -- see the
     // top-of-file seam inventory for why it's here and what it proves.
     const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../backend");
-    const pythonExe = process.platform === "win32"
+    const pythonExe = process.env.E2E_PYTHON ?? (process.platform === "win32"
       ? resolve(backendDir, ".venv/Scripts/python.exe")
-      : resolve(backendDir, ".venv/bin/python");
+      : resolve(backendDir, ".venv/bin/python"));
     const databaseUrl = process.env.DATABASE_URL ?? "postgresql+psycopg://app:app_pw@localhost:5432/justice_e2e";
     let scriptOutput: string;
     try {

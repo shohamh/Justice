@@ -112,8 +112,11 @@ export async function getIneligibleSoldiers(
   };
 }
 
-export function getIneligibleSoldierCount(): Promise<{ count: number }> {
-  return api
-    .get<{ count: number }>("/ranges/ineligible-soldiers/count")
-    .then((response) => response.data);
+export function getIneligibleSoldierCount(
+  audience?: IneligibleSoldiersAudience,
+): Promise<{ count: number }> {
+  const request = audience
+    ? api.get<{ count: number }>("/ranges/ineligible-soldiers/count", { params: { audience } })
+    : api.get<{ count: number }>("/ranges/ineligible-soldiers/count");
+  return request.then((response) => response.data);
 }

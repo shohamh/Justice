@@ -6,9 +6,21 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 import sqlalchemy as sa
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -40,7 +52,10 @@ class Soldier(Base):
     unit_join_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     left_at: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     phone: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Canonical (trimmed, lowercase) email; written only via app.services.identity.
     email: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Derived from the email local part (legacy AD sAMAccountName); never set independently.
+    ad_username: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     email_verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     theme_preference: Mapped[str] = mapped_column(
         Text, server_default=text("'system'"), default="system"
@@ -95,6 +110,31 @@ class Soldier(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "personal_number <> '' AND personal_number = btrim(personal_number, E' \\t\\r\\n\\f\\v')",
+            name="ck_soldiers_personal_number_trimmed",
+        ),
+        sa.CheckConstraint(
+            "email IS NULL OR (email <> '' AND email = lower(btrim(email, E' \\t\\r\\n\\f\\v')))",
+            name="ck_soldiers_email_canonical",
+        ),
+        sa.CheckConstraint(
+            "ad_username IS NULL OR (ad_username <> '' AND ad_username = lower(btrim(ad_username, E' \\t\\r\\n\\f\\v')))",
+            name="ck_soldiers_ad_username_canonical",
+        ),
+        sa.CheckConstraint(
+            "(email IS NULL AND ad_username IS NULL) "
+            "OR (email IS NOT NULL AND ad_username IS NOT NULL AND ad_username = split_part(email, '@', 1))",
+            name="ck_soldiers_email_ad_username_pair",
+        ),
+        sa.Index("uq_soldiers_email", "email", unique=True, postgresql_where=text("email IS NOT NULL")),
+        sa.Index(
+            "uq_soldiers_ad_username", "ad_username", unique=True,
+            postgresql_where=text("ad_username IS NOT NULL"),
+        ),
     )
 
 
@@ -215,6 +255,10 @@ class HrPersonSync(Base):
     vanished_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     error_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Identity conflicts (duplicate personal number in the feed, email / AD
+    # username collisions) detected or re-detected during this run. Warnings,
+    # not failures: the run still completes.
+    conflict_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
 
 
 class HrPersonSyncError(Base):
@@ -487,7 +531,10 @@ class SoldierExemptionFile(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -498,6 +545,20 @@ class SoldierExemptionFile(Base):
 
 class DutyAssignment(Base):
     __tablename__ = "duty_assignments"
+    __table_args__ = (
+        sa.Index(
+            "ix_duty_assignments_hakpaza_next",
+            "soldier_id",
+            "start_date",
+            "id",
+            postgresql_where=sa.text("status = 'published'"),
+        ),
+        sa.Index(
+            "ix_duty_assignments_status_end_date",
+            "status",
+            sa.text("end_date DESC"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
@@ -953,7 +1014,10 @@ class ExemptionRequestFile(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -973,7 +1037,10 @@ class GimelimAttachment(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -1509,7 +1576,10 @@ class ImportSession(Base):
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
     filename: Mapped[str] = mapped_column(Text)
-    raw_excel: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    raw_excel: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     status: Mapped[str] = mapped_column(
         Enum("draft", "confirmed", "cancelled", "done", name="import_session_status"),
         server_default="draft", default="draft",
@@ -1993,6 +2063,11 @@ class BugReport(Base):
         server_default="open", default="open",
     )
     screenshot: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    json_mirror_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    json_mirror_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     nav_history: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True, default=None)
     audit_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True, default=None)
     user_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
@@ -2058,10 +2133,460 @@ class BugReportCommentAttachment(Base):
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)
-    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    data: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_sha256: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    storage_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class StorageDeleteOutbox(Base):
+    __tablename__ = "storage_delete_outbox"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    object_key: Mapped[str] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    last_error_code: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+
+
+class IdentityConflict(Base):
+    """An identity that could not be tied to exactly one soldier.
+
+    Recorded by app.services.identity_resolution.record_identity_conflict
+    (source ``sso``, ``registration`` or ``hr_sync``) and settled by an admin
+    (``resolved`` with a chosen soldier, or ``dismissed`` with a reason). At
+    most one *open* row exists per (source, ad_username). Holds no email or
+    claim data, only the derived AD username and soldier references.
+    """
+
+    __tablename__ = "identity_conflicts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    source: Mapped[str] = mapped_column(Text)
+    ad_username: Mapped[str] = mapped_column(Text)
+    personal_number: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    chosen_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "source IN ('sso', 'hr_sync', 'registration')", name="ck_identity_conflicts_source"
+        ),
+        sa.CheckConstraint(
+            "status IN ('open', 'resolved', 'dismissed')", name="ck_identity_conflicts_status"
+        ),
+        sa.Index(
+            "uq_identity_conflicts_open_source_ad_username",
+            "source", "ad_username",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+    )
+
+
+class IdentityConflictCandidate(Base):
+    __tablename__ = "identity_conflict_candidates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    conflict_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("identity_conflicts.id", ondelete="CASCADE")
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    # Subset of {"email", "ad_username"} that equalled the claim.
+    matched_fields: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default=text("'{}'"), default_factory=list
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("conflict_id", "soldier_id", name="uq_identity_conflict_candidate"),
+        sa.Index("ix_identity_conflict_candidates_soldier_id", "soldier_id"),
+    )
+
+
+class OidcIdentity(Base):
+    """The stable link between an external OIDC identity and one soldier.
+
+    The identity key is ``(issuer, subject)`` exactly as validated from the
+    ID token, never an email or ``preferred_username``. A subject can belong to
+    one soldier and a soldier has at most one external identity. Holds no email
+    or other claims.
+    """
+
+    __tablename__ = "oidc_identities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), unique=True
+    )
+    issuer: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("issuer", "subject", name="uq_oidc_identities_issuer_subject"),
+        sa.CheckConstraint(
+            "length(btrim(issuer)) > 0 AND length(btrim(subject)) > 0",
+            name="ck_oidc_identities_non_blank",
+        ),
+    )
+
+
+class OidcRegistrationContext(Base):
+    """A verified OIDC identity waiting to finish registration (replaces the invite code).
+
+    Created by the OIDC callback when no soldier matches; the browser holds a
+    random HttpOnly cookie whose hash is ``token_hash`` (that is the browser
+    binding). Short-lived and consumed exactly once, in the same database
+    transaction that creates the soldier and links ``(issuer, subject)``.
+    """
+
+    __tablename__ = "oidc_registration_contexts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    issuer: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    email: Mapped[str] = mapped_column(Text)
+    ad_username: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    __table_args__ = (
+        sa.Index(
+            "uq_oidc_registration_contexts_live_subject",
+            "issuer", "subject",
+            unique=True,
+            postgresql_where=text("consumed_at IS NULL"),
+        ),
+    )
+
+
+class OidcTransaction(Base):
+    """One in-flight OIDC login: the server-side secrets of an authorization request.
+
+    ``state_hash`` is the lookup key (the state itself only travels through the
+    browser); ``browser_hash`` binds the transaction to the browser that
+    started it (hash of a random HttpOnly cookie). The nonce and PKCE verifier
+    stay server-side. Consumed at most once, atomically, and short-lived.
+    """
+
+    __tablename__ = "oidc_transactions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    state_hash: Mapped[str] = mapped_column(Text, unique=True)
+    browser_hash: Mapped[str] = mapped_column(Text)
+    nonce: Mapped[str] = mapped_column(Text)
+    code_verifier: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+
+class HrIdentityConflict(Base):
+    """An HR sync identity conflict, shown to admins as a warning.
+
+    ``kind`` is ``duplicate_personal_number`` (the same personal number twice
+    in the feed), ``email_collision`` / ``ad_username_collision`` (the HR email
+    belongs to a different soldier) or ``email_invalid`` (the HR email cannot
+    be used). ``candidates`` holds every HR record involved (index, key type /
+    value, raw payload); ``applied_index`` is the one the sync applied (None
+    when nothing was). At most one active (open or acknowledged) row exists per
+    (personal_number, kind); an acknowledged row stays quiet until its
+    ``fingerprint`` changes, which reopens it.
+    """
+
+    __tablename__ = "hr_identity_conflicts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    personal_number: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    fingerprint: Mapped[str] = mapped_column(Text)
+    applied_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    colliding_soldier_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
+    hr_person_sync_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hr_person_syncs.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    chosen_index: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "kind IN ('duplicate_personal_number', 'email_collision', "
+            "'ad_username_collision', 'email_invalid')",
+            name="ck_hr_identity_conflicts_kind",
+        ),
+        sa.CheckConstraint(
+            "status IN ('open', 'acknowledged', 'resolved')", name="ck_hr_identity_conflicts_status"
+        ),
+        sa.Index(
+            "uq_hr_identity_conflicts_active",
+            "personal_number", "kind",
+            unique=True,
+            postgresql_where=text("status IN ('open', 'acknowledged')"),
+        ),
+    )
+
+
+class HrPreferredRecord(Base):
+    """An admin's remembered choice among duplicate HR records.
+
+    Used by every later sync in which ``personal_number`` appears more than
+    once in the feed. ``key_type`` is the most stable identifier the chosen
+    record offered (``t_person_id``, ``username`` or ``mail``, in that order);
+    ``key_value`` is its value (mail normalized).
+    """
+
+    __tablename__ = "hr_preferred_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    personal_number: Mapped[str] = mapped_column(Text, unique=True)
+    key_type: Mapped[str] = mapped_column(Text)
+    key_value: Mapped[str] = mapped_column(Text)
+    chosen_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    chosen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "key_type IN ('t_person_id', 'username', 'mail')", name="ck_hr_preferred_records_key_type"
+        ),
+    )
+
+
+class ExchangeCalendarSyncItem(Base):
+    """Current Exchange mirror state for one Justice event source."""
+
+    __tablename__ = "exchange_calendar_sync_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    source_type: Mapped[str] = mapped_column(Text)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    source_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    exchange_item_id: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    exchange_change_key: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    content_hash: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"), default="queued")
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    current_error_category: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    current_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+
+    __table_args__ = (
+        sa.UniqueConstraint("source_type", "source_id", name="uq_exchange_calendar_sync_source"),
+        sa.CheckConstraint(
+            "source_type IN ('duty_shift', 'duty_assignment', 'range_event')",
+            name="ck_exchange_calendar_sync_source_type",
+        ),
+        sa.CheckConstraint(
+            "status IN ('queued', 'in_progress', 'synced', 'partial', 'retry_wait', 'failed', 'cancelled')",
+            name="ck_exchange_calendar_sync_status",
+        ),
+        sa.Index("ix_exchange_calendar_sync_status", "status"),
+        sa.Index("ix_exchange_calendar_sync_source_date", "source_date"),
+    )
+
+
+class ExchangeCalendarOutbox(Base):
+    """Durable work queue; source identity deliberately has no source FK."""
+
+    __tablename__ = "exchange_calendar_outbox"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    source_type: Mapped[str] = mapped_column(Text)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    reason: Mapped[str] = mapped_column(Text)
+    priority: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"), default="queued")
+    queued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    lease_owner: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    attempt_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "source_type IN ('duty_shift', 'duty_assignment', 'range_event')",
+            name="ck_exchange_calendar_outbox_source_type",
+        ),
+        sa.CheckConstraint("priority >= 0", name="ck_exchange_calendar_outbox_priority"),
+        sa.CheckConstraint("attempt_count >= 0", name="ck_exchange_calendar_outbox_attempts"),
+        sa.CheckConstraint(
+            "status IN ('queued', 'leased', 'completed', 'failed', 'cancelled')",
+            name="ck_exchange_calendar_outbox_status",
+        ),
+        # Only queued rows coalesce; an active lease can have one queued follow-up.
+        sa.Index(
+            "uq_exchange_calendar_outbox_pending_source",
+            "source_type",
+            "source_id",
+            unique=True,
+            postgresql_where=sa.text("status = 'queued'"),
+        ),
+        sa.Index(
+            "ix_exchange_calendar_outbox_due",
+            "status",
+            "next_attempt_at",
+            sa.text("priority DESC"),
+            "queued_at",
+        ),
+        sa.Index("ix_exchange_calendar_outbox_lease", "status", "lease_expires_at"),
+    )
+
+
+class ExchangeCalendarSyncAttempt(Base):
+    """Append-only sanitized result history for sync and cancellation attempts."""
+
+    __tablename__ = "exchange_calendar_sync_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    sync_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exchange_calendar_sync_items.id", ondelete="CASCADE"),
+    )
+    outcome: Mapped[str] = mapped_column(Text)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exchange_calendar_outbox.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    error_category: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "outcome IN ('created', 'updated', 'cancelled', 'unchanged', 'partial', 'failed', 'skipped')",
+            name="ck_exchange_calendar_attempt_outcome",
+        ),
+        sa.CheckConstraint(
+            "duration_ms IS NULL OR duration_ms >= 0",
+            name="ck_exchange_calendar_attempt_duration",
+        ),
+        sa.Index("ix_exchange_calendar_attempt_history", "sync_item_id", "attempted_at"),
+    )
+
+
+class ExchangeCalendarWorkerState(Base):
+    """Singleton snapshot of worker liveness, reachability, and shared backoff."""
+
+    __tablename__ = "exchange_calendar_worker_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, server_default=text("1"), default=1)
+    worker_id: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_probe_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    exchange_reachable: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    last_connection_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_successful_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    latest_connection_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    global_backoff_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_outbound_request_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint("id = 1", name="ck_exchange_calendar_worker_state_singleton"),
     )

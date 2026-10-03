@@ -64,16 +64,22 @@ always execute it with subagents (`subagent-driven-development` or
 `executing-plans`) rather than implementing it directly in the main
 conversation.
 
-## Changelog
+## Changelogs
 
-`frontend/CHANGELOG.md` is updated as part of every `dev` → `master` promotion
-(via the `release-dev-to-master` skill), not on an ad hoc daily basis. The
-skill adds a new `## YYYY-MM-DD` section summarising everything that shipped
-since the previous changelog entry, grouped into **Features**, **Fixes**, and
-**Chores**, reconstructed from `git log --oneline <last-date-sha>..dev`. The
-changelog commit lands on `master` as part of the same merge, with message
-`docs: update changelog YYYY-MM-DD`, and is immediately cherry-picked onto
-`dev` too so the two branches' changelog never diverges.
+Two changelogs, two audiences:
+
+- `docs/CHANGELOG-dev.md` — **developer-facing**. Every merge into `dev` (via
+  the `merge-worktree-to-dev` skill) adds an entry under `## Unreleased`:
+  modules touched, migrations, API changes, gotchas, and a `Docs:` line
+  pointing at the plan/spec for the change.
+- `frontend/CHANGELOG.md` — **user-facing**. Written during every `dev` →
+  `master` promotion (via `release-dev-to-master`) from the dev changelog's
+  `## Unreleased` section plus the plan/design docs it references. New
+  `## YYYY-MM-DD` section, grouped **Features** / **Fixes**, plain language,
+  with a "Why:" rationale for non-obvious changes (none for simple bug fixes).
+  The skill also renames `## Unreleased` in the dev changelog to the release
+  date. The commit lands on `master` as `docs: update changelog YYYY-MM-DD`
+  and is immediately cherry-picked onto `dev` so the branches never diverge.
 
 ## Common one-liners
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import uuid
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import BugReport, BugReportComment
 from app.services import bug_reports as svc
+from app.storage.dependencies import get_object_storage
 from tests.helpers import auth_headers, create_soldier
 
 # Canonical 1x1 transparent PNG. The magic-byte prefix ("iVBORw0KGgo" -> the PNG
@@ -43,7 +45,10 @@ def test_submit_bug_report_creates_row(client: TestClient, admin_session: Sessio
 
     row = admin_session.query(BugReport).filter_by(reporter_id=soldier.id).one()
     assert row.severity == "high"
-    assert row.screenshot is not None
+    storage = client.app.dependency_overrides[get_object_storage]()
+    assert row.screenshot is None
+    assert row.storage_key == f"bug_report_screenshot/{row.id}"
+    assert storage.objects[row.storage_key] == base64.b64decode(_TINY_PNG_B64)
 
 
 def test_submit_bug_report_without_screenshot(client: TestClient, admin_session: Session):
@@ -91,9 +96,8 @@ def test_submit_bug_report_drops_invalid_screenshot_data(client: TestClient, adm
         json={"description": "x", "severity": "low", "route": "/", "screenshot": "not-base64-png-data!!!"},
         headers=auth_headers(soldier),
     )
-    assert resp.status_code == 201
-    row = admin_session.query(BugReport).filter_by(reporter_id=soldier.id).one()
-    assert row.screenshot is None
+    assert resp.status_code == 400
+    assert admin_session.query(BugReport).filter_by(reporter_id=soldier.id).one_or_none() is None
 
 
 def test_submit_bug_report_rejects_oversized_screenshot(client: TestClient, admin_session: Session):
@@ -367,6 +371,8 @@ def test_get_bug_report_json_returns_mirrored_file(client: TestClient, admin_ses
     resp = client.get(f"/api/admin/bug-reports/{report_id}/json", headers=auth_headers(admin))
     assert resp.status_code == 200
     assert resp.json()["description"] == "mirrored description"
+    report = admin_session.get(BugReport, report_id)
+    assert report.json_mirror_storage_key == f"bug_report_json_mirror/{report_id}"
 
 
 def test_get_bug_report_json_requires_admin(client: TestClient, admin_session: Session):

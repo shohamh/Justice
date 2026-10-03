@@ -502,3 +502,7 @@ export async function listNodesForImport(): Promise<
     )
   ).data.map((n) => ({ id: n.id, name: n.name, parent_id: n.parent_id, level: n.level }));
 }
+
+export async function downloadImportWorkbook(sessionId: string): Promise<Blob> {
+  return (await api.get(`/file-download/import-sessions/${sessionId}/workbook`, { responseType: "blob" })).data;
+}

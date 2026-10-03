@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import Fuse from "fuse.js";
-import { validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicExemptionTypes, PublicExemptionType } from "../api/auth";
+import {
+  validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicExemptionTypes, PublicExemptionType,
+  fetchOidcRegistrationContext, OidcRegistrationContext,
+} from "../api/auth";
 import { getRegistrationPublicSettings } from "../api/registrationSettings";
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
@@ -82,6 +85,14 @@ export default function RegisterPage() {
   const { loginWithToken } = useAuth();
   const settings = usePublicSettings();
   const telegramEnabled = settings?.["telegram.enabled"] === true;
+  const [searchParams] = useSearchParams();
+  const ssoRequested = searchParams.get("sso") === "1";
+  // SSO registration: the identity comes from the server-side OIDC context
+  // (HttpOnly cookie), never from the URL or web storage. Held in memory only.
+  const [ssoContext, setSsoContext] = useState<OidcRegistrationContext | null>(null);
+  const [ssoLoading, setSsoLoading] = useState(ssoRequested);
+  const [ssoContextFailed, setSsoContextFailed] = useState(false);
+  const ssoActive = ssoContext !== null;
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>(INITIAL);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +136,25 @@ export default function RegisterPage() {
     listPublicExemptionTypes().then(types => setExemptionTypes(Array.isArray(types) ? types : [])).catch(() => {});
   }, []);
 
-  // Nodes are fetched after invite code is validated (see checkCode)
+  useEffect(() => {
+    if (!ssoRequested) return;
+    let cancelled = false;
+    fetchOidcRegistrationContext()
+      .then(ctx => {
+        if (cancelled) return;
+        setSsoContext(ctx);
+        setForm(prev => ({ ...prev, email: ctx.email }));
+        setStep(2);
+        // No invite code: the server accepts this while the context cookie is live.
+        fetchRegisterNodes().then(ns => { if (!cancelled) setNodes(Array.isArray(ns) ? ns : []); }).catch(() => {});
+      })
+      .catch(() => { if (!cancelled) setSsoContextFailed(true); })
+      .finally(() => { if (!cancelled) setSsoLoading(false); });
+    return () => { cancelled = true; };
+  }, [ssoRequested]);
+
+  // Nodes are fetched after invite code is validated (see checkCode), or
+  // right after the SSO context loads.
 
   const fuse = new Fuse(nodes, { keys: ["name", "commander_name"], threshold: 0.4 });
   const searchResultIds = nodeSearch ? new Set(fuse.search(nodeSearch).map(r => r.item.id)) : null;
@@ -160,12 +189,12 @@ export default function RegisterPage() {
     try {
       const validRows = form.exemption_requests.filter(er => er.exemption_type_id && (er.permanent || er.start_date));
       const resp = await register({
-        invite_code: form.invite_code,
+        ...(ssoActive ? {} : { invite_code: form.invite_code }),
         personal_number: form.personal_number,
         full_name: form.full_name,
         password: form.password,
         phone: form.phone || null,
-        email: form.email || null,
+        email: ssoActive ? null : (form.email || null),
         gender: form.gender || null,
         is_officer: form.is_officer,
         rank: form.rank || null,
@@ -211,6 +240,7 @@ export default function RegisterPage() {
         "start_date_required": t("register.errors.start_date_required"),
         "password_policy": t("register.errors.password_policy"),
         "registration_invalid": t("register.errors.registration_invalid"),
+        "registration_unavailable": t("register.errors.registration_unavailable"),
       };
       const mappedDetail = detail && detail.startsWith("rank_track_incompatible")
         ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
@@ -284,8 +314,17 @@ export default function RegisterPage() {
           ))}
         </div>
         {error && <div className="text-red-600 text-sm">{error}</div>}
+        {ssoContextFailed && (
+          <div className="text-red-600 text-sm" role="alert" data-testid="sso-context-error">
+            {t("register.sso_context_expired")}
+          </div>
+        )}
 
-        {step === 1 && (
+        {step === 1 && ssoLoading && (
+          <p className="text-sm text-gray-500" data-testid="sso-context-loading">{t("register.sso_loading")}</p>
+        )}
+
+        {step === 1 && !ssoLoading && (
           <div className="space-y-3">
             <h2 className="font-semibold">{t("register.step_invite")}</h2>
             <label className="block text-sm">{t("register.invite_code_label")}
@@ -331,11 +370,19 @@ export default function RegisterPage() {
               {step2Attempted && !form.phone && <p className="text-red-600 text-xs mt-1">{t("register.phone_required")}</p>}
             </label>
             <label className="block text-sm">אימייל <span className="text-red-500">*</span>
-              <input type="email" placeholder={emailPlaceholder} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                value={form.email} onChange={e => set("email", e.target.value)} />
+              <input type="email" placeholder={emailPlaceholder} readOnly={ssoActive} dir={ssoActive ? "ltr" : undefined}
+                className={`mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${ssoActive ? "bg-gray-100 dark:bg-gray-600 cursor-not-allowed" : ""}`}
+                value={form.email} onChange={e => { if (!ssoActive) set("email", e.target.value); }} />
               {emailError && <p className="text-red-600 text-xs mt-1">{emailError}</p>}
               {step2Attempted && !form.email && !emailError && <p className="text-red-600 text-xs mt-1">{t("register.field_required")}</p>}
             </label>
+            {ssoActive && (
+              <label className="block text-sm">{t("register.sso_ad_username")}
+                <input type="text" readOnly dir="ltr" data-testid="sso-ad-username"
+                  className="mt-1 block w-full border rounded p-2 bg-gray-100 dark:bg-gray-600 cursor-not-allowed dark:border-gray-600 dark:text-gray-100"
+                  value={ssoContext.ad_username} />
+              </label>
+            )}
             <label className="block text-sm">מגדר <span className="text-red-500">*</span>
               <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.gender} onChange={e => set("gender", e.target.value)}>
                 <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option><option value="other">אחר</option>
@@ -417,7 +464,7 @@ export default function RegisterPage() {
               <p className="text-red-600 text-sm">הסיסמאות אינן תואמות</p>
             )}
             <div className="flex gap-2">
-              <button className="flex-1 border py-2 rounded" onClick={() => setStep(1)}>{t("register.back")}</button>
+              {!ssoActive && <button className="flex-1 border py-2 rounded" onClick={() => setStep(1)}>{t("register.back")}</button>}
               <button className="flex-1 bg-indigo-600 text-white py-2 rounded"
                 onClick={() => { if (step2Invalid) setStep2Attempted(true); else setStep(3); }}>{t("register.next")}</button>
             </div>

@@ -3,13 +3,16 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import EmailVerificationToken, Soldier
 from app.services.email import send_email
+from app.services.identity import normalize_email
 
 _TOKEN_EXPIRY = timedelta(hours=24)
+# Serializes verify_token calls for one email address (see verify_token).
+_VERIFIED_EMAIL_LOCK_NAMESPACE = 0x454D4C56  # "EMLV"
 
 
 def request_verification(session: Session, *, soldier: Soldier) -> bool:
@@ -52,30 +55,51 @@ def request_verification(session: Session, *, soldier: Soldier) -> bool:
 def verify_token(session: Session, *, token: str) -> str:
     """Redeem a verification token. Returns 'ok', 'token_invalid', 'token_expired', or 'email_taken'."""
     now = datetime.now(timezone.utc)
+    # Lock order: soldier, then token row, then the email lock (M1). The
+    # email change route (PATCH /me/email) UPDATEs the soldier before
+    # request_verification UPDATEs that soldier's unused tokens; locking the
+    # token first here and the soldier at flush was the reverse order.
+    soldier_id = session.execute(
+        select(EmailVerificationToken.soldier_id).where(
+            EmailVerificationToken.token == token,
+            EmailVerificationToken.used_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if soldier_id is None:
+        return "token_invalid"
+    soldier = session.get(Soldier, soldier_id, with_for_update={"key_share": True}, populate_existing=True)
     row = session.execute(
         select(EmailVerificationToken).where(
             EmailVerificationToken.token == token,
             EmailVerificationToken.used_at.is_(None),
         )
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if row is None:
         return "token_invalid"
     if row.expires_at <= now:
         return "token_expired"
 
-    soldier = session.get(Soldier, row.soldier_id)
-    if soldier is None or soldier.email != row.email:
+    try:
+        # Tokens issued before the identity migration snapshot the raw address.
+        token_email = normalize_email(row.email)
+    except ValueError:
+        token_email = None
+    if soldier is None or token_email is None or soldier.email != token_email:
         # Soldier changed their email since token was issued
         return "token_invalid"
 
-    # Check no other soldier has already verified this email
+    # One verified account per email: verify_token is the only writer that
+    # sets email_verified=True, so a per-email advisory lock serializes the
+    # "already verified by someone else?" check below with the write.
+    session.execute(select(func.pg_advisory_xact_lock(_VERIFIED_EMAIL_LOCK_NAMESPACE, func.hashtext(token_email))))
+
+    # Email is unique across verified and unverified rows (database-enforced);
+    # this guards legacy data and keeps the redeem result explicit.
     conflict = session.execute(
-        select(Soldier).where(
-            Soldier.email == row.email,
-            Soldier.email_verified == True,  # noqa: E712
-            Soldier.id != soldier.id,
-        )
-    ).scalar_one_or_none()
+        select(Soldier.id).where(Soldier.email == token_email, Soldier.id != soldier.id).limit(1)
+    ).first()
     if conflict is not None:
         return "email_taken"
 

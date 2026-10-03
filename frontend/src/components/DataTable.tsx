@@ -64,6 +64,16 @@ interface DataTableProps<T> {
   };
   /** Initial sort applied before any header click — without this, the table shows rows in their incoming order. */
   defaultSort?: SortingState;
+  virtualRows?: {
+    height: number;
+    rowHeight: number;
+    overscan: number;
+    hasMore: boolean;
+    onNearEnd?: () => void;
+    ariaLabel: string;
+    loadMoreLabel: string;
+    loadingLabel: string;
+  };
   onRowClick?: (row: T) => void;
   getRowLabel?: (row: T) => string;
 }
@@ -179,11 +189,14 @@ export function DataTable<T>({
   onVisibleRowsChange,
   expandable,
   defaultSort,
+  virtualRows,
   onRowClick,
   getRowLabel = () => "פתח שורה",
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSort ?? []);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [virtualScrollTop, setVirtualScrollTop] = useState(0);
+  const [manualPageLoading, setManualPageLoading] = useState(false);
   const [tooltipModal, setTooltipModal] = useState<React.ReactNode | null>(null);
   // colId → selected values (empty Set = all / no filter)
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
@@ -259,6 +272,17 @@ export function DataTable<T>({
       return cellValue.toLowerCase().includes(value.toLowerCase());
     },
   });
+  const tableRows = table.getRowModel().rows;
+  const virtualStart = virtualRows
+    ? Math.min(tableRows.length, Math.max(0, Math.floor(virtualScrollTop / virtualRows.rowHeight) - virtualRows.overscan))
+    : 0;
+  const virtualEnd = virtualRows
+    ? Math.min(tableRows.length, Math.ceil((virtualScrollTop + virtualRows.height) / virtualRows.rowHeight) + virtualRows.overscan)
+    : tableRows.length;
+  const renderedRows = virtualRows ? tableRows.slice(virtualStart, virtualEnd) : tableRows;
+  useEffect(() => {
+    setManualPageLoading(false);
+  }, [data.length, virtualRows?.hasMore]);
 
   // Memoize by the state that actually affects which rows are visible:
   // data + column filters + global filter + sort. Excludes `columns` and
@@ -287,7 +311,20 @@ export function DataTable<T>({
         placeholder={filterPlaceholder}
         className="mb-2 border rounded p-1 text-sm w-full sm:w-64 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
       />
-      <div className="overflow-x-auto -mx-1">
+      <div
+        className="overflow-auto -mx-1"
+        role={virtualRows ? "region" : undefined}
+        aria-label={virtualRows?.ariaLabel}
+        tabIndex={virtualRows ? 0 : undefined}
+        style={virtualRows ? { maxHeight: virtualRows.height } : undefined}
+        onScroll={virtualRows ? event => {
+          const element = event.currentTarget;
+          setVirtualScrollTop(element.scrollTop);
+          if (virtualRows.hasMore && element.scrollTop + element.clientHeight >= element.scrollHeight - virtualRows.rowHeight * 5) {
+            virtualRows.onNearEnd?.();
+          }
+        } : undefined}
+      >
       <table className={`w-full text-xs border-collapse${tableClassName ? ` ${tableClassName}` : ""}`}>
         <thead>
           {table.getHeaderGroups().map((hg) => (
@@ -342,14 +379,16 @@ export function DataTable<T>({
           ))}
         </thead>
         <tbody>
-          {table.getRowModel().rows.length === 0 ? (
+          {tableRows.length === 0 ? (
             <tr>
               <td colSpan={columns.length + (expandable ? 1 : 0)} className="text-center text-gray-400 py-4">
                 {emptyMessage}
               </td>
             </tr>
           ) : (
-            table.getRowModel().rows.map((row) => {
+            <>
+            {virtualRows && virtualStart > 0 && <tr aria-hidden="true"><td colSpan={columns.length + (expandable ? 1 : 0)} style={{ height: virtualStart * virtualRows.rowHeight, padding: 0 }} /></tr>}
+            {renderedRows.map((row) => {
               const isExpanded = expandable?.isExpanded(row.original) ?? false;
               return (
                 <Fragment key={row.id}>
@@ -358,7 +397,7 @@ export function DataTable<T>({
                     role={onRowClick ? "button" : undefined}
                     aria-label={onRowClick ? getRowLabel(row.original) : undefined}
                     className={rowClassName ? rowClassName(row.original) : undefined}
-                    style={rowStyle ? rowStyle(row.original) : undefined}
+                    style={virtualRows ? { ...rowStyle?.(row.original), height: virtualRows.rowHeight } : rowStyle?.(row.original)}
                     data-testid={rowTestId ? rowTestId(row.original) : undefined}
                     onClick={event => {
                       if (expandable?.expandOnRowClick) {
@@ -404,11 +443,26 @@ export function DataTable<T>({
                   )}
                 </Fragment>
               );
-            })
+            })}
+            {virtualRows && virtualEnd < tableRows.length && <tr aria-hidden="true"><td colSpan={columns.length + (expandable ? 1 : 0)} style={{ height: (tableRows.length - virtualEnd) * virtualRows.rowHeight, padding: 0 }} /></tr>}
+            </>
           )}
         </tbody>
       </table>
       </div>
+      {virtualRows?.hasMore && virtualRows.onNearEnd && (
+        <button
+          type="button"
+          disabled={manualPageLoading}
+          onClick={() => {
+            setManualPageLoading(true);
+            virtualRows.onNearEnd?.();
+          }}
+          className="mt-2 rounded border border-gray-300 px-3 py-1 text-sm text-blue-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-blue-300 dark:hover:bg-gray-800"
+        >
+          {manualPageLoading ? virtualRows.loadingLabel : virtualRows.loadMoreLabel}
+        </button>
+      )}
 
       {tooltipModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipModal(null)}>

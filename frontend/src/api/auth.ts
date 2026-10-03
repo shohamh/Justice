@@ -1,6 +1,6 @@
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
-import { optionalArrayResponse } from "./responseGuards";
+import { optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface LoginResponse {
   access_token: string;
@@ -24,6 +24,8 @@ export interface Me {
   is_duty_manager: boolean;
   must_change_password: boolean;
   hierarchy_node_id: string | null;
+  /** Server-evaluated hierarchy roots used for authorization-scoped data caches. */
+  scope_root_ids?: string[];
   telegram_linked: boolean;
   telegram_required: boolean;
   enrollment_pending: boolean;
@@ -74,7 +76,8 @@ export interface RegisterExemptionRow {
 }
 
 export interface RegisterPayload {
-  invite_code: string;
+  /** Omitted for SSO registration: the server decides from the live OIDC context cookie. */
+  invite_code?: string;
   personal_number: string;
   full_name: string;
   password: string;
@@ -116,6 +119,24 @@ export async function fetchMe(): Promise<Me> {
   };
 }
 
+export function getTransparencyAuthorizationScope(user: Me | null | undefined): string | null {
+  if (!user || !Array.isArray(user.scope_root_ids)) return null;
+  const scopeRoots = [...new Set(user.scope_root_ids)].sort();
+  const deputyGrants = user.active_deputy_grants
+    .map((grant) => `${grant.principal_id}|${grant.role}|${grant.end_date}`)
+    .sort();
+  return JSON.stringify([
+    user.id,
+    user.role,
+    user.hierarchy_node_id,
+    scopeRoots,
+    user.is_commander,
+    user.is_duty_manager,
+    user.can_view_transparency ?? true,
+    deputyGrants,
+  ]);
+}
+
 export async function changePassword(current_password: string, new_password: string): Promise<void> {
   await api.post("/auth/change-password", { current_password, new_password });
 }
@@ -132,9 +153,47 @@ export async function register(payload: RegisterPayload, exemptionFiles: File[][
   return r.data;
 }
 
-export async function fetchRegisterNodes(inviteCode: string): Promise<NodeOut[]> {
-  const r = await api.get<NodeOut[]>(`/auth/register/nodes?invite_code=${encodeURIComponent(inviteCode)}`);
+export async function fetchRegisterNodes(inviteCode?: string): Promise<NodeOut[]> {
+  const url = inviteCode === undefined
+    ? "/auth/register/nodes"
+    : `/auth/register/nodes?invite_code=${encodeURIComponent(inviteCode)}`;
+  const r = await api.get<NodeOut[]>(url);
   return r.data;
+}
+
+const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
+
+/** Backend route that 302s to the identity provider. Navigated to, never fetched. */
+export const OIDC_START_PATH = `${API_BASE}/auth/oidc/start`;
+
+/** Whether the server has SSO configured. Any failure means "not available". */
+export async function fetchOidcStatus(): Promise<boolean> {
+  try {
+    const r = await api.get<unknown>("/auth/oidc/status");
+    return r.data !== null && typeof r.data === "object" && (r.data as { enabled?: unknown }).enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Top-level browser navigation (the provider flow needs cookies and redirects, not XHR). */
+export function startSsoLogin(): void {
+  window.location.assign(OIDC_START_PATH);
+}
+
+export interface OidcRegistrationContext {
+  email: string;
+  ad_username: string;
+}
+
+/** Read-only prefill for an SSO registration; needs the HttpOnly oidc_reg cookie. */
+export async function fetchOidcRegistrationContext(): Promise<OidcRegistrationContext> {
+  const r = await api.get<unknown>("/auth/oidc/registration-context");
+  const data = requiredObjectResponse(r.data, "Invalid registration context response");
+  if (typeof data.email !== "string" || typeof data.ad_username !== "string") {
+    throw new Error("Invalid registration context response");
+  }
+  return { email: data.email, ad_username: data.ad_username };
 }
 
 export async function validateInviteCode(code: string): Promise<boolean> {

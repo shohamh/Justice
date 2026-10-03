@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "runId": "20261001T165852673Z-20812-56dabd05",
+  "generatedAtUtc": "2026-10-01T16:58:52.665Z",
+  "startedAtUtc": "2026-10-01T16:58:52.665Z",
+  "updatedAtUtc": "2026-10-01T16:59:55.826Z",
+  "browser": {
+    "engine": "chromium",
+    "version": "148.0.7778.96"
+  },
+  "runsPerScenario": 1,
+  "batchesPerScenario": 1,
+  "concurrency": 1,
+  "clientsPerBatch": 1,
+  "startBarrier": "all clients begin each cold/warm measurement together",
+  "authenticationSetup": "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
+  "summaryCoverage": "per-run response-byte and database totals require values for every tracked API request",
+  "timeoutMs": 60000,
+  "scenarios": [
+    {
+      "id": "hierarchy-whole-organization",
+      "route": "/team",
+      "workload": "navigation"
+    },
+    {
+      "id": "soldier-detail",
+      "route": "/team",
+      "workload": "soldier-detail"
+    },
+    {
+      "id": "calendar-whole-organization",
+      "route": "/unit-calendar",
+      "workload": "navigation"
+    },
+    {
+      "id": "calendar-synthetic-team",
+      "route": "/unit-calendar",
+      "workload": "calendar-team"
+    },
+    {
+      "id": "home-dashboard",
+      "route": "/",
+      "workload": "navigation"
+    }
+  ],
+  "hrProviderSync": "not-invoked",
+  "measurements": [],
+  "summaries": []
+}

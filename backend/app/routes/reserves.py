@@ -302,6 +302,12 @@ def dismiss_and_reallocate(
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, reserve_a))
 
     try:
+        # Lock order shared with dismiss_reserve: covering reserve, then its
+        # linked primaries plus the dismissed primary (ascending id), before
+        # dismiss_primary refreshes the projection and call_up_reserve UPDATEs
+        # the reserve. Locking the primary first here deadlocked against
+        # dismiss_reserve(covering reserve).
+        svc.lock_reserve_and_linked_primaries(session, reserve_a, extra_primary_ids=[primary_a.id])
         # Step 1: dismiss the primary
         dismissal = svc.dismiss_primary(
             session,

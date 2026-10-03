@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
 import { api, setAccessToken } from "../api/client";
@@ -7,6 +7,7 @@ export interface AuthContextValue {
   user: Me | null;
   loggedIn: boolean;
   authLoading: boolean;
+  authScopeReady: boolean;
   mustChangePassword: boolean;
   telegramLinked: boolean;
   telegramRequired: boolean;
@@ -20,21 +21,61 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const RESTORE_MAX_ATTEMPTS = 4;
+const RESTORE_RETRY_DELAY_MS = 400;
+
+/**
+ * Restores the session from the refresh cookie on mount. Only a definite client-side
+ * answer (401/403 etc.) means "no session"; a transient failure (network error, proxy
+ * 5xx/429 while the backend is slow or restarting) is retried briefly instead of
+ * silently logging the user out and bouncing them to /login on a full page reload.
+ */
+async function restoreSession(): Promise<Me | null> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const r = await api.post<{ access_token: string }>("/auth/refresh");
+      setAccessToken(r.data.access_token);
+      return await fetchMe();
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const transient = status === undefined || status >= 500 || status === 429;
+      if (!transient || attempt >= RESTORE_MAX_ATTEMPTS) return null;
+      await new Promise((resolve) => setTimeout(resolve, RESTORE_RETRY_DELAY_MS * attempt));
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authScopeReady, setAuthScopeReady] = useState(false);
+  const authGeneration = useRef(0);
+  const scopeTransitioning = useRef(true);
   const hasUser = user !== null;
 
   useEffect(() => {
-    api.post<{ access_token: string }>("/auth/refresh")
-      .then((r) => { setAccessToken(r.data.access_token); return fetchMe(); })
-      .then(setUser)
-      .catch(() => {})
-      .finally(() => setAuthLoading(false));
+    const generation = ++authGeneration.current;
+    restoreSession()
+      .then((nextUser) => {
+        if (generation !== authGeneration.current) return;
+        setUser(nextUser);
+        setAuthScopeReady(nextUser !== null);
+        scopeTransitioning.current = false;
+      })
+      .finally(() => {
+        if (generation === authGeneration.current) setAuthLoading(false);
+      });
   }, []);
 
   useEffect(() => {
-    const handler = () => { setAccessToken(null); setUser(null); };
+    const handler = () => {
+      authGeneration.current += 1;
+      setAuthLoading(false);
+      scopeTransitioning.current = false;
+      setAccessToken(null);
+      setUser(null);
+      setAuthScopeReady(false);
+    };
     window.addEventListener("auth:session-expired", handler);
     return () => window.removeEventListener("auth:session-expired", handler);
   }, []);
@@ -47,37 +88,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // banners, profile display) reflect approvals without requiring a re-login.
   useEffect(() => {
     if (!hasUser) return;
-    const interval = setInterval(() => { fetchMe().then(setUser).catch(() => {}); }, 60000);
+    const interval = setInterval(() => {
+      if (scopeTransitioning.current) return;
+      const generation = ++authGeneration.current;
+      fetchMe().then((nextUser) => {
+        if (generation !== authGeneration.current) return;
+        setUser(nextUser);
+        setAuthScopeReady(true);
+      }).catch(() => {});
+    }, 60000);
     return () => clearInterval(interval);
   }, [hasUser]);
 
   const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
-    const r = await apiLogin(personal_number, password, remember_me);
-    setAccessToken(r.access_token);
-    setUser(await fetchMe());
+    const generation = ++authGeneration.current;
+    setAuthLoading(false);
+    scopeTransitioning.current = true;
+    let tokenChanged = false;
+    try {
+      const r = await apiLogin(personal_number, password, remember_me);
+      if (generation !== authGeneration.current) return;
+      setAuthScopeReady(false);
+      setAccessToken(r.access_token);
+      tokenChanged = true;
+      const nextUser = await fetchMe();
+      if (generation !== authGeneration.current) return;
+      setUser(nextUser);
+      setAuthScopeReady(true);
+      scopeTransitioning.current = false;
+    } catch (error) {
+      if (generation === authGeneration.current) {
+        scopeTransitioning.current = false;
+        if (tokenChanged) setAuthScopeReady(false);
+      }
+      throw error;
+    }
   }, []);
 
   const loginWithToken = useCallback(async (token: string) => {
+    const generation = ++authGeneration.current;
+    setAuthLoading(false);
+    scopeTransitioning.current = true;
+    setAuthScopeReady(false);
     setAccessToken(token);
-    setUser(await fetchMe());
+    try {
+      const nextUser = await fetchMe();
+      if (generation !== authGeneration.current) return;
+      setUser(nextUser);
+      setAuthScopeReady(true);
+      scopeTransitioning.current = false;
+    } catch (error) {
+      if (generation === authGeneration.current) {
+        setAuthScopeReady(false);
+        scopeTransitioning.current = false;
+      }
+      throw error;
+    }
   }, []);
 
   const logout = useCallback(async () => {
+    const generation = ++authGeneration.current;
+    setAuthLoading(false);
+    scopeTransitioning.current = true;
+    setAuthScopeReady(false);
     try {
       await apiLogout();
     } finally {
-      setAccessToken(null);
-      setUser(null);
+      if (generation === authGeneration.current) {
+        setAccessToken(null);
+        setUser(null);
+        scopeTransitioning.current = false;
+      }
     }
   }, []);
 
   const changePassword = useCallback(async (current: string, next: string) => {
-    await apiChangePassword(current, next);
-    setUser(await fetchMe());
+    const generation = ++authGeneration.current;
+    setAuthLoading(false);
+    scopeTransitioning.current = true;
+    let passwordChanged = false;
+    try {
+      await apiChangePassword(current, next);
+      if (generation !== authGeneration.current) return;
+      passwordChanged = true;
+      setAuthScopeReady(false);
+      const nextUser = await fetchMe();
+      if (generation !== authGeneration.current) return;
+      setUser(nextUser);
+      setAuthScopeReady(true);
+      scopeTransitioning.current = false;
+    } catch (error) {
+      if (generation === authGeneration.current) {
+        scopeTransitioning.current = false;
+        if (passwordChanged) setAuthScopeReady(false);
+      }
+      throw error;
+    }
   }, []);
 
   const refreshMe = useCallback(async () => {
-    setUser(await fetchMe());
+    const generation = ++authGeneration.current;
+    setAuthLoading(false);
+    scopeTransitioning.current = true;
+    setAuthScopeReady(false);
+    try {
+      const nextUser = await fetchMe();
+      if (generation !== authGeneration.current) return;
+      setUser(nextUser);
+      setAuthScopeReady(true);
+      scopeTransitioning.current = false;
+    } catch (error) {
+      if (generation === authGeneration.current) {
+        setAuthScopeReady(false);
+        scopeTransitioning.current = false;
+      }
+      throw error;
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -85,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loggedIn: user !== null,
       authLoading,
+      authScopeReady,
       mustChangePassword: user?.must_change_password ?? false,
       telegramLinked: user?.telegram_linked ?? false,
       telegramRequired: user?.telegram_required ?? false,
@@ -95,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       changePassword,
       refreshMe,
     }),
-    [user, authLoading, login, loginWithToken, logout, changePassword, refreshMe],
+    [user, authLoading, authScopeReady, login, loginWithToken, logout, changePassword, refreshMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

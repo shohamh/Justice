@@ -201,3 +201,53 @@ def test_repeated_backend_exceptions_are_rate_limited_per_fingerprint(monkeypatc
         assert len(handler.records) == 4
     finally:
         logger.removeHandler(handler)
+
+
+def test_oidc_callback_query_values_are_redacted_from_error_data(monkeypatch):
+    """A failure while handling the callback must not store the one-time code or state."""
+    import app.main as main_module
+    from app.main import create_app
+
+    captured = {}
+
+    def capture(request: Request, exc: BaseException, data: dict):
+        captured.update(data=data)
+
+    monkeypatch.setattr(main_module, "log_backend_exception", capture)
+    app = create_app()
+
+    @app.get("/test-oidc-error")
+    async def test_oidc_error():
+        raise RuntimeError("boom")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    client.get("/test-oidc-error?code=AUTHCODE123&state=STATE456&iss=https://p.example&debug=yes")
+
+    dumped = json.dumps(captured["data"])
+    assert "AUTHCODE123" not in dumped and "STATE456" not in dumped
+    assert captured["data"]["query"]["debug"] == "yes"
+
+
+def test_uvicorn_access_log_redacts_oidc_callback_query():
+    import logging
+
+    from app.logging_config import OidcQueryRedactionFilter
+
+    flt = OidcQueryRedactionFilter()
+    record = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("10.0.0.1:5000", "GET", "/api/auth/oidc/callback?code=AUTHCODE123&state=STATE456", "1.1", 303),
+        None,
+    )
+    assert flt.filter(record) is True
+    message = record.getMessage()
+    assert "AUTHCODE123" not in message and "STATE456" not in message
+    assert "/api/auth/oidc/callback" in message
+
+    other = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+        ("10.0.0.1:5000", "GET", "/api/soldiers?q=abc", "1.1", 200), None,
+    )
+    flt.filter(other)
+    assert "q=abc" in other.getMessage()

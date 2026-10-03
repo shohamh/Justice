@@ -1,3 +1,5 @@
+import axios from "axios";
+
 import { api } from "./client";
 import type { RankTrack } from "./rankAdvancement";
 import type { SoldierRef, WaitingOnRef } from "./myRequests";
@@ -48,6 +50,67 @@ export interface SoldierDTO {
   hierarchy_path?: string[];
 }
 
+export interface SoldierRosterItemDTO {
+  id: string;
+  personal_number: string;
+  full_name: string;
+  role: string;
+  hierarchy_node_id: string | null;
+  left_at: string | null;
+  telegram_linked: boolean;
+  is_commander: boolean;
+  commander_node_name: string | null;
+  hierarchy_path: string[];
+}
+
+export type SoldierRosterSort =
+  | "full_name"
+  | "personal_number"
+  | "role"
+  | "node"
+  | "telegram";
+
+export interface SoldierRosterPageDTO {
+  items: SoldierRosterItemDTO[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface SoldierRosterRequest {
+  cursor?: string;
+  node_id?: string;
+  direct_node_only?: boolean;
+  search: string;
+  sort: SoldierRosterSort;
+  descending: boolean;
+  role_order?: string;
+  page_size: number;
+  active_only?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface HakpazaSoldierRosterItemDTO {
+  id: string;
+  full_name: string;
+  rank: string | null;
+  next_shift_date: string | null;
+  next_shift_type_name: string | null;
+}
+
+export interface HakpazaSoldierRosterPageDTO {
+  items: HakpazaSoldierRosterItemDTO[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface HakpazaSoldierRosterRequest {
+  as_of_date: string;
+  search: string;
+  page_size: number;
+  cursor?: string;
+  signal?: AbortSignal;
+}
+
 export interface OnboardResult extends SoldierDTO {
   temp_password: string | null;
 }
@@ -82,6 +145,131 @@ export interface FieldUpdateDTO {
 export async function listSoldiers(): Promise<SoldierDTO[]> {
   const data = (await api.get<unknown>("/soldiers")).data;
   return optionalArrayResponse<SoldierDTO>(data);
+}
+
+export interface SoldierNameDTO {
+  id: string;
+  full_name: string;
+  personal_number?: string;
+}
+
+export async function lookupSoldierNames(ids: string[]): Promise<SoldierNameDTO[]> {
+  const uniqueIds = [...new Set(ids)];
+  const names: SoldierNameDTO[] = [];
+  // Four bounded requests at a time; large jobs and range events cannot truncate names.
+  for (let offset = 0; offset < uniqueIds.length; offset += 800) {
+    const batch = uniqueIds.slice(offset, offset + 800);
+    const chunks = [0, 200, 400, 600]
+      .map(start => batch.slice(start, start + 200))
+      .filter(chunk => chunk.length > 0);
+    const results = await Promise.all(chunks.map(async chunk => {
+      const data = (await api.post<unknown>("/soldiers/lookup/names", { ids: chunk })).data;
+      return requiredArrayResponse<SoldierNameDTO>(data, "Invalid soldier names response");
+    }));
+    names.push(...results.flat());
+  }
+  return names;
+}
+
+export async function listSoldierRosterPage(
+  request: SoldierRosterRequest,
+): Promise<SoldierRosterPageDTO> {
+  const { signal, ...query } = request;
+  const payload = requiredObjectResponse(
+    (await api.get<unknown>("/soldiers/roster", { params: query, signal })).data,
+    "Invalid soldier roster response",
+  );
+  const items = requiredArrayResponse<SoldierRosterItemDTO>(
+    payload.items,
+    "Invalid soldier roster items",
+  );
+  if (typeof payload.has_more !== "boolean") {
+    throw new Error("Invalid soldier roster paging state");
+  }
+  if (payload.next_cursor !== null && typeof payload.next_cursor !== "string") {
+    throw new Error("Invalid soldier roster cursor");
+  }
+  return {
+    items,
+    next_cursor: payload.next_cursor,
+    has_more: payload.has_more,
+  };
+}
+
+export async function listHakpazaSoldierRosterPage(
+  request: HakpazaSoldierRosterRequest,
+): Promise<HakpazaSoldierRosterPageDTO> {
+  const { signal, ...query } = request;
+  const payload = requiredObjectResponse(
+    (await api.get<unknown>("/soldiers/roster/hakpaza", { params: query, signal })).data,
+    "Invalid Hakpaza soldier roster response",
+  );
+  const rawItems = requiredArrayResponse<unknown>(
+    payload.items,
+    "Invalid Hakpaza soldier roster items",
+  );
+  const items = rawItems.map((value) => {
+    const row = requiredObjectResponse(
+      value,
+      "Invalid Hakpaza soldier roster item",
+    );
+    if (
+      typeof row.id !== "string" ||
+      typeof row.full_name !== "string" ||
+      !(row.rank === null || typeof row.rank === "string") ||
+      !(row.next_shift_date === null || typeof row.next_shift_date === "string") ||
+      !(row.next_shift_type_name === null || typeof row.next_shift_type_name === "string")
+    ) {
+      throw new Error("Invalid Hakpaza soldier roster item");
+    }
+    return row as unknown as HakpazaSoldierRosterItemDTO;
+  });
+  if (typeof payload.has_more !== "boolean") {
+    throw new Error("Invalid Hakpaza soldier roster paging state");
+  }
+  if (payload.next_cursor !== null && typeof payload.next_cursor !== "string") {
+    throw new Error("Invalid Hakpaza soldier roster cursor");
+  }
+  if (payload.has_more && typeof payload.next_cursor !== "string") {
+    throw new Error("Hakpaza soldier roster omitted its continuation cursor");
+  }
+  return {
+    items,
+    next_cursor: payload.next_cursor,
+    has_more: payload.has_more,
+  };
+}
+
+export function isStaleHakpazaSoldierRosterCursorError(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    error.response?.status === 409 &&
+    isRecord(error.response.data) &&
+    (error.response.data.detail === "stale_cursor" ||
+      error.response.data.detail === "roster_changed")
+  );
+}
+
+export async function lookupSoldierByPersonalNumber(
+  personalNumber: string,
+): Promise<SoldierRosterItemDTO | null> {
+  const data = (await api.get<unknown>("/soldiers/lookup/personal-number", {
+    params: { personal_number: personalNumber },
+  })).data;
+  if (data === null) return null;
+  return requiredObjectResponse(
+    data,
+    "Invalid soldier personal-number lookup response",
+  ) as unknown as SoldierRosterItemDTO;
+}
+
+export function isStaleSoldierRosterCursorError(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    error.response?.status === 409 &&
+    isRecord(error.response.data) &&
+    error.response.data.detail === "stale_cursor"
+  );
 }
 
 export async function onboardSoldier(input: {

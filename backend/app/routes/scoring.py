@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+import hashlib
+import json
+import math
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import scoring as svc
 from app.services.authority import can_view_soldier_scope, has_any_visibility
+from app.settings import get_settings
 
 router = APIRouter(prefix="/scoring", tags=["scoring"])
 
@@ -55,6 +60,33 @@ class TransparencyRow(BaseModel):
 
 class TransparencyOut(BaseModel):
     rows: list[TransparencyRow]
+    can_see_exemption_aggregates: bool
+
+
+class TransparencyPageItem(TransparencyRow):
+    row_num: int
+
+
+class TransparencyPageSummary(BaseModel):
+    row_count: int
+    average_cumulative: float
+    average_active_days: int
+    average_score_per_day: float
+    average_normalised: float
+    burden_share_mean: float | None
+    burden_share_stddev: float | None
+    burden_share_cv: float | None
+    burden_share_min: float | None
+    burden_share_max: float | None
+    burden_share_offset_min: int | None
+    burden_share_offset_max: int | None
+
+
+class TransparencyPageOut(BaseModel):
+    items: list[TransparencyPageItem]
+    next_cursor: str | None
+    has_more: bool
+    summary: TransparencyPageSummary
     can_see_exemption_aggregates: bool
 
 
@@ -125,6 +157,347 @@ def transparency(
     result = svc.transparency_rows(session, viewer=user)
     return TransparencyOut(
         rows=[TransparencyRow(**row) for row in result["rows"]],
+        can_see_exemption_aggregates=result["can_see_exemption_aggregates"],
+    )
+
+
+def _transparency_fairness_revision(session: Session) -> int:
+    """O(1) generation for fairness inputs not represented in transparency rows."""
+    return session.execute(
+        text("SELECT revision FROM transparency_fairness_revision WHERE singleton = TRUE")
+    ).scalar_one()
+
+
+def _transparency_page_revision(
+    rows: list[dict], *, fairness_revision: int, as_of: date
+) -> str:
+    """Fingerprint row values plus mutation-aware fairness grouping inputs."""
+    content = json.dumps(
+        {
+            "rows": rows,
+            "fairness_revision": fairness_revision,
+            "as_of": as_of.isoformat(),
+        },
+        default=str,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _number_transparency_rows_in_place(rows: list[dict]) -> list[dict]:
+    """Add display row numbers without copying every projected row dictionary."""
+    for index, row in enumerate(rows, start=1):
+        row["row_num"] = index
+    return rows
+
+
+def _transparency_page_binding(
+    *,
+    session: Session,
+    user: Soldier,
+    node_id: uuid.UUID | None,
+    officer_filter: str,
+    service_type: str | None,
+    group_keys: list[str],
+    rank_filter: str | None,
+    search: str,
+    sort: str,
+    descending: bool,
+    page_size: int,
+    rank_order: list[str],
+) -> str:
+    roots = sorted(str(value) for value in scope_root_ids(session, user))
+    value = {
+        "user": str(user.id),
+        "role": str(user.role),
+        "scope_roots": roots,
+        "node_id": str(node_id) if node_id else None,
+        "officer_filter": officer_filter,
+        "service_type": service_type,
+        "group_keys": sorted(set(group_keys)),
+        "rank_filter": rank_filter,
+        "search": search.casefold(),
+        "sort": sort,
+        "descending": descending,
+        "page_size": page_size,
+        "rank_order": rank_order,
+    }
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _transparency_page_cursor(
+    *, binding: str, revision: str, offset: int
+) -> str:
+    settings = get_settings()
+    return jwt.encode(
+        {
+            "purpose": "transparency-page-v1",
+            "binding": binding,
+            "revision": revision,
+            "offset": offset,
+            "exp": int((datetime.now(timezone.utc) + timedelta(minutes=20)).timestamp()),
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+@router.get("/transparency/page", response_model=TransparencyPageOut)
+def transparency_page(
+    cursor: str | None = None,
+    search: str = Query("", max_length=200),
+    sort: str = Query("burden_share", max_length=40),
+    descending: bool = True,
+    page_size: int = Query(100, ge=1, le=100),
+    node_id: uuid.UUID | None = None,
+    officer_filter: str = Query("all", pattern="^(all|officer|enlisted)$"),
+    service_type: str | None = Query(None, max_length=40),
+    group_key: list[str] = Query(default=[]),
+    rank_filter: str | None = Query(None, max_length=40),
+    rank_order: list[str] = Query(default=[]),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> TransparencyPageOut:
+    """Bound the response and DOM while preserving the global scoring projection.
+
+    The score projection still materializes all caller-visible rows to retain its
+    global normalization and burden-share ordering semantics. The legacy route
+    remains the complete export and sub-unit contract.
+    """
+    if not has_any_visibility(session, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
+
+    fairness_revision_before = _transparency_fairness_revision(session)
+    result = svc.transparency_rows(session, viewer=user)
+    source_rows: list[dict] = result["rows"]
+    fairness_revision = _transparency_fairness_revision(session)
+    if fairness_revision != fairness_revision_before:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="data_changed")
+    revision_as_of = date.today()
+    revision = _transparency_page_revision(
+        source_rows, fairness_revision=fairness_revision, as_of=revision_as_of
+    )
+    if officer_filter not in {"all", "officer", "enlisted"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_officer_filter")
+
+    binding = _transparency_page_binding(
+        session=session,
+        user=user,
+        node_id=node_id,
+        officer_filter=officer_filter,
+        service_type=service_type,
+        group_keys=group_key,
+        rank_filter=rank_filter,
+        search=search,
+        sort=sort,
+        descending=descending,
+        page_size=page_size,
+        rank_order=rank_order,
+    )
+    offset = 0
+    if cursor:
+        try:
+            payload = jwt.decode(
+                cursor,
+                get_settings().jwt_secret,
+                algorithms=[get_settings().jwt_algorithm],
+            )
+        except jwt.PyJWTError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor") from exc
+        if payload.get("purpose") != "transparency-page-v1" or payload.get("binding") != binding:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+        if payload.get("revision") != revision:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+        try:
+            offset = int(payload["offset"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor") from exc
+        if offset < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+
+    node_ids: set[uuid.UUID] | None = None
+    if node_id:
+        node_ids = {
+            node.id
+            for node in session.execute(select(HierarchyNode)).scalars().all()
+            if node_id in (node.path_ids or [])
+        }
+        node_ids.add(node_id)
+
+    group_soldier_ids: set[uuid.UUID] | None = None
+    fairness_by_id: dict[uuid.UUID, tuple[int, float | None]] = {}
+    if group_key or sort in {"group_rank", "group_dev"}:
+        fairness = svc.fairness_components(session, viewer=user, node_id=node_id)
+        group_soldier_ids = set() if group_key else None
+        for index, component in enumerate(fairness.get("components", [])):
+            members = sorted(component.get("soldiers", []), key=lambda item: float(item.get("burden_share") or 0))
+            mean_value = component.get("burden_share")
+            group_mean = float(mean_value["mean"]) if isinstance(mean_value, dict) and mean_value.get("mean") is not None else None
+            for rank_index, item in enumerate(members, start=1):
+                soldier_id = uuid.UUID(str(item["soldier_id"]))
+                fairness_by_id[soldier_id] = (rank_index, group_mean)
+        for item in fairness.get("exempt_from_all", {}).get("soldiers", []):
+            fairness_by_id[uuid.UUID(str(item["soldier_id"]))] = (0, None)
+        if group_key:
+            assert group_soldier_ids is not None
+            for key in set(group_key):
+                if key == "exempt":
+                    group_soldier_ids.update(
+                        uuid.UUID(str(item["soldier_id"]))
+                        for item in fairness.get("exempt_from_all", {}).get("soldiers", [])
+                    )
+                elif key.startswith("comp_"):
+                    try:
+                        index = int(key[5:])
+                        component = fairness.get("components", [])[index]
+                    except (ValueError, IndexError):
+                        continue
+                    group_soldier_ids.update(
+                        uuid.UUID(str(item["soldier_id"])) for item in component.get("soldiers", [])
+                    )
+
+    filtered_rows = []
+    for row in source_rows:
+        if node_ids is not None and row.get("node_id") not in node_ids:
+            continue
+        if officer_filter == "officer" and not row.get("is_officer"):
+            continue
+        if officer_filter == "enlisted" and row.get("is_officer"):
+            continue
+        if service_type is not None and row.get("service_type") != service_type:
+            continue
+        if group_soldier_ids is not None and row.get("soldier_id") not in group_soldier_ids:
+            continue
+        filtered_rows.append(row)
+
+    burden_shares = [float(row.get("burden_share") or 0) for row in filtered_rows]
+    mean = sum(burden_shares) / len(burden_shares) if burden_shares else 0.0
+    stddev = (
+        math.sqrt(sum((value - mean) ** 2 for value in burden_shares) / len(burden_shares))
+        if len(burden_shares) >= 2
+        else None
+    )
+    summary = TransparencyPageSummary(
+        row_count=len(filtered_rows),
+        average_cumulative=(
+            sum(float(row.get("cumulative_score") or 0) for row in filtered_rows) / len(filtered_rows)
+            if filtered_rows
+            else 0.0
+        ),
+        average_active_days=(
+            math.floor(sum(int(row.get("active_days") or 0) for row in filtered_rows) / len(filtered_rows) + 0.5)
+            if filtered_rows
+            else 0
+        ),
+        average_score_per_day=(
+            sum(float(row.get("score_per_day") or 0) for row in filtered_rows) / len(filtered_rows)
+            if filtered_rows
+            else 0.0
+        ),
+        average_normalised=(
+            sum(float(row.get("normalised_score") or 0) for row in filtered_rows) / len(filtered_rows)
+            if filtered_rows
+            else 0.0
+        ),
+        burden_share_mean=mean if len(burden_shares) >= 2 else None,
+        burden_share_stddev=stddev,
+        burden_share_cv=(stddev / mean if stddev is not None and mean else 0.0)
+        if stddev is not None
+        else None,
+        burden_share_min=min(burden_shares) if len(burden_shares) >= 2 else None,
+        burden_share_max=max(burden_shares) if len(burden_shares) >= 2 else None,
+        burden_share_offset_min=min(
+            (int(row.get("burden_share_offset_raw") or 0) for row in source_rows), default=None
+        ),
+        burden_share_offset_max=max(
+            (int(row.get("burden_share_offset_raw") or 0) for row in source_rows), default=None
+        ),
+    )
+
+    numbered_rows = _number_transparency_rows_in_place(filtered_rows)
+    if rank_filter is not None:
+        numbered_rows = [row for row in numbered_rows if row.get("rank") == rank_filter]
+    query_text = search.casefold().strip()
+    if query_text:
+        numbered_rows = [
+            row
+            for row in numbered_rows
+            if any(
+                query_text in str(row.get(field) or "").casefold()
+                for field in ("full_name", "node_name", "exemptions_display", "rank")
+            )
+        ]
+
+    allowed_sort_fields = {
+        "num": "row_num",
+        "name": "full_name",
+        "full_name": "full_name",
+        "unit": "node_name",
+        "exemptions": "exemptions_display",
+        "enrolled_at": "enrolled_at",
+        "active_days": "active_days",
+        "rank": "rank",
+        "shift_count": "shift_count",
+        "cumulative": "cumulative_score",
+        "cumulative_score": "cumulative_score",
+        "score_per_day": "score_per_day",
+        "normalised": "normalised_score",
+        "burden_share": "burden_share",
+        "burden_share_offset_raw": "burden_share_offset_raw",
+        "c_over_d": "c_over_d",
+        "group_rank": "group_rank",
+        "group_dev": "group_dev",
+        "count_offset": "burden_share_offset_raw",
+    }
+    if sort not in allowed_sort_fields:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_sort")
+    field = allowed_sort_fields[sort]
+
+    def sort_value(row: dict) -> Any:
+        if sort in {"group_rank", "group_dev"}:
+            group_rank, group_mean = fairness_by_id.get(uuid.UUID(str(row["soldier_id"])), (999, None))
+            return group_rank if sort == "group_rank" else (
+                float(row.get("burden_share") or 0) - group_mean if group_mean is not None else 9999.0
+            )
+        value = row.get(field)
+        if field in {"active_days", "shift_count", "row_num", "burden_share_offset_raw"}:
+            return int(value or 0)
+        if field in {"cumulative_score", "score_per_day", "normalised_score", "burden_share", "c_over_d"}:
+            return Decimal(str(value or 0))
+        if sort == "rank":
+            order = {value: index for index, value in enumerate(rank_order)}
+            return order.get(str(value or ""), len(order) + 1)
+        return str(value or "").casefold()
+
+    # Stable secondary key is always the soldier UUID, regardless of direction.
+    numbered_rows.sort(key=lambda row: str(row["soldier_id"]))
+    numbered_rows.sort(key=sort_value, reverse=descending)
+    page_rows = numbered_rows[offset : offset + page_size]
+    has_more = offset + page_size < len(numbered_rows)
+    next_cursor = (
+        _transparency_page_cursor(
+            binding=binding,
+            revision=revision,
+            offset=offset + page_size,
+        )
+        if has_more
+        else None
+    )
+    if (
+        _transparency_fairness_revision(session) != fairness_revision
+        or date.today() != revision_as_of
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="stale_cursor" if cursor else "data_changed",
+        )
+    return TransparencyPageOut(
+        items=[TransparencyPageItem(**row) for row in page_rows],
+        next_cursor=next_cursor,
+        has_more=has_more,
+        summary=summary,
         can_see_exemption_aggregates=result["can_see_exemption_aggregates"],
     )
 

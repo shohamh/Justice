@@ -20,6 +20,7 @@ from app.services.eligibility import (
     derive_is_career,
     validate_rank_track_compatibility,
 )
+from app.services.identity_write import flush_with_identity_guard, resolve_identity_fields
 from app.services.invite_codes import consume_invite_code
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
 from app.services.settings_loader import (
@@ -82,6 +83,8 @@ def register(
     food_type: str | None = None,
     food_constraints: str | None = None,
     unit_join_date: date | None = None,
+    require_invite_code: bool = True,
+    email_verified: bool = False,
 ) -> tuple[Soldier, list[ExemptionRequest]]:
     try:
         validate_full_name(full_name)
@@ -93,7 +96,15 @@ def register(
     except PasswordPolicyError as exc:
         raise RegistrationError("password_policy") from exc
 
-    consume_invite_code(session, code=invite_code)
+    try:
+        canonical_email, ad_username = resolve_identity_fields(session, email)
+    except ValueError as exc:  # unsupported address, or IdentityCollisionError
+        raise RegistrationError(str(exc)) from exc
+
+    # Only a caller holding a live OIDC registration context (locked, and consumed
+    # in this same transaction) may pass require_invite_code=False / email_verified=True.
+    if require_invite_code:
+        consume_invite_code(session, code=invite_code)
 
     if session.execute(
         select(Soldier.id).where(Soldier.personal_number == personal_number)
@@ -149,7 +160,9 @@ def register(
         role="soldier",
         hierarchy_node_id=holding_node_id,
         phone=phone,
-        email=email,
+        email=canonical_email,
+        ad_username=ad_username,
+        email_verified=email_verified,
         must_change_password=False,
         gender=gender,
         is_officer=is_officer,
@@ -179,7 +192,10 @@ def register(
         )
         soldier.next_rank_date_overridden = False
     session.add(soldier)
-    session.flush()
+    try:
+        flush_with_identity_guard(session)
+    except ValueError as exc:  # IdentityCollisionError from a concurrent registration
+        raise RegistrationError(str(exc)) from exc
 
     enrollment_req = SoldierEnrollmentRequest(
         soldier_id=soldier.id,

@@ -9,16 +9,22 @@ import {
   dismissHeldForReview,
   clearFieldOverride,
   runSyncNow,
+  listHrIdentityConflicts,
+  acknowledgeHrIdentityConflict,
+  chooseHrIdentityCandidate,
+  listHrPreferredRecords,
+  clearHrPreferredRecord,
 } from "./hrReview";
 
 vi.mock("./client", () => ({
-  api: { get: vi.fn(), post: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
 
 describe("hrReview api", () => {
   beforeEach(() => {
     vi.mocked(api.get).mockReset();
     vi.mocked(api.post).mockReset();
+    vi.mocked(api.delete).mockReset();
   });
 
   it("listHeldForReview parses items", async () => {
@@ -110,5 +116,37 @@ describe("hrReview api", () => {
     const result = await runSyncNow();
     expect(api.post).toHaveBeenCalledWith("/admin/hr-sync/run-now");
     expect(result.person_sync_id).toBe("2");
+  });
+
+  it("listHrIdentityConflicts passes the status filter and normalizes nested lists", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { items: [{ id: "c1", personal_number: "123", candidates: "bad", colliding_soldiers: null, preferred_record: undefined }] },
+    });
+    const res = await listHrIdentityConflicts("all");
+    expect(api.get).toHaveBeenCalledWith("/admin/hr-sync/identity-conflicts", { params: { status: "all" } });
+    expect(res.items[0].candidates).toEqual([]);
+    expect(res.items[0].colliding_soldiers).toEqual([]);
+    expect(res.items[0].preferred_record).toBeNull();
+  });
+
+  it("acknowledge posts without a body", async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { id: "c1", status: "acknowledged", candidates: [] } });
+    const res = await acknowledgeHrIdentityConflict("c1");
+    expect(api.post).toHaveBeenCalledWith("/admin/hr-sync/identity-conflicts/c1/acknowledge");
+    expect(res.status).toBe("acknowledged");
+  });
+
+  it("choose posts the candidate index", async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { id: "c1", status: "resolved", candidates: [] } });
+    await chooseHrIdentityCandidate("c1", 0);
+    expect(api.post).toHaveBeenCalledWith("/admin/hr-sync/identity-conflicts/c1/choose", { candidate_index: 0 });
+  });
+
+  it("lists and clears preferred records", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { items: [{ personal_number: "123", key_type: "username", key_value: "u", chosen_by: null, chosen_by_name: null, chosen_at: "x" }] } });
+    expect((await listHrPreferredRecords()).items).toHaveLength(1);
+    vi.mocked(api.delete).mockResolvedValue({});
+    await clearHrPreferredRecord("1/2");
+    expect(api.delete).toHaveBeenCalledWith("/admin/hr-sync/preferred-records/1%2F2");
   });
 });

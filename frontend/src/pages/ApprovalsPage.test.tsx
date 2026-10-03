@@ -11,7 +11,6 @@ import * as enrollmentApi from "../api/enrollment";
 import * as hierarchyApi from "../api/hierarchy";
 import * as authApi from "../api/auth";
 import * as hierarchyTransfersApi from "../api/hierarchyTransfers";
-import { api } from "../api/client";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 vi.mock("react-i18next", () => ({
@@ -27,9 +26,6 @@ vi.mock("../api/enrollment");
 vi.mock("../api/hierarchy");
 vi.mock("../api/auth");
 vi.mock("../api/hierarchyTransfers");
-vi.mock("../api/client", () => ({
-  api: { get: vi.fn() },
-}));
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -136,8 +132,7 @@ beforeEach(() => {
     response: { status: 400, data: { detail: "already_decided" } },
   });
   vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([]);
-  vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("");
-  vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([]);
+    vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([]);
   vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([]);
   vi.mocked(swapsApi.isSwapActionableForUser).mockImplementation((swap, userId, isAdmin = false) => {
     if (isAdmin) return true;
@@ -592,9 +587,8 @@ describe("ApprovalsPage - transfers tab", () => {
 describe("ApprovalsPage - exemption file links", () => {
   it("opens exemption files via an authenticated blob fetch and previews them in-app", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
-    const blob = new Blob(["data"], { type: "application/pdf" });
-    vi.mocked(api.get).mockResolvedValue({ data: blob });
+        const blob = new Blob(["data"], { type: "application/pdf" });
+    vi.mocked(exemptionsApi.downloadExemptionRequestFile).mockResolvedValue(blob);
 
     const originalCreateObjectURL = URL.createObjectURL;
     const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -621,10 +615,7 @@ describe("ApprovalsPage - exemption file links", () => {
       fireEvent.click(fileLink);
 
       await waitFor(() => {
-        expect(api.get).toHaveBeenCalledWith(
-          "/exemption-requests/er1/files/f1",
-          expect.objectContaining({ responseType: "blob" }),
-        );
+        expect(exemptionsApi.downloadExemptionRequestFile).toHaveBeenCalledWith("er1", "f1");
       });
       expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
       const downloadLink = await screen.findByRole("link", { name: /הורדה/ });
@@ -641,8 +632,7 @@ describe("ApprovalsPage - exemption file links", () => {
 
   it("shows an error message when the exemption file fetch fails", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
-    vi.mocked(api.get).mockRejectedValue({
+        vi.mocked(exemptionsApi.downloadExemptionRequestFile).mockRejectedValue({
       response: { status: 404, data: { detail: "file_not_found" } },
     });
 
@@ -670,8 +660,7 @@ describe("ApprovalsPage - exemption file links", () => {
 
   it("shows a specific message when opening an exemption file returns no_permission", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
-    vi.mocked(api.get).mockRejectedValue({
+        vi.mocked(exemptionsApi.downloadExemptionRequestFile).mockRejectedValue({
       response: { status: 403, data: { detail: "no_permission" } },
     });
 
@@ -1055,5 +1044,75 @@ describe("ApprovalsPage - two-step indicator", () => {
     );
     const row = await screen.findByTestId("approval-row-c1");
     expect(within(row).getByTestId("constraint-stage-c1")).toHaveTextContent("2/2");
+  });
+});
+
+describe("ApprovalsPage hierarchy reads", () => {
+  function renderApprovals(initialEntries: string[] = ["/approvals"]) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={initialEntries}>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("does not load the full tree on the default constraints tab", async () => {
+    renderApprovals();
+    await screen.findByTestId("approvals-tab-constraints");
+
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("defers the full tree until an enrollment request is opened", async () => {
+    vi.mocked(enrollmentApi.listPendingEnrollments).mockResolvedValue([{
+      id: "enroll-1", soldier_id: "soldier-1", soldier_name: "Test Soldier",
+      soldier_personal_number: "1234567", requested_node_id: "node-1",
+      requested_node_name: "Requested Unit", status: "pending", exemption_requests: [],
+      nearest_commander: null, nearest_duty_manager: null,
+    } as enrollmentApi.EnrollmentRequestDTO]);
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-enrollment"));
+    await screen.findByText("Requested Unit");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("enrollment-view-enroll-1"));
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not fetch the full tree when the Transfers tab has no pending requests", async () => {
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-transfers"));
+
+    expect(await screen.findByText("approvals.transfers_none")).toBeInTheDocument();
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("loads the full tree for pending transfers and keeps their node labels", async () => {
+    vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([{
+      id: "transfer-1", soldier_id: "soldier-1", soldier_name: "Test Soldier",
+      from_node_id: "node-from", to_node_id: "node-to", status: "pending", reason: null,
+    }]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+      {
+        id: "node-from", level: "unit", name: "Current Unit", parent_id: null,
+        commander_id: null, commander_name: null, path_ids: [], duty_managers: [],
+        dm_manageable: false, can_edit: false,
+      },
+      {
+        id: "node-to", level: "unit", name: "Requested Unit", parent_id: null,
+        commander_id: null, commander_name: null, path_ids: [], duty_managers: [],
+        dm_manageable: false, can_edit: false,
+      },
+    ]);
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-transfers"));
+
+    expect(await screen.findByText("Current Unit")).toBeInTheDocument();
+    expect(screen.getByText("Requested Unit")).toBeInTheDocument();
+    expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
   });
 });

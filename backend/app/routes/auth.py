@@ -22,6 +22,7 @@ from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services import email_verification as ev_svc
 from app.services import password_reset as pwd_reset_svc
+from app.services import oidc_registration as oidc_reg
 from app.services import registration as reg_svc
 from app.services.file_validation import FileValidationError, validate_exemption_file
 from app.services.hr_activation import consume_activation_code
@@ -34,6 +35,8 @@ from app.validation import is_valid_israeli_phone
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _logger = logging.getLogger("app.auth")
+
+SSO_REGISTRATION_REFUSED = "registration_unavailable"
 
 _LOCKOUT_THRESHOLD = 10
 _LOCKOUT_MINUTES = 15
@@ -57,12 +60,16 @@ class ChangePasswordRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    invite_code: str = Field(min_length=1, max_length=20)
+    # Empty is accepted by the schema only so a live OIDC registration context can
+    # replace it; the register route rejects a missing code otherwise.
+    invite_code: str = Field(default="", max_length=20)
     personal_number: str = Field(min_length=1, max_length=20)
     full_name: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=8, max_length=200)
     phone: str = Field(max_length=40)
-    email: str = Field(max_length=200)
+    # Null only for a live OIDC registration (the server then uses the verified email
+    # from the context); the register route requires it otherwise.
+    email: str | None = Field(default=None, max_length=200)
     gender: str
     is_officer: bool | None = None
     rank: str
@@ -413,15 +420,33 @@ async def register(
             if et is not None and et.is_medical and not exemption_files.get(i):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="medical_exemption_requires_file")
 
+    # The invite code is waived only by a live, browser-held OIDC registration
+    # context, decided here from server state; no request field can do it. The
+    # row is locked so concurrent final steps serialize on it.
+    sso_context = oidc_reg.get_active_context(
+        session, request.cookies.get(oidc_reg.REGISTRATION_COOKIE), lock=True
+    )
+    if sso_context is None and body.email is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="registration_invalid"
+        )
+    if sso_context is None and not body.invite_code.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid invite code")
+    if sso_context is not None and not oidc_reg.still_unmatched(session, sso_context):
+        session.commit()  # keep the recorded conflict, refuse generically
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=SSO_REGISTRATION_REFUSED)
+
     try:
         soldier, created_requests = reg_svc.register(
             session,
             invite_code=body.invite_code,
+            require_invite_code=sso_context is None,
+            email_verified=sso_context is not None,
             personal_number=body.personal_number,
             full_name=body.full_name,
             password=body.password,
             phone=body.phone,
-            email=body.email,
+            email=sso_context.email if sso_context is not None else body.email,
             gender=body.gender,
             is_officer=body.is_officer,
             rank=body.rank,
@@ -441,6 +466,8 @@ async def register(
             personal_constraints=body.personal_constraints,
         )
         session.flush()
+        if sso_context is not None:
+            oidc_reg.bind_and_consume(session, sso_context, soldier)
 
         # reg_svc.register() returns created_requests in the exact order it
         # inserted them (the same order as body.exemption_requests), so
@@ -458,8 +485,16 @@ async def register(
                 ))
 
         session.commit()
+    except oidc_reg.OidcRegistrationRefused as exc:
+        session.rollback()
+        _logger.warning("sso registration refused: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=SSO_REGISTRATION_REFUSED)
     except (InviteCodeError, RegistrationError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        session.rollback()
+        detail = str(exc)
+        if sso_context is not None and detail in oidc_reg.COLLISION_DETAILS:
+            detail = SSO_REGISTRATION_REFUSED  # never say which value collided
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
     refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(
@@ -467,19 +502,28 @@ async def register(
         max_age=settings.refresh_token_days * 24 * 3600,
         httponly=True, secure=get_settings().cookie_secure, samesite="strict", path="/api/auth",
     )
+    if sso_context is not None:
+        response.delete_cookie(oidc_reg.REGISTRATION_COOKIE, path="/api/auth")
     return LoginResponse(access_token=access, must_change_password=False)
 
 
 @router.get("/register/nodes", response_model=list[NodeOut])
 def register_nodes(
-    invite_code: str,
     request: Request,
     response: Response,
+    invite_code: str | None = None,
     session: Session = Depends(get_session),
 ) -> list[NodeOut]:
     from sqlalchemy import select as sa_select
-    if not validate_code(session, code=invite_code):
-        _enforce_invite_code_guess_limit(request)
+    # A live OIDC registration context (browser cookie) stands in for the invite code.
+    has_context = oidc_reg.get_active_context(
+        session, request.cookies.get(oidc_reg.REGISTRATION_COOKIE)
+    ) is not None
+    if not has_context and invite_code is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invite_code_required")
+    if not has_context and not (invite_code and validate_code(session, code=invite_code)):
+        if invite_code:
+            _enforce_invite_code_guess_limit(request)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_invite_code")
     nodes = session.execute(sa_select(HierarchyNode)).scalars().all()
     commander_ids = {n.commander_id for n in nodes if n.commander_id}

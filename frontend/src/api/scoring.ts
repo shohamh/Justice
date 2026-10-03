@@ -1,6 +1,6 @@
 import { api } from "./client";
 import { ExemptionSummaryItem } from "./exemptions";
-import { isRecord, optionalArrayResponse, requiredObjectResponse } from "./responseGuards";
+import { isRecord, optionalArrayResponse, requiredArrayResponse, requiredObjectResponse } from "./responseGuards";
 
 export interface TransparencyRow {
   soldier_id: string;
@@ -31,6 +31,44 @@ export interface TransparencyRow {
 export interface TransparencyOut {
   rows: TransparencyRow[];
   can_see_exemption_aggregates: boolean;
+}
+
+export interface TransparencyPageSummary {
+  row_count: number;
+  average_cumulative: number;
+  average_active_days: number;
+  average_score_per_day: number;
+  average_normalised: number;
+  burden_share_mean: number | null;
+  burden_share_stddev: number | null;
+  burden_share_cv: number | null;
+  burden_share_min: number | null;
+  burden_share_max: number | null;
+  burden_share_offset_min: number | null;
+  burden_share_offset_max: number | null;
+}
+
+export interface TransparencyPageOut {
+  items: (TransparencyRow & { row_num: number })[];
+  next_cursor: string | null;
+  has_more: boolean;
+  summary: TransparencyPageSummary;
+  can_see_exemption_aggregates: boolean;
+}
+
+export interface TransparencyPageRequest {
+  cursor?: string;
+  search: string;
+  sort: string;
+  descending: boolean;
+  rankOrder?: string[];
+  pageSize: number;
+  signal?: AbortSignal;
+  nodeId?: string | null;
+  officerFilter?: "all" | "officer" | "enlisted";
+  serviceType?: string | null;
+  groupKeys?: string[];
+  rankFilter?: string | null;
 }
 
 export interface Breakdown {
@@ -77,11 +115,79 @@ export interface BurdenShareBreakdown {
   W_i: string;  // Σ(active_frac_q) — historical weight
 }
 
-export async function getTransparency(): Promise<TransparencyOut> {
+function parseTransparencyRowForExport(value: unknown): TransparencyRow {
+  const row = requiredObjectResponse(value, "Invalid transparency row response");
+  const nullableString = (field: unknown) => field === null || typeof field === "string";
+  const numericString = (field: unknown) =>
+    typeof field === "string" && field.trim() !== "" && Number.isFinite(Number(field));
+  if (
+    typeof row.soldier_id !== "string" ||
+    typeof row.full_name !== "string" ||
+    !nullableString(row.node_id) ||
+    !nullableString(row.node_name) ||
+    typeof row.enrolled_at !== "string" ||
+    !Number.isInteger(row.active_days) ||
+    !Number.isInteger(row.shift_count) ||
+    !nullableString(row.rank) ||
+    !numericString(row.cumulative_score) ||
+    !numericString(row.score_per_day) ||
+    !numericString(row.normalised_score) ||
+    typeof row.is_globally_exempted !== "boolean"
+  ) {
+    throw new Error("Invalid transparency row response");
+  }
+  return row as unknown as TransparencyRow;
+}
+
+async function fetchTransparency(requireRows: boolean): Promise<TransparencyOut> {
   const r = await api.get<unknown>(`/scoring/transparency`);
   const data = requiredObjectResponse(r.data, "Invalid transparency response");
   return {
-    rows: optionalArrayResponse<TransparencyRow>(data.rows),
+    rows: requireRows
+      ? requiredArrayResponse<unknown>(data.rows, "Invalid transparency rows response").map(parseTransparencyRowForExport)
+      : optionalArrayResponse<TransparencyRow>(data.rows),
+    can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
+  };
+}
+
+export function getTransparency(): Promise<TransparencyOut> {
+  return fetchTransparency(false);
+}
+
+/** Rejects malformed rows so a complete workbook cannot look like an empty export. */
+export function getTransparencyForExport(): Promise<TransparencyOut> {
+  return fetchTransparency(true);
+}
+
+export async function getTransparencyPage(
+  request: TransparencyPageRequest,
+): Promise<TransparencyPageOut> {
+  const params = new URLSearchParams();
+  if (request.cursor) params.set("cursor", request.cursor);
+  if (request.search) params.set("search", request.search);
+  params.set("sort", request.sort);
+  params.set("descending", String(request.descending));
+  params.set("page_size", String(request.pageSize));
+  if (request.nodeId) params.set("node_id", request.nodeId);
+  if (request.officerFilter && request.officerFilter !== "all") {
+    params.set("officer_filter", request.officerFilter);
+  }
+  if (request.serviceType) params.set("service_type", request.serviceType);
+  if (request.rankFilter) params.set("rank_filter", request.rankFilter);
+  for (const key of request.groupKeys ?? []) params.append("group_key", key);
+  for (const rank of request.rankOrder ?? []) params.append("rank_order", rank);
+  const r = await api.get<unknown>(`/scoring/transparency/page?${params.toString()}`, {
+    signal: request.signal,
+  });
+  const data = requiredObjectResponse(r.data, "Invalid transparency page response");
+  if (!isRecord(data.summary) || typeof data.has_more !== "boolean") {
+    throw new Error("Invalid transparency page response");
+  }
+  return {
+    items: optionalArrayResponse<TransparencyPageOut["items"][number]>(data.items),
+    next_cursor: typeof data.next_cursor === "string" ? data.next_cursor : null,
+    has_more: data.has_more,
+    summary: data.summary as unknown as TransparencyPageSummary,
     can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
   };
 }

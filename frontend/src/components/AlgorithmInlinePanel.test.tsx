@@ -14,8 +14,39 @@ vi.mock("../api/algorithm", () => ({
 }));
 
 vi.mock("./SubHierarchySelector", () => ({
-  default: () => <div data-testid="sub-hierarchy-selector" />,
+  default: ({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) => (
+    <div data-testid="sub-hierarchy-selector">
+      <span data-testid="selected-nodes">{value.join(",")}</span>
+      <button type="button" onClick={() => onChange(["node-1"])}>select node</button>
+    </div>
+  ),
 }));
+
+test("mounts the sub-hierarchy selector only when opened and retains it when closed", () => {
+  render(
+    <AlgorithmInlinePanel
+      selectedShiftIds={["s1"]}
+      onJobSubmitted={vi.fn()}
+      onClose={vi.fn()}
+    />
+  );
+
+  expect(screen.queryByTestId("sub-hierarchy-selector")).not.toBeInTheDocument();
+
+  const summary = screen.getByText(/תת-עץ/);
+  const details = summary.closest("details");
+  expect(details).not.toBeNull();
+  fireEvent.click(summary);
+  fireEvent.click(screen.getByRole("button", { name: "select node" }));
+
+  expect(screen.getByTestId("selected-nodes")).toHaveTextContent("node-1");
+  fireEvent.click(summary);
+  expect(details).not.toHaveAttribute("open");
+  expect(screen.getByTestId("sub-hierarchy-selector")).toBeInTheDocument();
+  fireEvent.click(summary);
+  expect(details).toHaveAttribute("open");
+  expect(screen.getByTestId("selected-nodes")).toHaveTextContent("node-1");
+});
 
 vi.mock("./AlgorithmModeHelpModal", () => ({
   default: ({ onClose }: { onClose: () => void }) => (

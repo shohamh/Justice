@@ -1,0 +1,522 @@
+from __future__ import annotations
+
+import uuid
+from datetime import date, timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import event
+from sqlalchemy.orm import Session
+
+from app.db.models import (
+    DutyAssignment,
+    DutyLocation,
+    DutyManagerScope,
+    DutyType,
+    ExemptionRequest,
+    ExemptionType,
+    ForcedCallup,
+    HierarchyTransferRequest,
+    PersonalConstraint,
+    SoldierEnrollmentRequest,
+    SoldierFieldUpdate,
+    SwapCandidate,
+    SwapRequest,
+)
+from app.services import hierarchy_transfers, swaps
+from app.services import nav_counts as nav_counts_service
+from app.services.settings_loader import set_setting
+from tests.helpers import auth_headers, create_node, create_soldier
+
+
+def _id() -> str:
+    return uuid.uuid4().hex[:10]
+
+
+def _build_badge_dataset(session: Session) -> dict[str, object]:
+    suffix = _id()
+    admin = create_soldier(session, personal_number=f"nav_admin_{suffix}", role="admin")
+    commander = create_soldier(session, personal_number=f"nav_cmd_{suffix}", role="commander")
+    duty_manager = create_soldier(session, personal_number=f"nav_dm_{suffix}", role="duty_manager")
+    dual_role = create_soldier(session, personal_number=f"nav_dual_{suffix}", role="commander")
+    no_scope = create_soldier(session, personal_number=f"nav_none_{suffix}", role="commander")
+
+    group = create_node(session, level="group", name=f"nav-group-{suffix}", commander_id=commander.id)
+    branch = create_node(session, level="branch", name=f"nav-branch-{suffix}", parent=group, commander_id=dual_role.id)
+    session.add_all([
+        DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=branch.id),
+        DutyManagerScope(duty_manager_id=dual_role.id, hierarchy_node_id=branch.id),
+    ])
+    duty_manager.hierarchy_node_id = branch.id
+    target = create_soldier(session, personal_number=f"nav_target_{suffix}", hierarchy_node_id=branch.id)
+
+    session.add(PersonalConstraint(
+        soldier_id=target.id,
+        start_date=date.today() + timedelta(days=10),
+        end_date=date.today() + timedelta(days=12),
+        reason="badge parity",
+        status="pending_commander",
+    ))
+
+    exemption_type = ExemptionType(name=f"nav-exemption-{suffix}", is_commander_exemption=False)
+    session.add(exemption_type)
+    session.flush()
+    session.add_all([
+        ExemptionRequest(
+            soldier_id=target.id,
+            exemption_type_id=exemption_type.id,
+            start_date=date.today() + timedelta(days=10),
+            end_date=date.today() + timedelta(days=12),
+            reason="commander step",
+            status="pending_commander",
+        ),
+        ExemptionRequest(
+            soldier_id=target.id,
+            exemption_type_id=exemption_type.id,
+            start_date=date.today() + timedelta(days=13),
+            end_date=date.today() + timedelta(days=15),
+            reason="duty manager step",
+            status="pending_duty_manager",
+        ),
+    ])
+    session.add_all([
+        SoldierFieldUpdate(
+            soldier_id=target.id, field_name="unit_join_date", new_value="2026-01-01",
+            status="pending_commander",
+        ),
+        SoldierFieldUpdate(
+            soldier_id=target.id, field_name="military_driving_license", new_value="yes",
+            status="pending_duty_manager",
+        ),
+    ])
+    session.add(SoldierEnrollmentRequest(
+        soldier_id=target.id, requested_node_id=branch.id, status="pending",
+    ))
+    session.add(HierarchyTransferRequest(
+        soldier_id=target.id, requested_by=target.id, from_node_id=branch.id,
+        to_node_id=branch.id, status="pending",
+    ))
+
+    duty_type = DutyType(name=f"nav-duty-{suffix}", score_per_day=1)
+    duty_location = DutyLocation(name=f"nav-location-{suffix}")
+    session.add_all([duty_type, duty_location])
+    session.flush()
+    for index, actor in enumerate((admin, commander, duty_manager, dual_role, no_scope)):
+        assignment = DutyAssignment(
+            duty_type_id=duty_type.id,
+            duty_location_id=duty_location.id,
+            soldier_id=target.id,
+            start_date=date.today() + timedelta(days=20 + index),
+            end_date=date.today() + timedelta(days=21 + index),
+            status="published",
+        )
+        session.add(assignment)
+        session.flush()
+        request = SwapRequest(
+            duty_assignment_id=assignment.id,
+            duty_date=assignment.start_date,
+            requesting_soldier_id=target.id,
+            status="open",
+            open_to_marketplace=False,
+        )
+        session.add(request)
+        session.flush()
+        session.add(SwapCandidate(
+            swap_request_id=request.id,
+            soldier_id=actor.id,
+            source="invited",
+            status="pending",
+        ))
+
+    set_setting(session, "forced_callup.enabled", True, actor_id=None)
+    session.add(ForcedCallup(
+        initiator_id=admin.id,
+        pulled_soldier_id=target.id,
+        original_assignment_id=uuid.uuid4(),
+        pull_date=date.today() + timedelta(days=30),
+        replacement_soldier_id=commander.id,
+        status="pending",
+    ))
+    session.commit()
+    return {
+        "admin": admin,
+        "commander": commander,
+        "duty_manager": duty_manager,
+        "dual_role": dual_role,
+        "no_scope": no_scope,
+    }
+
+
+def _legacy_nav_counts(client: TestClient, actor) -> dict[str, int]:
+    headers = auth_headers(actor)
+
+    def count_endpoint(path: str) -> int:
+        response = client.get(path, headers=headers)
+        if response.status_code == 403:
+            return 0  # UnifiedNav independently catches this source and shows zero.
+        assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
+        return response.json()["count"]
+
+    constraints = count_endpoint("/api/constraints/pending/count")
+    exemptions = count_endpoint("/api/exemption-requests/pending/count")
+    field_updates = count_endpoint("/api/soldiers/field-updates/pending/count")
+
+    enrollments_response = client.get("/api/enrollment-requests/pending", headers=headers)
+    assert enrollments_response.status_code == 200, enrollments_response.text
+    enrollments = len(enrollments_response.json())
+
+    swaps_response = client.get("/api/swaps/pending", headers=headers)
+    if swaps_response.status_code == 403:
+        actionable_swaps = 0
+    else:
+        assert swaps_response.status_code == 200, swaps_response.text
+        swaps = swaps_response.json()
+        if actor.role == "admin":
+            actionable_swaps = len(swaps)
+        else:
+            actor_id = str(actor.id)
+            actionable_swaps = sum(
+                actor_id in {approval["commander_id"] for approval in row["requester_manager_approvals"]}
+                or any(
+                    candidate["status"] in {"pending", "accepted"}
+                    and actor_id in {approval["commander_id"] for approval in candidate["manager_approvals"]}
+                    for candidate in row["candidates"]
+                )
+                for row in swaps
+            )
+
+    transfers_response = client.get("/api/hierarchy-transfers/pending", headers=headers)
+    assert transfers_response.status_code == 200, transfers_response.text
+    transfers = len(transfers_response.json())
+    hakpaza = count_endpoint("/api/hakpaza/pending-count")
+    incoming_swaps = count_endpoint("/api/swaps/incoming/count")
+    return {
+        "approvals": constraints + exemptions + field_updates + enrollments + actionable_swaps + transfers,
+        "hakpaza": hakpaza,
+        "incoming_swaps": incoming_swaps,
+    }
+
+
+@pytest.mark.parametrize("actor_key", ["admin", "commander", "duty_manager", "dual_role", "no_scope"])
+def test_nav_count_endpoint_matches_existing_badge_contracts_for_role_scopes(
+    client: TestClient,
+    admin_session: Session,
+    actor_key: str,
+):
+    actors = _build_badge_dataset(admin_session)
+    actor = actors[actor_key]
+    expected = _legacy_nav_counts(client, actor)
+
+    response = client.get("/api/nav/counts", headers=auth_headers(actor))
+
+    assert response.status_code == 200, response.text
+    assert response.json() == expected
+    assert expected["incoming_swaps"] == 1
+    if actor_key in {"no_scope", "duty_manager"}:
+        assert expected["approvals"] == 0
+    else:
+        assert expected["approvals"] > 0
+
+
+def test_nav_count_source_failure_does_not_zero_other_badges(
+    client: TestClient,
+    admin_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    admin = create_soldier(admin_session, personal_number=f"nav_failure_{_id()}", role="admin")
+
+    def fail_constraint_count(_session: Session, _actor) -> int:
+        raise RuntimeError("injected count-source failure")
+
+    monkeypatch.setattr(nav_counts_service, "_count_constraints", fail_constraint_count)
+    monkeypatch.setattr(nav_counts_service, "_count_exemptions", lambda *_: 2)
+    monkeypatch.setattr(nav_counts_service, "_count_field_updates", lambda *_: 3)
+    monkeypatch.setattr(nav_counts_service, "_count_enrollments", lambda *_: 4)
+    monkeypatch.setattr(nav_counts_service, "_count_actionable_swaps", lambda *_: 5)
+    monkeypatch.setattr(nav_counts_service, "_count_transfers", lambda *_: 0)
+    monkeypatch.setattr(nav_counts_service, "_count_hakpaza", lambda *_: 6)
+    monkeypatch.setattr(nav_counts_service, "_count_incoming_swaps", lambda *_: 7)
+
+    response = client.get("/api/nav/counts", headers=auth_headers(admin))
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"approvals": 14, "hakpaza": 6, "incoming_swaps": 7}
+
+
+@pytest.mark.parametrize(
+    ("actor_key", "expected"),
+    [("admin", 1), ("commander", 2), ("duty_manager", 1), ("no_scope", 0)],
+)
+def test_transfer_badge_matches_pending_destination_scope_with_sql_count(
+    admin_session: Session,
+    actor_key: str,
+    expected: int,
+):
+    suffix = _id()
+    admin = create_soldier(admin_session, personal_number=f"transfer_admin_{suffix}", role="admin")
+    commander = create_soldier(admin_session, personal_number=f"transfer_cmd_{suffix}", role="commander")
+    duty_manager = create_soldier(admin_session, personal_number=f"transfer_dm_{suffix}", role="duty_manager")
+    no_scope = create_soldier(admin_session, personal_number=f"transfer_none_{suffix}", role="commander")
+    requester = create_soldier(admin_session, personal_number=f"transfer_requester_{suffix}")
+    source = create_node(admin_session, level="unit", name=f"transfer_source_{suffix}")
+    root = create_node(
+        admin_session, level="group", name=f"transfer_root_{suffix}", commander_id=commander.id
+    )
+    child = create_node(admin_session, level="branch", name=f"transfer_child_{suffix}", parent=root)
+    leaf = create_node(admin_session, level="unit", name=f"transfer_leaf_{suffix}", parent=child)
+    admin_session.add_all([
+        DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=leaf.id),
+        DutyManagerScope(duty_manager_id=commander.id, hierarchy_node_id=leaf.id),
+        DutyManagerScope(duty_manager_id=duty_manager.id, hierarchy_node_id=leaf.id),
+    ])
+    for destination, status in (
+        (child, "pending"),
+        (leaf, "pending"),
+        (source, "pending"),
+        (leaf, "approved"),
+        (leaf, "rejected"),
+    ):
+        admin_session.add(HierarchyTransferRequest(
+            soldier_id=requester.id,
+            requested_by=requester.id,
+            from_node_id=source.id,
+            to_node_id=destination.id,
+            status=status,
+        ))
+    admin_session.commit()
+
+    actor = {"admin": admin, "commander": commander, "duty_manager": duty_manager,
+             "no_scope": no_scope}[actor_key]
+    assert len(hierarchy_transfers.list_pending_for_approver(
+        admin_session, approver_id=actor.id
+    )) == expected
+
+    statements: list[str] = []
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement.lower())
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_transfers(admin_session, actor)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == expected
+    transfer_queries = [sql for sql in statements if "hierarchy_transfer_requests" in sql]
+    assert len(transfer_queries) == (0 if actor_key == "no_scope" else 1)
+    assert all("count(" in sql and "&&" in sql for sql in transfer_queries)
+    assert not any("select hierarchy_transfer_requests." in sql for sql in statements)
+    node_projections = [
+        " ".join(sql.split()).split(" from hierarchy_nodes", 1)[0]
+        for sql in statements
+        if sql.lstrip().startswith("select hierarchy_nodes.")
+    ]
+    assert all(projection == "select hierarchy_nodes.id" for projection in node_projections)
+
+
+def test_admin_constraint_badge_counts_pending_rows_except_own_with_sql_count(
+    client: TestClient,
+    admin_session: Session,
+):
+    from sqlalchemy import event
+
+    admin = create_soldier(admin_session, personal_number=f"nav_admin_constraint_{_id()}", role="admin")
+    target = create_soldier(admin_session, personal_number=f"nav_constraint_target_{_id()}")
+    admin_session.add_all([
+        PersonalConstraint(
+            soldier_id=target.id,
+            start_date=date.today() + timedelta(days=10),
+            end_date=date.today() + timedelta(days=11),
+            reason="admin can approve",
+            status="pending_commander",
+        ),
+        PersonalConstraint(
+            soldier_id=admin.id,
+            start_date=date.today() + timedelta(days=12),
+            end_date=date.today() + timedelta(days=13),
+            reason="own request is excluded",
+            status="pending_duty_manager",
+        ),
+    ])
+    admin_session.commit()
+    expected = client.get("/api/constraints/pending/count", headers=auth_headers(admin))
+    assert expected.status_code == 200, expected.text
+    statements: list[str] = []
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement)
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_constraints(admin_session, admin)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == expected.json()["count"] == 1
+    constraint_queries = [sql.lower() for sql in statements if "personal_constraints" in sql.lower()]
+    assert any("count(" in sql for sql in constraint_queries)
+    assert not any("select personal_constraints." in sql for sql in constraint_queries)
+    assert any(
+        "soldier_id" in sql and ("!=" in sql or "<>" in sql)
+        for sql in constraint_queries
+    )
+
+
+def test_admin_exemption_badge_counts_scoped_target_union_with_one_sql_aggregate(
+    client: TestClient,
+    admin_session: Session,
+):
+    suffix = _id()
+    admin = create_soldier(admin_session, personal_number=f"nav_ex_admin_{suffix}", role="admin")
+    root = create_node(admin_session, level="group", name=f"nav-ex-root-{suffix}")
+    child = create_node(admin_session, level="branch", name=f"nav-ex-child-{suffix}", parent=root)
+    outside = create_node(admin_session, level="branch", name=f"nav-ex-outside-{suffix}")
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=root.id))
+    admin.hierarchy_node_id = child.id
+    enrolled = create_soldier(
+        admin_session, personal_number=f"nav_ex_enrolled_{suffix}", hierarchy_node_id=child.id
+    )
+    pending_target = create_soldier(
+        admin_session, personal_number=f"nav_ex_pending_{suffix}", hierarchy_node_id=outside.id
+    )
+    excluded = create_soldier(
+        admin_session, personal_number=f"nav_ex_excluded_{suffix}", hierarchy_node_id=outside.id
+    )
+    linked_approved_enrollment = SoldierEnrollmentRequest(
+        soldier_id=pending_target.id, requested_node_id=outside.id, status="approved"
+    )
+    admin_session.add_all([
+        SoldierEnrollmentRequest(soldier_id=pending_target.id, requested_node_id=child.id, status="pending"),
+        SoldierEnrollmentRequest(soldier_id=pending_target.id, requested_node_id=root.id, status="pending"),
+        linked_approved_enrollment,
+        SoldierEnrollmentRequest(soldier_id=excluded.id, requested_node_id=child.id, status="approved"),
+    ])
+    exemption_type = ExemptionType(name=f"nav-ex-count-{suffix}", is_commander_exemption=False)
+    admin_session.add(exemption_type)
+    admin_session.flush()
+    for soldier, status in (
+        (enrolled, "pending_commander"),
+        (enrolled, "pending_duty_manager"),
+        (pending_target, "pending_commander"),
+        (admin, "pending_duty_manager"),
+        (excluded, "pending_commander"),
+        (enrolled, "pending"),
+        (pending_target, "approved"),
+    ):
+        admin_session.add(ExemptionRequest(
+            soldier_id=soldier.id,
+            exemption_type_id=exemption_type.id,
+            enrollment_request_id=linked_approved_enrollment.id
+            if soldier.id == pending_target.id and status == "pending_commander" else None,
+            reason="admin count scope",
+            status=status,
+        ))
+    admin_session.commit()
+    legacy = client.get("/api/exemption-requests/pending/count", headers=auth_headers(admin))
+    assert legacy.status_code == 200, legacy.text
+
+    statements: list[str] = []
+    admin_session.refresh(admin)
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement.lower())
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_exemptions(admin_session, admin)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == legacy.json()["count"] == 4
+    count_queries = [sql for sql in statements if "exemption_requests" in sql]
+    assert len(count_queries) == 1
+    assert "count(" in count_queries[0]
+    assert not any("select exemption_requests." in sql for sql in statements)
+    assert not any(sql.lstrip().startswith("select soldiers.") for sql in statements)
+    assert all(
+        sql.split("from", 1)[0].strip() == "select hierarchy_nodes.id"
+        for sql in statements if sql.lstrip().startswith("select hierarchy_nodes.")
+    )
+
+
+def test_admin_exemption_badge_without_scope_roots_is_zero(admin_session: Session):
+    admin = create_soldier(admin_session, personal_number=f"nav_ex_no_roots_{_id()}", role="admin")
+
+    assert nav_counts_service._count_exemptions(admin_session, admin) == 0
+
+
+def test_admin_swap_badge_counts_open_requests_with_active_candidates_once_in_sql(
+    admin_session: Session,
+):
+    suffix = _id()
+    admin = create_soldier(admin_session, personal_number=f"nav_swap_admin_{suffix}", role="admin")
+    requester = create_soldier(admin_session, personal_number=f"nav_swap_requester_{suffix}")
+    candidates = [
+        create_soldier(admin_session, personal_number=f"nav_swap_candidate_{index}_{suffix}")
+        for index in range(2)
+    ]
+    duty_type = DutyType(name=f"nav-swap-duty-{suffix}", score_per_day=1)
+    location = DutyLocation(name=f"nav-swap-location-{suffix}")
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+
+    for index, (request_status, candidate_statuses) in enumerate((
+        ("open", ("pending", "accepted")),
+        ("open", ("accepted",)),
+        ("cancelled", ("pending",)),
+        ("open", ("declined", "cancelled")),
+        ("open", ()),
+    )):
+        duty_date = date.today() + timedelta(days=20 + index)
+        assignment = DutyAssignment(
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            soldier_id=requester.id,
+            start_date=duty_date,
+            end_date=duty_date + timedelta(days=1),
+            status="published",
+        )
+        admin_session.add(assignment)
+        admin_session.flush()
+        request = SwapRequest(
+            duty_assignment_id=assignment.id,
+            duty_date=duty_date,
+            requesting_soldier_id=requester.id,
+            status=request_status,
+        )
+        admin_session.add(request)
+        admin_session.flush()
+        admin_session.add_all([
+            SwapCandidate(
+                swap_request_id=request.id,
+                soldier_id=candidates[candidate_index].id,
+                source="invited",
+                status=candidate_status,
+            )
+            for candidate_index, candidate_status in enumerate(candidate_statuses)
+        ])
+    admin_session.commit()
+
+    assert len(swaps.list_pending_approval(admin_session)) == 2
+    statements: list[str] = []
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement.lower())
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_actionable_swaps(admin_session, admin)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == 2
+    swap_queries = [sql for sql in statements if "swap_requests" in sql or "swap_candidates" in sql]
+    assert len(swap_queries) == 1
+    assert "count(" in swap_queries[0]
+    assert "exists" in swap_queries[0]
+    assert "select swap_requests." not in swap_queries[0]

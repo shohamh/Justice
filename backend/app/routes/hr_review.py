@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -13,14 +14,23 @@ from app.auth.deps import require_roles
 from app.db.models import (
     AuditLog,
     HrHierarchySync,
+    HrIdentityConflict,
     HrPersonSync,
     HrPersonSyncError,
+    HrPreferredRecord,
     HrRankConflict,
     Soldier,
     SoldierHrProfile,
 )
 from app.db.session import get_session
 from app.hr_sync_worker import SyncAlreadyRunningError, run_sync_now_in_own_session
+from app.services.hr.conflict_actions import (
+    ConflictActionError,
+    acknowledge_conflict,
+    candidate_choice_status,
+    choose_candidate,
+    clear_preference,
+)
 from app.services.hr.review import ReviewActionError, clear_field_override, dismiss_held_for_review
 from app.settings import get_settings
 
@@ -257,6 +267,7 @@ class PersonSyncRunOut(BaseModel):
     held_count: int
     vanished_count: int
     error_count: int
+    conflict_count: int
     error_message: str | None
     errors: list[SyncErrorOut]
 
@@ -300,7 +311,7 @@ def list_sync_runs(
             total_fetched=run.total_fetched, created_count=run.created_count,
             updated_count=run.updated_count, held_count=run.held_count,
             vanished_count=run.vanished_count, error_count=run.error_count,
-            error_message=run.error_message,
+            conflict_count=run.conflict_count, error_message=run.error_message,
             errors=[SyncErrorOut(personal_number=e.personal_number, error_message=e.error_message) for e in errors],
         ))
 
@@ -332,3 +343,177 @@ async def run_sync_now(
     except SyncAlreadyRunningError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="hr_sync_already_running") from exc
     return RunNowOut(hierarchy_sync_id=hierarchy_sync_id, person_sync_id=person_sync_id)
+
+
+# ── Identity conflicts (duplicate HR records, email / AD username collisions) ──
+
+
+class HrConflictCandidateOut(BaseModel):
+    index: int
+    key_type: str | None
+    key_value: str | None
+    payload: dict[str, object]
+    is_applied: bool
+    choosable: bool
+    invalid_reason: str | None
+
+
+class CollidingSoldierOut(BaseModel):
+    soldier_id: uuid.UUID
+    full_name: str | None
+    personal_number: str | None
+
+
+class PreferredRecordOut(BaseModel):
+    personal_number: str
+    key_type: str
+    key_value: str
+    chosen_by: uuid.UUID | None
+    chosen_by_name: str | None
+    chosen_at: datetime
+
+
+class HrIdentityConflictOut(BaseModel):
+    id: uuid.UUID
+    personal_number: str
+    kind: str
+    reason: str
+    status: str
+    applied_index: int | None
+    chosen_index: int | None
+    candidates: list[HrConflictCandidateOut]
+    colliding_soldiers: list[CollidingSoldierOut]
+    preferred_record: PreferredRecordOut | None
+    hr_person_sync_id: uuid.UUID | None
+    created_at: datetime
+    last_seen_at: datetime
+    acknowledged_at: datetime | None
+    resolved_at: datetime | None
+
+
+class HrIdentityConflictPageOut(BaseModel):
+    items: list[HrIdentityConflictOut]
+
+
+class ChooseCandidateIn(BaseModel):
+    candidate_index: int
+
+
+class PreferredRecordPageOut(BaseModel):
+    items: list[PreferredRecordOut]
+
+
+def _preferred_out(session: Session, preference: HrPreferredRecord) -> PreferredRecordOut:
+    chooser = session.get(Soldier, preference.chosen_by) if preference.chosen_by else None
+    return PreferredRecordOut(
+        personal_number=preference.personal_number, key_type=preference.key_type,
+        key_value=preference.key_value, chosen_by=preference.chosen_by,
+        chosen_by_name=chooser.full_name if chooser else None, chosen_at=preference.chosen_at,
+    )
+
+
+def _conflict_out(session: Session, conflict: HrIdentityConflict) -> HrIdentityConflictOut:
+    if conflict.status in ("open", "acknowledged"):
+        choice = candidate_choice_status(session, conflict)
+    else:
+        choice = ["conflict_not_active"] * len(conflict.candidates)
+    colliding = []
+    for soldier_id in conflict.colliding_soldier_ids:
+        soldier = session.get(Soldier, uuid.UUID(soldier_id))
+        if soldier is not None:
+            colliding.append(CollidingSoldierOut(
+                soldier_id=soldier.id, full_name=soldier.full_name, personal_number=soldier.personal_number,
+            ))
+    preference = session.execute(
+        select(HrPreferredRecord).where(HrPreferredRecord.personal_number == conflict.personal_number)
+    ).scalar_one_or_none()
+    return HrIdentityConflictOut(
+        id=conflict.id, personal_number=conflict.personal_number, kind=conflict.kind,
+        reason=conflict.reason, status=conflict.status, applied_index=conflict.applied_index,
+        chosen_index=conflict.chosen_index,
+        candidates=[
+            HrConflictCandidateOut(
+                index=c["index"], key_type=c.get("key_type"), key_value=c.get("key_value"),
+                payload=c["payload"], is_applied=c["index"] == conflict.applied_index,
+                choosable=choice[i] is None, invalid_reason=choice[i],
+            ) for i, c in enumerate(conflict.candidates)
+        ],
+        colliding_soldiers=colliding,
+        preferred_record=_preferred_out(session, preference) if preference else None,
+        hr_person_sync_id=conflict.hr_person_sync_id, created_at=conflict.created_at,
+        last_seen_at=conflict.last_seen_at, acknowledged_at=conflict.acknowledged_at,
+        resolved_at=conflict.resolved_at,
+    )
+
+
+def _action_error(session: Session, exc: ConflictActionError) -> HTTPException:
+    session.rollback()
+    return HTTPException(status_code=exc.status_code, detail=str(exc))
+
+
+@router.get("/identity-conflicts", response_model=HrIdentityConflictPageOut)
+def list_identity_conflicts(
+    status_filter: Literal["open", "acknowledged", "resolved", "all"] = Query("open", alias="status"),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_roles("admin")),
+) -> HrIdentityConflictPageOut:
+    query = select(HrIdentityConflict).order_by(
+        HrIdentityConflict.last_seen_at.desc(), HrIdentityConflict.id
+    )
+    if status_filter != "all":
+        query = query.where(HrIdentityConflict.status == status_filter)
+    rows = session.execute(query).scalars().all()
+    return HrIdentityConflictPageOut(items=[_conflict_out(session, row) for row in rows])
+
+
+@router.post("/identity-conflicts/{conflict_id}/acknowledge", response_model=HrIdentityConflictOut)
+def acknowledge_identity_conflict(
+    conflict_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_roles("admin")),
+) -> HrIdentityConflictOut:
+    try:
+        conflict = acknowledge_conflict(session, conflict_id, actor_id=user.id)
+    except ConflictActionError as exc:
+        raise _action_error(session, exc) from exc
+    session.commit()
+    return _conflict_out(session, conflict)
+
+
+@router.post("/identity-conflicts/{conflict_id}/choose", response_model=HrIdentityConflictOut)
+def choose_identity_conflict_record(
+    conflict_id: uuid.UUID,
+    body: ChooseCandidateIn,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_roles("admin")),
+) -> HrIdentityConflictOut:
+    try:
+        conflict = choose_candidate(session, conflict_id, body.candidate_index, actor_id=user.id)
+        session.commit()
+    except ConflictActionError as exc:
+        raise _action_error(session, exc) from exc
+    return _conflict_out(session, conflict)
+
+
+@router.get("/preferred-records", response_model=PreferredRecordPageOut)
+def list_preferred_records(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_roles("admin")),
+) -> PreferredRecordPageOut:
+    rows = session.execute(
+        select(HrPreferredRecord).order_by(HrPreferredRecord.personal_number)
+    ).scalars().all()
+    return PreferredRecordPageOut(items=[_preferred_out(session, row) for row in rows])
+
+
+@router.delete("/preferred-records/{personal_number}", status_code=status.HTTP_204_NO_CONTENT)
+def clear_preferred_record(
+    personal_number: str,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_roles("admin")),
+) -> None:
+    try:
+        clear_preference(session, personal_number, actor_id=user.id)
+    except ConflictActionError as exc:
+        raise _action_error(session, exc) from exc
+    session.commit()

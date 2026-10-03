@@ -3,12 +3,16 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import is_commander, is_duty_manager
+from app.auth.authz import (
+    is_commander,
+    is_duty_manager,
+    scope_root_ids as evaluated_scope_root_ids,
+)
 from app.auth.deps import get_current_user, require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierEnrollmentRequest, TelegramLink
 from app.db.session import get_session
@@ -19,7 +23,9 @@ from app.services.authority import (
     has_any_exemption_immediate_apply_scope,
     has_any_visibility,
 )
+from app.routes.identity_errors import identity_http_exception
 from app.services.deputies import list_active_deputies_for
+from app.services.identity_write import assign_soldier_email, flush_with_identity_guard
 from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -41,6 +47,7 @@ class MeResponse(BaseModel):
     is_duty_manager: bool
     must_change_password: bool
     hierarchy_node_id: uuid.UUID | None
+    scope_root_ids: list[uuid.UUID]
     telegram_linked: bool
     telegram_required: bool
     phone: str | None = None
@@ -158,6 +165,7 @@ def me(
         is_duty_manager=is_duty_manager(session, user.id),
         must_change_password=user.must_change_password,
         hierarchy_node_id=user.hierarchy_node_id,
+        scope_root_ids=sorted(evaluated_scope_root_ids(session, user), key=str),
         telegram_linked=link is not None,
         telegram_required=telegram_required,
         phone=user.phone,
@@ -196,13 +204,19 @@ def set_email(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    new_email = body.email or None
-    changed = user.email != new_email
-    user.email = new_email
-    if changed:
-        user.email_verified = False
-    if new_email and changed:
+    try:
+        # Stores email + ad_username together, clears email_verified and
+        # invalidates outstanding verification tokens when the address changes.
+        changed = assign_soldier_email(session, user, body.email)
+        flush_with_identity_guard(session)
+    except ValueError as exc:  # unsupported address or IdentityCollisionError
+        session.rollback()
+        raise identity_http_exception(exc) from exc
+    if user.email and changed:
         ev_svc.request_verification(session, soldier=user)
+    if changed:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, user.id)
     session.commit()
     return {"email_verified": user.email_verified}
 

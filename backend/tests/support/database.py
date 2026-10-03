@@ -23,7 +23,6 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from testcontainers.postgres import PostgresContainer
 
-
 RESET_TABLES = (
     "audit_log",
     "bug_reports",
@@ -58,6 +57,8 @@ RESET_TABLES = (
     "commander_notification_depth",
     "duty_manager_scope",
     "email_outbox",
+    "exchange_calendar_outbox",
+    "exchange_calendar_sync_items",
     "notification_preferences",
     "telegram_outbox",
     "telegram_action_tokens",
@@ -71,6 +72,11 @@ RESET_TABLES = (
     "duty_types",
     "duty_locations",
     "system_settings",
+    "identity_conflict_candidates",
+    "identity_conflicts",
+    "oidc_transactions",
+    "oidc_registration_contexts",
+    "oidc_identities",
     "soldiers",
     "hierarchy_level_types",
     "hr_hierarchy_syncs",
@@ -161,8 +167,9 @@ def run_migrations(database_url: str, rootpath: Path) -> None:
 
     get_settings.cache_clear()
 
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     cfg = Config(str(rootpath / "alembic.ini"))
     cfg.set_main_option("script_location", str(rootpath / "alembic"))
@@ -194,7 +201,7 @@ class TestDatabaseRuntime:
     @classmethod
     def for_database(
         cls, database_url: str, rootpath: Path, *, cloned_from_template: bool
-    ) -> "TestDatabaseRuntime":
+    ) -> TestDatabaseRuntime:
         return cls(
             database_url=database_url,
             rootpath=rootpath,
@@ -245,8 +252,9 @@ def _alembic_upgrade(url: str, revision: str, rootpath: Path) -> None:
 
     get_settings.cache_clear()
 
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     cfg = Config(str(rootpath / "alembic.ini"))
     cfg.set_main_option("script_location", str(rootpath / "alembic"))
@@ -320,8 +328,9 @@ def cloned_migration_database(
 
         get_settings.cache_clear()
 
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
 
         cfg = Config(str(rootpath / "alembic.ini"))
         cfg.set_main_option("script_location", str(rootpath / "alembic"))

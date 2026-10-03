@@ -1,44 +1,48 @@
-import Fuse from "fuse.js";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { listSoldiers, SoldierDTO } from "../api/soldiers";
+import { listSoldierRosterPage, SoldierRosterItemDTO } from "../api/soldiers";
 
 interface Props {
-  onSelect: (soldier: SoldierDTO | null) => void;
+  onSelect: (soldier: SoldierRosterItemDTO | null) => void;
   onCreateNew?: (personalNumber: string, fullName: string) => void;
 }
 
 export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Props) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
-  const [results, setResults] = useState<SoldierDTO[]>([]);
+  const [results, setResults] = useState<SoldierRosterItemDTO[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [selected, setSelected] = useState<SoldierDTO | null>(null);
+  const [selected, setSelected] = useState<SoldierRosterItemDTO | null>(null);
   const [newPn, setNewPn] = useState("");
   const [newName, setNewName] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void (async () => {
-      const all = await listSoldiers();
-      setSoldiers(all);
-    })();
-  }, []);
-
-  const fuse = useMemo(
-    () => new Fuse(soldiers, { keys: ["full_name", "personal_number"], threshold: 0.4 }),
-    [soldiers]
-  );
-
-  useEffect(() => {
-    if (!query.trim() || selected) {
+    const search = query.trim();
+    if (!search || selected) {
       setResults([]);
       return;
     }
-    setResults(fuse.search(query).map(r => r.item).slice(0, 10));
-  }, [query, soldiers, selected, fuse]);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      void listSoldierRosterPage({
+        search,
+        sort: "full_name",
+        descending: false,
+        page_size: 10,
+        signal: controller.signal,
+      })
+        .then((page) => setResults(page.items))
+        .catch(() => {
+          if (!controller.signal.aborted) setResults([]);
+        });
+    }, 200);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [query, selected]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -50,7 +54,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  function handleSelect(s: SoldierDTO) {
+  function handleSelect(s: SoldierRosterItemDTO) {
     setSelected(s);
     setQuery(`${s.full_name} (${s.personal_number})`);
     setShowDropdown(false);

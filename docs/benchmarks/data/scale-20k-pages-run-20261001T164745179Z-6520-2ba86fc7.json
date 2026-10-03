@@ -1,0 +1,587 @@
+{
+  "schemaVersion": 2,
+  "runId": "20261001T164745179Z-6520-2ba86fc7",
+  "generatedAtUtc": "2026-10-01T16:47:45.174Z",
+  "startedAtUtc": "2026-10-01T16:47:45.174Z",
+  "updatedAtUtc": "2026-10-01T16:49:52.950Z",
+  "browser": {
+    "engine": "chromium",
+    "version": "148.0.7778.96"
+  },
+  "runsPerScenario": 1,
+  "batchesPerScenario": 1,
+  "concurrency": 1,
+  "clientsPerBatch": 1,
+  "startBarrier": "all clients begin each cold/warm measurement together",
+  "authenticationSetup": "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
+  "summaryCoverage": "per-run response-byte and database totals require values for every tracked API request",
+  "timeoutMs": 60000,
+  "scenarios": [
+    {
+      "id": "transparency-whole-organization",
+      "route": "/transparency",
+      "workload": "navigation"
+    }
+  ],
+  "hrProviderSync": "not-invoked",
+  "measurements": [
+    {
+      "scenario": "transparency-whole-organization",
+      "attempt": 1,
+      "run": 1,
+      "batch": "transparency-whole-organization-c1-b01",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 61176.83,
+      "readiness": "failed",
+      "phaseTimings": {},
+      "apiRequestCount": 8,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 12.09,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 16.32,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.9
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 18.99,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 4.6
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 11.86,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.59
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 14.01,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 34.51,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 18.87
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/client-errors",
+          "status": null,
+          "durationMs": 323.37,
+          "responseBytes": null,
+          "dbQueryCount": null,
+          "dbMs": null,
+          "failed": true
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/client-errors",
+          "status": null,
+          "durationMs": 328.27,
+          "responseBytes": null,
+          "dbQueryCount": null,
+          "dbMs": null,
+          "failed": true
+        }
+      ],
+      "consoleErrors": {
+        "count": 3,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 2,
+        "names": [
+          "ReferenceError"
+        ]
+      },
+      "longTasksOver50Ms": {
+        "count": 1,
+        "totalMs": 93,
+        "maxMs": 93
+      },
+      "failure": {
+        "stage": "page-ready",
+        "errorName": "TimeoutError",
+        "category": "locator-timeout"
+      }
+    },
+    {
+      "scenario": "transparency-whole-organization",
+      "attempt": 1,
+      "run": 1,
+      "batch": "transparency-whole-organization-c1-b01",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 60316.27,
+      "readiness": "failed",
+      "phaseTimings": {},
+      "apiRequestCount": 8,
+      "apiResponses": [
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 96.8,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 97.96,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 99.39,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.03
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 13.3,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.8
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 15.75,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 4.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 38.26,
+          "responseBytes": 1059,
+          "dbQueryCount": 18,
+          "dbMs": 23.04
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/client-errors",
+          "status": null,
+          "durationMs": 346.49,
+          "responseBytes": null,
+          "dbQueryCount": null,
+          "dbMs": null,
+          "failed": true
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/client-errors",
+          "status": null,
+          "durationMs": 343.44,
+          "responseBytes": null,
+          "dbQueryCount": null,
+          "dbMs": null,
+          "failed": true
+        }
+      ],
+      "consoleErrors": {
+        "count": 3,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 2,
+        "names": [
+          "ReferenceError"
+        ]
+      },
+      "longTasksOver50Ms": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      },
+      "failure": {
+        "stage": "page-ready",
+        "errorName": "TimeoutError",
+        "category": "locator-timeout"
+      }
+    }
+  ],
+  "summaries": [
+    {
+      "scenario": "transparency-whole-organization",
+      "mode": "cold",
+      "concurrency": 1,
+      "sampleCount": 1,
+      "readyCount": 0,
+      "failedCount": 1,
+      "metrics": {
+        "pageReadyMs": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "apiRequestCount": {
+          "sampleCount": 1,
+          "p50": 8,
+          "p95": 8
+        },
+        "totalApiDurationMs": {
+          "sampleCount": 1,
+          "p50": 759.42,
+          "p95": 759.42
+        },
+        "totalResponseBytes": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalDbQueryCount": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalDbMs": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "longTaskCount": {
+          "sampleCount": 1,
+          "p50": 1,
+          "p95": 1
+        },
+        "longTaskTotalMs": {
+          "sampleCount": 1,
+          "p50": 93,
+          "p95": 93
+        },
+        "longTaskMaxMs": {
+          "sampleCount": 1,
+          "p50": 93,
+          "p95": 93
+        },
+        "phaseTimingsMs": {}
+      },
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "statusCounts": {
+            "200": 1
+          },
+          "durationMs": {
+            "sampleCount": 1,
+            "p50": 34.51,
+            "p95": 34.51
+          },
+          "responseBytes": {
+            "sampleCount": 1,
+            "p50": 1059,
+            "p95": 1059
+          },
+          "dbQueryCount": {
+            "sampleCount": 1,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 1,
+            "p50": 18.87,
+            "p95": 18.87
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "statusCounts": {
+            "200": 1,
+            "401": 1
+          },
+          "durationMs": {
+            "sampleCount": 2,
+            "p50": 12.09,
+            "p95": 14.01
+          },
+          "responseBytes": {
+            "sampleCount": 2,
+            "p50": 26,
+            "p95": 39
+          },
+          "dbQueryCount": {
+            "sampleCount": 2,
+            "p50": 0,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 2,
+            "p50": 0,
+            "p95": 2.67
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "statusCounts": {
+            "200": 3
+          },
+          "durationMs": {
+            "sampleCount": 3,
+            "p50": 16.32,
+            "p95": 18.99
+          },
+          "responseBytes": {
+            "sampleCount": 3,
+            "p50": 277,
+            "p95": 277
+          },
+          "dbQueryCount": {
+            "sampleCount": 3,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 3,
+            "p50": 1.9,
+            "p95": 4.6
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/client-errors",
+          "statusCounts": {
+            "failed": 2
+          },
+          "durationMs": {
+            "sampleCount": 2,
+            "p50": 323.37,
+            "p95": 328.27
+          },
+          "responseBytes": {
+            "sampleCount": 0,
+            "p50": null,
+            "p95": null
+          },
+          "dbQueryCount": {
+            "sampleCount": 0,
+            "p50": null,
+            "p95": null
+          },
+          "dbMs": {
+            "sampleCount": 0,
+            "p50": null,
+            "p95": null
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "transparency-whole-organization",
+      "mode": "warm",
+      "concurrency": 1,
+      "sampleCount": 1,
+      "readyCount": 0,
+      "failedCount": 1,
+      "metrics": {
+        "pageReadyMs": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "apiRequestCount": {
+          "sampleCount": 1,
+          "p50": 8,
+          "p95": 8
+        },
+        "totalApiDurationMs": {
+          "sampleCount": 1,
+          "p50": 1051.39,
+          "p95": 1051.39
+        },
+        "totalResponseBytes": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalDbQueryCount": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalDbMs": {
+          "sampleCount": 0,
+          "p50": null,
+          "p95": null
+        },
+        "longTaskCount": {
+          "sampleCount": 1,
+          "p50": 0,
+          "p95": 0
+        },
+        "longTaskTotalMs": {
+          "sampleCount": 1,
+          "p50": 0,
+          "p95": 0
+        },
+        "longTaskMaxMs": {
+          "sampleCount": 1,
+          "p50": 0,
+          "p95": 0
+        },
+        "phaseTimingsMs": {}
+      },
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "statusCounts": {
+            "200": 1
+          },
+          "durationMs": {
+            "sampleCount": 1,
+            "p50": 38.26,
+            "p95": 38.26
+          },
+          "responseBytes": {
+            "sampleCount": 1,
+            "p50": 1059,
+            "p95": 1059
+          },
+          "dbQueryCount": {
+            "sampleCount": 1,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 1,
+            "p50": 23.04,
+            "p95": 23.04
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "statusCounts": {
+            "200": 1,
+            "401": 1
+          },
+          "durationMs": {
+            "sampleCount": 2,
+            "p50": 15.75,
+            "p95": 97.96
+          },
+          "responseBytes": {
+            "sampleCount": 2,
+            "p50": 26,
+            "p95": 39
+          },
+          "dbQueryCount": {
+            "sampleCount": 2,
+            "p50": 0,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 2,
+            "p50": 0,
+            "p95": 4.44
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "statusCounts": {
+            "200": 3
+          },
+          "durationMs": {
+            "sampleCount": 3,
+            "p50": 96.8,
+            "p95": 99.39
+          },
+          "responseBytes": {
+            "sampleCount": 3,
+            "p50": 277,
+            "p95": 277
+          },
+          "dbQueryCount": {
+            "sampleCount": 3,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 3,
+            "p50": 2.03,
+            "p95": 2.07
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/client-errors",
+          "statusCounts": {
+            "failed": 2
+          },
+          "durationMs": {
+            "sampleCount": 2,
+            "p50": 343.44,
+            "p95": 346.49
+          },
+          "responseBytes": {
+            "sampleCount": 0,
+            "p50": null,
+            "p95": null
+          },
+          "dbQueryCount": {
+            "sampleCount": 0,
+            "p50": null,
+            "p95": null
+          },
+          "dbMs": {
+            "sampleCount": 0,
+            "p50": null,
+            "p95": null
+          }
+        }
+      ]
+    }
+  ]
+}

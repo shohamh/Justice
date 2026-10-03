@@ -1,8 +1,9 @@
-import { FormEvent, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { FormEvent, useEffect, useState } from "react";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AxiosError } from "axios";
 
+import { fetchOidcStatus, startSsoLogin } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 import JusticeLogo from "../components/JusticeLogo";
 import PasswordInput from "../components/PasswordInput";
@@ -15,6 +16,17 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const resetSuccess = (location.state as { resetSuccess?: boolean } | null)?.resetSuccess;
+
+  const [searchParams] = useSearchParams();
+  // The callback only ever sends the bare flag; nothing else from the URL is read or shown.
+  const ssoFailed = searchParams.get("sso_error") === "1";
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchOidcStatus().then((enabled) => { if (!cancelled) setSsoEnabled(enabled === true); });
+    return () => { cancelled = true; };
+  }, []);
 
   const [personalNumber, setPersonalNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -107,6 +119,12 @@ export default function LoginPage() {
           {t("login.remember_me")}
         </label>
 
+        {ssoFailed && (
+          <div className="text-rejected text-sm" role="alert" data-testid="sso-error">
+            {t("login.errors.sso_failed")}
+          </div>
+        )}
+
         {errorKey && (
           <div className="text-rejected text-sm" data-testid="login-error">
             {errorKey === "rate_limited" && retryAfterSeconds
@@ -126,6 +144,17 @@ export default function LoginPage() {
         >
           {submitting ? t("login.submitting") : t("login.submit")}
         </button>
+
+        {ssoEnabled && (
+          <button
+            type="button"
+            onClick={() => startSsoLogin()}
+            className="w-full border border-indigo-600 text-indigo-600 dark:text-indigo-300 dark:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-gray-700 font-medium py-2 rounded-md"
+            data-testid="sso-login-button"
+          >
+            {t("login.sso_button")}
+          </button>
+        )}
 
         <p className="text-center text-sm text-gray-500 mt-2">
           <a href="/register" className="text-indigo-600 dark:text-indigo-300 hover:underline">

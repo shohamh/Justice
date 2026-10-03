@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AxiosError } from "axios";
 import LoginPage from "./LoginPage";
+import * as authApi from "../api/auth";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => opts ? `${key}:${JSON.stringify(opts)}` : key }),
@@ -13,6 +14,12 @@ vi.mock("../auth/AuthContext", () => ({
 }));
 
 vi.mock("../components/JusticeLogo", () => ({ default: () => null }));
+vi.mock("../api/auth");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(false);
+});
 
 function makeRateLimitError(retryAfterSeconds: string) {
   const err = new AxiosError("rate limited");
@@ -89,4 +96,47 @@ test("shows the invalid-credentials message, not a generic network error, for a 
     expect(screen.getByText("login.errors.invalid_credentials")).toBeInTheDocument();
   });
   expect(screen.queryByText("login.errors.network")).not.toBeInTheDocument();
+});
+
+describe("SSO login", () => {
+  it("hides the SSO button when the server reports SSO disabled", async () => {
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitFor(() => expect(authApi.fetchOidcStatus).toHaveBeenCalled());
+    expect(screen.queryByTestId("sso-login-button")).toBeNull();
+    expect(screen.getByTestId("login-form")).toBeInTheDocument();
+  });
+
+  it("shows the SSO button when enabled and keeps password login usable", async () => {
+    vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(true);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    expect(await screen.findByTestId("sso-login-button")).toBeInTheDocument();
+    expect(screen.getByTestId("personal-number-input")).toBeInTheDocument();
+    expect(screen.getByTestId("password-input")).toBeInTheDocument();
+    expect(screen.getByTestId("login-submit")).toBeInTheDocument();
+  });
+
+  it("starts SSO with a top-level navigation when the button is clicked", async () => {
+    vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(true);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fireEvent.click(await screen.findByTestId("sso-login-button"));
+    expect(authApi.startSsoLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows only a generic banner for ?sso_error=1 and echoes nothing else", async () => {
+    render(
+      <MemoryRouter initialEntries={["/login?sso_error=1&code=SECRET&email=x@y.z"]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    const banner = await screen.findByTestId("sso-error");
+    expect(banner).toHaveTextContent("login.errors.sso_failed");
+    expect(document.body.textContent).not.toContain("SECRET");
+    expect(document.body.textContent).not.toContain("x@y.z");
+  });
+
+  it("shows no SSO error banner without the sso_error flag", async () => {
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitFor(() => expect(authApi.fetchOidcStatus).toHaveBeenCalled());
+    expect(screen.queryByTestId("sso-error")).toBeNull();
+  });
 });

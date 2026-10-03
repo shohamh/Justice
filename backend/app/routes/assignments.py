@@ -250,6 +250,10 @@ def clear_all_assignments(
 ) -> None:
     """Cancel all non-cancelled assignments (admin / duty-manager operation)."""
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    from app.services.exchange_calendar.triggers import enqueue_assignment_change
+    affected = session.scalars(select(DutyAssignment).where(DutyAssignment.status == "published")).all()
+    for assignment in affected:
+        enqueue_assignment_change(session, assignment)
     session.execute(
         sa_update(DutyAssignment)
         .where(DutyAssignment.status != "cancelled")

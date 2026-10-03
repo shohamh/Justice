@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
+from dataclasses import dataclass
 from datetime import date as date_type
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -23,10 +27,12 @@ from app.db.models import (
     RangeAttendanceStatus,
     RangeEvent,
     RangeExcusalRequest,
+    RangeLocation,
     RangeType,
     Soldier,
 )
 from app.db.session import get_session
+from app.settings import get_settings
 from app.services import range_auto_assign as auto_assign_svc
 from app.services import range_excusal as excusal_svc
 from app.services import range_assignment_requests as assignment_request_svc
@@ -237,6 +243,9 @@ def approve_assignment_request(
         detail = str(exc)
         code = status.HTTP_403_FORBIDDEN if detail == "not_responsible_manager" else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=code, detail=detail) from exc
+    except svc.RangeValidationError as exc:
+        # e.g. primary_capacity_exceeded: same mapping as the manual-add route.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _assignment_out(assignment)
 
 
@@ -284,6 +293,14 @@ class RangeEventOut(BaseModel):
     can_manage: bool = False
 
 
+@dataclass
+class _RangeEventReadBatch:
+    assignments_by_event: dict[uuid.UUID, list[RangeAssignment]]
+    nodes_by_id: dict[uuid.UUID, HierarchyNode]
+    location_names_by_id: dict[uuid.UUID, str]
+    soldiers_by_id: dict[uuid.UUID, Soldier] | None = None
+
+
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
     return RangeAssignmentOut(
         id=a.id,
@@ -297,7 +314,12 @@ def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
     )
 
 
-def _food_summary(session: Session, rows: list[RangeAssignment]) -> FoodSummaryOut:
+def _food_summary(
+    session: Session,
+    rows: list[RangeAssignment],
+    *,
+    soldiers_by_id: dict[uuid.UUID, Soldier] | None = None,
+) -> FoodSummaryOut:
     allowed_types = ("regular", "vegetarian", "vegan", "gluten_free", "kosher_le_mehadrin")
 
     def summarize(assignments: list[RangeAssignment]) -> FoodAssignmentSummaryOut:
@@ -305,7 +327,11 @@ def _food_summary(session: Session, rows: list[RangeAssignment]) -> FoodSummaryO
         counts["unspecified"] = 0
         special_constraints: list[FoodSpecialConstraintOut] = []
         for assignment in assignments:
-            soldier = session.get(Soldier, assignment.soldier_id)
+            soldier = (
+                soldiers_by_id.get(assignment.soldier_id)
+                if soldiers_by_id is not None
+                else session.get(Soldier, assignment.soldier_id)
+            )
             if soldier is None:
                 continue
             counts[soldier.food_type or "unspecified"] += 1
@@ -334,17 +360,24 @@ def _event_out(
     include_drafts: bool = True,
     include_food_summary: bool = False,
     can_manage: bool = False,
+    read_batch: _RangeEventReadBatch | None = None,
 ) -> RangeEventOut:
-    query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
-    if not include_drafts:
-        query = query.filter(RangeAssignment.is_draft.is_(False))
-    rows = query.all()
+    if read_batch is None:
+        query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
+        if not include_drafts:
+            query = query.filter(RangeAssignment.is_draft.is_(False))
+        rows = query.all()
+        node = _event_node(session, event)
+        location = session.get(RangeLocation, event.range_location_id)
+        location_name = location.name if location else ""
+        soldiers_by_id = None
+    else:
+        rows = read_batch.assignments_by_event.get(event.id, [])
+        node = read_batch.nodes_by_id.get(event.hierarchy_node_id)
+        location_name = read_batch.location_names_by_id.get(event.range_location_id, "")
+        soldiers_by_id = read_batch.soldiers_by_id
     confirmed_rows = [a for a in rows if not a.is_draft]
     assignments = [_assignment_out(a) for a in rows] if include_assignments else []
-    node = _event_node(session, event)
-    from app.db.models import RangeLocation
-    location = session.get(RangeLocation, event.range_location_id)
-    location_name = location.name if location else ""
     assigned_to_me = any(assignment.soldier_id == user.id for assignment in rows)
     can_edit_attendance = node is not None and range_attendance_edit_authorized(
         session, user=user, target_node=node,
@@ -371,7 +404,11 @@ def _event_out(
         reserve_filled=sum(a.is_reserve for a in confirmed_rows),
         assigned_to_me=assigned_to_me,
         can_edit_attendance=can_edit_attendance,
-        food_summary=_food_summary(session, rows) if include_food_summary else None,
+        food_summary=(
+            _food_summary(session, rows, soldiers_by_id=soldiers_by_id)
+            if include_food_summary
+            else None
+        ),
         responsible_duty_manager_id=event.responsible_duty_manager_id,
         can_manage=can_manage,
     )
@@ -604,6 +641,245 @@ def clear_assignments(
     return {"cleared_assignments": cleared}
 
 
+class RangeEventPage(BaseModel):
+    items: list[RangeEventOut]
+    next_cursor: str | None
+    has_more: bool
+
+
+@router.get("/page", response_model=RangeEventPage)
+def page_range_events(
+    node_id: uuid.UUID,
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
+    range_type: RangeType | None = None,
+    event_status: str | None = None,
+    fill: str | None = None,
+    assigned_to_me: bool = False,
+    descending: bool = False,
+    page_size: int = Query(default=100, ge=1, le=200),
+    cursor: str | None = Query(default=None, max_length=4096),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeEventPage:
+    _require_enabled(session)
+    if fill not in (None, "open", "full"):
+        raise HTTPException(status_code=422, detail="invalid_fill")
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="invalid_date_window")
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    can_manage = _authorize_range_read(session, user, node)
+    roots = scope_root_ids(session, user)
+    binding_data = {
+        "actor_id": str(user.id),
+        "actor_role": user.role,
+        "actor_node_id": str(user.hierarchy_node_id) if user.hierarchy_node_id else None,
+        "scope_roots": sorted(str(root) for root in roots),
+        "node_id": str(node_id),
+        "node_path": [str(part) for part in node.path_ids],
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+        "range_type": range_type.value if range_type else None,
+        "event_status": event_status,
+        "fill": fill,
+        "assigned_to_me": assigned_to_me,
+        "descending": descending,
+        "page_size": page_size,
+    }
+    binding = hashlib.sha256(
+        json.dumps(binding_data, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    last_date: date_type | None = None
+    last_id: uuid.UUID | None = None
+    settings = get_settings()
+    if cursor:
+        try:
+            payload = jwt.decode(
+                cursor, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+            )
+            if (
+                payload.get("purpose") != "range_events_page"
+                or payload.get("version") != 1
+                or payload.get("binding") != binding
+            ):
+                raise ValueError("cursor_mismatch")
+            last_date = date_type.fromisoformat(payload["date"])
+            last_id = uuid.UUID(payload["id"])
+        except (jwt.InvalidTokenError, ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+
+    if svc.mark_past_range_events_completed(session):
+        session.commit()
+    subtree_ids = select(HierarchyNode.id).where(
+        HierarchyNode.path_ids.any(node_id)  # type: ignore[arg-type]
+    )
+    query = session.query(RangeEvent).filter(
+        RangeEvent.hierarchy_node_id.in_(subtree_ids)
+    )
+    if date_from is not None:
+        query = query.filter(RangeEvent.date >= date_from)
+    if date_to is not None:
+        query = query.filter(RangeEvent.date <= date_to)
+    if range_type is not None:
+        query = query.filter(RangeEvent.range_type == range_type)
+    if event_status:
+        query = query.filter(RangeEvent.status == event_status)
+    if assigned_to_me:
+        my_event_ids = select(RangeAssignment.range_event_id).where(
+            RangeAssignment.soldier_id == user.id
+        )
+        query = query.filter(RangeEvent.id.in_(my_event_ids))
+    if fill:
+        primary_count = (
+            select(func.count(RangeAssignment.id))
+            .where(
+                RangeAssignment.range_event_id == RangeEvent.id,
+                RangeAssignment.is_draft.is_(False),
+                RangeAssignment.is_reserve.is_(False),
+            )
+            .correlate(RangeEvent)
+            .scalar_subquery()
+        )
+        reserve_count = (
+            select(func.count(RangeAssignment.id))
+            .where(
+                RangeAssignment.range_event_id == RangeEvent.id,
+                RangeAssignment.is_draft.is_(False),
+                RangeAssignment.is_reserve.is_(True),
+            )
+            .correlate(RangeEvent)
+            .scalar_subquery()
+        )
+        full = and_(
+            primary_count >= RangeEvent.required_count,
+            reserve_count >= RangeEvent.reserve_count,
+        )
+        query = query.filter(full if fill == "full" else ~full)
+    if last_date is not None and last_id is not None:
+        if descending:
+            query = query.filter(or_(
+                RangeEvent.date < last_date,
+                and_(RangeEvent.date == last_date, RangeEvent.id < last_id),
+            ))
+        else:
+            query = query.filter(or_(
+                RangeEvent.date > last_date,
+                and_(RangeEvent.date == last_date, RangeEvent.id > last_id),
+            ))
+    ordered = (
+        query.order_by(RangeEvent.date.desc(), RangeEvent.id.desc())
+        if descending
+        else query.order_by(RangeEvent.date.asc(), RangeEvent.id.asc())
+    )
+    events = ordered.limit(page_size + 1).all()
+    has_more = len(events) > page_size
+    events = events[:page_size]
+    next_cursor = None
+    if has_more and events:
+        last = events[-1]
+        next_cursor = jwt.encode(
+            {
+                "purpose": "range_events_page",
+                "version": 1,
+                "binding": binding,
+                "date": last.date.isoformat(),
+                "id": str(last.id),
+            },
+            settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+        )
+    return RangeEventPage(
+        items=_events_out(
+            session,
+            events,
+            user=user,
+            include_drafts=can_manage,
+            can_manage=can_manage,
+        ),
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+def _load_range_event_read_batch(
+    session: Session,
+    events: list[RangeEvent],
+    *,
+    include_drafts: bool,
+    include_food_summary: bool,
+) -> _RangeEventReadBatch:
+    event_ids = [event.id for event in events]
+    assignments_by_event = {event_id: [] for event_id in event_ids}
+    if not event_ids:
+        return _RangeEventReadBatch({}, {}, {}, {} if include_food_summary else None)
+
+    assignments_query = session.query(RangeAssignment).filter(
+        RangeAssignment.range_event_id.in_(event_ids)
+    )
+    if not include_drafts:
+        assignments_query = assignments_query.filter(RangeAssignment.is_draft.is_(False))
+    for assignment in assignments_query.all():
+        assignments_by_event[assignment.range_event_id].append(assignment)
+
+    node_ids = {event.hierarchy_node_id for event in events}
+    nodes_by_id = {
+        node.id: node
+        for node in session.query(HierarchyNode).filter(HierarchyNode.id.in_(node_ids)).all()
+    }
+    location_ids = {event.range_location_id for event in events}
+    location_names_by_id = {
+        location.id: location.name
+        for location in session.query(RangeLocation).filter(RangeLocation.id.in_(location_ids)).all()
+    }
+
+    soldiers_by_id = None
+    if include_food_summary:
+        soldier_ids = {assignment.soldier_id for rows in assignments_by_event.values() for assignment in rows}
+        soldiers_by_id = {
+            soldier.id: soldier
+            for soldier in session.query(Soldier).filter(Soldier.id.in_(soldier_ids)).all()
+        } if soldier_ids else {}
+
+    return _RangeEventReadBatch(
+        assignments_by_event=assignments_by_event,
+        nodes_by_id=nodes_by_id,
+        location_names_by_id=location_names_by_id,
+        soldiers_by_id=soldiers_by_id,
+    )
+
+
+def _events_out(
+    session: Session,
+    events: list[RangeEvent],
+    *,
+    user: Soldier,
+    include_drafts: bool,
+    can_manage: bool,
+    include_food_summary: bool = False,
+) -> list[RangeEventOut]:
+    read_batch = _load_range_event_read_batch(
+        session,
+        events,
+        include_drafts=include_drafts,
+        include_food_summary=include_food_summary,
+    )
+    return [
+        _event_out(
+            session,
+            event,
+            user=user,
+            include_drafts=include_drafts,
+            include_food_summary=include_food_summary,
+            can_manage=can_manage
+            and (user.role == "admin" or _can_manage_event(session, user, event)),
+            read_batch=read_batch,
+        )
+        for event in events
+    ]
+
+
 @router.get("/{event_id}", response_model=RangeEventOut)
 def get_range_event(
     event_id: uuid.UUID,
@@ -687,16 +963,13 @@ def list_range_events(
     if date_to is not None:
         query = query.filter(RangeEvent.date <= date_to)
     events = query.order_by(RangeEvent.date).all()
-    return [
-        _event_out(
-            session,
-            e,
-            user=user,
-            include_drafts=can_manage,
-            can_manage=can_manage and _can_manage_event(session, user, e),
-        )
-        for e in events
-    ]
+    return _events_out(
+        session,
+        events,
+        user=user,
+        include_drafts=can_manage,
+        can_manage=can_manage,
+    )
 
 
 class RangeExcusalOut(BaseModel):

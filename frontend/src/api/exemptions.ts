@@ -280,3 +280,11 @@ export async function logExemptionForSoldier(
   });
   return r.data;
 }
+
+export async function downloadExemptionRequestFile(requestId: string, fileId: string): Promise<Blob> {
+  return (await api.get(`/file-download/exemption-requests/${requestId}/files/${fileId}`, { responseType: "blob" })).data;
+}
+
+export async function downloadSoldierExemptionFile(exemptionId: string, fileId: string): Promise<Blob> {
+  return (await api.get(`/file-download/exemptions/${exemptionId}/files/${fileId}`, { responseType: "blob" })).data;
+}

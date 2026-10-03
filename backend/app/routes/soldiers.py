@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
-from datetime import date as date_type
+from datetime import date as date_type, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, case, exists, func, or_, select, text as sql_text, true
 from sqlalchemy.orm import Session
 
 from app.auth.authz import (
@@ -22,10 +25,20 @@ from app.auth.authz import (
 )
 from app.auth.deps import require_password_changed
 from app.auth.password import verify_password
-from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
+from app.db.models import (
+    DutyAssignment,
+    DutyType,
+    HierarchyNode,
+    Soldier,
+    SoldierFieldUpdate,
+    TelegramLink,
+)
 from app.db.session import get_session
 from app.audit.writer import write_audit
 from app.services import soldiers as svc
+from app.routes.identity_errors import identity_http_exception
+from app.services.identity import IdentityCollisionError
+from app.services.identity_write import flush_with_identity_guard
 from app.services import scoring as scoring_svc
 from app.services.soldiers import (
     approve_field_update,
@@ -45,6 +58,7 @@ from app.services.rank_advancement import OFFICER_ACADEMIC_LADDER, OFFICER_LADDE
 from app.services.duty_history import get_duty_history
 from app.services.reserves import get_current_reserve_stats
 from app.services.settings_loader import SettingNotFound, get_setting
+from app.settings import get_settings
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
 
@@ -86,6 +100,39 @@ class SoldierOut(BaseModel):
     direct_commander_name: str | None = None
     visibility: str = "full"
     hierarchy_path: list[str] = Field(default_factory=list)
+
+
+class SoldierRosterItem(BaseModel):
+    id: uuid.UUID
+    personal_number: str
+    full_name: str
+    role: str
+    hierarchy_node_id: uuid.UUID | None
+    left_at: date_type | None
+    telegram_linked: bool
+    is_commander: bool = False
+    commander_node_name: str | None = None
+    hierarchy_path: list[str] = Field(default_factory=list)
+
+
+class SoldierRosterPage(BaseModel):
+    items: list[SoldierRosterItem]
+    next_cursor: str | None
+    has_more: bool
+
+
+class HakpazaRosterItem(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    rank: str | None
+    next_shift_date: date_type | None
+    next_shift_type_name: str | None
+
+
+class HakpazaRosterPage(BaseModel):
+    items: list[HakpazaRosterItem]
+    next_cursor: str | None
+    has_more: bool
 
 
 class OnboardRequest(BaseModel):
@@ -487,6 +534,497 @@ def list_soldiers(
     return out
 
 
+class SoldierNamesRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(max_length=200)
+
+
+class SoldierNameOut(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    personal_number: str | None = None
+
+
+@router.post("/lookup/names", response_model=list[SoldierNameOut], response_model_exclude_none=True)
+def lookup_soldier_names(
+    body: SoldierNamesRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[SoldierNameOut]:
+    # Match the legacy soldier list: scoped callers see public rows globally,
+    # including personal numbers; unscoped callers see only themselves.
+    ids = list(dict.fromkeys(body.ids))
+    roots = scope_root_ids(session, user)
+    if not ids:
+        return []
+    if user.role != "admin" and not roots:
+        ids = [soldier_id for soldier_id in ids if soldier_id == user.id]
+    if not ids:
+        return []
+    rows = session.execute(
+        select(Soldier.id, Soldier.full_name, Soldier.personal_number)
+        .where(Soldier.id.in_(ids))
+    ).all()
+    names = {soldier_id: (name, personal_number) for soldier_id, name, personal_number in rows}
+    return [
+        SoldierNameOut(id=soldier_id, full_name=names[soldier_id][0], personal_number=names[soldier_id][1])
+        for soldier_id in ids
+        if soldier_id in names
+    ]
+
+
+def _roster_cursor_binding(
+    *, user: Soldier, roots: set[uuid.UUID], search: str, node: HierarchyNode | None,
+    sort: str, descending: bool, active_only: bool, direct_node_only: bool, page_size: int,
+    role_order: tuple[str, ...],
+) -> str:
+    # Recomputed for every request so a change in the caller's scope invalidates
+    # the cursor before any rows are read.
+    query = {
+        "actor_id": str(user.id),
+        "actor_role": user.role,
+        "actor_node_id": str(user.hierarchy_node_id) if user.hierarchy_node_id else None,
+        "scope_roots": sorted(str(root) for root in roots),
+        "search": search,
+        "node_id": str(node.id) if node else None,
+        "node_path": [str(part) for part in node.path_ids] if node else None,
+        "sort": sort,
+        "role_order": role_order,
+        "descending": descending,
+        "active_only": active_only,
+        "direct_node_only": direct_node_only,
+        "page_size": page_size,
+    }
+    return hashlib.sha256(json.dumps(query, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _roster_revision(session: Session) -> int:
+    return session.execute(
+        sql_text("SELECT revision FROM soldier_roster_revision WHERE singleton = TRUE")
+    ).scalar_one()
+
+
+def _decode_roster_cursor(cursor: str, binding: str, revision: int) -> tuple[str | int, uuid.UUID]:
+    settings = get_settings()
+    try:
+        payload = jwt.decode(cursor, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        if (
+            payload.get("purpose") != "soldier_roster"
+            or payload.get("version") != 1
+            or payload.get("binding") != binding
+            or not isinstance(payload.get("key"), (str, int))
+            or isinstance(payload.get("key"), bool)
+            or not isinstance(payload.get("id"), str)
+        ):
+            raise ValueError("cursor_mismatch")
+        if type(payload.get("revision")) is not int:
+            raise ValueError("invalid_revision")
+        if payload["revision"] != revision:
+            raise HTTPException(status_code=409, detail="stale_cursor")
+        return payload["key"], uuid.UUID(payload["id"])
+    except (jwt.InvalidTokenError, ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+
+
+@router.get("/roster", response_model=SoldierRosterPage)
+def list_soldier_roster(
+    search: str = Query(default="", max_length=200),
+    node_id: uuid.UUID | None = None,
+    direct_node_only: bool = False,
+    active_only: bool = False,
+    sort: Literal["full_name", "personal_number", "role", "node", "telegram"] = "full_name",
+    role_order: str | None = Query(default=None, max_length=100),
+    descending: bool = False,
+    page_size: int = Query(default=100, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=4096),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierRosterPage:
+    """Public roster projection with SQL filters and stable keyset pagination."""
+    roots = scope_root_ids(session, user) if user.role != "admin" else set()
+    node = session.get(HierarchyNode, node_id) if node_id else None
+    if node_id and node is None:
+        raise HTTPException(status_code=404, detail="not_found")
+
+    roles = tuple(part.strip() for part in role_order.split(",")) if role_order else ()
+    valid_roles = {"admin", "commander", "duty_manager", "soldier"}
+    if (role_order is not None and (len(roles) != 4 or set(roles) != valid_roles)) or (sort == "role" and not roles):
+        raise HTTPException(status_code=400, detail="invalid_role_order")
+    normalized_search = search.strip().casefold()
+    binding = _roster_cursor_binding(
+        user=user, roots=roots, search=normalized_search, node=node,
+        sort=sort, descending=descending, active_only=active_only, page_size=page_size,
+        direct_node_only=direct_node_only,
+        role_order=roles,
+    )
+    revision = _roster_revision(session)
+    last_key, last_id = _decode_roster_cursor(cursor, binding, revision) if cursor else (None, None)
+
+    telegram_verified = exists(select(TelegramLink.soldier_id).where(
+        TelegramLink.soldier_id == Soldier.id, TelegramLink.is_verified.is_(True),
+    ))
+    sort_columns = {
+        "full_name": func.lower(Soldier.full_name),
+        "personal_number": func.lower(Soldier.personal_number),
+        "node": func.lower(func.coalesce(HierarchyNode.name, "")),
+        "telegram": case((telegram_verified, "0"), else_="1"),
+    }
+    sort_key = (
+        case(*[(Soldier.role == role, index) for index, role in enumerate(roles)], else_=4)
+        if sort == "role" else sort_columns[sort]
+    )
+    statement = select(
+        Soldier.id, Soldier.personal_number, Soldier.full_name, Soldier.role,
+        Soldier.hierarchy_node_id, Soldier.left_at, sort_key.label("sort_key"),
+        exists(
+            select(HierarchyNode.id)
+            .where(HierarchyNode.commander_id == Soldier.id)
+            .correlate(Soldier)
+        ).label("is_commander"),
+        select(HierarchyNode.name)
+        .where(HierarchyNode.commander_id == Soldier.id)
+        .correlate(Soldier)
+        .order_by(HierarchyNode.name, HierarchyNode.id)
+        .limit(1)
+        .scalar_subquery()
+        .label("commander_node_name"),
+    )
+    if sort == "node" or normalized_search:
+        statement = statement.outerjoin(HierarchyNode, HierarchyNode.id == Soldier.hierarchy_node_id)
+    # GET /soldiers exposes public rows globally when the caller has a scope
+    # root; an unscoped caller sees only themselves. The selected node can only
+    # narrow this same visible set, including its descendant subtree.
+    if user.role != "admin" and not roots:
+        statement = statement.where(Soldier.id == user.id)
+    if node_id:
+        if direct_node_only:
+            statement = statement.where(Soldier.hierarchy_node_id == node_id)
+        else:
+            statement = statement.where(
+                Soldier.hierarchy_node_id.in_(
+                    select(HierarchyNode.id).where(HierarchyNode.path_ids.contains([node_id]))
+                )
+            )
+    if active_only:
+        statement = statement.where(Soldier.left_at.is_(None))
+    if normalized_search:
+        escaped_search = normalized_search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped_search}%"
+        statement = statement.where(or_(
+            Soldier.full_name.ilike(pattern, escape="\\"),
+            Soldier.personal_number.ilike(pattern, escape="\\"),
+            HierarchyNode.name.ilike(pattern, escape="\\"),
+        ))
+    if last_key is not None and last_id is not None:
+        compare = sort_key < last_key if descending else sort_key > last_key
+        compare_id = Soldier.id < last_id if descending else Soldier.id > last_id
+        statement = statement.where(or_(compare, and_(sort_key == last_key, compare_id)))
+    order = sort_key.desc() if descending else sort_key.asc()
+    id_order = Soldier.id.desc() if descending else Soldier.id.asc()
+    rows = session.execute(statement.order_by(order, id_order).limit(page_size + 1)).all()
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
+    linked_ids: set[uuid.UUID] = set()
+    if rows:
+        linked_ids = set(session.execute(
+            select(TelegramLink.soldier_id).where(
+                TelegramLink.is_verified.is_(True),
+                TelegramLink.soldier_id.in_([row.id for row in rows]),
+            )
+        ).scalars())
+    page_node_ids = {row.hierarchy_node_id for row in rows if row.hierarchy_node_id}
+    nodes_by_id = (
+        {
+            node.id: node
+            for node in session.execute(
+                select(HierarchyNode).where(HierarchyNode.id.in_(page_node_ids))
+            ).scalars().all()
+        }
+        if page_node_ids
+        else {}
+    )
+    path_node_ids = {
+        path_id
+        for node in nodes_by_id.values()
+        for path_id in (node.path_ids or [node.id])
+    }
+    names_by_node_id = (
+        dict(session.execute(
+            select(HierarchyNode.id, HierarchyNode.name).where(HierarchyNode.id.in_(path_node_ids))
+        ).all())
+        if path_node_ids
+        else {}
+    )
+    hierarchy_paths_by_node = {
+        node_id: [
+            names_by_node_id[path_id]
+            for path_id in (node.path_ids or [node.id])
+            if path_id in names_by_node_id
+        ]
+        for node_id, node in nodes_by_id.items()
+    }
+    if _roster_revision(session) != revision:
+        raise HTTPException(status_code=409, detail="roster_changed")
+    items = [
+        SoldierRosterItem(
+            id=row.id, personal_number=row.personal_number, full_name=row.full_name,
+            role=row.role, hierarchy_node_id=row.hierarchy_node_id,
+            left_at=row.left_at, telegram_linked=row.id in linked_ids,
+            is_commander=bool(row.is_commander),
+            commander_node_name=row.commander_node_name,
+            hierarchy_path=hierarchy_paths_by_node.get(row.hierarchy_node_id, []),
+        )
+        for row in rows
+    ]
+    next_cursor = None
+    if has_more:
+        settings = get_settings()
+        last = rows[-1]
+        next_cursor = jwt.encode(
+            {
+                "purpose": "soldier_roster", "version": 1, "binding": binding,
+                "key": last.sort_key, "id": str(last.id), "revision": revision,
+                "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+            },
+            settings.jwt_secret, algorithm=settings.jwt_algorithm,
+        )
+    return SoldierRosterPage(items=items, next_cursor=next_cursor, has_more=has_more)
+
+
+def _hakpaza_roster_cursor_binding(
+    *,
+    user: Soldier,
+    roots: set[uuid.UUID],
+    search: str,
+    as_of_date: date_type,
+    page_size: int,
+) -> str:
+    query = {
+        "actor_id": str(user.id),
+        "actor_role": user.role,
+        "actor_node_id": str(user.hierarchy_node_id) if user.hierarchy_node_id else None,
+        "scope_roots": sorted(str(root) for root in roots),
+        "search": search,
+        "as_of_date": as_of_date.isoformat(),
+        "sort": ["next_shift_date_asc_nulls_last", "full_name_asc", "soldier_id_asc"],
+        "page_size": page_size,
+    }
+    return hashlib.sha256(
+        json.dumps(query, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _decode_hakpaza_roster_cursor(
+    cursor: str, binding: str, revision: int
+) -> tuple[date_type | None, str, uuid.UUID]:
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            cursor, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+        )
+        if (
+            payload.get("purpose") != "hakpaza_soldier_roster"
+            or payload.get("version") != 1
+            or payload.get("binding") != binding
+            or not isinstance(payload.get("full_name"), str)
+            or not isinstance(payload.get("id"), str)
+        ):
+            raise ValueError("cursor_mismatch")
+        raw_date = payload.get("next_shift_date")
+        if raw_date is not None and not isinstance(raw_date, str):
+            raise ValueError("invalid_date")
+        if type(payload.get("revision")) is not int:
+            raise ValueError("invalid_revision")
+        if payload["revision"] != revision:
+            raise HTTPException(status_code=409, detail="stale_cursor")
+        return (
+            date_type.fromisoformat(raw_date) if raw_date is not None else None,
+            payload["full_name"],
+            uuid.UUID(payload["id"]),
+        )
+    except (jwt.InvalidTokenError, ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+
+
+@router.get("/roster/hakpaza", response_model=HakpazaRosterPage)
+def list_hakpaza_soldier_roster(
+    search: str = Query(default="", max_length=200),
+    as_of_date: date_type = Query(),
+    page_size: int = Query(default=100, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=4096),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> HakpazaRosterPage:
+    """Compact, authorized Hakpaza picker rows with a global stable keyset order."""
+    roots = scope_root_ids(session, user) if user.role != "admin" else set()
+    binding = _hakpaza_roster_cursor_binding(
+        user=user,
+        roots=roots,
+        search=search,
+        as_of_date=as_of_date,
+        page_size=page_size,
+    )
+    revision = _roster_revision(session)
+    last_date, last_name, last_id = (
+        _decode_hakpaza_roster_cursor(cursor, binding, revision)
+        if cursor
+        else (None, "", None)
+    )
+
+    next_assignment = (
+        select(
+            DutyAssignment.start_date.label("shift_date"),
+            DutyAssignment.duty_type_id.label("duty_type_id"),
+        )
+        .where(
+            DutyAssignment.soldier_id == Soldier.id,
+            DutyAssignment.status == "published",
+            DutyAssignment.start_date >= as_of_date,
+        )
+        .order_by(DutyAssignment.start_date.asc(), DutyAssignment.id.asc())
+        .limit(1)
+        .lateral("hakpaza_next_assignment")
+    )
+    shift_date = next_assignment.c.shift_date
+    statement = (
+        select(
+            Soldier.id,
+            Soldier.full_name,
+            Soldier.rank,
+            shift_date.label("next_shift_date"),
+            DutyType.name.label("next_shift_type_name"),
+        )
+        .select_from(Soldier)
+        .outerjoin(next_assignment, true())
+        .outerjoin(DutyType, DutyType.id == next_assignment.c.duty_type_id)
+    )
+    # Keep the exact population returned by listSoldiers: admins and callers
+    # with a scope root see the public roster; unscoped callers see themselves.
+    if user.role != "admin" and not roots:
+        statement = statement.where(Soldier.id == user.id)
+    # Hakpaza historically uses case-sensitive String.includes on full_name.
+    # Escape LIKE metacharacters so %, _ and backslash remain literal input.
+    if search:
+        escaped_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        statement = statement.where(
+            Soldier.full_name.like(f"%{escaped_search}%", escape="\\")
+        )
+
+    if last_id is not None:
+        after_name = or_(
+            Soldier.full_name > last_name,
+            and_(Soldier.full_name == last_name, Soldier.id > last_id),
+        )
+        if last_date is None:
+            statement = statement.where(shift_date.is_(None), after_name)
+        else:
+            statement = statement.where(
+                or_(
+                    shift_date > last_date,
+                    and_(shift_date == last_date, after_name),
+                    shift_date.is_(None),
+                )
+            )
+
+    rows = session.execute(
+        statement.order_by(
+            case((shift_date.is_(None), 1), else_=0),
+            shift_date.asc(),
+            Soldier.full_name.asc(),
+            Soldier.id.asc(),
+        ).limit(page_size + 1)
+    ).all()
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
+    if _roster_revision(session) != revision:
+        raise HTTPException(status_code=409, detail="roster_changed")
+
+    items = [
+        HakpazaRosterItem(
+            id=row.id,
+            full_name=row.full_name,
+            rank=row.rank,
+            next_shift_date=row.next_shift_date,
+            next_shift_type_name=row.next_shift_type_name,
+        )
+        for row in rows
+    ]
+    next_cursor = None
+    if has_more:
+        settings = get_settings()
+        last = rows[-1]
+        next_cursor = jwt.encode(
+            {
+                "purpose": "hakpaza_soldier_roster",
+                "version": 1,
+                "binding": binding,
+                "next_shift_date": (
+                    last.next_shift_date.isoformat() if last.next_shift_date else None
+                ),
+                "full_name": last.full_name,
+                "id": str(last.id),
+                "revision": revision,
+                "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+            },
+            settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
+        )
+    return HakpazaRosterPage(items=items, next_cursor=next_cursor, has_more=has_more)
+
+
+@router.get("/lookup/personal-number", response_model=SoldierRosterItem | None)
+def lookup_soldier_by_personal_number(
+    personal_number: str = Query(min_length=1, max_length=20),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierRosterItem | None:
+    """Exact-soldier lookup using the existing public roster visibility."""
+    statement = select(Soldier).where(
+        Soldier.personal_number == personal_number,
+    )
+    roots = scope_root_ids(session, user) if user.role != "admin" else set()
+    if user.role != "admin" and not roots:
+        statement = statement.where(Soldier.id == user.id)
+    row = session.execute(statement.limit(1)).scalar_one_or_none()
+    if row is None:
+        return None
+    linked = session.execute(
+        select(TelegramLink.soldier_id).where(
+            TelegramLink.soldier_id == row.id,
+            TelegramLink.is_verified.is_(True),
+        )
+    ).scalar_one_or_none()
+    node = session.get(HierarchyNode, row.hierarchy_node_id) if row.hierarchy_node_id else None
+    hierarchy_path = []
+    if node:
+        path_names = dict(session.execute(
+            select(HierarchyNode.id, HierarchyNode.name).where(
+                HierarchyNode.id.in_(node.path_ids or [node.id])
+            )
+        ).all())
+        hierarchy_path = [path_names[node_id] for node_id in (node.path_ids or [node.id]) if node_id in path_names]
+    is_commander = session.execute(
+        select(HierarchyNode.id).where(HierarchyNode.commander_id == row.id).limit(1)
+    ).first() is not None
+    commander_node_name = session.execute(
+        select(HierarchyNode.name)
+        .where(HierarchyNode.commander_id == row.id)
+        .order_by(HierarchyNode.name, HierarchyNode.id)
+        .limit(1)
+    ).scalar_one_or_none()
+    return SoldierRosterItem(
+        id=row.id,
+        personal_number=row.personal_number,
+        full_name=row.full_name,
+        role=row.role,
+        hierarchy_node_id=row.hierarchy_node_id,
+        left_at=row.left_at,
+        telegram_linked=linked is not None,
+        is_commander=is_commander,
+        commander_node_name=commander_node_name,
+        hierarchy_path=hierarchy_path,
+    )
+
+
 def _field_update_can_approve(
     session: Session, *, user: Soldier, roots: set[uuid.UUID], is_cmd: bool, is_dm: bool,
     node: HierarchyNode | None, field_name: str, status: str = "pending",
@@ -852,6 +1390,10 @@ def update_profile(
     }
     try:
         update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
+        flush_with_identity_guard(session)
+    except IdentityCollisionError as exc:
+        session.rollback()
+        raise identity_http_exception(exc) from exc
     except svc.SoldierError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -931,7 +1473,10 @@ def approve_update(
     try:
         approve_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # not_found: the row was deleted after the read above (the service
+        # re-reads it under a lock), so it is gone rather than a bad request.
+        code = 404 if str(exc) == "not_found" else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
@@ -963,7 +1508,10 @@ def reject_update(
     try:
         reject_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # not_found: the row was deleted after the read above (the service
+        # re-reads it under a lock), so it is gone rather than a bad request.
+        code = 404 if str(exc) == "not_found" else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)

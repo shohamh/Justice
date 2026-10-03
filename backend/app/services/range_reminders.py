@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -50,6 +50,28 @@ def _manager_ids(session: Session, event: RangeEvent) -> set:
     ).scalars())
 
 
+def _claim_reminder(session: Session, event: RangeEvent) -> bool:
+    """Atomically mark ``event``'s reminder as sent; True only for the winner.
+
+    Every uvicorn process runs this worker. The conditional UPDATE re-checks
+    ``reminder_sent_at IS NULL`` under the row lock: a concurrent worker that
+    read the same due event blocks here until the winner commits, then matches
+    no row and skips the event instead of sending its reminders again. Events
+    are claimed in id order so two workers never lock them in opposite order.
+    """
+    claimed = session.execute(
+        update(RangeEvent)
+        .where(
+            RangeEvent.id == event.id,
+            RangeEvent.status == RangeEventStatus.planned,
+            RangeEvent.reminder_sent_at.is_(None),
+        )
+        .values(reminder_sent_at=datetime.now(UTC))
+        .returning(RangeEvent.id)
+    ).first()
+    return claimed is not None
+
+
 def send_due_range_reminders(session: Session, *, today: date | None = None) -> int:
     enabled = session.get(SystemSetting, "mitvachim.enabled")
     if enabled is None or enabled.value is not True:
@@ -59,10 +81,12 @@ def send_due_range_reminders(session: Session, *, today: date | None = None) -> 
     events = session.execute(select(RangeEvent).where(
         RangeEvent.status == RangeEventStatus.planned,
         RangeEvent.reminder_sent_at.is_(None),
-    )).scalars().all()
+    ).order_by(RangeEvent.id)).scalars().all()
     sent = 0
     for event in events:
         if (event.date - today).days != threshold:
+            continue
+        if not _claim_reminder(session, event):
             continue
         assignments = session.execute(select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)).scalars().all()
         primary = sum(1 for a in assignments if not a.is_reserve and not a.is_draft)
@@ -84,7 +108,6 @@ def send_due_range_reminders(session: Session, *, today: date | None = None) -> 
             create_notification(session, soldier_id=manager_id, type=manager_type,
                                 title="אזהרת מחסור בשיבוץ למטווח" if shortfall else "תזכורת למטווח קרוב",
                                 body=body, reference_type="range_event", reference_id=event.id)
-        event.reminder_sent_at = datetime.now(UTC)
         sent += 1
     if sent:
         session.commit()

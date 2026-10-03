@@ -14,9 +14,14 @@ from app.db.models import (
     RangeExcusalRequest,
     RangeExcusalStatus,
 )
+from app.services.exchange_calendar.triggers import enqueue_range_change
 from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.range_reconciliation import reconcile_future_range_assignments
-from app.services.ranges import RangeValidationError, _notify_refilled_assignments
+from app.services.ranges import (
+    RangeValidationError,
+    _acquire_range_assignment_date_lock,
+    _notify_refilled_assignments,
+)
 
 
 def _range_notification(session: Session, **kwargs):
@@ -66,7 +71,9 @@ def _recheck_soldier_assignments(session: Session, soldier_id: uuid.UUID) -> Non
         )
     ).scalars().all()
     if affected_ids:
-        recheck_assignments(session, affected_ids)
+        # The caller commits once at the end; a commit here would publish half
+        # the decision and release its advisory/request locks early.
+        recheck_assignments(session, affected_ids, commit=False)
 
 
 
@@ -139,6 +146,7 @@ def request_reserve_excusal(
         title="חייל מילואים הסיר את עצמו", reference_type="range_excusal_request",
         reference_id=request.id, actor_id=requested_by,
     )
+    enqueue_range_change(session, assignment.range_event_id)
     session.commit()
     session.refresh(request)
     return request
@@ -195,7 +203,25 @@ def decide_primary_excusal(
 ) -> RangeExcusalRequest:
     if request.status != RangeExcusalStatus.pending:
         raise RangeValidationError("excusal_request_already_decided")
-    assignment = session.get(RangeAssignment, request.range_assignment_id)
+    # Serialize with every other roster writer for this event date (manual
+    # add, batch assign, request approval) via the per-date advisory lock,
+    # then lock the request row. Without this, two approvals on one event
+    # both read the same eligible reserve and both "promote" it, leaving a
+    # slot silently unfilled. Lock order: advisory(date) -> request row ->
+    # assignment rows -> reconciliation's later-date advisory locks.
+    pre_assignment = session.get(RangeAssignment, request.range_assignment_id)
+    pre_event = session.get(RangeEvent, pre_assignment.range_event_id) if pre_assignment else None
+    if pre_event is not None:
+        _acquire_range_assignment_date_lock(session, event_date=pre_event.date)
+    request = session.execute(
+        select(RangeExcusalRequest)
+        .where(RangeExcusalRequest.id == request.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+    if request.status != RangeExcusalStatus.pending:
+        raise RangeValidationError("excusal_request_already_decided")
+    assignment = session.get(RangeAssignment, request.range_assignment_id, populate_existing=True)
     if assignment is None or assignment.is_reserve:
         raise RangeValidationError("primary_assignment_not_found")
     event = _load_future_event(session, assignment)
@@ -252,6 +278,8 @@ def decide_primary_excusal(
                 title="אין מילואים זכאים לשיבוץ חלופי", reference_type="range_excusal_request",
                 reference_id=request.id, actor_id=decided_by,
             )
+    if approve:
+        enqueue_range_change(session, event.id)
     session.commit()
     session.refresh(request)
     return request

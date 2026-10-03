@@ -50,6 +50,9 @@ def update_range_location(
         entity_type="range_location", entity_id=location.id,
         before=before, after={"name": location.name, "active": location.active},
     )
+    if location.name != before["name"]:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_location
+        enqueue_affected_by_location(session, location)
     session.flush()
     return location
 

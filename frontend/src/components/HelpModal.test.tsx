@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import HelpModal from "./HelpModal";
+import { fetchTree } from "../api/hierarchy";
+import { listTemplates, type ShiftTemplate } from "../api/shiftTemplates";
 
 const mockUseAuth = vi.fn();
 vi.mock("../auth/AuthContext", () => ({
@@ -22,10 +24,32 @@ vi.mock("../api/shiftTemplates", () => ({
   ])),
 }));
 
+vi.mock("./HierarchyNodePickerModal", () => ({
+  default: ({ onPicked }: { onPicked: (id: string, name: string, path?: string[], pathIds?: string[]) => void }) => (
+    <div role="dialog" aria-label="Hierarchy picker test double">
+      <button type="button" onClick={() => onPicked("n2", "Team 1", ["Platoon A", "Team 1"], ["n1", "n2"])}>
+        Pick nested node
+      </button>
+      <button type="button" onClick={() => onPicked("n3", "Other node", ["Other node"], ["n3"])}>
+        Pick unrelated node
+      </button>
+    </div>
+  ),
+}));
+
 function setUser(role: "soldier" | "commander" | "duty_manager" | "admin", overrides: Partial<{ is_commander: boolean; is_duty_manager: boolean }> = {}) {
   mockUseAuth.mockReturnValue({
     user: { id: "u1", role, is_commander: false, is_duty_manager: false, ...overrides },
   });
+}
+
+function makeTemplate(eligible_node_ids: string[] | null | undefined): ShiftTemplate {
+  return {
+    id: "t1", name: "Template", duty_type_id: "d1", duty_location_id: "l1", recurrence_type: "daily",
+    weekdays: [], duration_days: 1, start_time: "00:00", end_time: "23:59", required_count: 1,
+    active: true, auto_roll: false, auto_roll_until: null, notes: null,
+    eligible_node_ids: eligible_node_ids as string[] | null,
+  };
 }
 
 describe("HelpModal tab visibility", () => {
@@ -72,21 +96,52 @@ it("Approvals tab explains each approval type for a commander", () => {
   expect(screen.getByText(/בקשות פטור/)).toBeInTheDocument();
 });
 
-it("eligibility checker shows a soldier in a matching subtree as eligible, for a duty_manager", async () => {
+it("opens the lazy hierarchy picker and accepts a matching ancestor path", async () => {
+  vi.mocked(listTemplates).mockResolvedValue([makeTemplate(["n1"])]);
   setUser("duty_manager", { is_duty_manager: true });
   render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="hierarchy" />);
-  const nodeSelect = await screen.findByLabelText("בחר צומת");
-  const dutySelect = screen.getByLabelText("בחר סוג תורנות");
-  fireEvent.change(nodeSelect, { target: { value: "n2" } });
-  fireEvent.change(dutySelect, { target: { value: "t1" } });
-  expect(await screen.findByText("✅ כשיר")).toBeInTheDocument();
+
+  expect(fetchTree).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByTestId("eligibility-open-picker"));
+  fireEvent.click(screen.getByRole("button", { name: "Pick nested node" }));
+  expect(screen.getByTestId("eligibility-selected-path")).toHaveTextContent(/Platoon A.*Team 1/);
+  expect(screen.getByRole("button", { name: /Platoon A.*Team 1/ })).toBeInTheDocument();
+  fireEvent.change(await screen.findByRole("combobox"), { target: { value: "t1" } });
+  expect(await screen.findByText((_text, element) => Boolean(element?.className.includes("text-green-700")))).toBeInTheDocument();
 });
 
-it("eligibility checker's duty-type dropdown is hidden for a plain soldier", async () => {
+it.each([
+  ["unrelated configured node IDs", ["n3"]],
+  ["an empty configured scope", []],
+])("marks the selected node ineligible for %s", async (_description, eligibleNodeIds) => {
+  vi.mocked(listTemplates).mockResolvedValue([makeTemplate(eligibleNodeIds)]);
+  setUser("duty_manager", { is_duty_manager: true });
+  render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="hierarchy" />);
+
+  fireEvent.click(screen.getByTestId("eligibility-open-picker"));
+  fireEvent.click(screen.getByRole("button", { name: "Pick nested node" }));
+  fireEvent.change(await screen.findByRole("combobox"), { target: { value: "t1" } });
+  expect(await screen.findByText((_text, element) => Boolean(element?.className.includes("text-red-600")))).toBeInTheDocument();
+});
+
+it.each([null, undefined])("treats an unrestricted template scope as eligible (%s)", async (eligibleNodeIds) => {
+  vi.mocked(listTemplates).mockResolvedValue([makeTemplate(eligibleNodeIds)]);
+  setUser("duty_manager", { is_duty_manager: true });
+  render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="hierarchy" />);
+
+  fireEvent.click(screen.getByTestId("eligibility-open-picker"));
+  fireEvent.click(screen.getByRole("button", { name: "Pick nested node" }));
+  fireEvent.change(await screen.findByRole("combobox"), { target: { value: "t1" } });
+  expect(await screen.findByText((_text, element) => Boolean(element?.className.includes("text-green-700")))).toBeInTheDocument();
+});
+
+it("hides template controls and template requests from a plain soldier", () => {
+  vi.mocked(listTemplates).mockClear();
   setUser("soldier");
   render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="hierarchy" />);
-  await screen.findByLabelText("בחר צומת");
-  expect(screen.queryByLabelText("בחר סוג תורנות")).not.toBeInTheDocument();
+  expect(screen.getByTestId("eligibility-open-picker")).toBeInTheDocument();
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(listTemplates).not.toHaveBeenCalled();
 });
 
 it("expands a swap step's detail on click and collapses on second click", () => {

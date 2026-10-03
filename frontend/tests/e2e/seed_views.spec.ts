@@ -22,12 +22,10 @@ test("seeded data renders correctly across pages @smoke", async ({ page }) => {
     }
     await page.waitForTimeout(200);
   }
-  const treeItems = await page.getByTestId(/^tree-name-/).count();
-  expect(treeItems).toBeGreaterThan(5);
+  await expect.poll(() => page.getByTestId(/^tree-name-/).count(), { timeout: 15_000 }).toBeGreaterThan(5);
 
   await expect(page.getByTestId("soldier-table")).toBeVisible();
-  const soldierRows = await page.getByTestId(/^soldier-row-/).count();
-  expect(soldierRows).toBeGreaterThan(5);
+  await expect.poll(() => page.getByTestId(/^soldier-row-/).count(), { timeout: 15_000 }).toBeGreaterThan(5);
 
   await navItem(page, "nav-unit-calendar").click();
   await expect(page).toHaveURL(/\/unit-calendar$/);

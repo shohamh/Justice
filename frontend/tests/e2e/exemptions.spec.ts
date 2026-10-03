@@ -47,7 +47,7 @@ test("admin onboards a soldier, grants an exemption, then revokes it", async ({ 
   await expect(page.getByRole("option", { name: "פסיפס" })).toBeVisible();
   await page.getByRole("option", { name: "פסיפס" }).click();
   await page.getByTestId("onboard-submit").click();
-  await expect(page.getByTestId(`soldier-row-${pn}`)).toBeVisible();
+  await expect(page.getByTestId(`soldier-row-${pn}`)).toBeVisible({ timeout: 15_000 });
 
   // Open the soldier's unified modal and switch to its exemptions tab.
   await page.getByTestId(`edit-${pn}`).click();

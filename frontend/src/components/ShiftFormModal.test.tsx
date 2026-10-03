@@ -12,6 +12,27 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+vi.mock("./SubHierarchySelector", () => ({
+  default: ({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) => (
+    <div data-testid="sub-hierarchy-selector-stub">
+      {mockNodes[0].children.map((node) => (
+        <label key={node.id}>
+          <input
+            type="checkbox"
+            checked={value.includes(node.id)}
+            onChange={() => onChange(
+              value.includes(node.id)
+                ? value.filter((selectedId) => selectedId !== node.id)
+                : [...value, node.id],
+            )}
+          />
+          {node.name}
+        </label>
+      ))}
+    </div>
+  ),
+}));
+
 const mockCreateShift = vi.fn(() => Promise.resolve({ id: "new-shift-1" }));
 const mockUpdateShift = vi.fn(() => Promise.resolve({}));
 const mockGetQuotaSplitPreview = vi.fn(() =>

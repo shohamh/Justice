@@ -51,7 +51,7 @@ export default function RangeFormModal({ open, event, hierarchyNodeId, locations
       </section>
       <section data-testid="range-form-section-notes" className="space-y-3 border-t pt-4">
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">הערות</h4>
-        <label className="block text-sm"><span className="sr-only">הערות</span><textarea aria-label="הערות" value={form.notes} onChange={e=>set("notes",e.target.value)} className={inputClass} rows={3} /></label>
+        <label className="block text-sm"><span className="sr-only">הערות</span><textarea aria-label="הערות" value={form.notes} onChange={e=>set("notes",e.target.value)} className={inputClass} rows={3} /><span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">הערות אלו יוצגו למוזמנים בגוף אירוע היומן.</span></label>
       </section>
       {event && event.assignments.length > 0 && (form.date !== event.date || form.range_type !== event.range_type) && <label className="flex items-center gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-900/20"><input type="checkbox" checked={force} onChange={e=>setForce(e.target.checked)} />אני מאשר שינוי מועד/סוג עם שיבוצים</label>}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}

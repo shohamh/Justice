@@ -1,26 +1,22 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
   Calendar, BarChart2,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { getTransparencyAuthorizationScope } from "../api/auth";
 import { usePublicSettings } from "../hooks/usePublicSettings";
-import { getPendingCount } from "../api/constraints";
-import { getPendingExemptionCount } from "../api/exemptions";
-import { getPendingFieldUpdateCount } from "../api/soldiers";
-import { getIncomingSwapCount, isSwapActionableForUser, listPendingSwaps } from "../api/swaps";
-import { listPendingEnrollments } from "../api/enrollment";
-import { listPendingTransferRequests } from "../api/hierarchyTransfers";
-import { getPendingHakpazaCount } from "../api/hakpaza";
+import { getNavCounts } from "../api/navCounts";
 import { getIneligibleSoldierCount } from "../api/ineligibleSoldiers";
 import { queryKeys } from "../queryKeys";
 import { listJobs } from "../api/algorithm";
 import { computeRunBadgeCounts, RunBadgeCounts, RunBadgeJob } from "../utils/algorithmRunBadges";
 import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
 import NavSheet, { BadgeColor } from "./NavSheet";
+import { useAdminIneligibleSoldierCount } from "../hooks/useAdminIneligibleSoldierCount";
 
 interface NavTab {
   label: string;
@@ -70,26 +66,61 @@ export default function UnifiedNav() {
   const location = useLocation();
   const settings = usePublicSettings();
   const queryClient = useQueryClient();
+  const inFlightQueries = useIsFetching();
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
   const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
   const canViewTransparency = user?.can_view_transparency !== false;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
-  const [approvalsPendingCount, setApprovalsPendingCount] = useState(0);
-  const [hakpazaPendingCount, setHakpazaPendingCount] = useState(0);
-  const [swapIncomingCount, setSwapIncomingCount] = useState(0);
+  const navScopeKey = JSON.stringify({
+    normalizedScope: getTransparencyAuthorizationScope(user),
+    actorId: user?.id ?? null,
+    canApprove,
+    canPlan,
+  });
+  const navRequestKey = JSON.stringify({
+    pathname: location.pathname,
+    scope: navScopeKey,
+    mitvachimEnabled,
+    hakpazaEnabled,
+  });
+  const [settledNavRequestKey, setSettledNavRequestKey] = useState("");
+  const navReadsEnabled = settledNavRequestKey === navRequestKey;
   const { seenIds, seedSeenIds } = useSeenJobs();
-  const ineligibleCountQuery = useQuery({
-    queryKey: queryKeys.ineligibleSoldierCount(),
-    queryFn: getIneligibleSoldierCount,
-    enabled: canPlan && mitvachimEnabled,
+  const navCountsQuery = useQuery({
+    queryKey: queryKeys.navCounts(navScopeKey, hakpazaEnabled, location.pathname),
+    queryFn: getNavCounts,
+    enabled: navReadsEnabled && Boolean(user),
     retry: false,
   });
+  const adminIneligibleCountQuery = useAdminIneligibleSoldierCount({
+    actorId: user?.role === "admin" ? user.id : null,
+    authorizationScope: user?.role === "admin" ? getTransparencyAuthorizationScope(user) : null,
+    enabled: Boolean(navReadsEnabled && canPlan && mitvachimEnabled),
+  });
+  const planningIneligibleCountQuery = useQuery({
+    queryKey: [...queryKeys.ineligibleSoldierCount(), "planning", navScopeKey],
+    queryFn: () => getIneligibleSoldierCount(),
+    enabled: user?.role !== "admin" && navReadsEnabled && canPlan && mitvachimEnabled,
+    retry: false,
+  });
+  const ineligibleCountQuery = user?.role === "admin"
+    ? adminIneligibleCountQuery
+    : planningIneligibleCountQuery;
   const ineligibleCount = ineligibleCountQuery.data?.count ?? 0;
-  const [algorithmJobs, setAlgorithmJobs] = useState<RunBadgeJob[]>([]);
+  const [algorithmBadgeData, setAlgorithmBadgeData] = useState({
+    scopeKey: "",
+    jobs: [] as RunBadgeJob[],
+  });
+  const approvalsPendingCount = navCountsQuery.data?.approvals ?? 0;
+  const hakpazaPendingCount = navCountsQuery.data?.hakpaza ?? 0;
+  const swapIncomingCount = navCountsQuery.data?.incoming_swaps ?? 0;
   const algorithmCounts = useMemo(
-    () => computeRunBadgeCounts(algorithmJobs, seenIds),
-    [algorithmJobs, seenIds]
+    () => computeRunBadgeCounts(
+      algorithmBadgeData.scopeKey === navScopeKey ? algorithmBadgeData.jobs : [],
+      seenIds
+    ),
+    [algorithmBadgeData, navScopeKey, seenIds]
   );
   const algorithmBadgeCount = algorithmCounts.running + algorithmCounts.draft + algorithmCounts.done + algorithmCounts.failed;
   const algorithmBadgeColor = pickBadgeColor(algorithmCounts);
@@ -101,41 +132,33 @@ export default function UnifiedNav() {
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
   const previousPathname = useRef(location.pathname);
 
+  // Open the gate at the deadline even if another query never settles.
   useEffect(() => {
-    if (!canApprove) return;
-    void (async () => {
-      const [c, e, f, enroll, hk, swaps, transfers] = await Promise.all([
-        getPendingCount().catch(() => 0),
-        getPendingExemptionCount().catch(() => 0),
-        getPendingFieldUpdateCount().catch(() => 0),
-        listPendingEnrollments().then((r) => r.length).catch(() => 0),
-        getPendingHakpazaCount().catch(() => 0),
-        listPendingSwaps().then((rows) => rows.filter((swap) => isSwapActionableForUser(swap, user?.id, user?.role === "admin")).length).catch(() => 0),
-        listPendingTransferRequests().then((rows) => rows.length).catch(() => 0),
-      ]);
-      // Hakpaza lives on its own page (/commander/hakpaza), not one of the
-      // ApprovalsPage tabs, so it must stay out of the "אישור בקשות" badge —
-      // otherwise that badge would count items the page itself never shows.
-      setApprovalsPendingCount(c + e + f + enroll + swaps + transfers);
-      setHakpazaPendingCount(hk);
-    })();
-  }, [canApprove, location.pathname, user?.id, user?.role]);
+    if (navReadsEnabled) return;
+    const timer = window.setTimeout(() => setSettledNavRequestKey(navRequestKey), 1_200);
+    return () => window.clearTimeout(timer);
+  }, [navReadsEnabled, navRequestKey]);
+
+  // Navigation reads remain disabled until the gate opens, so their own fetches
+  // cannot interrupt the route's quiet period.
+  useEffect(() => {
+    if (navReadsEnabled || inFlightQueries > 0) return;
+    const timer = window.setTimeout(() => {
+      if (queryClient.isFetching() === 0) setSettledNavRequestKey(navRequestKey);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [inFlightQueries, navReadsEnabled, navRequestKey, queryClient]);
 
   useEffect(() => {
-    void (async () => {
-      const count = await getIncomingSwapCount().catch(() => 0);
-      setSwapIncomingCount(count);
-    })();
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (!canPlan) return;
+    if (!canPlan || !navReadsEnabled) return;
+    let active = true;
 
     async function fetchAlgorithmBadge() {
       try {
         const result = await listJobs(50);
         const items = Array.isArray(result?.items) ? result.items : [];
-        setAlgorithmJobs(items);
+        if (!active) return;
+        setAlgorithmBadgeData({ scopeKey: navScopeKey, jobs: items });
         seedSeenIds(items);
       } catch {
         // ignore
@@ -145,8 +168,11 @@ export default function UnifiedNav() {
     void fetchAlgorithmBadge();
 
     const interval = setInterval(() => void fetchAlgorithmBadge(), 30_000);
-    return () => clearInterval(interval);
-  }, [canPlan, location.pathname, seedSeenIds]);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [canPlan, navReadsEnabled, navScopeKey, location.pathname, seedSeenIds]);
 
   useEffect(() => {
     if (!canPlan || !mitvachimEnabled) return;

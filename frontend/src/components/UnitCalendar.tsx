@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeftRight, Crosshair } from "lucide-react";
@@ -9,6 +16,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
+import { getTransparencyAuthorizationScope } from "../api/auth";
 import { CalendarShift, getCalendarShifts } from "../api/calendar";
 import { loadCalendarData } from "../api/calendarData";
 import { listHolidays } from "../api/calendarHolidays";
@@ -77,6 +85,11 @@ export function filterCalendarShifts(
   );
 }
 
+interface CalendarWindowData {
+  shifts: CalendarShift[];
+  ranges: RangeEvent[];
+}
+
 export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highlightSoldierId }: UnitCalendarProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -104,6 +117,8 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
+  const inFlightWindowRequestsRef = useRef(new Map<string, Promise<CalendarWindowData>>());
+  const requestGenerationRef = useRef(0);
   const fetchedHolidayYearsRef = useRef<Set<number>>(new Set());
 
   // Multiple own nodes are fetched independently and merged (deduped by id)
@@ -111,68 +126,138 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   // endpoints, which other callers use with a single node.
   const effectiveNodeIds = nodeIds && nodeIds.length > 0 ? nodeIds : nodeId ? [nodeId] : [];
   const nodeIdsKey = effectiveNodeIds.join(",");
+  const authorizationScopeKey = JSON.stringify({
+    normalizedScope: getTransparencyAuthorizationScope(user),
+    actorId: user?.id ?? null,
+    role: user?.role ?? null,
+    canSeeEligibilityBadges,
+  });
+  const calendarTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+  const calendarDataIdentityKey = JSON.stringify({
+    nodeIdsKey,
+    soldierId: soldierId ?? null,
+    highlightSoldierId: highlightSoldierId ?? null,
+    authorizationScope: authorizationScopeKey,
+    timezone: calendarTimezone,
+    rangesEnabled,
+  });
+  const [readyCalendarDataIdentityKey, setReadyCalendarDataIdentityKey] =
+    useState(calendarDataIdentityKey);
+  // A new identity hides the previous identity's data during render, before
+  // the layout effect invalidates requests and clears state.
+  const calendarDataReady = readyCalendarDataIdentityKey === calendarDataIdentityKey;
 
   const fetchData = useCallback(async (from: string, to: string) => {
     if (!publicSettingsReady) return;
     if (effectiveNodeIds.length === 0 && !soldierId && !highlightSoldierId) return;
+    const requestGeneration = ++requestGenerationRef.current;
+    const requestKey = JSON.stringify({
+      date_from: from,
+      date_to: to,
+      timezone: calendarTimezone,
+      nodeIds: effectiveNodeIds,
+      soldierId: soldierId ?? null,
+      highlightSoldierId: highlightSoldierId ?? null,
+      authorizationScope: authorizationScopeKey,
+      rangesEnabled,
+    });
     setLoading(true);
     setError(null);
-    try {
+
+    const loadWindow = async (): Promise<CalendarWindowData> => {
       if (soldierId) {
         const { calendar, ranges: rangeEvents } = await loadCalendarData(
           () => getCalendarShifts({ soldierId, date_from: from, date_to: to }),
           () => getMyRanges(soldierId, from, to),
           rangesEnabled,
         );
-        setShifts(calendar.shifts);
-        setRanges(rangeEvents);
-        setSelectedShift(prev => (prev ? calendar.shifts.find(s => s.id === prev.id) ?? prev : null));
-      } else {
-        const perNode = await Promise.all(
-          effectiveNodeIds.map((id) =>
-            loadCalendarData(
-              () => getCalendarShifts({ nodeId: id, date_from: from, date_to: to }),
-              () => getRanges(id, from, to),
-              rangesEnabled,
-            )
-          )
-        );
-        // A manager's own assignment can be cross-unit and therefore absent
-        // from the managed subtree. Merge the personal result into the command
-        // scope so the single Homepage calendar always includes the manager.
-        const personal = highlightSoldierId
-          ? [await loadCalendarData(
-              () => getCalendarShifts({ soldierId: highlightSoldierId, date_from: from, date_to: to }),
-              () => getMyRanges(highlightSoldierId, from, to),
-              rangesEnabled,
-            )]
-          : [];
-        const shiftsById = new Map<string, CalendarShift>();
-        const rangesById = new Map<string, RangeEvent>();
-        for (const { calendar, ranges: rangeEvents } of [...perNode, ...personal]) {
-          for (const s of calendar.shifts) shiftsById.set(s.id, s);
-          for (const r of rangeEvents) rangesById.set(r.id, r);
-        }
-        const mergedShifts = Array.from(shiftsById.values());
-        setShifts(mergedShifts);
-        setRanges(Array.from(rangesById.values()));
-        setSelectedShift(prev => (prev ? mergedShifts.find(s => s.id === prev.id) ?? prev : null));
+        return { shifts: calendar.shifts, ranges: rangeEvents };
       }
-    } catch {
-      setError(t("unit_calendar.error") || "Failed to load calendar");
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId, highlightSoldierId, publicSettingsReady, rangesEnabled, t]);
 
-  useEffect(() => {
-    dateRangeRef.current = null;
+      const perNode = await Promise.all(
+        effectiveNodeIds.map((id) =>
+          loadCalendarData(
+            () => getCalendarShifts({ nodeId: id, date_from: from, date_to: to }),
+            () => getRanges(id, from, to),
+            rangesEnabled,
+          )
+        )
+      );
+      // A manager's own assignment can be cross-unit and therefore absent
+      // from the managed subtree. Merge the personal result into the command
+      // scope so the single Homepage calendar always includes the manager.
+      const personal = highlightSoldierId
+        ? [await loadCalendarData(
+            () => getCalendarShifts({ soldierId: highlightSoldierId, date_from: from, date_to: to }),
+            () => getMyRanges(highlightSoldierId, from, to),
+            rangesEnabled,
+          )]
+        : [];
+      const shiftsById = new Map<string, CalendarShift>();
+      const rangesById = new Map<string, RangeEvent>();
+      for (const { calendar, ranges: rangeEvents } of [...perNode, ...personal]) {
+        for (const shift of calendar.shifts) shiftsById.set(shift.id, shift);
+        for (const range of rangeEvents) rangesById.set(range.id, range);
+      }
+      return {
+        shifts: Array.from(shiftsById.values()),
+        ranges: Array.from(rangesById.values()),
+      };
+    };
+
+    let request = inFlightWindowRequestsRef.current.get(requestKey);
+    if (!request) {
+      request = loadWindow();
+      inFlightWindowRequestsRef.current.set(requestKey, request);
+    }
+    try {
+      const windowData = await request;
+      if (requestGeneration !== requestGenerationRef.current) return;
+      setShifts(windowData.shifts);
+      setRanges(windowData.ranges);
+      setSelectedShift((prev) =>
+        prev ? windowData.shifts.find((shift) => shift.id === prev.id) ?? prev : null
+      );
+    } catch {
+      if (requestGeneration === requestGenerationRef.current) {
+        setError(t("unit_calendar.error") || "Failed to load calendar");
+      }
+    } finally {
+      if (inFlightWindowRequestsRef.current.get(requestKey) === request) {
+        inFlightWindowRequestsRef.current.delete(requestKey);
+      }
+      if (requestGeneration === requestGenerationRef.current) setLoading(false);
+    }
+    // nodeIdsKey is the stable identity for the derived effectiveNodeIds array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    nodeIdsKey,
+    soldierId,
+    highlightSoldierId,
+    authorizationScopeKey,
+    calendarTimezone,
+    publicSettingsReady,
+    rangesEnabled,
+    t,
+  ]);
+
+  useLayoutEffect(() => {
+    if (readyCalendarDataIdentityKey === calendarDataIdentityKey) return;
+
+    requestGenerationRef.current += 1;
     setShifts([]);
     setRanges([]);
     setSelectedShift(null);
+    setSelectedRangeId(null);
+    setError(null);
+    setLoading(false);
+    setReadyCalendarDataIdentityKey(calendarDataIdentityKey);
+    const currentRange = dateRangeRef.current;
+    if (currentRange) fetchData(currentRange.from, currentRange.to);
+    // fetchData is intentionally read at identity changes only; public setting
+    // readiness changes are handled by the dedicated rangesEnabled effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeIdsKey, soldierId, highlightSoldierId]);
+  }, [calendarDataIdentityKey, readyCalendarDataIdentityKey]);
 
   // The duty-type filter should list every active duty type, not just the
   // ones that happen to have a shift in the currently-loaded date range —
@@ -195,14 +280,22 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   function handleDatesSet(arg: DatesSetArg) {
     setActiveViewType(arg.view.type);
     const from = dateToLocalIso(arg.start);
-    const to = dateToLocalIso(arg.end);
+    // FullCalendar supplies an exclusive end, while the calendar APIs accept
+    // an inclusive date_to. Subtract a local calendar day, not 24 UTC hours,
+    // so DST transitions keep the same visible local-date window.
+    const lastVisibleLocalDate = new Date(
+      arg.end.getFullYear(),
+      arg.end.getMonth(),
+      arg.end.getDate() - 1,
+    );
+    const to = dateToLocalIso(lastVisibleLocalDate);
     const prev = dateRangeRef.current;
     if (prev && prev.from === from && prev.to === to) return;
     dateRangeRef.current = { from, to };
     fetchData(from, to);
 
     const fromYear = arg.start.getFullYear();
-    const toYear = arg.end.getFullYear();
+    const toYear = lastVisibleLocalDate.getFullYear();
     const yearsToFetch: number[] = [];
     for (let y = fromYear; y <= toYear; y++) {
       if (!fetchedHolidayYearsRef.current.has(y)) yearsToFetch.push(y);
@@ -227,11 +320,11 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const dutyTypesInView = useMemo(() => {
     if (allDutyTypes.length > 0) return allDutyTypes;
     const seen = new Map<string, string>();
-    for (const s of shifts) {
+    for (const s of calendarDataReady ? shifts : []) {
       if (!seen.has(s.duty_type_id)) seen.set(s.duty_type_id, s.duty_type_name);
     }
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
-  }, [allDutyTypes, shifts]);
+  }, [allDutyTypes, calendarDataReady, shifts]);
 
   const rangeTypeOptions = useMemo(
     () => Object.entries(RANGE_TYPE_LABELS).map(([id, name]) => ({ id, name })),
@@ -253,22 +346,23 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const canHighlightOwnDuties = !soldierId && Boolean(highlightSoldierId);
 
   const filteredShifts = useMemo(
-    () => filterCalendarShifts(shifts, effectiveDutyTypeFilter, false)
+    () => filterCalendarShifts(calendarDataReady ? shifts : [], effectiveDutyTypeFilter, false)
       .filter((shift) => !showOnlyMyDuties || !canHighlightOwnDuties || shift.assignees.some((assignee) => assignee.soldier_id === highlightSoldierId)),
-    [shifts, effectiveDutyTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
+    [calendarDataReady, shifts, effectiveDutyTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
   );
 
   useEffect(() => {
+    if (!calendarDataReady) return;
     if (selectedShift && !filteredShifts.some((shift) => shift.id === selectedShift.id)) {
       setSelectedShift(null);
     }
-  }, [filteredShifts, selectedShift]);
+  }, [calendarDataReady, filteredShifts, selectedShift]);
 
   const filteredRanges = useMemo(
-    () => ranges
+    () => (calendarDataReady ? ranges : [])
       .filter(r => effectiveRangeTypeFilter.includes(r.range_type))
       .filter((range) => !showOnlyMyDuties || !canHighlightOwnDuties || range.assignments.some((assignment) => assignment.soldier_id === highlightSoldierId)),
-    [ranges, effectiveRangeTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
+    [calendarDataReady, ranges, effectiveRangeTypeFilter, showOnlyMyDuties, canHighlightOwnDuties, highlightSoldierId],
   );
 
   const shiftEvents = useMemo(
@@ -332,6 +426,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   }
 
   function handleEventClick(arg: EventClickArg) {
+    if (!calendarDataReady) return;
     const holidayDate = arg.event.extendedProps.holidayDate as string | undefined;
     const holidayName = arg.event.extendedProps.holidayName as string | undefined;
     if (holidayDate && holidayName) {
@@ -340,11 +435,11 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
     }
     const rangeId = arg.event.extendedProps.rangeId as string | undefined;
     if (rangeId) {
-      setSelectedRangeId(rangeId);
+      if (filteredRanges.some((range) => range.id === rangeId)) setSelectedRangeId(rangeId);
       return;
     }
     const shiftId = arg.event.extendedProps.shiftId;
-    const shift = shifts.find(s => s.id === shiftId);
+    const shift = filteredShifts.find((s) => s.id === shiftId);
     if (shift) setSelectedShift(shift);
   }
 
@@ -400,8 +495,8 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
           )}
       </div>
 
-      {loading && <p className="text-gray-500 text-sm">{t("unit_calendar.loading")}</p>}
-      {error && <p role="alert" className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}
+      {(!calendarDataReady || loading) && <p className="text-gray-500 text-sm">{t("unit_calendar.loading")}</p>}
+      {calendarDataReady && error && <p role="alert" className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}
 
       <div
         data-testid="fullcalendar"
@@ -442,6 +537,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
             timeGridThreeDay: { type: "timeGrid", duration: { days: 3 }, displayEventTime: true },
           }}
           eventContent={(arg) => {
+            if (!calendarDataReady) return <div />;
             const holidayName = arg.event.extendedProps.holidayName as string | undefined;
             if (holidayName) {
               return (
@@ -452,7 +548,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
             }
             const rangeId = arg.event.extendedProps.rangeId as string | undefined;
             if (rangeId) {
-              const range = ranges.find(r => r.id === rangeId);
+              const range = filteredRanges.find((r) => r.id === rangeId);
               if (!range) return <div />;
               return (
                 <div className="text-xs leading-tight px-1 overflow-hidden w-full">
@@ -469,7 +565,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
                 </div>
               );
             }
-            const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
+            const shift = filteredShifts.find((s) => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;
             const ineligibleAssignees = canSeeEligibilityBadges
               ? shift.assignees.filter((a) => a.weapon_ineligible || a.range_eligibility?.eligible === false)
@@ -565,7 +661,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
         />
       </div>
 
-      {selectedShift && (
+      {calendarDataReady && selectedShift && (
         <ShiftDetailPanel
           shift={selectedShift}
           onClose={() => setSelectedShift(null)}
@@ -576,7 +672,7 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
         />
       )}
 
-      {selectedRangeId && (
+      {calendarDataReady && selectedRangeId && (
         <RangeDetailModal rangeId={selectedRangeId} onClose={() => setSelectedRangeId(null)} />
       )}
 

@@ -18,12 +18,19 @@ export const queryKeys = {
   pendingHierarchyTransfers: () => ["hierarchyTransfers", "pending"] as const,
   systemSettings: () => ["systemSettings"] as const,
   transparency: () => ["scoring", "transparency"] as const,
+  transparencyForScope: (authorizationScope: string | null) =>
+    ["scoring", "transparency", "scope", authorizationScope] as const,
+  transparencyExportForScope: (authorizationScope: string | null) =>
+    ["scoring", "transparency", "export", authorizationScope] as const,
+  transparencyPage: () => ["scoring", "transparency", "page"] as const,
   breakdown: (soldierId: string) => ["scoring", "breakdown", soldierId] as const,
   burdenShare: (soldierId: string) => ["scoring", "burdenShare", soldierId] as const,
   reserveStats: () => ["soldiers", "reserveStats"] as const,
   pendingConstraintsCount: () => ["constraints", "pendingCount"] as const,
   pendingExemptionsCount: () => ["exemptions", "pendingCount"] as const,
   pendingFieldUpdatesCount: () => ["soldiers", "pendingFieldUpdatesCount"] as const,
+  navCounts: (scopeKey: string, hakpazaEnabled: boolean, pathname: string) =>
+    ["navigation", "counts", scopeKey, hakpazaEnabled, pathname] as const,
   myConstraints: () => ["constraints", "mine"] as const,
   remainingConstraintDays: () => ["constraints", "remaining"] as const,
   myExemptionRequests: () => ["exemptionRequests", "mine"] as const,
@@ -35,6 +42,20 @@ export const queryKeys = {
   pendingExemptionRequests: () => ["exemptionRequests", "pending"] as const,
   pendingFieldUpdates: () => ["soldiers", "pendingFieldUpdates"] as const,
   hierarchyTree: () => ["hierarchy", "tree"] as const,
+  hierarchyTreeForPotentialScope: (authorizationScope: string | null) =>
+    ["hierarchy", "tree", "potential", authorizationScope] as const,
+  hierarchyTreeForExport: (authorizationScope: string | null) =>
+    ["hierarchy", "tree", "export", authorizationScope] as const,
+  myCommandScope: (soldierId: string | null, authorizationScope: string | null) =>
+    ["hierarchy", "myCommandScope", soldierId, authorizationScope] as const,
+  hierarchyBranches: (scopeKey?: unknown) =>
+    scopeKey === undefined ? (["hierarchy", "branches"] as const) : (["hierarchy", "branches", scopeKey] as const),
+  hierarchyBranch: (scopeKey: unknown, parentId: string | null) =>
+    ["hierarchy", "branches", scopeKey, parentId] as const,
+  hierarchySearches: (scopeKey?: unknown) =>
+    scopeKey === undefined ? (["hierarchy", "search"] as const) : (["hierarchy", "search", scopeKey] as const),
+  hierarchySearch: (scopeKey: unknown, query: string) =>
+    ["hierarchy", "search", scopeKey, query] as const,
   publicExemptionTypes: () => ["exemptionTypes", "public"] as const,
   swapConfig: () => ["swaps", "config"] as const,
   swapCoverEligibility: (ids: string[]) => ["swaps", "coverEligibility", ids] as const,
@@ -54,6 +75,10 @@ export const queryKeys = {
   announcementsList: (offset: number) => ["notifications", "announcements", offset] as const,
   announcementRecipients: (id: string) => ["notifications", "announcements", id, "recipients"] as const,
   soldiers: () => ["soldiers", "list"] as const,
+  soldierNames: (ids: string[], authorizationScope: string | null) => ["soldiers", "list", "names", authorizationScope, ids] as const,
+  soldierRoster: () => ["soldiers", "list", "roster"] as const,
+  hakpazaSoldierRoster: (asOfDate: string, search: string) =>
+    ["soldiers", "list", "roster", "hakpaza", asOfDate, search] as const,
   commandDashboardSoldiers: () => ["commandDashboard", "soldiers"] as const,
   commandDashboardFairnessInternal: () => ["commandDashboard", "fairnessInternal"] as const,
   commandDashboardFairnessExternal: () => ["commandDashboard", "fairnessExternal"] as const,
@@ -72,9 +97,14 @@ export const queryKeys = {
   algorithmJobs: (limit: number, offset: number) => ["algorithm", "jobs", limit, offset] as const,
   algorithmJob: (jobId: string) => ["algorithm", "job", jobId] as const,
   soldierDetail: (soldierId: string) => ["soldiers", "detail", soldierId] as const,
-  fairnessComponents: () => ["scoring", "fairnessComponents"] as const,
+  fairnessComponents: (nodeId: string | null | undefined, authorizationScope: string | null) =>
+    ["scoring", "fairnessComponents", nodeId ?? null, authorizationScope] as const,
   eligibilityGroups: () => ["eligibilityGroups"] as const,
   burdenShareGapNodes: (referenceDate?: string) => ["potential", "burdenShareGap", referenceDate ?? null] as const,
+  burdenShareGapNodesForScope: (authorizationScope: string | null, referenceDate?: string) =>
+    referenceDate === undefined
+      ? (["potential", "burdenShareGap", authorizationScope] as const)
+      : (["potential", "burdenShareGap", authorizationScope, referenceDate] as const),
   burdenShareBreakdown: (soldierId: string) => ["scoring", "burdenShareBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
   importSessionsList: () => ["import", "sessions"] as const,
@@ -83,7 +113,17 @@ export const queryKeys = {
   importDutyTypesForImport: () => ["import", "dutyTypesForImport"] as const,
   importNodesForImport: () => ["import", "nodesForImport"] as const,
   potentialByNode: (nodeId: string, referenceDate: string) => ["potential", "byNode", nodeId, referenceDate] as const,
+  potentialSummariesForScope: (authorizationScope: string | null) =>
+    ["potential", "summary", authorizationScope] as const,
+  potentialSummaryForScope: (authorizationScope: string | null, nodeId: string, referenceDate: string) =>
+    ["potential", "summary", authorizationScope, nodeId, referenceDate] as const,
+  potentialDetailsForScope: (authorizationScope: string | null) =>
+    ["potential", "detail", authorizationScope] as const,
+  potentialDetailForScope: (authorizationScope: string | null, nodeId: string, referenceDate: string) =>
+    ["potential", "detail", authorizationScope, nodeId, referenceDate] as const,
   potentialModifiers: (nodeId: string) => ["potential", "modifiers", nodeId] as const,
+  potentialModifiersForScope: (authorizationScope: string | null, nodeId: string) =>
+    ["potential", "modifiers", authorizationScope, nodeId] as const,
   scoreAdjustments: (soldierId: string) => ["scoreAdjustments", soldierId] as const,
   soldierScore: (soldierId: string) => ["soldiers", "score", soldierId] as const,
   registrationPublicSettings: () => ["registrationPublicSettings"] as const,
@@ -97,6 +137,8 @@ export const queryKeys = {
   ineligibleSoldiers: (audience: "planning" | "commander") =>
     ["ranges", "ineligibleSoldiers", audience] as const,
   ineligibleSoldierCount: () => ["ranges", "ineligibleSoldiers", "count"] as const,
+  adminIneligibleSoldierCount: (actorId: string | null, authorizationScope: string | null) =>
+    ["ranges", "ineligibleSoldiers", "count", "admin", actorId, authorizationScope] as const,
   rankLadder: () => ["rankAdvancement", "ladder"] as const,
   publicRankLadder: () => ["rankAdvancement", "ladder", "public"] as const,
 };

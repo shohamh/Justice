@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import DismissalModal from "./DismissalModal";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
-import { GimelimPreview, commitGimelim, previewGimelim } from "../api/gimelim";
+import { GimelimPreview, commitGimelim, previewGimelim, listGimelimAttachments, downloadGimelimAttachment, uploadGimelimAttachment } from "../api/gimelim";
 import { dismissAndReallocate } from "../api/reserves";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
@@ -18,6 +18,12 @@ vi.mock("../api/gimelim", () => ({
   previewGimelim: vi.fn(() => Promise.resolve({})),
   commitGimelim: vi.fn(() => Promise.resolve({})),
   uploadGimelimAttachment: vi.fn(() => Promise.resolve({})),
+  listGimelimAttachments: vi.fn(() => Promise.resolve([])),
+  downloadGimelimAttachment: vi.fn(() => Promise.resolve(new Blob())),
+  listGimelimAttachments: vi.fn(() => Promise.resolve([])),
+  downloadGimelimAttachment: vi.fn(() => Promise.resolve(new Blob())),
+  listGimelimAttachments: vi.fn(() => Promise.resolve([])),
+  downloadGimelimAttachment: vi.fn(() => Promise.resolve(new Blob())),
 }));
 
 const shift: CalendarShift = {
@@ -148,6 +154,10 @@ test("exposes the gimelim preview and commit boundaries", async () => {
   };
   const onDone = vi.fn();
   vi.mocked(previewGimelim).mockResolvedValueOnce(preview);
+  vi.mocked(listGimelimAttachments).mockResolvedValueOnce([{
+    id: "attachment-1", file_name: "scan.pdf", content_type: "application/pdf", created_at: "2026-01-01T00:00:00Z",
+  }]);
+  vi.mocked(downloadGimelimAttachment).mockResolvedValueOnce(new Blob(["file"], { type: "application/pdf" }));
   vi.mocked(commitGimelim).mockResolvedValueOnce({
     dismissal_id: "dismissal-1",
     call_up_assignment_id: "reserve-1",
@@ -168,7 +178,12 @@ test("exposes the gimelim preview and commit boundaries", async () => {
   fireEvent.click(screen.getByTestId("gimelim-commit-action"));
 
   await waitFor(() => expect(commitGimelim).toHaveBeenCalledWith("s1", "tok-commit"));
-  expect(onDone).toHaveBeenCalledTimes(1);
+  await screen.findByRole("region");
+  const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  fireEvent.click(await screen.findByText("scan.pdf"));
+  await waitFor(() => expect(downloadGimelimAttachment).toHaveBeenCalledWith("dismissal-1", "attachment-1"));
+  expect(onDone).not.toHaveBeenCalled();
+  anchorClick.mockRestore();
 });
 
 test("selects a covering reserve and saves the existing dismissal reallocation", async () => {
@@ -214,4 +229,84 @@ test("selects a covering reserve and saves the existing dismissal reallocation",
     reason: "unavailable",
   }));
   expect(onDone).toHaveBeenCalledTimes(1);
+
 });
+
+test("lists and downloads attachments by each existing Gimelim dismissal id", async () => {
+    const existingDismissal = {
+      id: "existing-dismissal",
+      dismissed_from: "2026-08-01",
+      dismissed_to: "2026-08-03",
+      reason: null,
+      is_gimelim: true,
+    };
+    const ordinaryDismissal = {
+      ...existingDismissal,
+      id: "ordinary-dismissal",
+      is_gimelim: false,
+    };
+    vi.mocked(listGimelimAttachments).mockImplementation(async (dismissalId) =>
+      dismissalId === "existing-dismissal"
+        ? [{ id: "existing-attachment", file_name: "existing-scan.pdf", content_type: "application/pdf", created_at: "2026-01-01T00:00:00Z" }]
+        : [],
+    );
+    vi.mocked(downloadGimelimAttachment).mockResolvedValueOnce(new Blob(["file"], { type: "application/pdf" }));
+
+    renderModal(false, {
+      modalPrimary: { ...primary, dismissals: [existingDismissal, ordinaryDismissal] },
+    });
+
+    await waitFor(() => expect(listGimelimAttachments).toHaveBeenCalledWith("existing-dismissal"));
+    expect(listGimelimAttachments).not.toHaveBeenCalledWith("ordinary-dismissal");
+    fireEvent.click(await screen.findByText("existing-scan.pdf"));
+
+    await waitFor(() => expect(downloadGimelimAttachment).toHaveBeenCalledWith("existing-dismissal", "existing-attachment"));
+  });
+
+test("keeps the attachment upload failure visible after the saved dismissal list refresh", async () => {
+  const preview: GimelimPreview = {
+    preview_token: "tok-upload-failure",
+    preview_token_expires_at: "2026-08-10T00:00:00Z",
+    current_shift: {
+      shift_id: "s1",
+      duty_type_name: "duty",
+      duty_location_name: "loc",
+      start_date: "2026-08-01",
+      end_date: "2026-08-05",
+    },
+    soldier_a: { id: "sol1", name: "Soldier One", rank: null },
+    primary_assignment_id: "a1",
+    reserve_assignment_id: "reserve-1",
+    reserve_soldier: { id: "sol2", name: "Reserve One", rank: null },
+    future_assignment: null,
+    warnings: [],
+  };
+  vi.mocked(previewGimelim).mockResolvedValueOnce(preview);
+  vi.mocked(commitGimelim).mockResolvedValueOnce({
+    dismissal_id: "dismissal-upload-failure",
+    call_up_assignment_id: "reserve-1",
+    future_primary_assignment_id: null,
+    future_demoted_assignment_id: null,
+    notifications_queued: 0,
+  });
+  vi.mocked(uploadGimelimAttachment).mockRejectedValueOnce(new Error("upload rejected"));
+
+  renderModal(true);
+  fireEvent.click(screen.getByTestId("dismissal-mode-gimelim"));
+  fireEvent.change(screen.getByPlaceholderText("פרטים רפואיים (לא מועברים לחיילים אחרים)"), {
+    target: { value: "illness" },
+  });
+  const fileInput = document.querySelector('input[type="file"]');
+  expect(fileInput).not.toBeNull();
+  const pdf = new File([new Uint8Array([37, 80, 68, 70, 45])], "scan.pdf", { type: "application/pdf" });
+  fireEvent.change(fileInput!, { target: { files: [pdf] } });
+  await screen.findByText(/scan.pdf/);
+
+  fireEvent.click(screen.getByTestId("gimelim-preview-action"));
+  await screen.findByTestId("gimelim-preview");
+  fireEvent.click(screen.getByTestId("gimelim-commit-action"));
+
+  await waitFor(() => expect(uploadGimelimAttachment).toHaveBeenCalledWith("dismissal-upload-failure", pdf));
+  expect(await screen.findByRole("alert")).toHaveTextContent("dismiss_modal.attachment_upload_failed");
+});
+

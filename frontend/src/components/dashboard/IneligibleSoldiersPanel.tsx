@@ -6,13 +6,16 @@ import { IneligibleSoldiersTable } from "../ranges/IneligibleSoldiersTable";
 
 interface Props {
   scope?: "command";
+  isOpen: boolean;
+  authorizationScope: string | null;
 }
 
-export function IneligibleSoldiersPanel({ scope = "command" }: Props) {
+export function IneligibleSoldiersPanel({ scope = "command", isOpen, authorizationScope }: Props) {
   const { t } = useTranslation();
   const query = useQuery({
-    queryKey: queryKeys.ineligibleSoldiers("commander"),
+    queryKey: [...queryKeys.ineligibleSoldiers("commander"), authorizationScope],
     queryFn: () => getIneligibleSoldiers("commander"),
+    enabled: isOpen && authorizationScope !== null,
     retry: false,
   });
 
@@ -27,6 +30,11 @@ export function IneligibleSoldiersPanel({ scope = "command" }: Props) {
         loading={query.isLoading}
         error={query.isError}
       />
+      {query.isError && (
+        <button type="button" className="mt-2 text-sm underline" onClick={() => void query.refetch()}>
+          {t("common.retry", { defaultValue: "Try again" })}
+        </button>
+      )}
     </section>
   );
 }

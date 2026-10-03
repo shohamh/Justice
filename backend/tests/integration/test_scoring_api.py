@@ -29,6 +29,104 @@ def test_transparency_200_when_every_soldier(client: TestClient, admin_session: 
     assert "can_see_exemption_aggregates" in body
 
 
+def test_transparency_page_numbers_reuse_filtered_row_dicts():
+    from app.routes.scoring import _number_transparency_rows_in_place
+
+    rows = [{"soldier_id": "first"}, {"soldier_id": "second"}]
+    original_rows = tuple(rows)
+
+    numbered = _number_transparency_rows_in_place(rows)
+
+    assert numbered is rows
+    assert numbered[0] is original_rows[0]
+    assert numbered[1] is original_rows[1]
+    assert [row["row_num"] for row in numbered] == [1, 2]
+
+
+def test_transparency_page_keeps_row_order_and_numbers(client, admin_session, monkeypatch):
+    from datetime import date
+
+    from app.routes import scoring as scoring_route
+
+    admin = create_soldier(admin_session, personal_number="5600090", role="admin")
+
+    def row(soldier_id, *, name, burden_share):
+        return {
+            "soldier_id": soldier_id,
+            "full_name": name,
+            "node_id": None,
+            "node_name": None,
+            "enrolled_at": date(2020, 1, 1),
+            "active_days": 10,
+            "shift_count": 1,
+            "rank": None,
+            "is_officer": False,
+            "service_type": None,
+            "cumulative_score": Decimal("2.00"),
+            "score_per_day": Decimal("0.20"),
+            "normalised_score": Decimal("1.00"),
+            "is_globally_exempted": False,
+            "burden_share": burden_share,
+            "c_over_d": 1.0,
+            "burden_share_offset_raw": 0,
+            "exemptions_display": "",
+            "exemptions_visible": False,
+            "exemptions": [],
+            "has_global_exemption": None,
+            "has_partial_exemption": None,
+            "has_temporary_exemption": None,
+        }
+
+    first = row(
+        create_soldier(admin_session, personal_number="5600091").id,
+        name="First",
+        burden_share=0.9,
+    )
+    second = row(
+        create_soldier(admin_session, personal_number="5600092").id,
+        name="Second",
+        burden_share=0.2,
+    )
+    admin_session.commit()
+    source_rows = [first, second]
+    monkeypatch.setattr(
+        scoring_route.svc,
+        "transparency_rows",
+        lambda session, *, viewer: {
+            # The service returns request-local dictionaries on each request.
+            "rows": [dict(source_row) for source_row in source_rows],
+            "can_see_exemption_aggregates": True,
+        },
+    )
+
+    first_page = client.get(
+        "/api/scoring/transparency/page",
+        params={"page_size": 1},
+        headers=auth_headers(admin),
+    )
+
+    assert first_page.status_code == 200
+    first_body = first_page.json()
+    assert [
+        (item["full_name"], item["row_num"]) for item in first_body["items"]
+    ] == [("First", 1)]
+    assert first_body["has_more"] is True
+    assert first_body["next_cursor"]
+
+    second_page = client.get(
+        "/api/scoring/transparency/page",
+        params={"page_size": 1, "cursor": first_body["next_cursor"]},
+        headers=auth_headers(admin),
+    )
+
+    assert second_page.status_code == 200
+    second_body = second_page.json()
+    assert [
+        (item["full_name"], item["row_num"]) for item in second_body["items"]
+    ] == [("Second", 2)]
+    assert second_body["has_more"] is False
+
+
 def test_transparency_allowed_for_commander_of_own_subtree(client: TestClient, admin_session: Session):
     # A commander of any node always passes the has_any_visibility endpoint gate,
     # regardless of that node's level — the old visible_commander_levels

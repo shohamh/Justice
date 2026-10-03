@@ -7,7 +7,7 @@ import TransparencyPage from "./TransparencyPage";
 import * as scoringApi from "../api/scoring";
 import * as hierarchyApi from "../api/hierarchy";
 import * as potentialApi from "../api/potential";
-import type { TransparencyOut, TransparencyRow } from "../api/scoring";
+import type { TransparencyOut, TransparencyPageSummary, TransparencyRow } from "../api/scoring";
 import type { NodeDTO } from "../api/hierarchy";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
@@ -47,7 +47,20 @@ vi.mock("../components/Layout", () => ({
 }));
 
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "viewer-1", role: "admin" } }),
+  useAuth: () => ({
+    user: {
+      id: "viewer-1",
+      role: "admin",
+      is_commander: false,
+      is_duty_manager: false,
+      hierarchy_node_id: "node-1",
+      scope_root_ids: ["node-1"],
+      active_deputy_grants: [],
+      can_view_transparency: true,
+    },
+    authScopeReady: true,
+    refreshMe: vi.fn(),
+  }),
 }));
 
 function makeRow(overrides: Partial<TransparencyRow> = {}): TransparencyRow {
@@ -80,9 +93,102 @@ function makeRow(overrides: Partial<TransparencyRow> = {}): TransparencyRow {
 }
 
 beforeEach(() => {
+  if (!HTMLElement.prototype.scrollTo) HTMLElement.prototype.scrollTo = vi.fn();
+  vi.mocked(scoringApi.getTransparency).mockResolvedValue({ rows: [], can_see_exemption_aggregates: true });
+  vi.mocked(scoringApi.getTransparencyPage).mockImplementation(async request => {
+    const result = await scoringApi.getTransparency();
+    const rows = [...result.rows];
+    if (request.sort === "rank" && request.rankOrder) {
+      const rankOrder = new Map(request.rankOrder.map((rank, index) => [rank, index]));
+      rows.sort((left, right) =>
+        (rankOrder.get(right.rank ?? "") ?? -1) - (rankOrder.get(left.rank ?? "") ?? -1)
+        || left.soldier_id.localeCompare(right.soldier_id));
+    } else {
+      rows.sort((left, right) => {
+        const leftValue = left[request.sort as keyof TransparencyRow];
+        const rightValue = right[request.sort as keyof TransparencyRow];
+        const compared = typeof leftValue === "number" && typeof rightValue === "number"
+          ? leftValue - rightValue
+          : String(leftValue ?? "").localeCompare(String(rightValue ?? ""), "he");
+        return (request.descending ? -compared : compared) || left.soldier_id.localeCompare(right.soldier_id);
+      });
+    }
+    const summary: TransparencyPageSummary = {
+      row_count: rows.length,
+      average_cumulative: 0,
+      average_active_days: 0,
+      average_score_per_day: 0,
+      average_normalised: 0,
+      burden_share_mean: null,
+      burden_share_stddev: null,
+      burden_share_cv: null,
+      burden_share_min: null,
+      burden_share_max: null,
+      burden_share_offset_min: null,
+      burden_share_offset_max: null,
+    };
+    return {
+      items: rows.map((row, index) => ({ ...row, row_num: index + 1 })),
+      next_cursor: null,
+      has_more: false,
+      summary,
+      can_see_exemption_aggregates: result.can_see_exemption_aggregates,
+    };
+  });
   vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
   vi.mocked(scoringApi.getFairnessComponents).mockRejectedValue(new Error("not needed"));
   vi.mocked(potentialApi.getBurdenShareGap).mockResolvedValue([]);
+});
+
+describe("TransparencyPage hierarchy loading", () => {
+  it("loads units only after the Soldiers unit filter opens and allows selecting a returned unit", async () => {
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue(makeTree("node-1", "Unit One"));
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+    await screen.findByTestId("transparency-page");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("transparency-unit-filter-toggle"));
+    const unitFilter = await screen.findByTestId("transparency-unit-filter");
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+    fireEvent.focus(unitFilter);
+    fireEvent.click(await screen.findByRole("button", { name: "Unit One" }));
+
+    expect(screen.getByText("Unit One")).toBeInTheDocument();
+  });
+
+  it("shows hierarchy loading and a retryable error when the unit filter opens", async () => {
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+    let rejectTree!: (reason: unknown) => void;
+    vi.mocked(hierarchyApi.fetchFullTree).mockImplementationOnce(() => new Promise((_, reject) => { rejectTree = reject; }));
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+    await screen.findByTestId("transparency-page");
+    fireEvent.click(screen.getByTestId("transparency-unit-filter-toggle"));
+
+    expect(await screen.findByTestId("transparency-tree-loading")).toBeInTheDocument();
+    await act(async () => rejectTree(new Error("hierarchy unavailable")));
+    expect(await screen.findByTestId("transparency-tree-error")).toBeInTheDocument();
+  });
+
+  it("offers a retry after the hierarchy request fails", async () => {
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+    vi.mocked(hierarchyApi.fetchFullTree)
+      .mockRejectedValueOnce(new Error("hierarchy unavailable"))
+      .mockResolvedValue(makeTree("node-1", "Unit One"));
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+    await screen.findByTestId("transparency-page");
+    fireEvent.click(screen.getByTestId("transparency-unit-filter-toggle"));
+
+    expect(await screen.findByTestId("transparency-tree-error")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("transparency-tree-retry"));
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(2));
+    expect(await screen.findByTestId("transparency-unit-filter")).toBeInTheDocument();
+    fireEvent.focus(screen.getByTestId("transparency-unit-filter"));
+    expect(await screen.findByRole("button", { name: "Unit One" })).toBeInTheDocument();
+  });
 });
 
 describe("TransparencyPage 403 handling", () => {
@@ -93,7 +199,7 @@ describe("TransparencyPage 403 handling", () => {
     });
     vi.mocked(scoringApi.getTransparency).mockRejectedValue(forbiddenError);
 
-    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+    renderWithProviders(<MemoryRouter initialEntries={["/transparency?tab=sub_units"]}><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
 
     await waitFor(() => {
       expect(screen.getByText("אין לך הרשאה לצפות בדף זה")).toBeInTheDocument();
@@ -252,6 +358,10 @@ describe("TransparencyPage rank column sort (on header click)", () => {
     renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
 
     const table = await screen.findByTestId("transparency-table");
+    const scrollRegion = table.parentElement?.querySelector<HTMLElement>('[role="region"]');
+    if (!scrollRegion) throw new Error("Transparency table scroll region not found");
+    Object.defineProperty(scrollRegion, "clientHeight", { configurable: true, value: 2000 });
+    fireEvent(window, new Event("resize"));
     await waitFor(() => {
       expect(table.querySelectorAll("tbody tr").length).toBe(juniorToSenior.length);
     });
@@ -303,6 +413,7 @@ describe("TransparencyPage sub-units exemption aggregates", () => {
     };
     vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
     vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue(makeTree("node-1", "יחידה 1"));
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
 
     renderWithProviders(
       <MemoryRouter initialEntries={["/transparency?tab=sub_units"]}>
@@ -311,6 +422,8 @@ describe("TransparencyPage sub-units exemption aggregates", () => {
         </SoldierModalProvider>
       </MemoryRouter>,
     );
+
+    expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
 
     await waitFor(() => {
       expect(screen.getByText("יחידה 1")).toBeInTheDocument();
@@ -359,7 +472,7 @@ describe("TransparencyPage required data load errors", () => {
   it("shows a load error banner when the transparency response is malformed (not a 403)", async () => {
     vi.mocked(scoringApi.getTransparency).mockRejectedValue(new Error("Invalid transparency response"));
 
-    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+    renderWithProviders(<MemoryRouter initialEntries={["/transparency?tab=sub_units"]}><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
 
     await waitFor(() => {
       expect(screen.getByText("שגיאה בטעינת נתוני השקיפות")).toBeInTheDocument();

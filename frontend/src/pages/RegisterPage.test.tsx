@@ -75,11 +75,11 @@ function getComboboxInput(): HTMLElement {
   return match;
 }
 
-function renderPage() {
+function renderPage(url = "/register") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter><RegisterPage /></MemoryRouter>
+      <MemoryRouter initialEntries={[url]}><RegisterPage /></MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -283,5 +283,91 @@ describe("RegisterPage - exemption rows", () => {
 
     // Row 1's dropzone shouldn't show row 0's rejected file.
     expect(screen.queryAllByText("row0-bad.pdf")).toHaveLength(1);
+  });
+});
+
+describe("RegisterPage - SSO registration context", () => {
+  const ctx = { email: "dude@corp.example", ad_username: "dude" };
+
+  beforeEach(() => {
+    vi.mocked(authApi.fetchOidcRegistrationContext).mockResolvedValue(ctx);
+    vi.mocked(authApi.fetchRegisterNodes).mockResolvedValue([
+      { id: "n1", name: "מסגרת א", level: "mador", path_ids: [], commander_name: null, parent_id: null },
+    ]);
+  });
+
+  it("plain /register is unchanged: invite code step, no context fetch", () => {
+    renderPage("/register");
+    expect(screen.getByLabelText(/register.invite_code_label/)).toBeInTheDocument();
+    expect(authApi.fetchOidcRegistrationContext).not.toHaveBeenCalled();
+  });
+
+  it("fetches the context for ?sso=1, skips the invite step and shows read-only identity", async () => {
+    renderPage("/register?sso=1");
+    await screen.findByText("register.step_personal");
+    expect(authApi.fetchOidcRegistrationContext).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText(/register.invite_code_label/)).toBeNull();
+    expect(authApi.validateInviteCode).not.toHaveBeenCalled();
+
+    const email = screen.getByLabelText(/אימייל/) as HTMLInputElement;
+    expect(email.value).toBe(ctx.email);
+    expect(email.readOnly).toBe(true);
+    const ad = screen.getByLabelText(/register.sso_ad_username/) as HTMLInputElement;
+    expect(ad.value).toBe(ctx.ad_username);
+    expect(ad.readOnly).toBe(true);
+  });
+
+  it("loads nodes without an invite code in SSO mode", async () => {
+    renderPage("/register?sso=1");
+    await screen.findByText("register.step_personal");
+    await waitFor(() => expect(authApi.fetchRegisterNodes).toHaveBeenCalledWith());
+  });
+
+  it("falls back to the plain invite flow with a notice when the context is gone", async () => {
+    vi.mocked(authApi.fetchOidcRegistrationContext).mockRejectedValue(new Error("404"));
+    renderPage("/register?sso=1");
+    expect(await screen.findByTestId("sso-context-error")).toHaveTextContent("register.sso_context_expired");
+    expect(screen.getByLabelText(/register.invite_code_label/)).toBeInTheDocument();
+  });
+
+  it("submits without an invite code or waiver flag and does not put PII in storage", async () => {
+    const loginWithToken = vi.fn();
+    vi.mocked(useAuth).mockReturnValue({ loginWithToken } as unknown as ReturnType<typeof useAuth>);
+    vi.mocked(authApi.register).mockResolvedValue({ access_token: "tok", token_type: "bearer", must_change_password: false });
+    renderPage("/register?sso=1");
+    await screen.findByText("register.step_personal");
+
+    fireEvent.change(screen.getByLabelText(/מספר אישי/), { target: { value: "1234567" } });
+    fireEvent.change(screen.getByLabelText(/שם מלא/), { target: { value: "ישראל ישראלי" } });
+    fireEvent.change(screen.getByLabelText(/טלפון/), { target: { value: "0501234567" } });
+    fireEvent.change(screen.getByLabelText(/מגדר/), { target: { value: "male" } });
+    fireEvent.change(screen.getByLabelText(/תאריך גיוס/), { target: { value: "01012024" } });
+    fireEvent.change(screen.getByLabelText(/סיום חובה/), { target: { value: "01012026" } });
+    fireEvent.change(screen.getByLabelText(/תאריך שחרור/), { target: { value: "01012027" } });
+    fireEvent.change(screen.getByLabelText(/מטווח אחרון/), { target: { value: "01012025" } });
+    fireEvent.change(screen.getByLabelText(/^סיסמה/), { target: { value: "a-long-enough-pass1" } });
+    fireEvent.change(screen.getByLabelText(/^אימות סיסמה/), { target: { value: "a-long-enough-pass1" } });
+    fireEvent.focus(getComboboxInput());
+    const rankOption = await screen.findByRole("button", { name: "טוראי" });
+    fireEvent.pointerDown(rankOption);
+    fireEvent.pointerUp(rankOption);
+    await waitFor(() => expect(screen.getByText("register.next")).not.toBeDisabled());
+    fireEvent.click(screen.getByText("register.next"));
+    await screen.findByText("register.step_exemptions");
+    fireEvent.click(screen.getByText("register.next"));
+    await screen.findByText("register.step_constraints");
+    fireEvent.click(screen.getByText("register.next"));
+    fireEvent.click(await screen.findByText("מסגרת א"));
+    fireEvent.click(screen.getByText("register.next"));
+    fireEvent.click(await screen.findByText("register.submit"));
+
+    await waitFor(() => expect(authApi.register).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(authApi.register).mock.calls[0][0] as unknown as Record<string, unknown>;
+    expect("invite_code" in payload).toBe(false);
+    expect(Object.keys(payload).some((k) => /waive|skip/i.test(k))).toBe(false);
+    expect(payload.requested_node_id).toBe("n1");
+    await waitFor(() => expect(loginWithToken).toHaveBeenCalledWith("tok"));
+    expect(JSON.stringify({ ...localStorage })).not.toContain(ctx.email);
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(ctx.email);
   });
 });

@@ -1,0 +1,34 @@
+# Optional Exchange worker overlay. Use together with docker-compose.prod.yml.
+services:
+  exchange-calendar-worker:
+    build:
+      context: ../backend
+      target: production
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      EXCHANGE_CALENDAR_ENABLED: ${EXCHANGE_CALENDAR_ENABLED:-true}
+      EXCHANGE_EWS_URL: ${EXCHANGE_EWS_URL:-}
+      EXCHANGE_MAILBOX: ${EXCHANGE_MAILBOX:-}
+      EXCHANGE_USERNAME: ${EXCHANGE_USERNAME:-}
+      EXCHANGE_AUTH_TYPE: ${EXCHANGE_AUTH_TYPE:-}
+      EXCHANGE_REQUESTS_PER_MINUTE: ${EXCHANGE_REQUESTS_PER_MINUTE:-200}
+      LOG_DIR: /app/logs
+      LOG_FORMAT: json
+      EXCHANGE_PASSWORD: ""
+      ENVIRONMENT: production
+      TZ: Asia/Jerusalem
+    command: python -m app.exchange_calendar_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
+    volumes:
+      - /opt/justice/logs:/app/logs
+    secrets:
+      - EXCHANGE_PASSWORD
+
+secrets:
+  EXCHANGE_PASSWORD:
+    file: ${EXCHANGE_PASSWORD_FILE:?Set EXCHANGE_PASSWORD_FILE to a file containing the svc_justice Exchange password}
