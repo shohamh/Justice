@@ -184,13 +184,19 @@ def test_potential_summary_matches_full_home_aggregates_for_authorized_descendan
         "node_id",
         "as_of",
         "raw_eligible_count",
+        "total_soldiers",
+        "partial_exemption_count",
         "modifier_total",
         "final_potential",
     }
+    assert "soldiers" not in summary
+    assert "modifiers" not in summary
     assert summary == {
         "node_id": full["node_id"],
         "as_of": full["as_of"],
         "raw_eligible_count": full["raw_eligible_count"],
+        "total_soldiers": full["total_soldiers"],
+        "partial_exemption_count": full["partial_exemption_count"],
         "modifier_total": sum(modifier["delta"] for modifier in full["modifiers"]),
         "final_potential": full["final_potential"],
     }

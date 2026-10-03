@@ -61,6 +61,9 @@ vi.mock("../api/levelTypes");
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
+vi.mock("../hooks/useDashboardIdleGate", () => ({
+  useDashboardIdleGate: () => true,
+}));
 
 const mockUser = {
   id: "soldier-1",
@@ -69,6 +72,7 @@ const mockUser = {
   hierarchy_node_id: null,
   is_commander: false,
   is_duty_manager: false,
+  can_view_transparency: true,
   scope_root_ids: ["node-1"],
   active_deputy_grants: [],
 } as PermissionUser & { id: string; full_name: string; hierarchy_node_id: string | null; scope_root_ids: string[]; active_deputy_grants: [] };
@@ -185,18 +189,20 @@ function renderHome() {
 }
 
 describe("HomePage - required scoring data load errors", () => {
-  it("shows a load error banner when the transparency response is malformed", async () => {
-    vi.mocked(scoringApi.getTransparency).mockRejectedValue(new Error("Invalid transparency response"));
+  it("shows a load error banner when the burden-share response is malformed", async () => {
+    vi.mocked(scoringApi.getBurdenShare).mockRejectedValue(new Error("Invalid burden-share response"));
     renderHome();
+    fireEvent.click(await screen.findByText("History and score details"));
 
-    expect(await screen.findByText("home.score_load_error")).toHaveAttribute("role", "alert");
+    expect(await screen.findByText("Could not load History and score details.")).toHaveAttribute("role", "alert");
   });
 
   it("shows a load error banner when the score breakdown response is malformed", async () => {
     vi.mocked(scoringApi.getBreakdown).mockRejectedValue(new Error("Invalid score breakdown response"));
     renderHome();
+    fireEvent.click(await screen.findByText("History and score details"));
 
-    expect(await screen.findByText("home.score_load_error")).toHaveAttribute("role", "alert");
+    expect(await screen.findByText("Could not load History and score details.")).toHaveAttribute("role", "alert");
   });
 
   it("renders no scoring load-error banner when every scoring query succeeds", async () => {

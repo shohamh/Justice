@@ -337,12 +337,13 @@ export default function CursorPagedTable<T>({
   });
 
   const hasMore = enabled && isQueryIdentityReady && (query.hasNextPage ?? false);
+  const { fetchNextPage } = query;
   const loadNextPage = useCallback(async () => {
     if (
       !enabled ||
       !isQueryIdentityReady ||
       !hasMore ||
-      query.isFetchingNextPage ||
+      isFetchingNextPage ||
       nextPageInFlightRef.current
     ) {
       return;
@@ -351,7 +352,7 @@ export default function CursorPagedTable<T>({
     try {
       let pageError: unknown;
       try {
-        const result = await query.fetchNextPage({ cancelRefetch: false });
+        const result = await fetchNextPage({ cancelRefetch: false });
         if (result.isFetchNextPageError) pageError = result.error;
       } catch (error) {
         pageError = error;
@@ -374,8 +375,8 @@ export default function CursorPagedTable<T>({
     hasMore,
     isCursorStaleError,
     isQueryIdentityReady,
-    query.fetchNextPage,
-    query.isFetchingNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
     queryClient,
     queryIdentity,
     resolvedQueryKey,
@@ -389,6 +390,8 @@ export default function CursorPagedTable<T>({
       offsets[index + 1] = offsets[index] + (height ?? ESTIMATED_ROW_HEIGHT);
     }
     return offsets;
+  // measurementVersion invalidates this layout after the ref-backed height map changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, getRowId, measurementVersion]);
 
   const totalHeight = layout[layout.length - 1] ?? 0;
@@ -462,7 +465,11 @@ export default function CursorPagedTable<T>({
     setMeasurementVersion((version) => version + 1);
     setFocusedRowId(null);
     setScrollTop(0);
-    scrollContainerRef.current?.scrollTo({ top: 0 });
+    const container = scrollContainerRef.current;
+    if (container) {
+      if (typeof container.scrollTo === "function") container.scrollTo({ top: 0 });
+      else container.scrollTop = 0;
+    }
   }, [queryIdentity]);
 
   useEffect(() => {
@@ -471,7 +478,11 @@ export default function CursorPagedTable<T>({
     setMeasurementVersion((version) => version + 1);
     setFocusedRowId(null);
     setScrollTop(0);
-    scrollContainerRef.current?.scrollTo({ top: 0 });
+    const container = scrollContainerRef.current;
+    if (container) {
+      if (typeof container.scrollTo === "function") container.scrollTo({ top: 0 });
+      else container.scrollTop = 0;
+    }
   }, [pageCount]);
 
   useEffect(() => {
@@ -642,7 +653,6 @@ export default function CursorPagedTable<T>({
                   <FragmentRow
                     key={row.id}
                     row={row}
-                    rowId={rowId}
                     rowRef={getRowRef(rowId)}
                     rowIndex={index}
                     rowTestId={rowTestId}
@@ -691,7 +701,6 @@ export default function CursorPagedTable<T>({
 
 function FragmentRow<T>({
   row,
-  rowId,
   rowRef,
   rowIndex,
   rowTestId,
@@ -703,7 +712,6 @@ function FragmentRow<T>({
   onBlur,
 }: {
   row: TanRow<T>;
-  rowId: string;
   rowRef: (node: HTMLTableRowElement | null) => void;
   rowIndex: number;
   rowTestId?: (row: T) => string;

@@ -27,7 +27,7 @@ export default function AssignCommanderDialog({ node, onClose, onAssigned }: Pro
     const timeout = window.setTimeout(() => {
       setLoading(true);
       void listSoldierRosterPage({
-        search: inputText.trim() || undefined,
+        search: inputText.trim(),
         page_size: 20,
         sort: "full_name",
         descending: false,

@@ -209,7 +209,7 @@ export async function listHakpazaSoldierRosterPage(
     "Invalid Hakpaza soldier roster items",
   );
   const items = rawItems.map((value) => {
-    const row = requiredObjectResponse<Record<string, unknown>>(
+    const row = requiredObjectResponse(
       value,
       "Invalid Hakpaza soldier roster item",
     );
@@ -257,10 +257,10 @@ export async function lookupSoldierByPersonalNumber(
     params: { personal_number: personalNumber },
   })).data;
   if (data === null) return null;
-  return requiredObjectResponse<SoldierRosterItemDTO>(
+  return requiredObjectResponse(
     data,
     "Invalid soldier personal-number lookup response",
-  );
+  ) as unknown as SoldierRosterItemDTO;
 }
 
 export function isStaleSoldierRosterCursorError(error: unknown): boolean {

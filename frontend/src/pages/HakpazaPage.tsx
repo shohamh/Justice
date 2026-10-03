@@ -67,6 +67,12 @@ export default function HakpazaPage() {
     }),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
+  const {
+    hasNextPage: rosterHasNextPage,
+    isFetchingNextPage: rosterIsFetchingNextPage,
+    isFetchNextPageError: rosterIsFetchNextPageError,
+    fetchNextPage: fetchNextRosterPage,
+  } = rosterQuery;
   const rosterItems = rosterQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const staleRosterContinuationError =
     rosterQuery.isFetchNextPageError &&
@@ -94,20 +100,20 @@ export default function HakpazaPage() {
     if (
       step === 1 &&
       rosterWindowEnd >= pickerItems.length - 12 &&
-      rosterQuery.hasNextPage &&
-      !rosterQuery.isFetchingNextPage &&
-      !rosterQuery.isFetchNextPageError
+      rosterHasNextPage &&
+      !rosterIsFetchingNextPage &&
+      !rosterIsFetchNextPageError
     ) {
-      void rosterQuery.fetchNextPage();
+      void fetchNextRosterPage();
     }
   }, [
     step,
     rosterWindowEnd,
     pickerItems.length,
-    rosterQuery.hasNextPage,
-    rosterQuery.isFetchingNextPage,
-    rosterQuery.isFetchNextPageError,
-    rosterQuery.fetchNextPage,
+    rosterHasNextPage,
+    rosterIsFetchingNextPage,
+    rosterIsFetchNextPageError,
+    fetchNextRosterPage,
   ]);
 
   useEffect(() => {

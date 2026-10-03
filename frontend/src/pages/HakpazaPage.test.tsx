@@ -29,6 +29,17 @@ const publishedAssignment = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([soldier]);
+  vi.mocked(soldiersApi.listHakpazaSoldierRosterPage).mockResolvedValue({
+    items: [{
+      id: soldier.id,
+      full_name: soldier.full_name,
+      rank: soldier.rank,
+      next_shift_date: null,
+      next_shift_type_name: null,
+    }],
+    next_cursor: null,
+    has_more: false,
+  });
   vi.mocked(soldiersApi.getSoldier).mockResolvedValue(soldier);
   vi.mocked(assignmentsApi.listAssignments).mockResolvedValue([publishedAssignment]);
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
@@ -73,7 +84,7 @@ describe("HakpazaPage query-param pre-fill", () => {
 
   it("behaves as before (step 1, no pre-fill) when no query params are present", async () => {
     renderAt("/commander/hakpaza");
-    await waitFor(() => expect(soldiersApi.listSoldiers).toHaveBeenCalled());
+    await waitFor(() => expect(soldiersApi.listHakpazaSoldierRosterPage).toHaveBeenCalled());
     expect(soldiersApi.getSoldier).not.toHaveBeenCalled();
     expect(screen.getByText("שלב 1 — בחר חייל להקפיץ")).toBeInTheDocument();
   });

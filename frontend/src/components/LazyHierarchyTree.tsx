@@ -817,7 +817,7 @@ export default function LazyHierarchyTree({
                   search: rosterSearch,
                   sort: sort as SoldierRosterSort,
                   descending,
-                  role_order: localizedRoleOrder,
+                  role_order: (localizedRoleOrder ?? []).join(","),
                   page_size: pageSize,
                   signal,
                 })

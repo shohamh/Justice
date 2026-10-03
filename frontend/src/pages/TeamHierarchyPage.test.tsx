@@ -7,7 +7,7 @@ import * as soldiersApi from "../api/soldiers";
 import * as hierarchyApi from "../api/hierarchy";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "he" } }),
   initReactI18next: { type: "3rdParty", init: () => {} },
 }));
 
@@ -17,6 +17,9 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../components/HierarchyTree", () => ({
+  default: () => <div data-testid="hierarchy-tree-stub" />,
+}));
+vi.mock("../components/LazyHierarchyTree", () => ({
   default: () => <div data-testid="hierarchy-tree-stub" />,
 }));
 vi.mock("../components/TelegramBadge", () => ({
@@ -80,6 +83,22 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([]);
   vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([soldier]);
+  vi.mocked(soldiersApi.listSoldierRosterPage).mockResolvedValue({
+    items: [{
+      id: soldier.id,
+      personal_number: soldier.personal_number,
+      full_name: soldier.full_name,
+      role: soldier.role,
+      hierarchy_node_id: soldier.hierarchy_node_id,
+      left_at: soldier.left_at,
+      telegram_linked: soldier.telegram_linked,
+      is_commander: false,
+      commander_node_name: null,
+      hierarchy_path: [],
+    }],
+    next_cursor: null,
+    has_more: false,
+  });
   window.confirm = vi.fn();
   window.alert = vi.fn();
 });

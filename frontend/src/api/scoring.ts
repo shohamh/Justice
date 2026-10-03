@@ -187,7 +187,7 @@ export async function getTransparencyPage(
     items: optionalArrayResponse<TransparencyPageOut["items"][number]>(data.items),
     next_cursor: typeof data.next_cursor === "string" ? data.next_cursor : null,
     has_more: data.has_more,
-    summary: data.summary as TransparencyPageSummary,
+    summary: data.summary as unknown as TransparencyPageSummary,
     can_see_exemption_aggregates: data.can_see_exemption_aggregates === true,
   };
 }

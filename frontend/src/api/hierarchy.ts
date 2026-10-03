@@ -90,7 +90,7 @@ export async function searchHierarchyNodes(
   const matches = rawMatches.map((value) => {
     const match = requiredObjectResponse(value, "Invalid hierarchy search match");
     return {
-      node: requiredObjectResponse<NodeDTO>(match.node, "Invalid hierarchy search node"),
+      node: requiredObjectResponse(match.node, "Invalid hierarchy search node") as unknown as NodeDTO,
       path: requiredArrayResponse<NodeDTO>(match.path, "Invalid hierarchy search path"),
     };
   });

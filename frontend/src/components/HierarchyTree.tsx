@@ -13,7 +13,7 @@ import {
 import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
 import { Network, Plus, Trash2, UserPlus } from "lucide-react";
 import PopoverDropdown from "./PopoverDropdown";
-import { SoldierDTO, onboardSoldier } from "../api/soldiers";
+import { SoldierDTO, SoldierRosterItemDTO, onboardSoldier } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import { translateApiError } from "../utils/translateApiError";
 import AddChildNodeDialog from "./AddChildNodeDialog";
@@ -518,7 +518,12 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
     }
   }
 
-  async function handleQuickAdd(nodeId: string, soldier: SoldierDTO | null, personalNumber: string, fullName: string) {
+  async function handleQuickAdd(
+    nodeId: string,
+    soldier: Pick<SoldierRosterItemDTO, "id" | "full_name"> | null,
+    personalNumber: string,
+    fullName: string,
+  ) {
     try {
       if (soldier) {
         // Moving an existing soldier into this node goes through the

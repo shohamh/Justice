@@ -14,6 +14,21 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "admin-1",
+      role: "admin",
+      hierarchy_node_id: null,
+      scope_root_ids: [],
+      active_deputy_grants: [],
+      is_commander: false,
+      is_duty_manager: false,
+    },
+    authScopeReady: true,
+  }),
+}));
+
 vi.mock("../api/algorithm", async () => {
   const actual = await vi.importActual<typeof import("../api/algorithm")>("../api/algorithm");
   return {

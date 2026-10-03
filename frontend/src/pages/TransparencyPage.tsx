@@ -11,7 +11,7 @@ import Combobox from "../components/Combobox";
 import { useAuth } from "../auth/AuthContext";
 import { fetchMe, getTransparencyAuthorizationScope } from "../api/auth";
 import type { Me } from "../api/auth";
-import { TransparencyRow, getBurdenShareBreakdown, getFairnessComponents, getTransparency, getTransparencyPage, type FairnessComponents, type TransparencyOut, type TransparencyPageOut, type TransparencyPageRequest } from "../api/scoring";
+import { TransparencyRow, getBurdenShareBreakdown, getFairnessComponents, getTransparency, getTransparencyPage, type FairnessComponents, type TransparencyOut, type TransparencyPageOut } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import CursorPagedTable, { type CursorPageCriteria } from "../components/CursorPagedTable";
 import { ExcelExportButton } from "../components/ExcelExportButton";
@@ -231,7 +231,6 @@ export default function TransparencyPage() {
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
   const [activeGroupKeys, setActiveGroupKeys] = useState<Set<GroupKey>>(new Set());
   const [groupSoldiersMap, setGroupSoldiersMap] = useState<Map<GroupKey, string[]>>(new Map());
-  const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
   const [exportError, setExportError] = useState(false);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
   const [burdenShareBreakdownFor, setBurdenShareBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
@@ -421,27 +420,6 @@ export default function TransparencyPage() {
       canSeeExemptionAggregates: value.can_see_exemption_aggregates === true,
     });
   }, []);
-
-  const visibleRows = useMemo(() => {
-    let filtered = subtreeIds
-      ? rows.filter((r) => r.node_id != null && subtreeIds.has(r.node_id))
-      : rows;
-    if (activeGroupKeys.size > 0) {
-      const ids = new Set<string>();
-      for (const key of activeGroupKeys) for (const id of groupSoldiersMap.get(key) ?? []) ids.add(id);
-      filtered = filtered.filter((r) => ids.has(r.soldier_id));
-    }
-    if (officerFilter === "officer") filtered = filtered.filter((r) => r.is_officer);
-    if (officerFilter === "enlisted") filtered = filtered.filter((r) => !r.is_officer);
-    if (serviceFilter !== "all") filtered = filtered.filter((r) => r.service_type === serviceFilter);
-    // Stamp stable row numbers + pre-computed rank order so sortValue is a plain property lookup
-    return filtered.map((r, i) => ({
-      ...r,
-      _row_num: i + 1,
-      _rank_order: r.rank ? (RANK_ORDER[r.rank] ?? 999) : 999,
-      _group: soldierGroupMap.get(r.soldier_id),
-    }));
-  }, [rows, subtreeIds, officerFilter, serviceFilter, activeGroupKeys, groupSoldiersMap, soldierGroupMap]);
 
   // ── auto-range bounds (approximated from all rows — real run also adds per-milli headroom) ──
   const burdenShareRange = useMemo(() => {
@@ -855,7 +833,7 @@ export default function TransparencyPage() {
     }
     const exportSoldierGroupMap = buildSoldierGroupMap(exportFairness);
     const exportGroupSoldierIds = buildGroupSoldierIds(exportFairness);
-    let filtered = full.rows.filter((row) => {
+    const filtered = full.rows.filter((row) => {
       if (subtreeIds && (row.node_id == null || !subtreeIds.has(row.node_id))) return false;
       if (officerFilter === "officer" && !row.is_officer) return false;
       if (officerFilter === "enlisted" && row.is_officer) return false;
@@ -867,24 +845,25 @@ export default function TransparencyPage() {
       }
       return true;
     });
-    const numbered = filtered.map((row, index) => ({
+    const numbered: NumberedRow[] = filtered.map((row, index) => ({
       ...row,
       _row_num: index + 1,
       _rank_order: row.rank ? RANK_ORDER[row.rank] ?? 999 : 999,
       _group: exportSoldierGroupMap.get(row.soldier_id),
     }));
     const searchText = tableCriteria.search.toLocaleLowerCase().trim();
+    let visibleExportRows: NumberedRow[];
     if (searchText) {
-      filtered = numbered.filter((row) =>
+      visibleExportRows = numbered.filter((row) =>
         [row.full_name, row.node_name, row.exemptions_display, row.rank]
           .some((value) => String(value ?? "").toLocaleLowerCase().includes(searchText)),
       );
     } else {
-      filtered = numbered;
+      visibleExportRows = numbered;
     }
     const column = soldierCols.find((item) => item.id === tableCriteria.sort);
     if (column?.sortValue) {
-      filtered.sort((left, right) => {
+      visibleExportRows.sort((left, right) => {
         const leftValue = column.sortValue?.(left) ?? "";
         const rightValue = column.sortValue?.(right) ?? "";
         const compared = typeof leftValue === "number" && typeof rightValue === "number"
@@ -893,7 +872,7 @@ export default function TransparencyPage() {
         return (tableCriteria.descending ? -compared : compared) || left.soldier_id.localeCompare(right.soldier_id);
       });
     }
-    return filtered;
+    return visibleExportRows;
   }
 
   // ── sub-hierarchy columns ──
@@ -1252,7 +1231,7 @@ export default function TransparencyPage() {
             <div className="flex justify-start" dir="ltr">
               <ExcelExportButton
                 columns={soldierCols}
-                rows={exportSoldierRows}
+                rows={[]}
                 filename="transparency.xlsx"
                 onBeforeExport={loadCompleteSoldierExport}
                 onExportError={() => setExportError(true)}

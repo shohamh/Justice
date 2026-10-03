@@ -8,6 +8,10 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+vi.mock("./SubHierarchySelector", () => ({
+  default: () => <div data-testid="sub-hierarchy-selector-stub" />,
+}));
+
 vi.mock("../api/shiftTemplates", () => ({
   createTemplate: vi.fn(() => Promise.resolve({})),
   updateTemplate: vi.fn(() => Promise.resolve({})),

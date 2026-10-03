@@ -32,7 +32,7 @@ import MessageDialog from "../components/MessageDialog";
 import { todayIso } from "../utils/formatDate";
 
 export default function TeamHierarchyPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { openSoldierModal } = useSoldierModal();
   const queryClient = useQueryClient();
@@ -60,7 +60,7 @@ export default function TeamHierarchyPage() {
       ([...(["admin", "commander", "duty_manager", "soldier"] as const)]).sort((left, right) =>
         t(`role.${left}`).localeCompare(t(`role.${right}`), "he"),
       ),
-    [t, i18n.language],
+    [t],
   );
   const rosterScopeKey = JSON.stringify({
     id: user?.id,
@@ -328,7 +328,7 @@ export default function TeamHierarchyPage() {
                     search,
                     sort: sort as SoldierRosterSort,
                     descending,
-                    role_order: localizedRoleOrder,
+                    role_order: (localizedRoleOrder ?? []).join(","),
                     page_size: pageSize,
                     active_only: true,
                     signal,

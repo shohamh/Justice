@@ -16,6 +16,9 @@ vi.mock("../api/importSessions");
 // (often misattributed to whatever test happens to be running next).
 vi.mock("../api/hierarchy");
 vi.mock("../api/soldiers");
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ user: null, authScopeReady: false }),
+}));
 
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
