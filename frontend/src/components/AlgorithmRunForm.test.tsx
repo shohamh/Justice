@@ -82,6 +82,7 @@ describe("AlgorithmRunForm - defaults load failure", () => {
     await screen.findByRole("checkbox", { name: /duty-1/ });
     fireEvent.click(screen.getByText("algorithm.restrict_to_subtree"));
     expect(await screen.findByText("team.hierarchy_loading")).toBeInTheDocument();
+    await waitFor(() => expect(fetchHierarchyBranchPage).toHaveBeenCalledTimes(1));
     await act(async () => rejectFirstTreeRequest(new Error("Hierarchy unavailable")));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("team.hierarchy_load_failed");
