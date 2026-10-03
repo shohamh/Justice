@@ -231,6 +231,22 @@ def dismiss_reserve(
     if to_date < from_date:
         raise ReserveError("bad_date_range")
     _lock_assignment(session, assignment)
+    if covering_reserve_id is not None:
+        # relink_reserve below locks each linked primary. Take those locks now,
+        # in id order and before the projection refresh locks the quarter
+        # total: dismiss_primary / mark_no_show / set_day_override lock a
+        # primary first and the quarter total after, so taking the primary
+        # after the quarter total here would deadlock against them.
+        # Lock order: reserve -> linked primaries (ascending id) -> projection.
+        session.execute(
+            select(DutyAssignment.id)
+            .where(DutyAssignment.id.in_(
+                select(DutyReserveLink.primary_assignment_id)
+                .where(DutyReserveLink.reserve_assignment_id == assignment.id)
+            ))
+            .order_by(DutyAssignment.id)
+            .with_for_update(key_share=True)
+        ).all()
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)

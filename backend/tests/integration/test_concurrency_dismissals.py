@@ -22,7 +22,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -100,7 +99,6 @@ def test_concurrent_overlapping_dismissals_record_only_one(race, admin_session):
     assert str(loser.error) == "overlapping_dismissal"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="dismiss_reserve locks quarter total before the linked primary")
 def test_covered_reserve_dismissal_and_primary_dismissal_do_not_deadlock(race, admin_session):
     """``dismiss_reserve(R, covering_reserve_id=R2)`` locks R, refreshes the
     score projection (locking the quarter-total row) and only then relinks
@@ -109,7 +107,13 @@ def test_covered_reserve_dismissal_and_primary_dismissal_do_not_deadlock(race, a
     quarter total.
 
     Schedule: the reserve dismissal holds the quarter total; the primary
-    dismissal holds P; each then waits for the other's lock."""
+    dismissal holds P; each then waits for the other's lock.
+
+    Fixed: with a covering reserve, dismiss_reserve locks R's linked
+    primaries in id order right after R and before the projection refresh
+    (reserve -> primaries -> projection). The primary dismissal then blocks
+    on P before the reserve side reaches the quarter total, so the reserve
+    side's wait times out, it commits, and the primary dismissal runs after."""
     from app.db.models import DutyReserveLink
 
     admin = create_soldier(admin_session, personal_number="race-dr-admin", role="admin")
