@@ -23,7 +23,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -205,7 +204,6 @@ def test_attendance_correction_and_duty_dismissal_of_one_soldier_do_not_deadlock
     assert admin_session.get(DutyAssignment, duty_id).weapon_ineligible is False
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="auto-mark keeps locks after a validation error")
 def test_auto_mark_releases_locks_after_a_validation_error(race, admin_session, monkeypatch):
     """Auto-mark residual — after ``lock_assignment_for_attendance`` the worker
     calls ``mark_attendance``; on ``RangeValidationError`` it logged and

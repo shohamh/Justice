@@ -71,6 +71,9 @@ def auto_mark_present_for_elapsed_events(session: Session, *, now: datetime | No
                 "range attendance auto-mark: skipping assignment %s after validation error",
                 assignment.id, exc_info=True,
             )
+            # Release the soldier / assignment locks taken above before moving
+            # on (mark_attendance raises before any write, so nothing is lost).
+            session.rollback()
             continue
         marked += 1
     return marked
