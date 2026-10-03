@@ -6,6 +6,7 @@ import math
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -378,7 +379,7 @@ def transparency_page(
     if group_key or sort in {"group_rank", "group_dev"}:
         fairness = svc.fairness_components(session, viewer=user, node_id=node_id)
         group_soldier_ids = set() if group_key else None
-        for index, component in enumerate(fairness.get("components", [])):
+        for component in fairness.get("components", []):
             members = sorted(component.get("soldiers", []), key=lambda item: float(item.get("burden_share") or 0))
             mean_value = component.get("burden_share")
             group_mean = float(mean_value["mean"]) if isinstance(mean_value, dict) and mean_value.get("mean") is not None else None
@@ -593,9 +594,8 @@ def burden_share_breakdown(
     s = session.get(Soldier, soldier_id)
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    if s.id != user.id:
-        if not can_view_soldier_scope(session, user, _node_of(session, s)):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if s.id != user.id and not can_view_soldier_scope(session, user, _node_of(session, s)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     today = date.today()
 
@@ -673,9 +673,8 @@ def burden_share(
     s = session.get(Soldier, soldier_id)
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    if s.id != user.id:
-        if not can_view_soldier_scope(session, user, _node_of(session, s)):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    if s.id != user.id and not can_view_soldier_scope(session, user, _node_of(session, s)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     result = svc.soldier_burden_share(session, soldier_id)
     if result is None:
