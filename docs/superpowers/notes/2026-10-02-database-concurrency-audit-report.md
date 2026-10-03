@@ -3,9 +3,10 @@
 Date: 2026-10-02
 Spec: `docs/superpowers/specs/2026-10-02-database-concurrency-audit-design.md`
 Plan: `docs/superpowers/plans/2026-10-02-database-concurrency-audit.md`
-Status: **Tasks 1–4 complete.** Task 1 (baseline + inventory), Task 2 (race
-reproduction for C1–C8), Task 3 (fixes for C1–C8) and Task 4 (C9–C18 and O1)
-are done. Task 5 has not started.
+Status: **Tasks 1–5 complete.** Task 1 (baseline + inventory), Task 2 (race
+reproduction for C1–C8), Task 3 (fixes for C1–C8), Task 4 (C9–C18 and O1) and
+Task 5 (consolidated dispositions, open items, final verification: §6–§8)
+are done.
 All eight Critical/High candidates C1–C8 (including every C8 sub-workflow)
 were reproduced against PostgreSQL and are **confirmed findings** (§4.1). All
 of them are now **fixed** with database-level locking/claims and their race
@@ -572,20 +573,161 @@ covering soldier's id and the date, taken in `set_day_override` and
 
 ---
 
-## 5. Remaining untested concurrency boundaries (so far)
+## 5. Remaining untested concurrency boundaries
 
-- C1–C8 are reproduced, confirmed (§4.1) and fixed (§4.2). C9–C18 and O1 are
-  dispositioned in §4.3. C14 is deferred for a product decision; C16/K3 and
-  the original J1 schedule were not reproduced.
-- Inventory items outside C1–C18 that were never reproduced: A4 (concurrent
-  replaces of one assignment), A5 (duplicate cancel notification), A6
-  `clear_day_override`, P5 (profile lost updates, `bump_token_version`), T3
-  (token invalidation race; SMTP inside the request transaction, now bounded
-  by the timeout), T7, I2/I3, D4, N2 (bot scaled out), N5, X2 (object-store
-  PUT after the row flush), X3/P6 (duplicate → 500).
-- Modules listed under "Not reviewed in this task" in §2.
-- No PostgreSQL race test exists for the `create_assignment` soldier lock (A1),
-  even though the code comment relies on it.
-- The production `default_transaction_isolation` was not checked.
-- Behavior with `WEB_CONCURRENCY` other than 4, and the bot when scaled
-  beyond one process.
+Superseded by §8, which is the final list. Kept as a pointer so earlier
+references to §5 still resolve.
+
+---
+
+## 6. Consolidated disposition of every inventory row (§2)
+
+Result legend: **Fixed** = reproduced on PostgreSQL, fixed, regression test
+passes. **Reviewed** = read, no defect identified (not a safety claim).
+**Not reproduced** = a hypothesis that was not demonstrated. **Not reviewed** =
+never read in depth. Test names are in `backend/tests/integration/` unless
+stated. "Ref" points to the section with the evidence.
+
+| ID | Evidence / result | Disposition | Test reference | Ref |
+|---|---|---|---|---|
+| A1 | Soldier `FOR UPDATE` read. No PG race test of its own; indirectly exercised (re-entrant) by the C3 and C10 tests. | Reviewed; **untested boundary** | indirect: `test_concurrency_shift_assign_batch.py`, `test_concurrency_shift_batch_lock_order.py` | §2, §8 |
+| A2 | Reproduced: 2 primaries on `required_count=1`. | **Fixed** (C3, `a53964b2`) | `test_concurrency_shift_assign_batch.py` | §4.1, §4.2 |
+| A3 | Reproduced: `DeadlockDetected` with opposite soldier order. | **Fixed** (C10, `3285b51c`) | `test_concurrency_shift_batch_lock_order.py` | §4.3 |
+| A4 | Concurrent replaces of one assignment (last writer wins). Not reproduced. | Open, M | none | §8 |
+| A5 | Duplicate "cancelled" notification on a second cancel (also sequential). Not reproduced. | Open, L | none | §8 |
+| A6 | `set_day_override` concurrent insert reproduced (500) and fixed. `clear_day_override` not reproduced. | **Fixed** for set (C17, `0e1b8c3d`); clear open, L | `test_concurrency_duplicate_inserts.py::test_concurrent_day_overrides_for_one_day_both_succeed` | §4.3 |
+| A7 | Single UPDATE statement; sequential tests only. | Reviewed (not exercised concurrently) | existing sequential | §2 |
+| S1 | Partial unique index plus IntegrityError translation. | Reviewed | `test_swaps_service.py` | §2 |
+| S2 | Request `FOR UPDATE` first in each entry point; same-request races. | Reviewed | `test_concurrent_finalize_of_two_candidates_applies_only_one` | §2 |
+| S3 | Reproduced: 500 on `UniqueViolation`. | **Fixed** (C17, `b13130d1`) | `test_concurrency_duplicate_inserts.py::test_concurrent_take_free_of_one_duty_yields_already_pending` | §4.3 |
+| S4 | Reproduced: `applied` overwritten by `cancelled` while cover overrides committed. | **Fixed** (C7, `b35f0d1f`) | `test_concurrency_expiry_workers.py::test_swap_expiry_does_not_cancel_a_swap_applied_after_its_read` | §4.1, §4.2 |
+| S5 | Sequential rule gap in `_day_busy` (ignores overrides), so also reachable without concurrency. | **Awaiting product decision** (C14) | none | §4.3 |
+| K1 | Reproduced: 4 pending days against cap 3. | **Fixed** (C5, `8851ecd2`) | `test_concurrency_personal_constraints.py` | §4.1, §4.2 |
+| K2 | Same-row lock reviewed. Route chooses the auth branch from the pre-lock status (M/L permission-staleness note); not reproduced. | Reviewed; open note | existing sequential | §2 |
+| K3 | Not a concurrency defect: the sequential outcome is identical. | Not reproduced; product question | none | §4.3 |
+| E1 | Same-request decisions locked. | Reviewed | existing sequential | §2 |
+| E2 | Reproduced: `expired` overwrote `approved` with the exemption committed. | **Fixed** (C7, `b35f0d1f`) | `test_concurrency_expiry_workers.py::test_exemption_expiry_does_not_expire_a_request_approved_after_its_read` | §4.1, §4.2 |
+| E3 | Token double redemption is now serialized by the C12 token lock. The pre-lock choice of step was not reproduced. | Reviewed, L | `test_concurrency_one_time_tokens.py` (token layer only) | §4.3 |
+| H1 | `Soldier FOR UPDATE`; consistent with the H2 fix order. | Reviewed | existing sequential | §2 |
+| H2 | Reproduced: status `rejected` while the soldier was moved. | **Fixed** (C8, `058629d9`) | `test_concurrency_hierarchy_transfers.py` | §4.1, §4.2 |
+| P1 | Submit vs submit. | Reviewed (existing test) | `test_concurrent_unit_join_date_submissions_leave_one_pending_request` | §2 |
+| P2 | Approve vs approve. | Reviewed (existing test) | `test_concurrent_unit_join_date_approvals_transition_once_and_notify_once` | §2 |
+| P3 | Reproduced: `rejected` while the new phone value was applied. | **Fixed** (C8, `be765728`) | `test_concurrency_soldier_field_updates.py` | §4.1, §4.2 |
+| P4 | Reproduced: `DeadlockDetected`. | **Fixed** (C9, `daf8ec74`) | `test_concurrency_field_update_lock_order.py` | §4.3 |
+| P5 | Profile PATCH lost update and `bump_token_version` read-modify-write. Not reproduced. | Open, M | none | §8 |
+| P6 | Duplicate `personal_number` surfaces as a 500. Not reproduced. | Open, L | none | §8 |
+| I1 | Reproduced: import applied twice; cancel silently lost. | **Fixed** (C6, `09c5d603`) | `test_concurrency_import_sessions.py` (2 tests) | §4.1, §4.2 |
+| I2 | `cancel_session` covered by the C6 lock. `reparse_session`, `mark_done`, `set_selections` not changed or reproduced. | Partly fixed; remainder open, M | `test_concurrency_import_sessions.py` (cancel only) | §7 |
+| I3 | Import overwrites of live rows. Not reproduced. | Open, M | none | §8 |
+| R1 | Per-date advisory lock plus unique key; same-date add vs add. | Reviewed | existing sequential | §2 |
+| R2 | Reproduced: advisory-lock `DeadlockDetected`. | **Fixed** (C11, `db740781`) | `test_concurrency_range_batch_lock_order.py` | §4.3 |
+| R3 | Reproduced: 2 primaries on capacity 1; double approval gave 500. | **Fixed** (C4, `22974693`; C17 regression `95320a59`) | `test_concurrency_range_assignment_requests.py` (2 tests) | §4.1, §4.3 |
+| R4 | Create-request duplicate; partial unique index exists. Not reproduced. | **Not reviewed** in depth; L | none | §8 |
+| R5 | Reproduced: one reserve promoted twice, one slot unfilled. | **Fixed** (C8, `57da94d3`) | `test_concurrency_range_excusal.py` | §4.1, §4.2 |
+| R6 | Conditional transition. | Reviewed (existing test) | `test_concurrent_elapsed_transitions_change_and_audit_each_event_once` | §2 |
+| R7 | Reproduced: 2 reminders per recipient. | **Fixed** (C2, `bbc66422`) | `test_concurrency_range_reminders.py` | §4.1, §4.2 |
+| R8 | Reproduced: 2 qualifications; manual `no_show` overwritten. | **Fixed** (C16, `77eb9225`) | `test_concurrency_range_attendance.py` (2 tests) | §4.3 |
+| D1 | Reproduced: two overlapping dismissals. | **Fixed** (C16, `8d377d4d`) | `test_concurrency_dismissals.py` | §4.3 |
+| D2 | Reproduced: 500 on `uq_reserve_links_primary`; the fix introduced a deadlock cycle, reproduced and fixed. | **Fixed** (C17 `0726b5eb`; follow-up `e34a42c9`) | `test_concurrency_duplicate_inserts.py`; `test_concurrency_dismissals.py::test_covered_reserve_dismissal_and_primary_dismissal_do_not_deadlock` | §4.3 |
+| D3 | Reproduced: 500 on `uq_duty_no_shows_assignment`. | **Fixed** (C17, `388bef0d`) | `test_concurrency_duplicate_inserts.py::test_concurrent_no_show_marks_yield_already_marked` | §4.3 |
+| D4 | `call_up_reserve` last writer wins on the call-up range. Not reproduced. | Open, L | none | §8 |
+| T1 | Reproduced: token redeemed twice. | **Fixed** (C12, `f6b6abff`) | `test_concurrency_one_time_tokens.py` (email link, Telegram) | §4.3 |
+| T2 | Reproduced: two resets both `ok`. | **Fixed** (C12, `f6b6abff`) | `test_concurrency_one_time_tokens.py` (reset token) | §4.3 |
+| T3 | SMTP inline in the request transaction; two live tokens possible. SMTP now has a 30 s timeout (`6c6c2b40`). Not reproduced. | Mitigated; open, M | unit test for the timeout | §4.3 |
+| T4 | Reproduced: 2 accounts verified with one email. | **Fixed** (C15, `b0f10b0f`) | `test_concurrency_email_verification.py` | §4.3 |
+| T5 | Conditional UPDATE. | Reviewed (existing test) | `test_concurrent_consume_never_over_redeems` | §2 |
+| T6 | Conditional UPDATE. | Reviewed | existing sequential | §2 |
+| T7 | Two live activation codes per soldier. Not reproduced. | Open, L | none | §8 |
+| N1 | Reproduced: SMTP called twice for one row. | **Fixed** (C1, `f78cf9b4`; timeout `6c6c2b40`) | `test_concurrency_email_outbox.py` | §4.1, §4.2 |
+| N2 | Single bot process; at-least-once. | Reviewed; open if the bot is scaled out | none | §7, §8 |
+| N3 | Outbox rows inserted in the caller's transaction. | Reviewed | many sequential | §2 |
+| N4 | Reproduced: duplicate `mitvahim_expired` notification. | **Fixed** (C16, `a1a4dbd8`) | `test_concurrency_qualification_expiry.py` | §4.3 |
+| N5 | Rank advancement `_promote_due_soldiers` in 4 processes. | **Not reviewed** in depth | existing sequential | §8 |
+| J1 | Start overwrite and finish overwrite reproduced. The original refresh-to-commit schedule was not reproducible (a row lock blocks it). | **Fixed** (C13, `39a9a1c5`, `30a37435`) | `test_concurrency_algorithm_jobs.py` | §4.3 |
+| J2 | Stale snapshot vs manual assignments; accept does not re-check overlap. | Open, M/H (stale decision) | none | §7, §8 |
+| J3 | Reproduced: `algorithm_rejected` after publish. | **Fixed** (C8, `f1eab90f`) | `test_concurrency_algorithm_proposals.py` | §4.1, §4.2 |
+| J4 | Reproduced: live sibling job marked `failed`. | **Fixed** (C13, `7301d6fc`) | `test_concurrency_algorithm_jobs.py` (startup hook, control) | §4.3 |
+| J5 | Advisory try-locks. | Reviewed | `test_hr_sync_worker.py` | §2 |
+| J6 | Failure injection: partial commit after `recheck_assignments`. | **Fixed** (C18, `cb62184c`) | `test_concurrency_partial_commits.py` | §4.3 |
+| X1 | Reproduced: `rejected` while the soldier was placed. | **Fixed** (C8, `533d3436`) | `test_concurrency_enrollment.py` | §4.1, §4.2 |
+| X2 | Object-store PUT after the row flush, locks held across the network. Not reproduced. | Open, M | none | §8 |
+| X3 | Duplicates give a 500. Not reproduced. | Open, L | none | §8 |
+| O1 (not in §2) | Reproduced three schedules in the score projection. | **Fixed** (`8b10aca3`) | `test_concurrency_score_projection.py` (3 tests) | §4.3 |
+
+Modules listed as "Not reviewed" in §2 (`import_approvals.py`,
+`calendar_shifts.py`, `duty_config.py`, `shift_templates.py` auto-roll,
+`gimelim.py` / `hakpaza.py` writes, `bug_reports.py`, `score_projection.py`
+beyond the O1 rows, `hr/person_sync.py` beyond its advisory lock, rank
+advancement internals) remain **not reviewed**.
+
+### 6.1 Severity-ranked summary
+
+| Severity | Items | State |
+|---|---|---|
+| Critical | C1 (N1) | Fixed and tested |
+| High | C2, C3, C4, C5, C6, C7 (S4, E2), C8 (H2, P3, X1, R5, J3) | All fixed and tested |
+| High, needs product input | C14 (S5) | Awaiting product decision |
+| Medium/High, not reproduced | J2 (stale algorithm snapshot vs manual edits) | Open, see §7 |
+| Medium | C9, C10, C11, C12, C13, C15, C16, C18, O1 | Fixed and tested (C16/K3 not reproduced) |
+| Low | C17 | Fixed and tested |
+
+## 7. Open items and deferred minors
+
+Each item states why deferral is reasonable. None is a confirmed
+critical/high defect.
+
+| Item | Impact | Evidence | Recovery path | Owner | Why deferral is reasonable |
+|---|---|---|---|---|---|
+| Email delivery is at-least-once (N1, and N2 for Telegram) | A crash between the SMTP/Telegram send and the commit of `sent_at` re-sends that one message. The bot has no claim, so scaling it out would duplicate. | By design of the claim (`SKIP LOCKED` row held across the send); not reproduced | Recipient sees a duplicate; no data corruption | Backend | Exactly-once is not achievable with SMTP. Duplicates are limited to crash windows, and one bot process is the deployed topology. |
+| SMTP-held row lock (Task 3 minor) | The outbox row lock is held while SMTP is called. | **Resolved in Task 4**: 30 s connection timeout (`6c6c2b40`). | Other drainers skip the row (`SKIP LOCKED`) | n/a | Resolved. Residual: password-reset and verification mail still send inline (T3). |
+| `range_attendance_auto_mark` rollback before `continue` | After a `RangeValidationError` the loop continues without a rollback, so the locks from `lock_assignment_for_attendance` and any partial writes stay in the open transaction until a later commit in the loop. Confirmed by reading `range_attendance_auto_mark.py` (the except branch has no `session.rollback()`). | Code reading; no test | A later commit in the same loop may persist partial state; the next sweep repeats | Backend | Validation errors are normally raised before writes; not demonstrated. Follow-up: add `session.rollback()` and a test. |
+| `email_verification.verify_token` lock comment / deadlock with `set_email` | The comment states the order token, email lock, soldier. `set_email` was not read under concurrency and may lock the soldier first, giving a soldier to email-lock cycle. | Code reading | A deadlock gives one 500; the user retries | Backend | Not demonstrated; the verified-email lock is taken only by `verify_token`. |
+| C13 advisory unlock failure | `_release_job_runner_lock` closes the connection back to the pool in `finally`. If `pg_advisory_unlock` raises, the session lock stays on a pooled connection and the job looks alive to the startup hook. Confirmed in `algorithm_bridge.py`. | Code reading | The lock drops when the pooled connection is recycled or the process restarts | Backend | Needs a failing unlock, which is rare. Fix: `conn.invalidate()` on error. |
+| `dismiss_reserve` snapshot window | Linked primaries are locked from the start-of-transaction snapshot, so a primary linked to the reserve after that snapshot is not locked. The no-cover path inserts links after the projection refresh without ordering. | Review note; not reproduced | A deadlock gives one 500 | Backend | Narrow window, deadlock only; reproduction needs a third concurrent link writer. |
+| `refresh_projection_for_change` interleave | Two refreshes over overlapping soldier sets could lock bucket S1, the quarter total and bucket S2 in opposite orders. | Code reading only (§4.3). The pre-existing code had the same order. | One 500; the user retries | Backend | Not demonstrated; reordering touches many callers. |
+| C14 product decision | A soldier can be the effective soldier on two duties the same day. | Sequential rule gap; §4.3 | Manager removes one override | Product owner, then backend | Needs the rule decision; fix designed in §4.3. |
+| Uncovered writer: single shift-assignment create | Takes only the soldier lock and does not check capacity, so the C3 shift lock does not constrain it. | Code reading | Manager sees over-capacity and removes one | Backend | `assign_batch` was the reproduced path; single create has no capacity rule today. |
+| Uncovered writer: algorithm publish | Accept checks no capacity or overlap against concurrent manual edits (J2). | Code reading | Manager rejects or replaces the assignment | Backend | Snapshot staleness needs a product choice (re-solve vs re-validate on accept). |
+| Uncovered writers: range roster writers without the date lock | Reserve excusal and removal paths outside the per-date advisory lock. | Code reading | Manager corrects the roster | Backend | Not demonstrated; the main capacity paths (R1, R3, R5) are serialized. |
+| Uncovered writers: import `reparse_session` / `mark_done` / `set_selections` | A reparse can race a confirm or cancel. | Code reading; the lock was added only to confirm and cancel | Re-run or cancel the import | Backend | Not reproduced; the destructive path (confirm) is serialized. |
+| `take_free` rollback on conflict; one pool connection per running job | See the §4.3 table. | | | Backend | Matches project convention; pool headroom is sufficient. |
+| Test hygiene minors | C11 test final-state assertions relaxed; the D2 follow-up test relies on 10 s timeouts; `pause_after_select` is a fragile park point; earlier-task commit trailers say "Claude Opus 5.5". | Ledger | n/a | Test owner | No production behavior impact. |
+
+## 8. Final verification and remaining untested boundaries
+
+### 8.1 Verification run (Task 5)
+
+Run at HEAD `a2717ec0` (code unchanged in Task 5), `backend/.venv`,
+Testcontainers `postgres:16-alpine`, `-o addopts="-n 4"`.
+
+| Check | Command | Result |
+|---|---|---|
+| New concurrency tests | `pytest tests/integration/test_concurrency_*.py -p no:cacheprovider` (24 files) | **45 passed**, 0 failed, 0 xfailed (94 s) |
+| Fast backend suite | `pytest -q -p no:cacheprovider` | **2179 passed, 3 skipped, 2 failed** (379 s) |
+| Baseline comparison | Task 1 baseline: about 2130 passed, 3 skipped, 2 failed | The same 2 failures, unchanged: `test_breakdown_contributions_reconstruct_scores`, `test_block_ids_are_unique` (both date-related, not concurrency; the first one's root cause is still not investigated). The pass count rose by the new tests. No new failures. |
+| Alembic | `git diff c9df8152..HEAD` touches no migration file | **No revision was added**, so the upgrade/downgrade/upgrade round trip was not needed. `alembic heads` shows one head: `4858092e72e7`. |
+| Whitespace | `git diff --check` | clean |
+
+### 8.2 Critical/high confirmation
+
+- Every Critical/High item (C1 to C8 and every C8 sub-workflow) has a
+  reproduction that failed on unmodified code (§4.1), a fix (§4.2) and a
+  regression test that passes in `tests/integration/test_concurrency_*.py`.
+- The only High-class item not fixed is **C14 (S5)**, **awaiting a product
+  decision** (§4.3). **J2** is an open Medium/High stale-decision item that was
+  not reproduced (§7).
+- No migration was added. `alembic heads` shows a single head.
+
+### 8.3 Remaining untested boundaries
+
+- A1: no PostgreSQL race test of the create-assignment soldier lock itself.
+- A4, A5, `clear_day_override`, P5, P6, I3, D4, R4, T3 (concurrent
+  invalidation), T7, X2, X3, N2 (bot scaled out), N5.
+- J2 (algorithm snapshot vs manual changes) and the uncovered writers in §7.
+- All modules named in §6 as not reviewed.
+- Production `default_transaction_isolation`, `WEB_CONCURRENCY` other than 4,
+  and a bot scaled beyond one process were not checked.
+- Multi-process behavior is reproduced as two sessions in threads of one
+  process; real multi-process behavior was not exercised.
+- Crashes between an external side effect and its commit (email, Telegram,
+  object store) were not injected.
