@@ -16,6 +16,25 @@ const MADOR_COMMANDER = "3000001"; // commander of mador "מחקר" (parent of t
 const TEAM_COMMANDER = "1000014"; // leader of team "צוות רוקט"
 const ADMIN = "1000001";
 const TEAM_NAME = "צוות רוקט";
+const REGISTERED_PASSWORD = "Reg-Passw0rd!x";
+
+/** Endpoints a plain soldier must never reach (admin / commander only). */
+const PRIVILEGED_CALLS: { method: "get" | "post"; path: string; data?: object }[] = [
+  { method: "get", path: "/api/admin/identity-conflicts" },
+  { method: "get", path: "/api/admin/invite-codes" },
+  { method: "post", path: "/api/admin/invite-codes", data: { uses_left: 1 } },
+];
+
+async function privilegedStatuses(personalNumber: string, password: string): Promise<number[]> {
+  const { api, headers } = await apiAs(personalNumber, password);
+  const statuses: number[] = [];
+  for (const call of PRIVILEGED_CALLS) {
+    const res = await api.fetch(call.path, { method: call.method, headers, data: call.data });
+    statuses.push(res.status());
+  }
+  await api.dispose();
+  return statuses;
+}
 
 async function keycloakSignIn(page: Page, username: string) {
   await expect(page).toHaveURL(/127\.0\.0\.1:8411\/realms\/justice-test\//);
@@ -53,10 +72,10 @@ async function refreshOk(page: Page): Promise<boolean> {
   throw new Error("refresh request kept timing out");
 }
 
-async function apiAs(personalNumber: string) {
+async function apiAs(personalNumber: string, password = SEED_PASSWORD) {
   const api: APIRequestContext = await pwRequest.newContext({ baseURL: APP });
   const res = await api.post("/api/auth/login", {
-    data: { personal_number: personalNumber, password: SEED_PASSWORD },
+    data: { personal_number: personalNumber, password },
   });
   expect(res.ok(), `login ${personalNumber}`).toBeTruthy();
   const token = ((await res.json()) as { access_token: string }).access_token;
@@ -92,9 +111,9 @@ async function fillRegistration(page: Page, personalNumber: string, name: string
     await expect(rank).toHaveValue("סמל", { timeout: 2000 });
   }).toPass({ timeout: 60_000 });
   const password = page.locator("label", { hasText: "סיסמה" }).first().locator("input").first();
-  await password.fill("Reg-Passw0rd!x");
-  await expect(password).toHaveValue("Reg-Passw0rd!x");
-  await page.locator("label", { hasText: "אימות סיסמה" }).locator("input").first().fill("Reg-Passw0rd!x");
+  await password.fill(REGISTERED_PASSWORD);
+  await expect(password).toHaveValue(REGISTERED_PASSWORD);
+  await page.locator("label", { hasText: "אימות סיסמה" }).locator("input").first().fill(REGISTERED_PASSWORD);
   const next = () => page.getByRole("button", { name: "הבא" });
   await next().click(); // -> exemptions
   await next().click(); // -> constraints
@@ -108,17 +127,22 @@ test.describe.configure({ mode: "serial" });
 
 test.describe("login UI", () => {
   test("SSO button is shown next to password login when configured", async ({ page }) => {
+    test.skip(process.env.E2E_OIDC_DISABLED === "1", "backend without OIDC settings");
     await page.goto("/login");
     await expect(page.getByTestId("sso-login-button")).toBeVisible();
     await expect(page.getByTestId("personal-number-input")).toBeVisible();
     await expect(page.getByTestId("login-submit")).toBeVisible();
   });
 
-  test("SSO button is hidden when the server reports SSO disabled (status mocked; backend-disabled covered by backend tests)", async ({ page }) => {
-    await page.route("**/api/auth/oidc/status", (route) => route.fulfill({ json: { enabled: false } }));
+  test("backend with no OIDC settings: no SSO button, start endpoint is 404, password login stays usable", async ({ page }) => {
+    test.skip(process.env.E2E_OIDC_DISABLED !== "1", "needs a backend started without OIDC_* (run.ps1 -NoOidc)");
     await page.goto("/login");
     await expect(page.getByTestId("login-form")).toBeVisible();
+    await expect(page.getByTestId("personal-number-input")).toBeVisible();
     await expect(page.getByTestId("sso-login-button")).toHaveCount(0);
+    expect((await page.request.get("/api/auth/oidc/status")).status()).toBe(200);
+    expect(await (await page.request.get("/api/auth/oidc/status")).json()).toEqual({ enabled: false });
+    expect((await page.request.get("/api/auth/oidc/start", { maxRedirects: 0 })).status()).toBe(404);
   });
 });
 
@@ -167,12 +191,7 @@ test.describe("failures stay generic", () => {
     await adminPage.getByTestId("password-input").fill(SEED_PASSWORD);
     await adminPage.getByTestId("login-submit").click();
     await expect(adminPage).toHaveURL(/\/$/);
-    // Client-side navigation: a full reload right after login raced the SPA's own first
-    // refresh on a cold stack and bounced to /login (observed intermittently; not investigated).
-    await adminPage.evaluate(() => {
-      history.pushState({}, "", "/admin/settings?tab=7");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
+    await adminPage.goto("/admin/settings?tab=7"); // full load right after login (needs the session-restore retry)
     await expect(adminPage.getByTestId("identity-conflicts-content")).toBeVisible();
     await expect(adminPage.locator('[data-testid^="identity-conflict-"]').first()).toBeVisible();
     await expect(adminPage.getByTestId("identity-conflicts-empty")).toHaveCount(0);
@@ -207,6 +226,9 @@ test.describe("unmatched identity registers and needs mador approval", () => {
     expect(mine, "pending enrollment request").toBeTruthy();
     requestId = mine!.id;
     await api.dispose();
+
+    // Holding-node soldier before approval: no admin/commander-only call is allowed.
+    expect(await privilegedStatuses(personalNumber, REGISTERED_PASSWORD)).toEqual([403, 403, 403]);
   });
 
   test("a team-level commander cannot approve; a mador-level commander can", async () => {
@@ -229,6 +251,14 @@ test.describe("unmatched identity registers and needs mador approval", () => {
     const pending = await mador.api.get("/api/enrollment-requests/pending", { headers: mador.headers });
     expect(((await pending.json()) as { id: string }[]).some((r) => r.id === requestId)).toBeFalsy();
     await mador.api.dispose();
+
+    // After approval the soldier gains only what a normal soldier has (same denials).
+    expect(await privilegedStatuses(personalNumber, REGISTERED_PASSWORD)).toEqual([403, 403, 403]);
+    expect(await privilegedStatuses("1000003", SEED_PASSWORD)).toEqual([403, 403, 403]);
+    const me = await apiAs(personalNumber, REGISTERED_PASSWORD);
+    const profile = await me.api.get("/api/soldiers/me/reserve-stats", { headers: me.headers });
+    expect(profile.status()).toBeLessThan(500);
+    await me.api.dispose();
   });
 });
 

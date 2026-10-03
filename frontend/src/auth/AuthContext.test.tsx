@@ -68,3 +68,59 @@ describe("AuthContext — periodic refresh while logged in", () => {
     expect(mockFetchMe).toHaveBeenCalledTimes(0);
   });
 });
+
+function SessionProbe() {
+  const { loggedIn, authLoading } = useAuth();
+  return <div data-testid="session">{authLoading ? "loading" : loggedIn ? "in" : "out"}</div>;
+}
+
+describe("AuthContext — restoring the session on mount", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockRefresh.mockReset();
+    mockFetchMe.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function mountAndSettle() {
+    render(
+      <AuthProvider>
+        <SessionProbe />
+      </AuthProvider>,
+    );
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  }
+
+  it("keeps the session when the refresh endpoint fails transiently (5xx / network), then succeeds", async () => {
+    mockRefresh
+      .mockRejectedValueOnce({ response: { status: 503 } })
+      .mockRejectedValueOnce(new Error("Network Error"))
+      .mockResolvedValue({ data: { access_token: "t" } });
+    mockFetchMe.mockResolvedValue({ id: "1", enrollment_pending: false });
+
+    await mountAndSettle();
+
+    expect(screen.getByTestId("session").textContent).toBe("in");
+  });
+
+  it("treats a 401 from refresh as 'no session' straight away (no retries)", async () => {
+    mockRefresh.mockRejectedValue({ response: { status: 401 } });
+
+    await mountAndSettle();
+
+    expect(screen.getByTestId("session").textContent).toBe("out");
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after a bounded number of transient failures", async () => {
+    mockRefresh.mockRejectedValue({ response: { status: 503 } });
+
+    await mountAndSettle();
+
+    expect(screen.getByTestId("session").textContent).toBe("out");
+    expect(mockRefresh.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+});

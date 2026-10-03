@@ -16,12 +16,14 @@
 
 .PARAMETER KeepUp
     Leave the stack running afterwards (stop it later with -Down).
+.PARAMETER NoOidc
+    Start the backend WITHOUT any OIDC_* settings and run only the 'no OIDC settings' journey.
 .PARAMETER Down
     Only stop/remove what a previous run left behind.
 .PARAMETER PlaywrightArgs
     Extra arguments passed to `playwright test` (for example -g "ambiguous").
 #>
-param([switch]$KeepUp, [switch]$Down, [string[]]$PlaywrightArgs = @())
+param([switch]$KeepUp, [switch]$Down, [switch]$NoOidc, [string[]]$PlaywrightArgs = @())
 
 $ErrorActionPreference = 'Continue'  # native tools write progress to stderr; failures are checked via $LASTEXITCODE
 $here    = $PSScriptRoot
@@ -70,12 +72,13 @@ try {
     Pop-Location
 
     $env:COOKIE_SECURE = 'false'
+    if ($NoOidc) { $PlaywrightArgs = @('-g', 'no OIDC settings') + $PlaywrightArgs; $env:E2E_OIDC_DISABLED = '1' }
     $env:FRONTEND_URL = 'http://localhost:5183'; $env:ALLOWED_ORIGINS = 'http://localhost:5183'
-    $env:OIDC_ISSUER = 'http://127.0.0.1:8411/realms/justice-test'
-    $env:OIDC_CLIENT_ID = 'justice-test-client'
-    $env:OIDC_CLIENT_SECRET = 'justice-test-only-client-secret'
-    $env:OIDC_REDIRECT_URI = 'http://localhost:8410/api/auth/oidc/callback'
-    $env:OIDC_ALLOW_INSECURE_LOCAL = 'true'
+    if (-not $NoOidc) { $env:OIDC_ISSUER = 'http://127.0.0.1:8411/realms/justice-test' }
+    if (-not $NoOidc) { $env:OIDC_CLIENT_ID = 'justice-test-client' }
+    if (-not $NoOidc) { $env:OIDC_CLIENT_SECRET = 'justice-test-only-client-secret' }
+    if (-not $NoOidc) { $env:OIDC_REDIRECT_URI = 'http://localhost:8410/api/auth/oidc/callback' }
+    if (-not $NoOidc) { $env:OIDC_ALLOW_INSECURE_LOCAL = 'true' }
     $env:OIDC_RATE_LIMIT = '200/minute'; $env:LOGIN_RATE_LIMIT = '1000/minute'
     Start-Process -FilePath $py -ArgumentList '-m uvicorn app.main:app --host 127.0.0.1 --port 8410' -WorkingDirectory $backend -WindowStyle Hidden -RedirectStandardOutput "$logs\backend.log" -RedirectStandardError "$logs\backend.err.log"
     $env:VITE_BACKEND_URL = 'http://127.0.0.1:8410'  # uvicorn listens on IPv4 only; localhost may resolve to ::1 first and stall the proxy
@@ -87,20 +90,20 @@ try {
         try {
             $s = Invoke-RestMethod http://localhost:5183/api/auth/oidc/status -TimeoutSec 3
             $d = Invoke-RestMethod http://127.0.0.1:8411/realms/justice-test/.well-known/openid-configuration -TimeoutSec 3
-            if ($s.enabled -and $d.issuer) { $ready = $true }
+            if (($s.enabled -or $NoOidc) -and $d.issuer) { $ready = $true }
         } catch { Start-Sleep 3 }
     }
     if (-not $ready) { throw "stack did not become ready; see $logs and 'docker logs oidc-e2e-keycloak'" }
 
     # Warm-up: the first OIDC discovery and the first Keycloak login page are slow on a cold start.
-    try {
+    if (-not $NoOidc) { try {
         $start = Invoke-WebRequest http://localhost:8410/api/auth/oidc/start -MaximumRedirection 0 -UseBasicParsing -ErrorAction SilentlyContinue -TimeoutSec 120
         $loc = $start.Headers['Location']
         if ($loc) { Invoke-WebRequest $loc -UseBasicParsing -TimeoutSec 180 | Out-Null }
     } catch {
         $loc = $_.Exception.Response.Headers['Location']
         if ($loc) { try { Invoke-WebRequest $loc -UseBasicParsing -TimeoutSec 180 | Out-Null } catch {} }
-    }
+    } }
 
     Push-Location $frontend
     & npx playwright test --config=playwright.oidc.config.ts @PlaywrightArgs
