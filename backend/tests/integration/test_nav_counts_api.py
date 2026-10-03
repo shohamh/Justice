@@ -308,8 +308,12 @@ def test_transfer_badge_matches_pending_destination_scope_with_sql_count(
     assert len(transfer_queries) == (0 if actor_key == "no_scope" else 1)
     assert all("count(" in sql and "&&" in sql for sql in transfer_queries)
     assert not any("select hierarchy_transfer_requests." in sql for sql in statements)
-    assert not any("select hierarchy_nodes." in sql and
-                   "select hierarchy_nodes.id" not in sql for sql in statements)
+    node_projections = [
+        " ".join(sql.split()).split(" from hierarchy_nodes", 1)[0]
+        for sql in statements
+        if sql.lstrip().startswith("select hierarchy_nodes.")
+    ]
+    assert all(projection == "select hierarchy_nodes.id" for projection in node_projections)
 
 
 def test_admin_constraint_badge_counts_pending_rows_except_own_with_sql_count(
