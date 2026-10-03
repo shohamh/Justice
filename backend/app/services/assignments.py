@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -414,6 +414,39 @@ def _day_busy(
     )
     if exclude_assignment_id is not None:
         q = q.where(DutyAssignment.id != exclude_assignment_id)
+    if session.execute(q).first() is not None:
+        return True
+    return covers_by_override(
+        session, soldier_id=soldier_id, start_date=on_date, end_date=on_date + timedelta(days=1),
+        exclude_assignment_id=exclude_assignment_id,
+    )
+
+
+def covers_by_override(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    exclude_assignment_id: uuid.UUID | None = None,
+) -> bool:
+    """True if a day override makes ``soldier_id`` the effective soldier of a
+    non-cancelled duty on any day in ``[start_date, end_date)``.
+
+    Product rule (C14): covering a duty by override makes the covering
+    soldier busy for that day, the same as a nominal assignment."""
+    q = (
+        select(DutyDayOverride.id)
+        .join(DutyAssignment, DutyAssignment.id == DutyDayOverride.duty_assignment_id)
+        .where(
+            DutyDayOverride.effective_soldier_id == soldier_id,
+            DutyDayOverride.date >= start_date,
+            DutyDayOverride.date < end_date,
+            DutyAssignment.status != "cancelled",
+        )
+    )
+    if exclude_assignment_id is not None:
+        q = q.where(DutyDayOverride.duty_assignment_id != exclude_assignment_id)
     return session.execute(q).first() is not None
 
 

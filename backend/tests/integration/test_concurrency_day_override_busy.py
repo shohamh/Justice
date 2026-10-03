@@ -29,7 +29,14 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select
 
-from app.db.models import DutyAssignment, DutyDayOverride, DutyLocation, DutyType, SoldierExemption, SwapRequest
+from app.db.models import (
+    DutyAssignment,
+    DutyDayOverride,
+    DutyLocation,
+    DutyType,
+    SoldierExemption,
+    SwapRequest,
+)
 from app.services import assignments as assignments_service
 from app.services import swaps as swaps_service
 from tests.helpers import create_node, create_soldier
@@ -69,7 +76,6 @@ def _override_count(session, soldier_id) -> int:
     ).scalar_one()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C14: _day_busy ignores overrides")
 def test_override_makes_the_covering_soldier_busy_for_that_day(admin_session):
     a1, a2, cover, admin, _n1, _n2 = _two_duties(admin_session, "c14-seq")
     assignments_service.set_day_override(
@@ -106,7 +112,6 @@ def test_override_on_a_cancelled_duty_does_not_make_the_soldier_busy(admin_sessi
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C14: check_soldier_for_assignment ignores overrides")
 def test_swap_eligibility_treats_a_covered_day_as_busy(admin_session):
     from app.services.eligibility import check_soldier_for_assignment
 
