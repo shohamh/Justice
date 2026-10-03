@@ -1513,10 +1513,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         _log.info("[job %s] phase=%-30s elapsed=%.1fs", job_id, label, _time.monotonic() - _t0)
 
     cancel_event = threading.Event()
-    _cancel_events[str(job_id)] = cancel_event  # same-replica fast path — see cancel_job
-    threading.Thread(
-        target=_watch_job_cancel_requested, args=(job_id, cancel_event), daemon=True,
-    ).start()
 
     runner_lock = None
     try:
@@ -1526,6 +1522,13 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         if runner_lock is None:
             _log.warning("[job %s] another live process is already running this job", job_id)
             return
+        # Register the same-replica cancel fast path (see cancel_job) only once
+        # this run owns the job (M3): a duplicate run that lost the lock must
+        # not replace, and then remove, the live runner's event.
+        _cancel_events[str(job_id)] = cancel_event
+        threading.Thread(
+            target=_watch_job_cancel_requested, args=(job_id, cancel_event), daemon=True,
+        ).start()
         with session_scope() as session:
             job = session.get(AlgorithmJob, job_id)
             if job is None:
@@ -2009,7 +2012,8 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         # loop has already returned, so nothing downstream still reads
         # cancel_event as a "should I stop" signal.
         cancel_event.set()
-        _cancel_events.pop(str(job_id), None)
+        if _cancel_events.get(str(job_id)) is cancel_event:
+            _cancel_events.pop(str(job_id), None)
         if runner_lock is not None:
             try:
                 _release_job_runner_lock(runner_lock, job_id)

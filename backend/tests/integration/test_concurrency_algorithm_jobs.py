@@ -221,7 +221,6 @@ def test_startup_hook_still_fails_a_job_whose_runner_is_gone(admin_session):
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M3: a losing duplicate runner pops the real runner's cancel event")
 def test_duplicate_runner_leaves_the_live_runners_cancel_event_alone(admin_session):
     """M3 — ``run_algorithm_job`` registered its cancel event in
     ``_cancel_events`` before trying the runner lock. A duplicate run of a job
