@@ -67,7 +67,9 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=8, max_length=200)
     phone: str = Field(max_length=40)
-    email: str = Field(max_length=200)
+    # Null only for a live OIDC registration (the server then uses the verified email
+    # from the context); the register route requires it otherwise.
+    email: str | None = Field(default=None, max_length=200)
     gender: str
     is_officer: bool | None = None
     rank: str
@@ -424,6 +426,10 @@ async def register(
     sso_context = oidc_reg.get_active_context(
         session, request.cookies.get(oidc_reg.REGISTRATION_COOKIE), lock=True
     )
+    if sso_context is None and body.email is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="registration_invalid"
+        )
     if sso_context is None and not body.invite_code.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid invite code")
     if sso_context is not None and not oidc_reg.still_unmatched(session, sso_context):

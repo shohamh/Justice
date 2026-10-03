@@ -22,6 +22,7 @@ from app.db.models import (
     SoldierEnrollmentRequest,
 )
 from app.services.oidc import OidcClient
+from app.services.invite_codes import create_invite_code
 from tests.helpers import auth_headers, create_node, create_soldier, set_soldier_email
 from tests.integration.test_oidc_login_routes import frontend
 from tests.integration.test_registration_routes import _payload, _post_register, _setup_holding
@@ -153,6 +154,32 @@ def test_registration_without_invite_code_through_context(client, provider, admi
     # The cookie is spent and the session works like a normal registration session.
     assert 'oidc_reg=""' in response.headers["set-cookie"] or "oidc_reg=;" in response.headers["set-cookie"]
     assert client.post("/api/auth/refresh").status_code == 200
+
+
+def test_registration_through_context_accepts_the_null_email_the_frontend_sends(
+    client, provider, admin_session, world
+):
+    """The SPA sends ``email: null`` for SSO registrations (the server takes the email
+    from the context); a null must not be rejected as an invalid request."""
+    holding, node = world
+    callback(client, provider)
+
+    response = register(client, node, email=None)
+
+    assert response.status_code == 200, response.text
+    soldier = admin_session.execute(select(Soldier).where(Soldier.email.is_not(None))).scalar_one()
+    assert soldier.email == "stranger@corp.example"
+
+
+def test_plain_registration_still_requires_an_email(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name="plain-unit", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    response = _post_register(client, _payload(invite.code, node.id, email=None))
+
+    assert response.status_code == 422
 
 
 def test_sso_registered_soldier_waits_in_holding_until_a_mador_commander_approves(
