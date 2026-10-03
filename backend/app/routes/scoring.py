@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import uuid
 import hashlib
 import json
 import math
-from datetime import date, datetime, timedelta, timezone
+import uuid
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import jwt
@@ -161,21 +161,61 @@ def transparency(
     )
 
 
-def _transparency_fairness_revision(session: Session) -> int:
-    """O(1) generation for fairness inputs not represented in transparency rows."""
-    return session.execute(
-        text("SELECT revision FROM transparency_fairness_revision WHERE singleton = TRUE")
-    ).scalar_one()
+def _transparency_source_generation(session: Session) -> int:
+    """Read the non-transactional generation for canonical transparency inputs."""
+    return int(
+        session.execute(
+            text(
+                "SELECT CASE WHEN is_called THEN last_value ELSE 0 END "
+                "FROM transparency_source_generation_seq"
+            )
+        ).scalar_one()
+    )
+
+
+def _transparency_source_snapshot(session: Session) -> str:
+    """Capture the database visibility snapshot after reading the source sequence."""
+    return session.execute(text("SELECT pg_current_snapshot()::text")).scalar_one()
+
+
+def _transparency_source_changed_since_snapshot(session: Session, snapshot: str) -> bool:
+    """Find source transactions that committed after the cursor snapshot.
+
+    Sequence values advance before their source transactions commit, so the
+    journal must also catch transactions that were not yet assigned an xid in
+    the captured snapshot. Committed journal rows invisible to that snapshot
+    indicate a canonical write after the page's source view.
+    """
+    return bool(
+        session.execute(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM transparency_source_change_journal AS source_changes
+                    WHERE source_changes.transaction_id >= pg_snapshot_xmin(
+                        CAST(:snapshot AS pg_snapshot)
+                    )
+                      AND NOT pg_visible_in_snapshot(
+                          source_changes.transaction_id,
+                          CAST(:snapshot AS pg_snapshot)
+                      )
+                )
+                """
+            ),
+            {"snapshot": snapshot},
+        ).scalar_one()
+    )
 
 
 def _transparency_page_revision(
-    rows: list[dict], *, fairness_revision: int, as_of: date
+    rows: list[dict], *, source_generation: int, as_of: date
 ) -> str:
-    """Fingerprint row values plus mutation-aware fairness grouping inputs."""
+    """Fingerprint row values plus the generation of all canonical inputs."""
     content = json.dumps(
         {
             "rows": rows,
-            "fairness_revision": fairness_revision,
+            "source_generation": source_generation,
             "as_of": as_of.isoformat(),
         },
         default=str,
@@ -228,7 +268,7 @@ def _transparency_page_binding(
 
 
 def _transparency_page_cursor(
-    *, binding: str, revision: str, offset: int
+    *, binding: str, revision: str, offset: int, source_snapshot: str
 ) -> str:
     settings = get_settings()
     return jwt.encode(
@@ -237,7 +277,8 @@ def _transparency_page_cursor(
             "binding": binding,
             "revision": revision,
             "offset": offset,
-            "exp": int((datetime.now(timezone.utc) + timedelta(minutes=20)).timestamp()),
+            "source_snapshot": source_snapshot,
+            "exp": int((datetime.now(UTC) + timedelta(minutes=20)).timestamp()),
         },
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
@@ -269,15 +310,13 @@ def transparency_page(
     if not has_any_visibility(session, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
 
-    fairness_revision_before = _transparency_fairness_revision(session)
+    source_generation = _transparency_source_generation(session)
+    source_snapshot = _transparency_source_snapshot(session)
     result = svc.transparency_rows(session, viewer=user)
     source_rows: list[dict] = result["rows"]
-    fairness_revision = _transparency_fairness_revision(session)
-    if fairness_revision != fairness_revision_before:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="data_changed")
     revision_as_of = date.today()
     revision = _transparency_page_revision(
-        source_rows, fairness_revision=fairness_revision, as_of=revision_as_of
+        source_rows, source_generation=source_generation, as_of=revision_as_of
     )
     if officer_filter not in {"all", "officer", "enlisted"}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_officer_filter")
@@ -308,6 +347,14 @@ def transparency_page(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor") from exc
         if payload.get("purpose") != "transparency-page-v1" or payload.get("binding") != binding:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+        cursor_snapshot = payload.get("source_snapshot")
+        snapshot_is_valid = isinstance(cursor_snapshot, str) and session.execute(
+            text("SELECT pg_input_is_valid(:snapshot, 'pg_snapshot')"),
+            {"snapshot": cursor_snapshot},
+        ).scalar_one()
+        if not snapshot_is_valid:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+        source_snapshot = cursor_snapshot
         if payload.get("revision") != revision:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
         try:
@@ -481,12 +528,14 @@ def transparency_page(
             binding=binding,
             revision=revision,
             offset=offset + page_size,
+            source_snapshot=source_snapshot,
         )
         if has_more
         else None
     )
     if (
-        _transparency_fairness_revision(session) != fairness_revision
+        _transparency_source_generation(session) != source_generation
+        or _transparency_source_changed_since_snapshot(session, source_snapshot)
         or date.today() != revision_as_of
     ):
         raise HTTPException(
