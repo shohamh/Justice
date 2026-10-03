@@ -3,9 +3,9 @@ import { test, expect, request as pwRequest, type APIRequestContext, type Page }
 /**
  * SSO browser journeys against a REAL OpenID Connect provider (Keycloak, imported
  * from justice-test-realm.json). Run with tests/e2e/oidc/run.ps1, which starts the
- * disposable stack (seeded DB, backend :8010 with OIDC_* -> Keycloak, Vite :5183).
+ * disposable stack (seeded DB, backend :8410 with OIDC_* -> Keycloak, Vite :5183).
  *
- * The provider is at http://127.0.0.1:8180 and the app at http://localhost:5183:
+ * The provider is at http://127.0.0.1:8411 and the app at http://localhost:5183:
  * different sites, so the callback's cross-site redirect and Strict cookie handling
  * are real. Synthetic example.test identities only.
  */
@@ -18,7 +18,7 @@ const ADMIN = "1000001";
 const TEAM_NAME = "צוות רוקט";
 
 async function keycloakSignIn(page: Page, username: string) {
-  await expect(page).toHaveURL(/127\.0\.0\.1:8180\/realms\/justice-test\//);
+  await expect(page).toHaveURL(/127\.0\.0\.1:8411\/realms\/justice-test\//);
   await page.locator("#username").fill(username);
   await page.locator("#password").fill(KC_PASSWORD);
   await page.locator("#kc-login").click();

@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
 // Real-provider (Keycloak) SSO journeys. Started by tests/e2e/oidc/run.ps1 against
-// a disposable stack: app on http://localhost:5183, backend :8010, Keycloak on
-// http://127.0.0.1:8180 (a different *site* than the app, so the cross-site callback
+// a disposable stack: app on http://localhost:5183, backend :8410, Keycloak on
+// http://127.0.0.1:8411 (a different *site* than the app, so the cross-site callback
 // cookie behaviour is real). No globalSetup: these specs log in themselves.
 export default defineConfig({
   testDir: "./tests/e2e/oidc",

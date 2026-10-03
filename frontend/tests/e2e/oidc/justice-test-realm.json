@@ -21,7 +21,7 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://localhost:8010/api/auth/oidc/callback"
+        "http://localhost:8410/api/auth/oidc/callback"
       ],
       "webOrigins": [],
       "attributes": {
