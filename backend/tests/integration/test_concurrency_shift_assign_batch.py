@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -121,3 +122,47 @@ def test_concurrent_batches_within_capacity_both_succeed(race, admin_session, mo
 
     assert all(o.ok for o in outcomes), outcomes
     assert _active_primaries(admin_session, shift_id) == 2
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M4: shift deleted mid-request gives 500")
+def test_batch_for_a_shift_deleted_mid_request_returns_404(race, admin_session):
+    """M4 — ``assign_batch`` loads the shift (404 if missing), authorizes, and
+    then re-selects it ``FOR NO KEY UPDATE`` with ``.scalar_one()``. A shift
+    deleted between the two reads raised ``NoResultFound`` (HTTP 500).
+
+    Fixed: the locked re-select maps a missing row to 404 ``not_found``, like
+    the first load."""
+    from fastapi import HTTPException
+
+    from app.routes import shifts as shifts_routes
+
+    shift_id, admin_id, s1_id, _s2_id = _seed(admin_session, required_count=1)
+    request_loaded = race.signal("batch request loaded the shift")
+    delete_done = race.signal("shift deleted")
+
+    def request():
+        s = race.session()
+
+        def _park():
+            request_loaded.set()
+            delete_done.wait()
+
+        race.pause_after_select(s, DutyShift, _park)
+        user = s.get(Soldier, admin_id)
+        body = shifts_routes.BatchAssignRequest(primaries=[s1_id], reserves=[])
+        return shifts_routes.assign_batch(shift_id=shift_id, body=body, session=s, user=user)
+
+    def delete_shift():
+        request_loaded.wait()
+        s = race.session()
+        try:
+            s.delete(s.get(DutyShift, shift_id))
+            s.commit()
+        finally:
+            delete_done.set()
+
+    batch, deleted = race.run(request, delete_shift)
+
+    assert deleted.ok, deleted
+    assert isinstance(batch.error, HTTPException), f"batch outcome: {batch!r}"
+    assert (batch.error.status_code, batch.error.detail) == (404, "not_found")
