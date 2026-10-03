@@ -93,3 +93,12 @@ $env:E2E_BROWSER_CHANNEL = ''          # use Playwright's bundled Chromium inste
 The issuer is `http://127.0.0.1:8411/realms/justice-test` while the app is at `http://localhost:5183`. They are different sites, so the cross-site callback redirect and the `oidc_txn` (Lax) and `oidc_reg` / `refresh_token` (Strict) cookie behaviour are exercised for real. A `*.localhost` issuer host is not used: Python on Windows cannot resolve it and the backend only accepts literal loopback hosts over http.
 
 Keycloak users and what they exercise: `sso.existing` (matches seeded soldier 1000003), `sso.new1` (unmatched, registers without an invite code), `sso.ambig` (same AD username as seeded soldier 1000004 but another e-mail domain: a username-only match, which is the only ambiguity the database constraints allow), `sso.unverified` (`emailVerified=false`). The first Keycloak login after a cold start can take a minute on a small machine.
+
+Extra modes and notes for the Keycloak runner:
+
+- `.	ests\e2e\oidcun.ps1 -NoOidc` starts the backend with no `OIDC_*` settings and runs only the "no OIDC settings" journey (no SSO button, `/api/auth/oidc/start` answers 404).
+- The stack serves the production build (`vite preview` on :5183) rather than the dev server, and the runner waits for the backend to settle after the seed before testing: right after a fresh seed the backend's startup workers keep it busy and every request is slow.
+- It lifts the per-account login limit (`LOGIN_ACCOUNT_RATE_LIMIT`, default 10 per 5 minutes), which the test logins would otherwise exceed (HTTP 429).
+- The backend (:8410) and Keycloak (:8411) ports were chosen outside the Windows excluded TCP port ranges (`netsh int ipv4 show excludedportrange protocol=tcp`); after a Docker Desktop or WinNAT restart the usual 80xx ports can become unbindable (WinError 10013).
+- The older mock-provider spec runs against the same stack once the backend points at the mock: serve `MockOidcProvider` on 127.0.0.1:9100 as described above with `OIDC_REDIRECT_URI=http://localhost:8410/api/auth/oidc/callback`, then run `E2E_BASE_URL=http://localhost:5183 E2E_OIDC_MOCK_URL=http://127.0.0.1:9100 E2E_BROWSER_CHANNEL= npx playwright test tests/e2e/oidc_sso.spec.ts --project=desktop`.
+- `E2E_BROWSER_CHANNEL=''` makes the default and OIDC Playwright configs use the bundled Chromium instead of the system Chrome (the default stays Chrome).
