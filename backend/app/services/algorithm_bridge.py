@@ -94,6 +94,13 @@ def _release_job_runner_lock(conn, job_id: uuid.UUID) -> None:
     try:
         conn.execute(select(func.pg_advisory_unlock(_JOB_RUNNER_LOCK_NAMESPACE, _job_runner_lock_key(job_id))))
         conn.commit()
+    except BaseException:
+        # The session-level lock may still be held. Returning this connection
+        # to the pool would keep the job looking live to the startup hook
+        # (job_has_live_runner), so discard the DBAPI connection instead:
+        # closing it drops every session lock it holds.
+        conn.invalidate()
+        raise
     finally:
         conn.close()
 

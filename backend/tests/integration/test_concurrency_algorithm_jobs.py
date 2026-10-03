@@ -251,7 +251,6 @@ def test_duplicate_runner_leaves_the_live_runners_cancel_event_alone(admin_sessi
         algorithm_bridge._release_job_runner_lock(live_lock, job_id)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C13: failed unlock returns a lock-holding connection to the pool")
 def test_failed_runner_unlock_does_not_leave_the_lock_on_a_pooled_connection(race, admin_session):
     """C13 residual — ``_release_job_runner_lock`` closed the runner's
     connection back into the pool in ``finally``. If ``pg_advisory_unlock``
