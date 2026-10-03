@@ -371,6 +371,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_concurrency_dismissals": "duty",
     "test_concurrency_duplicate_inserts": "duty",
     "test_concurrency_partial_commits": "duty",
+    "test_concurrency_day_override_busy": "duty",
     "test_score_adjustments_api": "duty",
     "test_adjustments_service": "duty",
     "test_shift_generation": "duty",
