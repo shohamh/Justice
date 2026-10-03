@@ -1,4 +1,5 @@
-# Usage: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d
+# Default production stack; no Exchange configuration is required.
+# Add deploy/docker-compose.exchange.prod.yml to the Compose file list to opt into the worker.
 #
 # Prerequisites:
 #   - Build frontend: cd frontend && npm ci && npm run build
@@ -53,6 +54,21 @@ services:
       timeout: 5s
       retries: 10
 
+  schema-migration:
+    build:
+      context: ../backend
+      target: production
+    restart: "no"
+    env_file: .env.production
+    environment:
+      EXCHANGE_PASSWORD: ""
+      ENVIRONMENT: production
+      TZ: Asia/Jerusalem
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     build:
       context: ../backend
@@ -67,6 +83,7 @@ services:
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      EXCHANGE_PASSWORD: ""
       ENVIRONMENT: production
       TZ: Asia/Jerusalem  # see backend/Dockerfile — keeps date.today()/now() on Israel's calendar day
     depends_on:
@@ -74,6 +91,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      schema-migration:
+        condition: service_completed_successfully
     volumes:
       - /opt/justice/logs:/app/logs
     # --forwarded-allow-ips=*: nginx is the only thing that can reach this
@@ -83,8 +102,7 @@ services:
     # Without this, every request's client IP and https-ness collapse to
     # nginx's own connection, breaking per-IP rate limiting for all users.
     command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --forwarded-allow-ips='*'"
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --forwarded-allow-ips='*'
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/live || exit 1"]
       interval: 10s
@@ -100,6 +118,7 @@ services:
     environment:
       LOG_DIR: /app/logs
       LOG_FORMAT: json
+      EXCHANGE_PASSWORD: ""
       ENVIRONMENT: production
       TZ: Asia/Jerusalem
     volumes:

@@ -938,7 +938,10 @@ def approve_update(
     try:
         approve_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # not_found: the row was deleted after the read above (the service
+        # re-reads it under a lock), so it is gone rather than a bad request.
+        code = 404 if str(exc) == "not_found" else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
@@ -970,7 +973,10 @@ def reject_update(
     try:
         reject_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # not_found: the row was deleted after the read above (the service
+        # re-reads it under a lock), so it is gone rather than a bad request.
+        code = 404 if str(exc) == "not_found" else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)

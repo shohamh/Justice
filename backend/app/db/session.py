@@ -40,6 +40,11 @@ def reset_engine() -> None:
     _engine, SessionLocal = _make_engine_factory()
 
 
+def get_engine() -> Engine:
+    """The current global engine (rebuilt by reset_engine)."""
+    return _engine
+
+
 def get_session() -> Iterator[Session]:
     """FastAPI dependency — yields a session and closes it on request completion."""
     with SessionLocal() as session:

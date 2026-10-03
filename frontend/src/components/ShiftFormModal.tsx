@@ -368,6 +368,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           <label className="block text-sm">
             {t("shifts.notes")}
             <textarea value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" rows={2} />
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">הערות אלו יוצגו למוזמנים בגוף אירוע היומן.</span>
           </label>
           <label className="block text-sm">
             {t("reserve_count_override")}

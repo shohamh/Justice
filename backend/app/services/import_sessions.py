@@ -17,7 +17,6 @@ from decimal import Decimal
 import openpyxl
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from app.auth.password import hash_password
 from app.db.models import (
     BugReport,
@@ -61,6 +60,12 @@ from app.services.duty_config import (
     update_location,
 )
 from app.services.file_validation import MAX_XLSX_BYTES, FileValidationError, validate_xlsx
+from app.services.exchange_calendar.triggers import (
+    enqueue_affected_by_soldier,
+    enqueue_assignment_change,
+    enqueue_range_change,
+    enqueue_source_change,
+)
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
 from app.services.identity_write import BulkIdentityCheck, assign_soldier_email, resolve_identity_fields
 from app.services.import_approvals import (
@@ -1679,29 +1684,63 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
         soldier.next_rank_date_overridden = False
 
 
+def _lock_import_session(session: Session, session_id: uuid.UUID) -> ImportSession | None:
+    """Load an import session with SELECT ... FOR UPDATE (fresh from the DB).
+
+    confirm_session and cancel_session both check ``status == 'draft'`` and
+    then move the session out of draft. Holding the row lock from that check
+    until commit means a second confirm, or a cancel, waits for the first
+    decision and then sees its committed status instead of applying the
+    import a second time (or after a successful cancel).
+    """
+    return session.get(
+        ImportSession, session_id, with_for_update=True, populate_existing=True,
+    )
+
+
 def confirm_session(
     session: Session, *, session_id: uuid.UUID, actor: Soldier, storage: ObjectStorage | None = None
 ) -> dict:
-    import_session = session.get(ImportSession, session_id)
-    if import_session is None:
-        raise ImportSessionError("session_not_found")
-    if import_session.status != "draft":
-        raise ImportSessionError("only_draft_sessions_can_be_confirmed")
-
-    selections = import_session.user_selections or {}
-    state = import_session.parsed_state
-
     # `password_hash` is deliberately never stored on `parsed_state` (it is
     # persisted verbatim and also handed back to the browser as-is by
     # GET /import/sessions/{id} and the upload response) — it's re-extracted
     # here straight from the original workbook bytes, by source row, and used
     # only in-memory below. Never log or otherwise surface this mapping's
     # values.
-    password_hash_by_row: dict[int, str | None] = {}
-    if state.get("soldiers"):
-        content = read_import_workbook(session, import_session, storage)
-        _, parsed = _parse_workbook(content, state["parser_id"], bounded=storage is not None)
-        password_hash_by_row = {r.source_row: r.password_hash for r in parsed.soldiers}
+    #
+    # M2: the object-storage read and the parse happen *before* the row lock
+    # (spec: no row locks across object storage). The lock is then taken and
+    # the draft status re-checked; if the workbook or parser changed in
+    # between (reparse), the read is repeated under the lock.
+    def _workbook_identity(s: ImportSession) -> tuple:
+        state = s.parsed_state or {}
+        return (s.storage_key, s.storage_sha256, state.get("parser_id"), bool(state.get("soldiers")))
+
+    def _read_password_hashes(s: ImportSession) -> dict[int, str | None]:
+        if not (s.parsed_state or {}).get("soldiers"):
+            return {}
+        content = read_import_workbook(session, s, storage)
+        _, parsed = _parse_workbook(content, s.parsed_state["parser_id"], bounded=storage is not None)
+        return {r.source_row: r.password_hash for r in parsed.soldiers}
+
+    unlocked = session.get(ImportSession, session_id)
+    if unlocked is None:
+        raise ImportSessionError("session_not_found")
+    if unlocked.status != "draft":
+        raise ImportSessionError("only_draft_sessions_can_be_confirmed")
+    read_identity = _workbook_identity(unlocked)
+    password_hash_by_row = _read_password_hashes(unlocked)
+
+    import_session = _lock_import_session(session, session_id)
+    if import_session is None:
+        raise ImportSessionError("session_not_found")
+    if import_session.status != "draft":
+        raise ImportSessionError("only_draft_sessions_can_be_confirmed")
+    if _workbook_identity(import_session) != read_identity:
+        password_hash_by_row = _read_password_hashes(import_session)
+
+    selections = import_session.user_selections or {}
+    state = import_session.parsed_state
 
     created = 0
     updated = 0
@@ -1880,6 +1919,7 @@ def confirm_session(
     from app.services.duty_eligibility_watch import recheck_soldier_assignments
     for soldier_id in created_soldiers:
         recheck_soldier_assignments(session, uuid.UUID(soldier_id))
+        enqueue_affected_by_soldier(session, uuid.UUID(soldier_id))
 
     for row in state.get("duty_shifts", []):
         effective = _effective_action(selections, "duty_shifts", row)
@@ -2971,13 +3011,26 @@ def confirm_session(
     import_session.confirmed_at = datetime.now(tz=UTC)
     session.flush()
 
+    for source_id in created_duty_shifts:
+        enqueue_source_change(session, "duty_shift", uuid.UUID(source_id), reason="import")
+    for assignment_id in created_assignments:
+        assignment = session.get(DutyAssignment, uuid.UUID(assignment_id))
+        if assignment is not None:
+            enqueue_assignment_change(session, assignment, reason="import")
+    for source_id in created_range_events:
+        enqueue_source_change(session, "range_event", uuid.UUID(source_id), reason="import")
+    for assignment_id in created_range_assignments:
+        assignment = session.get(RangeAssignment, uuid.UUID(assignment_id))
+        if assignment is not None and not assignment.is_draft:
+            enqueue_range_change(session, assignment.range_event_id, reason="import")
+
     return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
 
 
 def cancel_session(
     session: Session, *, session_id: uuid.UUID, actor: Soldier
 ) -> ImportSession:
-    import_session = session.get(ImportSession, session_id)
+    import_session = _lock_import_session(session, session_id)
     if import_session is None:
         raise ImportSessionError("session_not_found")
     if import_session.status != "draft":

@@ -119,6 +119,53 @@ def _refill_slot(
     return None
 
 
+def _source_valid_until(session: Session, source_event: RangeEvent) -> date:
+    return source_event.date + timedelta(days=_validity_days(session, source_event.range_type))
+
+
+def _target_criteria(soldier_ids, source_event: RangeEvent, source_valid_until: date) -> tuple:
+    """Later planned, non-draft assignments of ``soldier_ids`` that the source
+    event's coverage could make redundant (the reconciliation candidates)."""
+    return (
+        RangeAssignment.soldier_id.in_(list(soldier_ids)),
+        RangeAssignment.range_event_id != source_event.id,
+        RangeAssignment.is_draft.is_(False),
+        RangeEvent.status == RangeEventStatus.planned,
+        RangeEvent.date > source_event.date,
+        RangeEvent.date <= source_valid_until,
+        RangeEvent.range_type.in_([
+            range_type for range_type, rank in RANGE_TYPE_RANK.items()
+            if rank <= RANGE_TYPE_RANK[source_event.range_type]
+        ]),
+    )
+
+
+def lock_reconciliation_target_dates(
+    session: Session, *, soldier_ids: list[uuid.UUID], source_event: RangeEvent,
+) -> None:
+    """Take the per-date locks of every date that reconciling ``soldier_ids``
+    against ``source_event`` may touch, ascending across the whole batch.
+
+    reconcile_future_range_assignments locks dates ascending for ONE soldier.
+    A caller that reconciles several soldiers in a row (assign_batch) would
+    otherwise take later dates out of global order (e.g. D5 for the first
+    soldier, then D3 for the second) and deadlock against a writer that holds
+    D3 and reconciles into D5. Taking the batch's dates up front keeps the lock
+    order ascending; the per-soldier calls re-acquire them later (advisory
+    xact locks are re-entrant). The set is a superset of what gets removed,
+    which only serializes a little more."""
+    source_valid_until = _source_valid_until(session, source_event)
+    dates = session.execute(
+        select(RangeEvent.date)
+        .join(RangeAssignment, RangeAssignment.range_event_id == RangeEvent.id)
+        .where(*_target_criteria(soldier_ids, source_event, source_valid_until))
+        .distinct()
+        .order_by(RangeEvent.date)
+    ).scalars().all()
+    for event_date in dates:
+        _acquire_range_assignment_date_lock(session, event_date=event_date)
+
+
 def reconcile_future_range_assignments(
     session: Session, *, soldier_id: uuid.UUID, source_event: RangeEvent,
     actor_id: uuid.UUID | None,
@@ -144,24 +191,11 @@ def reconcile_future_range_assignments(
     ):
         return result
 
-    source_valid_until = source_event.date + timedelta(
-        days=_validity_days(session, source_event.range_type),
-    )
+    source_valid_until = _source_valid_until(session, source_event)
     targets = session.execute(
         select(RangeAssignment, RangeEvent)
         .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
-        .where(
-            RangeAssignment.soldier_id == soldier_id,
-            RangeAssignment.range_event_id != source_event.id,
-            RangeAssignment.is_draft.is_(False),
-            RangeEvent.status == RangeEventStatus.planned,
-            RangeEvent.date > source_event.date,
-            RangeEvent.date <= source_valid_until,
-            RangeEvent.range_type.in_(
-                range_type for range_type, rank in RANGE_TYPE_RANK.items()
-                if rank <= RANGE_TYPE_RANK[source_event.range_type]
-            ),
-        )
+        .where(*_target_criteria([soldier_id], source_event, source_valid_until))
         .order_by(RangeEvent.date, RangeEvent.id)
     ).all()
 

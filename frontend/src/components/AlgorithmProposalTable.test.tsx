@@ -66,6 +66,23 @@ describe("AlgorithmProposalTable", () => {
     });
   });
 
+  it("keeps skipped drafts pending and explains why they were not published", async () => {
+    vi.mocked(bulkAcceptProposals).mockResolvedValue({ accepted: 0, skipped: ["assignment-1"] });
+    function Harness() {
+      const [currentJob, setCurrentJob] = useState(job);
+      return <AlgorithmProposalTable job={currentJob} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "Dani Cohen" }]} dutyTypes={[{ id: "type-1", name: "Guard" }]} isDraft onProposalUpdate={setCurrentJob} />;
+    }
+    render(<Harness />);
+
+    fireEvent.click(screen.getByTestId("algorithm-publish-proposals"));
+
+    const notice = await screen.findByTestId("algorithm-skipped-drafts");
+    expect(notice).toHaveTextContent("טיוטה אחת לא פורסמה");
+    expect(notice).toHaveTextContent("חפיפה");
+    expect(screen.getByTestId("algorithm-skipped-assignment-1")).toHaveTextContent("Dani Cohen");
+    expect(screen.getByTestId("algorithm-proposal-assignment-1")).not.toHaveClass("bg-green-50");
+  });
+
   it("does not reject a draft until its translated confirmation is accepted", async () => {
     vi.mocked(bulkRejectProposals).mockResolvedValue(undefined);
     render(<AlgorithmProposalTable job={job} jobId="job-1" soldiers={[{ id: "soldier-1", full_name: "דני כהן" }]} dutyTypes={[{ id: "type-1", name: "שמירה" }]} isDraft onProposalUpdate={vi.fn()} />);

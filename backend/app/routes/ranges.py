@@ -237,6 +237,9 @@ def approve_assignment_request(
         detail = str(exc)
         code = status.HTTP_403_FORBIDDEN if detail == "not_responsible_manager" else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=code, detail=detail) from exc
+    except svc.RangeValidationError as exc:
+        # e.g. primary_capacity_exceeded: same mapping as the manual-add route.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _assignment_out(assignment)
 
 

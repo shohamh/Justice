@@ -190,6 +190,9 @@ def update_soldier(
         "full_name": soldier.full_name,
         "phone": soldier.phone,
     }
+    if full_name is not None and full_name != soldier.full_name:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, soldier.id)
     if full_name is not None:
         soldier.full_name = full_name
     if phone is not None:
@@ -206,6 +209,9 @@ def update_soldier(
             "phone": soldier.phone,
         },
     )
+    if soldier.full_name != before["full_name"] or soldier.phone != before["phone"]:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, soldier.id)
     return soldier
 
 
@@ -376,6 +382,8 @@ def update_soldier_profile(
     old_rank = soldier.rank
     old_rank_track = soldier.rank_track
     old_enlistment_date = soldier.enlistment_date
+    old_email = soldier.email
+    old_phone = soldier.phone
     for k, v in fields.items():
         if k in PROFILE_FIELDS and not (k == "next_rank_date" and v is None):
             if k == "rank" and v != old_rank:
@@ -445,6 +453,9 @@ def update_soldier_profile(
     if {"last_mitvahim_date", "last_alal_date"} & fields.keys():
         from app.services.duty_eligibility_watch import recheck_soldier_assignments
         recheck_soldier_assignments(session, soldier.id)
+    if soldier.email != old_email or soldier.phone != old_phone:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        enqueue_affected_by_soldier(session, soldier.id)
     return soldier
 
 
@@ -661,6 +672,16 @@ def approve_field_update(
 ) -> SoldierFieldUpdate:
     from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
     requested_status = update.status
+    # Lock order soldier -> field update, the same as submit_field_update
+    # (which locks the soldier and then supersedes older update rows). Taking
+    # the update row first and the soldier at flush would deadlock against a
+    # concurrent submit for the same field.
+    session.execute(
+        select(Soldier)
+        .where(Soldier.id == update.soldier_id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
     update = session.execute(
         select(SoldierFieldUpdate)
         .where(SoldierFieldUpdate.id == update.id)
@@ -817,7 +838,21 @@ def reject_field_update(
     actor_id: uuid.UUID,
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
-    if update.status not in {"pending", "pending_commander", "pending_duty_manager"}:
+    # Same lock as approve_field_update: re-read the row under FOR UPDATE and
+    # reject only if it is still in the stage the caller saw, so a reject that
+    # read 'pending' cannot overwrite an approval committed in between.
+    requested_status = update.status
+    update = session.execute(
+        select(SoldierFieldUpdate)
+        .where(SoldierFieldUpdate.id == update.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if update is None:
+        raise SoldierError("not_found")
+    if requested_status not in {"pending", "pending_commander", "pending_duty_manager"}:
+        raise SoldierError("not_pending")
+    if update.status != requested_status:
         raise SoldierError("not_pending")
     if update.field_name == "unit_join_date":
         actor = session.get(Soldier, actor_id)

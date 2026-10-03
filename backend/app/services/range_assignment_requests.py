@@ -10,15 +10,20 @@ from app.auth.authz import _node_in_scope, is_duty_manager, scope_root_ids
 from app.db.models import (
     HierarchyNode,
     NotificationType,
+    RangeAssignment,
     RangeAssignmentRequest,
     RangeAssignmentRequestStatus,
     RangeEvent,
     RangeEventStatus,
-    RangeAssignment,
     Soldier,
 )
+from app.services.exchange_calendar.triggers import enqueue_range_change
 from app.services.notifications import create_notification
-from app.services.ranges import _check_capacity, _validate_and_build_assignment
+from app.services.ranges import (
+    _acquire_range_assignment_date_lock,
+    _check_capacity,
+    _validate_and_build_assignment,
+)
 
 
 class RangeAssignmentRequestError(Exception):
@@ -99,6 +104,15 @@ def approve_assignment_request(
     event = session.get(RangeEvent, request.range_event_id)
     if event is None:
         raise RangeAssignmentRequestError("event_not_found")
+    # Same serialization as add_range_assignment / assign_batch: the per-date
+    # advisory lock first, so the capacity count below cannot interleave with
+    # another writer for this event date; then the request row, so two
+    # approvals of one request cannot both pass the pending check.
+    _acquire_range_assignment_date_lock(session, event_date=event.date)
+    session.refresh(request, with_for_update=True)
+    if request.status != RangeAssignmentRequestStatus.pending:
+        raise RangeAssignmentRequestError("request_not_pending")
+    session.refresh(event)
     if event.status != RangeEventStatus.planned:
         raise RangeAssignmentRequestError("event_not_planned")
     from app.auth.authz import responsible_range_manager_authorized
@@ -149,6 +163,7 @@ def approve_assignment_request(
         reference_id=request.id,
         actor_id=actor.id,
     )
+    enqueue_range_change(session, event.id)
     session.commit()
     session.refresh(assignment)
     return assignment

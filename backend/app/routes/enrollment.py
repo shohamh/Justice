@@ -475,7 +475,9 @@ def approve(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    req = session.get(SoldierEnrollmentRequest, request_id)
+    # Lock before authorizing: the requested node checked below is then the
+    # one the decision applies (see svc.lock_request).
+    req = svc.lock_request(session, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     target_node = session.get(HierarchyNode, req.requested_node_id)
@@ -498,7 +500,9 @@ def reject(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    req = session.get(SoldierEnrollmentRequest, request_id)
+    # Lock before authorizing: the requested node checked below is then the
+    # one the decision applies (see svc.lock_request).
+    req = svc.lock_request(session, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     if not body.decision_note:

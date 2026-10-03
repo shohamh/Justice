@@ -9,7 +9,6 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
 from app.algorithm.duration import combine_date_time
 from app.algorithm.reserve import _hierarchy_distance
 from app.audit.writer import write_audit
@@ -25,6 +24,7 @@ from app.db.models import (
 )
 from app.services.algorithm_bridge import build_hierarchy_maps
 from app.services.eligibility import DutyTypeRequirements, _is_eligible
+from app.services.exchange_calendar.triggers import enqueue_source_change
 from app.services.notifications import create_notification
 from app.services.reserves import ReserveError, call_up_reserve, check_reserve_cap, dismiss_primary
 from app.services.rest import earliest_eligible_date, resolve_rest_hours
@@ -737,6 +737,10 @@ def commit_gimelim(
     # must be able to retry with the same token rather than losing it to a DB
     # error that had nothing to do with the token itself. Call consume_preview_token()
     # only after the commit actually succeeds (see routes/gimelim.py).
+
+    enqueue_source_change(session, "duty_shift", shift_id, reason="call_up")
+    if future_primary_assignment_id is not None:
+        enqueue_source_change(session, "duty_shift", future_shift_id, reason="call_up")
 
     return GimelimCommitResult(
         dismissal_id=dismissal.id,

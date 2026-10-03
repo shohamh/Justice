@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.db.models import Soldier
 from app.db.session import session_scope
@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 _POLL_SECONDS = 86400
 
 
+def _claim_check(session, lock_key: str) -> bool:
+    """Single runner per check across web worker processes.
+
+    Every process runs this worker and they all wake at about the same time.
+    The per-soldier "already notified?" dedupe is check-then-insert, so two
+    overlapping runs would both notify. A transaction-scoped try-lock lets one
+    run proceed; an overlapping run skips (the winner notifies everyone), and
+    a later run sees the committed notifications and dedupes as before."""
+    return bool(session.execute(
+        text("SELECT pg_try_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": lock_key},
+    ).scalar())
+
+
 def _active_soldiers_with_date(session, *, date_column, today: date):
     return session.execute(
         select(Soldier).where(
@@ -35,6 +49,8 @@ def _active_soldiers_with_date(session, *, date_column, today: date):
 def _check_mitvahim_expiry() -> None:
     today = date.today()
     with session_scope() as session:
+        if not _claim_check(session, "qualification_expiry:mitvahim"):
+            return
         validity_days = get_setting_int(session, "mitvachim.live_validity_days", 180)
         warn_days = get_setting_int(session, "home.mitvahim_warn_days", 30)
         soldiers = _active_soldiers_with_date(session, date_column=Soldier.last_mitvahim_date, today=today)
@@ -50,6 +66,8 @@ def _check_mitvahim_expiry() -> None:
 def _check_alal_expiry() -> None:
     today = date.today()
     with session_scope() as session:
+        if not _claim_check(session, "qualification_expiry:alal"):
+            return
         validity_days = get_setting_int(session, "mitvachim.alal_validity_days", 90)
         warn_days = get_setting_int(session, "home.alal_warn_days", 30)
         soldiers = _active_soldiers_with_date(session, date_column=Soldier.last_alal_date, today=today)

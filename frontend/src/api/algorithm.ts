@@ -316,8 +316,14 @@ export async function acceptProposal(jobId: string, assignmentId: string): Promi
   await api.post(`/algorithm/jobs/${jobId}/proposals/${assignmentId}/accept`);
 }
 
-export async function bulkAcceptProposals(jobId: string, assignmentIds: string[]): Promise<{ accepted: number }> {
-  return (await api.post<{ accepted: number }>(`/algorithm/jobs/${jobId}/proposals/bulk-accept`, { assignment_ids: assignmentIds })).data;
+export interface BulkAcceptResult {
+  accepted: number;
+  /** Drafts left unpublished because they now double-book a soldier. */
+  skipped?: string[];
+}
+
+export async function bulkAcceptProposals(jobId: string, assignmentIds: string[]): Promise<BulkAcceptResult> {
+  return (await api.post<BulkAcceptResult>(`/algorithm/jobs/${jobId}/proposals/bulk-accept`, { assignment_ids: assignmentIds })).data;
 }
 
 export async function bulkRejectProposals(jobId: string, assignmentIds: string[]): Promise<{ rejected: number }> {

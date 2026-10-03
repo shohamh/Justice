@@ -201,16 +201,27 @@ def set_commander(
     if node is None:
         raise HierarchyError("node_not_found")
     previous_commander_id = node.commander_id
+    from app.services.exchange_calendar.triggers import (
+        enqueue_affected_by_hierarchy_node,
+        enqueue_affected_by_soldier,
+    )
+    enqueue_affected_by_hierarchy_node(session, node_id)
     if commander_id is not None:
         soldier = session.get(Soldier, commander_id)
         if soldier is None:
             raise HierarchyError("commander_not_found")
         # Clear this soldier as commander from any other node
+        other_nodes = session.scalars(select(HierarchyNode.id).where(
+            HierarchyNode.commander_id == soldier.id, HierarchyNode.id != node_id,
+        )).all()
+        for other_node_id in other_nodes:
+            enqueue_affected_by_hierarchy_node(session, other_node_id)
         session.query(HierarchyNode).filter(
             HierarchyNode.commander_id == soldier.id,
             HierarchyNode.id != node_id,
         ).update({"commander_id": None})
         soldier.hierarchy_node_id = node_id
+        enqueue_affected_by_soldier(session, soldier.id)
     before = {"commander_id": str(node.commander_id) if node.commander_id else None}
     node.commander_id = commander_id
     session.flush()

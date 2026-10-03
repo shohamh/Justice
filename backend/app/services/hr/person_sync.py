@@ -245,6 +245,14 @@ def _apply_existing_person(
 ) -> None:
     soldier = session.get(Soldier, profile.soldier_id)
     changed_dependent_field = False
+    calendar_changed = any(
+        field not in profile.overridden_fields and getattr(soldier, field) != getattr(mapped, field)
+        for field in ("full_name", "email")
+    )
+    if calendar_changed:
+        from app.services.exchange_calendar.triggers import enqueue_affected_by_soldier
+        # Resolve contacts under the old name before applying HR-owned fields.
+        enqueue_affected_by_soldier(session, soldier.id)
 
     for field_name in HR_OWNED_FIELDS:
         if field_name == "personal_number":
@@ -280,6 +288,10 @@ def _apply_existing_person(
     if changed_dependent_field:
         _reset_rank_advancement(session, soldier, since=date.today())
         recheck_soldier_assignments(session, soldier.id)
+
+    if calendar_changed:
+        session.flush()
+        enqueue_affected_by_soldier(session, soldier.id)
 
     profile.raw_dto = user.model_dump(by_alias=True)
     profile.sync_status = "synced"
