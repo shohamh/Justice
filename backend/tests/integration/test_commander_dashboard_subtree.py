@@ -47,7 +47,7 @@ def test_authorized_subtree_ids_matches_legacy_union_with_one_descendant_select(
     descendant_selects = [
         " ".join(sql.lower().split())
         for sql in statements
-        if "select hierarchy_nodes.id from hierarchy_nodes" in " ".join(sql.lower().split())
+        if "select distinct hierarchy_nodes.id from hierarchy_nodes join hierarchy_nodes as" in " ".join(sql.lower().split())
     ]
     assert actual_ids == legacy_ids
     assert {root_a.id, child_a.id, root_b.id}.issubset(actual_ids)
@@ -80,3 +80,34 @@ def test_authorized_subtree_ids_preserves_missing_root_id(admin_session: Session
     actual_ids = commander_dashboard._authorized_subtree_ids(admin_session, [missing_root_id])
 
     assert actual_ids == [missing_root_id]
+
+
+def test_missing_root_stale_in_existing_path_does_not_add_that_node(
+    admin_session: Session,
+):
+    node = create_node(admin_session, level="group", name=f"stale-path-{uuid.uuid4().hex}")
+    missing_root_id = uuid.uuid4()
+    node.path_ids = [*node.path_ids, missing_root_id]
+    admin_session.flush()
+
+    legacy_ids = set(commander_dashboard._get_subtree_ids(admin_session, missing_root_id))
+    statements: list[str] = []
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement)
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual_ids = set(commander_dashboard._authorized_subtree_ids(admin_session, [missing_root_id]))
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    descendant_selects = [
+        sql for sql in statements
+        if "select distinct hierarchy_nodes.id from hierarchy_nodes join hierarchy_nodes as"
+        in " ".join(sql.lower().split())
+    ]
+    assert actual_ids == legacy_ids == {missing_root_id}
+    assert node.id not in actual_ids
+    assert len(descendant_selects) == 1

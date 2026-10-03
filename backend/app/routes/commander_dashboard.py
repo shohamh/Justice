@@ -6,8 +6,8 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import any_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.auth.authz import Action, authorize, commanded_node_ids, dm_scope_node_ids
 from app.auth.deps import require_password_changed
@@ -154,9 +154,13 @@ def _authorized_subtree_ids(session: Session, root_ids: list[uuid.UUID]) -> list
     subtree = set(root_ids)
     if not subtree:
         return []
+    root_node = aliased(HierarchyNode)
     subtree.update(
         session.execute(
-            select(HierarchyNode.id).where(HierarchyNode.path_ids.overlap(list(subtree)))
+            select(HierarchyNode.id)
+            .distinct()
+            .join(root_node, root_node.id == any_(HierarchyNode.path_ids))
+            .where(root_node.id.in_(list(subtree)))
         ).scalars().all()
     )
     return list(subtree)
