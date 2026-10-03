@@ -20,7 +20,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -124,7 +123,6 @@ def test_concurrent_batches_within_capacity_both_succeed(race, admin_session, mo
     assert _active_primaries(admin_session, shift_id) == 2
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M4: shift deleted mid-request gives 500")
 def test_batch_for_a_shift_deleted_mid_request_returns_404(race, admin_session):
     """M4 — ``assign_batch`` loads the shift (404 if missing), authorizes, and
     then re-selects it ``FOR NO KEY UPDATE`` with ``.scalar_one()``. A shift

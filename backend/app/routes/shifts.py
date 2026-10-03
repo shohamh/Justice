@@ -1049,7 +1049,10 @@ def assign_batch(
         .where(DutyShift.id == shift_id)
         .with_for_update(key_share=True)
         .execution_options(populate_existing=True)
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if shift is None:
+        # Deleted after the load above (M4): same answer as a missing shift.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
     existing_primary_count = session.execute(
         select(func.count()).select_from(DutyAssignment).where(
