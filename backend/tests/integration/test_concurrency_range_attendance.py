@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -202,3 +203,59 @@ def test_attendance_correction_and_duty_dismissal_of_one_soldier_do_not_deadlock
     admin_session.expire_all()
     assert admin_session.get(RangeAssignment, assignment_id).attendance_status == RangeAttendanceStatus.no_show
     assert admin_session.get(DutyAssignment, duty_id).weapon_ineligible is False
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="auto-mark keeps locks after a validation error")
+def test_auto_mark_releases_locks_after_a_validation_error(race, admin_session, monkeypatch):
+    """Auto-mark residual — after ``lock_assignment_for_attendance`` the worker
+    calls ``mark_attendance``; on ``RangeValidationError`` it logged and
+    ``continue``d without a rollback, so the soldier and range-assignment locks
+    of the skipped row stayed held while the sweep went on with the next row.
+
+    Fixed: the worker rolls back before ``continue``. The probe (an independent
+    session, ``FOR UPDATE NOWAIT``) runs while the worker handles the second
+    assignment and checks the first soldier's row is free again."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    from app.services import range_attendance_auto_mark as auto_mark_module
+
+    first_id, first_soldier_id, _manager_id = _seed(admin_session, "rollback")
+    first = admin_session.get(RangeAssignment, first_id)
+    other = create_soldier(admin_session, personal_number="race-att-rollback-s2")
+    admin_session.add(RangeAssignment(range_event_id=first.range_event_id, soldier_id=other.id))
+    admin_session.commit()
+
+    real_mark = auto_mark_module.mark_attendance
+    calls: list = []
+    probe: dict[str, str] = {}
+
+    def mark(session, *, assignment, **kwargs):
+        calls.append(assignment.soldier_id)
+        if len(calls) == 1:
+            raise ranges_service.RangeValidationError("injected")
+        s = race.session()
+        try:
+            s.execute(text("SELECT id FROM soldiers WHERE id = :id FOR UPDATE NOWAIT"), {"id": calls[0]})
+            probe["first_soldier"] = "free"
+        except OperationalError:
+            probe["first_soldier"] = "held"
+        finally:
+            s.rollback()
+        return real_mark(session, assignment=assignment, **kwargs)
+
+    monkeypatch.setattr(auto_mark_module, "mark_attendance", mark)
+
+    s = race.session()
+    marked = auto_mark_present_for_elapsed_events(s)
+
+    assert marked == 1
+    assert len(calls) == 2
+    assert probe["first_soldier"] == "free", "the skipped assignment's soldier lock was still held"
+    admin_session.expire_all()
+    statuses = sorted(
+        admin_session.execute(
+            select(RangeAssignment.attendance_status).where(RangeAssignment.range_event_id == first.range_event_id)
+        ).scalars().all()
+    )
+    assert statuses == sorted([RangeAttendanceStatus.pending, RangeAttendanceStatus.present])
