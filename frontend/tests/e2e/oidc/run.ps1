@@ -81,8 +81,11 @@ try {
     if (-not $NoOidc) { $env:OIDC_ALLOW_INSECURE_LOCAL = 'true' }
     $env:OIDC_RATE_LIMIT = '200/minute'; $env:LOGIN_RATE_LIMIT = '1000/minute'
     Start-Process -FilePath $py -ArgumentList '-m uvicorn app.main:app --host 127.0.0.1 --port 8410' -WorkingDirectory $backend -WindowStyle Hidden -RedirectStandardOutput "$logs\backend.log" -RedirectStandardError "$logs\backend.err.log"
+    # Serve the production build (vite preview) rather than the dev server: the dev server's on-demand
+    # transforms stalled proxied API calls on a small machine. The preview server has the same /api proxy.
+    Push-Location $frontend; & npx vite build; if ($LASTEXITCODE) { throw 'frontend build failed' }; Pop-Location
     $env:VITE_BACKEND_URL = 'http://127.0.0.1:8410'  # uvicorn listens on IPv4 only; localhost may resolve to ::1 first and stall the proxy
-    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c npx vite --port 5183 --strictPort' -WorkingDirectory $frontend -WindowStyle Hidden -RedirectStandardOutput "$logs\vite.log" -RedirectStandardError "$logs\vite.err.log"
+    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c npx vite preview --port 5183 --strictPort' -WorkingDirectory $frontend -WindowStyle Hidden -RedirectStandardOutput "$logs\vite.log" -RedirectStandardError "$logs\vite.err.log"
 
     # Wait for backend, Vite proxy and Keycloak discovery.
     $ready = $false

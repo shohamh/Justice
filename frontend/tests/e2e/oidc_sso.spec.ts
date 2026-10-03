@@ -69,7 +69,8 @@ test.describe("SSO login UI", () => {
 test.describe("SSO registration", () => {
   test("an unmatched identity lands on registration with read-only identity and no invite code", async ({ page }) => {
     test.skip(!MOCK_URL, "needs the mock OIDC provider (E2E_OIDC_MOCK_URL)");
-    const email = `new.person.${Date.now()}@corp.example`;
+    // The local part is the AD username: keep it within the 20-character limit.
+    const email = `np${Date.now() % 1_000_000_000}@corp.example`;
     await selectIdentity(page, { subject: `sub-${Date.now()}`, email, email_verified: true });
     await page.goto("/login");
     await page.getByTestId("sso-login-button").click();
