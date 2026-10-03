@@ -171,7 +171,6 @@ def test_projected_effort_rechecks_prevalidated_scope_before_sql(admin_session, 
     )
     readiness = scoring._TransparencyProjectionReadiness(
         soldier_ids=frozenset({soldier.id}),
-        keys=frozenset(),
         validated_quarter_starts=frozenset({q1}),
         effort_quarter_starts=frozenset({q1}),
         total_soldier_ids=frozenset({soldier.id}),
@@ -194,5 +193,6 @@ def test_projected_effort_rechecks_prevalidated_scope_before_sql(admin_session, 
             "keys": set(),
             "quarter_starts": {q1},
             "total_soldier_ids": {soldier.id},
+            "bucket_soldier_ids": {soldier.id},
         }
     ]

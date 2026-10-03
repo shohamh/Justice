@@ -940,42 +940,42 @@ def _projection_data_keys_for_soldiers(
     return _projection_keys_for_soldiers(session, soldier_ids)
 
 
+def _projection_quarters_for_soldiers(session: Session, soldier_ids: set[uuid.UUID]) -> set[date]:
+    """Distinct persisted quarters for a population, without hydrating bucket pairs."""
+    if not soldier_ids:
+        return set()
+    return set(
+        session.execute(
+            select(SoldierQuarterScoreProjection.quarter_start)
+            .where(uuid_any("soldier_quarter_score_projection.soldier_id", soldier_ids))
+            .distinct()
+        ).scalars().all()
+    )
+
+
 @dataclass(frozen=True)
 class _TransparencyProjectionReadiness:
     """Projection scope already checked during one transparency request."""
 
     soldier_ids: frozenset[uuid.UUID]
-    keys: frozenset[tuple[uuid.UUID, date]]
     validated_quarter_starts: frozenset[date]
     effort_quarter_starts: frozenset[date]
     total_soldier_ids: frozenset[uuid.UUID]
 
-    def effort_keys_if_exact_scope(
+    def effort_scope_is_exact(
         self,
         *,
         soldier_ids: set[uuid.UUID],
         quarter_starts: set[date],
-    ) -> set[tuple[uuid.UUID, date]] | None:
+    ) -> bool:
         requested_soldiers = frozenset(soldier_ids)
         requested_quarters = frozenset(quarter_starts)
-        if (
-            requested_soldiers != self.soldier_ids
-            or requested_soldiers != self.total_soldier_ids
-            or requested_quarters != self.effort_quarter_starts
-            or not requested_quarters.issubset(self.validated_quarter_starts)
-        ):
-            return None
-
-        effort_keys = {
-            key for key in self.keys if key[0] in requested_soldiers and key[1] in requested_quarters
-        }
-        # The input keys come from the exact key set checked earlier in this
-        # request. If that set does not describe this soldier scope, retain the
-        # normal enumeration and readiness path instead of trusting a partial
-        # match.
-        if any(soldier_id not in requested_soldiers for soldier_id, _ in effort_keys):
-            return None
-        return effort_keys
+        return (
+            requested_soldiers == self.soldier_ids
+            and requested_soldiers == self.total_soldier_ids
+            and requested_quarters == self.effort_quarter_starts
+            and requested_quarters.issubset(self.validated_quarter_starts)
+        )
 
 
 def _projection_bucket_rows_are_complete(rows: list[SoldierQuarterScoreProjection]) -> bool:
@@ -1515,6 +1515,7 @@ def _ensure_projection_ready(
     keys: set[tuple[uuid.UUID, date]],
     quarter_starts: set[date] | None = None,
     total_soldier_ids: set[uuid.UUID] | None = None,
+    bucket_soldier_ids: set[uuid.UUID] | None = None,
     canonical_diagnostic_check: bool = False,
 ) -> bool:
     from app.services.score_projection import (
@@ -1524,7 +1525,13 @@ def _ensure_projection_ready(
 
     quarter_starts = set(quarter_starts or set())
     total_soldier_ids = set(total_soldier_ids or set())
-    if (keys or quarter_starts or total_soldier_ids) and not _projection_state_is_complete(session):
+    bucket_soldier_ids = set(bucket_soldier_ids or set())
+    if canonical_diagnostic_check and bucket_soldier_ids:
+        # Explicit diagnostics still compare each canonical bucket. Ordinary
+        # transparency reads keep only the population and quarter scope.
+        keys = keys | _projection_data_keys_for_soldiers(session, bucket_soldier_ids)
+    has_required_scope = bool(keys or quarter_starts or total_soldier_ids or bucket_soldier_ids)
+    if has_required_scope and not _projection_state_is_complete(session):
         logger.warning("score projection read fell back because projection backfill is incomplete")
         return False
 
@@ -1540,7 +1547,7 @@ def _ensure_projection_ready(
     # is exactly what its writer computed. Reads therefore run one cheap
     # structural health aggregate and rebuild what it or the markers flag; the
     # JSONB fingerprint proof runs periodically in the revalidation worker.
-    key_soldiers = {soldier_id for soldier_id, _quarter_start_value in keys}
+    key_soldiers = {soldier_id for soldier_id, _quarter_start_value in keys} | bucket_soldier_ids
     dup_groups, stale_rows = (
         _bucket_health_counts(session, soldier_ids=key_soldiers) if key_soldiers else (0, 0)
     )
@@ -1659,15 +1666,13 @@ def _projection_burden_share_inputs(
 
     soldier_ids = {soldier.id for soldier in soldiers}
     quarter_starts = {calendar_qs for _q_start, _q_end, calendar_qs in windows}
-    keys = (
-        prevalidated_readiness.effort_keys_if_exact_scope(
-            soldier_ids=soldier_ids,
-            quarter_starts=quarter_starts,
+    exact_prevalidated_scope = (
+        prevalidated_readiness is not None
+        and prevalidated_readiness.effort_scope_is_exact(
+            soldier_ids=soldier_ids, quarter_starts=quarter_starts
         )
-        if prevalidated_readiness is not None
-        else None
     )
-    if keys is None:
+    if not exact_prevalidated_scope:
         keys = {
             key
             for key in _projection_data_keys_for_soldiers(session, soldier_ids)
@@ -1677,9 +1682,10 @@ def _projection_burden_share_inputs(
             return None
     elif not _ensure_projection_ready(
         session,
-        keys=keys,
+        keys=set(),
         quarter_starts=quarter_starts,
         total_soldier_ids=soldier_ids,
+        bucket_soldier_ids=soldier_ids,
     ):
         # The first check validated this request-local key set, but READ
         # COMMITTED permits a dirty marker to commit between the two reads.
@@ -1749,15 +1755,13 @@ def _try_projected_effort_data(
 
     soldier_ids = {soldier.id for soldier in soldiers}
     quarter_starts = {calendar_qs for _start, _end, calendar_qs in windows}
-    keys = (
-        prevalidated_readiness.effort_keys_if_exact_scope(
-            soldier_ids=soldier_ids,
-            quarter_starts=quarter_starts,
+    exact_prevalidated_scope = (
+        prevalidated_readiness is not None
+        and prevalidated_readiness.effort_scope_is_exact(
+            soldier_ids=soldier_ids, quarter_starts=quarter_starts
         )
-        if prevalidated_readiness is not None
-        else None
     )
-    if keys is None:
+    if not exact_prevalidated_scope:
         keys = {
             key
             for key in _projection_data_keys_for_soldiers(session, soldier_ids)
@@ -1767,9 +1771,10 @@ def _try_projected_effort_data(
             return None
     elif not _ensure_projection_ready(
         session,
-        keys=keys,
+        keys=set(),
         quarter_starts=quarter_starts,
         total_soldier_ids=soldier_ids,
+        bucket_soldier_ids=soldier_ids,
     ):
         # READ COMMITTED permits dirty markers to commit after the first check.
         return None
@@ -2064,13 +2069,14 @@ def _try_projected_transparency_rows(
         planning_end=planning_start,
     )
     effort_quarters = {calendar_qs for _q_start, _q_end, calendar_qs in effort_windows}
-    keys = _projection_data_keys_for_soldiers(session, soldier_ids)
-    score_quarters = {quarter_start_value for _soldier_id, quarter_start_value in keys}
+    score_quarters = _projection_quarters_for_soldiers(session, soldier_ids)
+    keys: set[tuple[uuid.UUID, date]] = set()
     if not _ensure_projection_ready(
         session,
         keys=keys,
         quarter_starts=score_quarters | effort_quarters,
         total_soldier_ids=soldier_ids,
+        bucket_soldier_ids=soldier_ids,
     ):
         return None
 
@@ -2090,7 +2096,6 @@ def _try_projected_transparency_rows(
     viewer_visibility = build_soldier_scope_visibility(session, viewer) if viewer is not None else None
     prevalidated_readiness = _TransparencyProjectionReadiness(
         soldier_ids=frozenset(soldier_ids),
-        keys=frozenset(keys),
         validated_quarter_starts=frozenset(score_quarters | effort_quarters),
         effort_quarter_starts=frozenset(effort_quarters),
         total_soldier_ids=frozenset(soldier_ids),

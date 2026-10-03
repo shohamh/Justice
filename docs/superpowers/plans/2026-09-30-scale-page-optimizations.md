@@ -61,6 +61,10 @@ Remove the page's full-soldier preload in a follow-up within this task: fetch a 
 
 Return a compact summary and first row slice on initial load, backed by a bounded transparency-row endpoint with its own stable cursor. Fetch fairness projections only when the user opens that section, and deduplicate concurrent requests. Instrument the projection and legacy paths and batch reads before considering caching. If caching is justified, define invalidation for assignments, exemptions, duty types, and hierarchy changes. Keep exports complete and server-side.
 
+### Task 21 follow-up: Keep global transparency readiness at quarter scope
+
+The 20k cProfile found substantial Python time and allocation in enumerating every persisted `(soldier_id, quarter_start)` projection key before transparency rows are built. Replace that full pair materialization in the global transparency path with a compact set of distinct quarter dates, while retaining database-side population-wide checks for duplicate aggregate buckets, stale projection versions, pending dirty/divergent markers, required quarter totals, and soldier totals. Keep the second effort-readiness check so a dirty marker committed between the checks remains visible under READ COMMITTED. Preserve canonical diagnostic behavior for callers that request it, all existing fallback/repair behavior, and byte-for-byte canonical output parity. Do not add caching or change transparency pagination in this follow-up. Add PostgreSQL-backed regression coverage proving the transparency path no longer enumerates all pair keys and still performs both readiness checks over the exact active population and required quarter scopes.
+
 ### Task 6: Reduce Home critical-path work
 
 Build the initial Home response from the current soldier's required data and bounded visible aggregates. Remove full transparency projections and unbounded assignment histories from the initial path. Load secondary widgets after the primary content is ready. Preserve current-duty and authorization semantics.

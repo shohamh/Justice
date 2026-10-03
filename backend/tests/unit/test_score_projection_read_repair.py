@@ -7,6 +7,8 @@ from sqlalchemy import event, select, text
 
 from app.db.models import (
     ScoreProjectionDirtyBucket,
+    ScoreProjectionQuarterTotal,
+    ScoreProjectionState,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
@@ -206,6 +208,132 @@ def test_transparency_projection_reuses_its_planning_start(admin_session, monkey
     assert result is not None
     assert len(result["rows"]) == 1
     assert len(planning_start_queries) == 1
+
+
+def test_transparency_readiness_uses_compact_quarters_for_full_active_population(
+    admin_session, monkeypatch
+):
+    active = [create_soldier(admin_session, personal_number=f"889010{i}") for i in range(2)]
+    departed = create_soldier(admin_session, personal_number="8890102")
+    departed.left_at = date(2026, 1, 1)
+    q1, q2, q3 = date(2026, 1, 1), date(2026, 4, 1), date(2026, 7, 1)
+    partitions = [(soldier, q1) for soldier in active] + [(active[0], q2), (departed, q3)]
+    for soldier, quarter in partitions:
+        admin_session.add(
+            SoldierQuarterScoreProjection(
+                soldier_id=soldier.id,
+                quarter_start=quarter,
+                duty_type_id=None,
+                projection_version=(
+                    "old" if soldier.id == active[0].id and quarter == q2
+                    else SCORE_PROJECTION_CANONICAL_VERSION
+                ),
+                effective_weighted_days=Decimal("0"),
+                duty_score=Decimal("0"),
+                adjustment_score=Decimal("0"),
+                source_fingerprint={},
+            )
+        )
+    for quarter in (q1, q2):
+        admin_session.add(
+            ScoreProjectionQuarterTotal(
+                quarter_start=quarter,
+                projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                effective_weighted_days=Decimal("0"),
+                duty_score=Decimal("0"),
+                adjustment_score=Decimal("0"),
+                total_score=Decimal("0"),
+            )
+        )
+    admin_session.add(
+        ScoreProjectionState(
+            projection_key="score_projection",
+            canonical_version=SCORE_PROJECTION_CANONICAL_VERSION,
+            backfill_complete=True,
+        )
+    )
+    admin_session.add(
+        ScoreProjectionDirtyBucket(
+            soldier_id=active[1].id,
+            quarter_start=q1,
+            status="dirty",
+        )
+    )
+    for soldier in active:
+        admin_session.add(
+            SoldierScoreProjection(
+                soldier_id=soldier.id,
+                projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+                duty_score=Decimal("0"),
+                adjustment_score=Decimal("0"),
+                cumulative_score=Decimal("0"),
+                shift_count=0,
+            )
+        )
+    admin_session.flush()
+
+    monkeypatch.setattr(scoring, "_burden_share_reset_date", lambda _session: q1)
+    monkeypatch.setattr(scoring, "_burden_share_planning_start", lambda _session: q2)
+    monkeypatch.setattr(
+        scoring,
+        "_burden_share_quarter_windows",
+        lambda *_args, **_kwargs: [(q1, date(2026, 3, 31), q1)],
+    )
+    monkeypatch.setattr(
+        scoring,
+        "resolve_reset_dates_for_soldiers",
+        lambda _session, soldiers: {soldier.id: q1 for soldier in soldiers},
+    )
+    monkeypatch.setattr(
+        scoring, "_bulk_active_days", lambda _session, soldiers: {s.id: 1 for s in soldiers}
+    )
+    monkeypatch.setattr(scoring, "globally_exempted_soldier_ids", lambda _session: set())
+    monkeypatch.setattr(scoring, "_active_exemptions_by_soldier", lambda _session: {})
+    monkeypatch.setattr(
+        scoring,
+        "_projection_data_keys_for_soldiers",
+        lambda *_args: pytest.fail("global transparency must not enumerate soldier-quarter pairs"),
+    )
+    original_readiness = scoring._ensure_projection_ready
+    checks = []
+
+    def record_readiness(session, **kwargs):
+        checks.append(kwargs)
+        return original_readiness(session, **kwargs)
+
+    monkeypatch.setattr(scoring, "_ensure_projection_ready", record_readiness)
+    result = scoring._try_projected_transparency_rows(admin_session)
+
+    assert result is not None
+    assert {row["soldier_id"] for row in result["rows"]} == {s.id for s in active}
+    active_ids = {soldier.id for soldier in active}
+    assert checks == [
+        {
+            "keys": set(),
+            "quarter_starts": {q1, q2},
+            "total_soldier_ids": active_ids,
+            "bucket_soldier_ids": active_ids,
+        },
+        {
+            "keys": set(),
+            "quarter_starts": {q1},
+            "total_soldier_ids": active_ids,
+            "bucket_soldier_ids": active_ids,
+        },
+    ]
+    assert admin_session.execute(
+        select(ScoreProjectionDirtyBucket.status).where(
+            ScoreProjectionDirtyBucket.soldier_id == active[1].id
+        )
+    ).scalar_one() == "current"
+    assert not admin_session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id == active[0].id,
+            SoldierQuarterScoreProjection.quarter_start == q2,
+            SoldierQuarterScoreProjection.projection_version == "old",
+        )
+    ).scalars().all()
+    assert result == scoring._legacy_transparency_rows(admin_session)
 
 
 def test_aggregate_error_rolls_back_repair_savepoint_and_allows_legacy_fallback(
