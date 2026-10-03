@@ -29,6 +29,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -157,3 +158,48 @@ def test_first_two_refreshes_of_one_soldier_bucket_both_succeed(race, admin_sess
         .where(ScoreProjectionDirtyBucket.soldier_id == soldier.id)
     ).scalar_one()
     assert buckets == 1
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="projection refresh lock interleave deadlocks")
+def test_overlapping_multi_soldier_refreshes_do_not_deadlock(race, admin_session):
+    """``refresh_projection_for_change`` locked, per soldier in id order, the
+    dirty bucket, the soldier total and then the quarter total. A refresh of
+    {S1, S2} holds the quarter total after S1 and then wants bucket(S2); a
+    concurrent refresh of {S2} alone holds bucket(S2) and wants the quarter
+    total. (For example ``set_day_override`` refreshing the nominal and the
+    covering soldier while ``create_assignment`` refreshes the cover alone.)
+
+    Fixed: every bucket, then every soldier total, then every quarter total is
+    locked in a global order before any rebuild."""
+    from app.services.score_projection import refresh_projection_for_change
+
+    a = create_soldier(admin_session, personal_number="race-proj-il-a")
+    b = create_soldier(admin_session, personal_number="race-proj-il-b")
+    admin_session.add(_quarter_total_row())
+    admin_session.commit()
+    low, high = sorted([a.id, b.id], key=str)
+
+    both_holds_total = race.signal("two-soldier refresh holds the quarter total")
+    single_holds_bucket = race.signal("one-soldier refresh holds bucket(S2)")
+
+    def refresh_both():
+        s = race.session()
+
+        def _after_total():
+            both_holds_total.set()
+            single_holds_bucket.wait()
+
+        race.pause_after_select(s, ScoreProjectionQuarterTotal, _after_total)
+        refresh_projection_for_change(s, soldier_ids={low, high}, affected_dates={_START})
+        s.commit()
+
+    def refresh_high():
+        both_holds_total.wait()
+        s = race.session()
+        race.pause_after_select(s, ScoreProjectionDirtyBucket, single_holds_bucket.set)
+        refresh_projection_for_change(s, soldier_ids={high}, affected_dates={_START})
+        s.commit()
+
+    outcomes = race.run(refresh_both, refresh_high)
+
+    assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
