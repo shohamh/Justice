@@ -654,6 +654,97 @@ def _bool_setting(session: Session, key: str, default: bool) -> bool:
     return bool(value)
 
 
+def commander_alert_warning_scores(
+    session: Session,
+    *,
+    soldiers: list[Soldier],
+    as_of: date,
+) -> dict[uuid.UUID, Decimal]:
+    """Return normalized below-threshold alert scores using the configured read path.
+
+    The disabled-rollout path can safely sieve on raw all-time totals: after the
+    existing six-place score quantization, only soldiers strictly below
+    ``-3 * active_days`` can pass the normalized warning check. The SQL cutoff
+    is a superset, and the Python check below retains the exact alert semantics.
+    When projection reads are enabled, scores go through
+    ``commander_score_totals`` so validation, repair, and canonical fallback
+    behavior remain in that existing path.
+    """
+    if not soldiers:
+        return {}
+    soldier_ids = {soldier.id for soldier in soldiers}
+    gate_enabled = _bool_setting(
+        session,
+        SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+        False,
+    )
+    if gate_enabled:
+        score_by_soldier = commander_score_totals(
+            session,
+            soldiers=soldiers,
+            _gate_enabled=True,
+        ).score_by_soldier
+        warning_scores: dict[uuid.UUID, Decimal] = {}
+        threshold = Decimal("-3.0")
+        for soldier in soldiers:
+            cumulative_score = score_by_soldier.get(soldier.id, Decimal("0"))
+            active_day_count = max(1, (as_of - soldier.enrolled_at).days)
+            normalized_score = cumulative_score / Decimal(active_day_count)
+            if normalized_score < threshold:
+                warning_scores[soldier.id] = normalized_score
+        return warning_scores
+
+    duty_scores = (
+        select(
+            DutyAssignment.soldier_id.label("soldier_id"),
+            func.sum(
+                (DutyAssignment.end_date - DutyAssignment.start_date) * DutyType.score_per_day
+            ).label("duty_score"),
+        )
+        .join(DutyType, DutyType.id == DutyAssignment.duty_type_id)
+        .where(
+            DutyAssignment.status == "published",
+            uuid_any("duty_assignments.soldier_id", soldier_ids),
+        )
+        .group_by(DutyAssignment.soldier_id)
+        .subquery()
+    )
+    adjustment_scores = (
+        select(
+            ScoreAdjustment.soldier_id.label("soldier_id"),
+            func.sum(ScoreAdjustment.delta).label("adjustment_score"),
+        )
+        .where(uuid_any("score_adjustments.soldier_id", soldier_ids))
+        .group_by(ScoreAdjustment.soldier_id)
+        .subquery()
+    )
+    raw_score = (
+        func.coalesce(duty_scores.c.duty_score, 0)
+        + func.coalesce(adjustment_scores.c.adjustment_score, 0)
+    )
+    active_days = func.greatest(1, as_of - Soldier.enrolled_at)
+    rows = session.execute(
+        select(Soldier.id, Soldier.enrolled_at, raw_score)
+        .select_from(Soldier)
+        .outerjoin(duty_scores, duty_scores.c.soldier_id == Soldier.id)
+        .outerjoin(adjustment_scores, adjustment_scores.c.soldier_id == Soldier.id)
+        .where(
+            uuid_any("soldiers.id", soldier_ids),
+            raw_score < Decimal("-3.0") * active_days,
+        )
+    ).all()
+
+    warning_scores: dict[uuid.UUID, Decimal] = {}
+    threshold = Decimal("-3.0")
+    for soldier_id, enrolled_at, raw_total in rows:
+        cumulative_score = _q6(raw_total or 0)
+        active_day_count = max(1, (as_of - enrolled_at).days)
+        normalized_score = cumulative_score / Decimal(active_day_count)
+        if normalized_score < threshold:
+            warning_scores[soldier_id] = normalized_score
+    return warning_scores
+
+
 def _get_or_create_state(session: Session) -> ScoreProjectionState:
     state = session.get(ScoreProjectionState, SCORE_PROJECTION_STATE_KEY)
     if state is None:
@@ -1563,6 +1654,7 @@ def commander_score_totals(
     *,
     soldiers: list[Soldier],
     canonical_diagnostic_compare: bool = False,
+    _gate_enabled: bool | None = None,
 ) -> CommanderScoreReadResult:
     soldier_ids = {soldier.id for soldier in soldiers}
     if not soldier_ids:
@@ -1576,10 +1668,10 @@ def commander_score_totals(
             divergent_soldiers=0,
         )
 
-    gate_enabled = _bool_setting(
-        session,
-        SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
-        False,
+    gate_enabled = (
+        _bool_setting(session, SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY, False)
+        if _gate_enabled is None
+        else _gate_enabled
     )
     if not gate_enabled:
         return _commander_score_read_result(

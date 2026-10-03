@@ -9,11 +9,14 @@ from app.db.models import (
     DutyLocation,
     DutyType,
     ExemptionType,
+    ScoreAdjustment,
     SoldierExemption,
+    SoldierScoreProjection,
     SwapCandidate,
     SwapRequest,
 )
 from app.services import assignments as assignments_svc
+from app.services import score_projection
 from app.services.commander_dashboard import (
     _score_data,
     alerts,
@@ -22,6 +25,11 @@ from app.services.commander_dashboard import (
     summary_cards,
     upcoming_duties,
 )
+from app.services.score_projection import (
+    SCORE_PROJECTION_CANONICAL_VERSION,
+    SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+)
+from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_soldier
 
 
@@ -327,6 +335,187 @@ def test_alerts_excludes_revoked_exemption(admin_session):
 
     matching = [a for a in result if a["soldier_id"] == soldier.id and a["severity"] == "info"]
     assert matching == []
+
+
+def _add_score_adjustment(session, soldier_id, delta):
+    adjustment = ScoreAdjustment(
+        soldier_id=soldier_id,
+        delta=Decimal(delta),
+        reason="alerts candidate sieve test",
+    )
+    session.add(adjustment)
+    session.flush()
+    return adjustment
+
+
+def test_alert_warning_score_candidates_return_only_strictly_below_threshold_soldiers(
+    admin_session,
+):
+    node = create_node(admin_session, level="unit", name="alerts_score_candidate_api_test")
+    today = date.today()
+    equal = create_soldier(
+        admin_session, personal_number="alerts-candidate-equal", hierarchy_node_id=node.id
+    )
+    below = create_soldier(
+        admin_session, personal_number="alerts-candidate-below", hierarchy_node_id=node.id
+    )
+    equal.enrolled_at = today - timedelta(days=11)
+    below.enrolled_at = today - timedelta(days=11)
+    _add_score_adjustment(admin_session, equal.id, "-33.00")
+    _add_score_adjustment(admin_session, below.id, "-33.01")
+    admin_session.commit()
+
+    candidate_scores = score_projection.commander_alert_warning_scores(
+        admin_session,
+        soldiers=[equal, below],
+        as_of=today,
+    )
+
+    assert candidate_scores == {below.id: Decimal("-3.000909090909090909090909091")}
+
+
+def test_alerts_candidate_sieve_keeps_strict_score_threshold_for_one_and_many_days(
+    admin_session,
+):
+    node = create_node(admin_session, level="unit", name="alerts_score_threshold_test")
+    today = date.today()
+    threshold_soldiers = {
+        "one_day_equal": create_soldier(
+            admin_session,
+            personal_number="alerts-threshold-one-equal",
+            hierarchy_node_id=node.id,
+        ),
+        "one_day_below": create_soldier(
+            admin_session,
+            personal_number="alerts-threshold-one-below",
+            hierarchy_node_id=node.id,
+        ),
+        "eleven_days_equal": create_soldier(
+            admin_session,
+            personal_number="alerts-threshold-eleven-equal",
+            hierarchy_node_id=node.id,
+        ),
+        "eleven_days_below": create_soldier(
+            admin_session,
+            personal_number="alerts-threshold-eleven-below",
+            hierarchy_node_id=node.id,
+        ),
+    }
+    for soldier in threshold_soldiers.values():
+        soldier.enrolled_at = today
+    threshold_soldiers["eleven_days_equal"].enrolled_at = today - timedelta(days=11)
+    threshold_soldiers["eleven_days_below"].enrolled_at = today - timedelta(days=11)
+    for key, amount in (
+        ("one_day_equal", "-3.00"),
+        ("one_day_below", "-3.01"),
+        ("eleven_days_equal", "-33.00"),
+        ("eleven_days_below", "-33.01"),
+    ):
+        _add_score_adjustment(admin_session, threshold_soldiers[key].id, amount)
+    admin_session.commit()
+
+    result = alerts(admin_session, subtree_ids=[node.id])
+
+    warning_ids = {alert["soldier_id"] for alert in result if alert["severity"] == "warning"}
+    assert warning_ids == {
+        threshold_soldiers["one_day_below"].id,
+        threshold_soldiers["eleven_days_below"].id,
+    }
+
+
+def test_alerts_candidate_sieve_excludes_out_of_scope_and_inactive_soldiers(admin_session):
+    node = create_node(admin_session, level="unit", name="alerts_scope_sieve_test")
+    other_node = create_node(admin_session, level="unit", name="alerts_scope_sieve_other")
+    in_scope = create_soldier(
+        admin_session, personal_number="alerts-scope-in", hierarchy_node_id=node.id
+    )
+    outside_scope = create_soldier(
+        admin_session, personal_number="alerts-scope-out", hierarchy_node_id=other_node.id
+    )
+    inactive = create_soldier(
+        admin_session, personal_number="alerts-scope-inactive", hierarchy_node_id=node.id
+    )
+    inactive.left_at = date.today()
+    _add_score_adjustment(admin_session, in_scope.id, "-4.00")
+    _add_score_adjustment(admin_session, outside_scope.id, "-100.00")
+    _add_score_adjustment(admin_session, inactive.id, "-100.00")
+    admin_session.commit()
+
+    result = alerts(admin_session, subtree_ids=[node.id])
+
+    assert {alert["soldier_id"] for alert in result if alert["severity"] == "warning"} == {
+        in_scope.id
+    }
+
+
+def test_alerts_expiring_exemption_is_returned_without_a_score_warning(admin_session):
+    node = create_node(admin_session, level="unit", name="alerts_expiring_score_independent_test")
+    soldier = create_soldier(
+        admin_session,
+        personal_number="alerts-expiring-score-independent",
+        hierarchy_node_id=node.id,
+    )
+    exemption = _grant_exemption(
+        admin_session, soldier.id, end_date=date.today() + timedelta(days=3)
+    )
+    admin_session.commit()
+
+    result = alerts(admin_session, subtree_ids=[node.id])
+
+    matching = [alert for alert in result if alert["soldier_id"] == soldier.id]
+    assert [alert["severity"] for alert in matching] == ["info"]
+    assert exemption.end_date.strftime("%d.%m.%Y") in matching[0]["message"]
+
+
+def test_alerts_uses_enabled_projection_path_and_its_incomplete_backfill_fallback(
+    admin_session, monkeypatch
+):
+    node = create_node(admin_session, level="unit", name="alerts_projection_fallback_test")
+    soldier = create_soldier(
+        admin_session, personal_number="alerts-projection-fallback", hierarchy_node_id=node.id
+    )
+    _add_score_adjustment(admin_session, soldier.id, "-4.00")
+    admin_session.add(
+        SoldierScoreProjection(
+            soldier_id=soldier.id,
+            projection_version=SCORE_PROJECTION_CANONICAL_VERSION,
+            duty_score=Decimal("0.000000"),
+            adjustment_score=Decimal("0.000000"),
+            cumulative_score=Decimal("0.000000"),
+            shift_count=0,
+        )
+    )
+    score_projection._get_or_create_state(admin_session).backfill_complete = False
+    set_setting(
+        admin_session,
+        SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY,
+        True,
+        actor_id=None,
+    )
+    admin_session.commit()
+
+    score_totals = score_projection.commander_score_totals
+    setting_reads = []
+    get_bool_setting = score_projection._bool_setting
+    calls = []
+
+    def track_existing_score_path(*args, **kwargs):
+        calls.append(True)
+        return score_totals(*args, **kwargs)
+
+    def track_gate_read(*args, **kwargs):
+        setting_reads.append(args[1])
+        return get_bool_setting(*args, **kwargs)
+
+    monkeypatch.setattr(score_projection, "commander_score_totals", track_existing_score_path)
+    monkeypatch.setattr(score_projection, "_bool_setting", track_gate_read)
+    result = alerts(admin_session, subtree_ids=[node.id])
+
+    assert calls
+    assert setting_reads == [SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY]
+    assert [alert["severity"] for alert in result if alert["soldier_id"] == soldier.id] == [
+        "warning"
+    ]
 
 
 def test_score_data_aggregates_assignment_history_in_database(admin_session):

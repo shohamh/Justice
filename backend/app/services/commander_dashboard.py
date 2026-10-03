@@ -22,7 +22,7 @@ from app.db.models import (
     SwapCandidate,
     SwapRequest,
 )
-from app.services.score_projection import commander_score_totals
+from app.services.score_projection import commander_alert_warning_scores, commander_score_totals
 from app.services.sql_arrays import uuid_any
 
 
@@ -382,10 +382,10 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
         .options(load_only(Soldier.id, Soldier.full_name, Soldier.enrolled_at))
         .where(Soldier.hierarchy_node_id.in_(subtree_ids), Soldier.left_at.is_(None))
     ).scalars().all()
-    score_data = _score_data(session, soldiers)
-    threshold = Decimal("-3.0")
     today = date.today()
     next_week = today + timedelta(days=7)
+
+    warning_scores = commander_alert_warning_scores(session, soldiers=soldiers, as_of=today)
 
     soldier_ids = {s.id for s in soldiers}
     name_by_id = {s.id: s.full_name for s in soldiers}
@@ -394,9 +394,8 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
     alerts_list: list[dict] = []
 
     for s in soldiers:
-        sd = score_data.get(s.id, {})
-        norm = sd.get("normalised_score", Decimal("0"))
-        if norm < threshold:
+        norm = warning_scores.get(s.id)
+        if norm is not None:
             alerts_list.append(
                 {
                     "severity": "warning",
