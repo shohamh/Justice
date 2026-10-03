@@ -72,6 +72,7 @@ try {
     Pop-Location
 
     $env:COOKIE_SECURE = 'false'
+    if ($NoOidc) { foreach ($n in 'OIDC_ISSUER','OIDC_CLIENT_ID','OIDC_CLIENT_SECRET','OIDC_REDIRECT_URI','OIDC_ALLOW_INSECURE_LOCAL') { Remove-Item "Env:$n" -ErrorAction SilentlyContinue } }  # a previous run in this shell may have exported them
     if ($NoOidc) { $PlaywrightArgs = @('-g', 'no OIDC settings') + $PlaywrightArgs; $env:E2E_OIDC_DISABLED = '1' }
     $env:FRONTEND_URL = 'http://localhost:5183'; $env:ALLOWED_ORIGINS = 'http://localhost:5183'
     if (-not $NoOidc) { $env:OIDC_ISSUER = 'http://127.0.0.1:8411/realms/justice-test' }
@@ -97,6 +98,18 @@ try {
         } catch { Start-Sleep 3 }
     }
     if (-not $ready) { throw "stack did not become ready; see $logs and 'docker logs oidc-e2e-keycloak'" }
+
+    # Wait for the backend to settle: for a minute or so after a fresh seed its startup workers (score
+    # projection backfill) keep it busy and every request is slow, which made the first journeys time out.
+    $fast = 0
+    for ($i = 0; $i -lt 90 -and $fast -lt 4; $i++) {
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            $t = Invoke-RestMethod http://localhost:5183/api/auth/login -Method Post -ContentType 'application/json' -Body '{"personal_number":"1000001","password":"1234567890"}' -TimeoutSec 60
+            Invoke-RestMethod http://localhost:5183/api/me -Headers @{ Authorization = "Bearer $($t.access_token)" } -TimeoutSec 60 | Out-Null
+            if ($sw.ElapsedMilliseconds -lt 1500) { $fast++ } else { $fast = 0 }
+        } catch { $fast = 0; Start-Sleep 3 }
+    }
 
     # Warm-up: the first OIDC discovery and the first Keycloak login page are slow on a cold start.
     if (-not $NoOidc) { try {
