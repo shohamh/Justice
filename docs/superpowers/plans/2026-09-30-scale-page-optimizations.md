@@ -187,3 +187,8 @@ Commit `214efa0c` tightens the transfer-count query-shape regression after revie
 ## Task 6 follow-up: batch commander dashboard subtree expansion (2026-10-03)
 
 `_authorized_subtree_ids` now expands all supplied roots in one descendant query joined against existing hierarchy root rows. Supplied root IDs are retained even when their row is missing, but only existing root rows expand descendants; stale UUIDs in a node's `path_ids` therefore cannot pull in that node through a nonexistent root. Duplicate and overlapping roots collapse in the result, and empty scope returns without a query. The per-root helper and `_assert_commander` authorization remain unchanged. PostgreSQL tests compare with the legacy per-root union, cover stale path UUIDs, and assert one descendant SELECT. This establishes query-count evidence only; route latency and page readiness were not measured.
+
+
+## Task 8 follow-up: HelpModal hierarchy eligibility picker request shape (2026-10-03)
+
+`HierarchyEligibilityTab` no longer requests `/hierarchy/tree` or flattens the full hierarchy at tab mount. It mounts `HierarchyNodePickerModal` only after explicit user selection, and the selection button accessible name reflects the chosen ancestor path. The existing picker uses root branch pages, fetches child pages only after expansion, and uses server search on user query; its selection callback now includes `path_ids` while preserving existing path-name data. Focused tests verify these request and callback shapes and the existing eligibility rules. This is request-shape evidence only; no page-latency gain is claimed.

@@ -131,7 +131,7 @@ describe("HierarchyNodePickerModal", () => {
       expect.objectContaining({ parentId: "root-1" }),
     );
     fireEvent.click(screen.getByTestId("picker-select-node-unit-1"));
-    expect(onPicked).toHaveBeenCalledWith("unit-1", "Unit Alpha", ["Root", "Unit Alpha"]);
+    expect(onPicked).toHaveBeenCalledWith("unit-1", "Unit Alpha", ["Root", "Unit Alpha"], ["root-1", "unit-1"]);
   });
 
   it("continues a branch page with an accessible load-more control", async () => {
@@ -281,7 +281,7 @@ describe("HierarchyNodePickerModal", () => {
       matches: [{ node: match, path: [division] }],
       has_more: true,
     });
-    renderPicker();
+    const { onPicked } = renderPicker();
 
     await screen.findByText("Root");
     fireEvent.change(screen.getByPlaceholderText("חיפוש..."), { target: { value: "Echo" } });
@@ -290,6 +290,8 @@ describe("HierarchyNodePickerModal", () => {
     expect(hierarchyApi.searchHierarchyNodes).toHaveBeenCalledWith("Echo", expect.any(AbortSignal));
     expect(screen.getByText("team.hierarchy_search_more")).toBeInTheDocument();
     expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("picker-select-node-unit-1"));
+    expect(onPicked).toHaveBeenCalledWith("unit-1", "Echo", ["Division", "Echo"], ["division-1", "unit-1"]);
   });
 
   it("shows a minimum-length hint for a settled one-character query without searching", async () => {

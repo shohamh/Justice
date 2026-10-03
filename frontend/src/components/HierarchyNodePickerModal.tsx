@@ -16,7 +16,7 @@ import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   onClose: () => void;
-  onPicked: (nodeId: string, nodeName: string, path?: string[]) => void;
+  onPicked: (nodeId: string, nodeName: string, path?: string[], pathIds?: string[]) => void;
 }
 
 function useNearEndPrefetch({
@@ -177,7 +177,7 @@ function BranchNode({
         <button
           type="button"
           className="shrink-0 text-xs text-indigo-600 hover:underline"
-          onClick={() => onPicked(node.id, node.name, [...ancestorNames, node.name])}
+          onClick={() => onPicked(node.id, node.name, [...ancestorNames, node.name], [...node.path_ids])}
           data-testid={`picker-select-node-${node.id}`}
         >
           בחר
@@ -351,7 +351,12 @@ export default function HierarchyNodePickerModal({ onClose, onPicked }: Props) {
                 <button
                   type="button"
                   className="shrink-0 text-xs text-indigo-600 hover:underline"
-                  onClick={() => onPicked(match.node.id, match.node.name, matchPath(match).map((part) => part.name))}
+                  onClick={() => onPicked(
+                    match.node.id,
+                    match.node.name,
+                    matchPath(match).map((part) => part.name),
+                    [...match.node.path_ids],
+                  )}
                   data-testid={`picker-select-node-${match.node.id}`}
                 >
                   בחר
