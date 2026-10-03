@@ -306,13 +306,22 @@ def _swap_manager_approver_ids(session: Session, soldier_id: uuid.UUID) -> set[u
 def _count_actionable_swaps(session: Session, user: Soldier) -> int:
     if user.role not in ("admin", "duty_manager", "commander"):
         return 0
+    if user.role == "admin":
+        return int(session.execute(
+            select(func.count())
+            .select_from(SwapRequest)
+            .where(
+                SwapRequest.status == "open",
+                select(SwapCandidate.id).where(
+                    SwapCandidate.swap_request_id == SwapRequest.id,
+                    SwapCandidate.status.in_(["pending", "accepted"]),
+                ).exists(),
+            )
+        ).scalar_one())
+
     pending = swaps.list_pending_approval(session)
     if not pending:
         return 0
-    if user.role == "admin":
-        # UnifiedNav's existing helper treats every row returned by the admin
-        # pending endpoint as actionable.
-        return len(pending)
 
     roots = scope_root_ids(session, user)
     is_cmd = is_commander(session, user.id)

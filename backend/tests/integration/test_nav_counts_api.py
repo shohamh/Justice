@@ -24,6 +24,7 @@ from app.db.models import (
     SwapRequest,
 )
 from app.services import nav_counts as nav_counts_service
+from app.services import swaps
 from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -373,3 +374,76 @@ def test_admin_exemption_badge_without_scope_roots_is_zero(admin_session: Sessio
     admin = create_soldier(admin_session, personal_number=f"nav_ex_no_roots_{_id()}", role="admin")
 
     assert nav_counts_service._count_exemptions(admin_session, admin) == 0
+
+
+def test_admin_swap_badge_counts_open_requests_with_active_candidates_once_in_sql(
+    admin_session: Session,
+):
+    suffix = _id()
+    admin = create_soldier(admin_session, personal_number=f"nav_swap_admin_{suffix}", role="admin")
+    requester = create_soldier(admin_session, personal_number=f"nav_swap_requester_{suffix}")
+    candidates = [
+        create_soldier(admin_session, personal_number=f"nav_swap_candidate_{index}_{suffix}")
+        for index in range(2)
+    ]
+    duty_type = DutyType(name=f"nav-swap-duty-{suffix}", score_per_day=1)
+    location = DutyLocation(name=f"nav-swap-location-{suffix}")
+    admin_session.add_all([duty_type, location])
+    admin_session.flush()
+
+    for index, (request_status, candidate_statuses) in enumerate((
+        ("open", ("pending", "accepted")),
+        ("open", ("accepted",)),
+        ("cancelled", ("pending",)),
+        ("open", ("declined", "cancelled")),
+        ("open", ()),
+    )):
+        duty_date = date.today() + timedelta(days=20 + index)
+        assignment = DutyAssignment(
+            duty_type_id=duty_type.id,
+            duty_location_id=location.id,
+            soldier_id=requester.id,
+            start_date=duty_date,
+            end_date=duty_date + timedelta(days=1),
+            status="published",
+        )
+        admin_session.add(assignment)
+        admin_session.flush()
+        request = SwapRequest(
+            duty_assignment_id=assignment.id,
+            duty_date=duty_date,
+            requesting_soldier_id=requester.id,
+            status=request_status,
+        )
+        admin_session.add(request)
+        admin_session.flush()
+        admin_session.add_all([
+            SwapCandidate(
+                swap_request_id=request.id,
+                soldier_id=candidates[candidate_index].id,
+                source="invited",
+                status=candidate_status,
+            )
+            for candidate_index, candidate_status in enumerate(candidate_statuses)
+        ])
+    admin_session.commit()
+
+    assert len(swaps.list_pending_approval(admin_session)) == 2
+    statements: list[str] = []
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement.lower())
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_actionable_swaps(admin_session, admin)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == 2
+    swap_queries = [sql for sql in statements if "swap_requests" in sql or "swap_candidates" in sql]
+    assert len(swap_queries) == 1
+    assert "count(" in swap_queries[0]
+    assert "exists" in swap_queries[0]
+    assert "select swap_requests." not in swap_queries[0]
