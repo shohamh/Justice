@@ -301,7 +301,15 @@ def test_transparency_readiness_uses_compact_quarters_for_full_active_population
         checks.append(kwargs)
         return original_readiness(session, **kwargs)
 
+    original_marker_check = score_projection.projection_has_pending_markers
+    marker_checks = []
+
+    def record_pending_marker_check(session, *, soldier_ids):
+        marker_checks.append(frozenset(soldier_ids))
+        return original_marker_check(session, soldier_ids=soldier_ids)
+
     monkeypatch.setattr(scoring, "_ensure_projection_ready", record_readiness)
+    monkeypatch.setattr(score_projection, "projection_has_pending_markers", record_pending_marker_check)
     result = scoring._try_projected_transparency_rows(admin_session)
 
     assert result is not None
@@ -313,14 +321,9 @@ def test_transparency_readiness_uses_compact_quarters_for_full_active_population
             "quarter_starts": {q1, q2},
             "total_soldier_ids": active_ids,
             "bucket_soldier_ids": active_ids,
-        },
-        {
-            "keys": set(),
-            "quarter_starts": {q1},
-            "total_soldier_ids": active_ids,
-            "bucket_soldier_ids": active_ids,
-        },
+        }
     ]
+    assert marker_checks == [frozenset(active_ids)]
     assert admin_session.execute(
         select(ScoreProjectionDirtyBucket.status).where(
             ScoreProjectionDirtyBucket.soldier_id == active[1].id

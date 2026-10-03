@@ -1221,6 +1221,23 @@ def _pending_projection_marker_condition():
     )
 
 
+def projection_has_pending_markers(session: Session, *, soldier_ids: set[uuid.UUID]) -> bool:
+    """Return whether any scoped bucket still needs read-path repair."""
+    if not soldier_ids:
+        return False
+    return (
+        session.execute(
+            select(ScoreProjectionDirtyBucket.id)
+            .where(
+                uuid_any("score_projection_dirty_buckets.soldier_id", soldier_ids),
+                _pending_projection_marker_condition(),
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
 def _dirty_or_divergent_projection_keys(
     session: Session,
     *,

@@ -1,12 +1,14 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import pytest
+
 from app.db.models import (
     ScoreAdjustment,
     ScoreProjectionQuarterTotal,
     SoldierQuarterScoreProjection,
 )
-from app.services import scoring
+from app.services import score_projection, scoring
 from app.services.effort_score import _compute_effort_data
 from app.services.score_projection import SCORE_PROJECTION_CANONICAL_VERSION
 from tests.helpers import create_soldier
@@ -155,7 +157,7 @@ def test_projected_effort_keeps_incomplete_projection_fallback(admin_session, mo
     ) is None
 
 
-def test_projected_effort_rechecks_prevalidated_scope_before_sql(admin_session, monkeypatch):
+def test_projected_effort_rechecks_prevalidated_marker_scope_before_sql(admin_session, monkeypatch):
     soldier = create_soldier(admin_session, personal_number="8902012")
     q1 = date(2026, 1, 1)
     monkeypatch.setattr(scoring, "_burden_share_reset_date", lambda _session: q1)
@@ -175,24 +177,29 @@ def test_projected_effort_rechecks_prevalidated_scope_before_sql(admin_session, 
         effort_quarter_starts=frozenset({q1}),
         total_soldier_ids=frozenset({soldier.id}),
     )
-    calls = []
+    marker_checks = []
 
-    def reject_second_check(_session, **kwargs):
-        calls.append(kwargs)
-        return False
+    def reject_pending_marker(_session, *, soldier_ids):
+        marker_checks.append(frozenset(soldier_ids))
+        return True
 
-    monkeypatch.setattr(scoring, "_ensure_projection_ready", reject_second_check)
+    monkeypatch.setattr(
+        scoring,
+        "_ensure_projection_ready",
+        lambda *_args, **_kwargs: pytest.fail("prevalidated read repeated full readiness"),
+    )
+    monkeypatch.setattr(
+        score_projection, "projection_has_pending_markers", reject_pending_marker
+    )
+    monkeypatch.setattr(
+        scoring,
+        "_projected_effort_data_sql",
+        lambda *_args, **_kwargs: pytest.fail("pending marker reached projected read"),
+    )
     assert scoring._try_projected_effort_data(
         admin_session,
         [soldier],
         prevalidated_readiness=readiness,
         planning_start=date(2026, 4, 1),
     ) is None
-    assert calls == [
-        {
-            "keys": set(),
-            "quarter_starts": {q1},
-            "total_soldier_ids": {soldier.id},
-            "bucket_soldier_ids": {soldier.id},
-        }
-    ]
+    assert marker_checks == [frozenset({soldier.id})]

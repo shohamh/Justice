@@ -1769,15 +1769,14 @@ def _try_projected_effort_data(
         }
         if not _ensure_projection_ready(session, keys=keys, quarter_starts=quarter_starts):
             return None
-    elif not _ensure_projection_ready(
-        session,
-        keys=set(),
-        quarter_starts=quarter_starts,
-        total_soldier_ids=soldier_ids,
-        bucket_soldier_ids=soldier_ids,
-    ):
+    else:
+        from app.services.score_projection import projection_has_pending_markers
+
         # READ COMMITTED permits dirty markers to commit after the first check.
-        return None
+        # A scoped existence check keeps that safety net without repeating
+        # bucket-health, quarter-total, and soldier-total validation.
+        if projection_has_pending_markers(session, soldier_ids=soldier_ids):
+            return None
     return _projected_effort_data_sql(session, soldiers=soldiers, windows=windows)
 
 
