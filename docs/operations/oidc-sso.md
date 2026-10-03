@@ -96,7 +96,7 @@ Keycloak users and what they exercise: `sso.existing` (matches seeded soldier 10
 
 Extra modes and notes for the Keycloak runner:
 
-- `.	ests\e2e\oidcun.ps1 -NoOidc` starts the backend with no `OIDC_*` settings and runs only the "no OIDC settings" journey (no SSO button, `/api/auth/oidc/start` answers 404).
+- `.\tests\e2e\oidc\run.ps1 -NoOidc` starts the backend with no `OIDC_*` settings and runs only the "no OIDC settings" journey (no SSO button, `/api/auth/oidc/start` answers 404).
 - The stack serves the production build (`vite preview` on :5183) rather than the dev server, and the runner waits for the backend to settle after the seed before testing: right after a fresh seed the backend's startup workers keep it busy and every request is slow.
 - It lifts the per-account login limit (`LOGIN_ACCOUNT_RATE_LIMIT`, default 10 per 5 minutes), which the test logins would otherwise exceed (HTTP 429).
 - The backend (:8410) and Keycloak (:8411) ports were chosen outside the Windows excluded TCP port ranges (`netsh int ipv4 show excludedportrange protocol=tcp`); after a Docker Desktop or WinNAT restart the usual 80xx ports can become unbindable (WinError 10013).
