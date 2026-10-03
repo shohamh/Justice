@@ -54,6 +54,19 @@ def request_verification(session: Session, *, soldier: Soldier) -> bool:
 def verify_token(session: Session, *, token: str) -> str:
     """Redeem a verification token. Returns 'ok', 'token_invalid', 'token_expired', or 'email_taken'."""
     now = datetime.now(timezone.utc)
+    # Lock order: soldier, then token row, then the email lock (M1). The
+    # email change route (PATCH /me/email) UPDATEs the soldier before
+    # request_verification UPDATEs that soldier's unused tokens; locking the
+    # token first here and the soldier at flush was the reverse order.
+    soldier_id = session.execute(
+        select(EmailVerificationToken.soldier_id).where(
+            EmailVerificationToken.token == token,
+            EmailVerificationToken.used_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if soldier_id is None:
+        return "token_invalid"
+    soldier = session.get(Soldier, soldier_id, with_for_update={"key_share": True}, populate_existing=True)
     row = session.execute(
         select(EmailVerificationToken).where(
             EmailVerificationToken.token == token,
@@ -70,10 +83,8 @@ def verify_token(session: Session, *, token: str) -> str:
     # One verified account per email: verify_token is the only writer that
     # sets email_verified=True, so a per-email advisory lock serializes the
     # "already verified by someone else?" check below with the write.
-    # Lock order: token row, then the email lock, then the soldier.
     session.execute(select(func.pg_advisory_xact_lock(_VERIFIED_EMAIL_LOCK_NAMESPACE, func.hashtext(row.email))))
 
-    soldier = session.get(Soldier, row.soldier_id, populate_existing=True)
     if soldier is None or soldier.email != row.email:
         # Soldier changed their email since token was issued
         return "token_invalid"

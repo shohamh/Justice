@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import event, func, inspect, select
 
 from app.db.models import EmailVerificationToken, Soldier
@@ -90,7 +89,6 @@ def test_two_accounts_cannot_both_verify_one_email(race, admin_session):
     assert sorted(o.value for o in outcomes) == ["email_taken", "ok"]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M1: verify_token vs PATCH /me/email deadlock")
 def test_verification_and_email_change_of_one_soldier_do_not_deadlock(race, admin_session, monkeypatch):
     """M1 — ``verify_token`` locked the token row, then (at flush) UPDATEd the
     soldier. ``PATCH /me/email`` UPDATEs the soldier (autoflush) and then
