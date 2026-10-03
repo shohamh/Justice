@@ -82,6 +82,33 @@ async function apiAs(personalNumber: string, password = SEED_PASSWORD) {
   return { api, headers: { Authorization: `Bearer ${token}` } };
 }
 
+/**
+ * On this small test machine the browser's GET /api/auth/rank-ladder (through the Vite preview
+ * proxy) sometimes never gets an answer, although the same request succeeds from curl or a manual
+ * fetch; the rank picker then stays empty. Not reproduced outside the page's initial request burst
+ * and not explained, so before filling anything, reload the (still stateless) registration step
+ * until the ladder has arrived.
+ */
+function trackRankLadder(page: Page): { seen: () => boolean; reset: () => void } {
+  let seen = false;
+  page.on("response", (r) => {
+    if (r.url().includes("/api/auth/rank-ladder") && r.ok()) seen = true;
+  });
+  return { seen: () => seen, reset: () => { seen = false; } };
+}
+
+/** Reloads the registration entry page until the rank ladder has been answered (see above). */
+async function ensureRankLadder(page: Page, ladder: ReturnType<typeof trackRankLadder>, ready: () => Promise<void>) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await expect.poll(() => ladder.seen(), { timeout: 12_000 }).toBe(true).catch(() => undefined);
+    if (ladder.seen()) return;
+    ladder.reset();
+    await page.reload();
+    await ready();
+  }
+  throw new Error("the rank ladder never loaded");
+}
+
 /** Fills the (multi-step) registration form from the personal-details step on. */
 async function fillRegistration(page: Page, personalNumber: string, name: string) {
   const field = (label: string) => page.locator("label", { hasText: label }).first().locator("input").first();
@@ -206,6 +233,7 @@ test.describe("unmatched identity registers and needs mador approval", () => {
   let requestId = "";
 
   test("registration is prefilled read-only without an invite code and ends pending", async ({ page }) => {
+    const ladder = trackRankLadder(page);
     await startSso(page, "sso.new1");
     await expect(page).toHaveURL(`${APP}/register?sso=1`);
     await expect(page.getByLabel("קוד הזמנה")).toHaveCount(0);
@@ -216,6 +244,7 @@ test.describe("unmatched identity registers and needs mador approval", () => {
     await expect(page.getByTestId("sso-ad-username")).toHaveAttribute("readonly", "");
     await expectNoSensitiveValues(page, ["sso.new1", "example.test"]);
 
+    await ensureRankLadder(page, ladder, () => expect(email).toHaveValue("sso.new1@example.test"));
     await fillRegistration(page, personalNumber, "בדיקה אס אס או");
     await expect(page).not.toHaveURL(/register/);
     await expectNoSensitiveValues(page, ["sso.new1", "example.test"]);
@@ -281,7 +310,9 @@ test.describe("legacy flows are unaffected", () => {
     const code = ((await created.json()) as { code: string }).code;
     await api.dispose();
 
+    const ladder = trackRankLadder(page);
     await page.goto("/register");
+    await ensureRankLadder(page, ladder, async () => {});
     await expect(page.getByTestId("sso-ad-username")).toHaveCount(0);
     await page.getByLabel("קוד הזמנה").fill(code);
     await page.getByRole("button", { name: "הבא" }).click();
