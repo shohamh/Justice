@@ -6,7 +6,7 @@ import { getTransparencyAuthorizationScope } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 
-interface Props { value: string[]; onChange: (selected: string[]) => void; }
+interface Props { value: string[]; onChange: (selected: string[]) => void; prompt?: string; }
 
 function Branch({ node, depth, value, onToggle, scopeKey }: {
   node: NodeDTO; depth: number; value: string[]; onToggle: (id: string) => void; scopeKey: string | null;
@@ -53,7 +53,7 @@ function Branch({ node, depth, value, onToggle, scopeKey }: {
   );
 }
 
-export default function SubHierarchySelector({ value, onChange }: Props) {
+export default function SubHierarchySelector({ value, onChange, prompt }: Props) {
   const { t } = useTranslation();
   const { user, authScopeReady } = useAuth();
   const scopeKey = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
@@ -78,7 +78,7 @@ export default function SubHierarchySelector({ value, onChange }: Props) {
   };
 
   return <div className="max-h-60 overflow-y-auto rounded border p-2 dark:border-gray-600 dark:bg-gray-800" data-testid="sub-hierarchy-selector">
-    <p className="mb-2 text-xs text-gray-500">{t("algorithm.select_eligible_nodes")}</p>
+    <p className="mb-2 text-xs text-gray-500">{prompt ?? t("algorithm.select_eligible_nodes")}</p>
     <ul>
       {rootsQuery.isPending && roots.length === 0 && <li role="status" className="text-xs text-gray-500">{t("team.hierarchy_loading")}</li>}
       {rootsQuery.isError && roots.length === 0 && <li role="alert" className="text-xs text-red-600">{t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={retryRoots}>{t("team.hierarchy_retry")}</button></li>}

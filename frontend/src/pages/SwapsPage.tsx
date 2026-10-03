@@ -21,11 +21,11 @@ import {
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
-import { fetchTree, type NodeDTO } from "../api/hierarchy";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "../components/DateInput";
-import HierarchyTreeDropdown from "../components/HierarchyTreeDropdown";
+import PopoverDropdown from "../components/PopoverDropdown";
+import SubHierarchySelector from "../components/SubHierarchySelector";
 import CheckboxListDropdown from "../components/CheckboxListDropdown";
 function PendingApprovalCard({
   swap, currentUserId, requireManagerApproval, requireDutyManagerApproval, onShiftClick, t,
@@ -95,13 +95,6 @@ export default function SwapsPage() {
     () => Object.fromEntries(dutyTypeList.map(d => [d.id, d.name])),
     [dutyTypeList],
   );
-
-  const hierarchyNodesQuery = useQuery({
-    queryKey: queryKeys.hierarchyTreeVisible(),
-    queryFn: () => fetchTree().catch(() => [] as NodeDTO[]),
-    enabled: tab === 1,
-  });
-  const hierarchyNodes = hierarchyNodesQuery.data ?? [];
 
   const configQuery = useQuery({
     queryKey: queryKeys.swapConfig(),
@@ -406,17 +399,21 @@ export default function SwapsPage() {
                     triggerLabel={t("swaps.filter_duty_type")}
                   />
                 </div>
-                {hierarchyNodes.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_node")}</label>
-                    <HierarchyTreeDropdown
-                      nodes={hierarchyNodes}
-                      selected={boardFilters.nodeIds ?? []}
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_node")}</label>
+                  <PopoverDropdown
+                    triggerLabel={t("swaps.filter_node")}
+                    badgeCount={boardFilters.nodeIds?.length ?? 0}
+                    panelDir="rtl"
+                    panelClassName="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-56"
+                  >
+                    {() => <SubHierarchySelector
+                      value={boardFilters.nodeIds ?? []}
                       onChange={(ids) => applyFilters({ nodeIds: ids.length > 0 ? ids : undefined })}
-                      triggerLabel={t("swaps.filter_node")}
-                    />
-                  </div>
-                )}
+                      prompt={t("swaps.filter_node")}
+                    />}
+                  </PopoverDropdown>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 text-xs cursor-pointer dark:text-gray-300">
