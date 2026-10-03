@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import event, func, inspect, select
 
 from app.db.models import EmailVerificationToken, Soldier
@@ -87,3 +88,59 @@ def test_two_accounts_cannot_both_verify_one_email(race, admin_session):
     ).scalar_one()
     assert verified == 1, f"{verified} accounts verified {_EMAIL}; outcomes={outcomes}"
     assert sorted(o.value for o in outcomes) == ["email_taken", "ok"]
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M1: verify_token vs PATCH /me/email deadlock")
+def test_verification_and_email_change_of_one_soldier_do_not_deadlock(race, admin_session, monkeypatch):
+    """M1 — ``verify_token`` locked the token row, then (at flush) UPDATEd the
+    soldier. ``PATCH /me/email`` UPDATEs the soldier (autoflush) and then
+    ``request_verification`` UPDATEs the soldier's unused tokens: the reverse
+    order on the same two rows when one user verifies and changes their
+    address at the same time.
+
+    Fixed: ``verify_token`` locks the soldier before the token (soldier ->
+    token -> email lock), the order the email change already uses."""
+    from app.routes import me as me_routes
+
+    monkeypatch.setattr(email_verification, "send_email", lambda **_kw: True)
+    soldier = create_soldier(admin_session, personal_number="race-ev-m1")
+    soldier.email = "race-m1-old@example.test"
+    admin_session.add(EmailVerificationToken(
+        soldier_id=soldier.id, email=soldier.email, token="race-m1-token",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    ))
+    admin_session.commit()
+    soldier_id = soldier.id
+
+    verify_read_token = race.signal("verification read the token")
+    change_holds_soldier = race.signal("email change holds the soldier row")
+
+    def verify():
+        s = race.session()
+
+        def _after_token_read():
+            verify_read_token.set()
+            change_holds_soldier.wait()
+
+        race.pause_after_select(s, EmailVerificationToken, _after_token_read)
+        result = email_verification.verify_token(s, token="race-m1-token")
+        s.commit()
+        return result
+
+    def change_email():
+        verify_read_token.wait()
+        s = race.session()
+        user = s.get(Soldier, soldier_id)
+        # request_verification's token SELECT autoflushes the soldier UPDATE first.
+        race.pause_after_select(s, EmailVerificationToken, change_holds_soldier.set)
+        return me_routes.set_email(
+            body=me_routes.SetEmailRequest(email="race-m1-new@example.test"), session=s, user=user,
+        )
+
+    outcomes = race.run(verify, change_email)
+
+    assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
+    admin_session.expire_all()
+    final = admin_session.get(Soldier, soldier_id)
+    assert final.email == "race-m1-new@example.test"
+    assert final.email_verified is False
