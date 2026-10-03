@@ -29,6 +29,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -199,5 +200,73 @@ def test_overlapping_multi_soldier_refreshes_do_not_deadlock(race, admin_session
         s.commit()
 
     outcomes = race.run(refresh_both, refresh_high)
+
+    assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="refresh vs bulk projection writer deadlock")
+def test_refresh_and_bulk_refresh_of_one_soldier_do_not_deadlock(race, admin_session, monkeypatch):
+    """Task 6 review — the Task 6 refresh order (buckets, soldier totals,
+    quarter totals, then each bucket's partition rows inside the rebuild) is
+    the reverse of ``refresh_projections_for_assignments_bulk`` (partition rows
+    of the quarter, then soldier totals, then the quarter total), the writer
+    behind bulk accept and job publish.
+
+    Schedule: the refresh holds soldier total(S) and the quarter total; the
+    bulk refresh deletes S's partition rows and wants the soldier total; the
+    refresh then wants the partition rows.
+
+    Fixed: both writers take partition rows (quarter, soldier, row id order),
+    then soldier totals (ascending), then quarter totals (ascending); the
+    refresh still locks every dirty bucket first."""
+    from app.services import score_projection_bulk
+    from app.services.score_projection import (
+        refresh_projection_for_change,
+        refresh_projections_for_assignments_bulk,
+    )
+
+    soldier = create_soldier(admin_session, personal_number="race-proj-bulk")
+    dt_id, loc_id = _duty(admin_session, "bulk")
+    duty = DutyAssignment(soldier_id=soldier.id, duty_type_id=dt_id, duty_location_id=loc_id, start_date=_START,
+                          end_date=_START + timedelta(days=2), status="published")
+    admin_session.add(duty)
+    admin_session.add(_quarter_total_row())
+    admin_session.flush()
+    refresh_projection_for_change(admin_session, soldier_ids={soldier.id}, affected_dates={_START})
+    admin_session.commit()
+    soldier_id, duty_id = soldier.id, duty.id
+    assert admin_session.execute(
+        select(func.count()).select_from(SoldierQuarterScoreProjection)
+        .where(SoldierQuarterScoreProjection.soldier_id == soldier_id)
+    ).scalar_one() > 0
+
+    refresh_holds_totals = race.signal("refresh holds the soldier and quarter totals")
+    bulk_holds_partitions = race.signal("bulk refresh deleted the partition rows")
+    real_upsert = score_projection_bulk._bulk_upsert_soldier_totals
+
+    def upsert_after_signal(session, soldier_ids):
+        bulk_holds_partitions.set()
+        return real_upsert(session, soldier_ids)
+
+    monkeypatch.setattr(score_projection_bulk, "_bulk_upsert_soldier_totals", upsert_after_signal)
+
+    def refresh():
+        s = race.session()
+
+        def _after_total():
+            refresh_holds_totals.set()
+            bulk_holds_partitions.wait()
+
+        race.pause_after_select(s, ScoreProjectionQuarterTotal, _after_total)
+        refresh_projection_for_change(s, soldier_ids={soldier_id}, affected_dates={_START})
+        s.commit()
+
+    def bulk():
+        refresh_holds_totals.wait()
+        s = race.session()
+        refresh_projections_for_assignments_bulk(s, assignments=[s.get(DutyAssignment, duty_id)])
+        s.commit()
+
+    outcomes = race.run(refresh, bulk)
 
     assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
