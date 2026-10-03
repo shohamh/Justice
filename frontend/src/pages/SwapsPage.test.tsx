@@ -235,8 +235,32 @@ describe("SwapsPage hierarchy reads", () => {
     fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
     fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
     expect(await screen.findByRole("checkbox", { name: "Root" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
     fireEvent.click(screen.getByRole("button", { name: "swaps.filter_clear" }));
     await waitFor(() => expect(listBoard).toHaveBeenLastCalledWith({}));
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
+    expect(await screen.findByRole("checkbox", { name: "Root" })).not.toBeChecked();
+  });
+
+  test("clears only node IDs from inside the node popover", async () => {
+    const { listBoard } = await import("../api/swaps");
+    vi.mocked(listBoard).mockClear();
+    renderPage(["/swaps?tab=board"]);
+    const eligibleOnly = screen.getByRole("checkbox", { name: "swaps.filter_eligible_only" });
+    fireEvent.click(eligibleOnly);
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Root" }));
+    await waitFor(() => expect(listBoard).toHaveBeenLastCalledWith(expect.objectContaining({
+      eligibleOnly: true, nodeIds: ["root"],
+    })));
+
+    const nodePanel = screen.getByTestId("sub-hierarchy-selector").parentElement!;
+    fireEvent.click(within(nodePanel).getByRole("button", { name: "swaps.filter_clear" }));
+
+    await waitFor(() => expect(listBoard).toHaveBeenLastCalledWith(expect.objectContaining({
+      eligibleOnly: true, nodeIds: undefined,
+    })));
+    expect(eligibleOnly).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Root" })).not.toBeChecked();
   });
 });

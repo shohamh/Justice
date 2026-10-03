@@ -407,11 +407,22 @@ export default function SwapsPage() {
                     panelDir="rtl"
                     panelClassName="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-56"
                   >
-                    {() => <SubHierarchySelector
-                      value={boardFilters.nodeIds ?? []}
-                      onChange={(ids) => applyFilters({ nodeIds: ids.length > 0 ? ids : undefined })}
-                      prompt={t("swaps.filter_node")}
-                    />}
+                    {() => <>
+                      {!!boardFilters.nodeIds?.length && (
+                        <button
+                          type="button"
+                          onClick={() => applyFilters({ nodeIds: undefined })}
+                          className="px-2 pt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          {t("swaps.filter_clear")}
+                        </button>
+                      )}
+                      <SubHierarchySelector
+                        value={boardFilters.nodeIds ?? []}
+                        onChange={(ids) => applyFilters({ nodeIds: ids.length > 0 ? ids : undefined })}
+                        prompt={t("swaps.filter_node")}
+                      />
+                    </>}
                   </PopoverDropdown>
                 </div>
               </div>
