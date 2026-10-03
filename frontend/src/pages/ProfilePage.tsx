@@ -45,6 +45,8 @@ const MANAGER_ONLY_NOTIFICATION_TYPES = new Set([
   "range_reminder_shortfall", "range_excusal_no_backfill", "range_absence_reported_to_commander",
 ]);
 
+const HIERARCHY_TREE_STALE_TIME_MS = 30_000;
+
 export default function ProfilePage() {
   const { t } = useTranslation();
   const [message, setMessage] = useState<string | null>(null);
@@ -264,7 +266,7 @@ export default function ProfilePage() {
     queryFn: fetchTree,
     enabled: false,
     retry: false,
-    staleTime: 30_000,
+    staleTime: HIERARCHY_TREE_STALE_TIME_MS,
   });
   const hierarchyNodes = useMemo(() => {
     const flat: NodeDTO[] = [];
@@ -847,7 +849,12 @@ export default function ProfilePage() {
               <div
                 className="min-w-[180px]"
                 onFocusCapture={() => {
-                  if (!hierarchyTreeQuery.isFetched && !hierarchyTreeQuery.isFetching) {
+                  const cachedTreeState = queryClient.getQueryState(queryKeys.hierarchyTreeVisible());
+                  const cachedTreeIsStale = hierarchyTreeQuery.data === undefined ||
+                    !cachedTreeState ||
+                    cachedTreeState.isInvalidated ||
+                    Date.now() - cachedTreeState.dataUpdatedAt >= HIERARCHY_TREE_STALE_TIME_MS;
+                  if (cachedTreeIsStale && !hierarchyTreeQuery.isFetching && !hierarchyTreeQuery.isError) {
                     void hierarchyTreeQuery.refetch();
                   }
                 }}

@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import ProfilePage from "./ProfilePage";
 import { addCommanderScope, NotificationPref } from "../api/notifications";
 import * as hierarchyApi from "../api/hierarchy";
+import { queryKeys } from "../queryKeys";
 import { listFieldUpdates, submitFieldUpdate } from "../api/soldiers";
 import { UNIT_JOIN_DATE_CONFIRMATION } from "../constants/activeDays";
 
@@ -76,8 +77,7 @@ const PREFS: NotificationPref[] = [
   { notification_type: "algorithm_job_done", in_app_enabled: true, push_enabled: false, email_enabled: true },
 ];
 
-function renderProfilePage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderProfilePage(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -85,6 +85,7 @@ function renderProfilePage() {
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return qc;
 }
 
 beforeEach(() => {
@@ -401,5 +402,87 @@ describe("ProfilePage commander scopes", () => {
 
     resolveTree([]);
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+  });
+
+  it("keeps text typed during the initial hierarchy load and shows matching nested options", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "commander-1", full_name: "Commander", role: "commander", is_commander: true, is_duty_manager: false },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    let resolveTree!: (value: hierarchyApi.NodeDTO[]) => void;
+    vi.mocked(hierarchyApi.fetchTree).mockReset().mockImplementation(
+      () => new Promise((resolve) => { resolveTree = resolve; }),
+    );
+
+    renderProfilePage();
+
+    const scopeSection = screen.getByText("notifications.commander_scopes").closest("section")!;
+    const pickerInput = scopeSection.querySelector<HTMLInputElement>("[data-testid='commander-scope-node-picker']")!;
+    fireEvent.focus(pickerInput);
+    expect(hierarchyApi.fetchTree).toHaveBeenCalledTimes(1);
+    fireEvent.change(pickerInput, { target: { value: "Battalion Alpha" } });
+
+    resolveTree([{
+      id: "root-1",
+      name: "Brigade One",
+      level: "unit",
+      parent_id: null,
+      commander_id: null,
+      commander_name: null,
+      path_ids: ["root-1"],
+      duty_managers: [],
+      dm_manageable: false,
+      can_edit: true,
+      children: [{
+        id: "node-42",
+        name: "Battalion Alpha",
+        level: "unit",
+        parent_id: "root-1",
+        commander_id: null,
+        commander_name: null,
+        path_ids: ["root-1", "node-42"],
+        duty_managers: [],
+        dm_manageable: false,
+        can_edit: true,
+        children: [],
+      }],
+    }]);
+
+    expect(await screen.findByRole("option", { name: /Battalion Alpha/ })).toBeInTheDocument();
+    expect(pickerInput).toHaveValue("Battalion Alpha");
+  });
+
+  it("refreshes stale cached hierarchy data on the first combobox focus", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "commander-1", full_name: "Commander", role: "commander", is_commander: true, is_duty_manager: false },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const cachedTree: hierarchyApi.NodeDTO[] = [{
+      id: "cached-root",
+      name: "Cached Brigade",
+      level: "unit",
+      parent_id: null,
+      commander_id: null,
+      commander_name: null,
+      path_ids: ["cached-root"],
+      duty_managers: [],
+      dm_manageable: false,
+      can_edit: true,
+      children: [],
+    }];
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    queryClient.setQueryData(queryKeys.hierarchyTreeVisible(), cachedTree);
+    vi.advanceTimersByTime(30_001);
+    vi.useRealTimers();
+    vi.mocked(hierarchyApi.fetchTree).mockReset().mockResolvedValue([]);
+
+    renderProfilePage(queryClient);
+
+    const scopeSection = screen.getByText("notifications.commander_scopes").closest("section")!;
+    fireEvent.focus(scopeSection.querySelector("[data-testid='commander-scope-node-picker']")!);
+
+    await waitFor(() => expect(hierarchyApi.fetchTree).toHaveBeenCalledTimes(1));
   });
 });

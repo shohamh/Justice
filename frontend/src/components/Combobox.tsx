@@ -43,6 +43,8 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
   const [filterQuery, setFilterQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const userEditedQueryRef = useRef(false);
+  const previousValueRef = useRef(value);
   const inputRef = useRef<HTMLInputElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const listboxId = useId();
@@ -57,7 +59,12 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
   // Sync displayed text when external value changes (e.g. after a quick-add selects a new item)
   useEffect(() => {
     const match = items.find(i => i.id === value);
-    setQuery(match ? match.name : "");
+    const valueChanged = previousValueRef.current !== value;
+    if (valueChanged || !userEditedQueryRef.current) {
+      setQuery(match ? match.name : "");
+      userEditedQueryRef.current = false;
+    }
+    previousValueRef.current = value;
   }, [value, items]);
 
   // Reset the highlight whenever the result list changes or the dropdown opens/closes,
@@ -68,6 +75,7 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
 
   const selectItem = (item: ComboboxItem) => {
     if (item.disabled) return;
+    userEditedQueryRef.current = false;
     onChange(item.id);
     // The synthetic placeholder row (id "") clears the selection — show that
     // as empty (native placeholder), not its literal label, for the same
@@ -134,7 +142,12 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
         aria-haspopup="listbox"
         aria-controls={listboxId}
         disabled={disabled}
-        onChange={e => { setQuery(e.target.value); setFilterQuery(e.target.value); setOpen(true); }}
+        onChange={e => {
+          userEditedQueryRef.current = true;
+          setQuery(e.target.value);
+          setFilterQuery(e.target.value);
+          setOpen(true);
+        }}
         onFocus={() => { setOpen(true); setFilterQuery(""); if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); }}
         onBlur={() => setTimeout(() => {
           if (!selectExactMatch()) setOpen(false);
