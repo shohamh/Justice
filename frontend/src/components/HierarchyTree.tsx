@@ -13,7 +13,7 @@ import {
 import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
 import { Network, Plus, Trash2, UserPlus } from "lucide-react";
 import PopoverDropdown from "./PopoverDropdown";
-import { SoldierDTO, onboardSoldier } from "../api/soldiers";
+import { SoldierDTO, SoldierRosterItemDTO, onboardSoldier } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import { translateApiError } from "../utils/translateApiError";
 import AddChildNodeDialog from "./AddChildNodeDialog";
@@ -468,6 +468,13 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null);
   const [transferReason, setTransferReason] = useState("");
   const portfolioDialog = usePortfolioDialog(nodes, onChanged);
+  const hierarchyPathByNodeId = useMemo(() => {
+    const namesById = new Map(nodes.map((node) => [node.id, node.name]));
+    return new Map(nodes.map((node) => [
+      node.id,
+      node.path_ids.map((id) => namesById.get(id)).filter((name): name is string => Boolean(name)),
+    ]));
+  }, [nodes]);
 
   const { levelTypes, loading: levelTypesLoading } = useLevelTypes();
   const { rankByKey, maxRank, labelByKey } = useMemo(() => {
@@ -511,7 +518,12 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
     }
   }
 
-  async function handleQuickAdd(nodeId: string, soldier: SoldierDTO | null, personalNumber: string, fullName: string) {
+  async function handleQuickAdd(
+    nodeId: string,
+    soldier: Pick<SoldierRosterItemDTO, "id" | "full_name"> | null,
+    personalNumber: string,
+    fullName: string,
+  ) {
     try {
       if (soldier) {
         // Moving an existing soldier into this node goes through the
@@ -678,7 +690,12 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
                 s={s}
                 nodeId={node.id}
                 canEdit={node.can_edit}
-                onEdit={setEditSoldier}
+                onEdit={(selectedSoldier) => setEditSoldier({
+                  ...selectedSoldier,
+                  hierarchy_path: selectedSoldier.hierarchy_path?.length
+                    ? selectedSoldier.hierarchy_path
+                    : hierarchyPathByNodeId.get(selectedSoldier.hierarchy_node_id ?? "") ?? [],
+                })}
                 t={t}
               />
             ))}
@@ -760,7 +777,6 @@ export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, on
         <UnifiedSoldierModal
           soldier={editSoldier}
           score={null}
-          nodes={nodes}
           onClose={() => setEditSoldier(null)}
           onRefresh={onChanged}
           initialEditing={true}

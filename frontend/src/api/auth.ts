@@ -24,6 +24,8 @@ export interface Me {
   is_duty_manager: boolean;
   must_change_password: boolean;
   hierarchy_node_id: string | null;
+  /** Server-evaluated hierarchy roots used for authorization-scoped data caches. */
+  scope_root_ids?: string[];
   telegram_linked: boolean;
   telegram_required: boolean;
   enrollment_pending: boolean;
@@ -115,6 +117,24 @@ export async function fetchMe(): Promise<Me> {
     ...r.data,
     active_deputy_grants: optionalArrayResponse<ActiveDeputyGrantDTO>(r.data?.active_deputy_grants),
   };
+}
+
+export function getTransparencyAuthorizationScope(user: Me | null | undefined): string | null {
+  if (!user || !Array.isArray(user.scope_root_ids)) return null;
+  const scopeRoots = [...new Set(user.scope_root_ids)].sort();
+  const deputyGrants = user.active_deputy_grants
+    .map((grant) => `${grant.principal_id}|${grant.role}|${grant.end_date}`)
+    .sort();
+  return JSON.stringify([
+    user.id,
+    user.role,
+    user.hierarchy_node_id,
+    scopeRoots,
+    user.is_commander,
+    user.is_duty_manager,
+    user.can_view_transparency ?? true,
+    deputyGrants,
+  ]);
 }
 
 export async function changePassword(current_password: string, new_password: string): Promise<void> {

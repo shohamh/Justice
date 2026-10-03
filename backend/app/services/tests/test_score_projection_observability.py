@@ -3,12 +3,15 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import event, select
 
+import app.services.score_projection as score_projection
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
     DutyType,
+    ScoreProjectionDirtyBucket,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
@@ -103,6 +106,102 @@ def test_commander_score_totals_report_matching_dual_read_when_projection_matche
     assert result.diagnostics.repaired_soldiers == 0
     assert result.diagnostics.divergent_soldiers == 0
     assert result.diagnostics.fallback_reason is None
+
+
+def test_commander_score_totals_healthy_read_keeps_bucket_pairs_in_postgres(admin_session):
+    soldier = _seed_commander_score_history(admin_session)
+    outside_scope = create_soldier(admin_session, personal_number="score-observability-outside")
+    rebuild_projection_bucket(admin_session, soldier.id, date(2026, 7, 1))
+    _enable_commander_projection_rollout(admin_session, backfill_complete=True)
+
+    pair_queries: list[str] = []
+
+    def record_pair_query(_connection, _cursor, statement, _parameters, _context, _executemany):
+        if "SELECT DISTINCT soldier_id, quarter_start" in statement:
+            pair_queries.append(statement)
+
+    connection = admin_session.connection()
+    event.listen(connection, "before_cursor_execute", record_pair_query)
+    try:
+        result = commander_score_totals(
+            admin_session,
+            soldiers=[soldier],
+            canonical_diagnostic_compare=True,
+        )
+    finally:
+        event.remove(connection, "before_cursor_execute", record_pair_query)
+
+    assert result.score_by_soldier == {soldier.id: Decimal("7.500000")}
+    assert outside_scope.id not in result.score_by_soldier
+    assert result.diagnostics.used_projection is True
+    assert result.diagnostics.matched_soldiers == 1
+    assert pair_queries == []
+
+
+@pytest.mark.parametrize("defect", ["stale_version", "dirty_marker"])
+def test_commander_score_totals_repairs_only_authorized_defective_buckets(admin_session, defect):
+    soldier = _seed_commander_score_history(admin_session)
+    outside_scope = create_soldier(admin_session, personal_number="score-observability-outside")
+    target_quarter = date(2026, 7, 1)
+    rebuild_projection_bucket(admin_session, soldier.id, target_quarter)
+    rebuild_projection_bucket(admin_session, outside_scope.id, target_quarter)
+    _enable_commander_projection_rollout(admin_session, backfill_complete=True)
+
+    if defect == "stale_version":
+        stale_row = admin_session.execute(
+            select(SoldierQuarterScoreProjection).where(
+                SoldierQuarterScoreProjection.soldier_id == soldier.id,
+                SoldierQuarterScoreProjection.quarter_start == target_quarter,
+            )
+        ).scalars().first()
+        assert stale_row is not None
+        stale_row.projection_version = "stale"
+    else:
+        score_projection._mark_dirty_bucket(
+            admin_session, soldier_id=soldier.id, quarter_start_value=target_quarter
+        )
+    score_projection._mark_dirty_bucket(
+        admin_session, soldier_id=outside_scope.id, quarter_start_value=target_quarter
+    )
+    admin_session.flush()
+
+    result = commander_score_totals(admin_session, soldiers=[soldier])
+
+    repaired_rows = admin_session.execute(
+        select(SoldierQuarterScoreProjection).where(
+            SoldierQuarterScoreProjection.soldier_id == soldier.id,
+            SoldierQuarterScoreProjection.quarter_start == target_quarter,
+        )
+    ).scalars().all()
+    outside_marker = admin_session.execute(
+        select(ScoreProjectionDirtyBucket).where(
+            ScoreProjectionDirtyBucket.soldier_id == outside_scope.id,
+            ScoreProjectionDirtyBucket.quarter_start == target_quarter,
+        )
+    ).scalar_one()
+
+    assert result.score_by_soldier == {soldier.id: Decimal("7.500000")}
+    assert result.diagnostics.used_projection is True
+    assert result.diagnostics.repaired_soldiers == 1
+    assert all(row.projection_version == SCORE_PROJECTION_CANONICAL_VERSION for row in repaired_rows)
+    assert outside_marker.status == "dirty"
+
+
+def test_commander_score_totals_repairs_missing_total_for_persisted_bucket(admin_session):
+    soldier = _seed_commander_score_history(admin_session)
+    rebuild_projection_bucket(admin_session, soldier.id, date(2026, 7, 1))
+    _enable_commander_projection_rollout(admin_session, backfill_complete=True)
+    total = admin_session.get(SoldierScoreProjection, soldier.id)
+    assert total is not None
+    admin_session.delete(total)
+    admin_session.flush()
+
+    result = commander_score_totals(admin_session, soldiers=[soldier])
+
+    assert result.score_by_soldier == {soldier.id: Decimal("7.500000")}
+    assert result.diagnostics.used_projection is True
+    assert result.diagnostics.repaired_soldiers == 1
+    assert admin_session.get(SoldierScoreProjection, soldier.id) is not None
 
 
 def test_commander_score_totals_repair_divergent_projection_before_returning(admin_session):

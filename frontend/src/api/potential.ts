@@ -34,6 +34,16 @@ export interface PotentialResult {
   partial_exemption_count: number;
 }
 
+export interface PotentialSummary {
+  node_id: string;
+  as_of: string;
+  raw_eligible_count: number;
+  total_soldiers: number;
+  partial_exemption_count: number;
+  modifier_total: number;
+  final_potential: number;
+}
+
 export async function getPotential(nodeId: string, referenceDate?: string): Promise<PotentialResult> {
   const r = await api.get<unknown>("/potential", {
     params: { node_id: nodeId, reference_date: referenceDate },
@@ -44,6 +54,16 @@ export async function getPotential(nodeId: string, referenceDate?: string): Prom
     modifiers: optionalArrayResponse<PotentialModifierDTO>(data.modifiers),
     soldiers: optionalArrayResponse<SoldierPotentialDetail>(data.soldiers),
   };
+}
+
+export async function getPotentialSummary(
+  nodeId: string,
+  referenceDate?: string,
+): Promise<PotentialSummary> {
+  const r = await api.get<unknown>("/potential/summary", {
+    params: { node_id: nodeId, reference_date: referenceDate },
+  });
+  return requiredObjectResponse(r.data, "Invalid potential summary response") as unknown as PotentialSummary;
 }
 
 export async function listModifiers(nodeId: string): Promise<PotentialModifierDTO[]> {

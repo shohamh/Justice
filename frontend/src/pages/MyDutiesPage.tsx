@@ -16,6 +16,7 @@ import Layout from "../components/Layout";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
 import AskSwapModal from "../components/AskSwapModal";
 import { useAuth } from "../auth/AuthContext";
+import { getTransparencyAuthorizationScope } from "../api/auth";
 import { listEffectiveDuties } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
 import { getReserveStats } from "../api/soldiers";
@@ -55,7 +56,7 @@ const dayCount = (d: { start_date: string; end_date: string }) => {
 
 export default function MyDutiesPage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, authScopeReady } = useAuth();
   const [askSwapDuty, setAskSwapDuty] = useState<{
     assignment_id: string;
     start_date: string;
@@ -70,10 +71,12 @@ export default function MyDutiesPage() {
   const [gimelimLoading, setGimelimLoading] = useState<string | null>(null);
   const [gimelimError, setGimelimError] = useState<string | null>(null);
 
+  const transparencyScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
   const transparencyQuery = useQuery({
-    queryKey: queryKeys.transparency(),
+    queryKey: queryKeys.transparencyForScope(transparencyScope),
     queryFn: getTransparency,
     select: (out) => out.rows,
+    enabled: !!transparencyScope,
   });
   const allRows = useMemo(() => transparencyQuery.data ?? [], [transparencyQuery.data]);
 

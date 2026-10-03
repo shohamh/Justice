@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExcludedRangeCandidate, RangeAssignment, RangeCandidate, RangeEvent, batchAssignRange, getRangeCandidates, removeRangeAssignment, updateRangeAssignmentReason } from "../../api/ranges";
-import { SoldierDTO } from "../../api/soldiers";
+import { SoldierNameDTO } from "../../api/soldiers";
 import { EventDetailModal } from "../planning";
 import TableSearchInput from "../TableSearchInput";
 import { translateApiError } from "../../utils/translateApiError";
@@ -14,7 +14,7 @@ import InputDialog from "../InputDialog";
 export interface RangeEditAssignmentsModalProps {
   open: boolean;
   event: RangeEvent;
-  soldiers: SoldierDTO[];
+  soldiers: SoldierNameDTO[];
   canManage: boolean;
   onClose: () => void;
   onChanged: () => Promise<void>;
@@ -50,6 +50,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const [reasonText, setReasonText] = useState("");
   const [savingReason, setSavingReason] = useState<string | null>(null);
   const [rangeCandidates, setRangeCandidates] = useState<RangeCandidate[]>([]);
+  const [assignedCandidates, setAssignedCandidates] = useState<RangeCandidate[]>([]);
   const [excludedCandidates, setExcludedCandidates] = useState<ExcludedRangeCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidatesError, setCandidatesError] = useState(false);
@@ -65,11 +66,12 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 
   useEffect(() => {
     setAssignments(event.assignments);
+    setAssignedCandidates([]);
     setError("");
   }, [event]);
 
-  const name = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id;
-  const personalNumber = (id: string) => soldiers.find(s => s.id === id)?.personal_number;
+  const name = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? assignedCandidates.find(s => s.soldier_id === id)?.full_name ?? id;
+  const personalNumber = (id: string) => soldiers.find(s => s.id === id)?.personal_number ?? assignedCandidates.find(s => s.soldier_id === id)?.personal_number;
 
   const primary = useMemo(() => assignments.filter(a => !a.is_reserve), [assignments]);
   const reserves = useMemo(() => assignments.filter(a => a.is_reserve), [assignments]);
@@ -167,6 +169,8 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
         ...(overrideReason ? { override_reason: overrideReason } : {}),
       });
       setAssignments(current => [...current, ...(Array.isArray(created) ? created : [])]);
+      setAssignedCandidates(current => [...current, ...rangeCandidates.filter(candidate =>
+        primarySelected.has(candidate.soldier_id) || reserveSelected.has(candidate.soldier_id))]);
       setPrimarySelected(new Set());
       setReserveSelected(new Set());
       await refreshCandidates();

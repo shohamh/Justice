@@ -3,13 +3,14 @@ import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
+import { getTransparencyAuthorizationScope } from "../api/auth";
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import AlgorithmRunForm from "../components/AlgorithmRunForm";
 import AlgorithmJobTabs from "../components/AlgorithmJobTabs";
 import { AlgorithmJob, listJobs, pollJob, cancelJob } from "../api/algorithm";
 import { listDutyTypes } from "../api/dutyConfig";
-import { listSoldiers } from "../api/soldiers";
+import { lookupSoldierNames } from "../api/soldiers";
 import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
 import { formatDateRange } from "../utils/formatDate";
 
@@ -32,6 +33,7 @@ function formatRunTimestamp(iso: string): string {
 
 export function AlgorithmContent({ initialJobId }: { initialJobId?: string | null } = {}) {
   const { t } = useTranslation();
+  const { user, authScopeReady } = useAuth();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
@@ -40,9 +42,6 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [showRunForm, setShowRunForm] = useState(false);
   const [rerunOverrides, setRerunOverrides] = useState<Record<string, number> | null>(null);
-
-  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
-  const soldiers = useMemo(() => soldiersQuery.data ?? [], [soldiersQuery.data]);
 
   const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
   const dutyTypes = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
@@ -85,6 +84,21 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
     },
   });
   const selectedJob = selectedJobQuery.data ?? null;
+  const authorizationScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
+  const soldierIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const proposal of selectedJob?.proposals ?? []) {
+      ids.add(proposal.soldier_id);
+      if (proposal.reserve_soldier_id) ids.add(proposal.reserve_soldier_id);
+    }
+    return [...ids].sort();
+  }, [selectedJob?.proposals]);
+  const soldiersQuery = useQuery({
+    queryKey: queryKeys.soldierNames(soldierIds, authorizationScope),
+    queryFn: () => lookupSoldierNames(soldierIds),
+    enabled: !!authorizationScope && soldierIds.length > 0,
+  });
+  const soldiers = useMemo(() => soldiersQuery.data ?? [], [soldiersQuery.data]);
 
   // Tick every second while a job is pending/running so the elapsed-time
   // display advances in real time instead of only on poll responses.

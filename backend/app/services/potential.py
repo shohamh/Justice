@@ -69,6 +69,18 @@ class PotentialResult:
     final_potential: int = 0
     soldiers: list[SoldierPotentialDetail] = field(default_factory=list)
     partial_exemption_count: int = 0
+    modifier_total: int = 0
+
+
+@dataclass
+class PotentialSummaryResult:
+    node_id: uuid.UUID
+    as_of: date
+    raw_eligible_count: int
+    total_soldiers: int
+    partial_exemption_count: int
+    modifier_total: int
+    final_potential: int
 
 
 def _rank_as_of(session: Session, soldier: Soldier, reference_date: date) -> str | None:
@@ -81,16 +93,18 @@ def _rank_as_of(session: Session, soldier: Soldier, reference_date: date) -> str
 
 
 def _base_eligible_duty_types(
-    soldier: Soldier, rank: str | None, duty_types: list[DutyType], reference_date: date,
+    soldier: Soldier,
+    rank: str | None,
+    duty_types: list[DutyType],
+    requirements_by_duty_type: dict[uuid.UUID, DutyTypeRequirements | None],
+    reference_date: date,
 ) -> set[uuid.UUID]:
     """Duty types the soldier qualifies for by rank/gender/service-type/officer
     requirements, ignoring mitvahim/alal timing entirely (potential-specific rule)."""
     eligible: set[uuid.UUID] = set()
     for dt in duty_types:
-        raw = dt.requirements or {}
-        try:
-            reqs = DutyTypeRequirements.model_validate(raw)
-        except Exception:
+        reqs = requirements_by_duty_type[dt.id]
+        if reqs is None:
             eligible.add(dt.id)
             continue
         if reqs.allowed_genders and (not soldier.gender or soldier.gender not in reqs.allowed_genders):
@@ -113,7 +127,13 @@ def _base_eligible_duty_types(
     return eligible
 
 
-def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: date) -> PotentialResult:
+def _compute_potential(
+    session: Session,
+    *,
+    node_id: uuid.UUID,
+    reference_date: date,
+    include_soldier_details: bool,
+) -> PotentialResult:
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise ValueError("hierarchy_node_not_found")
@@ -131,6 +151,13 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
 
     duty_types = list(session.execute(select(DutyType).where(DutyType.active.is_(True))).scalars().all())
     active_dt_ids = {dt.id for dt in duty_types}
+    requirements_by_duty_type: dict[uuid.UUID, DutyTypeRequirements | None] = {}
+    for dt in duty_types:
+        try:
+            requirements_by_duty_type[dt.id] = DutyTypeRequirements.model_validate(dt.requirements or {})
+        except Exception:
+            # Preserve potential's existing fail-open behavior for malformed requirements.
+            requirements_by_duty_type[dt.id] = None
 
     etid_to_dtids: dict[uuid.UUID, set[uuid.UUID]] = {}
     for etid, dtid in session.execute(
@@ -156,23 +183,44 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
 
     mitvahim_months = get_setting_int(session, "eligibility.mitvahim_months", 6)
     alal_months = get_setting_int(session, "eligibility.alal_months", 3)
-    exclusions = compute_eligibility_exclusions(
-        session, subtree_soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months,
-        reference_date=reference_date,
+    exclusions = (
+        compute_eligibility_exclusions(
+            session,
+            subtree_soldiers,
+            mitvahim_months=mitvahim_months,
+            alal_months=alal_months,
+            reference_date=reference_date,
+        )
+        if include_soldier_details
+        else {}
     )
 
     details: list[SoldierPotentialDetail] = []
     raw_count = 0
+    partial_exemption_count = 0
     for s in subtree_soldiers:
-        rank = _rank_as_of(session, s, reference_date)
-        eligible_duty_type_ids = list(active_dt_ids - exclusions.get(s.id, set()))
-        if s.left_at is not None and s.left_at <= reference_date:
-            details.append(SoldierPotentialDetail(
-                s.id, s.full_name, False, "discharged", rank=rank,
-                eligible_duty_type_ids=eligible_duty_type_ids,
-            ))
+        if not include_soldier_details and s.left_at is not None and s.left_at <= reference_date:
             continue
-        base_eligible = _base_eligible_duty_types(s, rank, duty_types, reference_date)
+        rank = _rank_as_of(session, s, reference_date)
+        eligible_duty_type_ids = (
+            list(active_dt_ids - exclusions.get(s.id, set()))
+            if include_soldier_details
+            else []
+        )
+        if s.left_at is not None and s.left_at <= reference_date:
+            if include_soldier_details:
+                details.append(SoldierPotentialDetail(
+                    s.id, s.full_name, False, "discharged", rank=rank,
+                    eligible_duty_type_ids=eligible_duty_type_ids,
+                ))
+            continue
+        base_eligible = _base_eligible_duty_types(
+            s,
+            rank,
+            duty_types,
+            requirements_by_duty_type,
+            reference_date,
+        )
         active_exemptions = [
             ex for ex in exemptions_by_soldier.get(s.id, [])
             if ex.revoked_at is None
@@ -184,15 +232,44 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
             excluded |= etid_to_dtids.get(ex.exemption_type_id, set())
         remaining = base_eligible - excluded
         if remaining:
-            partial_names: list[str] = []
-            partial_items: list[ExemptionSummary] = []
-            if excluded & base_eligible:
+            is_partially_exempt = bool(excluded & base_eligible)
+            if is_partially_exempt:
+                partial_exemption_count += 1
+            if include_soldier_details:
+                partial_names: list[str] = []
+                partial_items: list[ExemptionSummary] = []
+                if is_partially_exempt:
+                    relevant = [
+                        ex for ex in active_exemptions
+                        if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
+                    ]
+                    partial_names = sorted(
+                        {regular_types[ex.exemption_type_id].name for ex in relevant}
+                    )
+                    partial_items = [
+                        ExemptionSummary(
+                            id=ex.id,
+                            exemption_type_name=regular_types[ex.exemption_type_id].name,
+                            is_global=regular_types[ex.exemption_type_id].is_global,
+                            start_date=ex.start_date,
+                            end_date=ex.end_date,
+                        )
+                        for ex in relevant
+                    ]
+                details.append(SoldierPotentialDetail(
+                    s.id, s.full_name, True, rank=rank, partial_exemption_names=partial_names,
+                    exemptions=partial_items, eligible_duty_type_ids=eligible_duty_type_ids,
+                ))
+            raw_count += 1
+        elif base_eligible:
+            if include_soldier_details:
+                # Would have been eligible, but active exemptions excluded every remaining duty type.
                 relevant = [
                     ex for ex in active_exemptions
                     if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
                 ]
-                partial_names = sorted({regular_types[ex.exemption_type_id].name for ex in relevant})
-                partial_items = [
+                names = sorted({regular_types[ex.exemption_type_id].name for ex in relevant})
+                items = [
                     ExemptionSummary(
                         id=ex.id,
                         exemption_type_name=regular_types[ex.exemption_type_id].name,
@@ -202,33 +279,11 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
                     )
                     for ex in relevant
                 ]
-            details.append(SoldierPotentialDetail(
-                s.id, s.full_name, True, rank=rank, partial_exemption_names=partial_names,
-                exemptions=partial_items, eligible_duty_type_ids=eligible_duty_type_ids,
-            ))
-            raw_count += 1
-        elif base_eligible:
-            # would have been eligible, but active exemptions excluded every remaining duty type
-            relevant = [
-                ex for ex in active_exemptions
-                if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
-            ]
-            names = sorted({regular_types[ex.exemption_type_id].name for ex in relevant})
-            items = [
-                ExemptionSummary(
-                    id=ex.id,
-                    exemption_type_name=regular_types[ex.exemption_type_id].name,
-                    is_global=regular_types[ex.exemption_type_id].is_global,
-                    start_date=ex.start_date,
-                    end_date=ex.end_date,
-                )
-                for ex in relevant
-            ]
-            details.append(SoldierPotentialDetail(
-                s.id, s.full_name, False, "exempted", names, rank=rank, exemptions=items,
-                eligible_duty_type_ids=eligible_duty_type_ids,
-            ))
-        else:
+                details.append(SoldierPotentialDetail(
+                    s.id, s.full_name, False, "exempted", names, rank=rank, exemptions=items,
+                    eligible_duty_type_ids=eligible_duty_type_ids,
+                ))
+        elif include_soldier_details:
             details.append(SoldierPotentialDetail(
                 s.id, s.full_name, False, "no_eligible_duty_types", rank=rank,
                 eligible_duty_type_ids=eligible_duty_type_ids,
@@ -243,11 +298,15 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         m for m in modifier_rows
         if m.start_date <= reference_date and (m.end_date is None or m.end_date >= reference_date)
     ]
-    modifier_details = [
-        ModifierDetail(m.id, m.delta, m.reason, m.start_date, m.end_date, m.created_by)
-        for m in active_modifiers
-    ]
     modifier_sum = sum(m.delta for m in active_modifiers)
+    modifier_details = (
+        [
+            ModifierDetail(m.id, m.delta, m.reason, m.start_date, m.end_date, m.created_by)
+            for m in active_modifiers
+        ]
+        if include_soldier_details
+        else []
+    )
 
     total_soldiers = sum(
         1 for s in subtree_soldiers
@@ -260,9 +319,39 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         raw_eligible_count=raw_count,
         total_soldiers=total_soldiers,
         modifiers=modifier_details,
+        modifier_total=modifier_sum,
         final_potential=raw_count + modifier_sum,
         soldiers=details,
-        partial_exemption_count=sum(1 for d in details if d.partial_exemption_names),
+        partial_exemption_count=partial_exemption_count,
+    )
+
+
+def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: date) -> PotentialResult:
+    return _compute_potential(
+        session,
+        node_id=node_id,
+        reference_date=reference_date,
+        include_soldier_details=True,
+    )
+
+
+def compute_potential_summary(
+    session: Session, *, node_id: uuid.UUID, reference_date: date
+) -> PotentialSummaryResult:
+    result = _compute_potential(
+        session,
+        node_id=node_id,
+        reference_date=reference_date,
+        include_soldier_details=False,
+    )
+    return PotentialSummaryResult(
+        node_id=result.node_id,
+        as_of=result.as_of,
+        raw_eligible_count=result.raw_eligible_count,
+        total_soldiers=result.total_soldiers,
+        partial_exemption_count=result.partial_exemption_count,
+        modifier_total=result.modifier_total,
+        final_potential=result.final_potential,
     )
 
 

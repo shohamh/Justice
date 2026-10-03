@@ -1,0 +1,59 @@
+{
+  "team": {
+    "roster_keyboard_hint": "Focus the list and use Page Up or Page Down to scroll; choose Load more to fetch additional results.",
+    "hierarchy_search": "Find a unit",
+    "hierarchy_search_placeholder": "Search units...",
+    "hierarchy_search_loading": "Searching the hierarchy...",
+    "hierarchy_search_failed": "Could not search the hierarchy.",
+    "hierarchy_search_empty": "No matching units.",
+    "hierarchy_search_more": "More matches are available. Refine your search.",
+    "hierarchy_search_path": "Hierarchy path",
+    "hierarchy_loading": "Loading hierarchy...",
+    "hierarchy_load_failed": "Could not load this branch.",
+    "hierarchy_retry": "Retry",
+    "hierarchy_expand": "Expand",
+    "hierarchy_collapse": "Collapse",
+    "hierarchy_load_more": "Load more"
+  },
+  "unit_calendar": {
+    "select_unit": "Select a unit",
+    "open_unit_picker": "Open unit picker",
+    "close_unit_picker": "Close unit picker",
+    "search_results": "Search results",
+    "hierarchy_loading": "Loading units...",
+    "hierarchy_error": "Could not load units.",
+    "retry": "Retry",
+    "hierarchy_no_results": "No matching units.",
+    "hierarchy_refine_search": "Showing up to 20 matches. Refine your search.",
+    "hierarchy_breadcrumbs": "Unit path",
+    "hierarchy_roots": "All units",
+    "hierarchy_empty": "No units to display.",
+    "hierarchy_nodes": "Units",
+    "hierarchy_open_children": "Open children of {{name}}",
+    "hierarchy_load_more": "Load more units"
+  },
+  "ranges": {
+    "soldier_names_load_error": "Could not load soldier names. IDs are shown until you retry.",
+    "paging_region": "Scrollable ranges table",
+    "load_more": "Load more ranges",
+    "loading_more": "Loading ranges..."
+  },
+  "transparency": {
+    "tree_loading": "Loading units...",
+    "tree_load_error": "Could not load the unit list."
+  },
+  "home": {
+    "ranges_region": "Upcoming ranges",
+    "ranges_load_more": "Load more ranges",
+    "open_range": "Open range at {{location}} on {{date}}",
+    "ranges_loading_more": "Loading more ranges...",
+    "section_loading": "Loading {{section}}...",
+    "section_error": "Could not load {{section}}."
+  },
+  "export": {
+    "hierarchy_data_load_failed": "Could not load transparency and hierarchy data. Export will wait until they load successfully."
+  },
+  "common": {
+    "retry": "Try again"
+  }
+}

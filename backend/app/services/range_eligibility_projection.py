@@ -19,7 +19,9 @@ from app.services.weapon_eligibility import (
     _latest_qualification_by_soldier,
     _max_qualification_valid_untils,
     _pending_excusal_disqualifies,
-    _profile_valid_until,
+    _profile_dates_by_soldier,
+    _profile_validity_days_cache,
+    _profile_valid_until_from_dates,
 )
 
 
@@ -115,6 +117,12 @@ def project_duty_eligibility(
         for requirement in requirements.values()
         if requirement.required_range_type is not None
     }
+    profile_dates = (
+        _profile_dates_by_soldier(session, soldier_ids=list(projected_soldier_ids))
+        if required_types
+        else {}
+    )
+    profile_validity_days = _profile_validity_days_cache(session) if required_types else {}
     valid_untils = _max_qualification_valid_untils(
         session,
         soldier_ids=list(projected_soldier_ids),
@@ -149,11 +157,14 @@ def project_duty_eligibility(
             )
             continue
         current_valid_until = valid_untils[soldier_id, required_range_type]
-        profile_valid_until = _profile_valid_until(
+        last_mitvahim_date, last_alal_date = profile_dates.get(soldier_id, (None, None))
+        profile_valid_until = _profile_valid_until_from_dates(
             session,
-            soldier_id=soldier_id,
+            last_mitvahim_date=last_mitvahim_date,
+            last_alal_date=last_alal_date,
             required_range_type=required_range_type,
             as_of=requirement.scheduled_date,
+            validity_days_cache=profile_validity_days,
         )
         if profile_valid_until is not None:
             current_valid_until = max(current_valid_until or profile_valid_until, profile_valid_until)

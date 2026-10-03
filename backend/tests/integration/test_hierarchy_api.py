@@ -80,6 +80,56 @@ def test_tree_returns_all_nodes_for_non_admin_commander(client: TestClient, admi
     assert str(unrelated.id) in ids  # previously excluded — now must be present
 
 
+def test_my_command_scope_returns_direct_nodes_and_assigned_node_compactly(
+    client: TestClient, admin_session: Session
+):
+    commander = create_soldier(admin_session, personal_number="5010101", role="commander")
+    other_commander = create_soldier(admin_session, personal_number="5010102", role="commander")
+    own = create_node(
+        admin_session, level="team", name="owned team", commander_id=commander.id
+    )
+    assigned = create_node(admin_session, level="department", name="assigned node")
+    create_node(
+        admin_session, level="unit", name="other team", commander_id=other_commander.id
+    )
+    create_node(admin_session, level="branch", name="uncommanded")
+    commander.hierarchy_node_id = assigned.id
+    admin_session.commit()
+
+    response = client.get(
+        "/api/hierarchy/my-command-scope", headers=auth_headers(commander)
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "commanded_nodes": [
+            {"id": str(own.id), "level": "team", "name": "owned team"}
+        ],
+        "assigned_node": {
+            "id": str(assigned.id),
+            "level": "department",
+            "name": "assigned node",
+        },
+    }
+    assert set(response.json()) == {"commanded_nodes", "assigned_node"}
+    assert set(response.json()["commanded_nodes"][0]) == {"id", "level", "name"}
+    assert set(response.json()["assigned_node"]) == {"id", "level", "name"}
+
+
+def test_my_command_scope_returns_null_when_actor_has_no_assigned_node(
+    client: TestClient, admin_session: Session
+):
+    commander = create_soldier(admin_session, personal_number="5010104", role="commander")
+    admin_session.commit()
+
+    response = client.get(
+        "/api/hierarchy/my-command-scope", headers=auth_headers(commander)
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"commanded_nodes": [], "assigned_node": None}
+
+
 def test_tree_can_edit_flag_only_true_for_own_commanded_node(client: TestClient, admin_session: Session):
     cmd = create_soldier(admin_session, personal_number="5000023", role="commander")
     own = create_node(admin_session, level="team", name="own-team-2", commander_id=cmd.id)

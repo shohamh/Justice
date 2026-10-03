@@ -545,6 +545,20 @@ class SoldierExemptionFile(Base):
 
 class DutyAssignment(Base):
     __tablename__ = "duty_assignments"
+    __table_args__ = (
+        sa.Index(
+            "ix_duty_assignments_hakpaza_next",
+            "soldier_id",
+            "start_date",
+            "id",
+            postgresql_where=sa.text("status = 'published'"),
+        ),
+        sa.Index(
+            "ix_duty_assignments_status_end_date",
+            "status",
+            sa.text("end_date DESC"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False

@@ -1,9 +1,10 @@
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
 import SwapsPage from "./SwapsPage";
 import type { SwapRequest } from "../api/swaps";
+import * as hierarchyApi from "../api/hierarchy";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 const { mySwap, incomingSwap } = vi.hoisted(() => {
@@ -50,9 +51,20 @@ vi.mock("../api/swaps", async () => {
 });
 vi.mock("../api/assignments", () => ({ listEffectiveDuties: vi.fn().mockResolvedValue([]) }));
 vi.mock("../api/dutyConfig", () => ({ listDutyTypes: vi.fn().mockResolvedValue([]) }));
-vi.mock("../api/hierarchy", () => ({ fetchTree: vi.fn().mockResolvedValue([]) }));
+vi.mock("../api/hierarchy", () => ({
+  fetchTree: vi.fn().mockResolvedValue([]),
+  fetchHierarchyBranchPage: vi.fn().mockResolvedValue({
+    items: [{ id: "root", name: "Root", level: "unit", parent_id: null, commander_id: null, commander_name: null, path_ids: ["root"], duty_managers: [], dm_manageable: false, can_edit: false, has_children: true }],
+    next_cursor: null, has_more: false,
+  }),
+  isStaleHierarchyCursorError: vi.fn(() => false),
+}));
+vi.mock("../api/auth", async () => ({
+  ...await vi.importActual<typeof import("../api/auth")>("../api/auth"),
+  getTransparencyAuthorizationScope: () => "viewer-scope",
+}));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k === "swaps.you" ? "את/ה" : k }) }));
-vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: "me", role: "soldier", is_commander: false, is_duty_manager: false } }) }));
+vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: "me", role: "soldier", is_commander: false, is_duty_manager: false }, authScopeReady: true }) }));
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode | ((openHelp: (tab?: string) => void) => React.ReactNode) }) => (
     <div>{typeof children === "function" ? children(() => {}) : children}</div>
@@ -176,5 +188,79 @@ describe("SwapsPage duties query", () => {
     renderPage();
     await screen.findAllByText("Yossi");
     expect(listEffectiveDuties).toHaveBeenCalledWith("me", { include_drafts: true });
+  });
+});
+
+describe("SwapsPage hierarchy reads", () => {
+  test("does not request hierarchy on the default tab or after switching to the board", async () => {
+    vi.mocked(hierarchyApi.fetchTree).mockClear();
+    vi.mocked(hierarchyApi.fetchHierarchyBranchPage).mockClear();
+    renderPage();
+    await screen.findByText("swaps.tab_mine");
+    expect(hierarchyApi.fetchTree).not.toHaveBeenCalled();
+    expect(hierarchyApi.fetchHierarchyBranchPage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("tab-1"));
+    expect(await screen.findByRole("button", { name: /^swaps\.filter_node/ })).toBeInTheDocument();
+    expect(hierarchyApi.fetchTree).not.toHaveBeenCalled();
+    expect(hierarchyApi.fetchHierarchyBranchPage).not.toHaveBeenCalled();
+  });
+
+  test("direct board link waits for opening the node filter, then loads only roots and expanded branch", async () => {
+    vi.mocked(hierarchyApi.fetchTree).mockClear();
+    vi.mocked(hierarchyApi.fetchHierarchyBranchPage).mockClear();
+    renderPage(["/swaps?tab=board"]);
+    const trigger = await screen.findByRole("button", { name: /^swaps\.filter_node/ });
+    expect(hierarchyApi.fetchTree).not.toHaveBeenCalled();
+    expect(hierarchyApi.fetchHierarchyBranchPage).not.toHaveBeenCalled();
+    fireEvent.click(trigger);
+    expect(await screen.findByRole("checkbox", { name: "Root" })).toBeInTheDocument();
+    expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledTimes(1);
+    expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledWith(expect.objectContaining({ parentId: null }));
+    fireEvent.click(screen.getByRole("button", { name: /hierarchy_expand Root/ }));
+    await waitFor(() => expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledTimes(2));
+    expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenLastCalledWith(expect.objectContaining({ parentId: "root" }));
+    expect(hierarchyApi.fetchTree).not.toHaveBeenCalled();
+  });
+
+  test("keeps exact selected node IDs in board requests and clears them", async () => {
+    const { listBoard } = await import("../api/swaps");
+    vi.mocked(listBoard).mockClear();
+    vi.mocked(hierarchyApi.fetchTree).mockClear();
+    vi.mocked(hierarchyApi.fetchHierarchyBranchPage).mockClear();
+    renderPage(["/swaps?tab=board"]);
+    fireEvent.click(await screen.findByRole("button", { name: /^swaps\.filter_node/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Root" }));
+    await waitFor(() => expect(listBoard).toHaveBeenCalledWith(expect.objectContaining({ nodeIds: ["root"] })));
+    expect(screen.getByRole("checkbox", { name: "Root" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
+    expect(await screen.findByRole("checkbox", { name: "Root" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
+    fireEvent.click(screen.getByRole("button", { name: "swaps.filter_clear" }));
+    await waitFor(() => expect(listBoard).toHaveBeenLastCalledWith({}));
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
+    expect(await screen.findByRole("checkbox", { name: "Root" })).not.toBeChecked();
+  });
+
+  test("clears only node IDs from inside the node popover", async () => {
+    const { listBoard } = await import("../api/swaps");
+    vi.mocked(listBoard).mockClear();
+    renderPage(["/swaps?tab=board"]);
+    const eligibleOnly = screen.getByRole("checkbox", { name: "swaps.filter_eligible_only" });
+    fireEvent.click(eligibleOnly);
+    fireEvent.click(screen.getByRole("button", { name: /^swaps\.filter_node/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Root" }));
+    await waitFor(() => expect(listBoard).toHaveBeenLastCalledWith(expect.objectContaining({
+      eligibleOnly: true, nodeIds: ["root"],
+    })));
+
+    const nodePanel = screen.getByTestId("sub-hierarchy-selector").parentElement!;
+    fireEvent.click(within(nodePanel).getByRole("button", { name: "swaps.filter_clear" }));
+
+    await waitFor(() => expect(listBoard).toHaveBeenLastCalledWith(expect.objectContaining({
+      eligibleOnly: true, nodeIds: undefined,
+    })));
+    expect(eligibleOnly).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Root" })).not.toBeChecked();
   });
 });

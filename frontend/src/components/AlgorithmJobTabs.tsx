@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlgorithmJob } from "../api/algorithm";
 import { api } from "../api/client";
 import { DutyType } from "../api/dutyConfig";
-import { SoldierDTO } from "../api/soldiers";
+import { SoldierNameDTO } from "../api/soldiers";
 import { DutyShift, listShifts } from "../api/shifts";
 import AlgorithmProposalTable from "./AlgorithmProposalTable";
 import BatchesTab from "./BatchesTab";
@@ -12,7 +12,7 @@ import { lastDutyDay } from "../utils/formatDate";
 interface Props {
   job: AlgorithmJob;
   jobId: string;
-  soldiers: SoldierDTO[];
+  soldiers: SoldierNameDTO[];
   dutyTypes: DutyType[];
   onProposalUpdate: (updated: AlgorithmJob) => void;
   onRerun?: (overrides: Record<string, number>) => void;

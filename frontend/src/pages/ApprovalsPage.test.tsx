@@ -1046,3 +1046,73 @@ describe("ApprovalsPage - two-step indicator", () => {
     expect(within(row).getByTestId("constraint-stage-c1")).toHaveTextContent("2/2");
   });
 });
+
+describe("ApprovalsPage hierarchy reads", () => {
+  function renderApprovals(initialEntries: string[] = ["/approvals"]) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={initialEntries}>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("does not load the full tree on the default constraints tab", async () => {
+    renderApprovals();
+    await screen.findByTestId("approvals-tab-constraints");
+
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("defers the full tree until an enrollment request is opened", async () => {
+    vi.mocked(enrollmentApi.listPendingEnrollments).mockResolvedValue([{
+      id: "enroll-1", soldier_id: "soldier-1", soldier_name: "Test Soldier",
+      soldier_personal_number: "1234567", requested_node_id: "node-1",
+      requested_node_name: "Requested Unit", status: "pending", exemption_requests: [],
+      nearest_commander: null, nearest_duty_manager: null,
+    } as enrollmentApi.EnrollmentRequestDTO]);
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-enrollment"));
+    await screen.findByText("Requested Unit");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("enrollment-view-enroll-1"));
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not fetch the full tree when the Transfers tab has no pending requests", async () => {
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-transfers"));
+
+    expect(await screen.findByText("approvals.transfers_none")).toBeInTheDocument();
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("loads the full tree for pending transfers and keeps their node labels", async () => {
+    vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([{
+      id: "transfer-1", soldier_id: "soldier-1", soldier_name: "Test Soldier",
+      from_node_id: "node-from", to_node_id: "node-to", status: "pending", reason: null,
+    }]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([
+      {
+        id: "node-from", level: "unit", name: "Current Unit", parent_id: null,
+        commander_id: null, commander_name: null, path_ids: [], duty_managers: [],
+        dm_manageable: false, can_edit: false,
+      },
+      {
+        id: "node-to", level: "unit", name: "Requested Unit", parent_id: null,
+        commander_id: null, commander_name: null, path_ids: [], duty_managers: [],
+        dm_manageable: false, can_edit: false,
+      },
+    ]);
+    renderApprovals();
+    fireEvent.click(await screen.findByTestId("approvals-tab-transfers"));
+
+    expect(await screen.findByText("Current Unit")).toBeInTheDocument();
+    expect(screen.getByText("Requested Unit")).toBeInTheDocument();
+    expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
+  });
+});

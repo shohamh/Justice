@@ -1,13 +1,12 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { NodeDTO } from "../api/hierarchy";
-import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks, submitFieldUpdate } from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import { translateApiError } from "../utils/translateApiError";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint, cancelConstraintForManager } from "../api/constraints";
 import Combobox from "./Combobox";
+import HierarchyNodePickerModal from "./HierarchyNodePickerModal";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
 import DeputiesPanel from "./DeputiesPanel";
@@ -49,7 +48,6 @@ function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: st
 interface Props {
   soldier: SoldierDTO;
   score: SoldierScoreDTO | null;
-  nodes: NodeDTO[];
   onClose: () => void;
   onRefresh: () => void;
   initialEditing?: boolean;
@@ -59,7 +57,7 @@ interface Props {
 
 export type TabKey = "details" | "profile" | "exemptions" | "constraints" | "duty_history";
 
-export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false, initialTab, initialHistoryTypes }: Props) {
+export default function UnifiedSoldierModal({ soldier, score, onClose, onRefresh, initialEditing = false, initialTab, initialHistoryTypes }: Props) {
   const layer = useModalLayer(true);
   useModalBackClose(onClose);
   const { t } = useTranslation();
@@ -101,6 +99,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");
   const [hierarchyNodeId, setHierarchyNodeId] = useState(soldier.hierarchy_node_id ?? "");
+  const [hierarchyPath, setHierarchyPath] = useState<string[]>(soldier.hierarchy_path ?? []);
+  const [hierarchyPickerOpen, setHierarchyPickerOpen] = useState(false);
   const [enrolledAt, setEnrolledAt] = useState(soldier.enrolled_at ?? "");
   const [constraints, setConstraints] = useState<PersonalConstraint[]>([]);
   const [cancellingConstraintId, setCancellingConstraintId] = useState<string | null>(null);
@@ -179,6 +179,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     setFullName(soldierData.full_name);
     setPhone(soldierData.phone ?? "");
     setHierarchyNodeId(soldierData.hierarchy_node_id ?? "");
+    setHierarchyPath(soldierData.hierarchy_path ?? []);
     setEnrolledAt(soldierData.enrolled_at ?? "");
     setProfileRank(soldierData.rank ?? "");
     setProfileIsOfficer(soldierData.is_officer ?? false);
@@ -420,11 +421,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 </div>
               )}
               {(() => {
-                const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-                const soldierNode = soldierData.hierarchy_node_id ? nodeMap.get(soldierData.hierarchy_node_id) : null;
-                const chain = soldierData.hierarchy_path?.length
-                  ? soldierData.hierarchy_path
-                  : soldierNode ? soldierNode.path_ids.map((id) => nodeMap.get(id)?.name ?? id) : null;
+                const chain = soldierData.hierarchy_path?.length ? soldierData.hierarchy_path : null;
                 return (
                   <div className="space-y-0.5">
                     <span className="text-gray-500 dark:text-gray-400">{t("team.hierarchy")}</span>
@@ -505,32 +502,28 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("team.title")}</span>
-                <Combobox
-                  items={sortNodesByTree(nodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
-                  value={hierarchyNodeId}
-                  onChange={setHierarchyNodeId}
-                  placeholder="—"
-                  testId="edit-soldier-node"
-                />
+                <button
+                  type="button"
+                  className="border rounded p-1 w-full text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  onClick={() => setHierarchyPickerOpen(true)}
+                  data-testid="edit-soldier-node"
+                >
+                  {hierarchyPath.at(-1) ?? "—"}
+                </button>
                 {hierarchyNodeId && hierarchyNodeId !== (soldierData.hierarchy_node_id ?? "") && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t("team.move_requires_approval")}</p>
                 )}
               </label>
               {(() => {
-                const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-                const selectedNode = hierarchyNodeId ? nodeMap.get(hierarchyNodeId) : null;
-                const chain = selectedNode
-                  ? selectedNode.path_ids.map((id) => nodeMap.get(id)?.name).filter(Boolean) as string[]
-                  : null;
-                if (!chain || chain.length === 0) return null;
+                if (hierarchyPath.length === 0) return null;
                 return (
                   <div className="space-y-0.5">
                     <span className="text-xs text-gray-500 dark:text-gray-400">{t("team.hierarchy")}</span>
                     <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs">
-                      {chain.map((name, i) => (
+                      {hierarchyPath.map((name, i) => (
                         <span key={i} className="flex items-center gap-x-1">
                           {i > 0 && <span className="text-gray-300 dark:text-gray-600">›</span>}
-                          <span className={i === chain.length - 1 ? "font-medium text-gray-800 dark:text-gray-200" : "text-gray-500 dark:text-gray-400"}>{name}</span>
+                          <span className={i === hierarchyPath.length - 1 ? "font-medium text-gray-800 dark:text-gray-200" : "text-gray-500 dark:text-gray-400"}>{name}</span>
                         </span>
                       ))}
                     </div>
@@ -912,6 +905,16 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           </div>
         )}
       </div>
+      {hierarchyPickerOpen && (
+        <HierarchyNodePickerModal
+          onClose={() => setHierarchyPickerOpen(false)}
+          onPicked={(nodeId, nodeName, selectedPath) => {
+            setHierarchyNodeId(nodeId);
+            setHierarchyPath(selectedPath?.length ? selectedPath : [nodeName]);
+            setHierarchyPickerOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

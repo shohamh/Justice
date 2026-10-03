@@ -12,6 +12,17 @@ test("shows the selected item's name in the input", () => {
   expect(screen.getByRole("combobox")).toHaveValue("Beta");
 });
 
+test("syncs an external selection change over an unsubmitted search", () => {
+  const { rerender } = render(<Combobox items={items} value="" onChange={() => {}} />);
+  const input = screen.getByRole("combobox");
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: "Alp" } });
+
+  rerender(<Combobox items={items} value="2" onChange={() => {}} />);
+
+  expect(input).toHaveValue("Beta");
+});
+
 test("opening the input lists all items", () => {
   render(<Combobox items={items} value="" onChange={() => {}} />);
   fireEvent.focus(screen.getByRole("combobox"));
@@ -27,6 +38,19 @@ test("typing filters the list via fuzzy search", () => {
   fireEvent.change(input, { target: { value: "gam" } });
   expect(screen.getByText("Gamma")).toBeInTheDocument();
   expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
+});
+
+test("keeps an in-progress search when options arrive asynchronously", () => {
+  const onChange = vi.fn();
+  const { rerender } = render(<Combobox items={[]} value="" onChange={onChange} />);
+  const input = screen.getByRole("combobox");
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: "Alp" } });
+
+  rerender(<Combobox items={items} value="" onChange={onChange} />);
+
+  expect(input).toHaveValue("Alp");
+  expect(screen.getByText("Alpha")).toBeInTheDocument();
 });
 
 test("typing an exact item name selects it on blur", async () => {

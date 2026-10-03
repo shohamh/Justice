@@ -1,10 +1,12 @@
+import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/AuthContext";
+import { getTransparencyAuthorizationScope } from "../../api/auth";
 import { canPlan } from "../../auth/permissions";
 import { queryKeys } from "../../queryKeys";
 import { getRangeEvent, getRangeExcusalRequests, excuseRangeAssignment, decideRangeExcusal } from "../../api/ranges";
-import { listSoldiers } from "../../api/soldiers";
+import { lookupSoldierNames } from "../../api/soldiers";
 import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../../utils/rangeLabels";
 import { formatDate } from "../../utils/formatDate";
 import { EventDetailModal } from "../planning";
@@ -17,20 +19,36 @@ interface Props {
 
 export default function RangeDetailModal({ rangeId, onClose }: Props) {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, authScopeReady } = useAuth();
   const queryClient = useQueryClient();
   const manage = canPlan(user);
   const rangeEventQuery = useQuery({
     queryKey: queryKeys.rangeEvent(rangeId),
     queryFn: () => getRangeEvent(rangeId),
   });
-  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
+  const authorizationScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
+  const soldierIds = useMemo(() => {
+    const ids = new Set(rangeEventQuery.data?.assignments.map(a => a.soldier_id) ?? []);
+    if (rangeEventQuery.data?.responsible_duty_manager_id) {
+      ids.add(rangeEventQuery.data.responsible_duty_manager_id);
+    }
+    return [...ids].sort();
+  }, [rangeEventQuery.data]);
+  const soldiersQuery = useQuery({
+    queryKey: queryKeys.soldierNames(soldierIds, authorizationScope),
+    queryFn: () => lookupSoldierNames(soldierIds),
+    enabled: !!authorizationScope && soldierIds.length > 0,
+  });
+  const soldierNames = useMemo(
+    () => new Map(soldiersQuery.data?.map(s => [s.id, s.full_name] as const) ?? []),
+    [soldiersQuery.data],
+  );
   const excusalQuery = useQuery({
     queryKey: queryKeys.rangeExcusalRequests(rangeId),
     queryFn: () => getRangeExcusalRequests(rangeId),
     enabled: !!user?.is_duty_manager,
   });
-  const soldierName = (id: string) => soldiersQuery.data?.find(s => s.id === id)?.full_name ?? id;
+  const soldierName = (id: string) => soldierNames.get(id) ?? id;
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(rangeId) });
     await queryClient.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(rangeId) });
@@ -59,6 +77,18 @@ export default function RangeDetailModal({ rangeId, onClose }: Props) {
         { label: "שעות", value: `${rangeEventQuery.data.start_time ?? "—"}–${rangeEventQuery.data.end_time ?? "—"}` },
       ]}
     >
+      {soldiersQuery.isError && (
+        <div role="alert" className="mb-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          {t("ranges.soldier_names_load_error")}
+          <button
+            type="button"
+            onClick={() => void soldiersQuery.refetch()}
+            className="mr-2 rounded border border-amber-500 px-2 py-0.5 font-medium hover:bg-amber-100 dark:hover:bg-amber-900"
+          >
+            {t("common.retry")}
+          </button>
+        </div>
+      )}
       <RangeDetailContent
         event={rangeEventQuery.data}
         canManage={manage}

@@ -2,22 +2,75 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../../components/Layout";
+import { useAuth } from "../../auth/AuthContext";
+import { getTransparencyAuthorizationScope } from "../../api/auth";
 import { queryKeys } from "../../queryKeys";
 import { AdjustmentPreview, createAdjustment, listAdjustments, previewAdjustment } from "../../api/scoreAdjustments";
-import { getSoldierScore, listSoldiers, SoldierDTO } from "../../api/soldiers";
+import {
+  getSoldierScore,
+  listSoldierRosterPage,
+  SoldierRosterItemDTO,
+} from "../../api/soldiers";
 import { getBurdenShareBreakdown } from "../../api/scoring";
 import { translateApiError } from "../../utils/translateApiError";
 import { formatDateTimeIsrael } from "../../utils/formatDate";
 
+interface SoldierSearchPageState {
+  authorizationIdentity: string;
+  search: string;
+  items: SoldierRosterItemDTO[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+interface SoldierSearchErrorState {
+  authorizationIdentity: string;
+  search: string;
+  message: string;
+}
+
 export default function ScoreAdjustmentPage() {
   const { t } = useTranslation();
+  const { user, authScopeReady } = useAuth();
   const queryClient = useQueryClient();
 
   // Soldier search combobox
   const [soldierSearch, setSoldierSearch] = useState("");
   const [soldierId, setSoldierId] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [soldierResults, setSoldierResults] =
+    useState<SoldierSearchPageState | null>(null);
+  const [soldierSearchError, setSoldierSearchError] =
+    useState<SoldierSearchErrorState | null>(null);
+  const [loadingMoreKey, setLoadingMoreKey] = useState<string | null>(null);
   const comboRef = useRef<HTMLDivElement>(null);
+  const rosterRequestGeneration = useRef(0);
+  const continuationRequest = useRef<{
+    key: string;
+    controller: AbortController;
+  } | null>(null);
+
+  const rosterAuthorizationIdentity = authScopeReady
+    ? getTransparencyAuthorizationScope(user)
+    : null;
+  const normalizedSoldierSearch = soldierSearch.trim();
+  const currentSearchKey = rosterAuthorizationIdentity
+    ? JSON.stringify([rosterAuthorizationIdentity, normalizedSoldierSearch])
+    : null;
+  const visibleSoldierResults =
+    showDropdown &&
+    rosterAuthorizationIdentity &&
+    soldierResults?.authorizationIdentity === rosterAuthorizationIdentity &&
+    soldierResults.search === normalizedSoldierSearch
+      ? soldierResults
+      : null;
+  const visibleSoldierSearchError =
+    showDropdown &&
+    rosterAuthorizationIdentity &&
+    soldierSearchError?.authorizationIdentity === rosterAuthorizationIdentity &&
+    soldierSearchError.search === normalizedSoldierSearch
+      ? soldierSearchError.message
+      : "";
 
   // Delta: sign + positive amount
   const [sign, setSign] = useState<"+" | "-">("+");
@@ -30,12 +83,72 @@ export default function ScoreAdjustmentPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
 
-  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
-  const soldiers = soldiersQuery.data ?? [];
-
   useEffect(() => {
-    if (soldiersQuery.isError) setError(t("score_adjustment.soldiers_load_error"));
-  }, [soldiersQuery.isError, t]);
+    const authorizationIdentity = rosterAuthorizationIdentity;
+    const search = soldierSearch.trim();
+    const generation = ++rosterRequestGeneration.current;
+    const controller = new AbortController();
+    continuationRequest.current?.controller.abort();
+    continuationRequest.current = null;
+    setLoadingMoreKey(null);
+    setSoldierResults(null);
+    setSoldierSearchError(null);
+
+    if (!showDropdown || !authorizationIdentity) {
+      return () => {
+        controller.abort();
+        if (rosterRequestGeneration.current === generation) {
+          rosterRequestGeneration.current += 1;
+        }
+      };
+    }
+
+    const timeout = window.setTimeout(() => {
+      void listSoldierRosterPage({
+        search,
+        sort: "full_name",
+        descending: false,
+        page_size: 10,
+        signal: controller.signal,
+      })
+        .then((page) => {
+          if (
+            !controller.signal.aborted &&
+            rosterRequestGeneration.current === generation
+          ) {
+            setSoldierResults({
+              authorizationIdentity,
+              search,
+              items: page.items,
+              nextCursor: page.next_cursor,
+              hasMore: page.has_more,
+            });
+          }
+        })
+        .catch(() => {
+          if (
+            !controller.signal.aborted &&
+            rosterRequestGeneration.current === generation
+          ) {
+            setSoldierSearchError({
+              authorizationIdentity,
+              search,
+              message: t("score_adjustment.soldiers_load_error"),
+            });
+          }
+        });
+    }, 200);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+      continuationRequest.current?.controller.abort();
+      continuationRequest.current = null;
+      if (rosterRequestGeneration.current === generation) {
+        rosterRequestGeneration.current += 1;
+      }
+    };
+  }, [showDropdown, soldierSearch, rosterAuthorizationIdentity, t]);
 
   const adjustmentsQuery = useQuery({
     queryKey: queryKeys.scoreAdjustments(soldierId),
@@ -95,14 +208,11 @@ export default function ScoreAdjustmentPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const filteredSoldiers = soldiers.filter((s) =>
-    s.full_name.includes(soldierSearch)
-  );
-
-  function selectSoldier(s: SoldierDTO) {
+  function selectSoldier(s: SoldierRosterItemDTO) {
     setSoldierId(s.id);
     setSoldierSearch(s.full_name);
     setShowDropdown(false);
+    setSoldierSearchError(null);
     setSuccessMsg("");
   }
 
@@ -110,6 +220,89 @@ export default function ScoreAdjustmentPage() {
     setSoldierId("");
     setSoldierSearch("");
     setSuccessMsg("");
+    setSoldierSearchError(null);
+  }
+
+  async function loadMoreSoldiers() {
+    const page = visibleSoldierResults;
+    if (
+      !page ||
+      !page.hasMore ||
+      !page.nextCursor ||
+      !rosterAuthorizationIdentity ||
+      !currentSearchKey
+    ) {
+      return;
+    }
+
+    const requestKey = currentSearchKey;
+    if (continuationRequest.current?.key === requestKey) return;
+
+    continuationRequest.current?.controller.abort();
+    const controller = new AbortController();
+    const generation = rosterRequestGeneration.current;
+    const cursor = page.nextCursor;
+    continuationRequest.current = { key: requestKey, controller };
+    setLoadingMoreKey(requestKey);
+
+    try {
+      const nextPage = await listSoldierRosterPage({
+        cursor,
+        search: page.search,
+        sort: "full_name",
+        descending: false,
+        page_size: 10,
+        signal: controller.signal,
+      });
+
+      if (
+        controller.signal.aborted ||
+        rosterRequestGeneration.current !== generation
+      ) {
+        return;
+      }
+
+      setSoldierResults((current) => {
+        if (
+          !current ||
+          current.authorizationIdentity !== page.authorizationIdentity ||
+          current.search !== page.search ||
+          current.nextCursor !== cursor
+        ) {
+          return current;
+        }
+
+        const existingIds = new Set(current.items.map((soldier) => soldier.id));
+        return {
+          ...current,
+          items: [
+            ...current.items,
+            ...nextPage.items.filter((soldier) => !existingIds.has(soldier.id)),
+          ],
+          nextCursor: nextPage.next_cursor,
+          hasMore: nextPage.has_more,
+        };
+      });
+      setSoldierSearchError(null);
+    } catch {
+      if (
+        !controller.signal.aborted &&
+        rosterRequestGeneration.current === generation
+      ) {
+        setSoldierSearchError({
+          authorizationIdentity: page.authorizationIdentity,
+          search: page.search,
+          message: t("score_adjustment.soldiers_load_error"),
+        });
+      }
+    } finally {
+      if (continuationRequest.current?.controller === controller) {
+        continuationRequest.current = null;
+        setLoadingMoreKey((current) =>
+          current === requestKey ? null : current,
+        );
+      }
+    }
   }
 
   const delta = amount ? (sign === "+" ? amount : `-${amount}`) : "";
@@ -177,9 +370,19 @@ export default function ScoreAdjustmentPage() {
                   </button>
                 )}
               </div>
-              {showDropdown && filteredSoldiers.length > 0 && (
-                <ul className="absolute z-20 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg mt-1 shadow-lg max-h-52 overflow-y-auto text-sm">
-                  {filteredSoldiers.map((s) => (
+              {visibleSoldierResults && visibleSoldierResults.items.length > 0 && (
+                <ul
+                  className="absolute z-20 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg mt-1 shadow-lg max-h-52 overflow-y-auto text-sm"
+                  onScroll={(event) => {
+                    const element = event.currentTarget;
+                    if (
+                      element.scrollHeight - element.scrollTop - element.clientHeight <= 48
+                    ) {
+                      void loadMoreSoldiers();
+                    }
+                  }}
+                >
+                  {visibleSoldierResults.items.map((s) => (
                     <li
                       key={s.id}
                       onMouseDown={() => selectSoldier(s)}
@@ -188,9 +391,19 @@ export default function ScoreAdjustmentPage() {
                       {s.full_name}
                     </li>
                   ))}
+                  {loadingMoreKey === currentSearchKey && (
+                    <li className="px-3 py-2 text-center text-gray-500 dark:text-gray-400" aria-live="polite">
+                      {t("team.roster_loading_more")}
+                    </li>
+                  )}
                 </ul>
               )}
             </div>
+            {visibleSoldierSearchError && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+                {visibleSoldierSearchError}
+              </p>
+            )}
           </div>
 
           {/* Before / after metrics */}

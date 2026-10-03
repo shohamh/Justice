@@ -3,12 +3,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useRef,
   useState,
   ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { SoldierDTO, SoldierScoreDTO, getSoldier, getSoldierScore } from "../api/soldiers";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
 import UnifiedSoldierModal, { type TabKey } from "../components/UnifiedSoldierModal";
 import MessageDialog from "../components/MessageDialog";
 
@@ -27,7 +27,6 @@ export function useSoldierModal(): SoldierModalContextValue {
 interface ModalState {
   soldier: SoldierDTO;
   score: SoldierScoreDTO | null;
-  nodes: NodeDTO[];
   onRefresh?: () => void;
   initialTab?: TabKey;
   initialHistoryTypes?: string[];
@@ -38,42 +37,45 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
   const [modal, setModal] = useState<ModalState | null>(null);
   const [opening, setOpening] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const activeOpenRequest = useRef(0);
 
   const openSoldierModal = useCallback(
     async (soldierId: string, onRefresh?: () => void, initialTab?: TabKey, initialHistoryTypes?: string[]) => {
+      const requestId = ++activeOpenRequest.current;
       setOpening(true);
+      setLoadError(false);
       try {
         const soldier = await getSoldier(soldierId).catch(() => null);
+        if (activeOpenRequest.current !== requestId) return;
         if (!soldier) {
           setLoadError(true);
           return;
         }
 
-        // A soldier the viewer has no read scope over comes back in "public"
-        // mode (redacted fields, no score/hierarchy-dependent data) — score
-        // and the full hierarchy tree are irrelevant there, so skip fetching
-        // them rather than firing requests whose result is never shown.
-        let score: SoldierScoreDTO | null = null;
-        let nodes: NodeDTO[] = [];
+        setModal({ soldier, score: null, onRefresh, initialTab, initialHistoryTypes });
         if (soldier.visibility !== "public") {
-          const [scoreResult, nodesResult] = await Promise.allSettled([
-            getSoldierScore(soldierId),
-            fetchTree(),
-          ]);
-          if (scoreResult.status === "fulfilled") score = scoreResult.value;
-          if (nodesResult.status === "fulfilled") nodes = nodesResult.value;
+          void getSoldierScore(soldierId)
+            .then((score) => {
+              if (activeOpenRequest.current !== requestId) return;
+              setModal((previous) => previous?.soldier.id === soldierId
+                ? { ...previous, score }
+                : previous);
+            })
+            .catch(() => {
+              // Score is supplemental; keep the already-open detail modal usable.
+            });
         }
-
-        setModal({ soldier, score, nodes, onRefresh, initialTab, initialHistoryTypes });
       } finally {
-        setOpening(false);
+        if (activeOpenRequest.current === requestId) setOpening(false);
       }
     },
     []
   );
 
   function handleClose() {
+    activeOpenRequest.current += 1;
     setModal(null);
+    setOpening(false);
   }
 
   async function handleRefresh() {
@@ -88,7 +90,7 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
     <SoldierModalContext.Provider value={{ openSoldierModal }}>
       {children}
       {opening && (
-        <div className="fixed inset-0 bg-black/10 flex items-center justify-center z-40 pointer-events-none">
+        <div data-testid="soldier-modal-opening" className="fixed inset-0 bg-black/10 flex items-center justify-center z-40 pointer-events-none">
           <div className="bg-white rounded px-4 py-2 text-sm text-gray-600 shadow">טוען...</div>
         </div>
       )}
@@ -97,7 +99,6 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
           key={modal.soldier.id}
           soldier={modal.soldier}
           score={modal.score}
-          nodes={modal.nodes}
           onClose={handleClose}
           onRefresh={handleRefresh}
           initialTab={modal.initialTab}

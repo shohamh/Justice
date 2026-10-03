@@ -334,7 +334,11 @@ export default function ApprovalsPage() {
     enrollQuery.isError ||
     transfersQuery.isError;
 
-  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeQuery = useQuery({
+    queryKey: queryKeys.hierarchyTree(),
+    queryFn: fetchFullTree,
+    enabled: (tab === "transfers" && transferItems.length > 0) || selectedEnrollment !== null,
+  });
   const nodes = useMemo(() => {
     const flatNodes: { id: string; name: string }[] = [];
     function flatten(nodes: NodeDTO[]) {
@@ -1128,6 +1132,9 @@ export default function ApprovalsPage() {
           req={selectedEnrollment}
           nodes={nodes}
           exemptionTypes={exemptionTypes}
+          treeLoading={treeQuery.isPending}
+          treeError={treeQuery.isError}
+          onRetryTree={() => { void treeQuery.refetch(); }}
           onClose={() => setSelectedEnrollment(null)}
           onDone={async () => {
             setSelectedEnrollment(null);

@@ -31,7 +31,7 @@ vi.mock("../hooks/useLevelTypes", () => ({
 }));
 vi.mock("../api/soldiers", async () => {
   const actual = await vi.importActual<typeof import("../api/soldiers")>("../api/soldiers");
-  return { ...actual, listSoldiers: vi.fn().mockResolvedValue([]) };
+  return { ...actual, listSoldiers: vi.fn().mockResolvedValue([]), lookupSoldierNames: vi.fn().mockResolvedValue([]) };
 });
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -64,8 +64,17 @@ function renderWithQuery(ui: React.ReactElement, initialEntries = ["/ranges"]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(rangesApi.getRangePage).mockImplementation(async filters => {
+    const fetched = await rangesApi.getRanges(filters.nodeId, filters.dateFrom, filters.dateTo);
+    const items = (Array.isArray(fetched) ? fetched : []).filter(range =>
+      (!filters.rangeType || range.range_type === filters.rangeType)
+      && (!filters.status || range.status === filters.status)
+      && (!filters.dateFrom || range.date >= filters.dateFrom)
+      && (!filters.dateTo || range.date <= filters.dateTo));
+    return { items, next_cursor: null, has_more: false };
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mockUser = { id: "me", hierarchy_node_id: "node-1", role: "admin", is_duty_manager: true } as any;
+  const mockUser = { id: "me", hierarchy_node_id: "node-1", role: "admin", is_duty_manager: true, scope_root_ids: ["node-1"], active_deputy_grants: [] } as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
   vi.mocked(rangesApi.getRangeExcusalRequests).mockResolvedValue([]);
@@ -74,6 +83,95 @@ beforeEach(() => {
 });
 
 describe("RangesPage", () => {
+  it("does not fetch the full hierarchy on mount", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByTestId("ranges-page");
+
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+  });
+
+  it("loads hierarchy for the create form and keeps tree managers and the current-user fallback selectable", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([{
+      id: "node-1", level: "unit", name: "Unit One", parent_id: null,
+      commander_id: null, commander_name: null, path_ids: ["node-1"],
+      duty_managers: [{ scope_id: "node-1", soldier_id: "tree-manager", name: "Tree Manager" }],
+      dm_manageable: true, can_edit: true,
+    }]);
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByTestId("ranges-page");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByTestId("create-event-button"));
+    expect(await screen.findByTestId("create-event-form")).toBeInTheDocument();
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+
+    const responsibleInput = screen.getByTestId("new-range-responsible");
+    await waitFor(() => expect(responsibleInput).toHaveValue("me"));
+    fireEvent.focus(responsibleInput);
+    expect(await screen.findByRole("option", { name: "me" })).toBeInTheDocument();
+    const treeManagerOption = await screen.findByRole("button", { name: "Tree Manager" });
+    fireEvent.pointerDown(treeManagerOption);
+    fireEvent.pointerUp(treeManagerOption);
+    expect(responsibleInput).toHaveValue("Tree Manager");
+
+    fireEvent.focus(responsibleInput);
+    expect(await screen.findByRole("option", { name: "me" })).toBeInTheDocument();
+  });
+
+  it("loads hierarchy when an existing range is opened for editing", async () => {
+    const event = {
+      id: "event-edit-tree", hierarchy_node_id: "node-1", range_type: "laser" as const,
+      date: "2026-09-01", location: "Tree range", required_count: 1,
+      reserve_count: 0, status: "planned" as const, assignments: [],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(hierarchyApi.fetchFullTree).mockClear();
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("Tree range");
+    expect(hierarchyApi.fetchFullTree).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("edit-range-event-edit-tree"));
+    expect(await screen.findByTestId("range-form")).toBeInTheDocument();
+    await waitFor(() => expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1));
+  });
+
+  it("loads only referenced display rows for the selected event and retains editor search", async () => {
+    const event = {
+      id: "event-lookup", hierarchy_node_id: "node-1", range_type: "laser" as const,
+      date: "2026-09-01", location: "Lookup range", required_count: 2,
+      reserve_count: 0, status: "planned" as const,
+      responsible_duty_manager_id: "dm-1",
+      assignments: [{ id: "assignment-1", soldier_id: "assigned-1", is_reserve: false,
+        is_draft: false, attendance_status: "pending" as const, note: null }],
+    };
+    const unrelatedListEvent = { ...event, id: "other-event", assignments: [{ ...event.assignments[0], soldier_id: "unrelated-soldier" }], responsible_duty_manager_id: "other-manager" };
+    vi.mocked(rangesApi.getRangePage).mockResolvedValue({ items: [unrelatedListEvent], next_cursor: null, has_more: false });
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(soldiersApi.lookupSoldierNames).mockResolvedValue([
+      { id: "assigned-1", full_name: "Assigned One", personal_number: "4900201" },
+      { id: "dm-1", full_name: "Responsible One", personal_number: "4900202" },
+    ]);
+
+    renderWithQuery(<RangesPage />);
+    expect(await screen.findByText("Lookup range")).toBeInTheDocument();
+    expect(soldiersApi.listSoldiers).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("view-assignments-other-event"));
+    await waitFor(() => expect(soldiersApi.lookupSoldierNames).toHaveBeenCalledWith(["other-manager", "assigned-1", "dm-1"]));
+    expect(await screen.findByText("Assigned One")).toBeInTheDocument();
+    const search = screen.getAllByRole("textbox", { name: /חיפוש/ })[0];
+    fireEvent.change(search, { target: { value: "4900201" } });
+    expect(screen.getByText("Assigned One")).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "no-match" } });
+    expect(screen.queryByText("Assigned One")).not.toBeInTheDocument();
+  });
   it("disables selection for a range the user cannot manage", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {
@@ -321,8 +419,8 @@ describe("RangesPage", () => {
     expect(await screen.findByText("מטווח דרום")).toBeInTheDocument();
     expect(screen.getByText("מטווח צפון")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("סטטוס"), { target: { value: "planned" } });
-    expect(screen.getByText("מטווח דרום")).toBeInTheDocument();
-    expect(screen.queryByText("מטווח צפון")).not.toBeInTheDocument();
+    expect(await screen.findByText("מטווח דרום")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("מטווח צפון")).not.toBeInTheDocument());
 
     const edit = screen.getByTestId("edit-range-event-1");
     expect(edit).toHaveClass("bg-blue-100", "text-blue-800", "text-[10px]");
@@ -583,7 +681,7 @@ describe("RangesPage create event", () => {
 describe("RangesPage read-only mode for commanders", () => {
   it("hides add/remove controls for a commander (not a duty manager)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "commander", is_commander: true, is_duty_manager: false } as any;
+    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "commander", is_commander: true, is_duty_manager: false, scope_root_ids: ["node-1"], active_deputy_grants: [] } as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
@@ -609,7 +707,7 @@ describe("RangesPage read-only mode for commanders", () => {
 
   it("hides the attendance panel for a commander even on a past event", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "commander", is_commander: true, is_duty_manager: false } as any;
+    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "commander", is_commander: true, is_duty_manager: false, scope_root_ids: ["node-1"], active_deputy_grants: [] } as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
@@ -925,7 +1023,44 @@ describe("RangesPage assignment editor integration", () => {
     expect(screen.getByTestId("bulk-clear-button")).not.toBeDisabled();
   });
 
-  it("shows the responsible duty manager as a linked name in the ranges table", async () => {
+  it("resolves loaded table managers and keeps the ID fallback for missing names", async () => {
+    vi.mocked(rangesApi.getRangePage).mockResolvedValue({
+      items: [
+        { id: "range-a", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+          location: "Range A", required_count: 1, reserve_count: 0, status: "planned", assignments: [], responsible_duty_manager_id: "dm-a" },
+        { id: "range-b", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02",
+          location: "Range B", required_count: 1, reserve_count: 0, status: "planned", assignments: [], responsible_duty_manager_id: "dm-b" },
+      ], next_cursor: null, has_more: false,
+    });
+    vi.mocked(soldiersApi.lookupSoldierNames).mockResolvedValue([{ id: "dm-a", full_name: "Manager A", personal_number: "4900301" }]);
+
+    renderWithQuery(<RangesPage />);
+    expect(await screen.findByText("Manager A")).toBeInTheDocument();
+    expect(screen.getByText("dm-b")).toBeInTheDocument();
+    expect(soldiersApi.lookupSoldierNames).toHaveBeenCalledWith(["dm-a", "dm-b"]);
+    expect(soldiersApi.listSoldiers).not.toHaveBeenCalled();
+  });
+
+  it("keeps loaded-row manager lookup requests within the 200-ID API cap", async () => {
+    vi.mocked(rangesApi.getRangePage).mockResolvedValue({
+      items: Array.from({ length: 201 }, (_, index) => ({
+        id: `range-${index}`, hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: `Range ${index}`, required_count: 1, reserve_count: 0, status: "planned", assignments: [],
+        responsible_duty_manager_id: `dm-${index}`,
+      })), next_cursor: null, has_more: false,
+    });
+    vi.mocked(soldiersApi.lookupSoldierNames).mockImplementation(async ids => ids.map(id => ({ id, full_name: `Name ${id}` })));
+
+    renderWithQuery(<RangesPage />);
+    expect(await screen.findByText("Name dm-0")).toBeInTheDocument();
+    const requested = vi.mocked(soldiersApi.lookupSoldierNames).mock.calls.flatMap(([ids]) => ids);
+    expect(requested).toHaveLength(201);
+    expect(new Set(requested).size).toBe(201);
+    expect(vi.mocked(soldiersApi.lookupSoldierNames).mock.calls.every(([ids]) => ids.length <= 200)).toBe(true);
+    expect(soldiersApi.listSoldiers).not.toHaveBeenCalled();
+  });
+
+  it("uses the ID fallback for table rows without loading the full soldier roster", async () => {
     vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([
       { id: "dm-1", full_name: "רונן אחראי", personal_number: "1", role: "duty_manager", hierarchy_node_id: "node-1",
         phone: null, must_change_password: false, left_at: null, enrolled_at: null,
@@ -942,7 +1077,8 @@ describe("RangesPage assignment editor integration", () => {
         responsible_duty_manager_id: "dm-1" },
     ]);
     renderWithQuery(<RangesPage />);
-    expect(await screen.findByText("רונן אחראי")).toBeInTheDocument();
+    expect(await screen.findByText("dm-1")).toBeInTheDocument();
+    expect(soldiersApi.listSoldiers).not.toHaveBeenCalled();
   });
 
   it("shows a dash for the responsible column when no one is assigned", async () => {
@@ -995,7 +1131,7 @@ describe("RangesPage assignment editor integration", () => {
 
   it("does not show selection checkboxes or the bulk action bar for a non-manager", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "soldier", is_duty_manager: false } as any;
+    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "soldier", is_duty_manager: false, scope_root_ids: ["node-1"], active_deputy_grants: [] } as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
     vi.mocked(rangesApi.getRanges).mockResolvedValue([

@@ -1,157 +1,419 @@
-import { useEffect, useMemo, useState } from "react";
-import { NodeDTO, fetchFullTree } from "../api/hierarchy";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+
+import { getTransparencyAuthorizationScope } from "../api/auth";
+import {
+  fetchHierarchyBranchPage,
+  HierarchySearchMatchDTO,
+  isStaleHierarchyCursorError,
+  NodeDTO,
+  searchHierarchyNodes,
+} from "../api/hierarchy";
+import { useAuth } from "../auth/AuthContext";
+import { queryKeys } from "../queryKeys";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   onClose: () => void;
-  onPicked: (nodeId: string, nodeName: string) => void;
+  onPicked: (nodeId: string, nodeName: string, path?: string[], pathIds?: string[]) => void;
 }
 
-interface FlatNode {
-  id: string;
-  name: string;
-  level: string;
-  parent_id: string | null;
-}
-
-interface TreeNode extends FlatNode {
-  children: TreeNode[];
-}
-
-function flatten(nodes: NodeDTO[], parentId: string | null = null): FlatNode[] {
-  const out: FlatNode[] = [];
-  for (const n of nodes) {
-    out.push({ id: n.id, name: n.name, level: n.level, parent_id: parentId });
-    if (n.children && n.children.length > 0) {
-      out.push(...flatten(n.children, n.id));
-    }
-  }
-  return out;
-}
-
-function buildForest(nodes: FlatNode[]): TreeNode[] {
-  const byId = new Map<string, TreeNode>(nodes.map((n) => [n.id, { ...n, children: [] }]));
-  const roots: TreeNode[] = [];
-  for (const node of byId.values()) {
-    const parent = node.parent_id ? byId.get(node.parent_id) : undefined;
-    if (parent) parent.children.push(node);
-    else roots.push(node);
-  }
-  return roots;
-}
-
-function TreeRow({
-  node, depth, onPicked,
+function useNearEndPrefetch({
+  root,
+  enabled,
+  onPrefetch,
 }: {
-  node: TreeNode;
-  depth: number;
-  onPicked: (id: string, name: string) => void;
+  root: HTMLElement | null;
+  enabled: boolean;
+  onPrefetch: () => void;
 }) {
-  const hasChildren = node.children.length > 0;
-  const [expanded, setExpanded] = useState(depth === 0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const armedRef = useRef(true);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!enabled || !root || !sentinel || typeof IntersectionObserver === "undefined") return;
+
+    let active = true;
+    const observer = new IntersectionObserver((entries) => {
+      if (!active) return;
+      for (const entry of entries) {
+        if (entry.target !== sentinel) continue;
+        if (!entry.isIntersecting) {
+          armedRef.current = true;
+        } else if (armedRef.current) {
+          armedRef.current = false;
+          onPrefetch();
+        }
+      }
+    }, { root, rootMargin: "160px 0px" });
+    observer.observe(sentinel);
+
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [enabled, onPrefetch, root]);
+
+  return sentinelRef;
+}
+
+function matchPath(match: HierarchySearchMatchDTO): NodeDTO[] {
+  return match.path.at(-1)?.id === match.node.id ? match.path : [...match.path, match.node];
+}
+
+function BranchContinuation({
+  visible,
+  busy,
+  failed,
+  onLoadMore,
+  t,
+}: {
+  visible: boolean;
+  busy: boolean;
+  failed: boolean;
+  onLoadMore: () => void;
+  t: (key: string) => string;
+}) {
+  if (!visible && !failed) return null;
 
   return (
-    <div>
+    <button
+      type="button"
+      className="px-2 py-1 text-xs text-indigo-600 hover:underline disabled:text-gray-400"
+      onClick={onLoadMore}
+      disabled={busy}
+      aria-label={t(busy ? "team.hierarchy_loading" : failed ? "team.hierarchy_retry" : "team.hierarchy_load_more")}
+    >
+      {t(busy ? "team.hierarchy_loading" : failed ? "team.hierarchy_retry" : "team.hierarchy_load_more")}
+    </button>
+  );
+}
+
+function BranchNode({
+  node,
+  depth,
+  ancestorNames,
+  scopeKey,
+  scrollRoot,
+  onPicked,
+}: {
+  node: NodeDTO;
+  depth: number;
+  ancestorNames: string[];
+  scopeKey: string;
+  scrollRoot: HTMLElement | null;
+  onPicked: Props["onPicked"];
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const queryKey = queryKeys.hierarchyBranch(scopeKey, node.id);
+  const childrenQuery = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam, signal }) =>
+      fetchHierarchyBranchPage({ parentId: node.id, cursor: pageParam, signal }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined,
+    enabled: expanded && node.has_children === true,
+    retry: false,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
+  });
+  const children = useMemo(
+    () => childrenQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [childrenQuery.data],
+  );
+  const hasChildren = node.has_children === true;
+  const canPrefetchChildren = Boolean(
+    expanded && childrenQuery.hasNextPage && !childrenQuery.isFetching &&
+    !childrenQuery.isError && !childrenQuery.isFetchNextPageError,
+  );
+  const fetchNextChildrenPage = childrenQuery.fetchNextPage;
+  const prefetchChildren = useCallback(() => {
+    void fetchNextChildrenPage();
+  }, [fetchNextChildrenPage]);
+  const childSentinelRef = useNearEndPrefetch({
+    root: scrollRoot,
+    enabled: canPrefetchChildren,
+    onPrefetch: prefetchChildren,
+  });
+
+  function loadMore() {
+    if (childrenQuery.isFetchNextPageError && isStaleHierarchyCursorError(childrenQuery.error)) {
+      void queryClient.resetQueries({ queryKey, exact: true });
+    } else if (childrenQuery.hasNextPage) {
+      void childrenQuery.fetchNextPage();
+    } else if (childrenQuery.isError) {
+      void childrenQuery.refetch();
+    }
+  }
+
+  return (
+    <li>
       <div
-        className="flex items-center justify-between gap-1 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
+        className="flex items-center justify-between gap-1 rounded py-1 hover:bg-gray-50 dark:hover:bg-gray-700"
         style={{ paddingRight: `${depth * 16 + 4}px` }}
       >
-        <div className="flex items-center gap-1 min-w-0 flex-1">
-          <button
-            type="button"
-            onClick={() => setExpanded((e) => !e)}
-            className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-[10px] shrink-0"
-            aria-label={expanded ? "כווץ" : "הרחב"}
-          >
-            {hasChildren ? (expanded ? "▾" : "▸") : ""}
-          </button>
-          <span className="text-sm truncate dark:text-gray-100">{node.name}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((current) => !current)}
+              className="flex h-5 w-5 shrink-0 items-center justify-center text-gray-500"
+              aria-label={`${expanded ? "כווץ" : "הרחב"} ${node.name}`}
+              aria-expanded={expanded}
+              aria-controls={`picker-children-${node.id}`}
+              data-testid={`picker-tree-toggle-${node.id}`}
+            >
+              {expanded ? "▾" : "▸"}
+            </button>
+          ) : (
+            <span aria-hidden="true" className="h-5 w-5 shrink-0" />
+          )}
+          <span className="truncate text-sm dark:text-gray-100">{node.name}</span>
         </div>
         <button
           type="button"
-          className="text-indigo-600 hover:underline text-xs shrink-0"
-          onClick={() => onPicked(node.id, node.name)}
+          className="shrink-0 text-xs text-indigo-600 hover:underline"
+          onClick={() => onPicked(node.id, node.name, [...ancestorNames, node.name], [...node.path_ids])}
+          data-testid={`picker-select-node-${node.id}`}
         >
           בחר
         </button>
       </div>
-      {expanded && hasChildren && node.children.map((child) => (
-        <TreeRow key={child.id} node={child} depth={depth + 1} onPicked={onPicked} />
-      ))}
-    </div>
+      {expanded && hasChildren && (
+        <ul id={`picker-children-${node.id}`}>
+          {childrenQuery.isPending && children.length === 0 && (
+            <li role="status" className="px-2 py-1 text-xs text-gray-500">{t("team.hierarchy_loading")}</li>
+          )}
+          {childrenQuery.isError && children.length === 0 && (
+            <li role="alert" className="px-2 py-1 text-xs text-red-600">
+              {t("team.hierarchy_load_failed")}{" "}
+              <button type="button" className="underline" onClick={loadMore}>{t("team.hierarchy_retry")}</button>
+            </li>
+          )}
+          {children.map((child) => (
+            <BranchNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              ancestorNames={[...ancestorNames, node.name]}
+              scopeKey={scopeKey}
+              scrollRoot={scrollRoot}
+              onPicked={onPicked}
+            />
+          ))}
+          {!childrenQuery.isPending && !childrenQuery.isError && children.length === 0 && (
+            <li className="px-2 py-1 text-xs text-gray-400">אין יחידות נוספות</li>
+          )}
+          <li>
+            <div
+              ref={childSentinelRef}
+              className="h-px"
+              aria-hidden="true"
+              data-testid={`picker-branch-prefetch-sentinel-${node.id}`}
+            />
+            <BranchContinuation
+              visible={Boolean(childrenQuery.hasNextPage)}
+              busy={childrenQuery.isFetchingNextPage}
+              failed={childrenQuery.isFetchNextPageError}
+              onLoadMore={loadMore}
+              t={t}
+            />
+          </li>
+        </ul>
+      )}
+    </li>
   );
 }
 
 export default function HierarchyNodePickerModal({ onClose, onPicked }: Props) {
   useModalBackClose(onClose);
-  const [nodes, setNodes] = useState<FlatNode[]>([]);
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [scrollRoot, setScrollRoot] = useState<HTMLElement | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const authorizationScope = useMemo(
+    () => JSON.stringify({
+      normalizedScope: getTransparencyAuthorizationScope(user),
+      actorId: user?.id ?? null,
+      role: user?.role ?? null,
+    }),
+    [user],
+  );
+  const rootKey = queryKeys.hierarchyBranch(authorizationScope, null);
+  const rootsQuery = useInfiniteQuery({
+    queryKey: rootKey,
+    queryFn: ({ pageParam, signal }) =>
+      fetchHierarchyBranchPage({ parentId: null, cursor: pageParam, signal }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined,
+    enabled: Boolean(user),
+    retry: false,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
+  });
+  const roots = useMemo(
+    () => rootsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [rootsQuery.data],
+  );
+  const canPrefetchRoots = Boolean(
+    rootsQuery.hasNextPage && !rootsQuery.isFetching &&
+    !rootsQuery.isError && !rootsQuery.isFetchNextPageError,
+  );
+  const fetchNextRootPage = rootsQuery.fetchNextPage;
+  const prefetchRoots = useCallback(() => {
+    void fetchNextRootPage();
+  }, [fetchNextRootPage]);
+  const rootSentinelRef = useNearEndPrefetch({
+    root: scrollRoot,
+    enabled: canPrefetchRoots,
+    onPrefetch: prefetchRoots,
+  });
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetchFullTree()
-      .then((tree) => setNodes(flatten(tree)))
-      .catch(() => setError("שגיאה בטעינת רשימת היחידות"))
-      .finally(() => setLoading(false));
-  }, []);
+    const timeout = window.setTimeout(() => setSearch(searchInput.trim()), 250);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+  const searchQuery = useQuery({
+    queryKey: queryKeys.hierarchySearch(authorizationScope, search),
+    queryFn: ({ signal }) => searchHierarchyNodes(search, signal),
+    enabled: Boolean(user && search.length >= 2),
+    staleTime: 30_000,
+  });
+  const normalizedSearchInput = searchInput.trim();
+  const searchIsCurrent = normalizedSearchInput === search;
+  const searching = normalizedSearchInput.length > 0;
+  const matches = searchIsCurrent ? searchQuery.data?.matches ?? [] : [];
 
-  const forest = useMemo(() => buildForest(nodes), [nodes]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim();
-    if (!q) return null;
-    return nodes.filter((n) => n.name.includes(q));
-  }, [nodes, search]);
+  function loadMoreRoots() {
+    if (rootsQuery.isFetchNextPageError && isStaleHierarchyCursorError(rootsQuery.error)) {
+      void queryClient.resetQueries({ queryKey: rootKey, exact: true });
+    } else if (rootsQuery.hasNextPage) {
+      void rootsQuery.fetchNextPage();
+    } else if (rootsQuery.isError) {
+      void rootsQuery.refetch();
+    }
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(event) => { event.stopPropagation(); onClose(); }}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-96 max-h-[80dvh] flex flex-col"
+        className="flex max-h-[80dvh] w-96 flex-col rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
         dir="rtl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex justify-between items-center mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <h3 className="font-semibold dark:text-gray-100">בחר יחידה</h3>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="סגור">✕</button>
         </div>
 
         <input
-          className="border rounded p-1.5 w-full mb-3 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 text-sm"
+          className="mb-3 w-full rounded border p-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
           placeholder="חיפוש..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          aria-label="חיפוש יחידה"
         />
 
-        {error && <p className="text-red-500 text-xs mb-2">{error}</p>}
-        {loading && <p className="text-gray-400 text-xs mb-2">טוען...</p>}
-
-        <div className="overflow-y-auto flex-1 space-y-1">
-          {filtered === null ? (
-            forest.map((n) => <TreeRow key={n.id} node={n} depth={0} onPicked={onPicked} />)
-          ) : (
-            filtered.map((n) => (
+        {searching ? (
+          <div className="flex-1 overflow-y-auto space-y-1" role="region" aria-label="תוצאות חיפוש יחידות">
+            {!searchIsCurrent && <p role="status" className="text-xs text-gray-400">{t("team.hierarchy_search_loading")}</p>}
+            {searchIsCurrent && search.length >= 2 && searchQuery.isFetching && (
+              <p role="status" className="text-xs text-gray-400">{t("team.hierarchy_search_loading")}</p>
+            )}
+            {searchIsCurrent && search.length >= 2 && searchQuery.isError && (
+              <p role="alert" className="text-xs text-red-500">
+                {t("team.hierarchy_search_failed")}{" "}
+                <button type="button" className="underline" onClick={() => void searchQuery.refetch()}>
+                  {t("team.hierarchy_retry")}
+                </button>
+            </p>
+            )}
+            {searchIsCurrent && search.length === 1 && (
+              <p role="status" className="text-xs text-gray-500">יש להקליד לפחות 2 תווים כדי לחפש</p>
+            )}
+            {matches.map((match) => (
               <div
-                key={n.id}
-                className="flex items-center justify-between text-sm p-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                key={match.node.id}
+                className="flex items-center justify-between gap-2 rounded p-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
               >
-                <span className="dark:text-gray-100">{n.name}</span>
+                <div className="min-w-0">
+                  <span className="block truncate dark:text-gray-100">{match.node.name}</span>
+                  <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                    {matchPath(match).map((part) => part.name).join(" › ")}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  className="text-indigo-600 hover:underline text-xs"
-                  onClick={() => onPicked(n.id, n.name)}
+                  className="shrink-0 text-xs text-indigo-600 hover:underline"
+                  onClick={() => onPicked(
+                    match.node.id,
+                    match.node.name,
+                    matchPath(match).map((part) => part.name),
+                    [...match.node.path_ids],
+                  )}
+                  data-testid={`picker-select-node-${match.node.id}`}
                 >
                   בחר
                 </button>
               </div>
-            ))
-          )}
-          {!loading && filtered !== null && filtered.length === 0 && (
-            <p className="text-gray-400 text-xs text-center py-4">לא נמצאו יחידות</p>
-          )}
-        </div>
+            ))}
+            {searchIsCurrent && search.length >= 2 && matches.length === 0 && !searchQuery.isFetching && !searchQuery.isError && (
+              <p className="py-4 text-center text-xs text-gray-400">לא נמצאו יחידות</p>
+            )}
+            {searchIsCurrent && searchQuery.data?.has_more && (
+              <p className="px-2 py-1 text-xs text-gray-500" role="note">{t("team.hierarchy_search_more")}</p>
+            )}
+          </div>
+        ) : (
+          <div ref={setScrollRoot} className="flex-1 space-y-1 overflow-y-auto">
+            <ul aria-label="היררכיית יחידות">
+              {rootsQuery.isPending && roots.length === 0 && (
+                <li role="status" className="py-2 text-xs text-gray-400">{t("team.hierarchy_loading")}</li>
+              )}
+              {rootsQuery.isError && roots.length === 0 && (
+                <li role="alert" className="py-2 text-xs text-red-500">
+                  {t("team.hierarchy_load_failed")}{" "}
+                  <button type="button" className="underline" onClick={loadMoreRoots}>{t("team.hierarchy_retry")}</button>
+                </li>
+              )}
+              {roots.map((node) => (
+                <BranchNode
+                  key={node.id}
+                  node={node}
+                  depth={0}
+                  ancestorNames={[]}
+                  scopeKey={authorizationScope}
+                  scrollRoot={scrollRoot}
+                  onPicked={onPicked}
+                />
+              ))}
+              {!rootsQuery.isPending && !rootsQuery.isError && roots.length === 0 && (
+                <li className="py-2 text-center text-xs text-gray-400">אין יחידות להצגה</li>
+              )}
+              <li>
+                <div
+                  ref={rootSentinelRef}
+                  className="h-px"
+                  aria-hidden="true"
+                  data-testid="picker-root-prefetch-sentinel"
+                />
+                <BranchContinuation
+                  visible={Boolean(rootsQuery.hasNextPage)}
+                  busy={rootsQuery.isFetchingNextPage}
+                  failed={rootsQuery.isFetchNextPageError}
+                  onLoadMore={loadMoreRoots}
+                  t={t}
+                />
+              </li>
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

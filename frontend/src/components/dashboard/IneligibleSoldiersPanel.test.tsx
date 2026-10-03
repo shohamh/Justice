@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SoldierModalProvider } from "../../contexts/SoldierModalContext";
 import type { IneligibleSoldiersResponse } from "../../api/ineligibleSoldiers";
+import { queryKeys } from "../../queryKeys";
 import { IneligibleSoldiersPanel } from "./IneligibleSoldiersPanel";
 
 vi.mock("react-i18next", () => ({
@@ -39,6 +40,8 @@ vi.mock("../../api/ineligibleSoldiers", () => ({ getIneligibleSoldiers: vi.fn() 
 
 import { getIneligibleSoldiers } from "../../api/ineligibleSoldiers";
 
+beforeEach(() => vi.clearAllMocks());
+
 const commanderResponse: IneligibleSoldiersResponse = {
   count: 2,
   nodes: [
@@ -65,11 +68,20 @@ const commanderResponse: IneligibleSoldiersResponse = {
   ],
 };
 
-function renderPanel() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPanel({
+  isOpen = true,
+  authorizationScope = "scope-a",
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+}: {
+  isOpen?: boolean;
+  authorizationScope?: string | null;
+  queryClient?: QueryClient;
+} = {}) {
   return render(
     <QueryClientProvider client={queryClient}>
-      <SoldierModalProvider><IneligibleSoldiersPanel scope="command" /></SoldierModalProvider>
+      <SoldierModalProvider>
+        <IneligibleSoldiersPanel scope="command" isOpen={isOpen} authorizationScope={authorizationScope} />
+      </SoldierModalProvider>
     </QueryClientProvider>,
   );
 }
@@ -113,6 +125,49 @@ describe("IneligibleSoldiersPanel", () => {
       expect.stringContaining("פלוגה א"),
     ]);
     expect(screen.queryByRole("button", { name: /שבץ|הסמך|עדכן/ })).not.toBeInTheDocument();
+  });
+
+  it("waits until open and keeps the loaded rows available after closing", async () => {
+    vi.mocked(getIneligibleSoldiers).mockResolvedValue(commanderResponse);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    const view = renderPanel({ isOpen: false, queryClient });
+
+    expect(getIneligibleSoldiers).not.toHaveBeenCalled();
+
+    const renderForState = (isOpen: boolean) => view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <SoldierModalProvider>
+          <IneligibleSoldiersPanel scope="command" isOpen={isOpen} authorizationScope="scope-a" />
+        </SoldierModalProvider>
+      </QueryClientProvider>,
+    );
+    renderForState(true);
+    expect(await screen.findByTestId("ineligible-node-root")).toBeInTheDocument();
+    expect(getIneligibleSoldiers).toHaveBeenCalledTimes(1);
+
+    renderForState(false);
+    renderForState(true);
+    expect(screen.getByTestId("ineligible-node-root")).toBeInTheDocument();
+    expect(getIneligibleSoldiers).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reuse list data cached under an unscoped key", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    queryClient.setQueryData(queryKeys.ineligibleSoldiers("commander"), {
+      ...commanderResponse,
+      nodes: [{ id: "previous-root", name: "Previous Scope", level: "company", parent_id: null, path_ids: ["previous-root"] }],
+    });
+    vi.mocked(getIneligibleSoldiers).mockResolvedValue(commanderResponse);
+
+    renderPanel({ authorizationScope: "current-scope", queryClient });
+
+    expect(await screen.findByTestId("ineligible-node-root")).toBeInTheDocument();
+    expect(screen.queryByTestId("ineligible-node-previous-root")).not.toBeInTheDocument();
+    expect(getIneligibleSoldiers).toHaveBeenCalledTimes(1);
   });
 
   it("keeps clear loading, error, and empty states", async () => {

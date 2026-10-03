@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { BlockMath } from "react-katex";
 import { EffectiveDuty } from "../../api/assignments";
-import { TransparencyRow, BurdenShare, BurdenShareBreakdown } from "../../api/scoring";
+import { BurdenShare, BurdenShareBreakdown } from "../../api/scoring";
 import { formatDutyRange, todayIso } from "../../utils/formatDate";
 import BurdenShareBreakdownModal from "../BurdenShareBreakdownModal";
 import BurdenShareTrendChart from "./BurdenShareTrendChart";
@@ -12,21 +12,15 @@ interface Props {
   duties: EffectiveDuty[];
   typeNames: Record<string, string>;
   locationNames: Record<string, string>;
-  myRow: TransparencyRow | null;
-  allRows: TransparencyRow[];
+  personalScore: number | null;
   canViewTransparency: boolean;
   burdenShare?: BurdenShare | null;
   burdenShareBreakdown?: BurdenShareBreakdown | null;
   soldierName?: string;
 }
 
-function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
-  if (rows.length === 0) return 0;
-  return rows.reduce((s, r) => s + Number(r[key]), 0) / rows.length;
-}
-
 export default function DutyHistoryWidget({
-  duties, typeNames, locationNames, myRow, allRows, canViewTransparency,
+  duties, typeNames, locationNames, personalScore, canViewTransparency,
   burdenShare, burdenShareBreakdown, soldierName,
 }: Props) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
@@ -40,13 +34,13 @@ export default function DutyHistoryWidget({
     .filter((d) => d.end_date <= today)
     .sort((a, b) => b.start_date.localeCompare(a.start_date));
 
-  const avgActiveDays = Math.round(avg(allRows, "active_days"));
-  const avgScore = avg(allRows, "cumulative_score").toFixed(3);
-  const avgBurdenSharePct = (avg(allRows, "burden_share") * 100).toFixed(1);
+  const avgActiveDays = "—";
+  const avgScore = "—";
+  const avgBurdenSharePct = "—";
 
   const burdenSharePct = burdenShare?.has_group
     ? (Number(burdenShare.burden_share ?? 0) * 100)
-    : Number(myRow?.burden_share ?? 0) * 100;
+    : null;
 
   const peers = burdenShare?.has_group ? [...burdenShare.peer_scores].sort((a, b) => a - b) : [];
   const min = peers[0] ?? 0;
@@ -77,7 +71,7 @@ export default function DutyHistoryWidget({
       <div className="grid grid-cols-3 gap-3 text-sm">
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
           <div className="text-xs text-gray-500 mb-1">ניקוד מצטבר</div>
-          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{Number(myRow?.cumulative_score ?? 0).toFixed(3)}</div>
+          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{personalScore == null ? "—" : personalScore.toFixed(3)}</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgScore}</div>
         </div>
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
@@ -85,7 +79,7 @@ export default function DutyHistoryWidget({
             ימים פעילים
             <button type="button" onClick={() => setActiveDaysHelpOpen(true)} className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center" aria-label="הסבר על ימים פעילים">?</button>
           </div>
-          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{myRow?.active_days ?? 0}</div>
+          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">—</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgActiveDays}</div>
         </div>
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
@@ -100,7 +94,7 @@ export default function DutyHistoryWidget({
               ?
             </button>
           </div>
-          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{burdenSharePct.toFixed(1)}%</div>
+          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{burdenSharePct == null ? "—" : `${burdenSharePct.toFixed(1)}%`}</div>
           <div className="text-xs text-gray-400 mt-1">
             {burdenShare?.has_group
               ? `מקום ${burdenShare.rank} מתוך ${burdenShare.group_size}`
